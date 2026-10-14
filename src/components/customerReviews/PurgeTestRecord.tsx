@@ -18,7 +18,7 @@ import type { PurgeRecord } from '@/lib/customerReviews/testCardPurge'
 // the card may still be purged. Neither is the decision — the route and the
 // database functions re-check both.
 
-const DANGER = { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C' } as const
+const DANGER = { bg: '#FBE9EC', border: '#E9B9C1', color: '#B42332' } as const
 
 export const PURGE_DELETE_LABEL = 'Permanently delete test record'
 export const PURGE_CONTINUE_LABEL = 'Continue permanent deletion'
@@ -82,7 +82,7 @@ export function PurgeTestRecord({
   return (
     <>
       <section style={{
-        padding: '14px', borderRadius: '10px',
+        padding: '14px', borderRadius: '8px',
         border: `1px dashed ${resume ? DANGER.border : colors.border}`, background: resume ? DANGER.bg : colors.raised,
         display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px',
       }}>
@@ -93,7 +93,7 @@ export function PurgeTestRecord({
           }}>
             {resume ? PURGE_IN_PROGRESS_HEADING : 'Test data'}
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             {resume
               ? 'Permanent deletion of this record started but did not finish. Continue it to remove the remaining files and the record.'
               : 'This draft has never left internal review. An administrator can remove it entirely.'}
@@ -146,7 +146,7 @@ export function PurgeTestRecord({
             role="alert"
             style={{
               display: 'flex', gap: '9px', alignItems: 'flex-start',
-              padding: '11px 12px', borderRadius: '9px',
+              padding: '11px 12px', borderRadius: '8px',
               background: DANGER.bg, border: `1px solid ${DANGER.border}`,
             }}
           >
@@ -169,7 +169,7 @@ export function PurgeTestRecord({
             Nothing is kept as a tombstone.
           </p>
 
-          <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
             Only a draft that was never approved, assigned, booked, shared or submitted can be
             removed this way. A review with BOE Credits attached is refused.
           </p>
@@ -289,7 +289,7 @@ export function PurgeRecordView({
 function PurgeSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{
-      padding: '14px', borderRadius: '10px',
+      padding: '14px', borderRadius: '8px',
       border: `1px solid ${colors.border}`, background: colors.raised,
     }}>
       <h2 style={{

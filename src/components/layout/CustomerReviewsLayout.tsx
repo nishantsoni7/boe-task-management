@@ -144,13 +144,13 @@ export function CustomerReviewsLayout({
             title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -167,7 +167,7 @@ export function CustomerReviewsLayout({
                 onClick={() => navTo(item)}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
-                <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
                 {item.label}
@@ -179,8 +179,8 @@ export function CustomerReviewsLayout({
                     aria-label={`${count} waiting for approval`}
                     style={{
                       marginLeft: 'auto', flexShrink: 0,
-                      fontSize: '10px', fontWeight: 700, color: '#3D4455',
-                      background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                      fontSize: '12px', fontWeight: 700, color: '#4C5352',
+                      background: '#E4DED7', borderRadius: '999px',
                       padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
                     }}
                   >

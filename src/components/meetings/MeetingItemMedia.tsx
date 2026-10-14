@@ -114,13 +114,13 @@ export function MeetingItemSpec({
   return (
     <>
       {dimensions && (
-        <div style={{ fontSize: '11px', color: colors.tertiary, marginTop: '2px' }}>
+        <div style={{ fontSize: '12px', color: colors.tertiary, marginTop: '2px' }}>
           {dimensions}
         </div>
       )}
       {specNote && (
         <div style={{
-          fontSize: '11px', color: colors.muted, marginTop: '2px', lineHeight: 1.35,
+          fontSize: '12px', color: colors.muted, marginTop: '2px', lineHeight: 1.35,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
         }}>

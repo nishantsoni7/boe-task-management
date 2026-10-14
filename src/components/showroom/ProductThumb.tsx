@@ -70,7 +70,7 @@ export function ProductThumb({
         <div style={{ textAlign: 'center', padding: '6px', lineHeight: 1.3 }}>
           <Package size={showLabel ? 26 : 18} color={colors.muted} strokeWidth={1.3} />
           {showLabel && (
-            <div style={{ fontSize: '10px', color: colors.muted, marginTop: '5px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '5px' }}>
               No image
             </div>
           )}

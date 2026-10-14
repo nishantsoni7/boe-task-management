@@ -1193,7 +1193,7 @@ describe('the customization cell on the Order', () => {
     assert.ok(text(html).includes('Charcoal weave, brass caps'))
     assert.ok(text(html).includes(CUSTOMIZATION_MARK))
     assert.ok(html.includes('order-custom'))
-    assert.ok(!/color:#9B1C25|color:#B3222E;font-weight:600/.test(html), 'the words are not printed in red')
+    assert.ok(!/color:#9B1C25|color:#B42332;font-weight:600/.test(html), 'the words are not printed in red')
   })
 
   test('a line with nothing custom is quiet: no mark, no ground', () => {

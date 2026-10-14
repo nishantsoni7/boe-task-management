@@ -85,7 +85,7 @@ export function CustomSubmissionList(props: ListProps) {
           type="button"
           className="boe-btn boe-btn-ghost"
           onClick={() => props.onAdminReject(row)}
-          style={{ padding: '6px 10px', fontSize: '12px', minHeight: '36px', color: '#B91C1C' }}
+          style={{ padding: '6px 10px', fontSize: '12px', minHeight: '36px', color: '#B42332' }}
         >
           Reject approval
         </button>
@@ -95,7 +95,7 @@ export function CustomSubmissionList(props: ListProps) {
           type="button"
           className="boe-btn boe-btn-ghost"
           onClick={() => props.onAdminDelete(row)}
-          style={{ padding: '6px 10px', fontSize: '12px', minHeight: '36px', color: '#B91C1C' }}
+          style={{ padding: '6px 10px', fontSize: '12px', minHeight: '36px', color: '#B42332' }}
         >
           Delete
         </button>
@@ -106,21 +106,21 @@ export function CustomSubmissionList(props: ListProps) {
   const badges = (row: CustomReviewSubmission) => (
     <>
       {row.deleted_at
-        ? <ReviewBadge meta={{ label: 'Deleted', bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' }} />
+        ? <ReviewBadge meta={{ label: 'Deleted', bg: '#F1EEE9', color: '#4C5352', border: '#CFC8BF' }} />
         : <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />}
       <DuplicateBadge summary={duplicates?.get(row.id)} />
       {row.reward_held && !row.deleted_at && (
         <span style={{
-          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-          background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A',
+          fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+          background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0',
         }}>
           Edited after approval
         </span>
       )}
       {row.reapplication_count > 0 && row.status === 'pending_verification' && !row.deleted_at && (
         <span style={{
-          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-          background: 'rgba(79,111,208,0.10)', color: '#3B5BC0', border: '1px solid rgba(79,111,208,0.25)',
+          fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+          background: 'rgba(51,90,134,0.10)', color: '#335A86', border: '1px solid rgba(51,90,134,0.25)',
         }}>
           Reapplied
         </span>
@@ -170,7 +170,7 @@ export function CustomSubmissionList(props: ListProps) {
                   <td>
                     <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>{badges(row)}</div>
                     {row.status === 'approved' && !row.deleted_at && row.credits_awarded != null && (
-                      <div className={styles.sub} style={{ color: '#047857', fontWeight: 700 }}>
+                      <div className={styles.sub} style={{ color: '#276247', fontWeight: 700 }}>
                         {formatCredits(Number(row.credits_awarded), { signed: true })}
                       </div>
                     )}
@@ -226,7 +226,7 @@ export function CustomSubmissionList(props: ListProps) {
                 <dt>Submitted</dt><dd>{submissionDayOf(row.submitted_at)}</dd>
                 {row.deleted_at && (<><dt>Deleted</dt><dd>{submissionDayOf(row.deleted_at)}</dd></>)}
                 {row.status === 'approved' && !row.deleted_at && row.credits_awarded != null && (
-                  <><dt>Credits</dt><dd style={{ color: '#047857' }}>{formatCredits(Number(row.credits_awarded), { signed: true })}</dd></>
+                  <><dt>Credits</dt><dd style={{ color: '#276247' }}>{formatCredits(Number(row.credits_awarded), { signed: true })}</dd></>
                 )}
                 {row.status === 'rejected' && !row.deleted_at && row.rejection_reason && (
                   <><dt>Reason</dt><dd>{row.rejection_reason}</dd></>
@@ -246,7 +246,7 @@ export function CustomSubmissionList(props: ListProps) {
                     type="button"
                     className="boe-btn boe-btn-ghost"
                     onClick={() => props.onAdminReject(row)}
-                    style={{ padding: '8px 14px', fontSize: '13px', minHeight: '44px', color: '#B91C1C' }}
+                    style={{ padding: '8px 14px', fontSize: '13px', minHeight: '44px', color: '#B42332' }}
                   >
                     Reject approval
                   </button>
@@ -256,7 +256,7 @@ export function CustomSubmissionList(props: ListProps) {
                     type="button"
                     className="boe-btn boe-btn-ghost"
                     onClick={() => props.onAdminDelete(row)}
-                    style={{ padding: '8px 14px', fontSize: '13px', minHeight: '44px', color: '#B91C1C' }}
+                    style={{ padding: '8px 14px', fontSize: '13px', minHeight: '44px', color: '#B42332' }}
                   >
                     Delete
                   </button>

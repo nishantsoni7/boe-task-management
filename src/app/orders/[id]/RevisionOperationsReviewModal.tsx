@@ -24,7 +24,7 @@ import {
 } from '@/lib/orders/orderPiVersions'
 
 const TEXTAREA: React.CSSProperties = {
-  padding: '8px 10px', borderRadius: '7px',
+  padding: '8px 10px', borderRadius: '8px',
   border: `1px solid ${colors.border}`, background: colors.base, color: colors.primary,
   fontSize: '13px', width: '100%', boxSizing: 'border-box', outline: 'none',
   minHeight: '64px', resize: 'vertical', fontFamily: 'inherit',

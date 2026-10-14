@@ -239,7 +239,7 @@ function NotificationTaskGroupImpl({
       title={`${relationWord} ${personName}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0,
-        fontSize: '11.5px', fontWeight: 500, color: colors.blue,
+        fontSize: '12px', fontWeight: 500, color: colors.brand,
         whiteSpace: 'nowrap', minWidth: 0,
       }}
     >
@@ -251,7 +251,7 @@ function NotificationTaskGroupImpl({
     // No icon and no blue for a person who could not be resolved: an empty
     // person chip would read as somebody whose name failed to load.
     <span style={{
-      flexShrink: 0, fontSize: '11.5px', fontWeight: 500,
+      flexShrink: 0, fontSize: '12px', fontWeight: 500,
       color: colors.muted, whiteSpace: 'nowrap',
     }}>
       {assignee}
@@ -268,7 +268,7 @@ function NotificationTaskGroupImpl({
         // enough to shout.
         background: '#ffffff',
         border: `1px solid ${colors.border}`,
-        borderLeft: hasUnread ? `3px solid ${colors.blue}` : `3px solid ${colors.border}`,
+        borderLeft: hasUnread ? `3px solid ${colors.brand}` : `3px solid ${colors.border}`,
       }}
     >
       <div style={{
@@ -314,7 +314,7 @@ function NotificationTaskGroupImpl({
                 minHeight: isMobile ? '44px' : undefined,
                 minWidth: isMobile ? '44px' : undefined,
                 cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
-                fontSize: '11.5px', fontWeight: 500, color: colors.muted,
+                fontSize: '12px', fontWeight: 500, color: colors.muted,
               }}
             >
               <ChevronRight
@@ -466,9 +466,9 @@ function EventRow({
           width: isMobile ? '44px' : '18px',
           height: isMobile ? '44px' : '18px',
           marginTop: isMobile ? '0' : '2px',
-          borderRadius: '4px', padding: 0,
-          border: `1.5px solid ${selected ? colors.blue : colors.borderSoft ?? colors.border}`,
-          background: selected ? colors.blue : 'transparent',
+          borderRadius: '6px', padding: 0,
+          border: `1.5px solid ${selected ? colors.brand : colors.borderSoft ?? colors.border}`,
+          background: selected ? colors.brand : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
         }}
@@ -487,7 +487,7 @@ function EventRow({
               aria-label="Unread"
               style={{
                 flexShrink: 0, width: '6px', height: '6px', borderRadius: '50%',
-                background: colors.blue, display: 'inline-block',
+                background: colors.brand, display: 'inline-block',
               }}
             />
           )}
@@ -509,7 +509,7 @@ function EventRow({
         )}
 
         {/* 3. When — and who, once, only if it is not the assignee. */}
-        <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+        <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.4 }}>
           {meta}
         </span>
       </div>
@@ -561,7 +561,7 @@ function GroupAction({
         minWidth: isMobile ? '44px' : undefined,
         padding: text ? (isMobile ? '10px 13px' : '6px 11px') : (isMobile ? '10px' : '6px 8px'),
         borderRadius: '6px',
-        fontSize: '11.5px', fontWeight: 600, fontFamily: font.body,
+        fontSize: '12px', fontWeight: 600, fontFamily: font.body,
         whiteSpace: 'nowrap',
         // Every action here is SECONDARY: outlined and muted, never a filled
         // block competing with the task title for attention.

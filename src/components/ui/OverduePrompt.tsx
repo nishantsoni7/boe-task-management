@@ -111,16 +111,16 @@ export function OverduePrompt({
               className="boe-modal-counter"
               style={{
                 color: colors.red,
-                background: 'rgba(217,79,79,0.08)',
+                background: 'rgba(180,35,50,0.08)',
                 padding: '2px 7px',
-                borderRadius: '3px',
-                border: '1px solid rgba(217,79,79,0.15)',
+                borderRadius: '6px',
+                border: '1px solid rgba(180,35,50,0.15)',
               }}
             >
               Overdue · {currentIdx + 1} of {total}
             </span>
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               fontFamily: font.mono,
               color: colors.muted,
             }}>
@@ -146,18 +146,18 @@ export function OverduePrompt({
           }}>
             {task.due_date && (
               <span style={{
-                fontSize: '10px',
+                fontSize: '12px',
                 fontFamily: font.mono,
                 color: colors.red,
-                background: 'rgba(217,79,79,0.07)',
+                background: 'rgba(180,35,50,0.07)',
                 padding: '2px 6px',
-                borderRadius: '3px',
+                borderRadius: '6px',
               }}>
                 Due {formatShortDate(task.due_date)}
               </span>
             )}
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               color: colors.tertiary,
               fontFamily: font.mono,
               textTransform: 'capitalize',
@@ -227,7 +227,7 @@ export function OverduePrompt({
                 autoFocus
               />
               {reasonText.trim().length === 0 && (
-                <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>
+                <p style={{ fontSize: '12px', color: colors.amber, marginTop: '4px' }}>
                   Required — who or what is blocking this task?
                 </p>
               )}
@@ -250,7 +250,7 @@ export function OverduePrompt({
                 autoFocus
               />
               {reasonText.trim().length === 0 && (
-                <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>
+                <p style={{ fontSize: '12px', color: colors.amber, marginTop: '4px' }}>
                   Required — what are you waiting on?
                 </p>
               )}

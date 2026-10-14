@@ -75,7 +75,7 @@ export function AssignmentNotificationNotice({
         padding: '11px 16px',
         borderRadius: '8px',
         background: colors.amberTint,
-        border: '1px solid rgba(232,160,48,0.3)',
+        border: '1px solid rgba(196,138,26,0.3)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: '12px', flexWrap: 'wrap',
       }}
@@ -90,7 +90,7 @@ export function AssignmentNotificationNotice({
           onClick={retry}
           disabled={retrying}
           style={{
-            background: 'none', border: `1px solid rgba(232,160,48,0.5)`,
+            background: 'none', border: `1px solid rgba(196,138,26,0.5)`,
             borderRadius: '6px', cursor: retrying ? 'default' : 'pointer',
             // 44px is the repository's touch target; the label sits inside it.
             minHeight: '44px', padding: '0 12px',
@@ -125,7 +125,7 @@ export function AssignmentNotificationRecovered({ onDismiss }: { onDismiss: () =
       data-testid="assignment-notification-recovered"
       style={{
         marginBottom: '16px', padding: '11px 16px', borderRadius: '8px',
-        background: colors.greenTint, border: '1px solid rgba(69,168,112,0.25)',
+        background: colors.greenTint, border: '1px solid rgba(39,98,71,0.25)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
       }}
     >

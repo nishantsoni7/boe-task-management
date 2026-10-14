@@ -72,7 +72,7 @@ export function CompleteMeetingModal({
       {error && <MeetingModalError message={error} />}
 
       <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+        border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
       }}>
         {rows.map((row, i) => (
           <div
@@ -100,7 +100,7 @@ export function CompleteMeetingModal({
         <div style={{
           display: 'flex', gap: '9px', alignItems: 'flex-start',
           padding: '10px 12px', borderRadius: '8px',
-          background: colors.amberTint, border: '1px solid rgba(232,160,48,0.28)',
+          background: colors.amberTint, border: '1px solid rgba(196,138,26,0.28)',
         }}>
           <AlertTriangle size={15} strokeWidth={2} color={colors.amber} style={{ flexShrink: 0, marginTop: '1px' }} />
           <div style={{ fontSize: '12px', color: '#8A5A10', lineHeight: 1.45 }}>{warning}</div>

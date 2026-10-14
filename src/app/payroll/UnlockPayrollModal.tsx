@@ -54,7 +54,7 @@ export function UnlockPayrollModal({
           rows={3}
           placeholder="e.g. Late attendance correction approved for two employees."
           style={{
-            fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
+            fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 8,
             background: colors.base, color: colors.primary, outline: 'none',
             padding: '8px 10px', boxSizing: 'border-box', width: '100%',
             resize: 'vertical', fontFamily: 'inherit',

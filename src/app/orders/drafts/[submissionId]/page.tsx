@@ -1704,7 +1704,7 @@ function PiDraftDetailPageInner() {
         showRefresh={false}
         actions={backButton}
       >
-        <PiCard style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+        <PiCard style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
           <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
               {unavailable ? 'This draft is not available' : 'This draft could not be loaded'}
@@ -2642,10 +2642,10 @@ function PiDraftDetailPageInner() {
                 {draft.unresolvedImages > 0 && (
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    padding: '2px 8px', borderRadius: '5px',
-                    fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                    padding: '2px 8px', borderRadius: '6px',
+                    fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
                     background: colors.redTint, color: colors.red,
-                    border: '1px solid rgba(217,79,79,0.25)',
+                    border: '1px solid rgba(180,35,50,0.25)',
                   }}>
                     {draft.unresolvedImages} image{draft.unresolvedImages === 1 ? '' : 's'} unavailable
                   </span>
@@ -2722,7 +2722,7 @@ function PiDraftDetailPageInner() {
                     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                     borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
                   }}>
-                    <span style={{ fontSize: '11px', color: colors.muted }}>Line total</span>
+                    <span style={{ fontSize: '12px', color: colors.muted }}>Line total</span>
                     <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                       {formatInr(p.lineTotal)}
                     </span>
@@ -2824,13 +2824,13 @@ function PiDraftDetailPageInner() {
               borderTop: `1px solid ${colors.border}`,
               display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
                 Changing these needs a corrected PI workbook
               </div>
-              <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+              <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
                 {PI_CHANGE_PI_ONLY.join(' · ')}
               </div>
-              <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.55 }}>
+              <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
                 These come from the workbook’s own formulas. Upload a corrected
                 file and everything on this PI is read again from it.
               </div>

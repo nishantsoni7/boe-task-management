@@ -39,10 +39,10 @@ export const LEAD_TYPES = [
 
 /** The colour that goes with each lead type on the entry form (and nowhere that carries meaning alone: the name is always written). */
 export const LEAD_TYPE_ACCENTS: Readonly<Record<string, string>> = {
-  hot: '#DC1F2E',
-  warm: '#D97706',
-  long_term: '#2563EB',
-  mismatched_retail: '#7C8493',
+  hot: '#B9472E',
+  warm: '#C48A1A',
+  long_term: '#335A86',
+  mismatched_retail: '#686D6C',
 }
 
 export const leadTypeLabel = (value: string | null | undefined): string =>

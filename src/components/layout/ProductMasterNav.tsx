@@ -49,7 +49,7 @@ export function ProductMasterNav({
         // width the default 9px gap is what tips the label onto a second line.
         style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', gap: '7px' }}
       >
-        <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+        <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
           <Package size={15} strokeWidth={1.8} />
         </span>
         <span style={{ whiteSpace: 'nowrap' }}>Product Master</span>
@@ -69,7 +69,7 @@ export function ProductMasterNav({
       {expanded && categories.length > 0 && (
         <div style={{
           marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px',
-          borderLeft: '1px solid rgba(0,0,0,0.08)',
+          borderLeft: '1px solid #E4DED7',
         }}>
           {categories.map(category => {
             const selected = category.name === activeCategory
@@ -82,7 +82,7 @@ export function ProductMasterNav({
                 style={{
                   fontSize: '12.5px',
                   fontWeight: selected ? 600 : 400,
-                  color: selected ? '#111318' : '#707A92',
+                  color: selected ? '#303536' : '#686D6C',
                   padding: '5px 8px',
                   marginBottom: '1px',
                 }}
@@ -105,9 +105,9 @@ function CountBadge({
 }: { value: number; suffix?: string; style?: React.CSSProperties }) {
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-      fontFamily: "'DM Mono', monospace",
-      background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
+      fontSize: '12px', fontWeight: 600, color: '#595D5B',
+      fontFamily: 'var(--font-body)',
+      background: '#E4DED7', borderRadius: '999px',
       padding: '1px 6px', lineHeight: '15px',
       minWidth: '17px', textAlign: 'center', flexShrink: 0,
       whiteSpace: 'nowrap',
@@ -115,7 +115,7 @@ function CountBadge({
     }}>
       {value}
       {suffix && (
-        <span style={{ fontSize: '9px', fontWeight: 500, opacity: 0.75, marginLeft: '2px' }}>{suffix}</span>
+        <span style={{ fontSize: '12px', fontWeight: 500, opacity: 0.75, marginLeft: '2px' }}>{suffix}</span>
       )}
     </span>
   )

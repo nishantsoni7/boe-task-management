@@ -211,7 +211,7 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
         {unavailable ? (
           <div
             onClick={e => e.stopPropagation()}
-            style={{ color: '#E6E8EC', fontFamily: font.body, fontSize: '13px', textAlign: 'center', padding: '24px' }}
+            style={{ color: '#686D6C', fontFamily: font.body, fontSize: '13px', textAlign: 'center', padding: '24px' }}
           >
             This image could not be loaded.
           </div>

@@ -101,7 +101,7 @@ function SavingOverlay({ message }: { message: string }) {
         position: 'fixed', inset: 0, zIndex: 300,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 16,
-        background: 'rgba(17,24,39,0.55)',
+        background: 'rgba(48,53,54,0.55)',
         backdropFilter: 'blur(2px)',
         outline: 'none',
         // Belt and braces with the keydown trap: nothing behind this layer can
@@ -470,7 +470,7 @@ export default function PayrollResultDetailPage() {
           onClick={() => router.push(`/payroll/results/${periodId}`)}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
+            color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
             padding: 0,
           }}
         >
@@ -481,8 +481,8 @@ export default function PayrollResultDetailPage() {
       {error && (
         <div style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+          background: 'rgba(180,35,50,0.08)', color: '#B42332',
+          border: '1px solid rgba(180,35,50,0.2)', fontSize: 13,
         }}>
           {error}
         </div>
@@ -515,16 +515,16 @@ export default function PayrollResultDetailPage() {
           )}
           notices={savedNotice && (
             <div style={{
-              marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-              background: 'rgba(5,150,105,0.09)', color: '#047857',
-              border: '1px solid rgba(5,150,105,0.28)', fontSize: 13,
+              marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+              background: 'rgba(39,98,71,0.09)', color: '#276247',
+              border: '1px solid rgba(39,98,71,0.28)', fontSize: 13,
               display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center',
             }}>
               <span>{savedNotice}</span>
               <button
                 onClick={() => setSavedNotice(null)}
                 aria-label="Dismiss"
-                style={{ background: 'none', border: 'none', color: '#047857', cursor: 'pointer', fontSize: 14 }}
+                style={{ background: 'none', border: 'none', color: '#276247', cursor: 'pointer', fontSize: 14 }}
               >✕</button>
             </div>
           )}

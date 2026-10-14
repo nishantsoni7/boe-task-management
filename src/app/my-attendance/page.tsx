@@ -94,12 +94,12 @@ function statusTone(status: string): { bg: string; fg: string } {
     case 'paid_leave':
     case 'holiday':
     case 'weekly_off':
-      return { bg: 'rgba(16,185,129,0.12)', fg: '#059669' }
+      return { bg: 'rgba(39,98,71,0.12)', fg: '#276247' }
     case 'absent':
     case 'unpaid_leave':
-      return { bg: 'rgba(239,68,68,0.10)',  fg: '#DC2626' }
+      return { bg: 'rgba(180,35,50,0.10)',  fg: '#B42332' }
     default:
-      return { bg: 'rgba(232,160,48,0.15)', fg: '#B45309' }
+      return { bg: 'rgba(196,138,26,0.15)', fg: '#805B0D' }
   }
 }
 

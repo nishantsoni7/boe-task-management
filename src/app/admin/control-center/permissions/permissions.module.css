@@ -18,7 +18,7 @@
   flex-direction: column;
   gap: 10px;
   background: #fff;
-  border: 1px solid #E8EBF0;
+  border: 1px solid #ECE7E0;
   border-radius: 8px;
   padding: 12px;
   position: sticky;
@@ -31,15 +31,15 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: #8C94A6;
+  color: #686D6C;
   padding: 0 2px;
 }
 
-.panelCount { font-weight: 500; letter-spacing: 0; text-transform: none; color: #A0A9BE; }
+.panelCount { font-weight: 500; letter-spacing: 0; text-transform: none; color: #686D6C; }
 
 .panelList {
   min-height: 0;
@@ -59,7 +59,7 @@
   width: 100%;
   padding: 7px 8px 7px 11px;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   background: none;
   cursor: pointer;
   text-align: left;
@@ -68,8 +68,8 @@
 }
 
 .row:hover { background: rgba(0,0,0,0.045); }
-.rowSelected { background: rgba(220,31,46,0.07); }
-.rowSelected:hover { background: rgba(220,31,46,0.09); }
+.rowSelected { background: rgba(185,71,46,0.07); }
+.rowSelected:hover { background: rgba(185,71,46,0.09); }
 
 .rowSelected::before {
   content: '';
@@ -79,12 +79,12 @@
   bottom: 6px;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background: #DC1F2E;
+  background: #B9472E;
 }
 
 .rowText { min-width: 0; flex: 1; }
-.rowName { font-size: 13px; font-weight: 600; color: #111318; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rowSub  { font-size: 11.5px; color: #8C94A6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowName { font-size: 13px; font-weight: 600; color: #303536; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowSub  { font-size: 12px; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rowMuted { opacity: .6; }
 
 /* Workspace header card */
@@ -95,30 +95,30 @@
   gap: 16px;
   flex-wrap: wrap;
   background: #fff;
-  border: 1px solid #E8EBF0;
+  border: 1px solid #ECE7E0;
   border-radius: 8px;
   padding: 14px 16px;
   margin-bottom: 12px;
 }
 
 .headerIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.headerName { font-size: 15px; font-weight: 700; color: #111318; }
-.headerSub  { font-size: 12px; color: #6B7384; margin-top: 2px; }
+.headerName { font-size: 15px; font-weight: 700; color: #303536; }
+.headerSub  { font-size: 12px; color: #686D6C; margin-top: 2px; }
 .headerStats { display: flex; gap: 22px; }
 .headerStat  { text-align: right; }
-.headerStatValue { font-size: 18px; font-weight: 700; color: #111318; line-height: 1.1; }
-.headerStatLabel { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #8C94A6; margin-top: 2px; }
+.headerStatValue { font-size: 18px; font-weight: 700; color: #303536; line-height: 1.1; }
+.headerStatLabel { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #686D6C; margin-top: 2px; }
 
 /* The switch cell: a real checkbox with a readable state word beside it */
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
 .switchLocked { cursor: default; }
 .switchWord { font-size: 12px; font-weight: 600; }
-.switchOn  { color: #166534; }
-.switchOff { color: #6B7384; }
+.switchOn  { color: #276247; }
+.switchOff { color: #686D6C; }
 
 .unsaved {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  color: #8C6D1F; margin-left: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #805B0D; margin-left: 8px;
 }
 
 /* Sticky save bar under the workspace */
@@ -131,42 +131,42 @@
   margin-top: 14px;
   padding: 10px 14px;
   background: #fff;
-  border: 1px solid #E8EBF0;
+  border: 1px solid #ECE7E0;
   border-radius: 8px;
-  box-shadow: 0 -2px 12px rgba(17,19,24,.05);
+  box-shadow: 0 -2px 12px rgba(48,53,54,.05);
 }
-.saveBarText { font-size: 12px; color: #6B7384; }
+.saveBarText { font-size: 12px; color: #686D6C; }
 .saveBarSpacer { flex: 1; }
 
 /* Level options inside the Change Access dialog */
 .levelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .levelOption {
-  text-align: left; border: 1px solid rgba(0,0,0,.13); border-radius: 8px;
+  text-align: left; border: 1px solid #CFC8BF; border-radius: 8px;
   padding: 9px 11px; background: #fff; cursor: pointer; font: inherit; color: inherit;
 }
 .levelOption:hover { border-color: rgba(0,0,0,.25); }
-.levelOptionActive { border-color: #1A2035; background: #EEF0F4; }
-.levelOptionLabel { font-size: 13px; font-weight: 700; color: #111318; margin-bottom: 2px; }
-.levelOptionDesc  { font-size: 11px; color: #6B7384; line-height: 1.35; }
+.levelOptionActive { border-color: #303536; background: #F1EEE9; }
+.levelOptionLabel { font-size: 13px; font-weight: 700; color: #303536; margin-bottom: 2px; }
+.levelOptionDesc  { font-size: 12px; color: #686D6C; line-height: 1.35; }
 
 /* Per-action rows under Custom */
 .actionRow {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #F0F2F5;
+  gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #F1EEE9;
 }
-.actionName { font-size: 13px; font-weight: 600; color: #111318; }
+.actionName { font-size: 13px; font-weight: 600; color: #303536; }
 .actionState { font-size: 12px; }
 
 /* Segmented Inherit / Allow / Deny */
-.segment { display: inline-flex; border: 1px solid rgba(0,0,0,.13); border-radius: 6px; overflow: hidden; }
+.segment { display: inline-flex; border: 1px solid #CFC8BF; border-radius: 6px; overflow: hidden; }
 .segmentBtn {
   padding: 5px 11px; font-size: 12px; font-weight: 600; border: none; background: #fff;
-  color: #6B7384; cursor: pointer; font-family: inherit;
+  color: #686D6C; cursor: pointer; font-family: inherit;
 }
-.segmentBtn + .segmentBtn { border-left: 1px solid rgba(0,0,0,.13); }
-.segmentInherit { color: #1A2035; background: #EEF0F4; }
-.segmentAllow   { color: #166534; background: #F0FDF4; }
-.segmentDeny    { color: #B0364A; background: #FDF1F3; }
+.segmentBtn + .segmentBtn { border-left: 1px solid #CFC8BF; }
+.segmentInherit { color: #303536; background: #F1EEE9; }
+.segmentAllow   { color: #276247; background: #E8F2EC; }
+.segmentDeny    { color: #A12438; background: #FDF1F3; }
 
 /* Compact level select in a By Module row */
 .levelSelect { height: 28px; padding: 0 8px; font-size: 12px; }

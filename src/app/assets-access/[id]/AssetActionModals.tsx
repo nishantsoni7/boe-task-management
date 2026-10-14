@@ -275,7 +275,7 @@ export function TransferAssetModal({
 
   return (
     <AssetModal title="Transfer Asset" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         Currently with {currentEmployeeName ?? asset.location ?? 'the company'}. The previous custody
         record is kept — a transfer never erases who held the asset before.
       </div>
@@ -357,7 +357,7 @@ export function ReturnAssetModal({
 
   return (
     <AssetModal title="Mark Returned" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         Returned by {currentEmployeeName ?? 'the current custodian'}. Their custody record stays on
         the asset permanently.
       </div>
@@ -409,7 +409,7 @@ export function MarkLostModal({
     <AssetModal title="Mark Lost" onClose={onClose}>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
       }}>
         Writing an asset off is an accountability event. The last custodian and every administrator
         are notified, and the record is permanent — it can only be reversed by recording a recovery.
@@ -466,7 +466,7 @@ export function RecoverAssetModal({
 
   return (
     <AssetModal title="Record Recovery" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         The write-off stays in the history. This adds the recovery beside it rather than erasing it.
       </div>
       <AssetField label="Recovered To">
@@ -550,7 +550,7 @@ export function SendForRepairModal({
 
   return (
     <AssetModal title="Send for Repair / Service" onClose={onClose} width={520}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         Custody does not change. Whoever the asset is charged to stays accountable for it while the
         vendor has it.
       </div>
@@ -626,7 +626,7 @@ export function CompleteServiceModal({
 
   return (
     <AssetModal title="Record Return from Service" onClose={onClose} width={520}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         {ASSET_SERVICE_TYPE_LABEL[record.service_type] ?? record.service_type}
         {record.vendor ? ` · ${record.vendor}` : ''}
       </div>
@@ -709,7 +709,7 @@ export function AddServiceRecordModal({
 
   return (
     <AssetModal title="Add Repair / Service" onClose={onClose} width={520}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         For a service that has already been completed. To send the asset away now, use
         Send for Repair instead.
       </div>
@@ -937,7 +937,7 @@ export function UploadDocumentModal({
         />
       </AssetField>
       {file && (
-        <div style={{ fontSize: '11.5px', color: colors.muted }}>
+        <div style={{ fontSize: '12px', color: colors.muted }}>
           Selected: {file.name}
         </div>
       )}
@@ -975,7 +975,7 @@ export function RemoveDocumentModal({
       <div style={{ fontSize: '12px', color: colors.secondary }}>{fileName}</div>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
       }}>
         The document is taken off the asset and the removal is recorded in the activity history.
         The stored file itself is retained.
@@ -1020,7 +1020,7 @@ export function RetireAssetModal({
     <AssetModal title={dispose ? 'Dispose Asset' : 'Retire Asset'} onClose={onClose}>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
       }}>
         {dispose
           ? 'Disposal ends this asset’s working life. It can be restored to service later, and its full history is kept either way.'
@@ -1062,7 +1062,7 @@ export function RestoreAssetModal({ asset, supabase, onClose, onDone }: CommonPr
 
   return (
     <AssetModal title="Restore to Service" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         The asset goes back on the shelf as available. Assign it from there so the normal
         acceptance step still applies.
       </div>
@@ -1108,7 +1108,7 @@ export function DeleteAssetModal({ asset, supabase, onClose, onDone }: CommonPro
       </div>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
       }}>
         Permanently delete this asset? The asset and its complete assignment, custody,
         service, warranty, and activity history will be erased. This action cannot be undone.

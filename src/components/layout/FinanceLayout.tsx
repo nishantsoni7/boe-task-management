@@ -217,8 +217,8 @@ export function FinanceLayout({
                 typeof item.badge === 'number' && item.badge > 0 ? (
                   <span style={{
                     marginLeft: 'auto', flexShrink: 0,
-                    fontSize: '10px', fontWeight: 700, color: '#3D4455',
-                    background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                    fontSize: '12px', fontWeight: 700, color: '#4C5352',
+                    background: '#E4DED7', borderRadius: '999px',
                     padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
                   }}>
                     {item.badge > 999 ? '999+' : item.badge}
@@ -247,18 +247,18 @@ export function FinanceLayout({
               className="boe-notif-alert"
             >
               <div className="boe-notif-alert-bell">
-                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
+                <Bell size={24} strokeWidth={1.8} color="#B9472E" />
               </div>
               <div style={{
-                fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
+                fontSize: '28px', fontWeight: 800, color: '#303536', lineHeight: 1,
               }}>
                 {unreadFinance > 99 ? '99+' : unreadFinance}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadFinance === 1 ? 'notification' : 'notifications'}
               </div>
               <div style={{
-                fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
+                fontSize: '12px', fontWeight: 600, color: '#B9472E',
                 letterSpacing: '0.05em', textTransform: 'uppercase',
               }}>
                 Tap to review →

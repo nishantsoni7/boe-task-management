@@ -50,7 +50,7 @@ const INITIAL_EARLIER_MEETINGS = 3
 const EARLIER_ORDER_ROW_LIMIT = 200
 
 const FIELD_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
@@ -469,8 +469,8 @@ function DiscussionComposer({
                   src={item.preview}
                   alt={item.name}
                   style={{
-                    width: 108, height: 80, objectFit: 'cover', borderRadius: '7px', display: 'block',
-                    border: `1px solid ${item.state === 'failed' ? 'rgba(217,79,79,0.55)' : colors.border}`,
+                    width: 108, height: 80, objectFit: 'cover', borderRadius: '8px', display: 'block',
+                    border: `1px solid ${item.state === 'failed' ? 'rgba(180,35,50,0.55)' : colors.border}`,
                     opacity: item.state === 'ready' || item.state === 'failed' ? 1 : 0.6,
                   }}
                 />
@@ -483,7 +483,7 @@ function DiscussionComposer({
                     style={{
                       position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '6px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                      border: 'none', background: 'rgba(17,19,24,0.7)', color: '#FFFFFF',
+                      border: 'none', background: 'rgba(48,53,54,0.7)', color: '#FFFFFF',
                     }}
                   >
                     <X size={12} strokeWidth={2.4} />
@@ -491,7 +491,7 @@ function DiscussionComposer({
                 )}
               </div>
               <div style={{
-                fontSize: '10.5px', marginTop: '3px', lineHeight: 1.3,
+                fontSize: '12px', marginTop: '3px', lineHeight: 1.3,
                 color: item.state === 'failed' ? colors.red : colors.muted,
               }}>
                 {item.state === 'failed' && item.error ? item.error : STAGE_LABEL[item.state]}
@@ -524,7 +524,7 @@ function DiscussionComposer({
             <ImagePlus size={14} strokeWidth={2} /> Attach image
           </button>
           {!isMobile && (
-            <span style={{ fontSize: '11.5px', color: colors.muted }}>or paste a screenshot here (Ctrl+V)</span>
+            <span style={{ fontSize: '12px', color: colors.muted }}>or paste a screenshot here (Ctrl+V)</span>
           )}
         </div>
         <button
@@ -541,8 +541,8 @@ function DiscussionComposer({
       {notice && (
         <div role={notice.tone === 'error' ? 'alert' : 'status'} style={{
           padding: '9px 12px', borderRadius: '8px', fontSize: '12px', whiteSpace: 'pre-wrap',
-          background: notice.tone === 'error' ? 'rgba(217,79,79,0.1)' : colors.greenTint,
-          color: notice.tone === 'error' ? '#C13030' : '#2E8A58',
+          background: notice.tone === 'error' ? 'rgba(180,35,50,0.1)' : colors.greenTint,
+          color: notice.tone === 'error' ? '#B42332' : '#276247',
         }}>
           {notice.message}
         </div>
@@ -707,7 +707,7 @@ function EarlierGroup({
   ].filter(Boolean).join(' · ') || 'Nothing recorded'
 
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
       <button
         type="button"
         onClick={onToggle}
@@ -730,12 +730,12 @@ function EarlierGroup({
           {m.title}
         </span>
         {m.status !== 'completed' && <MeetingBadge meta={MEETING_STATUS_META[m.status]} />}
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>{counts}</span>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>{counts}</span>
       </button>
 
       {open ? (
         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.muted }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', fontSize: '12px', color: colors.muted }}>
             <span>Position recorded</span>
             <MeetingBadge meta={ORDER_POSITION_META[meetingOrder.position]} />
             {meetingOrder.next_review_date && <span>· Next review {formatMeetingDate(meetingOrder.next_review_date)}</span>}
@@ -790,13 +790,13 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
           {HISTORY_ENTRY_LABEL[entry.entry_type]}
           {entry.sku && <span style={{ fontWeight: 500, color: colors.muted }}> · {entry.sku}</span>}
         </span>
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           {entry.actor_name ?? 'Unknown'} · {formatMeetingTimestamp(entry.created_at)}
         </span>
       </div>
       {hasUpdateText(entry) && (
         <div style={{
-          marginTop: '5px', padding: '8px 10px', borderRadius: '7px',
+          marginTop: '5px', padding: '8px 10px', borderRadius: '8px',
           background: colors.raised, borderLeft: `2px solid ${colors.blue}`,
           fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
         }}>
@@ -806,7 +806,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
       {changes.length > 0 && (
         <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {changes.map((line, i) => (
-            <div key={i} style={{ fontSize: '11.5px', color: colors.secondary }}>{line}</div>
+            <div key={i} style={{ fontSize: '12px', color: colors.secondary }}>{line}</div>
           ))}
         </div>
       )}
@@ -817,7 +817,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
 function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section style={{
-      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
       {children}
@@ -829,7 +829,7 @@ function PanelHeading({ title, detail }: { title: string; detail?: string }) {
   return (
     <div>
       <div style={{ fontSize: '13.5px', fontWeight: 700, color: colors.primary }}>{title}</div>
-      {detail && <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>{detail}</div>}
+      {detail && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>{detail}</div>}
     </div>
   )
 }

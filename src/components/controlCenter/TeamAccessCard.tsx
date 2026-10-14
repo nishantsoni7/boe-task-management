@@ -90,14 +90,14 @@ export function TeamAccessCard({ moduleKey, moduleName, onSaved }: {
               key={d.departmentKey}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px',
-                border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, background: unsaved ? '#FFFBEB' : '#fff',
+                border: '1px solid #E4DED7', borderRadius: 8, background: unsaved ? '#FAF0DA' : '#fff',
               }}
             >
               <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                 <div className={cc.personName}>
                   {d.departmentName}
-                  {!d.isActive && <span className={cc.muted} style={{ marginLeft: 6, fontSize: 11 }}>inactive</span>}
-                  {unsaved && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#B45309' }}>Unsaved</span>}
+                  {!d.isActive && <span className={cc.muted} style={{ marginLeft: 6, fontSize: 12 }}>inactive</span>}
+                  {unsaved && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: '#805B0D' }}>Unsaved</span>}
                 </div>
                 <div className={cc.personSub}>{d.people} {d.people === 1 ? 'person' : 'people'}</div>
               </div>
@@ -127,8 +127,8 @@ export function TeamAccessCard({ moduleKey, moduleName, onSaved }: {
         {dirtyKeys.length > 0 && !saving && (
           <button type="button" className="boe-btn" onClick={() => { setPending({}); setError('') }}>Discard</button>
         )}
-        {saved && <span role="status" style={{ fontSize: 12.5, color: '#166534', fontWeight: 600 }}>Saved.</span>}
-        {error && <span role="alert" style={{ fontSize: 12.5, color: '#B3121F', fontWeight: 600 }}>{error}</span>}
+        {saved && <span role="status" style={{ fontSize: 12.5, color: '#276247', fontWeight: 600 }}>Saved.</span>}
+        {error && <span role="alert" style={{ fontSize: 12.5, color: '#B42332', fontWeight: 600 }}>{error}</span>}
       </div>
     </CcSection>
   )

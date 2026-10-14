@@ -69,7 +69,7 @@ export function ReviewTypeControl({
   // rather than as a control that would be refused.
   if (card.status !== 'pending_approval') {
     return (
-      <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
         Review type: <strong>{REVIEW_TYPE_META[card.review_type].label}</strong> · fixed once the review is approved.
       </p>
     )
@@ -78,7 +78,7 @@ export function ReviewTypeControl({
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
       <h4 style={{
-        margin: 0, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+        margin: 0, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.05em', color: colors.tertiary,
       }}>
         Review type
@@ -112,7 +112,7 @@ export function ReviewTypeControl({
         })}
       </div>
 
-      <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
         An image review posts one project&rsquo;s photographs and earns the image reward. Changeable
         until the review is approved.
         {card.review_type === 'image' && card.image_group_id

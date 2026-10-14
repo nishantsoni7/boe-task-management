@@ -48,11 +48,11 @@ export function NotificationRow({
       style={{
         display: 'flex', alignItems: 'center',
         borderLeft: isSelected
-          ? `3px solid ${colors.blue}`
-          : n.is_read ? '3px solid transparent' : `3px solid ${colors.blue}`,
+          ? `3px solid ${colors.brand}`
+          : n.is_read ? '3px solid transparent' : `3px solid ${colors.brand}`,
         background: isSelected
-          ? 'rgba(85,133,232,0.10)'
-          : n.is_read ? '#ffffff' : colors.blueTint,
+          ? 'rgba(185,71,46,0.10)'
+          : n.is_read ? '#ffffff' : colors.brandTint,
         borderBottom: isLast ? 'none' : `1px solid ${colors.border}`,
         transition: 'background 0.12s',
         cursor: n.is_read ? 'default' : 'pointer',
@@ -71,9 +71,9 @@ export function NotificationRow({
         }}
       >
         <span style={{
-          width: '16px', height: '16px', borderRadius: '4px',
-          border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
-          background: isSelected ? colors.blue : 'transparent',
+          width: '16px', height: '16px', borderRadius: '6px',
+          border: `1.5px solid ${isSelected ? colors.brand : colors.borderSoft}`,
+          background: isSelected ? colors.brand : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
           transition: 'all 0.12s',
@@ -100,8 +100,8 @@ export function NotificationRow({
           </span>
           <span style={{
             display: 'inline-flex', alignItems: 'center',
-            padding: '2px 7px', borderRadius: '20px',
-            fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
+            padding: '2px 7px', borderRadius: '12px',
+            fontSize: '12px', fontWeight: 600, lineHeight: 1,
             color: meta.badge.color, background: meta.badge.bg,
             letterSpacing: '0.01em',
           }}>
@@ -133,7 +133,7 @@ export function NotificationRow({
         {/* Time */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '4px',
-          fontSize: '11px', color: colors.muted, marginTop: '1px',
+          fontSize: '12px', color: colors.muted, marginTop: '1px',
         }}>
           <Clock size={10} strokeWidth={1.8} />
           {timeAgo(n.created_at)}
@@ -154,8 +154,8 @@ export function NotificationRow({
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '5px 12px', borderRadius: '6px',
-              fontSize: '11.5px', fontWeight: 600,
-              background: colors.blue,
+              fontSize: '12px', fontWeight: 600,
+              background: colors.brand,
               color: '#fff',
               border: 'none', cursor: 'pointer',
               fontFamily: font.body, whiteSpace: 'nowrap',

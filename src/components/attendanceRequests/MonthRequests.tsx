@@ -62,7 +62,7 @@ export function DayRequestChips({ items }: { items: MonthRequest[] | undefined }
             title={`${REQUEST_TYPE_LABEL[r.request_type]} · ${requestSummary(r)}`}
             style={{
               display: 'inline-block', marginLeft: 8, padding: '1px 8px', borderRadius: 999,
-              fontSize: 11, fontWeight: 700, background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
+              fontSize: 12, fontWeight: 700, background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
             }}
           >
             {REQUEST_STATUS_LABEL[r.status]} · {REQUEST_TYPE_LABEL[r.request_type]}
@@ -102,7 +102,7 @@ export function MonthRequestsPanel({
       </div>
 
       {error && (
-        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#DC2626' }}>
+        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#B42332' }}>
           Requests could not be loaded ({error}). The attendance above is unaffected.
         </div>
       )}
@@ -122,7 +122,7 @@ export function MonthRequestsPanel({
               <li
                 key={r.id}
                 style={{
-                  border: `1px solid ${colors.border}`, borderRadius: 10, padding: '10px 12px',
+                  border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px',
                   display: 'flex', flexDirection: 'column', gap: 3,
                   opacity: isLive(r) ? 1 : 0.8,
                 }}
@@ -132,7 +132,7 @@ export function MonthRequestsPanel({
                     {REQUEST_TYPE_LABEL[r.request_type]}
                   </div>
                   <span style={{
-                    fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                     background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
                   }}>
                     {REQUEST_STATUS_LABEL[r.status]}
@@ -142,17 +142,17 @@ export function MonthRequestsPanel({
                 <div style={{ fontSize: 12, color: colors.tertiary }}>
                   {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                 </div>
-                <div style={{ fontSize: 11.5, color: timing === 'after_date' ? '#B45309' : colors.muted }}>
+                <div style={{ fontSize: 12, color: timing === 'after_date' ? '#805B0D' : colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)} · {SUBMISSION_TIMING_LABEL[timing]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>
+                  <div style={{ fontSize: 12, color: colors.muted }}>
                     {REQUEST_STATUS_LABEL[r.status]} by {r.decider?.full_name ?? 'Admin'} · {formatIstDateTime(r.decided_at)}
                     {r.decision_note ? ` — ${r.decision_note}` : ''}
                   </div>
                 )}
                 {r.status === 'cancelled' && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>
+                  <div style={{ fontSize: 12, color: colors.muted }}>
                     {r.cancel_reason ?? 'Withdrawn'}{r.cancelled_at ? ` · ${formatIstDateTime(r.cancelled_at)}` : ''}
                   </div>
                 )}

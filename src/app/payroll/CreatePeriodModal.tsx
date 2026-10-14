@@ -31,7 +31,7 @@ export function CreatePeriodModal({ saving, error, info, onClose, onCreate }: Cr
   const [year,  setYear]  = useState(now.getFullYear())
 
   const selectStyle: React.CSSProperties = {
-    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
+    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 8,
     background: colors.base, color: colors.primary, outline: 'none',
     padding: '8px 10px', boxSizing: 'border-box', width: '100%', cursor: 'pointer',
   }
@@ -65,8 +65,8 @@ export function CreatePeriodModal({ saving, error, info, onClose, onCreate }: Cr
       {info && (
         <div style={{
           padding: '10px 12px', borderRadius: 8,
-          background: 'rgba(232,160,48,0.10)', color: '#92400E',
-          border: '1px solid rgba(232,160,48,0.28)', fontSize: 12,
+          background: 'rgba(196,138,26,0.10)', color: '#805B0D',
+          border: '1px solid rgba(196,138,26,0.28)', fontSize: 12,
         }}>
           {info}
         </div>

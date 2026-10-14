@@ -44,8 +44,8 @@ export type ExplanationDayContext = {
 }
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-  letterSpacing: '0.09em', color: '#8C94A6', marginBottom: 4,
+  fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+  letterSpacing: '0.09em', color: '#686D6C', marginBottom: 4,
 }
 
 export function DeductionExplanationModal({
@@ -68,30 +68,30 @@ export function DeductionExplanationModal({
       {/* ── What happened ──────────────────────────────────────────────────── */}
       <div style={{
         background: colors.raised, border: `1px solid ${colors.border}`,
-        borderRadius: 10, padding: '12px 14px',
+        borderRadius: 8, padding: '12px 14px',
       }}>
         <div style={SECTION_LABEL}>Attendance</div>
         <div style={{
-          fontSize: 15, fontWeight: 600, color: '#111318',
+          fontSize: 15, fontWeight: 600, color: '#303536',
           fontVariantNumeric: 'tabular-nums',
         }}>
           {day.check_in_at ? istClockOf(day.check_in_at) : 'No punch-in'}
-          <span style={{ color: '#B0B8C8', fontWeight: 400 }}> → </span>
+          <span style={{ color: '#686D6C', fontWeight: 400 }}> → </span>
           {day.check_out_at ? istClockOf(day.check_out_at) : 'No punch-out'}
         </div>
-        <div style={{ fontSize: 12.5, color: '#6B7280', marginTop: 3 }}>
+        <div style={{ fontSize: 12.5, color: '#686D6C', marginTop: 3 }}>
           {day.classificationLabel}
           {day.is_corrected && (
             <>
               {' · '}
-              <span style={{ color: '#3B63B8', fontWeight: 600 }}>Corrected by an admin</span>
+              <span style={{ color: '#335A86', fontWeight: 600 }}>Corrected by an admin</span>
             </>
           )}
         </div>
         {/* The reason on the record, verbatim. A corrected day is only
             explainable if the admin's stated reason travels with it. */}
         {day.is_corrected && day.correctionRemark && (
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 5, fontStyle: 'italic' }}>
+          <div style={{ fontSize: 12, color: '#686D6C', marginTop: 5, fontStyle: 'italic' }}>
             “{day.correctionRemark}”
           </div>
         )}
@@ -102,8 +102,8 @@ export function DeductionExplanationModal({
         <div
           key={item.key}
           style={{
-            border: `1px solid ${item.coverageNote ? 'rgba(5,150,105,0.3)' : colors.border}`,
-            borderRadius: 10, overflow: 'hidden',
+            border: `1px solid ${item.coverageNote ? 'rgba(39,98,71,0.3)' : colors.border}`,
+            borderRadius: 8, overflow: 'hidden',
             // The dialog is a column flex box that scrolls. Without this, a date
             // with more than one reason makes these cards shrink instead, and
             // `overflow: hidden` then clips the Calculation rows out of reach.
@@ -113,19 +113,19 @@ export function DeductionExplanationModal({
           <div style={{
             display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
             padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
-            background: item.coverageNote ? 'rgba(5,150,105,0.05)' : 'transparent',
+            background: item.coverageNote ? 'rgba(39,98,71,0.05)' : 'transparent',
           }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318' }}>{item.title}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#303536' }}>{item.title}</div>
               {/* Company paid, or covered with BOE Credits — the same green note. */}
               {item.coverageNote && (
-                <div style={{ fontSize: 11.5, color: '#047857', marginTop: 2 }}>{item.coverageNote}</div>
+                <div style={{ fontSize: 12, color: '#276247', marginTop: 2 }}>{item.coverageNote}</div>
               )}
             </div>
             <div style={{
               fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap',
               fontVariantNumeric: 'tabular-nums',
-              color: item.amount > 0 ? '#DC2626' : '#047857',
+              color: item.amount > 0 ? '#B42332' : '#276247',
             }}>
               {item.amount > 0 ? `−${money(item.amount)}` : money(0)}
             </div>
@@ -133,7 +133,7 @@ export function DeductionExplanationModal({
 
           <div style={{ padding: '11px 14px 13px' }}>
             <div style={SECTION_LABEL}>Rule</div>
-            <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.55, marginBottom: 11 }}>
+            <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55, marginBottom: 11 }}>
               {item.rule}
             </div>
 
@@ -151,7 +151,7 @@ export function DeductionExplanationModal({
               >
                 <span style={{
                   fontSize: 12.5,
-                  color: row.strong ? '#3D4455' : '#6B7280',
+                  color: row.strong ? '#4C5352' : '#686D6C',
                   fontWeight: row.strong ? 600 : 400,
                 }}>
                   {row.label}
@@ -159,7 +159,7 @@ export function DeductionExplanationModal({
                 <span style={{
                   fontSize: row.strong ? 13.5 : 12.5,
                   fontWeight: row.strong ? 700 : 500,
-                  color: row.strong ? (item.amount > 0 ? '#DC2626' : '#047857') : '#3D4455',
+                  color: row.strong ? (item.amount > 0 ? '#B42332' : '#276247') : '#4C5352',
                   fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                 }}>
                   {row.value}
@@ -177,14 +177,14 @@ export function DeductionExplanationModal({
       {explained.length > 1 && (
         <div style={{
           display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
-          padding: '11px 14px', borderRadius: 10,
+          padding: '11px 14px', borderRadius: 8,
           background: 'rgba(0,0,0,0.025)', border: `1px solid ${colors.border}`,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#3D4455' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#4C5352' }}>
             Total deduction for this date
           </span>
           <span style={{
-            fontSize: 15, fontWeight: 700, color: total > 0 ? '#DC2626' : '#047857',
+            fontSize: 15, fontWeight: 700, color: total > 0 ? '#B42332' : '#276247',
             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
           }}>
             {total > 0 ? `−${money(total)}` : money(0)}

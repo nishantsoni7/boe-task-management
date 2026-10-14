@@ -138,7 +138,7 @@ export function CreditSettingsForm({
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <div id="credit-settings-heading" style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>BOE Credits Settings</div>
         {updatedAt && (
-          <span style={{ fontSize: 11.5, color: colors.muted }}>
+          <span style={{ fontSize: 12, color: colors.muted }}>
             Last changed {new Date(updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
           </span>
         )}
@@ -150,12 +150,12 @@ export function CreditSettingsForm({
         ) : (
           <>
             {error && (
-              <div role="alert" style={{ fontSize: 12.5, color: '#B91C1C', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
+              <div role="alert" style={{ fontSize: 12.5, color: '#B42332', background: 'rgba(180,35,50,0.08)', border: '1px solid rgba(180,35,50,0.2)', borderRadius: 8, padding: '8px 12px' }}>
                 {error}
               </div>
             )}
             {saved && !error && (
-              <div role="status" style={{ fontSize: 12.5, color: '#047857', background: 'rgba(5,150,105,0.09)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 8, padding: '8px 12px' }}>
+              <div role="status" style={{ fontSize: 12.5, color: '#276247', background: 'rgba(39,98,71,0.09)', border: '1px solid rgba(39,98,71,0.3)', borderRadius: 8, padding: '8px 12px' }}>
                 Settings saved. They apply to future reviews, redemptions and payroll applications.
               </div>
             )}
@@ -164,7 +164,7 @@ export function CreditSettingsForm({
               {FIELDS.map(f => {
                 const issue = issueFor(f.key)
                 const on = f.switchKey ? switches[f.switchKey] : true
-                const title = <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>{f.label}</span>
+                const title = <span style={{ fontSize: 12.5, fontWeight: 600, color: '#4C5352' }}>{f.label}</span>
                 const box = (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {f.money && <span style={{ fontSize: 14, fontWeight: 600, color: colors.tertiary }}>₹</span>}
@@ -178,13 +178,13 @@ export function CreditSettingsForm({
                       aria-invalid={issue != null}
                       aria-label={f.switchKey ? `${f.label} credits` : undefined}
                       onChange={e => { setDraft(d => ({ ...d, [f.key]: e.target.value })); setError(''); setSaved(false) }}
-                      style={{ ...inputStyle, borderColor: issue ? '#DC2626' : colors.borderSoft, opacity: on ? 1 : 0.55 }}
+                      style={{ ...inputStyle, borderColor: issue ? '#B42332' : colors.borderSoft, opacity: on ? 1 : 0.55 }}
                     />
                     {f.unit && <span style={{ fontSize: 12.5, color: colors.tertiary }}>{f.unit}</span>}
                   </span>
                 )
                 const hint = (
-                  <span style={{ fontSize: 11.5, color: issue ? '#C13030' : colors.muted, lineHeight: 1.45 }}>
+                  <span style={{ fontSize: 12, color: issue ? '#B42332' : colors.muted, lineHeight: 1.45 }}>
                     {issue ?? (on ? f.hint : OFF_HINT)}
                   </span>
                 )
@@ -203,17 +203,17 @@ export function CreditSettingsForm({
                 return (
                   <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
                     {title}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#3D4455', cursor: saving ? 'default' : 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#4C5352', cursor: saving ? 'default' : 'pointer' }}>
                       <input
                         type="checkbox"
                         role="switch"
                         checked={on}
                         disabled={saving}
                         onChange={e => toggle(f.key, switchKey, e.target.checked)}
-                        style={{ width: 16, height: 16, margin: 0, accentColor: '#4F6FD0', cursor: 'inherit' }}
+                        style={{ width: 16, height: 16, margin: 0, accentColor: '#B9472E', cursor: 'inherit' }}
                       />
                       <span>
-                        <strong style={{ fontWeight: 700, color: on ? '#047857' : colors.muted }}>{on ? 'ON' : 'OFF'}</strong>
+                        <strong style={{ fontWeight: 700, color: on ? '#276247' : colors.muted }}>{on ? 'ON' : 'OFF'}</strong>
                         {' '}{f.switchLabel}
                       </span>
                     </label>
@@ -224,7 +224,7 @@ export function CreditSettingsForm({
             </div>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>Note <span style={{ fontWeight: 400, color: colors.muted }}>(optional — why the settings changed)</span></span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#4C5352' }}>Note <span style={{ fontWeight: 400, color: colors.muted }}>(optional — why the settings changed)</span></span>
               <input
                 type="text" maxLength={500}
                 value={note}

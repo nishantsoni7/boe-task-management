@@ -64,7 +64,7 @@ import {
 import { PaidLeaveAbsorption, PayableDaysWeek, SalaryFunnel, ToneGlyph } from './GuideVisuals'
 import { AskAboutSalary } from './AskAboutSalary'
 
-const ACCENT = '#4F6FD0'
+const ACCENT = '#335A86'
 
 /** One icon per journey step, from the module's existing icon library. */
 const STEP_ICONS = [
@@ -203,7 +203,7 @@ export default function HowPayrollWorksPage() {
         <Panel>
           {NOT_CALCULATED.map((line, i) => (
             <Row key={line} first={i === 0}>
-              <span style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55 }}>{line}</span>
+              <span style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>{line}</span>
             </Row>
           ))}
         </Panel>
@@ -212,8 +212,8 @@ export default function HowPayrollWorksPage() {
         <Panel>
           {GLOSSARY.map((entry, i) => (
             <Row key={entry.term} first={i === 0}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111318' }}>{entry.term}</div>
-              <div style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55, marginTop: 2 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#303536' }}>{entry.term}</div>
+              <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55, marginTop: 2 }}>
                 {entry.meaning}
               </div>
             </Row>
@@ -239,7 +239,7 @@ function Hero() {
       background: '#fff', border: `1px solid ${colors.border}`,
       borderRadius: 12, padding: '16px 18px',
     }}>
-      <p style={{ margin: 0, fontSize: 13.5, color: '#3D4455', lineHeight: 1.6, maxWidth: 760 }}>
+      <p style={{ margin: 0, fontSize: 13.5, color: '#4C5352', lineHeight: 1.6, maxWidth: 760 }}>
         Your salary is worked out from your attendance, one day at a time, and then settled against
         anything left over from last month. Every figure traces back to a specific day or to an
         entry an admin made with a reason attached.
@@ -251,23 +251,23 @@ function Hero() {
             {i > 0 && (
               <span aria-hidden="true" style={{
                 display: 'flex', alignItems: 'center', fontSize: 15,
-                fontWeight: 700, color: '#A8B0BF', flexShrink: 0,
+                fontWeight: 700, color: '#686D6C', flexShrink: 0,
               }}>
                 {item.op}
               </span>
             )}
             <div style={{
-              flex: 1, minWidth: 0, borderRadius: 9, padding: '9px 12px',
-              background: i === FORMULA_STRIP.length - 1 ? 'rgba(79,111,208,0.07)' : 'rgba(0,0,0,0.028)',
-              border: `1px solid ${i === FORMULA_STRIP.length - 1 ? 'rgba(79,111,208,0.28)' : 'transparent'}`,
+              flex: 1, minWidth: 0, borderRadius: 8, padding: '9px 12px',
+              background: i === FORMULA_STRIP.length - 1 ? 'rgba(51,90,134,0.07)' : 'rgba(0,0,0,0.028)',
+              border: `1px solid ${i === FORMULA_STRIP.length - 1 ? 'rgba(51,90,134,0.28)' : 'transparent'}`,
             }}>
               <div style={{
                 fontSize: 12.5, fontWeight: 700,
-                color: i === FORMULA_STRIP.length - 1 ? ACCENT : '#111318',
+                color: i === FORMULA_STRIP.length - 1 ? ACCENT : '#303536',
               }}>
                 {item.label}
               </div>
-              <div style={{ fontSize: 11, color: '#8C94A6', lineHeight: 1.45, marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.45, marginTop: 2 }}>
                 {item.note}
               </div>
             </div>
@@ -276,10 +276,10 @@ function Hero() {
       </div>
 
       <p style={{
-        margin: '12px 0 0', fontSize: 11.5, color: '#8C94A6', lineHeight: 1.55,
+        margin: '12px 0 0', fontSize: 12, color: '#686D6C', lineHeight: 1.55,
       }}>
-        Payroll runs on <strong style={{ color: '#5B6474' }}>reviewed</strong> attendance and{' '}
-        <strong style={{ color: '#5B6474' }}>approved</strong> adjustments — not on raw punches. A
+        Payroll runs on <strong style={{ color: '#686D6C' }}>reviewed</strong> attendance and{' '}
+        <strong style={{ color: '#686D6C' }}>approved</strong> adjustments — not on raw punches. A
         month that has already been generated keeps the rules it was calculated with.
       </p>
     </section>
@@ -300,8 +300,8 @@ function JourneyStepRow({
         <span style={{
           width: 26, height: 26, borderRadius: 999, flexShrink: 0,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(79,111,208,0.10)', color: ACCENT,
-          fontSize: 11.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+          background: 'rgba(51,90,134,0.10)', color: ACCENT,
+          fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
         }}>
           {index}
         </span>
@@ -310,21 +310,21 @@ function JourneyStepRow({
 
       <div style={{ minWidth: 0, paddingBottom: last ? 0 : 14 }}>
         <h3 style={{
-          margin: 0, fontSize: 14, fontWeight: 700, color: '#111318',
+          margin: 0, fontSize: 14, fontWeight: 700, color: '#303536',
           display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-0.01em',
         }}>
           <Icon size={15} strokeWidth={1.9} color={ACCENT} aria-hidden="true" />
           <span>Step {index} · {step.title}</span>
         </h3>
 
-        <p style={{ margin: '5px 0 0', fontSize: 12.5, color: '#5B6474', lineHeight: 1.6 }}>
+        <p style={{ margin: '5px 0 0', fontSize: 12.5, color: '#686D6C', lineHeight: 1.6 }}>
           {step.summary}
         </p>
 
         {/* Input → result. The chain that makes this a journey rather than cards. */}
         <div className="payroll-guide-io" style={{ marginTop: 9 }}>
           <IoBox label="Uses" value={step.input} />
-          <span aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', color: '#A8B0BF' }}>
+          <span aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', color: '#686D6C' }}>
             <ArrowRight size={14} strokeWidth={2} />
           </span>
           <IoBox label="Produces" value={step.result} accent />
@@ -333,9 +333,9 @@ function JourneyStepRow({
         {step.why && (
           <p style={{
             margin: '9px 0 0', padding: '8px 11px', borderRadius: 8,
-            background: 'rgba(0,0,0,0.025)', fontSize: 11.5, color: '#5B6474', lineHeight: 1.55,
+            background: 'rgba(0,0,0,0.025)', fontSize: 12, color: '#686D6C', lineHeight: 1.55,
           }}>
-            <strong style={{ color: '#3D4455', fontWeight: 600 }}>Why this matters. </strong>
+            <strong style={{ color: '#4C5352', fontWeight: 600 }}>Why this matters. </strong>
             {step.why}
           </p>
         )}
@@ -357,13 +357,13 @@ function JourneyStepRow({
  */
 function DeductionRates() {
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 9, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
       <div style={{
-        padding: '8px 13px', fontSize: 11, color: '#8C94A6', lineHeight: 1.5,
+        padding: '8px 13px', fontSize: 12, color: '#686D6C', lineHeight: 1.5,
         borderBottom: `1px solid ${colors.border}`, background: 'rgba(0,0,0,0.015)',
       }}>
         An example, on a monthly salary of{' '}
-        <strong style={{ color: '#5B6474' }}>{fmtMoney(EXAMPLE_MONTHLY_SALARY)}</strong> — that is{' '}
+        <strong style={{ color: '#686D6C' }}>{fmtMoney(EXAMPLE_MONTHLY_SALARY)}</strong> — that is{' '}
         {fmtMoney(EXAMPLE_MONTHLY_SALARY / PER_DAY_DIVISOR)} a day.
       </div>
       {EXAMPLE_DEDUCTIONS.map(line => (
@@ -375,13 +375,13 @@ function DeductionRates() {
           }}
         >
           <span style={{ minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 12.5, color: '#3D4455', fontWeight: 500 }}>
+            <span style={{ display: 'block', fontSize: 12.5, color: '#4C5352', fontWeight: 500 }}>
               {line.label}
             </span>
-            <span style={{ display: 'block', fontSize: 11, color: '#8C94A6' }}>{line.detail}</span>
+            <span style={{ display: 'block', fontSize: 12, color: '#686D6C' }}>{line.detail}</span>
           </span>
           <span style={{
-            fontSize: 12.5, fontWeight: 600, color: '#DC2626',
+            fontSize: 12.5, fontWeight: 600, color: '#B42332',
             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
           }}>
             −{fmtMoney(line.amount)}
@@ -390,11 +390,11 @@ function DeductionRates() {
       ))}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12,
-        padding: '9px 13px', borderTop: '1px solid rgba(0,0,0,0.11)', background: 'rgba(0,0,0,0.015)',
+        padding: '9px 13px', borderTop: '1px solid #CFC8BF', background: 'rgba(0,0,0,0.015)',
       }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3D4455' }}>Attendance Deduction</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#4C5352' }}>Attendance Deduction</span>
         <span style={{
-          fontSize: 13, fontWeight: 700, color: '#DC2626',
+          fontSize: 13, fontWeight: 700, color: '#B42332',
           fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
         }}>
           −{fmtMoney(EXAMPLE_DEDUCTION_TOTAL)}
@@ -408,15 +408,15 @@ function IoBox({ label, value, accent }: { label: string; value: string; accent?
   return (
     <div style={{
       minWidth: 0, borderRadius: 8, padding: '7px 10px',
-      background: accent ? 'rgba(79,111,208,0.06)' : 'rgba(0,0,0,0.028)',
+      background: accent ? 'rgba(51,90,134,0.06)' : 'rgba(0,0,0,0.028)',
     }}>
       <div style={{
-        fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.08em', color: accent ? ACCENT : '#8C94A6',
+        fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.08em', color: accent ? ACCENT : '#686D6C',
       }}>
         {label}
       </div>
-      <div style={{ fontSize: 12, color: '#3D4455', lineHeight: 1.45, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#4C5352', lineHeight: 1.45, marginTop: 2 }}>{value}</div>
     </div>
   )
 }
@@ -445,21 +445,21 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
               key={step.key}
               style={{
                 padding: '4px 0',
-                borderTop: step.emphasis ? '1px solid rgba(0,0,0,0.07)' : undefined,
+                borderTop: step.emphasis ? '1px solid #E4DED7' : undefined,
                 marginTop: step.emphasis ? 3 : 0,
                 paddingTop: step.emphasis ? 6 : 4,
               }}
             >
               <span style={{
                 fontSize: 12, lineHeight: 1.4,
-                color: step.emphasis ? '#111318' : '#5B6474',
+                color: step.emphasis ? '#303536' : '#686D6C',
                 fontWeight: step.emphasis ? 700 : 400,
               }}>
                 {step.label}
               </span>
               {step.emphasis && step.formula && (
                 <span style={{
-                  display: 'block', fontSize: 10.5, color: '#8C94A6',
+                  display: 'block', fontSize: 12, color: '#686D6C',
                   lineHeight: 1.4, marginTop: 1,
                 }}>
                   {step.formula}
@@ -476,17 +476,17 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
             key={n.label}
             style={{
               padding: '6px 0',
-              borderTop: i > 0 ? '1px solid rgba(0,0,0,0.06)' : undefined,
+              borderTop: i > 0 ? '1px solid #E4DED7' : undefined,
             }}
           >
-            <div style={{ fontSize: 11, color: '#8C94A6' }}>{n.label}</div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111318', lineHeight: 1.4 }}>
+            <div style={{ fontSize: 12, color: '#686D6C' }}>{n.label}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#303536', lineHeight: 1.4 }}>
               {n.value}
             </div>
-            {n.note && <div style={{ fontSize: 11, color: '#8C94A6', lineHeight: 1.4 }}>{n.note}</div>}
+            {n.note && <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.4 }}>{n.note}</div>}
           </div>
         ))}
-        <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#A8B0BF', lineHeight: 1.5 }}>
+        <p style={{ margin: '8px 0 0', fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>
           The standard rules. A month already generated keeps the rules it was calculated with.
         </p>
       </RailCard>
@@ -503,7 +503,7 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
         ] as const).map(entry => (
           <div key={entry.tone} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
             <ToneGlyph tone={entry.tone} size={11} />
-            <span style={{ fontSize: 11.5, color: '#5B6474', lineHeight: 1.4 }}>{entry.text}</span>
+            <span style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.4 }}>{entry.text}</span>
           </div>
         ))}
       </RailCard>
@@ -511,7 +511,7 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
       <RailCard title="What can change my salary?">
         <ul style={{ margin: 0, paddingLeft: 16 }}>
           {WHAT_CHANGES_PAY.map(item => (
-            <li key={item} style={{ fontSize: 12, color: '#5B6474', lineHeight: 1.5, marginBottom: 4 }}>
+            <li key={item} style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5, marginBottom: 4 }}>
               {item}
             </li>
           ))}
@@ -531,14 +531,14 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
               }}
             >
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#111318' }}>
+                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#303536' }}>
                   {action.label}
                 </span>
-                <span style={{ display: 'block', fontSize: 11, color: '#8C94A6', lineHeight: 1.4 }}>
+                <span style={{ display: 'block', fontSize: 12, color: '#686D6C', lineHeight: 1.4 }}>
                   {action.note}
                 </span>
               </span>
-              <ArrowRight size={14} strokeWidth={2} color="#A8B0BF" aria-hidden="true" style={{ marginLeft: 'auto', flexShrink: 0 }} />
+              <ArrowRight size={14} strokeWidth={2} color="#686D6C" aria-hidden="true" style={{ marginLeft: 'auto', flexShrink: 0 }} />
             </Link>
           ))}
         </div>
@@ -552,11 +552,11 @@ function GuideRail({ actions }: { actions: GuideAction[] }) {
               href={`#${section.id}`}
               className="payroll-guide-jump"
               style={{
-                fontSize: 12, color: '#5B6474', textDecoration: 'none',
+                fontSize: 12, color: '#686D6C', textDecoration: 'none',
                 padding: '5px 0', display: 'flex', alignItems: 'center', gap: 6,
               }}
             >
-              <span aria-hidden="true" style={{ color: '#C3C9D4' }}>·</span>
+              <span aria-hidden="true" style={{ color: '#686D6C' }}>·</span>
               {section.label}
             </a>
           ))}
@@ -571,11 +571,11 @@ function RailCard({ title, children }: { title: string; children: React.ReactNod
   return (
     <section style={{
       background: '#fff', border: `1px solid ${colors.border}`,
-      borderRadius: 10, padding: '12px 14px',
+      borderRadius: 8, padding: '12px 14px',
     }}>
       <h2 style={{
-        margin: '0 0 8px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.09em', color: '#8C94A6',
+        margin: '0 0 8px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.09em', color: '#686D6C',
       }}>
         {title}
       </h2>
@@ -598,37 +598,37 @@ function WorkedExample() {
   const e = EXAMPLE_SETTLEMENT
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
       <Stage title="What the month earned">
         <ExampleLine label="Gross Salary"           value={fmtMoney(e.gross_salary)} />
-        <ExampleLine label="Attendance Deductions"  value={`−${fmtMoney(e.attendance_deductions)}`} tone="#DC2626" />
+        <ExampleLine label="Attendance Deductions"  value={`−${fmtMoney(e.attendance_deductions)}`} tone="#B42332" />
         <Divider />
         <ExampleLine label="Salary After Attendance" value={fmtMoney(e.salary_after_attendance)} strong />
       </Stage>
 
       <Stage title="What was added or recovered">
-        <ExampleLine label="Previous Balance"      value={fmtSigned(e.carry_forward)}   tone="#16A34A" />
-        <ExampleLine label="Travel reimbursement"  value={fmtSigned(e.other_addition)}  tone="#16A34A" />
-        <ExampleLine label="Advance recovery"      value={fmtSigned(e.other_deduction)} tone="#DC2626" />
+        <ExampleLine label="Previous Balance"      value={fmtSigned(e.carry_forward)}   tone="#276247" />
+        <ExampleLine label="Travel reimbursement"  value={fmtSigned(e.other_addition)}  tone="#276247" />
+        <ExampleLine label="Advance recovery"      value={fmtSigned(e.other_deduction)} tone="#B42332" />
         <Divider />
         <ExampleLine label="Net Adjustments" value={fmtSigned(e.net_adjustments)} strong />
       </Stage>
 
       <Stage title="What BOE settled" accent>
         <ExampleLine label="Salary After Attendance" value={fmtMoney(e.salary_after_attendance)} />
-        <ExampleLine label="Net Adjustments"         value={fmtSigned(e.net_adjustments)} tone="#16A34A" />
+        <ExampleLine label="Net Adjustments"         value={fmtSigned(e.net_adjustments)} tone="#276247" />
         <Divider />
         <ExampleLine label="Salary Payable" value={fmtMoney(e.salary_payable)} strong />
         <div style={{ height: 6 }} />
         <ExampleLine label="Amount Paid" value={`−${fmtMoney(e.amount_paid)}`} />
         <Divider />
         <ExampleLine label="Balance Carried Forward" value={fmtSigned(e.closing_balance)} strong />
-        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#5B6474', lineHeight: 1.55 }}>
+        <p style={{ margin: '8px 0 0', fontSize: 12, color: '#686D6C', lineHeight: 1.55 }}>
           {fmtMoney(e.closing_balance)} is still pending from BOE, and becomes the Previous Balance
           on next month&rsquo;s payslip. Had nothing been paid <em>and no payment recorded</em>, there
           would be no balance at all — an unrecorded month carries nothing forward.
         </p>
-        <p style={{ margin: '6px 0 0', fontSize: 11, color: '#A8B0BF', lineHeight: 1.5 }}>
+        <p style={{ margin: '6px 0 0', fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>
           This example carries paise because it predates the whole-rupee rule. A month generated
           today is rounded line by line, and every total is the sum of those rounded lines.
         </p>
@@ -642,11 +642,11 @@ function Stage({ title, accent, children }: { title: string; accent?: boolean; c
     <div style={{
       padding: '12px 15px 14px',
       borderTop: `1px solid ${colors.border}`,
-      background: accent ? 'rgba(79,111,208,0.04)' : undefined,
+      background: accent ? 'rgba(51,90,134,0.04)' : undefined,
     }}>
       <h3 style={{
-        margin: '0 0 5px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.09em', color: accent ? ACCENT : '#8C94A6',
+        margin: '0 0 5px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.09em', color: accent ? ACCENT : '#686D6C',
       }}>
         {title}
       </h3>
@@ -667,14 +667,14 @@ function ExampleLine({
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
       gap: 12, padding: '4px 0',
     }}>
-      <span style={{ fontSize: 12.5, color: strong ? '#3D4455' : '#6B7280', fontWeight: strong ? 600 : 400 }}>
+      <span style={{ fontSize: 12.5, color: strong ? '#4C5352' : '#686D6C', fontWeight: strong ? 600 : 400 }}>
         {label}
       </span>
       {/* Colour is a second signal only — the sign is already in the string, so
           these read correctly in greyscale. */}
       <span style={{
         fontSize: strong ? 13.5 : 13, fontWeight: strong ? 700 : 600,
-        color: tone ?? '#111318', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        color: tone ?? '#303536', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
       }}>
         {value}
       </span>
@@ -687,7 +687,7 @@ function ExampleLine({
 function AttendanceStateTable() {
   return (
     <>
-      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10 }}>
+      <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 }}>
         <div className="payroll-guide-scroll">
           <table className="payroll-guide-table">
             <caption className="payroll-guide-sr-only">
@@ -705,21 +705,21 @@ function AttendanceStateTable() {
             <tbody>
               {ATTENDANCE_STATES.map(s => (
                 <tr key={s.classification}>
-                  <th scope="row" style={{ fontWeight: 600, fontSize: 12.5, color: '#111318', whiteSpace: 'nowrap' }}>
+                  <th scope="row" style={{ fontWeight: 600, fontSize: 12.5, color: '#303536', whiteSpace: 'nowrap' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                       <ToneGlyph tone={s.tone} />
                       {s.label}
                     </span>
                   </th>
                   <td style={{
-                    fontSize: 12.5, fontWeight: 600, color: '#3D4455',
+                    fontSize: 12.5, fontWeight: 600, color: '#4C5352',
                     fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                   }}>
                     {s.payableLabel}
                   </td>
-                  <td style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.5 }}>{s.meaning}</td>
-                  <td style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.5 }}>{s.salaryEffect}</td>
-                  <td style={{ fontSize: 12.5, color: s.correctable ? '#3D4455' : '#8C94A6', lineHeight: 1.5 }}>
+                  <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.meaning}</td>
+                  <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.salaryEffect}</td>
+                  <td style={{ fontSize: 12.5, color: s.correctable ? '#4C5352' : '#686D6C', lineHeight: 1.5 }}>
                     {s.correctable ? 'Yes — an admin can restate the day' : 'Not applicable'}
                   </td>
                 </tr>
@@ -728,7 +728,7 @@ function AttendanceStateTable() {
           </table>
         </div>
       </div>
-      <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#8C94A6', lineHeight: 1.55 }}>
+      <p style={{ margin: '8px 0 0', fontSize: 12, color: '#686D6C', lineHeight: 1.55 }}>
         {LEGACY_STATE_NOTE}
       </p>
     </>
@@ -739,7 +739,7 @@ function AttendanceStateTable() {
 
 function ParameterTable() {
   return (
-    <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10 }}>
+    <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 }}>
       <div className="payroll-guide-scroll">
         <table className="payroll-guide-table">
           <caption className="sr-only">
@@ -756,10 +756,10 @@ function ParameterTable() {
           <tbody>
             {PARAMETERS.map(p => (
               <tr key={p.rule}>
-                <th scope="row" style={{ fontWeight: 600, fontSize: 12.5, color: '#111318' }}>{p.rule}</th>
-                <td style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.5 }}>{p.condition}</td>
-                <td style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.5 }}>{p.effect}</td>
-                <td style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.5 }}>{p.adminCanChange}</td>
+                <th scope="row" style={{ fontWeight: 600, fontSize: 12.5, color: '#303536' }}>{p.rule}</th>
+                <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.condition}</td>
+                <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.effect}</td>
+                <td style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{p.adminCanChange}</td>
               </tr>
             ))}
           </tbody>
@@ -780,8 +780,8 @@ function IssueFlow() {
           <div
             key={step.title}
             style={{
-              background: '#fff', borderRadius: 10, padding: '11px 13px',
-              border: `1px solid ${mine ? 'rgba(79,111,208,0.28)' : colors.border}`,
+              background: '#fff', borderRadius: 8, padding: '11px 13px',
+              border: `1px solid ${mine ? 'rgba(51,90,134,0.28)' : colors.border}`,
               minWidth: 0,
             }}
           >
@@ -789,22 +789,22 @@ function IssueFlow() {
               <span aria-hidden="true" style={{
                 width: 18, height: 18, borderRadius: 999, flexShrink: 0,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: mine ? 'rgba(79,111,208,0.12)' : 'rgba(0,0,0,0.05)',
-                color: mine ? ACCENT : '#8C94A6', fontSize: 10, fontWeight: 700,
+                background: mine ? 'rgba(51,90,134,0.12)' : 'rgba(0,0,0,0.05)',
+                color: mine ? ACCENT : '#686D6C', fontSize: 12, fontWeight: 700,
               }}>
                 {i + 1}
               </span>
               <span style={{
-                fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: mine ? ACCENT : '#A8B0BF',
+                fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: mine ? ACCENT : '#686D6C',
               }}>
                 {mine ? 'You' : 'Admin'}
               </span>
             </div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111318', lineHeight: 1.35 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#303536', lineHeight: 1.35 }}>
               {step.title}
             </div>
-            <div style={{ fontSize: 11.5, color: '#5B6474', lineHeight: 1.5, marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5, marginTop: 3 }}>
               {step.body}
             </div>
           </div>
@@ -825,14 +825,14 @@ function ActionRow({ actions }: { actions: GuideAction[] }) {
           style={{
             display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
             background: '#fff', border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '12px 14px',
+            borderRadius: 8, padding: '12px 14px',
           }}
         >
           <span style={{ minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#111318' }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#303536' }}>
               {action.label}
             </span>
-            <span style={{ display: 'block', fontSize: 11.5, color: '#8C94A6', lineHeight: 1.45 }}>
+            <span style={{ display: 'block', fontSize: 12, color: '#686D6C', lineHeight: 1.45 }}>
               {action.note}
             </span>
           </span>
@@ -857,12 +857,12 @@ function RuleReference() {
             <Panel>
               {cards.map((card, i) => (
                 <Row key={card.key} first={i === 0}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>{card.title}</div>
-                  <div style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55, marginTop: 3 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#303536' }}>{card.title}</div>
+                  <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55, marginTop: 3 }}>
                     {card.body}
                   </div>
                   {card.detail && (
-                    <div style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.5, marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5, marginTop: 4 }}>
                       {card.detail}
                     </div>
                   )}
@@ -882,12 +882,12 @@ function SectionHeading({ id, title, note }: { id: string; title: string; note?:
   return (
     <div id={id} style={{ margin: '28px 0 12px', scrollMarginTop: 84 }}>
       <h2 style={{
-        margin: 0, fontSize: 16, fontWeight: 700, color: '#111318', letterSpacing: '-0.01em',
+        margin: 0, fontSize: 16, fontWeight: 700, color: '#303536', letterSpacing: '-0.01em',
       }}>
         {title}
       </h2>
       {note && (
-        <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#8C94A6', lineHeight: 1.5, maxWidth: 720 }}>
+        <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#686D6C', lineHeight: 1.5, maxWidth: 720 }}>
           {note}
         </p>
       )}
@@ -898,8 +898,8 @@ function SectionHeading({ id, title, note }: { id: string; title: string; note?:
 function SubHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3 style={{
-      margin: '18px 0 7px', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '0.09em', color: '#8C94A6',
+      margin: '18px 0 7px', fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '0.09em', color: '#686D6C',
     }}>
       {children}
     </h3>
@@ -908,7 +908,7 @@ function SubHeading({ children }: { children: React.ReactNode }) {
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
       {children}
     </div>
   )

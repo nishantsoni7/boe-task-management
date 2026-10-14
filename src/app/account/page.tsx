@@ -141,9 +141,9 @@ function AccountPageInner() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
               <div style={{
                 width: 48, height: 48, borderRadius: 12,
-                background: '#1A2035',
+                background: '#F8EAE4',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, fontWeight: 700, color: '#DC1F2E',
+                fontSize: 16, fontWeight: 700, color: '#963B27',
                 flexShrink: 0, letterSpacing: '0.02em',
               }}>
                 {initials(profile.full_name)}
@@ -205,13 +205,13 @@ function AccountPageInner() {
             />
 
             {pwError && (
-              <div role="alert" style={{ ...message, color: '#B91C1C', background: '#FEF2F2', borderColor: '#FECACA' }}>
+              <div role="alert" style={{ ...message, color: '#B42332', background: '#FBE9EC', borderColor: '#E9B9C1' }}>
                 <AlertCircle size={15} strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} />
                 {pwError}
               </div>
             )}
             {pwSuccess && (
-              <div role="status" style={{ ...message, color: '#15803D', background: '#F0FDF4', borderColor: '#BBF7D0' }}>
+              <div role="status" style={{ ...message, color: '#276247', background: '#E8F2EC', borderColor: '#BCD8C8' }}>
                 <CheckCircle2 size={15} strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} />
                 {pwSuccess}
               </div>
@@ -224,8 +224,8 @@ function AccountPageInner() {
                 aria-busy={pwLoading}
                 style={{
                   padding: '9px 20px', fontSize: 13.5, fontWeight: 600,
-                  background: colors.primary, color: '#fff',
-                  border: 'none', borderRadius: 7,
+                  background: colors.brand, color: '#fff',
+                  border: 'none', borderRadius: 8,
                   cursor: pwLoading ? 'not-allowed' : 'pointer',
                   opacity: pwLoading ? 0.7 : 1,
                   transition: 'opacity 0.15s',
@@ -259,13 +259,13 @@ const message: React.CSSProperties = {
   display: 'flex', alignItems: 'flex-start', gap: 8,
   margin: 0, padding: '9px 12px',
   fontSize: 13, lineHeight: 1.4,
-  border: '1px solid', borderRadius: 7,
+  border: '1px solid', borderRadius: 8,
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <dt style={{ fontSize: 11.5, fontWeight: 500, color: colors.tertiary, marginBottom: 3 }}>{label}</dt>
+      <dt style={{ fontSize: 12, fontWeight: 500, color: colors.tertiary, marginBottom: 3 }}>{label}</dt>
       <dd style={{ margin: 0, fontSize: 13.5, color: colors.primary, overflowWrap: 'anywhere' }}>{value}</dd>
     </div>
   )
@@ -301,8 +301,8 @@ function PasswordField({
             width: '100%', boxSizing: 'border-box',
             fontSize: 13.5, padding: '8px 40px 8px 12px',
             border: `1px solid ${invalid ? '#FCA5A5' : colors.border}`,
-            borderRadius: 7, outline: 'none',
-            background: '#FAFAFA', color: colors.primary,
+            borderRadius: 8, outline: 'none',
+            background: '#FBFAF8', color: colors.primary,
           }}
         />
         <button
@@ -321,7 +321,7 @@ function PasswordField({
         </button>
       </div>
       {hint && (
-        <div id={`${id}-hint`} style={{ fontSize: 11.5, color: colors.tertiary }}>{hint}</div>
+        <div id={`${id}-hint`} style={{ fontSize: 12, color: colors.tertiary }}>{hint}</div>
       )}
     </div>
   )

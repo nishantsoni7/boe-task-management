@@ -67,7 +67,7 @@ export default function ActionQueuePage() {
 const TH_STYLE: React.CSSProperties = {
   padding: '8px 12px',
   textAlign: 'left',
-  fontSize: '10px',
+  fontSize: '12px',
   fontWeight: 700,
   color: colors.muted,
   textTransform: 'uppercase',
@@ -113,7 +113,7 @@ function ActionQueueTable({ items }: { items: ActionQueueItem[] }) {
                 <td style={{ ...TD, fontSize: '13px', color: colors.primary }}>
                   {item.clientName}
                   {item.amount != null && (
-                    <span style={{ marginLeft: '8px', fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
                       {formatINR(item.amount)}
                     </span>
                   )}

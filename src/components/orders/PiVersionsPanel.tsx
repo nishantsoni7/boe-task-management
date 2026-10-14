@@ -81,10 +81,10 @@ export const VERSION_STATUS_LABEL: Record<PiVersionRow['status'], string> = {
 }
 
 const TONE: Record<PiVersionRow['status'], { bg: string; fg: string }> = {
-  approved: { bg: colors.greenTint, fg: '#166534' },
-  pending: { bg: colors.amberTint, fg: '#9A6212' },
-  admin_approved: { bg: colors.amberTint, fg: '#9A6212' },
-  rejected: { bg: colors.redTint, fg: '#991B1B' },
+  approved: { bg: colors.greenTint, fg: '#276247' },
+  pending: { bg: colors.amberTint, fg: '#805B0D' },
+  admin_approved: { bg: colors.amberTint, fg: '#805B0D' },
+  rejected: { bg: colors.redTint, fg: '#A12438' },
   superseded: { bg: colors.raised, fg: colors.secondary },
 }
 
@@ -402,7 +402,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
             <div role="status" style={{ fontSize: '12.5px', color: colors.muted }}>{WORKBOOK_PREVIEW_LOADING}</div>
           )}
           {unavailable && (
-            <div role={workbookPreview === 'failed' ? 'alert' : undefined} style={{ fontSize: '12.5px', color: workbookPreview === 'failed' ? '#991B1B' : colors.muted }}>
+            <div role={workbookPreview === 'failed' ? 'alert' : undefined} style={{ fontSize: '12.5px', color: workbookPreview === 'failed' ? '#A12438' : colors.muted }}>
               {workbookPreview === 'failed'
                 ? WORKBOOK_PREVIEW_FAILED
                 : version.source_kind === 'workbook' && version.status === 'pending'
@@ -411,10 +411,10 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
             </div>
           )}
           {workbookPreview === 'ready' && (
-            <div style={{ fontSize: '11.5px', color: colors.muted }}>{WORKBOOK_PREVIEW_NOTE}</div>
+            <div style={{ fontSize: '12px', color: colors.muted }}>{WORKBOOK_PREVIEW_NOTE}</div>
           )}
           {linesToMatch.length > 0 && (
-            <div style={{ fontSize: '12px', color: '#9A6212', background: colors.amberTint, borderRadius: '7px', padding: '8px 10px' }}>
+            <div style={{ fontSize: '12px', color: '#805B0D', background: colors.amberTint, borderRadius: '8px', padding: '8px 10px' }}>
               {linesToMatch.length} line{linesToMatch.length === 1 ? '' : 's'} cannot be matched by item number and are shown as new here;
               approving asks you to match {linesToMatch.length === 1 ? 'it' : 'them'} first: {linesToMatch.map(l => `${l.name} (${l.why})`).join('; ')}.
             </div>
@@ -422,7 +422,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
           {open && content && (() => {
             const note = approvalAdvanceNote(verified, content.grandTotal)
             return note ? (
-              <div role="note" style={{ fontSize: '12px', color: '#9A6212', background: colors.amberTint, borderRadius: '7px', padding: '8px 10px' }}>{note}</div>
+              <div role="note" style={{ fontSize: '12px', color: '#805B0D', background: colors.amberTint, borderRadius: '8px', padding: '8px 10px' }}>{note}</div>
             ) : null
           })()}
           {diff && (
@@ -434,12 +434,12 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
           {content && (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                <thead><tr style={{ textAlign: 'left', color: colors.muted, fontSize: '11px' }}>
+                <thead><tr style={{ textAlign: 'left', color: colors.muted, fontSize: '12px' }}>
                   <th>Product</th><th>Qty</th><th>Price</th><th style={{ textAlign: 'right' }}>Total</th></tr></thead>
                 <tbody>
                   {content.lines.map(l => (
                     <tr key={l.id} style={{ borderTop: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: '5px 6px 5px 0' }}><strong>{l.name}</strong>{l.description ? <div style={{ color: colors.muted, fontSize: '11.5px' }}>{l.description}</div> : null}</td>
+                      <td style={{ padding: '5px 6px 5px 0' }}><strong>{l.name}</strong>{l.description ? <div style={{ color: colors.muted, fontSize: '12px' }}>{l.description}</div> : null}</td>
                       <td>{l.quantity ?? ''}</td>
                       <td>{l.rate === null ? '' : formatInr(l.rate)}</td>
                       <td style={{ textAlign: 'right' }}>{l.total === null ? '' : formatInr(l.total)}</td>
@@ -467,7 +467,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
                 </>
               ) : (
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <span style={{ flex: 1, fontSize: '11.5px', color: colors.muted, minWidth: '200px' }}>
+                  <span style={{ flex: 1, fontSize: '12px', color: colors.muted, minWidth: '200px' }}>
                     Approving puts it in force now and amends the Order to its values (recorded with the old and new values). Operations is then sent it for review.
                   </span>
                   <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setRejecting(true)} disabled={busy}>Reject…</button>

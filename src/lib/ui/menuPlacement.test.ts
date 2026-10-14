@@ -724,7 +724,7 @@ describe('a menu entry shows which action is about to run', () => {
 
   test('a normal action gets the established neutral hover', () => {
     const rule = ruleFor('.boe-menu-item:hover:not(:disabled),')
-    assert.ok(rule.includes('#E8EBF0'),
+    assert.ok(rule.includes('#ECE7E0'),
       'colors.hover — the token every other hover in the app uses')
   })
 
@@ -734,24 +734,24 @@ describe('a menu entry shows which action is about to run', () => {
     const rule = ruleFor('.boe-menu-item:hover:not(:disabled),')
     assert.ok(/\.boe-menu-item:hover:not\(:disabled\),\s*\n\s*\.boe-menu-item:focus-visible:not\(:disabled\)\s*\{/.test(css),
       'hover and focus-visible share one declaration block')
-    assert.ok(rule.includes('#E8EBF0'))
+    assert.ok(rule.includes('#ECE7E0'))
   })
 
   test('and a focus ring that stays inside the panel', () => {
     const rule = ruleFor('.boe-menu-item:focus-visible {')
-    assert.ok(rule.includes('outline: 2px solid rgba(232,160,48,0.45)'),
+    assert.ok(rule.includes('outline: 2px solid #B9472E'),
       'the app-wide focus ring, not a new one')
     assert.ok(rule.includes('outline-offset: -1px'),
       'inset, so it does not spill over the panel’s rounded edge')
   })
 
   test('the destructive action keeps red text and takes a RED surface', () => {
-    assert.ok(ruleFor('.boe-menu-item--danger {').includes('#D94F4F'),
+    assert.ok(ruleFor('.boe-menu-item--danger {').includes('#B42332'),
       'colors.red, as before')
     const rule = ruleFor('.boe-menu-item--danger:hover:not(:disabled),')
-    assert.ok(rule.includes('rgba(217,79,79,0.14)'),
+    assert.ok(rule.includes('var(--boe-error-bg)'),
       'the value .boe-btn-danger:hover already uses — not a new red')
-    assert.ok(!rule.includes('#E8EBF0'),
+    assert.ok(!rule.includes('#ECE7E0'),
       'Delete Payment must never share the neutral highlight with an ordinary action')
     assert.ok(/--danger:hover:not\(:disabled\),\s*\n\s*\.boe-menu-item--danger:focus-visible:not\(:disabled\)\s*\{/.test(css),
       'and its focus state matches its hover state')
@@ -760,7 +760,7 @@ describe('a menu entry shows which action is about to run', () => {
   test('the red hover is the one the buttons already use', () => {
     // Reuse, stated as an equality rather than a duplicated literal's comment:
     // if .boe-btn-danger:hover ever moves, this fails and the two are realigned.
-    assert.ok(css.includes('.boe-btn-danger:hover { background: rgba(217,79,79,0.14); }'),
+    assert.ok(css.includes('.boe-btn-danger:hover:not(:disabled) { background: var(--boe-error-bg); border-color: var(--boe-error); }'),
       'the established danger hover this borrows from')
   })
 
@@ -1236,7 +1236,7 @@ describe('every action carries an icon and keeps its words', () => {
     // ...and the icon button has its own, using the same established red.
     assert.ok(css.includes('.boe-icon-action--danger {'))
     const rule = css.slice(css.indexOf('.boe-icon-action--danger:hover:not(:disabled),'))
-    assert.ok(rule.slice(0, rule.indexOf('}')).includes('rgba(217,79,79,0.14)'),
+    assert.ok(rule.slice(0, rule.indexOf('}')).includes('rgba(180,35,50,0.14)'),
       'the same red .boe-btn-danger:hover uses')
     const meta = view.slice(view.indexOf('function rowActionMeta('))
     assert.ok(/delete: \{[\s\S]{0,320}?Icon: Trash2[\s\S]{0,320}?danger: true/.test(meta),
@@ -1377,9 +1377,9 @@ describe('the allocation status reads as a status, not a button', () => {
     // competing with the figures beside it, in a table whose muted text is 11px
     // and whose cells are 12px.
     const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
-    assert.ok(chip.includes("fontSize: '10.5px'"), 'smaller than the row’s own text')
+    assert.ok(chip.includes("fontSize: '12px'"), 'smaller than the row’s own text')
     assert.ok(chip.includes("padding: '1px 6px'"), 'and barely padded')
-    assert.ok(chip.includes("borderRadius: '4px'"))
+    assert.ok(chip.includes("borderRadius: '6px'"))
   })
 
   test('but the TARGET did not shrink with it', () => {
@@ -1458,7 +1458,7 @@ describe('the page has one hierarchy: header action, one row of narrowing, then 
     assert.ok(bar.indexOf('role="tablist"') > -1 && bar.indexOf('resultSummary(') > bar.indexOf('role="tablist"'),
       'the tabs, then the size of the whole narrowed set')
     assert.ok(bar.includes('aria-live="polite"'), 'announced when it changes')
-    assert.ok(rule('.boe-list-count').includes('color: #6B7384'), 'muted — an answer about the list, not an action')
+    assert.ok(rule('.boe-list-count').includes('color: #686D6C'), 'muted — an answer about the list, not an action')
   })
 
   test('it wraps rather than overlapping when there is no room', () => {

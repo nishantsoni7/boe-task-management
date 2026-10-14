@@ -41,7 +41,7 @@ import {
 const TOP_ROWS = 10
 
 const th: React.CSSProperties = {
-  padding: '6px 8px', textAlign: 'right', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em',
+  padding: '6px 8px', textAlign: 'right', fontSize: '12px', fontWeight: 700, letterSpacing: '0.03em',
   textTransform: 'uppercase', color: colors.secondary, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
 const td: React.CSSProperties = {
@@ -118,17 +118,17 @@ export function ReviewLeaderboardScreen() {
         {board.isPending ? (
           <p role="status" style={{ margin: 0, fontSize: 12.5, color: colors.muted }}>Loading the leaderboard…</p>
         ) : board.isError || !data ? (
-          <div role="alert" style={{ padding: '14px 16px', borderRadius: 10, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+          <div role="alert" style={{ padding: '14px 16px', borderRadius: 8, border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
             <span>{board.error instanceof Error ? board.error.message : 'The leaderboard could not be loaded.'}</span>
             <button type="button" className="boe-btn boe-btn-ghost" onClick={() => { void board.refetch() }} style={{ minHeight: 44, padding: '7px 14px', fontSize: 12.5 }}>Try again</button>
           </div>
         ) : (
           <>
             <section aria-label="Your position" style={{
-              padding: '12px 14px', borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base,
+              padding: '12px 14px', borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base,
               display: 'flex', gap: 12, alignItems: 'flex-start',
             }}>
-              <Trophy size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
+              <Trophy size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: '#805B0D', flexShrink: 0, marginTop: 2 }} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: colors.primary }}>
                   {data.month === data.current_month
@@ -136,7 +136,7 @@ export function ReviewLeaderboardScreen() {
                     : data.me ? `You finished ${label} on rank ${data.me.rank}` : `${label}: you were not taking part`}
                 </div>
                 {data.month === data.current_month && (data.state === 'behind' || data.state === 'no_activity') && (
-                  <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
+                  <div style={{ fontSize: 12, color: colors.secondary, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
                 )}
                 {data.me && (
                   <div style={{ fontSize: 12.5, color: colors.secondary, marginTop: 4 }}>
@@ -147,14 +147,14 @@ export function ReviewLeaderboardScreen() {
             </section>
 
             {data.rows.length === 0 ? (
-              <p style={{ margin: 0, padding: '14px 16px', borderRadius: 10, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>
+              <p style={{ margin: 0, padding: '14px 16px', borderRadius: 8, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>
                 Nobody has an eligible review in {label} yet.
               </p>
             ) : (
               <Table rows={data.rows} showAll={showAll} onToggle={() => setShowAll(v => !v)} />
             )}
 
-            <p style={{ margin: 0, fontSize: 11.5, color: colors.muted, lineHeight: 1.55 }}>
+            <p style={{ margin: 0, fontSize: 12, color: colors.muted, lineHeight: 1.55 }}>
               Ranked by reward-eligible reviews in {label}: approved reviews with a credit the ledger has not reversed — not deleted, rejected, confirmed duplicates, or edited reviews still awaiting re-approval. Equal counts share a rank.
               Review credits are shown separately from points; points are review credits ÷ {CREDITS_PER_POINT} for the month (10 credits = 1 point) and
               start again each month. They are not your performance score.
@@ -174,7 +174,7 @@ function Table({ rows, showAll, onToggle }: { rows: LeaderboardRow[]; showAll: b
   const meOutside = !showAll && me && !top.some(r => r.employee_id === me.employee_id)
   const shown = showAll ? rows : top
   return (
-    <section aria-label="Leaderboard" style={{ borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base, overflow: 'hidden' }}>
+    <section aria-label="Leaderboard" style={{ borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 0, tableLayout: 'auto' }}>
           <thead>
@@ -212,10 +212,10 @@ function Table({ rows, showAll, onToggle }: { rows: LeaderboardRow[]; showAll: b
 
 function Row({ row }: { row: LeaderboardRow }) {
   return (
-    <tr aria-current={row.is_me ? 'true' : undefined} style={{ background: row.is_me ? 'rgba(79,111,208,0.08)' : undefined }}>
+    <tr aria-current={row.is_me ? 'true' : undefined} style={{ background: row.is_me ? 'rgba(51,90,134,0.08)' : undefined }}>
       <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>
         {row.rank}
-        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: colors.muted }}>tied</span>}
+        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, color: colors.muted }}>tied</span>}
       </td>
       <td style={{ ...td, textAlign: 'left', fontWeight: row.is_me ? 700 : 500, overflowWrap: 'anywhere' }}>
         {row.name}{row.is_me ? ' (you)' : ''}

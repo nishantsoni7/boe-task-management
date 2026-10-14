@@ -20,7 +20,7 @@ export default function ComingSoonPage() {
       <div style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '16px',
+        borderRadius: '12px',
         padding: '48px 40px',
         maxWidth: '420px',
         width: '100%',
@@ -30,22 +30,22 @@ export default function ComingSoonPage() {
 
         {/* Icon */}
         <div style={{
-          width: 56, height: 56, borderRadius: '14px',
-          background: 'rgba(232,160,48,0.1)',
+          width: 56, height: 56, borderRadius: '12px',
+          background: 'rgba(196,138,26,0.1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 24px',
         }}>
-          <Clock size={26} color="#E8A030" strokeWidth={1.8} />
+          <Clock size={26} color="#963B27" strokeWidth={1.8} />
         </div>
 
         {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '24px' }}>
           <div style={{
             width: 24, height: 24, borderRadius: '6px',
-            background: '#1A2035',
+            background: '#303536',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Briefcase size={12} color="#E8A030" strokeWidth={2} />
+            <Briefcase size={12} color="#963B27" strokeWidth={2} />
           </div>
           <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             BOE Internal Platform
@@ -67,10 +67,10 @@ export default function ComingSoonPage() {
 
         <div style={{
           display: 'inline-block',
-          fontSize: '11px', fontWeight: 700,
-          color: '#E8A030',
-          background: 'rgba(232,160,48,0.1)',
-          border: '1px solid rgba(232,160,48,0.25)',
+          fontSize: '12px', fontWeight: 700,
+          color: '#963B27',
+          background: 'rgba(196,138,26,0.1)',
+          border: '1px solid rgba(196,138,26,0.25)',
           borderRadius: '999px',
           padding: '3px 12px',
           letterSpacing: '0.06em',

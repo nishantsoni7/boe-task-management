@@ -43,22 +43,22 @@ function TeamProgressLoader({ progress }: { progress: number }) {
       pointerEvents: 'all',
     }}>
       <div style={{ textAlign: 'center', maxWidth: 420 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#111318', lineHeight: 1.6, marginBottom: 6 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#303536', lineHeight: 1.6, marginBottom: 6 }}>
           Good things take a little time.
         </div>
-        <div style={{ fontSize: 13, color: '#8C94A6', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: '#686D6C', lineHeight: 1.6 }}>
           Please wait while we prepare your team performance report.
         </div>
       </div>
       <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ width: '100%', height: 6, background: '#EEF0F4', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: 6, background: '#F1EEE9', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{
             width: `${pct}%`, height: '100%',
-            background: 'linear-gradient(90deg, #5585E8, #45A870)',
+            background: 'linear-gradient(90deg, #335A86, #276247)',
             borderRadius: 999, transition: 'width 0.25s ease',
           }} />
         </div>
-        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>{pct}%</div>
+        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#686D6C' }}>{pct}%</div>
       </div>
     </div>
   )
@@ -69,16 +69,16 @@ function TeamProgressLoader({ progress }: { progress: number }) {
 // Same palette and shapes the rest of BOE uses; nothing new invented here.
 
 const C = {
-  ink:   '#111318',
-  muted: '#6B7384',
-  faint: '#8C94A6',
-  line:  '#EEF0F4',
-  hair:  '#F0F1F3',
-  panel: '#F8F9FB',
-  green: '#45A870',
-  red:   '#D94F4F',
-  amber: '#E8A030',
-  blue:  '#5585E8',
+  ink:   '#303536',
+  muted: '#686D6C',
+  faint: '#686D6C',
+  line:  '#F1EEE9',
+  hair:  '#F1EEE9',
+  panel: '#FBFAF8',
+  green: '#276247',
+  red:   '#B42332',
+  amber: '#805B0D',
+  blue:  '#335A86',
 } as const
 
 const PERIOD_LABEL: Record<PeriodKey, string> = {
@@ -109,11 +109,11 @@ function Rate({ value, suffix = '%' }: { value: number | null; suffix?: string }
 }
 
 function Delta({ value, unit = 'pts' }: { value: number | null; unit?: string }) {
-  if (value === null) return <span style={{ fontSize: 11, color: C.faint }}>no prior data</span>
-  if (value === 0)    return <span style={{ fontSize: 11, color: C.faint }}>no change</span>
+  if (value === null) return <span style={{ fontSize: 12, color: C.faint }}>no prior data</span>
+  if (value === 0)    return <span style={{ fontSize: 12, color: C.faint }}>no change</span>
   const up = value > 0
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, color: up ? C.green : C.red }}>
+    <span style={{ fontSize: 12, fontWeight: 600, color: up ? C.green : C.red }}>
       {up ? '↑' : '↓'} {Math.abs(value)} {unit}
     </span>
   )
@@ -123,8 +123,8 @@ function StatusPill({ status }: { status: OperationalStatus }) {
   const color = STATUS_COLOR[status]
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 20,
-      fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+      display: 'inline-block', padding: '2px 8px', borderRadius: 12,
+      fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
       color, background: color + '14', border: '1px solid ' + color + '33',
     }}>{STATUS_LABEL[status]}</span>
   )
@@ -138,7 +138,7 @@ function SectionTitle({ children, hint, aside }: {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
       <h2 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{children}</h2>
-      {hint && <span style={{ fontSize: 11, color: C.faint }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 12, color: C.faint }}>{hint}</span>}
       {aside && <span style={{ marginLeft: 'auto' }}>{aside}</span>}
     </div>
   )
@@ -159,7 +159,7 @@ function Explanation({ ex, tone = 'neutral' }: {
   const accent = tone === 'concern' ? C.red : C.blue
   return (
     <div style={{
-      background: C.panel, border: '1px solid ' + C.line, borderRadius: 10, padding: 12,
+      background: C.panel, border: '1px solid ' + C.line, borderRadius: 8, padding: 12,
     }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.ink, marginBottom: 6 }}>{ex.headline}</div>
       <ul style={{ margin: 0, padding: 0 }}>
@@ -190,9 +190,9 @@ function ConfidenceFlag({ data }: { data: TeamDataset }) {
     <span
       title={data.coverage.holidayCoverage.warning ?? 'Calendar coverage is incomplete for this period.'}
       style={{
-        fontSize: 10, fontWeight: 700, color: C.amber,
+        fontSize: 12, fontWeight: 700, color: C.amber,
         background: C.amber + '14', border: '1px solid ' + C.amber + '33',
-        borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap',
+        borderRadius: 12, padding: '1px 7px', whiteSpace: 'nowrap',
       }}
     >limited confidence</span>
   )
@@ -229,7 +229,7 @@ function HowRankingWorks({ onClose }: { onClose: () => void }) {
         <div style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {HOW_RANKING_WORKS.map(s => (
             <div key={s.heading}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                 {s.heading}
               </div>
               <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.55 }}>{s.body}</div>
@@ -244,8 +244,8 @@ function HowRankingWorks({ onClose }: { onClose: () => void }) {
 function HowRankingWorksButton({ onOpen }: { onOpen: () => void }) {
   return (
     <button onClick={onOpen} style={{
-      fontSize: 11, fontWeight: 600, color: C.blue, background: 'none',
-      border: '1px solid ' + C.line, borderRadius: 7, padding: '3px 9px',
+      fontSize: 12, fontWeight: 600, color: C.blue, background: 'none',
+      border: '1px solid ' + C.line, borderRadius: 8, padding: '3px 9px',
       cursor: 'pointer', whiteSpace: 'nowrap',
     }}>How ranking works</button>
   )
@@ -268,14 +268,14 @@ function CoverageSection({ data, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, note?: string) => (
     <div key={label} style={{ flex: '1 1 120px', minWidth: 108 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{value}</div>
-      {note && <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 
   const linkish: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: C.blue, background: 'none',
+    fontSize: 12, fontWeight: 600, color: C.blue, background: 'none',
     border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit',
   }
 
@@ -296,7 +296,7 @@ function CoverageSection({ data, onOpen }: {
       {/* The working-day rule, stated where the calendar figures are, so the reader
           does not have to open a modal to learn what "eligible working day" means.
           One line, because Coverage has to stay compact. */}
-      <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
         Working days are Monday to Saturday. <strong style={{ fontWeight: 600 }}>Sundays are excluded</strong> for
         everyone, as are <strong style={{ fontWeight: 600 }}>company holidays recorded in the holiday calendar</strong> and
         any dates before an employee joined or after they left. Excluded days count neither for nor against anyone.
@@ -307,9 +307,9 @@ function CoverageSection({ data, onOpen }: {
           thing this page could show. */}
       {hc.warning && (
         <div style={{
-          fontSize: 12, lineHeight: 1.5, color: '#92400E',
-          background: '#FFFBEB', border: '1px solid #FDE68A',
-          borderRadius: 9, padding: '9px 12px', marginBottom: 10,
+          fontSize: 12, lineHeight: 1.5, color: '#805B0D',
+          background: '#FAF0DA', border: '1px solid #E6D2A0',
+          borderRadius: 8, padding: '9px 12px', marginBottom: 10,
         }}>
           <strong style={{ fontWeight: 700 }}>Holiday calendar incomplete for this period.</strong>{' '}
           {/* The bolded lead-in already carries the headline, so strip it from the
@@ -323,7 +323,7 @@ function CoverageSection({ data, onOpen }: {
 
       {/* Approved leave is not available. Said out loud, next to the numbers it
           affects, rather than buried in a code comment. */}
-      <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
         {cov.attendanceNote}
       </div>
 
@@ -350,7 +350,7 @@ function CoverageSection({ data, onOpen }: {
               background: 'none', cursor: 'pointer', font: 'inherit', textAlign: 'left',
             }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{u.userName}</span>
-              <span style={{ fontSize: 11, color: C.muted, textAlign: 'right' }}>{u.reason}</span>
+              <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>{u.reason}</span>
             </button>
           ))}
         </div>
@@ -358,7 +358,7 @@ function CoverageSection({ data, onOpen }: {
 
       {showExcluded && cov.excluded && (
         <div style={{ marginTop: 10, borderTop: '1px solid ' + C.hair, paddingTop: 8 }}>
-          <div style={{ fontSize: 10.5, color: C.faint, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: C.faint, marginBottom: 6 }}>
             Administrator view. These accounts keep full system access, task history and View As —
             they are simply not measured. Change this per employee in Attendance → Employees.
           </div>
@@ -371,7 +371,7 @@ function CoverageSection({ data, onOpen }: {
                 {u.userName}
                 <span style={{ fontWeight: 400, color: C.faint }}> · {u.team}</span>
               </span>
-              <span style={{ fontSize: 11, color: C.muted, textAlign: 'right' }}>{u.note ?? 'No reason recorded'}</span>
+              <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>{u.note ?? 'No reason recorded'}</span>
             </div>
           ))}
         </div>
@@ -395,9 +395,9 @@ function AdoptionSection({ data, rows, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, note?: string) => (
     <div key={label} style={{ flex: '1 1 130px', minWidth: 116 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{value}</div>
-      {note && <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 
@@ -413,7 +413,7 @@ function AdoptionSection({ data, rows, onOpen }: {
           {a.recordingFrom
             ? ` Recording began on ${a.recordingFrom}; select a period on or after that date to see adoption.`
             : ' Recording starts from the first time an employee opens Task Management after this release.'}
-          <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
             Days before recording began are excluded from adoption rather than counted as missed opens.
           </div>
         </div>
@@ -432,7 +432,7 @@ function AdoptionSection({ data, rows, onOpen }: {
           </div>
 
           {a.anyProvisionalWindow && (
-            <div style={{ fontSize: 11.5, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 9, padding: '8px 11px', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: '#805B0D', background: '#FAF0DA', border: '1px solid #E6D2A0', borderRadius: 8, padding: '8px 11px', marginBottom: 10 }}>
               Some employees have no configured shift, so their start window uses a provisional
               default of {formatMinutesOfDay(600)} + 30 minutes. Set Office Timing in
               Attendance → Employees to measure them against their real shift.
@@ -526,7 +526,7 @@ function FilterBar({
           <span style={{ fontSize: 12, color: C.faint }}>to</span>
           <input type="date" value={customTo} max={istToday()}
                  onChange={e => onCustom(customFrom, e.target.value)} style={control} />
-          {rangeError && <span style={{ fontSize: 11, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
+          {rangeError && <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
         </div>
       )}
 
@@ -574,7 +574,7 @@ function SummaryCard({ label, value, context, reason, delta, flag, onClick }: {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {label}
         </div>
         {flag}
@@ -583,7 +583,7 @@ function SummaryCard({ label, value, context, reason, delta, flag, onClick }: {
         {value}
       </div>
       {context && <div style={{ fontSize: 12, color: C.muted, overflowWrap: 'anywhere' }}>{context}</div>}
-      {reason  && <div style={{ fontSize: 11, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
+      {reason  && <div style={{ fontSize: 12, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
       {delta}
     </button>
   )
@@ -616,14 +616,14 @@ function Briefing({ data, onOpen }: {
           <button key={item.userId + item.issue} onClick={() => onOpen(item.userId)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
-                width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+                width: 6, height: 6, borderRadius: 6, flexShrink: 0,
                 background: item.severity === 'critical' ? C.red : C.amber,
               }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
               <span style={{ fontSize: 12, color: C.muted }}>— {item.issue}</span>
             </div>
-            <div style={{ fontSize: 11, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
-            <div style={{ fontSize: 11, color: C.blue, fontWeight: 600, paddingLeft: 12 }}>{item.action} →</div>
+            <div style={{ fontSize: 12, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
+            <div style={{ fontSize: 12, color: C.blue, fontWeight: 600, paddingLeft: 12 }}>{item.action} →</div>
           </button>
         ))}
       </div>
@@ -637,11 +637,11 @@ function Briefing({ data, onOpen }: {
         ) : data.positives.map(item => (
           <button key={item.userId + item.headline} onClick={() => onOpen(item.userId)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: 3, background: C.green, flexShrink: 0 }} />
+              <span style={{ width: 6, height: 6, borderRadius: 6, background: C.green, flexShrink: 0 }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
               <span style={{ fontSize: 12, color: C.muted }}>— {item.headline}</span>
             </div>
-            <div style={{ fontSize: 11, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
+            <div style={{ fontSize: 12, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
           </button>
         ))}
       </div>
@@ -652,7 +652,7 @@ function Briefing({ data, onOpen }: {
 // ─── Table primitives ─────────────────────────────────────────────────────────
 
 const TH: React.CSSProperties = {
-  padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700,
+  padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700,
   color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
   whiteSpace: 'nowrap', borderBottom: '1px solid ' + C.line, background: C.panel,
 }
@@ -730,7 +730,7 @@ function MemberTable({ rows, data, onOpen }: {
                       title={cmp.note ?? undefined}>
                     {cmp.comparable
                       ? <Delta value={cmp.delta} />
-                      : <span style={{ fontSize: 11, color: C.faint }}>—</span>}
+                      : <span style={{ fontSize: 12, color: C.faint }}>—</span>}
                   </td>
                   <td style={TD({ textAlign: 'right', color: active !== null && active < 60 ? C.red : C.ink })}>
                     {m.eligibleDays === 0 ? '—' : m.activeDays + '/' + m.eligibleDays}
@@ -770,7 +770,7 @@ function Rankings({ data, onOpen }: { data: TeamDataset; onOpen: (userId: string
 
   const list = (title: string, rows: { userId: string; userName: string; value: string }[]) => (
     <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
         {title}
       </div>
       {rows.map((r, i) => (
@@ -794,7 +794,7 @@ function Rankings({ data, onOpen }: { data: TeamDataset; onOpen: (userId: string
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {data.rankings.map(r => (
           <button key={r.key} onClick={() => setTab(r.key)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+            fontSize: 12, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  tab === r.key ? 700 : 500,
             color:       tab === r.key ? '#fff' : C.muted,
             background:  tab === r.key ? C.ink : '#fff',
@@ -848,7 +848,7 @@ function EodSection({ data, rows, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, color: string = C.ink) => (
     <div key={label} style={{ flex: '1 1 90px', minWidth: 80 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color }}>{value}</div>
     </div>
   )
@@ -868,7 +868,7 @@ function EodSection({ data, rows, onOpen }: {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {(['all', 'on_time', 'late', 'missed'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+            fontSize: 12, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  filter === f ? 700 : 500,
             color:       filter === f ? '#fff' : C.muted,
             background:  filter === f ? C.ink : '#fff',
@@ -960,12 +960,12 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
   }
 
   const th: React.CSSProperties = {
-    padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600,
-    color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em',
-    whiteSpace: 'nowrap', borderBottom: '1px solid #EEF0F4', background: '#F8F9FB',
+    padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600,
+    color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.05em',
+    whiteSpace: 'nowrap', borderBottom: '1px solid #F1EEE9', background: '#FBFAF8',
   }
   const td = (extra?: React.CSSProperties): React.CSSProperties => ({
-    padding: '10px 12px', fontSize: 12, borderBottom: '1px solid #F0F1F3',
+    padding: '10px 12px', fontSize: 12, borderBottom: '1px solid #F1EEE9',
     verticalAlign: 'top', ...extra,
   })
 
@@ -983,7 +983,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 14,
+          background: '#fff', borderRadius: 12,
           width: '100%', maxWidth: 900, maxHeight: '82vh',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 8px 40px rgba(0,0,0,0.16)',
@@ -992,23 +992,23 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
       >
         {/* Header */}
         <div style={{
-          padding: '16px 20px', borderBottom: '1px solid #EEF0F4',
+          padding: '16px 20px', borderBottom: '1px solid #F1EEE9',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
           flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#111318' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#303536' }}>
               Stuck Tasks — {memberName}
             </div>
-            <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2 }}>
               {tasks.length} task{tasks.length !== 1 ? 's' : ''} waiting or stale-blocked
             </div>
           </div>
           <button
             onClick={onClose}
             style={{
-              background: '#F4F5F7', border: 'none', borderRadius: 7,
-              width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#6B7384',
+              background: '#F7F5F1', border: 'none', borderRadius: 8,
+              width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#686D6C',
               flexShrink: 0,
             }}
           >✕</button>
@@ -1017,7 +1017,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
         {/* Table */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {tasks.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#8C94A6', fontSize: 13 }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: '#686D6C', fontSize: 13 }}>
               No stuck tasks found.
             </div>
           ) : (
@@ -1036,37 +1036,37 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
               <tbody>
                 {tasks.map((t, i) => {
                   const isWaiting   = t.status === 'waiting'
-                  const statusColor = isWaiting ? '#E8A030' : '#D94F4F'
-                  const statusBg    = isWaiting ? '#E8A03014' : '#D94F4F14'
+                  const statusColor = isWaiting ? '#805B0D' : '#B42332'
+                  const statusBg    = isWaiting ? '#C48A1A14' : '#B4233214'
                   const reason      = stuckReason(t)
                   const isOverdue   = !!t.due_date && t.due_date < todayStr
                   return (
-                    <tr key={t.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                    <tr key={t.id} style={{ background: i % 2 === 0 ? '#fff' : '#FBFAF8' }}>
                       {/* Task title */}
                       <td style={td({ maxWidth: 200 })}>
                         <div style={{
-                          fontWeight: 500, color: '#111318', fontSize: 12.5,
+                          fontWeight: 500, color: '#303536', fontSize: 12.5,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }} title={t.title}>{t.title}</div>
                       </td>
                       {/* Status pill */}
                       <td style={td({ verticalAlign: 'middle' })}>
                         <span style={{
-                          fontSize: 10, fontWeight: 600,
+                          fontSize: 12, fontWeight: 600,
                           color: statusColor, background: statusBg,
                           padding: '2px 8px', borderRadius: 999,
                           textTransform: 'capitalize',
                         }}>{t.status}</span>
                       </td>
                       {/* Waiting On */}
-                      <td style={td({ color: '#6B7384', fontSize: 11.5, verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 12, verticalAlign: 'middle' })}>
                         {waitingOnLabel(t)}
                       </td>
                       {/* Reason / Note */}
                       <td style={td({ maxWidth: 280 })}>
                         <div style={{
                           fontSize: 12, lineHeight: 1.45,
-                          color: reason.faint ? '#BCC3D0' : '#3D4455',
+                          color: reason.faint ? '#686D6C' : '#4C5352',
                           fontStyle: reason.faint ? 'italic' : 'normal',
                           display: '-webkit-box',
                           WebkitLineClamp: 3,
@@ -1075,27 +1075,27 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                         }} title={reason.text}>{reason.text}</div>
                       </td>
                       {/* Last Update */}
-                      <td style={td({ color: '#8C94A6', fontSize: 11.5, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
                         {formatRelative(t.last_update_at)}
                       </td>
                       {/* Due Date */}
                       <td style={td({ whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
                         {t.due_date ? (
                           <span style={{
-                            fontSize: 11.5,
+                            fontSize: 12,
                             fontWeight: isOverdue ? 600 : 400,
-                            color: isOverdue ? '#D94F4F' : '#6B7384',
+                            color: isOverdue ? '#B42332' : '#686D6C',
                           }}>{formatDate(t.due_date)}</span>
-                        ) : <span style={{ color: '#BCC3D0' }}>—</span>}
+                        ) : <span style={{ color: '#686D6C' }}>—</span>}
                       </td>
                       {/* Open link */}
                       <td style={td({ textAlign: 'right', verticalAlign: 'middle' })}>
                         <button
                           onClick={() => { onClose(); router.push(`/tasks/${t.id}`) }}
                           style={{
-                            fontSize: 10, fontWeight: 600, color: '#5585E8',
-                            background: '#5585E808', border: '1px solid #5585E820',
-                            borderRadius: 5, padding: '3px 8px',
+                            fontSize: 12, fontWeight: 600, color: '#335A86',
+                            background: '#335A8608', border: '1px solid #335A8620',
+                            borderRadius: 6, padding: '3px 8px',
                             cursor: 'pointer', whiteSpace: 'nowrap',
                           }}
                         >Open →</button>
@@ -1157,7 +1157,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
   const metric = (label: string, value: React.ReactNode) => (
     <div key={label} style={{ flex: '1 1 108px', minWidth: 96 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{value}</div>
     </div>
   )
@@ -1209,10 +1209,10 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
             </div>
             {cmp.comparable
               ? <Delta value={cmp.delta} />
-              : <span style={{ fontSize: 11, color: C.faint }}>not comparable</span>}
+              : <span style={{ fontSize: 12, color: C.faint }}>not comparable</span>}
             {cls && <StatusPill status={cls.status} />}
           </div>
-          {cls && <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>{cls.reason}</div>}
+          {cls && <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>{cls.reason}</div>}
         </div>
 
         {/* Tabs */}
@@ -1237,19 +1237,19 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Why this rank — first, because it is the question the drawer was
                   opened to answer. Server-built from the same values shown below. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   {rank ? 'Why this rank' : 'Ranking eligibility'}
                 </div>
                 <Explanation ex={explanation} />
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   Recommended action
                 </div>
                 <div style={{
                   fontSize: 13, color: C.ink, fontWeight: 600, lineHeight: 1.45,
-                  background: C.panel, border: '1px solid ' + C.line, borderRadius: 10, padding: 12,
+                  background: C.panel, border: '1px solid ' + C.line, borderRadius: 8, padding: 12,
                 }}>{action}</div>
               </div>
 
@@ -1266,7 +1266,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
               {/* Inclusion and eligibility state, stated plainly. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
                   Eligibility
                 </div>
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
@@ -1278,7 +1278,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                     <> Measured window: {dateFacts.firstDate} to {dateFacts.lastDate}.</>
                   )}
                 </div>
-                <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.55, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.55, marginTop: 4 }}>
                   {member.eligibleDays} expected working days
                   {' · '}{dateFacts.missed} expected day{dateFacts.missed === 1 ? '' : 's'} with no activity
                   {' · '}Sundays, recorded company holidays and dates outside employment are
@@ -1289,7 +1289,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Period comparison, with both day counts so the reader can see it
                   was like-for-like. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   Versus previous period
                 </div>
                 <Explanation ex={movementExplanation(member)} />
@@ -1297,14 +1297,14 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
               {/* Adoption, kept visually separate from the score above. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   System adoption
                 </div>
                 <Explanation ex={adoptEx} />
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.green, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.green, textTransform: 'uppercase', marginBottom: 6 }}>
                   Doing well
                 </div>
                 {strengths.length === 0
@@ -1313,7 +1313,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 6 }}>
                   Needs attention
                 </div>
                 {concerns.length === 0
@@ -1324,10 +1324,10 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Evidence: the actual dates behind "active on N of M". */}
               {dateFacts.idleDates.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
                     Expected working days with no activity
                   </div>
-                  <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.6, overflowWrap: 'anywhere' }}>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, overflowWrap: 'anywhere' }}>
                     {dateFacts.idleDates.join(', ')}
                   </div>
                 </div>
@@ -1412,7 +1412,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 11, color: C.faint, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: C.faint, marginBottom: 10 }}>
                     Most recent scored day in this period. The period score above is the
                     average across {member.scoredDays} scored day{member.scoredDays === 1 ? '' : 's'}.
                   </div>
@@ -1426,7 +1426,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                         <span style={{ color: C.muted }}>{label}</span>
                         <span style={{ fontWeight: 700, color: C.ink }}>{val}/{max}</span>
                       </div>
-                      <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: C.line, borderRadius: 6, overflow: 'hidden' }}>
                         <div style={{ width: (val / max * 100) + '%', height: '100%', background: C.green }} />
                       </div>
                     </div>
@@ -1649,7 +1649,7 @@ export default function TeamPerformancePage() {
       actions={
         <a href="/performance" style={{
           fontSize: 12, fontWeight: 600, color: C.faint, textDecoration: 'none',
-          border: '1px solid ' + C.line, padding: '6px 14px', borderRadius: 7,
+          border: '1px solid ' + C.line, padding: '6px 14px', borderRadius: 8,
         }}>← My Report</a>
       }
     >
@@ -1671,7 +1671,7 @@ export default function TeamPerformancePage() {
             display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
           }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.red }}>{state.message}</div>
-            <div style={{ fontSize: 11, color: C.muted }}>
+            <div style={{ fontSize: 12, color: C.muted }}>
               {state.kind === 'forbidden'
                 ? 'Ask an administrator if you need access to this page.'
                 : 'The technical details have been written to the browser console.'}
@@ -1681,7 +1681,7 @@ export default function TeamPerformancePage() {
                 onClick={() => setRetryCount(n => n + 1)}
                 style={{
                   fontSize: 12, fontWeight: 600, color: '#fff', background: C.ink,
-                  border: 'none', borderRadius: 7, padding: '7px 16px', cursor: 'pointer',
+                  border: 'none', borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
                 }}
               >Retry</button>
             )}
@@ -1788,7 +1788,7 @@ export default function TeamPerformancePage() {
                   ['EOD without tasks',   data.activitySummary.eodOnly,       data.activitySummary.eodOnly > 0 ? C.amber : C.ink],
                 ] as const).map(([label, value, color]) => (
                   <div key={label} style={{ flex: '1 1 110px', minWidth: 100 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color }}>{value}</div>
                   </div>
                 ))}

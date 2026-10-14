@@ -410,7 +410,7 @@ export function ExpenseForm({
           against. */}
       {mode === 'complete' && draft && (
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           background: colors.raised, padding: '10px 12px',
           fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
         }}>
@@ -422,7 +422,7 @@ export function ExpenseForm({
           phone that cannot is not shown a control that does nothing. */}
       {voice.supported && (
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           background: colors.raised, padding: '10px 12px',
           display: 'flex', flexDirection: 'column', gap: '8px',
         }}>
@@ -437,15 +437,15 @@ export function ExpenseForm({
               style={{
                 display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0,
                 minHeight: '44px', padding: '8px 14px', fontSize: '13px', fontWeight: 600,
-                background: voice.listening ? 'rgba(217,79,79,0.10)' : colors.base,
-                color: voice.listening ? '#C13030' : colors.primary,
-                border: `1px solid ${voice.listening ? 'rgba(217,79,79,0.35)' : colors.borderSoft}`,
+                background: voice.listening ? 'rgba(180,35,50,0.10)' : colors.base,
+                color: voice.listening ? '#B42332' : colors.primary,
+                border: `1px solid ${voice.listening ? 'rgba(180,35,50,0.35)' : colors.borderSoft}`,
               }}
             >
               <Mic size={16} strokeWidth={1.9} />
               {voice.listening ? 'Listening…' : 'Speak'}
             </button>
-            <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.45, minWidth: 0 }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.45, minWidth: 0 }}>
               {voice.listening
                 ? 'Say the expense, then stop.'
                 : <>Try: <span style={{ color: colors.secondary }}>&ldquo;{VOICE_EXAMPLE_PHRASE}&rdquo;</span></>}
@@ -467,8 +467,8 @@ export function ExpenseForm({
           {/* WHAT COULD NOT BE IDENTIFIED — highlighted rather than guessed. */}
           {voiceNotes.length > 0 && (
             <ul style={{
-              margin: 0, paddingLeft: '18px', fontSize: '11.5px',
-              color: '#8A5A00', lineHeight: 1.6,
+              margin: 0, paddingLeft: '18px', fontSize: '12px',
+              color: '#805B0D', lineHeight: 1.6,
             }}>
               {voiceNotes.map(note => <li key={note}>{note}</li>)}
             </ul>
@@ -489,7 +489,7 @@ export function ExpenseForm({
           )}
 
           {voice.message && (
-            <div role="status" style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
+            <div role="status" style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
               {voice.message}
             </div>
           )}
@@ -499,7 +499,7 @@ export function ExpenseForm({
       {/* When the browser has no speech recognition at all, one quiet line — the
           form below is complete and unchanged. */}
       {!voice.supported && (
-        <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {VOICE_UNSUPPORTED_MESSAGE}
         </div>
       )}
@@ -647,7 +647,7 @@ export function ExpenseForm({
         aria-describedby={reimbursed ? 'expense-reimbursed-lock' : undefined}
       >
         <legend style={{
-          fontSize: '11px', fontWeight: 600, color: colors.muted,
+          fontSize: '12px', fontWeight: 600, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em', padding: 0, marginBottom: '4px',
         }}>
           How was it paid?
@@ -661,7 +661,7 @@ export function ExpenseForm({
                 key={option.value}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: '8px', minHeight: '44px',
-                  padding: '9px 11px', borderRadius: '10px', cursor: saving || reimbursed ? 'default' : 'pointer',
+                  padding: '9px 11px', borderRadius: '8px', cursor: saving || reimbursed ? 'default' : 'pointer',
                   border: `1px solid ${checked ? colors.primary : colors.borderSoft}`,
                   background: checked ? colors.raised : colors.base,
                 }}
@@ -677,18 +677,18 @@ export function ExpenseForm({
                 />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{option.label}</span>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>{option.hint}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{option.hint}</span>
                 </span>
               </label>
             )
           })}
         </div>
         {mode === 'edit' && !expense?.paid_from && !form.paidFrom && (
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Not recorded for this older expense. Leave it, or choose one if you know.
           </div>
         )}
-        {shown.paidFrom && <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>{shown.paidFrom}</div>}
+        {shown.paidFrom && <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>{shown.paidFrom}</div>}
       </fieldset>
 
       {form.paidFrom === 'personal' && (
@@ -730,7 +730,7 @@ export function ExpenseForm({
       {/* ── BILLS ── Optional. On a new expense they are uploaded right after it
           is saved; on a correction they are managed in place. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Bill / invoice <span style={{ textTransform: 'none', letterSpacing: 0, marginLeft: '6px', fontWeight: 500 }}>Optional — PDF or photo, up to 10 MB each</span>
         </span>
         {mode === 'edit' && expense ? (
@@ -753,7 +753,7 @@ export function ExpenseForm({
       {saveError && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px',
-          background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px', lineHeight: 1.5,
+          background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px', lineHeight: 1.5,
         }}>
           {saveError}
         </div>
@@ -762,7 +762,7 @@ export function ExpenseForm({
       {/* A summary the moment Save is refused, so a field scrolled out of view
           is not the reason somebody presses the button twice. */}
       {submitted && !valid && !saveError && (
-        <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.5 }}>
+        <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.5 }}>
           Check the highlighted fields above.
         </div>
       )}
@@ -850,7 +850,7 @@ function FormField({
     </>
   )
   const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    fontSize: '12px', fontWeight: 600, color: colors.muted,
     textTransform: 'uppercase', letterSpacing: '0.05em',
   }
   return (
@@ -860,7 +860,7 @@ function FormField({
         : <label htmlFor={htmlFor} style={labelStyle}>{labelText}</label>}
       {children}
       {error && (
-        <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>
+        <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>
           {error}
         </div>
       )}
@@ -966,7 +966,7 @@ function AddCategoryModal({
           onKeyDown={e => { if (e.key === 'Enter' && !saving) { e.preventDefault(); void save() } }}
         />
         {error && (
-          <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>{error}</div>
+          <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>{error}</div>
         )}
         {notice && (
           <div role="status" style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.4 }}>{notice}</div>

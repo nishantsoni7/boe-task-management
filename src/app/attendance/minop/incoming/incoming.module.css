@@ -5,10 +5,10 @@
   flex-wrap: wrap;
 }
 .search { flex: 1 1 240px; min-width: 0; }
-.date { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #6B7384; }
+.date { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #686D6C; }
 .date input { min-width: 150px; }
 
-.summary { margin: 0; font-size: 12.5px; line-height: 1.5; color: #4A5261; }
+.summary { margin: 0; font-size: 12.5px; line-height: 1.5; color: #4C5352; }
 
 /* Nine columns have to fit a laptop without sideways scrolling: tighter cells,
    headers allowed to wrap. Doubled class beats the shared table rule. */
@@ -17,33 +17,33 @@
 .table.table th:first-child, .table.table td:first-child { padding-left: 14px; }
 .table.table th:last-child, .table.table td:last-child { padding-right: 14px; }
 .mono { font-variant-numeric: tabular-nums; word-break: break-all; }
-.ref { font-size: 11.5px; color: #6B7384; font-variant-numeric: tabular-nums; }
+.ref { font-size: 12px; color: #686D6C; font-variant-numeric: tabular-nums; }
 
 .reading { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.reason { margin: 0; font-size: 12px; line-height: 1.45; color: #4A5261; max-width: 32ch; }
+.reason { margin: 0; font-size: 12px; line-height: 1.45; color: #4C5352; max-width: 32ch; }
 
 .payload > summary {
   cursor: pointer;
   font-size: 12.5px;
   font-weight: 600;
-  color: #1D4ED8;
+  color: #335A86;
   min-height: 32px;
   display: inline-flex;
   align-items: center;
 }
-.payload > summary:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+.payload > summary:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; border-radius: 6px; }
 .meta {
   margin: 6px 0;
   padding: 10px 12px;
-  background: #F8F9FB;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #FBFAF8;
+  border: 1px solid #E4DED7;
   border-radius: 8px;
   font-size: 12px;
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
   gap: 4px 12px;
 }
-.meta dt { color: #6B7384; }
+.meta dt { color: #686D6C; }
 .meta dd { margin: 0; word-break: break-all; }
 .pre {
   margin: 6px 0 0;
@@ -51,8 +51,8 @@
   max-height: 320px;
   max-width: 520px;
   overflow: auto;
-  background: #111318;
-  color: #E7EAF0;
+  background: #303536;
+  color: #686D6C;
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.5;
@@ -67,7 +67,7 @@
   gap: 4px 10px;
   font-size: 13px;
 }
-.cardFacts dt { color: #6B7384; }
+.cardFacts dt { color: #686D6C; }
 .cardFacts dd { margin: 0; min-width: 0; }
 
 .pager {
@@ -76,7 +76,7 @@
   justify-content: center;
   gap: 14px;
   font-size: 13px;
-  color: #4A5261;
+  color: #4C5352;
 }
 
 @media (max-width: 560px) {

@@ -195,7 +195,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     const d = istDateOf(lead.created_at)
     if (!multiDate) return null
     if (idx > 0 && istDateOf(list[idx - 1].created_at) === d) return null
-    return <div className={s.groupHead} key={`h-${d}-${idx}`}><span style={{ color: '#111318' }}>{longDate(d)}</span><span>{dateCounts.get(d) ?? 0} leads</span></div>
+    return <div className={s.groupHead} key={`h-${d}-${idx}`}><span style={{ color: '#303536' }}>{longDate(d)}</span><span>{dateCounts.get(d) ?? 0} leads</span></div>
   }
 
   const rows = data?.rows ?? []
@@ -405,7 +405,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                   {rows.map((l, i) => (
                     <Fragment key={l.id}>
                       {multiDate && (i === 0 || istDateOf(rows[i - 1].created_at) !== istDateOf(l.created_at)) && (
-                        <tr><td colSpan={mode === 'all' ? 10 : 9} style={{ background: '#F4F6F9', fontWeight: 700 }}>
+                        <tr><td colSpan={mode === 'all' ? 10 : 9} style={{ background: '#F1EEE9', fontWeight: 700 }}>
                           {longDate(istDateOf(l.created_at))} · {dateCounts.get(istDateOf(l.created_at)) ?? 0} leads
                         </td></tr>
                       )}

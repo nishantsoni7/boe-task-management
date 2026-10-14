@@ -58,9 +58,9 @@ export function TaskCard({
 
   const escalationStyle =
     level === 'overdue' || level === 'danger'
-      ? { borderLeftColor: colors.red,   backgroundColor: 'rgba(217,79,79,0.03)' }
+      ? { borderLeftColor: colors.red,   backgroundColor: 'rgba(180,35,50,0.03)' }
       : level === 'caution'
-      ? { borderLeftColor: colors.amber, backgroundColor: 'rgba(232,160,48,0.02)' }
+      ? { borderLeftColor: colors.amber, backgroundColor: 'rgba(196,138,26,0.02)' }
       : {}
 
   const handleClick = onClick ?? (() => router.push(`/tasks/${task.id}`))
@@ -92,7 +92,7 @@ export function TaskCard({
       {/* Important flag */}
       {task.is_urgent && (
         <p style={{
-          fontSize: '10px', color: '#C49A28', fontWeight: 600,
+          fontSize: '12px', color: '#805B0D', fontWeight: 600,
           letterSpacing: '0.04em', marginBottom: '5px',
         }}>
           ⭐ Important
@@ -113,9 +113,9 @@ export function TaskCard({
 
         {task.status === 'blocked' && task.blocker_reason && (
           <span style={{
-            fontSize: '11px', color: colors.red,
-            background: 'rgba(217,79,79,0.06)',
-            padding: '2px 6px', borderRadius: '3px',
+            fontSize: '12px', color: colors.red,
+            background: 'rgba(180,35,50,0.06)',
+            padding: '2px 6px', borderRadius: '6px',
             fontFamily: font.mono,
           }}>
             ⛔ {task.blocker_reason}
@@ -124,9 +124,9 @@ export function TaskCard({
 
         {task.status === 'waiting' && task.waiting_on_type && (
           <span style={{
-            fontSize: '11px', color: colors.amber,
-            background: 'rgba(232,160,48,0.08)',
-            padding: '2px 6px', borderRadius: '3px',
+            fontSize: '12px', color: colors.amber,
+            background: 'rgba(196,138,26,0.08)',
+            padding: '2px 6px', borderRadius: '6px',
             fontFamily: font.mono,
           }}>
             ⏳ {task.waiting_on_type === 'external'
@@ -143,12 +143,12 @@ export function TaskCard({
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
           {task.due_date && (
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               fontFamily: font.mono,
               color:      overdue ? colors.red  : colors.muted,
-              background: overdue ? 'rgba(217,79,79,0.07)' : 'transparent',
+              background: overdue ? 'rgba(180,35,50,0.07)' : 'transparent',
               padding:    overdue ? '1px 5px'  : '0',
-              borderRadius: '3px',
+              borderRadius: '6px',
             }}>
               {overdue ? 'Overdue · ' : ''}
               {formatShortDate(task.due_date)}
@@ -177,12 +177,12 @@ export function TaskCard({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Avatar name={task.assignee_name} size={20} />
-            <span style={{ fontSize: '11px', color: colors.tertiary }}>
+            <span style={{ fontSize: '12px', color: colors.tertiary }}>
               {task.assignee_name}
             </span>
           </div>
           {task.last_update_at && (
-            <span style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono }}>
+            <span style={{ fontSize: '12px', color: colors.muted, fontFamily: font.mono }}>
               {timeAgo(task.last_update_at)}
             </span>
           )}
@@ -203,17 +203,17 @@ export function TaskCard({
 // ─── PriorityBadge ────────────────────────────────────────────────────────────
 function PriorityBadge({ priority }: { priority: string }) {
   const cfg: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    high:   { label: 'High',   color: '#B03030', bg: 'rgba(217,79,79,0.12)',  border: 'rgba(217,79,79,0.30)' },
-    medium: { label: 'Medium', color: '#A06010', bg: 'rgba(232,160,48,0.12)', border: 'rgba(232,160,48,0.30)' },
-    low:    { label: 'Low',    color: '#6B7384', bg: 'rgba(0,0,0,0.05)',       border: 'rgba(0,0,0,0.10)'     },
+    high:   { label: 'High',   color: '#B42332', bg: 'rgba(180,35,50,0.12)',  border: 'rgba(180,35,50,0.30)' },
+    medium: { label: 'Medium', color: '#805B0D', bg: 'rgba(196,138,26,0.12)', border: 'rgba(196,138,26,0.30)' },
+    low:    { label: 'Low',    color: '#595D5B', bg: '#E4DED7',       border: '#CFC8BF'     },
   }
   const { label, color, bg, border } = cfg[priority] ?? cfg.low
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em',
+      fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em',
       textTransform: 'uppercase', color, background: bg,
       border: `1px solid ${border}`,
-      padding: '1px 6px', borderRadius: '4px', flexShrink: 0,
+      padding: '1px 6px', borderRadius: '6px', flexShrink: 0,
     }}>
       {label}
     </span>
@@ -227,11 +227,11 @@ function AgingBadge({ task }: { task: Task }) {
   const color = aging.severity === 'danger' ? colors.red : colors.amber
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 700,
+      fontSize: '12px', fontWeight: 700,
       color,
       background: `${color}12`,
       border: `1px solid ${color}30`,
-      padding: '1px 6px', borderRadius: '4px',
+      padding: '1px 6px', borderRadius: '6px',
       flexShrink: 0,
       letterSpacing: '0.03em',
     }}>
@@ -244,7 +244,7 @@ function AgingBadge({ task }: { task: Task }) {
 function EscalationBanner({ color, text }: { color: string; text: string }) {
   return (
     <p style={{
-      fontSize: '10px', color, fontWeight: 700,
+      fontSize: '12px', color, fontWeight: 700,
       textTransform: 'uppercase', letterSpacing: '0.04em',
       marginBottom: '6px',
     }}>
@@ -291,9 +291,9 @@ export function TaskSection({
         <span style={{
           marginLeft: 'auto',
           fontFamily: font.mono,
-          fontSize: '10px',
+          fontSize: '12px',
           padding: '1px 6px',
-          borderRadius: '3px',
+          borderRadius: '6px',
           background: 'rgba(255,255,255,0.03)',
           border: `1px solid ${colors.border}`,
           color: colors.secondary,

@@ -882,7 +882,7 @@ function MemberDialog({
             They move to Deleted and can be restored for 30 days.
             <div className={cc.memberActions} style={{ marginTop: 10 }}>
               <button className="boe-btn boe-btn-ghost" onClick={() => setConfirm(null)} disabled={busy === 'delete'}>Cancel</button>
-              <button className="boe-btn boe-btn-ghost" style={{ color: '#B0364A' }} onClick={softDelete} disabled={busy === 'delete'}>
+              <button className="boe-btn boe-btn-ghost" style={{ color: '#A12438' }} onClick={softDelete} disabled={busy === 'delete'}>
                 {busy === 'delete' ? 'Deleting…' : 'Delete member'}
               </button>
             </div>
@@ -896,7 +896,7 @@ function MemberDialog({
             and password reset log. It cannot be undone.
             <div className={cc.memberActions} style={{ marginTop: 10 }}>
               <button className="boe-btn boe-btn-ghost" onClick={() => setConfirm(null)} disabled={busy === 'purge'}>Cancel</button>
-              <button className="boe-btn boe-btn-ghost" style={{ color: '#B0364A' }} onClick={purge} disabled={busy === 'purge'}>
+              <button className="boe-btn boe-btn-ghost" style={{ color: '#A12438' }} onClick={purge} disabled={busy === 'purge'}>
                 {busy === 'purge' ? 'Deleting…' : 'Permanently delete'}
               </button>
             </div>
@@ -910,7 +910,7 @@ function MemberDialog({
                 <button className="boe-btn boe-btn-ghost" onClick={restore} disabled={busy === 'restore'}>
                   {busy === 'restore' ? 'Restoring…' : 'Restore member'}
                 </button>
-                <button className="boe-btn boe-btn-ghost" style={{ color: '#B0364A' }} onClick={() => setConfirm('purge')}>
+                <button className="boe-btn boe-btn-ghost" style={{ color: '#A12438' }} onClick={() => setConfirm('purge')}>
                   Permanently delete
                 </button>
               </>
@@ -921,7 +921,7 @@ function MemberDialog({
                 Deactivate this account before it can be deleted.
               </span>
             ) : (
-              <button className="boe-btn boe-btn-ghost" style={{ color: '#B0364A' }} onClick={() => setConfirm('delete')}>
+              <button className="boe-btn boe-btn-ghost" style={{ color: '#A12438' }} onClick={() => setConfirm('delete')}>
                 Delete member
               </button>
             )}

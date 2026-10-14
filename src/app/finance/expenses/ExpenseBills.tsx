@@ -197,7 +197,7 @@ export function ExpenseBills({
                 <div style={{ fontSize: '12.5px', color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={bill.file_name}>
                   {bill.file_name}
                 </div>
-                <div style={{ fontSize: '11px', color: colors.muted }}>
+                <div style={{ fontSize: '12px', color: colors.muted }}>
                   {formatFileSize(bill.size_bytes)} · {personName(bill.uploaded_by)} · Uploaded
                 </div>
               </div>
@@ -208,7 +208,7 @@ export function ExpenseBills({
                   onClick={() => void act(bill, true)} aria-label={`Download ${bill.file_name}`}>Download</button>
                 {(mayRemove || (mayRemoveOwn && bill.uploaded_by === userId)) && !reimbursed && (
                   <button type="button" className="boe-btn boe-btn-ghost" disabled={busy}
-                    style={{ minHeight: '36px', padding: '4px 8px', fontSize: '12px', color: '#C13030' }}
+                    style={{ minHeight: '36px', padding: '4px 8px', fontSize: '12px', color: '#B42332' }}
                     onClick={() => void remove(bill)} aria-label={`Remove ${bill.file_name}`} title="Remove">
                     <X size={14} strokeWidth={2} />
                   </button>
@@ -221,7 +221,7 @@ export function ExpenseBills({
 
       <UploadStatusList uploads={uploads} />
 
-      {error && <div role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{error}</div>}
+      {error && <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>}
 
       {mayAttach && (
         <>
@@ -256,7 +256,7 @@ export function UploadStatusList({ uploads }: { uploads: readonly UploadStatus[]
   return (
     <ul aria-live="polite" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
       {uploads.map(u => (
-        <li key={u.key} style={{ fontSize: '11.5px', color: u.state === 'failed' ? '#C13030' : colors.tertiary }}>
+        <li key={u.key} style={{ fontSize: '12px', color: u.state === 'failed' ? '#B42332' : colors.tertiary }}>
           {u.state === 'uploading' ? `Uploading ${u.name}…` : u.state === 'done' ? `${u.name} uploaded` : (u.message ?? `${u.name} failed`)}
         </li>
       ))}
@@ -297,7 +297,7 @@ export function PendingBillPicker({
           ))}
         </ul>
       )}
-      {problems.map(p => <div key={p} role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{p}</div>)}
+      {problems.map(p => <div key={p} role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{p}</div>)}
       <input
         ref={inputRef}
         type="file"

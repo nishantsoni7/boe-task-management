@@ -103,12 +103,12 @@ export function PayrollCreditsPanel({
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Coins size={15} strokeWidth={1.9} color="#3B63B8" aria-hidden="true" />
-        <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: '#4F6FD0' }}>
+        <Coins size={15} strokeWidth={1.9} color="#335A86" aria-hidden="true" />
+        <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: '#335A86' }}>
           BOE Credits
         </span>
       </div>
-      <a href={guideHref} style={{ fontSize: 11.5, color: colors.muted, textDecoration: 'underline' }}>
+      <a href={guideHref} style={{ fontSize: 12, color: colors.muted, textDecoration: 'underline' }}>
         How credits work
       </a>
     </div>
@@ -117,7 +117,7 @@ export function PayrollCreditsPanel({
   const balanceLine = (
     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
       <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>
           Spendable
         </div>
         <div style={{ fontSize: 19, fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>
@@ -127,7 +127,7 @@ export function PayrollCreditsPanel({
       <div style={{ fontSize: 12, color: colors.tertiary }}>
         1 credit = {formatCreditValue(credits.credit_value)}
         {credits.provisional_credits > 0 && (
-          <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
             {formatCredits(credits.provisional_credits)} pending this month&rsquo;s review target
           </div>
         )}
@@ -140,7 +140,7 @@ export function PayrollCreditsPanel({
       aria-labelledby="payroll-credits-panel"
       style={{
         background: '#fff', borderRadius: 12, marginBottom: 16,
-        border: '1px solid rgba(79,111,208,0.28)', overflow: 'hidden',
+        border: '1px solid rgba(51,90,134,0.28)', overflow: 'hidden',
       }}
     >
       <h2 id="payroll-credits-panel" className="payroll-guide-sr-only">BOE Credits for this month</h2>
@@ -150,7 +150,7 @@ export function PayrollCreditsPanel({
         {error && (
           <div role="alert" style={{
             padding: '9px 12px', borderRadius: 8, fontSize: 12.5,
-            background: 'rgba(239,68,68,0.08)', color: '#B91C1C', border: '1px solid rgba(239,68,68,0.2)',
+            background: 'rgba(180,35,50,0.08)', color: '#B42332', border: '1px solid rgba(180,35,50,0.2)',
           }}>
             {error}
           </div>
@@ -158,7 +158,7 @@ export function PayrollCreditsPanel({
         {notice && !error && (
           <div role="status" style={{
             padding: '9px 12px', borderRadius: 8, fontSize: 12.5,
-            background: 'rgba(5,150,105,0.09)', color: '#047857', border: '1px solid rgba(5,150,105,0.3)',
+            background: 'rgba(39,98,71,0.09)', color: '#276247', border: '1px solid rgba(39,98,71,0.3)',
           }}>
             {notice}
           </div>
@@ -167,19 +167,19 @@ export function PayrollCreditsPanel({
         {/* ── What is applied ─────────────────────────────────────────────── */}
         {application && (
           <div style={{
-            padding: '10px 12px', borderRadius: 9,
-            background: 'rgba(79,111,208,0.06)', border: '1px solid rgba(79,111,208,0.18)',
+            padding: '10px 12px', borderRadius: 8,
+            background: 'rgba(51,90,134,0.06)', border: '1px solid rgba(51,90,134,0.18)',
             display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', flexWrap: 'wrap',
           }}>
             <div>
-              <div style={{ fontSize: 12.5, color: '#3D4455' }}>
+              <div style={{ fontSize: 12.5, color: '#4C5352' }}>
                 <strong style={{ color: colors.primary }}>{formatCredits(application.credits_used)}</strong> applied to this month
               </div>
-              <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
                 at {formatCreditValue(application.credit_value)} each — the rate when you applied them
               </div>
             </div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#276247', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
               +{formatRupees(application.amount)}
             </div>
           </div>
@@ -187,13 +187,13 @@ export function PayrollCreditsPanel({
 
         {/* ── Locked: say so, draw nothing that would fail ───────────────── */}
         {locked ? (
-          <div style={{ fontSize: 12.5, color: '#6B7280', lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>
             {application
               ? 'This month’s payroll is locked, so the credits applied to it are final.'
               : 'This month’s payroll is locked, so credits can no longer be added to it.'}
           </div>
         ) : !credits.can_apply ? (
-          <div style={{ fontSize: 12.5, color: '#6B7280', lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>
             Credits can be applied once payroll for this month has been generated.
           </div>
         ) : (
@@ -203,14 +203,14 @@ export function PayrollCreditsPanel({
             {/* ── The stepper, shown for a new application or a change ─── */}
             {(!application || editing) && (
               ceiling <= 0 ? (
-                <div style={{ fontSize: 12.5, color: '#6B7280', lineHeight: 1.55 }}>
+                <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>
                   You have no spendable credits right now. Verified reviews earn them.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 12.5, color: '#3D4455', minWidth: 96 }}>Credits to use</div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${colors.borderSoft}`, borderRadius: 9, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 12.5, color: '#4C5352', minWidth: 96 }}>Credits to use</div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${colors.borderSoft}`, borderRadius: 8, overflow: 'hidden' }}>
                       <button
                         type="button"
                         aria-label="One credit fewer"
@@ -255,8 +255,8 @@ export function PayrollCreditsPanel({
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12.5, color: '#3D4455' }}>Salary addition</span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 12.5, color: '#4C5352' }}>Salary addition</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#276247', fontVariantNumeric: 'tabular-nums' }}>
                       +{formatRupees(rupees(clamp(amount)))}
                     </span>
                   </div>
@@ -304,14 +304,14 @@ export function PayrollCreditsPanel({
                   onClick={() => void remove()}
                   disabled={busy}
                   className="boe-btn boe-btn-ghost"
-                  style={{ padding: '7px 14px', fontSize: 12.5, minHeight: 38, color: '#B91C1C' }}
+                  style={{ padding: '7px 14px', fontSize: 12.5, minHeight: 38, color: '#B42332' }}
                 >
                   {busy ? 'Working…' : 'Remove'}
                 </button>
               </div>
             )}
 
-            <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5 }}>
               The addition goes on top of your Salary Payable for this month — it does not need a deduction to work
               against. You can change or remove it until payroll is locked.
             </div>
@@ -327,8 +327,8 @@ const MIN_APPLIED_CREDITS = 0.01
 
 function stepBtn(disabled: boolean): React.CSSProperties {
   return {
-    width: 40, minHeight: 40, border: 'none', background: disabled ? '#F4F5F7' : '#fff',
-    color: disabled ? '#A9AFBD' : '#3B63B8', cursor: disabled ? 'not-allowed' : 'pointer',
+    width: 40, minHeight: 40, border: 'none', background: disabled ? '#F7F5F1' : '#fff',
+    color: disabled ? '#686D6C' : '#335A86', cursor: disabled ? 'not-allowed' : 'pointer',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   }
 }

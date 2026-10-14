@@ -31,10 +31,10 @@ import {
 /** Chronological, like every other BOE activity trail (Orders, Assets). */
 function eventTone(kind: IssueEvent['kind']): { dot: string; fg: string } {
   switch (kind) {
-    case 'approved':  return { dot: '#059669', fg: '#047857' }
-    case 'rejected':  return { dot: '#DC2626', fg: '#B91C1C' }
-    case 're_raised': return { dot: '#B45309', fg: '#B45309' }
-    case 'raised':    return { dot: '#4F6FD0', fg: '#3B63B8' }
+    case 'approved':  return { dot: '#276247', fg: '#276247' }
+    case 'rejected':  return { dot: '#B42332', fg: '#B42332' }
+    case 're_raised': return { dot: '#805B0D', fg: '#805B0D' }
+    case 'raised':    return { dot: '#335A86', fg: '#335A86' }
   }
 }
 
@@ -69,7 +69,7 @@ export function IssueHistoryModal({
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0,
       }}>
         <span style={{
-          padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+          padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
           background: tone.bg, color: tone.fg,
         }}>
           {employeeStatusLabel(latest.status)}
@@ -100,20 +100,20 @@ export function IssueHistoryModal({
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: t.fg }}>{e.title}</span>
-                  <span style={{ fontSize: 11.5, color: colors.muted }}>
+                  <span style={{ fontSize: 12, color: colors.muted }}>
                     {e.actor} · {stamp(e.at)}
                   </span>
                 </div>
                 {e.body && (
                   <div style={{
-                    fontSize: 12.5, color: '#3D4455', lineHeight: 1.55, marginTop: 3,
+                    fontSize: 12.5, color: '#4C5352', lineHeight: 1.55, marginTop: 3,
                     whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                   }}>
                     {e.body}
                   </div>
                 )}
                 {e.snapshot && (
-                  <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 3 }}>
+                  <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
                     As recorded: {e.snapshot}
                   </div>
                 )}
@@ -123,7 +123,7 @@ export function IssueHistoryModal({
         })}
       </ol>
 
-      <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5, flexShrink: 0 }}>
+      <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5, flexShrink: 0 }}>
         Reviewing an issue records the outcome. It never changes attendance or
         salary by itself — an applied correction shows on the record itself.
       </div>

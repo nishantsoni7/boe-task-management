@@ -42,10 +42,10 @@ import {
 } from '@/lib/finance/piPaymentView'
 
 const TONE_COLOR: Record<PiPaymentTone, { fg: string; bg: string; border: string }> = {
-  amber:   { fg: '#9A6212',    bg: colors.amberTint, border: 'rgba(232,160,48,0.28)' },
-  blue:    { fg: '#2F5BB7',    bg: colors.blueTint,  border: 'rgba(85,133,232,0.28)' },
-  red:     { fg: '#B23B3B',    bg: colors.redTint,   border: 'rgba(217,79,79,0.28)' },
-  green:   { fg: '#2F7A52',    bg: colors.greenTint, border: 'rgba(69,168,112,0.28)' },
+  amber:   { fg: '#805B0D',    bg: colors.amberTint, border: 'rgba(196,138,26,0.28)' },
+  blue:    { fg: '#335A86',    bg: colors.blueTint,  border: 'rgba(51,90,134,0.28)' },
+  red:     { fg: '#B42332',    bg: colors.redTint,   border: 'rgba(180,35,50,0.28)' },
+  green:   { fg: '#276247',    bg: colors.greenTint, border: 'rgba(39,98,71,0.28)' },
   neutral: { fg: colors.tertiary, bg: colors.raised, border: colors.border },
 }
 
@@ -54,8 +54,8 @@ function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap',
-      fontSize: '11px', fontWeight: 600,
+      padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600,
       color: t.fg, background: t.bg, border: `1px solid ${t.border}`,
     }}>
       {label}
@@ -85,8 +85,8 @@ export const PAYMENT_BAR_COLORS = {
  * different one; only the saturation differs.
  */
 export const PAYMENT_BAR_COLORS_SUBDUED = {
-  confirmed: 'rgba(69,168,112,0.72)',
-  awaiting: 'rgba(232,160,48,0.68)',
+  confirmed: 'rgba(39,98,71,0.72)',
+  awaiting: 'rgba(196,138,26,0.68)',
   unpaid: 'rgba(0,0,0,0.09)',
 } as const
 
@@ -205,14 +205,14 @@ export type PiPaymentStatusFigures = {
 // ── Add Payment ───────────────────────────────────────────────────────────────
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.secondary, marginBottom: '4px',
+  fontSize: '12px', fontWeight: 600, color: colors.secondary, marginBottom: '4px',
 }
 const INPUT: React.CSSProperties = {
   width: '100%', padding: '8px 10px', fontSize: '13px',
   border: `1px solid ${colors.borderSoft}`, borderRadius: '6px',
   background: colors.base, color: colors.primary, boxSizing: 'border-box',
 }
-const ERR: React.CSSProperties = { fontSize: '11px', color: colors.red, marginTop: '3px' }
+const ERR: React.CSSProperties = { fontSize: '12px', color: colors.red, marginTop: '3px' }
 
 export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   todayIso: string
@@ -305,14 +305,14 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
         {error && (
           <div style={{
             fontSize: '12px', color: colors.red, background: colors.redTint,
-            border: '1px solid rgba(217,79,79,0.2)', borderRadius: '6px', padding: '8px 10px',
+            border: '1px solid rgba(180,35,50,0.2)', borderRadius: '6px', padding: '8px 10px',
           }}>
             {error}
           </div>
         )}
 
         <div style={{
-          fontSize: '11px', color: colors.muted, background: colors.raised,
+          fontSize: '12px', color: colors.muted, background: colors.raised,
           border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 10px',
         }}>
           This records that a payment was received. Finance verifies it separately —
@@ -389,10 +389,10 @@ const SMALL_BUTTON: React.CSSProperties = {
 function Figure({ label, value, tone }: { label: string; value: string; tone?: 'amber' | 'green' }) {
   return (
     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '11px', color: colors.muted }}>{label}</span>
+      <span style={{ fontSize: '12px', color: colors.muted }}>{label}</span>
       <span style={{
         fontSize: '16px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-        color: tone === 'amber' ? '#9A6212' : tone === 'green' ? '#2F7A52' : colors.primary,
+        color: tone === 'amber' ? '#805B0D' : tone === 'green' ? '#276247' : colors.primary,
         overflowWrap: 'anywhere',
       }}>
         {value}
@@ -421,7 +421,7 @@ function FilteredTotal({ tone, label, amount, count, share, total }: {
       background: t.bg, border: `1px solid ${t.border}`,
     }}>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <span style={{ fontSize: '11.5px', fontWeight: 600, color: t.fg }}>{label}</span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: t.fg }}>{label}</span>
         <span style={{
           fontSize: '20px', fontWeight: 700, color: colors.primary,
           fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
@@ -477,7 +477,7 @@ export function PiPaymentRow({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.tertiary }}>
+      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '12px', color: colors.tertiary }}>
         {row.reference && <span>Ref {row.reference}</span>}
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{row.requestNumber}</span>
         {row.recordedBy && <span>Recorded by {row.recordedBy}</span>}
@@ -489,7 +489,7 @@ export function PiPaymentRow({
             onClick={() => onOpenProof(row.paymentId)}
             style={{
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: '11.5px', color: colors.blue, textDecoration: 'underline',
+              fontSize: '12px', color: colors.brandInk, textDecoration: 'underline',
             }}
           >
             Proof
@@ -506,9 +506,9 @@ export function PiPaymentRow({
       {row.note && (
         <div style={{
           fontSize: '12px', lineHeight: 1.45, borderRadius: '6px', padding: '6px 10px',
-          color: row.note.rejected ? '#B23B3B' : colors.secondary,
+          color: row.note.rejected ? '#B42332' : colors.secondary,
           background: row.note.rejected ? colors.redTint : colors.raised,
-          border: `1px solid ${row.note.rejected ? 'rgba(217,79,79,0.2)' : colors.border}`,
+          border: `1px solid ${row.note.rejected ? 'rgba(180,35,50,0.2)' : colors.border}`,
         }}>
           {row.note.heading}: {row.note.text}
         </div>
@@ -526,7 +526,7 @@ export function PiPaymentRow({
             type="button"
             onClick={() => onArm('approve')}
             disabled={busy}
-            style={{ ...SMALL_BUTTON, border: 'none', background: '#2F7A52', color: '#fff' }}
+            style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
           >
             {APPROVE_PAYMENT_LABEL}
           </button>
@@ -534,7 +534,7 @@ export function PiPaymentRow({
             type="button"
             onClick={() => onArm('reject')}
             disabled={busy}
-            style={{ ...SMALL_BUTTON, border: '1px solid rgba(217,79,79,0.35)', background: colors.base, color: colors.red }}
+            style={{ ...SMALL_BUTTON, border: '1px solid rgba(180,35,50,0.35)', background: colors.base, color: colors.red }}
           >
             {REJECT_PAYMENT_LABEL}
           </button>
@@ -547,7 +547,7 @@ export function PiPaymentRow({
           background: colors.raised, border: `1px solid ${colors.border}`,
           display: 'flex', flexDirection: 'column', gap: '8px',
         }}>
-          <label htmlFor={noteId} style={{ fontSize: '11.5px', fontWeight: 600, color: colors.secondary }}>
+          <label htmlFor={noteId} style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
             {armed === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'}
           </label>
           <textarea
@@ -563,7 +563,7 @@ export function PiPaymentRow({
             }}
           />
           {error && (
-            <div role="alert" style={{ fontSize: '12px', color: '#B23B3B' }}>{error}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>
           )}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button
@@ -580,7 +580,7 @@ export function PiPaymentRow({
               disabled={busy || reasonMissing}
               style={{
                 ...SMALL_BUTTON, border: 'none', color: '#fff',
-                background: armed === 'reject' ? colors.red : '#2F7A52',
+                background: armed === 'reject' ? colors.red : '#276247',
                 opacity: busy || reasonMissing ? 0.6 : 1,
               }}
             >
@@ -711,7 +711,7 @@ export function PiPaymentDetailsModal({
                   disabled={filterLocked && !selected}
                   onClick={() => showFilter(key)}
                   style={selected
-                    ? { background: colors.primary, borderColor: colors.primary, color: '#FFFFFF' }
+                    ? { background: colors.brand, borderColor: colors.primary, color: '#FFFFFF' }
                     : undefined}
                 >
                   {PAYMENT_FILTER_TAB[key]}
@@ -740,7 +740,7 @@ export function PiPaymentDetailsModal({
               thresholdPercent={status.thresholdPercent}
               label={`Received: ${status.receivedPercent} of the Total before GST, ${status.percent} confirmed`}
             />
-            <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
               {status.receivedPercent} received of {status.total} · {status.percent} confirmed
             </div>
           </div>
@@ -764,8 +764,8 @@ export function PiPaymentDetailsModal({
 
         {notice && (
           <div role="status" style={{
-            fontSize: '12px', color: '#2F7A52', background: colors.greenTint,
-            border: '1px solid rgba(69,168,112,0.25)', borderRadius: '6px', padding: '8px 10px',
+            fontSize: '12px', color: '#276247', background: colors.greenTint,
+            border: '1px solid rgba(39,98,71,0.25)', borderRadius: '6px', padding: '8px 10px',
           }}>
             {notice}
           </div>
@@ -804,7 +804,7 @@ export function PiPaymentDetailsModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
             {terms.map(t => (
               <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
+                <div style={{ fontSize: '12px', color: colors.muted }}>{t.label}</div>
                 <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.45 }}>{t.value}</div>
               </div>
             ))}

@@ -622,7 +622,7 @@ export default function InquiryDetailPage() {
         onClick={() => router.push('/showroom-admin')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '6px',
-          fontSize: '13px', color: '#6B7384',
+          fontSize: '13px', color: '#686D6C',
           background: 'none', border: 'none', cursor: 'pointer',
           padding: '0 0 22px', fontFamily: font.body, fontWeight: 500,
         }}
@@ -643,15 +643,15 @@ export default function InquiryDetailPage() {
           {/* Products container */}
           <div style={{
             background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '16px',
+            border: '1px solid #E4DED7',
+            borderRadius: '12px',
             padding: '16px',
             boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           }}>
             {/* Header */}
             <div style={{
-              fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: '#8C94A6',
+              fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
+              textTransform: 'uppercase', color: '#686D6C',
               marginBottom: '16px',
             }}>
               Products · {items.length}
@@ -690,8 +690,8 @@ export default function InquiryDetailPage() {
                       style={{
                         position: 'relative',
                         background: '#ffffff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '14px',
+                        border: '1px solid #E4DED7',
+                        borderRadius: '12px',
                         padding: '12px 16px 12px 52px',
                         overflow: 'hidden',
                         opacity: isRemoving ? 0.4 : 1,
@@ -704,8 +704,8 @@ export default function InquiryDetailPage() {
                         position: 'absolute', top: '16px', left: '11px',
                         width: '30px', height: '30px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: '#F3F4F6', borderRadius: '7px',
-                        fontSize: '10px', fontWeight: 700, color: '#6B7384',
+                        background: '#F1EEE9', borderRadius: '8px',
+                        fontSize: '12px', fontWeight: 700, color: '#686D6C',
                         fontFamily: font.body, flexShrink: 0,
                       }}>
                         #{idx + 1}
@@ -717,10 +717,10 @@ export default function InquiryDetailPage() {
                         display: 'flex', alignItems: 'center', gap: '7px',
                       }}>
                         <span style={{
-                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          fontFamily: 'var(--font-body)',
                           fontFeatureSettings: '"tnum" 1',
-                          fontSize: '10px', fontWeight: 700,
-                          color: '#4A5568', background: '#ECEEF2',
+                          fontSize: '12px', fontWeight: 700,
+                          color: '#4C5352', background: '#F1EEE9',
                           borderRadius: '6px', padding: '2px 8px',
                           letterSpacing: '0.05em',
                         }}>
@@ -732,12 +732,12 @@ export default function InquiryDetailPage() {
                           title="Remove item"
                           style={{
                             background: 'none', border: 'none',
-                            color: '#C8D0DC', cursor: isRemoving ? 'default' : 'pointer',
+                            color: '#686D6C', cursor: isRemoving ? 'default' : 'pointer',
                             display: 'flex', alignItems: 'center', padding: '2px',
-                            borderRadius: '4px',
+                            borderRadius: '6px',
                           }}
-                          onMouseEnter={e => { e.currentTarget.style.color = '#EF4444' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = '#C8D0DC' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#B42332' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = '#686D6C' }}
                         >
                           <Trash2 size={13} strokeWidth={1.8} />
                         </button>
@@ -756,7 +756,7 @@ export default function InquiryDetailPage() {
                           width: 160, height: 160,
                           borderRadius: '12px',
                           overflow: 'hidden',
-                          background: '#F4F5F7',
+                          background: '#F7F5F1',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           flexShrink: 0,
                           alignSelf: 'flex-start',
@@ -772,7 +772,7 @@ export default function InquiryDetailPage() {
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                           ) : (
-                            <Package size={32} color="#C0C8D8" strokeWidth={1.2} />
+                            <Package size={32} color="#686D6C" strokeWidth={1.2} />
                           )}
                         </div>
 
@@ -789,15 +789,15 @@ export default function InquiryDetailPage() {
                           <div>
                             <div style={{
                               fontSize: '19px', fontWeight: 700,
-                              color: '#0F1117', lineHeight: 1.2,
-                              fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                              color: '#303536', lineHeight: 1.2,
+                              fontFamily: 'var(--font-body)',
                               letterSpacing: '-0.02em',
                               paddingRight: '150px',
                             }}>
                               {prod?.name ?? 'Unknown product'}
                             </div>
                             <div style={{
-                              fontSize: '14px', color: '#6B7384', fontWeight: 400,
+                              fontSize: '14px', color: '#686D6C', fontWeight: 400,
                               marginTop: '3px',
                             }}>
                               {prod?.category}
@@ -815,21 +815,21 @@ export default function InquiryDetailPage() {
                               {dimStr ? (
                                 <div style={{
                                   display: 'flex', alignItems: 'flex-start', gap: '6px',
-                                  background: '#F8F9FB',
-                                  border: '1px solid #E8EAED',
-                                  borderRadius: '7px', padding: '6px 9px',
+                                  background: '#FBFAF8',
+                                  border: '1px solid #ECE7E0',
+                                  borderRadius: '8px', padding: '6px 9px',
                                 }}>
-                                  <Box size={10} color="#94A3B8" strokeWidth={1.8} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                  <Box size={10} color="#686D6C" strokeWidth={1.8} style={{ flexShrink: 0, marginTop: '2px' }} />
                                   <div style={{ minWidth: 0 }}>
                                     <div style={{
-                                      fontSize: '8px', fontWeight: 700, color: '#94A3B8',
+                                      fontSize: '8px', fontWeight: 700, color: '#686D6C',
                                       textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
                                     }}>
                                       Dimensions
                                     </div>
                                     <div style={{
-                                      fontSize: '11px', fontWeight: 600, color: '#475569',
-                                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                      fontSize: '12px', fontWeight: 600, color: '#4C5352',
+                                      fontFamily: 'var(--font-body)',
                                       fontFeatureSettings: '"tnum" 1',
                                       whiteSpace: 'nowrap',
                                     }}>
@@ -840,14 +840,14 @@ export default function InquiryDetailPage() {
                               ) : (
                                 <div style={{ padding: '6px 0' }}>
                                   <div style={{
-                                    fontSize: '8px', fontWeight: 700, color: '#94A3B8',
+                                    fontSize: '8px', fontWeight: 700, color: '#686D6C',
                                     textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
                                   }}>
                                     Dimensions
                                   </div>
                                   <div style={{
-                                    fontSize: '11px', fontWeight: 400, color: '#C0C8D8',
-                                    fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                    fontSize: '12px', fontWeight: 400, color: '#686D6C',
+                                    fontFamily: 'var(--font-body)',
                                   }}>
                                     Not added
                                   </div>
@@ -855,31 +855,31 @@ export default function InquiryDetailPage() {
                               )}
                             </div>
 
-                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#ECE7E0', flexShrink: 0 }} />
 
                             {/* MRP / PC */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 MRP / PC
                               </div>
                               <div style={{
-                                fontSize: '17px', fontWeight: 700, color: '#1A2035',
-                                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                fontSize: '17px', fontWeight: 700, color: '#303536',
+                                fontFamily: 'var(--font-body)',
                                 fontFeatureSettings: '"tnum" 1', letterSpacing: '-0.01em',
                               }}>
                                 ₹{Number(item.mrp_at_time).toLocaleString('en-IN')}
                               </div>
                             </div>
 
-                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#ECE7E0', flexShrink: 0 }} />
 
                             {/* QTY */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 QTY
@@ -894,28 +894,28 @@ export default function InquiryDetailPage() {
                                   width: '76px', height: '36px',
                                   padding: '0 6px',
                                   fontSize: '15px', fontWeight: 700, textAlign: 'center',
-                                  border: '1.5px solid #E8EAED', borderRadius: '7px',
-                                  background: '#fff', color: '#0F1117',
-                                  fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                  border: '1.5px solid #ECE7E0', borderRadius: '8px',
+                                  background: '#fff', color: '#303536',
+                                  fontFamily: 'var(--font-body)',
                                   fontFeatureSettings: '"tnum" 1',
                                   outline: 'none', boxSizing: 'border-box',
                                 }}
                               />
                             </div>
 
-                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#ECE7E0', flexShrink: 0 }} />
 
                             {/* Line Total */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 Line Total
                               </div>
                               <div style={{
-                                fontSize: '18px', fontWeight: 800, color: '#0F1117',
-                                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                fontSize: '18px', fontWeight: 800, color: '#303536',
+                                fontFamily: 'var(--font-body)',
                                 letterSpacing: '-0.03em', fontFeatureSettings: '"tnum" 1',
                                 lineHeight: 1,
                               }}>
@@ -926,9 +926,9 @@ export default function InquiryDetailPage() {
 
                           {/* Customization note */}
                           <div style={{
-                            borderRadius: '7px',
-                            border: `1px solid ${hasCustomNote ? '#facc15' : '#e5e7eb'}`,
-                            background: hasCustomNote ? '#fffbeb' : '#F9FAFB',
+                            borderRadius: '8px',
+                            border: `1px solid ${hasCustomNote ? '#facc15' : '#E4DED7'}`,
+                            background: hasCustomNote ? '#FAF0DA' : '#FBFAF8',
                             padding: '8px 12px',
                             width: '100%',
                             maxWidth: '600px',
@@ -936,7 +936,7 @@ export default function InquiryDetailPage() {
                             minHeight: '58px', maxHeight: '64px',
                           }}>
                             <div style={{
-                              fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                              fontSize: '12px', fontWeight: 700, color: '#686D6C',
                               textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px',
                             }}>
                               Customization Note
@@ -953,7 +953,7 @@ export default function InquiryDetailPage() {
                                 width: '100%', padding: '0',
                                 fontSize: '14px', fontFamily: font.body,
                                 border: 'none', background: 'transparent',
-                                color: '#0F1117', outline: 'none', boxSizing: 'border-box',
+                                color: '#303536', outline: 'none', boxSizing: 'border-box',
                               }}
                             />
                           </div>
@@ -967,7 +967,7 @@ export default function InquiryDetailPage() {
 
             {/* Search + Add Product row */}
             <div style={{
-              borderTop: items.length > 0 ? '1px solid #f0f1f3' : 'none',
+              borderTop: items.length > 0 ? '1px solid #F1EEE9' : 'none',
               paddingTop: '14px',
               position: 'relative',
               display: 'flex', gap: '12px', alignItems: 'center',
@@ -975,12 +975,12 @@ export default function InquiryDetailPage() {
               <div style={{
                 flex: 1,
                 display: 'flex', alignItems: 'center', gap: '10px',
-                border: `1px solid ${searchOpen ? '#1A2035' : '#E8EAED'}`,
-                borderRadius: '10px', padding: '0 14px', background: '#fff',
+                border: `1px solid ${searchOpen ? '#303536' : '#ECE7E0'}`,
+                borderRadius: '8px', padding: '0 14px', background: '#fff',
                 height: '44px',
                 transition: 'border-color 0.14s',
               }}>
-                <Search size={14} color="#8C94A6" strokeWidth={1.8} />
+                <Search size={14} color="#686D6C" strokeWidth={1.8} />
                 <input
                   value={search}
                   onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
@@ -988,7 +988,7 @@ export default function InquiryDetailPage() {
                   placeholder="Search product by name or code to add…"
                   style={{
                     flex: 1, border: 'none', outline: 'none',
-                    fontSize: '13px', color: '#0F1117', background: 'transparent',
+                    fontSize: '13px', color: '#303536', background: 'transparent',
                     fontFamily: font.body,
                   }}
                 />
@@ -999,8 +999,8 @@ export default function InquiryDetailPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
                   height: '44px', padding: '0 18px',
-                  background: '#fff', color: '#1A2035',
-                  border: '1.5px solid #E8EAED', borderRadius: '10px',
+                  background: '#fff', color: '#303536',
+                  border: '1.5px solid #ECE7E0', borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: 'pointer', whiteSpace: 'nowrap',
                   fontFamily: font.body, flexShrink: 0,
@@ -1014,7 +1014,7 @@ export default function InquiryDetailPage() {
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 160,
                   background: '#fff',
-                  border: '1px solid #E8EAED',
+                  border: '1px solid #ECE7E0',
                   borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
                   zIndex: 10, overflow: 'hidden',
                 }}>
@@ -1027,35 +1027,35 @@ export default function InquiryDetailPage() {
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         width: '100%', padding: '10px 16px',
                         background: 'none', border: 'none',
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: '1px solid #F1EEE9',
                         cursor: addingId === prod.id ? 'default' : 'pointer',
                         fontFamily: font.body, textAlign: 'left',
                         opacity: addingId === prod.id ? 0.5 : 1,
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#F8F9FB' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
                     >
                       <div>
                         <span style={{
-                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          fontFamily: 'var(--font-body)',
                           fontFeatureSettings: '"tnum" 1',
-                          fontSize: '10px', fontWeight: 700,
-                          color: '#4A5261', background: 'rgba(0,0,0,0.06)',
-                          borderRadius: '4px', padding: '1px 6px', marginRight: '8px',
+                          fontSize: '12px', fontWeight: 700,
+                          color: '#4C5352', background: 'rgba(0,0,0,0.06)',
+                          borderRadius: '6px', padding: '1px 6px', marginRight: '8px',
                         }}>
                           {prod.product_code}
                         </span>
-                        <span style={{ fontSize: '13px', color: '#0F1117', fontWeight: 500 }}>{prod.name}</span>
-                        <span style={{ fontSize: '11px', color: '#8C94A6', marginLeft: '6px' }}>{prod.category}</span>
+                        <span style={{ fontSize: '13px', color: '#303536', fontWeight: 500 }}>{prod.name}</span>
+                        <span style={{ fontSize: '12px', color: '#686D6C', marginLeft: '6px' }}>{prod.category}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         <span style={{
-                          fontSize: '12.5px', fontWeight: 700, color: '#0F1117',
-                          fontFamily: 'var(--font-inter, Inter, sans-serif)', fontFeatureSettings: '"tnum" 1',
+                          fontSize: '12.5px', fontWeight: 700, color: '#303536',
+                          fontFamily: 'var(--font-body)', fontFeatureSettings: '"tnum" 1',
                         }}>
                           ₹{Number(prod.mrp).toLocaleString('en-IN')}
                         </span>
-                        <Plus size={13} color="#1A2035" strokeWidth={2.2} />
+                        <Plus size={13} color="#303536" strokeWidth={2.2} />
                       </div>
                     </button>
                   ))}
@@ -1066,14 +1066,14 @@ export default function InquiryDetailPage() {
             {/* ── Quotation Summary ─────────────────────────────────────── */}
             {items.length > 0 && (
               <div style={{
-                borderTop: '1px solid #E5E7EB',
+                borderTop: '1px solid #E4DED7',
                 marginTop: '14px',
                 paddingTop: '24px',
               }}>
                 {/* Section label */}
                 <div style={{
-                  fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: '#8C94A6',
+                  fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: '#686D6C',
                   marginBottom: '20px',
                 }}>
                   Quotation Summary
@@ -1084,17 +1084,17 @@ export default function InquiryDetailPage() {
 
                   {/* Subtotal */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Subtotal</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', fontFamily: font.body }}>Subtotal</span>
                     <span style={{
-                      fontSize: '15px', fontWeight: 600, color: '#1A2035',
-                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                      fontSize: '15px', fontWeight: 600, color: '#303536',
+                      fontFamily: 'var(--font-body)',
                       fontFeatureSettings: '"tnum" 1',
                     }}>₹{Math.round(subtotal).toLocaleString('en-IN')}</span>
                   </div>
 
                   {/* Discount % */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Discount</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', fontFamily: font.body }}>Discount</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <input
                         type="number" min={0} max={100} step={0.5}
@@ -1104,40 +1104,40 @@ export default function InquiryDetailPage() {
                         style={{
                           width: '64px', height: '32px', padding: '0 8px',
                           fontSize: '15px', fontWeight: 600, textAlign: 'right',
-                          border: '1.5px solid #E8EAED', borderRadius: '7px',
-                          background: '#fff', color: '#1A2035',
-                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          border: '1.5px solid #ECE7E0', borderRadius: '8px',
+                          background: '#fff', color: '#303536',
+                          fontFamily: 'var(--font-body)',
                           fontFeatureSettings: '"tnum" 1',
                           outline: 'none', boxSizing: 'border-box',
                         }}
                       />
                       <span style={{
-                        fontSize: '15px', fontWeight: 600, color: '#1A2035',
-                        fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                        fontSize: '15px', fontWeight: 600, color: '#303536',
+                        fontFamily: 'var(--font-body)',
                       }}>%</span>
                     </div>
                   </div>
 
                   {/* Discount Amount */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Discount Amount</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', fontFamily: font.body }}>Discount Amount</span>
                     <span style={{
-                      fontSize: '15px', fontWeight: 600, color: '#DC2626',
-                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                      fontSize: '15px', fontWeight: 600, color: '#B42332',
+                      fontFamily: 'var(--font-body)',
                       fontFeatureSettings: '"tnum" 1',
                     }}>−₹{Math.round(discountAmount).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
 
                 {/* Divider before final value */}
-                <div style={{ height: '1px', background: '#E5E7EB', margin: '20px 0 28px' }} />
+                <div style={{ height: '1px', background: '#E4DED7', margin: '20px 0 28px' }} />
 
                 {/* Final Quotation Value */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Final Quotation Value</span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', fontFamily: font.body }}>Final Quotation Value</span>
                   <span style={{
-                    fontSize: '32px', fontWeight: 800, color: '#0F1117',
-                    fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                    fontSize: '32px', fontWeight: 800, color: '#303536',
+                    fontFamily: 'var(--font-body)',
                     letterSpacing: '-0.03em', fontFeatureSettings: '"tnum" 1',
                     lineHeight: 1,
                   }}>₹{Math.round(finalTotal).toLocaleString('en-IN')}</span>
@@ -1162,8 +1162,8 @@ export default function InquiryDetailPage() {
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                     padding: '12px 18px',
-                    background: savingQuotation ? '#3D4760' : '#1A2035', color: '#ffffff',
-                    border: 'none', borderRadius: '10px',
+                    background: savingQuotation ? '#4C5352' : '#B9472E', color: '#ffffff',
+                    border: 'none', borderRadius: '8px',
                     fontSize: '13.5px', fontWeight: 600,
                     cursor: savingQuotation ? 'default' : 'pointer',
                     opacity: savingQuotation ? 0.7 : 1,
@@ -1189,25 +1189,25 @@ export default function InquiryDetailPage() {
             {/* Quotation number — prominent */}
             <div style={{ marginBottom: '18px' }}>
               <div style={{
-                fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
+                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                 textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '5px',
               }}>
                 Quotation No.
               </div>
               <div style={{
-                fontSize: '22px', fontWeight: 800, color: '#1A2035',
-                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                fontSize: '22px', fontWeight: 800, color: '#303536',
+                fontFamily: 'var(--font-body)',
                 letterSpacing: '-0.02em', fontFeatureSettings: '"tnum" 1', lineHeight: 1.1,
               }}>
                 {inquiry.quotation_no || 'Not generated yet'}
               </div>
             </div>
 
-            <div style={{ height: '1px', background: '#F0F1F3', marginBottom: '18px' }} />
+            <div style={{ height: '1px', background: '#F1EEE9', marginBottom: '18px' }} />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <IconDetailRow
-                icon={<User size={13} color="#94A3B8" strokeWidth={1.8} />}
+                icon={<User size={13} color="#686D6C" strokeWidth={1.8} />}
                 label="Customer"
                 value={inquiry.customer_name}
               />
@@ -1216,17 +1216,17 @@ export default function InquiryDetailPage() {
                   thing an admin looking at someone else's inquiry needs. The
                   value is the inquiry's own salesperson — never the viewer. */}
               <IconDetailRow
-                icon={<UserCheck size={13} color="#94A3B8" strokeWidth={1.8} />}
+                icon={<UserCheck size={13} color="#686D6C" strokeWidth={1.8} />}
                 label={SALES_CANDIDATE_LABEL}
                 value={salesCandidateLabel(inquiry.salesperson_name)}
               />
               <IconDetailRow
-                icon={<Phone size={13} color="#94A3B8" strokeWidth={1.8} />}
+                icon={<Phone size={13} color="#686D6C" strokeWidth={1.8} />}
                 label="Mobile"
                 value={inquiry.customer_mobile}
               />
               <IconDetailRow
-                icon={<CalendarDays size={13} color="#94A3B8" strokeWidth={1.8} />}
+                icon={<CalendarDays size={13} color="#686D6C" strokeWidth={1.8} />}
                 label="Created"
                 value={
                   new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
@@ -1253,9 +1253,9 @@ export default function InquiryDetailPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
                   background: '#fff',
-                  color: (previewLoading || pdfLoading || items.length === 0) ? '#9CA3AF' : '#1A2035',
-                  border: `1px solid ${(previewLoading || pdfLoading || items.length === 0) ? '#E8EAED' : '#D1D5DB'}`,
-                  borderRadius: '10px',
+                  color: (previewLoading || pdfLoading || items.length === 0) ? '#686D6C' : '#303536',
+                  border: `1px solid ${(previewLoading || pdfLoading || items.length === 0) ? '#ECE7E0' : '#CFC8BF'}`,
+                  borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: (previewLoading || pdfLoading || items.length === 0) ? 'default' : 'pointer',
                   fontFamily: font.body, width: '100%', minHeight: '44px',
@@ -1273,10 +1273,10 @@ export default function InquiryDetailPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
                   // The committing action, so it is the filled one.
-                  background: (pdfLoading || previewLoading || items.length === 0) ? '#F3F4F6' : '#1A2035',
-                  color: (pdfLoading || previewLoading || items.length === 0) ? '#9CA3AF' : '#fff',
+                  background: (pdfLoading || previewLoading || items.length === 0) ? '#F1EEE9' : '#303536',
+                  color: (pdfLoading || previewLoading || items.length === 0) ? '#686D6C' : '#fff',
                   border: '1px solid transparent',
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: (pdfLoading || previewLoading || items.length === 0) ? 'default' : 'pointer',
                   fontFamily: font.body, width: '100%', minHeight: '44px',
@@ -1288,7 +1288,7 @@ export default function InquiryDetailPage() {
 
               {items.length > 0 && (
                 <p style={{
-                  margin: '0 0 2px', fontSize: '11.5px', color: '#8C94A6', lineHeight: 1.5,
+                  margin: '0 0 2px', fontSize: '12px', color: '#686D6C', lineHeight: 1.5,
                 }}>
                   Preview does not change the status. Generating marks the quotation sent.
                 </p>
@@ -1299,15 +1299,15 @@ export default function InquiryDetailPage() {
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
-                  background: '#fff', color: '#15803D',
-                  border: '1px solid #D1D5DB',
-                  borderRadius: '10px',
+                  background: '#fff', color: '#276247',
+                  border: '1px solid #CFC8BF',
+                  borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: 'pointer', fontFamily: font.body,
                   width: '100%', minHeight: '44px',
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#15803D" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#276247" aria-hidden="true">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
                   <path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.523 5.837L.057 23.492a.75.75 0 0 0 .921.921l5.655-1.466A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.686-.528-5.207-1.44l-.374-.22-3.877 1.005 1.006-3.877-.22-.374A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
                 </svg>
@@ -1320,10 +1320,10 @@ export default function InquiryDetailPage() {
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
-                  background: copied ? '#F0FDF4' : '#fff',
-                  color: copied ? '#065F46' : '#4A5261',
-                  border: `1px solid ${copied ? '#A7F3D0' : '#D1D5DB'}`,
-                  borderRadius: '10px',
+                  background: copied ? '#E8F2EC' : '#fff',
+                  color: copied ? '#276247' : '#4C5352',
+                  border: `1px solid ${copied ? '#A7F3D0' : '#CFC8BF'}`,
+                  borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: 'pointer', fontFamily: font.body,
                   width: '100%', minHeight: '44px',
@@ -1383,8 +1383,8 @@ export default function InquiryDetailPage() {
 
 const sideCardStyle: React.CSSProperties = {
   background: '#ffffff',
-  border: '1px solid #E8EAED',
-  borderRadius: '16px',
+  border: '1px solid #ECE7E0',
+  borderRadius: '12px',
   padding: '20px 22px 22px',
   boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
 }
@@ -1392,8 +1392,8 @@ const sideCardStyle: React.CSSProperties = {
 function SideLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em',
-      textTransform: 'uppercase', color: '#8C94A6', marginBottom: '16px',
+      fontSize: '12px', fontWeight: 800, letterSpacing: '0.1em',
+      textTransform: 'uppercase', color: '#686D6C', marginBottom: '16px',
     }}>
       {children}
     </div>
@@ -1406,12 +1406,12 @@ function IconDetailRow({ icon, label, value }: { icon: React.ReactNode; label: s
       <div style={{ marginTop: '1px', flexShrink: 0 }}>{icon}</div>
       <div>
         <div style={{
-          fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
+          fontSize: '12px', fontWeight: 700, color: '#686D6C',
           textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '2px',
         }}>
           {label}
         </div>
-        <div style={{ fontSize: '13px', fontWeight: 500, color: '#0F1117', lineHeight: 1.3 }}>{value}</div>
+        <div style={{ fontSize: '13px', fontWeight: 500, color: '#303536', lineHeight: 1.3 }}>{value}</div>
       </div>
     </div>
   )
@@ -1441,9 +1441,9 @@ function TimelineRow({
 }) {
   const filled = done || !!timestamp
   const dotColor =
-    variant === 'converted' ? '#059669' :
-    variant === 'lost'      ? '#DC2626' :
-    filled                  ? '#1A2035' : '#D1D5DB'
+    variant === 'converted' ? '#276247' :
+    variant === 'lost'      ? '#B42332' :
+    filled                  ? '#303536' : '#CFC8BF'
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: last ? 0 : '14px' }}>
@@ -1455,22 +1455,22 @@ function TimelineRow({
           transition: 'background 0.2s',
         }} />
         {!last && (
-          <div style={{ width: '1px', flex: 1, minHeight: '22px', background: '#E8EAED', marginTop: '3px' }} />
+          <div style={{ width: '1px', flex: 1, minHeight: '22px', background: '#ECE7E0', marginTop: '3px' }} />
         )}
       </div>
       {/* Text */}
       <div style={{ paddingBottom: last ? 0 : '0' }}>
         <div style={{
           fontSize: '12px', fontWeight: 600,
-          color: variant === 'converted' ? '#059669' : variant === 'lost' ? '#DC2626' : '#1A2035',
+          color: variant === 'converted' ? '#276247' : variant === 'lost' ? '#B42332' : '#303536',
           lineHeight: 1.2,
         }}>
           {label}
         </div>
         <div style={{
-          fontSize: '11px', marginTop: '2px',
-          color: filled ? '#6B7384' : '#C0C8D8',
-          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+          fontSize: '12px', marginTop: '2px',
+          color: filled ? '#686D6C' : '#686D6C',
+          fontFamily: 'var(--font-body)',
         }}>
           {timestamp ? fmtTimestamp(timestamp) : 'Not yet'}
         </div>

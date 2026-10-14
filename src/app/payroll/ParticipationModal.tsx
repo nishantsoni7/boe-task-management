@@ -121,12 +121,12 @@ function ConfirmPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{
-        padding: '14px 16px', borderRadius: 9,
-        background: next ? 'rgba(69,168,112,0.08)' : 'rgba(232,160,48,0.10)',
-        border: `1px solid ${next ? 'rgba(69,168,112,0.28)' : 'rgba(232,160,48,0.35)'}`,
+        padding: '14px 16px', borderRadius: 8,
+        background: next ? 'rgba(39,98,71,0.08)' : 'rgba(196,138,26,0.10)',
+        border: `1px solid ${next ? 'rgba(39,98,71,0.28)' : 'rgba(196,138,26,0.35)'}`,
       }}>
         <div style={{ fontSize: 13.5, fontWeight: 600, color: colors.primary }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.55, marginTop: 6 }}>{body}</div>
+        <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55, marginTop: 6 }}>{body}</div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -161,7 +161,7 @@ function MemberGroup({
   return (
     <div>
       <div style={{
-        fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+        fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.09em', color: colors.muted, marginBottom: 7,
       }}>
         {title}
@@ -169,13 +169,13 @@ function MemberGroup({
 
       {members.length === 0 ? (
         <div style={{
-          padding: '12px 14px', borderRadius: 9, background: 'rgba(0,0,0,0.025)',
+          padding: '12px 14px', borderRadius: 8, background: 'rgba(0,0,0,0.025)',
           fontSize: 12.5, color: colors.muted,
         }}>
           {emptyNote}
         </div>
       ) : (
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
           {members.map((m, i) => (
             <div
               key={m.id}
@@ -192,7 +192,7 @@ function MemberGroup({
                 }}>
                   {m.full_name}
                 </div>
-                <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 1 }}>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
                   {m.employee_code ?? 'No employee code'}
                   {/* Worth saying out loud: an inactive account is already out of
                       payroll for a different reason, and re-including it here

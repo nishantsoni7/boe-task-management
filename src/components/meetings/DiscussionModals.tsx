@@ -66,7 +66,7 @@ export function CategoryPicker({
           )
         })}
       </div>
-      <p style={{ margin: '2px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+      <p style={{ margin: '2px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
         {DISCUSSION_CATEGORY_HELP[category]}
       </p>
     </>
@@ -92,7 +92,7 @@ export function AfterSalesTagPicker({
             disabled={disabled}
             onClick={() => onChange(selected ? null : key)}
             style={{
-              flex: '1 1 84px', padding: '6px 8px', borderRadius: '7px', cursor: 'pointer',
+              flex: '1 1 84px', padding: '6px 8px', borderRadius: '8px', cursor: 'pointer',
               fontSize: '12px', fontWeight: selected ? 700 : 500,
               border: `1px solid ${selected ? colors.borderMed : colors.border}`,
               background: selected ? colors.float : 'transparent',
@@ -175,11 +175,11 @@ export function NewDiscussionItemModal({
       <MeetingField label="Category" group>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <MeetingBadge meta={DISCUSSION_CATEGORY_META[category]} />
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             Set by this {MEETING_TYPE_META[meeting.meeting_type].label} review
           </span>
         </div>
-        <p style={{ margin: '2px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: '2px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {DISCUSSION_CATEGORY_HELP[category]}
         </p>
       </MeetingField>

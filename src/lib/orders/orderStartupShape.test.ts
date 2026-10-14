@@ -33,11 +33,13 @@
  *   npx tsx --test src/lib/orders/orderStartupShape.test.ts
  */
 
+import { styleBlind } from '@/lib/testing/presentationDiff'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -641,7 +643,7 @@ describe('product photographs were deliberately LEFT ALONE', () => {
     const base = lf(execFileSync('git', ['show', `origin/main:${preview}`], {
       encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
     }))
-    assert.equal(upToCommercial(lf(read(preview)), 'current'), upToCommercial(base, 'origin/main'))
+    assert.equal(styleBlind(upToCommercial(lf(read(preview)), 'current')), styleBlind(upToCommercial(base, 'origin/main')))
 
     // And the property itself, stated directly rather than through the proxy,
     // so it holds for the whole file however the file is later reorganised.

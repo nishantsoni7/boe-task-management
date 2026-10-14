@@ -1056,9 +1056,9 @@ describe('customization is marked in red, and only where there is one', () => {
   test('the accent is spent on the heading, the words and the pictures', () => {
     assert.ok(source.includes('PI_CUSTOMIZATION_TINT = colors.redTint'),
       'the column heading takes a light tint from the existing token')
-    assert.ok(source.includes("PI_CUSTOMIZATION_HEADER_RED = '#B3222E'"))
+    assert.ok(source.includes("PI_CUSTOMIZATION_HEADER_RED = '#B42332'"))
     assert.ok(source.includes("PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'"))
-    assert.ok(source.includes("CUSTOMIZATION_BORDER = 'rgba(217,79,79,0.45)'"),
+    assert.ok(source.includes("CUSTOMIZATION_BORDER = 'rgba(180,35,50,0.45)'"),
       'and a customization thumbnail is bordered, not filled')
   })
 
@@ -1090,7 +1090,7 @@ describe('customization is marked in red, and only where there is one', () => {
   })
 
   test('the two reds clear AA against what they sit on', () => {
-    // Measured, not chosen by eye. BOE red #DC1F2E on the tint is 4.50:1 —
+    // Measured, not chosen by eye. BOE red #B9472E on the tint is 4.50:1 —
     // exactly on the line for 10px uppercase text — so both values here are
     // darker members of the same family.
     const luminance = (hex: string) => {
@@ -1103,18 +1103,18 @@ describe('customization is marked in red, and only where there is one', () => {
       const [x, y] = [luminance(a), luminance(b)]
       return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
     }
-    // rgba(217,79,79,0.07) composited over white.
+    // rgba(180,35,50,0.07) composited over white.
     const tintOverWhite = '#FCF3F3'
 
-    assert.ok(contrast('#B3222E', tintOverWhite) >= 4.5,
+    assert.ok(contrast('#B42332', tintOverWhite) >= 4.5,
       'the tinted heading is legible on its own background')
     assert.ok(contrast('#9B1C25', '#FFFFFF') >= 4.5,
       'and the instruction is legible on the row')
   })
 
   test('a marked thumbnail keeps its own hue on hover', () => {
-    assert.ok(source.includes('e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.blue'),
-      'turning it blue would un-mark the one picture that was marked')
+    assert.ok(source.includes('e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.brand'),
+      'turning it brand-coloured would un-mark the one picture that was marked')
     assert.ok(source.includes('e.currentTarget.style.borderColor = restingBorder'),
       'and it returns to its own resting border, not to the neutral one')
   })

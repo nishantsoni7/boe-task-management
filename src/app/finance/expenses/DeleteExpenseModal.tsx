@@ -107,7 +107,7 @@ export function DeleteExpenseModal({
         <div
           data-testid="delete-expense-summary"
           style={{
-            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
             background: colors.raised, padding: '12px 14px',
             display: 'flex', flexDirection: 'column', gap: '6px',
           }}
@@ -128,7 +128,7 @@ export function DeleteExpenseModal({
         <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
           {EXPENSE_DELETE_EXPLANATION}
         </div>
-        <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.6 }}>
+        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
           {EXPENSE_DELETE_RETENTION_NOTE}
         </div>
 
@@ -156,7 +156,7 @@ export function DeleteExpenseModal({
             }}
           />
           {problem && (
-            <div id="expense-delete-confirm-problem" role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>
+            <div id="expense-delete-confirm-problem" role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>
               {problem}
             </div>
           )}
@@ -165,7 +165,7 @@ export function DeleteExpenseModal({
         {error && (
           <div role="alert" style={{
             padding: '10px 12px', borderRadius: '8px',
-            background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px', lineHeight: 1.5,
+            background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px', lineHeight: 1.5,
           }}>
             {error}
           </div>
@@ -187,9 +187,9 @@ export function DeleteExpenseModal({
             className="boe-btn"
             style={{
               minHeight: '44px', fontSize: '13px', minWidth: '130px', fontWeight: 600,
-              background: armed && !deleting ? '#C13030' : 'rgba(217,79,79,0.18)',
-              color: armed && !deleting ? '#FFFFFF' : 'rgba(193,48,48,0.65)',
-              border: '1px solid rgba(193,48,48,0.35)',
+              background: armed && !deleting ? '#B42332' : 'rgba(180,35,50,0.18)',
+              color: armed && !deleting ? '#FFFFFF' : 'rgba(180,35,50,0.65)',
+              border: '1px solid rgba(180,35,50,0.35)',
               cursor: armed && !deleting ? 'pointer' : 'not-allowed',
             }}
           >

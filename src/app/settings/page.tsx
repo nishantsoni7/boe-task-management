@@ -123,7 +123,7 @@ export default function SettingsPage() {
                 style={{
                   background: colors.base,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: 10,
+                  borderRadius: 8,
                   padding: '20px 20px',
                   textAlign: 'left',
                   cursor: 'pointer',
@@ -153,13 +153,13 @@ export default function SettingsPage() {
         <div style={{
           background: colors.base,
           border: `1px solid ${colors.border}`,
-          borderRadius: 10,
+          borderRadius: 8,
           padding: '24px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <span style={{
               width: 10, height: 10, borderRadius: '50%',
-              background: '#E8A030', flexShrink: 0,
+              background: '#B9472E', flexShrink: 0,
             }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: colors.primary }}>
               Change My Password
@@ -183,9 +183,9 @@ export default function SettingsPage() {
                   fontSize: 13.5,
                   padding: '8px 12px',
                   border: `1px solid ${colors.border}`,
-                  borderRadius: 7,
+                  borderRadius: 8,
                   outline: 'none',
-                  background: '#FAFAFA',
+                  background: '#FBFAF8',
                   color: colors.primary,
                 }}
               />
@@ -204,19 +204,19 @@ export default function SettingsPage() {
                   fontSize: 13.5,
                   padding: '8px 12px',
                   border: `1px solid ${colors.border}`,
-                  borderRadius: 7,
+                  borderRadius: 8,
                   outline: 'none',
-                  background: '#FAFAFA',
+                  background: '#FBFAF8',
                   color: colors.primary,
                 }}
               />
             </div>
 
             {pwError && (
-              <p style={{ margin: 0, fontSize: 13, color: '#DC2626' }}>{pwError}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#B42332' }}>{pwError}</p>
             )}
             {pwSuccess && (
-              <p style={{ margin: 0, fontSize: 13, color: '#16A34A' }}>{pwSuccess}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#276247' }}>{pwSuccess}</p>
             )}
 
             <div>
@@ -227,10 +227,10 @@ export default function SettingsPage() {
                   padding: '9px 20px',
                   fontSize: 13.5,
                   fontWeight: 600,
-                  background: colors.primary,
+                  background: colors.brand,
                   color: '#fff',
                   border: 'none',
-                  borderRadius: 7,
+                  borderRadius: 8,
                   cursor: pwLoading ? 'not-allowed' : 'pointer',
                   opacity: pwLoading ? 0.7 : 1,
                   transition: 'opacity 0.15s',

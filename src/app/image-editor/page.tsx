@@ -539,13 +539,13 @@ export default function ImageEditorPage() {
 
         {error && (
           <div className="boe-alert-red" style={{ marginBottom: '14px' }}>
-            <span style={{ fontSize: '13px', color: '#C13030' }}>{error}</span>
+            <span style={{ fontSize: '13px', color: '#B42332' }}>{error}</span>
           </div>
         )}
 
         {rejected.length > 0 && (
           <div className="boe-alert-amber" style={{ marginBottom: '14px' }}>
-            <div style={{ fontSize: '12px', color: '#8A5A12' }}>
+            <div style={{ fontSize: '12px', color: '#805B0D' }}>
               {rejected.map(r => (
                 <div key={r.name}>
                   <strong>{r.name}</strong> was not added — {r.reason}
@@ -570,12 +570,12 @@ export default function ImageEditorPage() {
               gap: '8px', padding: items.length > 0 ? '20px' : '44px 20px', marginBottom: '14px',
               background: dragging ? colors.hover : colors.raised,
               border: `1.5px dashed ${dragging ? colors.borderMed : colors.borderSoft}`,
-              borderRadius: '10px', cursor: 'pointer', textAlign: 'center',
+              borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
             }}
           >
             <div style={{
-              width: 40, height: 40, borderRadius: '11px',
-              background: 'rgba(232,160,48,0.12)',
+              width: 40, height: 40, borderRadius: '12px',
+              background: 'rgba(196,138,26,0.12)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <Upload size={18} color={colors.amber} strokeWidth={1.8} />
@@ -624,7 +624,7 @@ export default function ImageEditorPage() {
         {/* ── Progress ────────────────────────────────────────────────────── */}
         {running && (
           <div className="boe-card" style={{ padding: '14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Loader2 size={16} strokeWidth={2} color={colors.blue} />
+            <Loader2 size={16} strokeWidth={2} color={colors.brand} />
             <div>
               <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                 Processing {counts.position} of {counts.total}
@@ -644,7 +644,7 @@ export default function ImageEditorPage() {
               marginBottom: '10px',
             }}>
               <div style={{
-                fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+                fontSize: '12px', fontWeight: 600, color: colors.tertiary,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 {counts.done} completed{counts.failed > 0 ? `, ${counts.failed} failed` : ''}
@@ -718,12 +718,12 @@ export default function ImageEditorPage() {
             marginBottom: '10px',
           }}>
             <div style={{
-              fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+              fontSize: '12px', fontWeight: 600, color: colors.tertiary,
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               Recent results
             </div>
-            <div style={{ fontSize: '11px', color: colors.tertiary }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary }}>
               Only you can see these. Kept for {RETENTION_DAYS} days unless you mark them Keep.
             </div>
           </div>

@@ -205,12 +205,12 @@ export function ReviewImageManager({
     <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
         <h4 style={{
-          margin: 0, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+          margin: 0, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.05em', color: colors.tertiary,
         }}>
           Images
         </h4>
-        <span style={{ fontSize: '11px', color: colors.muted }}>
+        <span style={{ fontSize: '12px', color: colors.muted }}>
           {images.length} of {MAX_REVIEW_IMAGES}
           {images.length === 0 ? ' · optional' : ''}
         </span>
@@ -253,7 +253,7 @@ export function ReviewImageManager({
                 <div style={{
                   width: '100%', aspectRatio: '1 / 1', display: 'flex',
                   alignItems: 'center', justifyContent: 'center', padding: '6px',
-                  fontSize: '10px', color: colors.muted, textAlign: 'center',
+                  fontSize: '12px', color: colors.muted, textAlign: 'center',
                   overflowWrap: 'anywhere',
                 }}>
                   {image.file_name}
@@ -261,7 +261,7 @@ export function ReviewImageManager({
               )}
 
               <div style={{
-                padding: '5px 6px', fontSize: '10px', color: colors.tertiary,
+                padding: '5px 6px', fontSize: '12px', color: colors.tertiary,
                 borderTop: `1px solid ${colors.border}`, background: '#FFFFFF',
               }}>
                 {formatPhotoSize(image.byte_size)}
@@ -285,7 +285,7 @@ export function ReviewImageManager({
                     border: 'none', cursor: busy ? 'default' : 'pointer',
                     // Slightly less opaque than the old 0.72 so a 44px square
                     // does not black out the corner of a 107px thumbnail.
-                    background: 'rgba(17,19,24,0.62)', color: '#FFFFFF',
+                    background: 'rgba(48,53,54,0.62)', color: '#FFFFFF',
                   }}
                 >
                   <Trash2 size={14} strokeWidth={2} />
@@ -325,7 +325,7 @@ export function ReviewImageManager({
             THE DISABLED REASON, IN WORDS. A greyed control with no explanation
             is a control people press repeatedly.
           */}
-          <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+          <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
             {full
               ? `Four images is the limit. Remove one to add another.`
               : `${REVIEW_IMAGE_TYPES_LABEL}, up to 5 MB each. They stay with the review after approval.`}
@@ -334,13 +334,13 @@ export function ReviewImageManager({
       )}
 
       {!canEdit && images.length === 0 && (
-        <p style={{ margin: 0, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           No images are attached to this review.
         </p>
       )}
 
       {!canEdit && images.length > 0 && (
-        <p style={{ margin: 0, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           This review has been approved, so its images can no longer be changed.
         </p>
       )}

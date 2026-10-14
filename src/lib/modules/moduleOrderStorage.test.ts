@@ -424,7 +424,7 @@ describe('normal mode', () => {
     assert.equal(/\.sectionHeading\b/.test(CSS), false)
     assert.equal(/\.sectionLabel\b/.test(CSS), false)
     // And no stray divider survives between the header and the first card row.
-    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
+    assert.equal(/border-bottom:\s*1px solid #E4DED7/i.test(CSS), false,
       'the only rule under the title is the app header’s own border')
   })
 })

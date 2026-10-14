@@ -302,16 +302,16 @@ export function CustomSubmissionsScreen() {
     >
       <div style={{ maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {notice && (
-          <p role="status" style={{ fontSize: '12.5px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>
+          <p role="status" style={{ fontSize: '12.5px', color: '#276247', fontWeight: 600, margin: 0 }}>{notice}</p>
         )}
 
         <div role="tablist" aria-label="Submission status" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {SUBMISSION_STATUS_FILTERS.map(s => {
             const active = s === filters.status
             const meta = s === 'deleted'
-              ? { label: 'Deleted', bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' }
+              ? { label: 'Deleted', bg: '#F1EEE9', color: '#4C5352', border: '#CFC8BF' }
               : s === 'all'
-                ? { label: 'All', bg: 'rgba(79,111,208,0.10)', color: '#3B5BC0', border: 'rgba(79,111,208,0.25)' }
+                ? { label: 'All', bg: 'rgba(51,90,134,0.10)', color: '#335A86', border: 'rgba(51,90,134,0.25)' }
                 : CUSTOM_SUBMISSION_STATUS_META[s]
             return (
               <button
@@ -377,7 +377,7 @@ export function CustomSubmissionsScreen() {
           <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>Loading submissions…</p>
         ) : rows.length === 0 ? (
           <p style={{
-            margin: 0, padding: '24px 20px', borderRadius: '10px', textAlign: 'center',
+            margin: 0, padding: '24px 20px', borderRadius: '8px', textAlign: 'center',
             border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px',
           }}>
             {filtered ? 'No custom review matches these filters.' : 'No custom review has been submitted yet.'}
@@ -584,7 +584,7 @@ function DecisionSheet({
           className="boe-btn boe-btn-ghost"
           onClick={() => onAdminAction('delete', row)}
           disabled={busy}
-          style={{ ...buttonStyle, color: '#B91C1C', marginRight: 'auto' }}
+          style={{ ...buttonStyle, color: '#B42332', marginRight: 'auto' }}
         >
           Delete
         </button>
@@ -595,7 +595,7 @@ function DecisionSheet({
           className="boe-btn boe-btn-primary"
           onClick={() => onAdminAction('reject', row)}
           disabled={busy}
-          style={{ ...buttonStyle, background: '#B91C1C', borderColor: '#B91C1C' }}
+          style={{ ...buttonStyle, background: '#B42332', borderColor: '#B42332' }}
         >
           Reject approval
         </button>
@@ -622,7 +622,7 @@ function DecisionSheet({
             className="boe-btn boe-btn-primary"
             onClick={() => { void reject() }}
             disabled={busy || reason.trim() === ''}
-            style={{ ...buttonStyle, background: '#B91C1C', borderColor: '#B91C1C' }}
+            style={{ ...buttonStyle, background: '#B42332', borderColor: '#B42332' }}
           >
             {busy ? 'Rejecting…' : 'Confirm Reject'}
           </button>
@@ -634,7 +634,7 @@ function DecisionSheet({
             className="boe-btn boe-btn-ghost"
             onClick={() => { setRejecting(true); setError(null) }}
             disabled={busy}
-            style={{ ...buttonStyle, color: '#B91C1C' }}
+            style={{ ...buttonStyle, color: '#B42332' }}
           >
             Reject
           </button>
@@ -674,7 +674,7 @@ function DecisionSheet({
 
         {row.deleted_at && (
           <section style={{
-            padding: '10px 12px', borderRadius: '9px', border: '1px solid #D1D5DB', background: '#F3F4F6',
+            padding: '10px 12px', borderRadius: '8px', border: '1px solid #CFC8BF', background: '#F1EEE9',
             fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
           }}>
             <strong>Deleted by {row.deleted_by && row.deleted_by !== row.submitted_by ? (names.get(row.deleted_by) ?? 'an administrator') : (names.get(row.deleted_by ?? '') ?? 'the employee')} on {formatSubmissionDay(istDateOf(row.deleted_at))}.</strong>{' '}
@@ -685,8 +685,8 @@ function DecisionSheet({
 
         {pending && held && (
           <section style={{
-            padding: '10px 12px', borderRadius: '9px', border: '1px solid #FDE68A', background: '#FFFBEB',
-            fontSize: '12.5px', color: '#92400E', lineHeight: 1.55,
+            padding: '10px 12px', borderRadius: '8px', border: '1px solid #E6D2A0', background: '#FAF0DA',
+            fontSize: '12.5px', color: '#805B0D', lineHeight: 1.55,
           }}>
             <strong>Edited after approval.</strong> {employee} changed an approved review.
             {' '}Its {formatCredits(Number(row.credits_awarded ?? 0))} is still in {employee}&rsquo;s balance (the ledger is unchanged) but the review is not counted as eligible or ranked while it is pending.
@@ -696,8 +696,8 @@ function DecisionSheet({
 
         {pending && row.reapplication_count > 0 && (
           <section style={{
-            padding: '10px 12px', borderRadius: '9px',
-            border: '1px solid rgba(79,111,208,0.25)', background: 'rgba(79,111,208,0.06)',
+            padding: '10px 12px', borderRadius: '8px',
+            border: '1px solid rgba(51,90,134,0.25)', background: 'rgba(51,90,134,0.06)',
             fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
           }}>
             <strong>Reapplied after a rejection</strong> — the same review, corrected. It still uses its one monthly slot.
@@ -728,8 +728,8 @@ function DecisionSheet({
 
         {pending && !own && duplicate && duplicate.decided_duplicate > 0 && (
           <p role="note" style={{
-            margin: 0, padding: '9px 12px', borderRadius: '9px', fontSize: '12.5px', lineHeight: 1.5,
-            border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+            margin: 0, padding: '9px 12px', borderRadius: '8px', fontSize: '12.5px', lineHeight: 1.5,
+            border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332',
           }}>
             A reviewer marked this review a duplicate. Approving it is still your decision; nothing was rejected automatically.
           </p>
@@ -746,7 +746,7 @@ function DecisionSheet({
         {pending && !own && !rejecting && !held && (
           <section style={{
             display: 'flex', flexDirection: 'column', gap: '6px',
-            padding: '11px 13px', borderRadius: '9px', border: `1px solid ${typeMeta.border}`, background: typeMeta.bg,
+            padding: '11px 13px', borderRadius: '8px', border: `1px solid ${typeMeta.border}`, background: typeMeta.bg,
           }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <span style={{ fontSize: '12.5px', fontWeight: 700, color: typeMeta.color }}>BOE Credits to award</span>
@@ -773,9 +773,9 @@ function DecisionSheet({
               )}
             </label>
             {isAdmin && creditsText.trim() !== '' && creditsIssue && (
-              <span style={{ fontSize: '11.5px', color: colors.red }}>{creditsIssue}</span>
+              <span style={{ fontSize: '12px', color: colors.red }}>{creditsIssue}</span>
             )}
-            <p style={{ margin: 0, fontSize: '11.5px', color: typeMeta.color, lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: '12px', color: typeMeta.color, lineHeight: 1.6 }}>
               {configured != null
                 ? `The configured reward for a ${CUSTOM_REVIEW_TYPE_LABELS[row.review_type]} is ${formatCredits(configured)}. `
                 : ''}
@@ -805,7 +805,7 @@ function DecisionSheet({
                 fontFamily: 'inherit', boxSizing: 'border-box', minHeight: '80px',
               }}
             />
-            <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               The employee sees this reason and can correct the review and reapply it. No credits are awarded.
             </span>
           </label>

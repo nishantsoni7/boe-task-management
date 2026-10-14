@@ -238,13 +238,13 @@ export function DashboardLayout({
             title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -375,18 +375,18 @@ export function DashboardLayout({
               className="boe-notif-alert"
             >
               <div className="boe-notif-alert-bell">
-                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
+                <Bell size={24} strokeWidth={1.8} color="#B9472E" />
               </div>
               <div style={{
-                fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
+                fontSize: '28px', fontWeight: 800, color: '#303536', lineHeight: 1,
               }}>
                 {unreadNotifs > 99 ? '99+' : unreadNotifs}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadNotifs === 1 ? 'notification' : 'notifications'}
               </div>
               <div style={{
-                fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
+                fontSize: '12px', fontWeight: 600, color: '#B9472E',
                 letterSpacing: '0.05em', textTransform: 'uppercase',
               }}>
                 Tap to review →
@@ -461,14 +461,14 @@ export function DashboardLayout({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
-                border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#DC1F2E' : '#6B7384',
+                background: refreshing ? 'rgba(185,71,46,0.08)' : 'rgba(0,0,0,0.05)',
+                border: '1px solid #CFC8BF',
+                color: refreshing ? '#B9472E' : '#686D6C',
                 cursor: refreshing ? 'default' : 'pointer',
                 flexShrink: 0, transition: 'background 0.15s, color 0.15s',
               }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
-              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(185,71,46,0.08)'; e.currentTarget.style.color = '#B9472E' } }}
+              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#686D6C' } }}
             >
               <RefreshCw
                 size={14}
@@ -521,23 +521,23 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           width: '100%',
-          padding: '7px 10px', borderRadius: '7px',
+          padding: '7px 10px', borderRadius: '8px',
           fontSize: '13px', fontWeight: 500,
-          color: active ? '#111318' : '#3D4455',
+          color: active ? '#303536' : '#4C5352',
           background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
           border: 'none', cursor: 'pointer',
           marginBottom: '1px',
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+          <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
             {icon}
           </span>
           {label}
           {count != null && count > 0 && (
             <span style={{
-              fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-              background: 'rgba(0,0,0,0.07)', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
+              fontSize: '12px', fontWeight: 600, color: '#595D5B',
+              background: '#E4DED7', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
             }}>{count}</span>
           )}
         </span>
@@ -558,15 +558,15 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
       onClick={onClick}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
-      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}
       {badge != null && badge > 0 && (
         <span style={{
           marginLeft: 'auto',
-          fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-          background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
+          fontSize: '12px', fontWeight: 600, color: '#595D5B',
+          background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
         }}>
           {badge > 99 ? '99+' : badge}
@@ -579,7 +579,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
 // ─── NavGroup ─────────────────────────────────────────────────────────────────
 function NavGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid rgba(0,0,0,0.08)' }}>
+    <div style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
       {children}
     </div>
   )
@@ -593,13 +593,13 @@ function NavChild({ label, active, onClick, count }: NavChildProps) {
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
-      style={{ fontSize: '12.5px', fontWeight: active ? 500 : 400, color: active ? '#111318' : '#707A92', padding: '5px 8px', marginBottom: '1px' }}
+      style={{ fontSize: '12.5px', fontWeight: active ? 500 : 400, color: active ? '#303536' : '#686D6C', padding: '5px 8px', marginBottom: '1px' }}
     >
       <span style={{ flex: 1 }}>{label}</span>
       {count != null && count > 0 && (
         <span style={{
-          fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-          background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
+          fontSize: '12px', fontWeight: 600, color: '#595D5B',
+          background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', marginLeft: 'auto',
         }}>{count}</span>
       )}

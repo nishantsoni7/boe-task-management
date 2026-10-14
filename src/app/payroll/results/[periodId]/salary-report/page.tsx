@@ -224,7 +224,7 @@ export default function SalaryProcessingReportPage() {
                         <td style={td}>
                           <div style={{ fontWeight: 600, color: colors.primary }}>{r.employee_name}</div>
                           {r.employee_code && (
-                            <div style={{ fontSize: 11.5, color: colors.tertiary }}>{r.employee_code}</div>
+                            <div style={{ fontSize: 12, color: colors.tertiary }}>{r.employee_code}</div>
                           )}
                         </td>
                         <td style={{ ...td, textAlign: 'right' }}>{formatRupees(r.gross_salary ?? 0)}</td>
@@ -287,7 +287,7 @@ export default function SalaryProcessingReportPage() {
 
 const card: React.CSSProperties = {
   border: `1px solid ${colors.border}`,
-  borderRadius: 10,
+  borderRadius: 8,
   padding: '14px 16px',
   background: colors.base,
 }
@@ -295,7 +295,7 @@ const card: React.CSSProperties = {
 const th: React.CSSProperties = {
   textAlign: 'left',
   padding: '10px 12px',
-  fontSize: 11.5,
+  fontSize: 12,
   fontWeight: 600,
   color: colors.tertiary,
   textTransform: 'uppercase',

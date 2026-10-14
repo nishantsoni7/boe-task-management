@@ -33,7 +33,7 @@ export function ProductTable({
       <div style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px',
+        borderRadius: '8px',
         overflow: 'hidden',
         opacity: fetching ? 0.55 : 1,
         pointerEvents: fetching ? 'none' : undefined,
@@ -46,7 +46,7 @@ export function ProductTable({
                 {['Image', 'Product Code', 'Product Name', 'Category', 'MRP', 'Status', 'Actions'].map(h => (
                   <th key={h} style={{
                     padding: '8px 16px', textAlign: h === 'MRP' ? 'right' : 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
                     whiteSpace: 'nowrap',
                   }}>{h}</th>
@@ -172,9 +172,9 @@ export function ProductRow({
       <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
         <span style={{
           fontSize: '12px', fontWeight: 600,
-          color: '#1A2035',
-          background: 'rgba(26,32,53,0.06)',
-          borderRadius: '5px', padding: '4px 9px',
+          color: '#303536',
+          background: 'rgba(48,53,54,0.06)',
+          borderRadius: '6px', padding: '4px 9px',
           whiteSpace: 'nowrap',
         }}>
           {product.product_code}
@@ -208,10 +208,10 @@ export function ProductRow({
           onClick={onToggle}
           disabled={toggling}
           style={{
-            fontSize: '11px', fontWeight: 600,
-            color: product.is_active ? '#166534' : colors.muted,
-            background: product.is_active ? '#F0FDF4' : colors.float,
-            border: `1px solid ${product.is_active ? '#BBF7D0' : colors.border}`,
+            fontSize: '12px', fontWeight: 600,
+            color: product.is_active ? '#276247' : colors.muted,
+            background: product.is_active ? '#E8F2EC' : colors.float,
+            border: `1px solid ${product.is_active ? '#BCD8C8' : colors.border}`,
             borderRadius: '999px',
             padding: '4px 12px',
             cursor: toggling ? 'default' : 'pointer',
@@ -250,7 +250,7 @@ export function IconButton({
   children: React.ReactNode
 }) {
   const palette = variant === 'red'
-    ? { color: colors.red, background: colors.redTint, border: 'rgba(217,79,79,0.2)' }
+    ? { color: colors.red, background: colors.redTint, border: 'rgba(180,35,50,0.2)' }
     : { color: colors.secondary, background: colors.float, border: colors.border }
 
   return (

@@ -41,7 +41,7 @@ import { customerDisplayName, paymentEntryErrorMessage } from '@/lib/finance/pay
 import { CustodyTrailFields, CustodyTrailView, newCustodyDraftKey } from './CustodyTrailFields'
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 700, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
 }
 
@@ -110,7 +110,7 @@ export function PaymentDestinationSummary({
             <span style={{ fontSize: '12.5px', color: colors.secondary }}>{reference}</span>
           )}
           {destination && (
-            <span style={{ fontSize: '11px', color: colors.muted }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
               {destination.source === 'intent'
                 ? 'Chosen on the request — attached when Finance verifies it'
                 : destination.source === 'allocation'
@@ -125,7 +125,7 @@ export function PaymentDestinationSummary({
         {customerDisplayName(clientName, { distinctAllocationCustomers: customers })}
       </div>
 
-      <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+      <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
         Read from the record itself, never typed.
       </span>
     </div>
@@ -216,7 +216,7 @@ export function PaymentCustodyTrail({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           padding: '10px 12px', fontSize: '13px', color: colors.muted,
         }}>
           {DESTINATION_LOADING}
@@ -268,7 +268,7 @@ export function PaymentCustodyTrail({
           {drafts.length > 0 && (
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
               {draftError && (
-                <span role="alert" style={{ fontSize: '11.5px', color: colors.red, flex: 1 }}>
+                <span role="alert" style={{ fontSize: '12px', color: colors.red, flex: 1 }}>
                   {draftError}
                 </span>
               )}
@@ -293,7 +293,7 @@ export function PaymentCustodyTrail({
             </div>
           )}
           {error && (
-            <span role="alert" style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.5 }}>
+            <span role="alert" style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
               {error}
             </span>
           )}

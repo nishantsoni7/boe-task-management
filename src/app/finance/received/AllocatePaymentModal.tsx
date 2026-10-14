@@ -380,7 +380,7 @@ export function AllocatePaymentModal({
           placeholder="Order number, PI reference or client name…"
           style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
         />
-        {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
+        {searching && <span style={{ fontSize: '12px', color: colors.muted }}>Searching…</span>}
       </div>
 
       {results.length > 0 && !selected && (
@@ -406,7 +406,7 @@ export function AllocatePaymentModal({
                   <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
                     {candidate.reference}
                   </span>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
                     {statusLabel(candidate.status)}
                   </span>
                 </span>
@@ -449,7 +449,7 @@ export function AllocatePaymentModal({
               type="button"
               onClick={() => { setSelected(null); setPosition(null) }}
               className="boe-btn boe-btn-ghost"
-              style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '11px' }}
+              style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '12px' }}
             >
               Change
             </button>
@@ -524,14 +524,14 @@ export function AllocatePaymentModal({
 // ── Small pieces ──────────────────────────────────────────────────────────────
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
 function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
       <div style={{
@@ -550,11 +550,11 @@ export function KindBadge({ kind }: { kind: AllocationTargetKind }) {
   const isOrder = kind === 'order'
   return (
     <span style={{
-      display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-      background: isOrder ? colors.blueTint : '#F5F3FF',
-      color: isOrder ? colors.blue : '#5B21B6',
-      border: `1px solid ${isOrder ? 'rgba(85,133,232,0.25)' : '#DDD6FE'}`,
-      fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
+      display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
+      background: isOrder ? colors.brandTint : '#EAF0F8',
+      color: isOrder ? colors.brand : '#335A86',
+      border: `1px solid ${isOrder ? 'rgba(51,90,134,0.25)' : '#C3D3E6'}`,
+      fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
     }}>
       {isOrder ? 'Confirmed Order' : 'PI Draft'}
     </span>

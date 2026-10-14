@@ -22,7 +22,7 @@ function Panel({ label, src, alt, accent }: {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{
-        fontSize: '10px', fontWeight: 600, letterSpacing: '0.05em',
+        fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em',
         textTransform: 'uppercase', marginBottom: '6px',
         color: accent ? colors.amber : colors.tertiary,
       }}>
@@ -69,8 +69,8 @@ export function ResultCard({
 
       {failed ? (
         <div className="boe-alert-red" style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-          <AlertTriangle size={14} strokeWidth={2} color="#C13030" style={{ flexShrink: 0, marginTop: '1px' }} />
-          <div style={{ fontSize: '12px', color: '#C13030' }}>
+          <AlertTriangle size={14} strokeWidth={2} color="#B42332" style={{ flexShrink: 0, marginTop: '1px' }} />
+          <div style={{ fontSize: '12px', color: '#B42332' }}>
             {item.error ?? 'This image could not be generated.'}
           </div>
         </div>
@@ -89,7 +89,7 @@ export function ResultCard({
       {item.result && needsManualReview(item.verification) && (
         <div style={{
           display: 'flex', gap: '6px', alignItems: 'flex-start', marginTop: '10px',
-          fontSize: '11px', lineHeight: 1.4, color: colors.tertiary,
+          fontSize: '12px', lineHeight: 1.4, color: colors.tertiary,
         }}>
           <Eye size={12} strokeWidth={2} style={{ flexShrink: 0, marginTop: '2px' }} />
           <span>{MANUAL_REVIEW_NOTE}</span>
@@ -106,7 +106,7 @@ export function ResultCard({
           display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px',
         }}>
           <CloudOff size={14} strokeWidth={2} color={colors.amber} style={{ flexShrink: 0, marginTop: '1px' }} />
-          <div style={{ fontSize: '11px', color: colors.secondary, lineHeight: 1.45 }}>
+          <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.45 }}>
             <strong style={{ color: colors.primary }}>Not saved to your recent results.</strong>
             {' '}Download it now — this image will not be in your {RETENTION_DAYS}-day
             history and will be lost when you close this page.

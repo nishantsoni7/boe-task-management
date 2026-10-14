@@ -235,7 +235,7 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 // payment request in any state, so it has no tab here to sit in — it belongs to
 // Received Payments from the moment of approval. See the query scope below.
 const ARCHIVE_TAB_ACCENT: TabAccent = {
-  color: '#4B5563', tint: '#F3F4F6', badge: '#F3F4F6', badgeActive: '#E5E7EB',
+  color: '#4C5352', tint: '#F1EEE9', badge: '#F1EEE9', badgeActive: '#E4DED7',
 }
 
 const FILTER_TABS: { key: FilterTab; label: string; Icon: LucideIcon; accent: TabAccent }[] = [
@@ -414,7 +414,7 @@ function isStaleClarification(r: PaymentRequest, cutoff: number): boolean {
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
       </label>
       {children}
@@ -424,7 +424,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
+    <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px' }}>
       {message}
     </div>
   )
@@ -434,7 +434,7 @@ function ErrorBanner({ message }: { message: string }) {
 // Compact uppercase section label used throughout the details modal.
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
       {children}
     </div>
   )
@@ -444,7 +444,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 function MetaItem({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
       <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>{value}</span>
     </div>
   )
@@ -473,7 +473,7 @@ function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: s
   const Icon = d ? DESTINATION_ICON[d.iconKey] : null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
         Payment Mode
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -498,13 +498,13 @@ function StatusBadge({ status, destination }: {
 }) {
   const meta = destination !== undefined
     ? paymentDisplayStateMeta(status, destination)
-    : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+    : STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color,
       border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -516,9 +516,9 @@ function StatusBadge({ status, destination }: {
 function StaleBadge() {
   return (
     <span style={{
-      display: 'inline-block', marginLeft: '6px', padding: '2px 8px', borderRadius: '5px',
-      background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA',
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      display: 'inline-block', marginLeft: '6px', padding: '2px 8px', borderRadius: '6px',
+      background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       Stale
     </span>
@@ -719,7 +719,7 @@ function DetailsModal({
   // admin_note exists; tinted with the request's own status colours.
   const decision = r.admin_note
     ? (() => {
-        const m = STATUS_META[r.status] ?? { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+        const m = STATUS_META[r.status] ?? { bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
         const title =
           r.status === 'rejected'            ? 'Rejection reason' :
           r.status === 'needs_clarification' ? 'Clarification required' :
@@ -754,13 +754,13 @@ function DetailsModal({
       }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
             <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
               {fmtAmount(r.amount)}
             </div>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
             <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
               {customerDisplayName(r.client_name)}
             </div>
@@ -785,8 +785,8 @@ function DetailsModal({
 
       {/* B. Decision block — compact status-tinted note, only when one exists */}
       {decision && (
-        <div style={{ padding: '12px 14px', borderRadius: '10px', background: decision.bg, border: `1px solid ${decision.border}` }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: decision.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+        <div style={{ padding: '12px 14px', borderRadius: '8px', background: decision.bg, border: `1px solid ${decision.border}` }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: decision.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
             {decision.title}
           </div>
           <div style={{ fontSize: '13.5px', color: decision.color, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -828,9 +828,9 @@ function DetailsModal({
           things; this is a grouping, not a merge. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <SectionHeader>Payment Proof / Reference</SectionHeader>
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               {supabase
                 ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" />
@@ -838,13 +838,13 @@ function DetailsModal({
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
             <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
               {r.proof_note || 'No reference provided'}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
             <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
               {r.sales_note || 'No notes provided'}
             </span>
@@ -906,7 +906,7 @@ function DetailsModal({
                   a single stray click cannot record money as received. */}
               <div style={{
                 fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-                background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
+                background: colors.greenTint, border: '1px solid rgba(39,98,71,0.2)',
                 borderRadius: '8px', padding: '10px 12px',
               }}>
                 Verify {fmtAmount(r.amount)} from {customerDisplayName(r.client_name)}? This
@@ -1445,9 +1445,9 @@ function NewPaymentConfirmationModal({
               <ProofReferenceField
                 label="Payment reference"
                 hint={attachError
-                  ? <span style={{ fontSize: '11px', color: colors.red }}>{attachError}</span>
+                  ? <span style={{ fontSize: '12px', color: colors.red }}>{attachError}</span>
                   : attachFile
-                    ? <span style={{ fontSize: '11px', color: colors.muted }}>
+                    ? <span style={{ fontSize: '12px', color: colors.muted }}>
                         Attached: {attachFile.name} — proof is optional and stored privately.
                       </span>
                     : undefined}
@@ -1483,7 +1483,7 @@ function NewPaymentConfirmationModal({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    style={{ padding: '6px 10px', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
                     {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
                   </button>
@@ -1743,15 +1743,15 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
-          background: '#EFF6FF', border: '1px solid #BFDBFE',
+          background: '#EAF0F8', border: '1px solid #C3D3E6',
         }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
             Clarification Required
           </div>
           {r.admin_note && (
-            <div style={{ fontSize: '13px', color: '#1E3A8A', lineHeight: 1.6, marginBottom: '6px' }}>{r.admin_note}</div>
+            <div style={{ fontSize: '13px', color: '#335A86', lineHeight: 1.6, marginBottom: '6px' }}>{r.admin_note}</div>
           )}
-          <div style={{ fontSize: '11px', color: '#3B82F6', marginTop: '4px' }}>
+          <div style={{ fontSize: '12px', color: '#335A86', marginTop: '4px' }}>
             Saving your changes will resubmit this request for admin review.
           </div>
         </div>
@@ -1759,15 +1759,15 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       {!isAdmin && r.status === 'rejected' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
-          background: '#FEF2F2', border: '1px solid #FECACA',
+          background: '#FBE9EC', border: '1px solid #E9B9C1',
         }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#A12438', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
             Rejection Reason
           </div>
           {r.admin_note && (
             <div style={{ fontSize: '13px', color: '#7F1D1D', lineHeight: 1.6, marginBottom: '6px' }}>{r.admin_note}</div>
           )}
-          <div style={{ fontSize: '11px', color: '#DC2626', marginTop: '4px' }}>
+          <div style={{ fontSize: '12px', color: '#B42332', marginTop: '4px' }}>
             Saving your changes will reapply this request for admin review. The rejection above stays visible in Activity history.
           </div>
         </div>
@@ -1894,7 +1894,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 function FigureBand({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+      border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
       background: colors.border,
       display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '1px',
     }}>
@@ -1921,7 +1921,7 @@ function FigureCell({ label, value, lead, strong, hint }: {
 }) {
   return (
     <div style={{ background: colors.raised, padding: '11px 14px', minWidth: 0 }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         {label}
       </div>
       <div style={{
@@ -2019,7 +2019,7 @@ function DecisionRow({
         }}>
           {d.label}
         </span>
-        <span style={{ display: 'block', fontSize: '11.5px', color: colors.tertiary, marginTop: '2px', lineHeight: 1.4 }}>
+        <span style={{ display: 'block', fontSize: '12px', color: colors.tertiary, marginTop: '2px', lineHeight: 1.4 }}>
           {d.hint}
         </span>
       </span>
@@ -2256,10 +2256,10 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
              tint. Business logic (approve RPC, status update for
              clarification/rejection, notifications) is untouched: this is the
              same three-way choice and the same admin note as before. ── */}
-      <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: '10px', overflow: 'hidden' }}>
+      <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: '8px', overflow: 'hidden' }}>
         <div style={{
           padding: '9px 12px', background: colors.raised, borderBottom: `1px solid ${colors.border}`,
-          fontSize: '10px', fontWeight: 700, color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.06em',
+          fontSize: '12px', fontWeight: 700, color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.06em',
         }}>
           Decision
         </div>
@@ -2294,9 +2294,9 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
               return (
                 <div style={{
                   padding: '9px 11px', borderRadius: '8px',
-                  background: goesSomewhere ? '#F0FDF4' : '#FFF7ED',
-                  border: `1px solid ${goesSomewhere ? '#BBF7D0' : '#FED7AA'}`,
-                  fontSize: '11.5px', color: goesSomewhere ? '#166534' : '#9A3412',
+                  background: goesSomewhere ? '#E8F2EC' : '#FAF0DA',
+                  border: `1px solid ${goesSomewhere ? '#BCD8C8' : '#E6D2A0'}`,
+                  fontSize: '12px', color: goesSomewhere ? '#276247' : '#805B0D',
                   lineHeight: 1.5,
                 }}>
                   {linksToOrder
@@ -2353,7 +2353,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           never be scrolled away from the button that produced it. */}
       {error && <ErrorBanner message={error} />}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '11.5px', color: action ? colors.tertiary : colors.muted, minWidth: 0, lineHeight: 1.45 }}>
+        <div style={{ fontSize: '12px', color: action ? colors.tertiary : colors.muted, minWidth: 0, lineHeight: 1.45 }}>
           {footerNote}
         </div>
         <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
@@ -2371,7 +2371,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
             onClick={handleConfirm}
             disabled={confirmDisabled}
             style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, border: 'none',
+              padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none',
               // The commit button wears the chosen outcome's colour, so approve
               // and reject are never one identical click apart.
               background: confirmDisabled ? colors.float : (selected?.color ?? colors.amber),
@@ -2421,9 +2421,9 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 // ── Payments table ────────────────────────────────────────────────────────────
 
 const TH_STYLE: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '8px 8px',
   textAlign: 'left',
-  fontSize: '10px',
+  fontSize: '12px',
   fontWeight: 700,
   color: colors.muted,
   textTransform: 'uppercase',
@@ -2501,7 +2501,7 @@ export function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  const TD: React.CSSProperties = { padding: '8px 8px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
   // Money in the salesperson's list: right aligned, tabular digits, two decimals
   // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
   const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }
@@ -2583,8 +2583,8 @@ export function PaymentsTable({
             const isClarif   = r.status === 'needs_clarification'
             const isRejected = r.status === 'rejected'
             const accentColor =
-              isPending  ? '#F59E0B' :
-              isClarif   ? colors.blue :
+              isPending  ? '#C48A1A' :
+              isClarif   ? colors.brand :
               isRejected ? colors.red :
               'transparent'
 
@@ -2612,7 +2612,7 @@ export function PaymentsTable({
             const againstLink = againstHref(destination)
 
             const idCell = (
-              <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+              <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                 {r.human_payment_id}
               </td>
             )
@@ -2682,7 +2682,7 @@ export function PaymentsTable({
                 <button
                   onClick={() => onView(r)}
                   className="boe-btn boe-btn-ghost"
-                  style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                  style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
                 >
                   View
                 </button>
@@ -2690,7 +2690,7 @@ export function PaymentsTable({
                   <button
                     onClick={() => onEdit(r)}
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
                   >
                     Edit
                   </button>
@@ -2699,7 +2699,7 @@ export function PaymentsTable({
                   <button
                     onClick={() => onEdit(r)}
                     className="boe-btn boe-btn-primary"
-                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
                   >
                     Reapply
                   </button>
@@ -2709,7 +2709,7 @@ export function PaymentsTable({
                     onClick={() => onDelete(r)}
                     aria-label={`Delete payment request ${r.human_payment_id}`}
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.red, border: `1px solid ${colors.red}` }}
+                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 600, color: colors.red, border: `1px solid ${colors.red}` }}
                   >
                     Delete
                   </button>
@@ -3433,7 +3433,7 @@ function FinancePageInner() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
+          background: colors.raised, border: '1px solid var(--boe-border-input)',
           borderRadius: '8px', padding: '6px 10px',
           flex: 1, minWidth: '180px', maxWidth: '320px',
         }}>
@@ -3485,7 +3485,7 @@ function FinancePageInner() {
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
               padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
-              background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+              background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
             }}
           >
             <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>

@@ -1,6 +1,6 @@
 /* Payroll run results: page-local rules on top of ui.module.css. */
 
-.neg { color: #B91C1C; }
+.neg { color: #B42332; }
 
 .runState {
   display: flex;
@@ -10,14 +10,14 @@
   flex-wrap: wrap;
 }
 .runStateText { min-width: 0; flex: 1 1 320px; }
-.runStateLine { font-size: 13px; color: #4A5261; line-height: 1.5; }
-.runStateLine strong { color: #111318; }
+.runStateLine { font-size: 13px; color: #4C5352; line-height: 1.5; }
+.runStateLine strong { color: #303536; }
 .reviewLine { margin-top: 6px; font-size: 12.5px; }
 
 .objectionTag {
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -26,9 +26,9 @@
   padding: 12px 14px;
   font-size: 13px;
   font-weight: 700;
-  color: #111318;
-  background: #F8F9FB;
-  border-top: 2px solid rgba(0, 0, 0, 0.1);
+  color: #303536;
+  background: #FBFAF8;
+  border-top: 2px solid #CFC8BF;
   font-variant-numeric: tabular-nums;
 }
 
@@ -41,11 +41,11 @@
   font-size: 13px;
 }
 .cardFacts div { display: flex; justify-content: space-between; gap: 8px; }
-.cardFacts dt { color: #6B7384; }
+.cardFacts dt { color: #686D6C; }
 .cardFacts dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
 
-.totalsLine { margin: 0; font-size: 13px; line-height: 1.6; color: #4A5261; font-variant-numeric: tabular-nums; }
-.totalsLine strong { color: #111318; }
+.totalsLine { margin: 0; font-size: 13px; line-height: 1.6; color: #4C5352; font-variant-numeric: tabular-nums; }
+.totalsLine strong { color: #303536; }
 .phoneOnly { display: none; }
 
 @media (max-width: 767px) {

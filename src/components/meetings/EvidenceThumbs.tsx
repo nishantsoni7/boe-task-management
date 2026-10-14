@@ -77,7 +77,7 @@ export function EvidenceThumbs({
         const when = formatMeetingTimestamp(item.created_at)
         const title = `${item.file_name} — attached by ${who}, ${when}`
         const tile: React.CSSProperties = {
-          width: 108, height: 80, borderRadius: '7px', display: 'block',
+          width: 108, height: 80, borderRadius: '8px', display: 'block',
           border: `1px solid ${colors.border}`, background: colors.raised,
         }
         return (
@@ -98,13 +98,13 @@ export function EvidenceThumbs({
                 title={title}
                 style={{
                   ...tile, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                  fontSize: '10.5px', color: colors.muted,
+                  fontSize: '12px', color: colors.muted,
                 }}
               >
                 {signed ? <><ImageOff size={13} strokeWidth={1.8} /> Unavailable</> : 'Loading…'}
               </div>
             )}
-            <figcaption style={{ fontSize: '10.5px', color: colors.muted, marginTop: '4px', lineHeight: 1.3 }}>
+            <figcaption style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.3 }}>
               <div style={{
                 color: colors.secondary, fontWeight: 600,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

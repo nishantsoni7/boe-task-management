@@ -60,10 +60,10 @@ export function ImageUploader({ photos, onAdd, onRemove, onMakeCover, onRetry, i
       )}
 
       <div className={s.addTiles}>
-        <button type="button" className={s.addTile} onClick={() => cameraRef.current?.click()} disabled={room <= 0} style={invalid ? { borderColor: '#DC1F2E' } : undefined}>
+        <button type="button" className={s.addTile} onClick={() => cameraRef.current?.click()} disabled={room <= 0} style={invalid ? { borderColor: '#B42332' } : undefined}>
           <Camera size={26} /> Take photo
         </button>
-        <button type="button" className={s.addTile} onClick={() => galleryRef.current?.click()} disabled={room <= 0} style={invalid ? { borderColor: '#DC1F2E' } : undefined}>
+        <button type="button" className={s.addTile} onClick={() => galleryRef.current?.click()} disabled={room <= 0} style={invalid ? { borderColor: '#B42332' } : undefined}>
           <ImagePlus size={26} /> Choose from gallery
         </button>
       </div>

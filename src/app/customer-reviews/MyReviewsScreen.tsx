@@ -235,7 +235,7 @@ export function MyReviewsScreen() {
         )}
 
         {verified && (
-          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
+          <p role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600, margin: 0 }}>
             {verified}
           </p>
         )}
@@ -347,13 +347,13 @@ export function MyReviewsScreen() {
 function Summary({ counts }: { counts: ReviewCounts }) {
   const stats: { label: string; value: number; tone?: string }[] = [
     { label: 'Assigned', value: counts.assigned },
-    { label: 'Posted', value: counts.posted, tone: '#166534' },
-    { label: 'Remaining', value: counts.remaining, tone: counts.remaining > 0 ? '#92400E' : colors.secondary },
+    { label: 'Posted', value: counts.posted, tone: '#276247' },
+    { label: 'Remaining', value: counts.remaining, tone: counts.remaining > 0 ? '#805B0D' : colors.secondary },
   ]
   return (
     <div style={{
       display: 'flex', gap: '24px', flexWrap: 'wrap',
-      padding: '14px 16px', borderRadius: '10px',
+      padding: '14px 16px', borderRadius: '8px',
       border: `1px solid ${colors.borderSoft}`, background: colors.base,
     }}>
       {stats.map(s => (
@@ -364,7 +364,7 @@ function Summary({ counts }: { counts: ReviewCounts }) {
           }}>
             {s.value}
           </div>
-          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '3px' }}>{s.label}</div>
+          <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '3px' }}>{s.label}</div>
         </div>
       ))}
     </div>
@@ -374,7 +374,7 @@ function Summary({ counts }: { counts: ReviewCounts }) {
 function EmptyState() {
   return (
     <p style={{
-      margin: 0, padding: '28px 20px', borderRadius: '10px', textAlign: 'center',
+      margin: 0, padding: '28px 20px', borderRadius: '8px', textAlign: 'center',
       border: `1px dashed ${colors.border}`, color: colors.muted,
       fontSize: '13px', lineHeight: 1.6,
     }}>

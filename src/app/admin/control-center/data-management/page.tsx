@@ -430,7 +430,7 @@ function ProjectBanner({ projectRef }: { projectRef: string | null }) {
   return (
     <div className={cc.note} style={{ marginBottom: 16 }}>
       This clears data in the connected Supabase project{' '}
-      <strong style={{ color: '#111318' }}>{projectRef}</strong>. Every operational record in the
+      <strong style={{ color: '#303536' }}>{projectRef}</strong>. Every operational record in the
       chosen scope is deleted — nothing is spared for want of a tag.
     </div>
   )
@@ -503,7 +503,7 @@ function Bullets({ title, items, muted }: {
   return (
     <div>
       <span className={cc.fieldLabel} style={{ marginBottom: 4 }}>{title}</span>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: muted ? '#6B7384' : '#3A4358', lineHeight: 1.65 }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: muted ? '#686D6C' : '#303536', lineHeight: 1.65 }}>
         {items.map(item => <li key={item}>{item}</li>)}
       </ul>
     </div>
@@ -601,7 +601,7 @@ function StageList({ scope, current }: { scope: ResetScope; current: ResetStage 
         <div key={entry} style={{
           fontSize: 12.5,
           fontWeight: position === index ? 700 : 500,
-          color: position < index ? '#166534' : position === index ? '#111318' : '#B4BAC6',
+          color: position < index ? '#276247' : position === index ? '#303536' : '#686D6C',
         }}>
           {position < index ? '✓ ' : position === index ? '• ' : '  '}
           {RESET_STAGE_LABEL[entry]}
@@ -667,7 +667,7 @@ function ResultSummary({ result }: { result: RunResult }) {
         </div>
       )}
       {result.numberingRefused && (
-        <div style={{ marginTop: 8, color: '#92400E' }}>
+        <div style={{ marginTop: 8, color: '#805B0D' }}>
           {describeResetFailure(result.numberingRefused).message}
         </div>
       )}

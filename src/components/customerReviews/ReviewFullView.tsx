@@ -134,8 +134,8 @@ export function ReviewFullView({
         <ReadinessBadge card={card} groupHasImages={groupUsable} pending={checkingImages} />
         <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
         <span style={{
-          marginLeft: 'auto', fontFamily: 'var(--font-mono)',
-          fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap',
+          marginLeft: 'auto', fontFamily: 'var(--font-body)',
+          fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap',
         }}>
           {card.card_ref}
         </span>
@@ -153,7 +153,7 @@ export function ReviewFullView({
           BADGES. Category and approval date are context somebody reads once;
           they were sitting in the badge row making it four things wide.
         */}
-        <p style={{ margin: '5px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+        <p style={{ margin: '5px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
           {testCategoryLabel(card.test_category)}
           {card.approved_at && ` · Approved ${formatTestDate(card.approved_at)}`}
         </p>
@@ -193,7 +193,7 @@ export function ReviewFullView({
             >
               {message}
             </pre>
-            <p style={{ margin: '10px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            <p style={{ margin: '10px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               This is exactly what WhatsApp is handed. You choose the number and press send yourself.
             </p>
           </>
@@ -217,14 +217,14 @@ export function ReviewFullView({
             data-testid="review-outgoing-message"
             style={{
               margin: 0, padding: '11px 12px', borderRadius: '8px',
-              background: '#F9FAFB', border: `1px solid ${colors.border}`,
+              background: '#FBFAF8', border: `1px solid ${colors.border}`,
               fontSize: '12px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
               wordBreak: 'break-word', fontFamily: 'inherit', color: colors.primary,
             }}
           >
             {message}
           </pre>
-          <p style={{ margin: '10px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+          <p style={{ margin: '10px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Spacing is normalised, so this differs slightly from the stored review. This is
             the version that goes out. You choose the number and press send yourself.
           </p>
@@ -275,7 +275,7 @@ export function ReviewFullView({
             Checking the project images…
           </p>
         ) : imageReadiness(card, groupUsable) === 'awaiting_images' ? (
-          <p style={{ margin: 0, fontSize: '12px', color: '#92400E', lineHeight: 1.55, fontWeight: 600 }}>
+          <p style={{ margin: 0, fontSize: '12px', color: '#805B0D', lineHeight: 1.55, fontWeight: 600 }}>
             {AWAITING_IMAGES_LABEL}. This review can be booked once project images are ready.
           </p>
         ) : (
@@ -385,8 +385,8 @@ function CopyMessageButton({ message }: { message: string }) {
         colour-blind reader nothing.
       */}
       <span role="status" style={{
-        fontSize: '11px', lineHeight: 1.4,
-        color: state === 'failed' ? colors.red : state === 'copied' ? '#166534' : 'transparent',
+        fontSize: '12px', lineHeight: 1.4,
+        color: state === 'failed' ? colors.red : state === 'copied' ? '#276247' : 'transparent',
       }}>
         {state === 'copied' ? 'The message is on your clipboard.'
           : state === 'failed' ? 'Could not reach the clipboard — select the text above and copy it.'
@@ -400,7 +400,7 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
   return (
     <section>
       <h4 style={{
-        margin: '0 0 9px', fontSize: '11px', fontWeight: 700,
+        margin: '0 0 9px', fontSize: '12px', fontWeight: 700,
         textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.tertiary,
       }}>
         {label}

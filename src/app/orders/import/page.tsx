@@ -760,9 +760,9 @@ function NewOrderPiImportPageInner() {
           </button>
         }
       >
-        <Card style={{ borderColor: 'rgba(232,160,48,0.35)' }}>
+        <Card style={{ borderColor: 'rgba(196,138,26,0.35)' }}>
           <div style={{ padding: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <Lock size={18} strokeWidth={1.8} color="#9A6212" style={{ flexShrink: 0, marginTop: '1px' }} />
+            <Lock size={18} strokeWidth={1.8} color="#805B0D" style={{ flexShrink: 0, marginTop: '1px' }} />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
                 PI upload is not enabled for your account
@@ -799,9 +799,9 @@ function NewOrderPiImportPageInner() {
   // employee has no way to tell whether they are about to correct their returned
   // PI or start a second one beside it.
   const replaceNotice = replaceTarget.kind === 'ready' ? (
-    <Card style={{ borderColor: 'rgba(85,133,232,0.35)' }}>
+    <Card style={{ borderColor: 'rgba(51,90,134,0.35)' }}>
       <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-        <Info size={16} strokeWidth={1.9} color="#2F5BB7" style={{ flexShrink: 0, marginTop: '1px' }} />
+        <Info size={16} strokeWidth={1.9} color="#335A86" style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
             Replacing the PI on an existing record
@@ -823,7 +823,7 @@ function NewOrderPiImportPageInner() {
       </div>
     </Card>
   ) : replaceTarget.kind === 'unavailable' ? (
-    <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '16px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
         <AlertTriangle size={16} strokeWidth={1.9} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
@@ -858,14 +858,14 @@ function NewOrderPiImportPageInner() {
           padding: isMobile ? '28px 20px' : '36px 24px',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
           textAlign: 'center',
-          background: dragging ? colors.blueTint : colors.base,
-          border: dragging ? `2px dashed ${colors.blue}` : '2px dashed transparent',
-          borderRadius: '10px',
+          background: dragging ? colors.brandTint : colors.base,
+          border: dragging ? `2px dashed ${colors.brand}` : '2px dashed transparent',
+          borderRadius: '8px',
           transition: 'background 0.15s, border-color 0.15s',
         }}
       >
         {parsing ? (
-          <Loader2 size={22} strokeWidth={1.8} color={colors.blue}
+          <Loader2 size={22} strokeWidth={1.8} color={colors.brand}
                    style={{ animation: 'boe-spin 0.8s linear infinite' }} />
         ) : (
           <FileSpreadsheet size={22} strokeWidth={1.8} color={colors.muted} />
@@ -890,7 +890,7 @@ function NewOrderPiImportPageInner() {
         </div>
 
         {!parsing && (
-          <div style={{ fontSize: '11px', color: colors.muted }}>
+          <div style={{ fontSize: '12px', color: colors.muted }}>
             or drop the file here
           </div>
         )}
@@ -900,7 +900,7 @@ function NewOrderPiImportPageInner() {
 
   // ── Failure ──
   const failureBlock = stage.kind === 'failed' && (
-    <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         <AlertTriangle size={18} strokeWidth={1.8} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -917,7 +917,7 @@ function NewOrderPiImportPageInner() {
                 onClick={() => setShowTechnical(v => !v)}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontSize: '11px', color: colors.muted, textDecoration: 'underline',
+                  fontSize: '12px', color: colors.muted, textDecoration: 'underline',
                 }}
               >
                 {showTechnical ? 'Hide technical details' : 'Technical details'}
@@ -927,7 +927,7 @@ function NewOrderPiImportPageInner() {
                   marginTop: '6px', padding: '8px 10px',
                   background: colors.raised, border: `1px solid ${colors.border}`,
                   borderRadius: '6px',
-                  fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.secondary,
+                  fontFamily: 'var(--font-body)', fontSize: '12px', color: colors.secondary,
                   overflowWrap: 'anywhere',
                 }}>
                   {stage.failure.technical.map((line, i) => (
@@ -1009,7 +1009,7 @@ function NewOrderPiImportPageInner() {
           counts, entries, row and cell references, and the same Save Draft
           gate, loading state and failure note. Only where they sit moved. */}
       {preview.groups.blocking.length > 0 && (
-        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+        <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
           <div style={{
             padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
             background: colors.redTint,
@@ -1024,7 +1024,7 @@ function NewOrderPiImportPageInner() {
             </span>
           </div>
           <DiagnosticList entries={preview.groups.blocking} tone="red" />
-          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
             the order must match the document the client was sent.
           </div>
@@ -1035,7 +1035,7 @@ function NewOrderPiImportPageInner() {
           PRIVATE DRAFT — it does not submit for approval, take a payment or
           allocate an order number, and the success state says so. */}
       {preview.groups.readyToSubmit && (
-        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
+        <Card style={{ borderColor: saveSuccess ? 'rgba(39,98,71,0.4)' : 'rgba(39,98,71,0.3)' }}>
           <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
             <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1051,16 +1051,16 @@ function NewOrderPiImportPageInner() {
                         what must be shown. */}
                     {saveSuccess.summary} were saved to a private draft.
                   </div>
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
                     {saveSuccess.note}
                   </div>
                   {saveSuccess.warningCodes.length > 0 && (
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                       Saved with {saveSuccess.warningCodes.length} warning
                       {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
                     </div>
                   )}
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
                     Opening the saved draft…
                   </div>
                   <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1097,12 +1097,12 @@ function NewOrderPiImportPageInner() {
                       borderRadius: '8px',
                       display: 'flex', alignItems: 'center', gap: '8px',
                     }}>
-                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
+                      <Loader2 size={14} strokeWidth={2} color={colors.brand}
                                style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
                       <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
                         {saveStageLabel(saveStage!)}
                       </span>
-                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
+                      <span style={{ fontSize: '12px', color: colors.muted, marginLeft: 'auto' }}>
                         Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
                       </span>
                     </div>
@@ -1111,19 +1111,19 @@ function NewOrderPiImportPageInner() {
                   {saveFailure && (
                     <div style={{
                       marginTop: '8px', padding: '10px 12px',
-                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                      background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
                       borderRadius: '8px',
                     }}>
                       <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
                         {saveFailure.message}
                       </div>
                       {saveFailure.serverRejectedDocument && (
-                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
+                        <div style={{ fontSize: '12px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
                           The server checked the workbook itself and its result is the one that counts.
                           This PI is not ready to save.
                         </div>
                       )}
-                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-body)' }}>
                         {saveFailure.code}
                       </div>
                     </div>
@@ -1248,11 +1248,11 @@ function NewOrderPiImportPageInner() {
                   four matched products, not one. */}
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '2px 8px', borderRadius: '5px',
-                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                padding: '2px 8px', borderRadius: '6px',
+                fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
                 background: preview.coverage.complete ? colors.greenTint : colors.redTint,
-                color: preview.coverage.complete ? '#2F7A52' : colors.red,
-                border: `1px solid ${preview.coverage.complete ? 'rgba(69,168,112,0.25)' : 'rgba(217,79,79,0.25)'}`,
+                color: preview.coverage.complete ? '#276247' : colors.red,
+                border: `1px solid ${preview.coverage.complete ? 'rgba(39,98,71,0.25)' : 'rgba(180,35,50,0.25)'}`,
               }}>
                 {preview.coverage.complete
                   ? <CheckCircle2 size={11} strokeWidth={2.2} />
@@ -1266,8 +1266,8 @@ function NewOrderPiImportPageInner() {
               {preview.customizationCount.count > 0 && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '2px 8px', borderRadius: '5px',
-                  fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                  padding: '2px 8px', borderRadius: '6px',
+                  fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
                   background: colors.raised,
                   color: colors.secondary,
                   border: `1px solid ${colors.border}`,
@@ -1345,7 +1345,7 @@ function NewOrderPiImportPageInner() {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                   borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
                 }}>
-                  <span style={{ fontSize: '11px', color: colors.muted }}>Line total</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>Line total</span>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                     {formatInr(p.lineTotal)}
                   </span>
@@ -1426,7 +1426,7 @@ function NewOrderPiImportPageInner() {
       <PiCommercialSummary rows={buildCommercialRows(preview.data.commercial)} />
 
       {/* The standing promise of this screen, repeated where the eye ends up. */}
-      <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>
+      <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>
         This is a preview. The workbook was read on this device and was not uploaded or saved.
         Leaving or refreshing this page clears it.
       </div>

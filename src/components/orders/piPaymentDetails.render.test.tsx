@@ -485,7 +485,7 @@ describe('the progress bar: green confirmed, amber awaiting verification, red no
     const progress = source.slice(source.indexOf('export function PiPaymentProgress('),
       source.indexOf('/** The payment status figures'))
     assert.ok(progress.length > 0 && !progress.includes('requirementMet'))
-    assert.ok(!source.includes('#E8EBF0') && !source.includes('#F4D9D9'), 'no neutral or alternate remainder colour remains')
+    assert.ok(!source.includes('#ECE7E0') && !source.includes('#F4D9D9'), 'no neutral or alternate remainder colour remains')
   })
 })
 

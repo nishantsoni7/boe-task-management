@@ -158,7 +158,7 @@ export function OverviewScreen() {
         }}>
           <Stat label="Pending approval" value={counts ? c.pending : null} onClick={() => router.push('/customer-reviews/reviews?tab=pending')} />
           <Stat label="To verify" value={counts ? c.toVerify : null} onClick={() => router.push('/customer-reviews/reviews?tab=to_verify')} />
-          <Stat label="Waiting for images" value={counts ? c.waitingImages : null} tone="#92400E" onClick={() => router.push('/customer-reviews/images')} />
+          <Stat label="Waiting for images" value={counts ? c.waitingImages : null} tone="#805B0D" onClick={() => router.push('/customer-reviews/images')} />
           <Stat label="Batches ready to assign" value={counts ? c.batchesReady : null} onClick={() => router.push('/customer-reviews/batches')} />
         </div>
         )}
@@ -194,7 +194,7 @@ export function OverviewScreen() {
             <StackSkeleton count={3} height={46} />
           ) : items.length === 0 ? (
             <p style={{
-              margin: 0, padding: '18px', borderRadius: '9px', fontSize: '13px',
+              margin: 0, padding: '18px', borderRadius: '8px', fontSize: '13px',
               border: `1px dashed ${colors.border}`, color: colors.muted,
             }}>
               Nothing needs attention right now.
@@ -209,7 +209,7 @@ export function OverviewScreen() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: '9px', width: '100%',
                       padding: '12px 14px', minHeight: '46px', textAlign: 'left',
-                      borderRadius: '9px', border: `1px solid ${colors.border}`,
+                      borderRadius: '8px', border: `1px solid ${colors.border}`,
                       background: '#FFFFFF', cursor: 'pointer',
                       fontSize: '13px', color: colors.primary, fontFamily: 'inherit',
                     }}
@@ -240,7 +240,7 @@ function Stat({ label, value, tone, onClick }: {
       onClick={onClick}
       style={{
         display: 'flex', flexDirection: 'column', gap: '3px', textAlign: 'left',
-        padding: '13px 15px', borderRadius: '10px', minHeight: '72px',
+        padding: '13px 15px', borderRadius: '8px', minHeight: '72px',
         border: `1px solid ${colors.borderSoft}`, background: colors.base,
         cursor: 'pointer', fontFamily: 'inherit',
       }}
@@ -252,7 +252,7 @@ function Stat({ label, value, tone, onClick }: {
       }}>
         {value ?? '—'}
       </span>
-      <span style={{ fontSize: '11px', color: colors.secondary }}>{label}</span>
+      <span style={{ fontSize: '12px', color: colors.secondary }}>{label}</span>
     </button>
   )
 }

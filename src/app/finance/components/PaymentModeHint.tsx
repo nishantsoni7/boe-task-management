@@ -9,7 +9,7 @@ export function PaymentModeHint({ mode, id }: { mode: string | null | undefined;
   const text = paymentModeHelper(mode)
   if (!text) return null
   return (
-    <span id={id} style={{ display: 'block', fontSize: '11.5px', color: colors.muted, marginTop: '4px', lineHeight: 1.45 }}>
+    <span id={id} style={{ display: 'block', fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.45 }}>
       {text}
     </span>
   )

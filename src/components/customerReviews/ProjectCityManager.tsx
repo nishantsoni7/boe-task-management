@@ -88,7 +88,7 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
   return (
     <section style={{
       marginTop: '18px', padding: '16px', border: `1px solid ${colors.border}`,
-      borderRadius: '10px', background: '#FFFFFF',
+      borderRadius: '8px', background: '#FFFFFF',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 360px' }}>
@@ -96,7 +96,7 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
             <MapPin size={15} strokeWidth={2.2} />
             <strong style={{ fontSize: '13px', color: colors.primary }}>Project details</strong>
           </div>
-          <p style={{ margin: '5px 0 0', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+          <p style={{ margin: '5px 0 0', fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
             Add the city for each project. Every image in that project keeps the same project name and city reference.
           </p>
         </div>
@@ -134,7 +134,7 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
                     {project.label}
                   </div>
                   {project.archived_at && (
-                    <div style={{ marginTop: '2px', fontSize: '10.5px', color: colors.tertiary }}>Archived project</div>
+                    <div style={{ marginTop: '2px', fontSize: '12px', color: colors.tertiary }}>Archived project</div>
                   )}
                 </div>
                 <input

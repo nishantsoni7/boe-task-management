@@ -555,7 +555,7 @@ export function MeetingWorkScreen() {
       <MeetingsLayout profile={profile} title="Meeting" onSignOut={signOut}>
         <div style={{
           background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: '10px', padding: '48px 24px', textAlign: 'center',
+          borderRadius: '8px', padding: '48px 24px', textAlign: 'center',
         }}>
           <AlertTriangle size={26} strokeWidth={1.5} color={colors.muted} />
           <p style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary, marginTop: '10px' }}>
@@ -664,7 +664,7 @@ export function MeetingWorkScreen() {
         {attendees.length > 0 && (
           <span
             title={attendees.map(a => a.full_name).join(', ')}
-            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: colors.muted }}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.muted }}
           >
             <Users size={12} strokeWidth={1.9} />
             {attendees.length} attendee{attendees.length !== 1 ? 's' : ''}
@@ -676,7 +676,7 @@ export function MeetingWorkScreen() {
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-              fontSize: '11.5px', fontWeight: 600, color: colors.blue,
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk,
             }}
           >
             <Pencil size={11} strokeWidth={2.2} /> Edit details
@@ -690,7 +690,7 @@ export function MeetingWorkScreen() {
           style={{
             display: 'flex', alignItems: 'center', gap: '4px',
             background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-            fontSize: '11.5px', fontWeight: 600, color: colors.secondary,
+            fontSize: '12px', fontWeight: 600, color: colors.secondary,
           }}
         >
           <HistoryIcon size={11} strokeWidth={2.2} /> Meeting Activity
@@ -701,8 +701,8 @@ export function MeetingWorkScreen() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: '9px',
           padding: '9px 13px', borderRadius: '8px', marginBottom: '10px',
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: '12.5px', color: '#166534',
+          background: '#E8F2EC', border: '1px solid #BCD8C8',
+          fontSize: '12.5px', color: '#276247',
         }}>
           <CheckCircle2 size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
           This meeting is completed and read-only. Follow-ups it scheduled are still live on the
@@ -723,7 +723,7 @@ export function MeetingWorkScreen() {
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -1080,7 +1080,7 @@ function OrderWorkspaceHeader({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', padding: '10px 15px 13px', marginBottom: '12px',
+      borderRadius: '8px', padding: '10px 15px 13px', marginBottom: '12px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
         <button
@@ -1094,7 +1094,7 @@ function OrderWorkspaceHeader({
           <ArrowLeft size={14} strokeWidth={2} /> Meeting board
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ fontSize: '11.5px', color: colors.muted, marginRight: '3px' }}>
+          <span style={{ fontSize: '12px', color: colors.muted, marginRight: '3px' }}>
             Order {index} of {total}
           </span>
           <IconAction label="Previous order" onClick={() => onPrev?.()} disabled={!onPrev}>
@@ -1123,7 +1123,7 @@ function OrderWorkspaceHeader({
             {order.next_review_date && ` · Next review ${formatMeetingDate(order.next_review_date)}`}
           </div>
           {order.remarks && (
-            <div style={{ marginTop: '5px', fontSize: '11.5px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
+            <div style={{ marginTop: '5px', fontSize: '12px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
               {order.remarks}
             </div>
           )}
@@ -1187,7 +1187,7 @@ function OrderPanel({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', overflow: 'hidden',
+      borderRadius: '8px', overflow: 'hidden',
     }}>
       {/* Order header — position, overall update and next review together, which
           is the whole order-level answer in one glance. */}
@@ -1229,7 +1229,7 @@ function OrderPanel({
 
           {order.latest_update && (
             <div style={{
-              marginTop: '9px', padding: '8px 11px', borderRadius: '7px',
+              marginTop: '9px', padding: '8px 11px', borderRadius: '8px',
               background: colors.raised, borderLeft: `2px solid ${posMeta.color}`,
               fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
             }}>
@@ -1237,7 +1237,7 @@ function OrderPanel({
             </div>
           )}
           {order.remarks && (
-            <div style={{ marginTop: '6px', fontSize: '11.5px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
+            <div style={{ marginTop: '6px', fontSize: '12px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
               {order.remarks}
             </div>
           )}
@@ -1250,7 +1250,7 @@ function OrderPanel({
         padding: '8px 15px', borderBottom: `1px solid ${colors.border}`, gap: '8px',
       }}>
         <div style={{
-          fontSize: '10px', fontWeight: 700, color: colors.muted,
+          fontSize: '12px', fontWeight: 700, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.06em',
         }}>
           Products under review · {items.length}
@@ -1261,7 +1261,7 @@ function OrderPanel({
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-              fontSize: '12px', fontWeight: 600, color: colors.blue,
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk,
             }}
           >
             <Plus size={12} strokeWidth={2.4} /> Add Product
@@ -1275,7 +1275,7 @@ function OrderPanel({
           <p style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '8px', fontWeight: 600 }}>
             No products added to this order yet
           </p>
-          <p style={{ fontSize: '11.5px', color: colors.muted, marginTop: '3px' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginTop: '3px' }}>
             {editable
               ? 'Add them one at a time, or bring a whole review in from the spreadsheet.'
               : 'Nothing has been added to this order.'}
@@ -1308,7 +1308,7 @@ function OrderPanel({
                 {['Product', 'Stage / Owner', 'Update', 'Follow-up', 'Status', 'Task', ''].map(h => (
                   <th key={h} style={{
                     padding: '7px 12px', textAlign: 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                   }}>{h}</th>
                 ))}
@@ -1370,7 +1370,7 @@ function ItemRow(props: ItemRowProps) {
           <MeetingItemThumb supabase={props.supabase} path={item.image_path} onOpen={props.onOpenImage} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, color: colors.primary }}>{item.sku}</div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
               {item.product_name}
               {item.quantity != null && ` · ${item.quantity}`}
             </div>
@@ -1380,7 +1380,7 @@ function ItemRow(props: ItemRowProps) {
       </td>
       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
         <div style={{ color: colors.secondary }}>{item.current_stage ?? '—'}</div>
-        <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
           {departmentLabel(item.responsible_department)}
         </div>
       </td>
@@ -1409,7 +1409,7 @@ function ItemCard(props: ItemRowProps) {
 
   return (
     <div style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px',
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '11px 13px', marginBottom: '8px', background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
@@ -1417,7 +1417,7 @@ function ItemCard(props: ItemRowProps) {
           <MeetingItemThumb supabase={props.supabase} path={item.image_path} onOpen={props.onOpenImage} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{item.sku}</div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
               {item.product_name}
               {item.quantity != null && ` · ${item.quantity}`}
             </div>
@@ -1433,7 +1433,7 @@ function ItemCard(props: ItemRowProps) {
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-        marginTop: '8px', fontSize: '11.5px', color: colors.muted,
+        marginTop: '8px', fontSize: '12px', color: colors.muted,
       }}>
         <span>{item.current_stage ?? 'No stage'}</span>
         <span>·</span>
@@ -1463,14 +1463,14 @@ function UpdateCell({ item, previousUpdate }: { item: MeetingOrderItem; previous
         {item.latest_update ?? 'No update recorded'}
       </div>
       {previousUpdate && (
-        <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px', lineHeight: 1.4 }}>
+        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px', lineHeight: 1.4 }}>
           <span style={{ fontWeight: 600 }}>Previously: </span>{previousUpdate}
         </div>
       )}
       {item.issue && (
         <div style={{
           display: 'flex', gap: '5px', alignItems: 'flex-start',
-          fontSize: '11.5px', color: '#92400E', marginTop: '5px', lineHeight: 1.4,
+          fontSize: '12px', color: '#805B0D', marginTop: '5px', lineHeight: 1.4,
         }}>
           <AlertTriangle size={11} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: '2px' }} />
           <span>{item.issue}</span>
@@ -1484,7 +1484,7 @@ function FollowUpCell({
   date, due,
 }: { date: string | null; due: ReturnType<typeof followUpDue> }) {
   if (!date || !due) {
-    return <span style={{ fontSize: '11.5px', color: colors.muted }}>—</span>
+    return <span style={{ fontSize: '12px', color: colors.muted }}>—</span>
   }
   const meta = FOLLOW_UP_DUE_META[due]
   const late = due === 'overdue' ? daysOverdue(date) : 0
@@ -1494,7 +1494,7 @@ function FollowUpCell({
         {formatMeetingDate(date)}
       </span>
       {due !== 'upcoming' && (
-        <span style={{ fontSize: '10px', fontWeight: 700, color: meta.color }}>
+        <span style={{ fontSize: '12px', fontWeight: 700, color: meta.color }}>
           {due === 'overdue' ? `${late} day${late === 1 ? '' : 's'} overdue` : 'Due today'}
         </span>
       )}
@@ -1512,12 +1512,12 @@ function FollowUpCell({
 function TaskCell({
   task, linked, onOpenTask,
 }: { task: LinkedTask | undefined; linked: boolean; onOpenTask: (id: string) => void }) {
-  if (!linked) return <span style={{ fontSize: '11.5px', color: colors.muted }}>—</span>
+  if (!linked) return <span style={{ fontSize: '12px', color: colors.muted }}>—</span>
 
   if (!task) {
     // Linked, but the task row is not readable or has been removed. Saying so
     // is better than rendering an empty cell that looks like "no task".
-    return <span style={{ fontSize: '11.5px', color: colors.muted }}>Task not available</span>
+    return <span style={{ fontSize: '12px', color: colors.muted }}>Task not available</span>
   }
 
   return (
@@ -1531,11 +1531,11 @@ function TaskCell({
       <span className={`boe-badge boe-badge-${task.status}`} style={{ textTransform: 'capitalize' }}>
         {task.status}
       </span>
-      <span style={{ fontSize: '11px', color: colors.secondary }}>
+      <span style={{ fontSize: '12px', color: colors.secondary }}>
         {task.assignee_name ?? 'Unassigned'}
       </span>
       {task.due_date && (
-        <span style={{ fontSize: '10.5px', color: colors.muted }}>
+        <span style={{ fontSize: '12px', color: colors.muted }}>
           Due {formatMeetingDate(task.due_date)}
         </span>
       )}
@@ -1600,7 +1600,7 @@ function IconAction({
   positive?: boolean
   disabled?: boolean
 }) {
-  const color = danger ? colors.red : positive ? '#2E8A58' : colors.secondary
+  const color = danger ? colors.red : positive ? '#276247' : colors.secondary
   return (
     <button
       onClick={onClick}
@@ -1609,7 +1609,7 @@ function IconAction({
       aria-label={label}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 28, height: 28, borderRadius: '7px', flexShrink: 0,
+        width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
         border: `1px solid ${colors.border}`, background: 'transparent',
         color, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
         transition: 'background 0.12s',
@@ -1634,7 +1634,7 @@ function EmptyReview({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', padding: '48px 24px', textAlign: 'center',
+      borderRadius: '8px', padding: '48px 24px', textAlign: 'center',
     }}>
       <ClipboardList size={28} strokeWidth={1.4} color={colors.muted} />
       <p style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary, marginTop: '10px' }}>

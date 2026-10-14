@@ -212,7 +212,7 @@ export function OrderUpdateModal({
           background: colors.raised, border: `1px solid ${colors.border}`,
         }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: colors.muted,
+            fontSize: '12px', fontWeight: 700, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
           }}>
             Previous overall update
@@ -731,7 +731,7 @@ export function CarryForwardOrdersModal({
                 disabled={saving}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontSize: '12px', fontWeight: 600, color: colors.blue,
+                  fontSize: '12px', fontWeight: 600, color: colors.brandInk,
                 }}
               >
                 {allChosen ? 'Select none' : 'Select all'}
@@ -739,7 +739,7 @@ export function CarryForwardOrdersModal({
             )}
           </div>
           <div style={{
-            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
             maxHeight: '50vh', overflowY: 'auto',
           }}>
             {candidates.map((c, i) => {
@@ -763,13 +763,13 @@ export function CarryForwardOrdersModal({
                     <span style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: colors.primary }}>
                       {c.order_number}
                     </span>
-                    <span style={{ display: 'block', fontSize: '11.5px', color: colors.muted }}>
+                    <span style={{ display: 'block', fontSize: '12px', color: colors.muted }}>
                       {c.customer_name ?? 'No customer recorded'}
                       {c.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(c.expected_dispatch_date)}`}
                     </span>
                   </span>
                   {already
-                    ? <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>In this meeting</span>
+                    ? <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>In this meeting</span>
                     : <MeetingBadge meta={ORDER_POSITION_META[c.position]} />}
                 </label>
               )

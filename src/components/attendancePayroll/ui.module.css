@@ -1,7 +1,7 @@
 /* Shared building blocks for every Attendance & Payroll page.
  *
  * One vocabulary so the module reads as one product: white surfaces on the
- * #F4F5F7 ground, #111318 text, rgba(0,0,0,.08) borders, restrained shadow.
+ * #F7F5F1 ground, #303536 text, rgba(0,0,0,.08) borders, restrained shadow.
  * Status filters (pills) look nothing like section tabs (underline) on purpose:
  * a filter narrows the list you are on, a tab moves to another page.
  *
@@ -13,7 +13,7 @@
 
 .surface {
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid #E4DED7;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   min-width: 0;
@@ -26,10 +26,10 @@
   gap: 10px;
   flex-wrap: wrap;
   padding: 12px 18px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #E4DED7;
 }
-.surfaceTitle { font-size: 14px; font-weight: 700; color: #111318; margin: 0; }
-.surfaceSub { font-size: 12.5px; color: #6B7384; margin: 2px 0 0; line-height: 1.4; }
+.surfaceTitle { font-size: 14px; font-weight: 700; color: #303536; margin: 0; }
+.surfaceSub { font-size: 12.5px; color: #686D6C; margin: 2px 0 0; line-height: 1.4; }
 
 /* Records and payroll tables use the whole width; forms stay narrow. */
 .wide { width: 100%; }
@@ -54,8 +54,8 @@
   display: inline-flex;
   padding: 3px;
   gap: 2px;
-  background: #EEF0F4;
-  border-radius: 9px;
+  background: #F1EEE9;
+  border-radius: 8px;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -65,32 +65,32 @@
   min-height: 34px;
   padding: 0 13px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
-  color: #4A5261;
+  color: #4C5352;
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   font-family: inherit;
 }
-.filter:hover { color: #111318; }
-.filter:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
+.filter:hover { color: #303536; }
+.filter:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
 .filterActive,
 .filterActive:hover {
   background: #fff;
-  color: #111318;
+  color: #303536;
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
-.filterCount { font-weight: 500; color: #6B7384; margin-left: 5px; }
+.filterCount { font-weight: 500; color: #686D6C; margin-left: 5px; }
 
 /* ── Fields ───────────────────────────────────────────────────────────────── */
 
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.label { font-size: 12px; font-weight: 600; color: #4A5261; letter-spacing: 0.01em; }
-.optional { font-weight: 400; color: #6B7384; }
-.hint { font-size: 12px; color: #6B7384; line-height: 1.4; }
+.label { font-size: 12px; font-weight: 600; color: #4C5352; letter-spacing: 0.01em; }
+.optional { font-weight: 400; color: #686D6C; }
+.hint { font-size: 12px; color: #686D6C; line-height: 1.4; }
 
 /* 16px: iOS zooms the page when a focused input is smaller. */
 .input {
@@ -99,14 +99,14 @@
   padding: 8px 12px;
   font-size: 14px;
   font-family: inherit;
-  color: #111318;
+  color: #303536;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid #CFC8BF;
   border-radius: 8px;
   box-sizing: border-box;
 }
-.input:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
-.input[aria-invalid='true'] { border-color: #DC2626; }
+.input:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+.input[aria-invalid='true'] { border-color: #B42332; }
 textarea.input { resize: vertical; line-height: 1.45; }
 
 .fieldGrid {
@@ -125,32 +125,32 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .table th {
   padding: 10px 14px;
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: #6B7384;
+  color: #686D6C;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: #F8F9FB;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #FBFAF8;
+  border-bottom: 1px solid #E4DED7;
   white-space: nowrap;
 }
 .table td {
   padding: 11px 14px;
   vertical-align: top;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  color: #111318;
+  border-bottom: 1px solid #E4DED7;
+  color: #303536;
 }
 .table tbody tr:last-child td { border-bottom: 0; }
-.table tbody tr:hover { background: #FAFBFC; }
+.table tbody tr:hover { background: #FBFAF8; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .center { text-align: center; }
 .nowrap { white-space: nowrap; }
 .strong { font-weight: 600; }
-.sub { font-size: 12px; color: #6B7384; margin-top: 2px; line-height: 1.4; }
-.muted { color: #6B7384; }
-.link { color: #1D4ED8; font-weight: 600; text-decoration: none; }
+.sub { font-size: 12px; color: #686D6C; margin-top: 2px; line-height: 1.4; }
+.muted { color: #686D6C; }
+.link { color: #963B27; font-weight: 600; text-decoration: none; }
 .link:hover { text-decoration: underline; }
-.link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+.link:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; border-radius: 6px; }
 
 /* Cards replace a wide table under 768px. */
 .cards { display: none; list-style: none; margin: 0; padding: 0; flex-direction: column; gap: 10px; }
@@ -161,17 +161,17 @@ textarea.input { resize: vertical; line-height: 1.45; }
 
 .badge {
   display: inline-block;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;
   white-space: nowrap;
 }
-.tone-good    { background: rgba(16, 185, 129, 0.12); color: #047857; }
-.tone-warn    { background: rgba(232, 160, 48, 0.15); color: #B45309; }
-.tone-bad     { background: rgba(239, 68, 68, 0.10);  color: #B91C1C; }
-.tone-neutral { background: rgba(107, 114, 128, 0.12); color: #4B5563; }
-.tone-info    { background: rgba(37, 99, 235, 0.10);  color: #1D4ED8; }
+.tone-good    { background: rgba(39,98,71,0.12); color: #276247; }
+.tone-warn    { background: rgba(196,138,26, 0.15); color: #805B0D; }
+.tone-bad     { background: rgba(180,35,50,0.10);  color: #B42332; }
+.tone-neutral { background: rgba(104,109,108,0.12); color: #4C5352; }
+.tone-info    { background: rgba(51,90,134,0.10);  color: #335A86; }
 
 /* ── Messages and states ──────────────────────────────────────────────────── */
 
@@ -182,10 +182,10 @@ textarea.input { resize: vertical; line-height: 1.45; }
   padding: 10px 12px;
   border: 1px solid transparent;
 }
-.notice-error   { color: #991B1B; background: rgba(239, 68, 68, 0.08);  border-color: rgba(239, 68, 68, 0.28); }
-.notice-success { color: #065F46; background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); }
-.notice-warning { color: #92400E; background: rgba(232, 160, 48, 0.10); border-color: rgba(232, 160, 48, 0.35); }
-.notice-info    { color: #1E3A8A; background: rgba(37, 99, 235, 0.07);  border-color: rgba(37, 99, 235, 0.22); }
+.notice-error   { color: #A12438; background: rgba(180,35,50,0.08);  border-color: rgba(180,35,50,0.28); }
+.notice-success { color: #276247; background: rgba(39,98,71,0.08); border-color: rgba(39,98,71,0.25); }
+.notice-warning { color: #805B0D; background: rgba(196,138,26, 0.10); border-color: rgba(196,138,26, 0.35); }
+.notice-info    { color: #335A86; background: rgba(51,90,134,0.07);  border-color: rgba(51,90,134,0.22); }
 .noticeRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 .state {
@@ -196,14 +196,14 @@ textarea.input { resize: vertical; line-height: 1.45; }
   align-items: center;
   gap: 4px;
 }
-.stateTitle { font-size: 14px; font-weight: 600; color: #111318; }
-.stateBody { font-size: 13px; color: #6B7384; max-width: 46ch; line-height: 1.5; }
+.stateTitle { font-size: 14px; font-weight: 600; color: #303536; }
+.stateBody { font-size: 13px; color: #686D6C; max-width: 46ch; line-height: 1.5; }
 .stateAction { margin-top: 10px; }
 
 /* Definition lists for read-only detail fields. */
 .facts { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13.5px; }
-.facts dt { color: #6B7384; }
-.facts dd { margin: 0; color: #111318; overflow-wrap: anywhere; }
+.facts dt { color: #686D6C; }
+.facts dd { margin: 0; color: #303536; overflow-wrap: anywhere; }
 
 .srOnly {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

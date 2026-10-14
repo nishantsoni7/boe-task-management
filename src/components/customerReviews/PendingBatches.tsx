@@ -245,7 +245,7 @@ function BatchGroup({
     <section
       aria-label={batch ? `Batch generated ${formatTestTimestamp(batch.generated_at)}` : 'Ungrouped drafts'}
       style={{
-        border: `1px solid ${colors.border}`, borderRadius: '10px',
+        border: `1px solid ${colors.border}`, borderRadius: '8px',
         background: '#FFFFFF', overflow: 'hidden',
       }}
     >
@@ -266,14 +266,14 @@ function BatchGroup({
           </strong>
 
           {/* WHAT IT IS MADE OF, counted from the drafts actually in hand. */}
-          <span style={{ fontSize: '11.5px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
             {composition.text} Text · {composition.image} Image
           </span>
 
           {batch && (
             <span style={{
-              marginLeft: 'auto', fontFamily: 'var(--font-mono)',
-              fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
+              marginLeft: 'auto', fontFamily: 'var(--font-body)',
+              fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
             }}>
               {batchId.slice(0, 8)}
             </span>
@@ -282,7 +282,7 @@ function BatchGroup({
 
         {batch && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: colors.tertiary }}>
+            <span style={{ fontSize: '12px', color: colors.tertiary }}>
               Generated {formatTestTimestamp(batch.generated_at)} by {generatedBy}
             </span>
             {/*
@@ -291,9 +291,9 @@ function BatchGroup({
               lists batches where every review is already approved.
             */}
             <span style={{
-              display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-              background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
-              fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+              display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
+              background: '#EAF0F8', color: '#335A86', border: '1px solid #C3D3E6',
+              fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
             }}>
               Next: approve, then assign
             </span>
@@ -310,7 +310,7 @@ function BatchGroup({
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 background: 'transparent', border: 'none', padding: '4px 0',
                 minHeight: '44px', cursor: 'pointer',
-                fontSize: '12px', color: colors.blue, fontFamily: 'inherit',
+                fontSize: '12px', color: colors.brandInk, fontFamily: 'inherit',
               }}
             >
               {showGuidance ? <ChevronDown size={13} strokeWidth={2} /> : <ChevronRight size={13} strokeWidth={2} />}
@@ -400,7 +400,7 @@ function BatchGroup({
           that, and it is only rendered when the button is actually off.
         */}
         {selected.size === 0 && (
-          <p style={{ margin: 0, flexBasis: '100%', fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+          <p style={{ margin: 0, flexBasis: '100%', fontSize: '12px', color: colors.muted, lineHeight: 1.4 }}>
             Tick one or more reviews to use “Approve selected”, or approve the whole batch.
           </p>
         )}
@@ -513,7 +513,7 @@ function BatchGroup({
             disabled={busy}
           />
 
-          <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
             {confirm.kind === 'all'
               ? 'Everything still awaiting approval in this batch is released together, or nothing is.'
               : confirm.count === 1
@@ -761,9 +761,9 @@ function PendingDraftRow({
   return (
     <li style={{
       display: 'flex', flexDirection: 'column', gap: '8px',
-      padding: '11px', borderRadius: '9px', minWidth: 0,
-      border: `1px solid ${checked ? '#DDD6FE' : colors.border}`,
-      background: checked ? '#FAF9FF' : colors.raised,
+      padding: '11px', borderRadius: '8px', minWidth: 0,
+      border: `1px solid ${checked ? '#C3D3E6' : colors.border}`,
+      background: checked ? '#FBFAF8' : colors.raised,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '2px' }}>
         {/*
@@ -790,10 +790,10 @@ function PendingDraftRow({
         </label>
         <div style={{ flex: 1, minWidth: 0, paddingTop: '11px' }}>
           <div style={{ display: 'flex', gap: '7px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: colors.tertiary }}>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: colors.tertiary }}>
               {card.card_ref}
             </span>
-            <span style={{ fontSize: '10px', color: colors.muted }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
               {testCategoryLabel(card.test_category)}
             </span>
             {/*

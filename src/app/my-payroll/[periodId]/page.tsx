@@ -299,7 +299,7 @@ export default function MyPayrollDetailPage() {
           onClick={() => router.push('/my-payroll')}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
+            color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
           }}
         >
           ← Back to My Payroll
@@ -309,8 +309,8 @@ export default function MyPayrollDetailPage() {
       {(error || reviewError) && (
         <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+          background: 'rgba(180,35,50,0.08)', color: '#B42332',
+          border: '1px solid rgba(180,35,50,0.2)', fontSize: 13,
         }}>
           {error ?? reviewError}
         </div>
@@ -332,9 +332,9 @@ export default function MyPayrollDetailPage() {
           onRedeem={setRedeemingDate}
           notices={redeemNotice && (
             <div role="status" style={{
-              marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-              background: 'rgba(5,150,105,0.09)', color: '#047857',
-              border: '1px solid rgba(5,150,105,0.3)', fontSize: 13,
+              marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+              background: 'rgba(39,98,71,0.09)', color: '#276247',
+              border: '1px solid rgba(39,98,71,0.3)', fontSize: 13,
             }}>
               {redeemNotice}
             </div>
@@ -356,12 +356,12 @@ export default function MyPayrollDetailPage() {
           // RLS on payroll_settlements, which grants employees SELECT alone.
           issuePanel={
             <div style={{
-              marginBottom: 16, padding: '12px 16px', borderRadius: 9,
-              background: '#FAFBFC', border: '1px solid #E8EBF0',
+              marginBottom: 16, padding: '12px 16px', borderRadius: 8,
+              background: '#FBFAF8', border: '1px solid #ECE7E0',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               gap: 12, flexWrap: 'wrap',
             }}>
-              <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.55, minWidth: 220, flex: 1 }}>
+              <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55, minWidth: 220, flex: 1 }}>
                 {objection
                   ? <>You reported an issue with this month&rsquo;s payroll.{objection.review_note ? ` Admin replied: ${objection.review_note}` : ''}</>
                   : <>Something look wrong? Raise it with your admin — this does not change your salary by itself.</>}
@@ -369,8 +369,8 @@ export default function MyPayrollDetailPage() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 {objection ? (
                   <span style={{
-                    display: 'inline-block', padding: '3px 11px', borderRadius: 20,
-                    fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                    display: 'inline-block', padding: '3px 11px', borderRadius: 12,
+                    fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
                     background: objectionTone(objection.status).bg,
                     color: objectionTone(objection.status).fg,
                   }}>

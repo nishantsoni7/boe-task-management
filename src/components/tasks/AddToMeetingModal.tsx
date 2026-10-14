@@ -232,14 +232,14 @@ export function AddToMeetingModal({
 
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: '9px',
-          padding: '11px 13px', borderRadius: '9px',
-          background: result.in_inbox ? colors.amberTint : '#F0FDF4',
-          border: `1px solid ${result.in_inbox ? 'rgba(232,160,48,0.28)' : '#BBF7D0'}`,
+          padding: '11px 13px', borderRadius: '8px',
+          background: result.in_inbox ? colors.amberTint : '#E8F2EC',
+          border: `1px solid ${result.in_inbox ? 'rgba(196,138,26,0.28)' : '#BCD8C8'}`,
         }}>
           {result.in_inbox
-            ? <Inbox size={15} strokeWidth={2} color="#8A5A12" aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px' }} />
-            : <CheckCircle2 size={15} strokeWidth={2} color="#166534" aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px' }} />}
-          <div style={{ fontSize: '12.5px', lineHeight: 1.6, color: result.in_inbox ? '#8A5A12' : '#166534' }}>
+            ? <Inbox size={15} strokeWidth={2} color="#805B0D" aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px' }} />
+            : <CheckCircle2 size={15} strokeWidth={2} color="#276247" aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px' }} />}
+          <div style={{ fontSize: '12.5px', lineHeight: 1.6, color: result.in_inbox ? '#805B0D' : '#276247' }}>
             {/* Each sentence says only what the result proves. An existing issue
                 that is on an agenda is named as such and gets View Agenda below;
                 one still waiting says so. Neither claims something was created. */}
@@ -272,7 +272,7 @@ export function AddToMeetingModal({
           </div>
         </div>
 
-        <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
           The task is unchanged — its status, assignee and due date are exactly as they were. The
           issue stays linked to it for context.
         </p>
@@ -443,7 +443,7 @@ export function AddToMeetingButton({ onClick, compact = false }: { onClick: () =
         }),
         borderRadius: '8px',
         border: `1.5px solid ${colors.amber}55`,
-        background: '#ffffff', color: '#8A5A12',
+        background: '#ffffff', color: '#805B0D',
         fontWeight: 600, cursor: 'pointer',
         fontFamily: 'inherit',
       }}

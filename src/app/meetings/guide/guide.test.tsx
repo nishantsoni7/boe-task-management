@@ -463,16 +463,16 @@ describe('no new colour enters the BOE palette', () => {
   })
 
   test('the phase tones are the families already used for type and status badges', () => {
-    // #EFF6FF/#1E40AF is MEETING_TYPE_META.new_order, #F5F3FF/#5B21B6 is
-    // MEETING_STATUS_META.in_progress, #F0FDF4/#166534 is .completed.
-    for (const hex of ['#EFF6FF', '#1E40AF', '#F5F3FF', '#5B21B6', '#F0FDF4', '#166534']) {
+    // #EAF0F8/#335A86 is MEETING_TYPE_META.new_order, #EAF0F8/#335A86 is
+    // MEETING_STATUS_META.in_progress, #E8F2EC/#276247 is .completed.
+    for (const hex of ['#EAF0F8', '#335A86', '#EAF0F8', '#335A86', '#E8F2EC', '#276247']) {
       assert.ok(PAGE.includes(hex), `${hex} should be reused, not replaced`)
     }
   })
 
   test('Running Order stays in the blue/info family and After Sales in amber/warning', () => {
-    assert.equal(DISCUSSION_CATEGORY_META.running_order.bg, '#EFF6FF')
-    assert.equal(DISCUSSION_CATEGORY_META.after_sales.bg, '#FFFBEB')
+    assert.equal(DISCUSSION_CATEGORY_META.running_order.bg, '#EAF0F8')
+    assert.equal(DISCUSSION_CATEGORY_META.after_sales.bg, '#FAF0DA')
   })
 })
 

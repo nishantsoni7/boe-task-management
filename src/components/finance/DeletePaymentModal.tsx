@@ -52,7 +52,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <span style={{
-        fontSize: '10px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{label}</span>
       <span style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{value}</span>
@@ -93,7 +93,7 @@ export function PaymentDeleteConfirmIdField({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label htmlFor={CONFIRM_ID_INPUT_ID} style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+      <label htmlFor={CONFIRM_ID_INPUT_ID} style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
         {paymentDeleteConfirmIdLabel(humanPaymentId)}
       </label>
       <input
@@ -106,8 +106,8 @@ export function PaymentDeleteConfirmIdField({
         aria-describedby={mismatch ? CONFIRM_ID_ERROR_ID : undefined}
         style={{
           fontSize: '13px', padding: '8px 10px', borderRadius: '8px',
-          border: `1px solid ${mismatch ? '#DC2626' : colors.border}`,
-          background: mismatch ? '#FEF2F2' : undefined,
+          border: `1px solid ${mismatch ? '#B42332' : colors.border}`,
+          background: mismatch ? '#FBE9EC' : undefined,
           fontFamily: 'monospace',
         }}
         // The one input on this dialog that is a code rather than prose: a phone
@@ -117,11 +117,11 @@ export function PaymentDeleteConfirmIdField({
         autoCorrect="off"
         spellCheck={false}
       />
-      {/* The BOE inline field error: 11px, #C13030, directly beneath the box —
+      {/* The BOE inline field error: 11px, #B42332, directly beneath the box —
           the same shape OrderField draws, and gone the moment it stops being
           true rather than at submit. */}
       {mismatch && (
-        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '11px', color: '#C13030', lineHeight: 1.5 }}>
+        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.5 }}>
           {mismatch}
         </div>
       )}
@@ -225,7 +225,7 @@ export function DeletePaymentModal({
       {allocationSummary && (
         <div style={{
           padding: '10px 12px', borderRadius: '8px',
-          background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412',
+          background: '#FAF0DA', border: '1px solid #E6D2A0', color: '#805B0D',
           fontSize: '12px', lineHeight: 1.55,
         }}>
           <div style={{ fontWeight: 600 }}>{allocationSummary}</div>
@@ -236,7 +236,7 @@ export function DeletePaymentModal({
       {!settled && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
               {PAYMENT_DELETE_REASON_LABEL}
             </span>
             <textarea
@@ -264,7 +264,7 @@ export function DeletePaymentModal({
       {message && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.55,
-          background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
+          background: '#FBE9EC', border: '1px solid #E9B9C1', color: '#B42332',
         }}>
           {message}
         </div>
@@ -286,7 +286,7 @@ export function DeletePaymentModal({
             disabled={deleting || !canSubmit}
             style={{
               padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-              border: 'none', color: '#fff', background: '#DC1F2E',
+              border: 'none', color: '#fff', background: '#B42332',
               cursor: (deleting || !canSubmit) ? 'not-allowed' : 'pointer', opacity: (deleting || !canSubmit) ? 0.6 : 1,
             }}
           >

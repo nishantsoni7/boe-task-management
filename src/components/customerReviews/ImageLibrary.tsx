@@ -327,7 +327,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
   return (
     <section style={{
       display: 'flex', flexDirection: 'column', gap: '12px',
-      border: `1px solid ${colors.borderSoft}`, borderRadius: '10px',
+      border: `1px solid ${colors.borderSoft}`, borderRadius: '8px',
       background: colors.base, padding: '14px',
     }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -372,7 +372,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
       </div>
 
       {error && <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0, lineHeight: 1.6 }}>{error}</p>}
-      {notice && <p role="status" style={{ fontSize: '12px', color: '#166534', margin: 0, lineHeight: 1.6 }}>{notice}</p>}
+      {notice && <p role="status" style={{ fontSize: '12px', color: '#276247', margin: 0, lineHeight: 1.6 }}>{notice}</p>}
 
       {groups === null ? (
         <StackSkeleton count={3} height={62} />
@@ -409,25 +409,25 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                     {group.label}
                   </button>
 
-                  <span style={{ fontSize: '11px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                     {count} image{count === 1 ? '' : 's'}
                   </span>
 
                   {/* WHETHER IT IS CURRENTLY ASSIGNED — the fact the requirement
                       asks for, said as a number rather than a yes/no, because
                       "used by 6 reviews" is what decides whether to archive it. */}
-                  <span style={{ fontSize: '11px', color: assigned > 0 ? '#1E40AF' : colors.muted }}>
+                  <span style={{ fontSize: '12px', color: assigned > 0 ? '#335A86' : colors.muted }}>
                     {assigned > 0 ? `In use by ${assigned} review${assigned === 1 ? '' : 's'}` : 'Not assigned'}
                   </span>
 
                   {count === 0 && !group.archived_at && (
-                    <span style={{ fontSize: '11px', color: '#92400E', fontWeight: 600 }}>
+                    <span style={{ fontSize: '12px', color: '#805B0D', fontWeight: 600 }}>
                       Not offered to reviews until it has an image
                     </span>
                   )}
 
                   {group.archived_at && (
-                    <span style={{ fontSize: '11px', color: colors.muted, fontWeight: 600 }}>Archived</span>
+                    <span style={{ fontSize: '12px', color: colors.muted, fontWeight: 600 }}>Archived</span>
                   )}
 
                   <button
@@ -437,7 +437,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                     style={{
                       marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px',
                       background: 'transparent', border: 'none', padding: '4px', cursor: busy ? 'not-allowed' : 'pointer',
-                      fontSize: '11px', color: colors.secondary,
+                      fontSize: '12px', color: colors.secondary,
                     }}
                   >
                     <Pencil size={13} />
@@ -451,7 +451,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
                       background: 'transparent', border: 'none', padding: '4px', cursor: busy ? 'not-allowed' : 'pointer',
-                      fontSize: '11px', color: colors.secondary,
+                      fontSize: '12px', color: colors.secondary,
                     }}
                   >
                     {group.archived_at ? <ArchiveRestore size={13} /> : <Archive size={13} />}
@@ -493,7 +493,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                       ) : null
                     ))}
                     {count > 4 && (
-                      <span style={{ fontSize: '11px', color: colors.muted }}>
+                      <span style={{ fontSize: '12px', color: colors.muted }}>
                         +{count - 4}
                       </span>
                     )}
@@ -536,7 +536,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                               <div style={{
                                 width: '100%', aspectRatio: '1 / 1', display: 'flex',
                                 alignItems: 'center', justifyContent: 'center', padding: '6px',
-                                fontSize: '10px', color: colors.muted, textAlign: 'center',
+                                fontSize: '12px', color: colors.muted, textAlign: 'center',
                                 overflowWrap: 'anywhere',
                               }}>
                                 {image.file_name}
@@ -544,7 +544,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                             )}
 
                             <div style={{
-                              padding: '5px 6px', fontSize: '10px', color: colors.tertiary,
+                              padding: '5px 6px', fontSize: '12px', color: colors.tertiary,
                               borderTop: `1px solid ${colors.border}`, background: '#FFFFFF',
                             }}>
                               {formatPhotoSize(image.byte_size)}
@@ -559,7 +559,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                                 position: 'absolute', top: '4px', right: '4px',
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                 width: '26px', height: '26px', borderRadius: '6px',
-                                border: 'none', background: 'rgba(17,24,39,0.72)', color: '#FFFFFF',
+                                border: 'none', background: 'rgba(48,53,54,0.72)', color: '#FFFFFF',
                                 cursor: busy ? 'not-allowed' : 'pointer',
                               }}
                             >
@@ -595,13 +595,13 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                         <ImagePlus size={14} />
                         Add images
                       </label>
-                      <span style={{ fontSize: '11px', color: colors.muted }}>
+                      <span style={{ fontSize: '12px', color: colors.muted }}>
                         {GROUP_IMAGE_TYPES_LABEL}, up to 5 MB each · {count} of {MAX_GROUP_IMAGES}
                       </span>
                     </div>
 
                     {assigned > 0 && (
-                      <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
                         Once a candidate books a review using this project, its images are fixed.
                       </p>
                     )}

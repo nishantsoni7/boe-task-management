@@ -121,7 +121,7 @@ export function ReportsScreen() {
           <p role="status" style={{ margin: 0, fontSize: '12.5px', color: colors.muted }}>Loading the report…</p>
         ) : query.isError || !report ? (
           <div role="alert" style={{
-            padding: '14px 16px', borderRadius: '10px', border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+            padding: '14px 16px', borderRadius: '8px', border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332',
             fontSize: '13px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <span>{query.error instanceof Error ? query.error.message : 'The report could not be loaded.'}</span>
@@ -130,7 +130,7 @@ export function ReportsScreen() {
             </button>
           </div>
         ) : problems.length > 0 ? (
-          <div role="alert" style={{ padding: '14px 16px', borderRadius: '10px', border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: '13px' }}>
+          <div role="alert" style={{ padding: '14px 16px', borderRadius: '8px', border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332', fontSize: '13px' }}>
             The report&rsquo;s figures do not agree with each other, so it is not shown ({problems[0]}). Refresh and try again; if it persists, tell an administrator.
           </div>
         ) : (
@@ -214,7 +214,7 @@ function Filters({
 }
 
 const card: React.CSSProperties = {
-  padding: '12px 14px', borderRadius: '10px', border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0,
+  padding: '12px 14px', borderRadius: '8px', border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0,
 }
 const h2: React.CSSProperties = {
   margin: '0 0 8px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.primary,
@@ -261,7 +261,7 @@ function ReportBody({
         </button>
         <Figure label="Review credits earned" value={formatCredits(s.credits)} />
         <Figure label={`Review points (credits ÷ ${report.credits_per_point})`} value={formatPoints(s.points)} />
-        <p style={{ margin: 0, flex: '1 1 260px', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: 0, flex: '1 1 260px', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           Eligible means approved, with a credit the ledger has not reversed, and not a confirmed duplicate. Deleted, rejected and pending reviews are not eligible. Points are for {monthLabel} only and start again next month.
         </p>
       </section>
@@ -282,7 +282,7 @@ function ReportBody({
       </section>
 
       {empty && (
-        <p style={{ margin: 0, padding: '14px 16px', borderRadius: '10px', border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px' }}>
+        <p style={{ margin: 0, padding: '14px 16px', borderRadius: '8px', border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px' }}>
           No reviews were submitted in {monthLabel} for these filters.
         </p>
       )}
@@ -305,7 +305,7 @@ function ReportBody({
             bars={report.history.map(m => ({ key: m.month, label: reviewMonthLabel(m.month, { year: false }).slice(0, 3), text: m.text, image: m.image }))}
             tickEvery={1}
           />
-          <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: colors.muted }}>
+          <p style={{ margin: '6px 0 0', fontSize: '12px', color: colors.muted }}>
             Reward-eligible by month: {report.history.map(m => `${reviewMonthLabel(m.month, { year: false }).slice(0, 3)} ${m.eligible}`).join(' · ')}
           </p>
         </section>
@@ -352,7 +352,7 @@ function ReportBody({
             </tbody>
           </table>
         </div>
-        <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: colors.muted }}>
+        <p style={{ margin: '6px 0 0', fontSize: '12px', color: colors.muted }}>
           Custom reviews are classified by review type only; there is no other category.
         </p>
       </section>
@@ -461,7 +461,7 @@ function ReportBody({
 
 function th(left: boolean): React.CSSProperties {
   return {
-    padding: '6px 10px', textAlign: left ? 'left' : 'right', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em',
+    padding: '6px 10px', textAlign: left ? 'left' : 'right', fontSize: '12px', fontWeight: 700, letterSpacing: '0.03em',
     textTransform: 'uppercase', color: colors.secondary, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
   }
 }
@@ -483,12 +483,12 @@ function MetricCard({
       aria-label={`${label}: ${value}. Open the list.`}
       style={{
         ...card, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minHeight: '44px',
-        borderColor: amber ? '#FDE68A' : colors.borderSoft, background: amber ? '#FFFBEB' : colors.base,
+        borderColor: amber ? '#E6D2A0' : colors.borderSoft, background: amber ? '#FAF0DA' : colors.base,
       }}
     >
-      <div style={{ fontSize: '11.5px', fontWeight: 600, color: amber ? '#92400E' : colors.secondary, lineHeight: 1.35 }}>{label}</div>
-      <div style={{ fontSize: '26px', fontWeight: 700, color: amber ? '#92400E' : colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{value}</div>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>{note}</div>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: amber ? '#805B0D' : colors.secondary, lineHeight: 1.35 }}>{label}</div>
+      <div style={{ fontSize: '26px', fontWeight: 700, color: amber ? '#805B0D' : colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: '12px', color: colors.muted }}>{note}</div>
     </button>
   )
 }
@@ -507,7 +507,7 @@ function ContributorNote({ label, rows }: { label: string; rows: EmployeeRow[] }
   const count = rows[0].submitted
   return (
     <div style={{ fontSize: '12.5px', lineHeight: 1.5, color: colors.primary }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.secondary }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.secondary }}>
         {label}{rows.length > 1 ? ` · ${rows.length} tied` : ''}
       </div>
       <div style={{ overflowWrap: 'anywhere' }}>
@@ -587,15 +587,15 @@ function ReviewListSheet({
                   <strong style={{ fontSize: '13px', color: colors.primary }}>{r.employee_name}</strong>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: REVIEW_TYPE_META[r.review_type].color }}>{CUSTOM_REVIEW_TYPE_LABELS[r.review_type]}</span>
                   <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[r.status]} />
-                  {r.duplicate_open && <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400E' }}>Possible duplicate</span>}
-                  {r.reward_held && <span style={{ fontSize: '11px', fontWeight: 600, color: '#3B5BC0' }}>Edited · awaiting re-approval</span>}
-                  {r.confirmed_duplicate && <span style={{ fontSize: '11px', fontWeight: 700, color: '#B91C1C' }}>Confirmed duplicate</span>}
+                  {r.duplicate_open && <span style={{ fontSize: '12px', fontWeight: 700, color: '#805B0D' }}>Possible duplicate</span>}
+                  {r.reward_held && <span style={{ fontSize: '12px', fontWeight: 600, color: '#335A86' }}>Edited · awaiting re-approval</span>}
+                  {r.confirmed_duplicate && <span style={{ fontSize: '12px', fontWeight: 700, color: '#B42332' }}>Confirmed duplicate</span>}
                 </div>
                 <div style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                   {r.submission_ref} · Submitted {formatSubmissionDay(istDateOf(r.submitted_at))} · Published {formatSubmissionDay(r.published_on)}
                 </div>
               </div>
-              <div style={{ fontSize: '12px', color: r.eligible ? '#047857' : colors.muted, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+              <div style={{ fontSize: '12px', color: r.eligible ? '#276247' : colors.muted, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                 {r.eligible ? `Eligible · ${formatCredits(r.credits)} · ${formatPoints(r.points)} pts${r.expired ? ' · expired with the closed month' : ''}` : r.held ? `Not eligible while pending · ${formatCredits(r.held_credits)} on hold` : r.confirmed_duplicate ? 'Not eligible · confirmed duplicate' : r.reversed ? 'Not eligible · credit reversed' : 'Not eligible'}
               </div>
               <Link href={`/customer-reviews/custom?submission=${r.id}`} className="boe-btn boe-btn-ghost"

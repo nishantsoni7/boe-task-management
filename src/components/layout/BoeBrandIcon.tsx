@@ -1,17 +1,13 @@
-/* Shared sidebar brand icon — BOE red mark in a clean white container */
+/* Shared sidebar brand mark — the BOE symbol, unframed, at a readable size. */
 export function BoeBrandIcon() {
   return (
-    <div style={{
-      width: '36px', height: '36px', flexShrink: 0,
-      borderRadius: '9px', background: '#ffffff',
-      border: '1px solid #E5E7EB',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '4px', boxSizing: 'border-box',
-    }}>
+    <div className="boe-sidebar-brand-icon">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/branding/boe-icon.png"
         alt=""
+        width={40}
+        height={40}
         style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
       />
     </div>

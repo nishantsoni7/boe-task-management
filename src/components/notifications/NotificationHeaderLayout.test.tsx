@@ -255,7 +255,7 @@ describe('the card is white with a light border, not a blue block', () => {
     const html = render(THREE())
     assert.ok(html.includes('Mark all read'))
     // The old View Task was a filled blue button.
-    assert.equal(/background:#5585E8|background:rgb\(85,133,232\)/.test(html), false)
+    assert.equal(/background:#335A86|background:rgb\(85,133,232\)/.test(html), false)
   })
 })
 

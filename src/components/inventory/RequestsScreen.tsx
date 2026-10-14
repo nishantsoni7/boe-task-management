@@ -82,7 +82,7 @@ export default function RequestsScreen() {
         {listQ.isError && <Notice kind="err">{errorMessage(listQ.error)} <button type="button" className={s.linkBtn} onClick={() => listQ.refetch()}>Try again</button></Notice>}
 
         {listQ.isLoading ? (
-          <div className={s.reqList} aria-busy="true">{[0, 1, 2].map(i => <div key={i} className={s.skel} style={{ height: 150, borderRadius: 14 }} />)}</div>
+          <div className={s.reqList} aria-busy="true">{[0, 1, 2].map(i => <div key={i} className={s.skel} style={{ height: 150, borderRadius: 12 }} />)}</div>
         ) : shown.length === 0 ? (
           <div className={s.empty}>
             <div className={s.emptyIcon}><ClipboardList size={26} /></div>

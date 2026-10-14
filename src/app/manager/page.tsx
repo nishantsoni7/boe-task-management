@@ -165,14 +165,14 @@ export default function ManagerPage() {
         <>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '6px',
-            fontSize: '11px', color: colors.tertiary,
+            fontSize: '12px', color: colors.tertiary,
           }}>
             <span className="boe-pulse-dot" /> Live
           </div>
           <button
             onClick={loadData}
             className="boe-btn boe-btn-ghost"
-            style={{ fontSize: '11px' }}
+            style={{ fontSize: '12px' }}
           >
             Refresh
           </button>
@@ -315,7 +315,7 @@ export default function ManagerPage() {
                     }}>
                       {t.title}
                     </div>
-                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>
                       {t.assignee_name}
                       {t.blocker_reason && ` · ↳ ${t.blocker_reason}`}
                     </div>
@@ -364,8 +364,8 @@ export default function ManagerPage() {
           {/* Stale Progress panel */}
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
-              <span style={{ color: '#7B62E0', fontSize: '13px' }}>◆</span>
-              <span className="boe-panel-card-title" style={{ color: '#7B62E0' }}>Stale Progress</span>
+              <span style={{ color: '#335A86', fontSize: '13px' }}>◆</span>
+              <span className="boe-panel-card-title" style={{ color: '#335A86' }}>Stale Progress</span>
               <span className="boe-panel-card-count">
                 {staleTasks.length} task{staleTasks.length !== 1 ? 's' : ''}
               </span>
@@ -388,7 +388,7 @@ export default function ManagerPage() {
                     }}>
                       {t.title}
                     </div>
-                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>
                       {t.assignee_name} · &ldquo;{t.status}&rdquo; for {t.stale_day_count ?? 0}d
                     </div>
                   </div>
@@ -406,8 +406,8 @@ export default function ManagerPage() {
           {/* Important panel */}
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
-              <span style={{ color: '#C49A28', fontSize: '13px' }}>⭐</span>
-              <span className="boe-panel-card-title" style={{ color: '#C49A28' }}>Important</span>
+              <span style={{ color: '#805B0D', fontSize: '13px' }}>⭐</span>
+              <span className="boe-panel-card-title" style={{ color: '#805B0D' }}>Important</span>
               <span className="boe-panel-card-count">{urgentTasks.length}</span>
             </div>
             <div className="boe-panel-card-body">
@@ -426,7 +426,7 @@ export default function ManagerPage() {
                     }}>
                       {t.title}
                     </div>
-                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>
                       {t.assignee_name}
                       {t.due_date && ` · ${new Date(t.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
                     </div>

@@ -36,7 +36,7 @@ export function CompletionSummaryCard({
             <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, lineHeight: 1.1 }}>
               {shown(row.key)}
             </div>
-            <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '3px', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px', whiteSpace: 'nowrap' }}>
               {row.label}
             </div>
           </div>
@@ -49,7 +49,7 @@ export function CompletionSummaryCard({
     <section aria-label="Completed summary" style={{
       width: '220px', flexShrink: 0, boxSizing: 'border-box',
       background: colors.base, border: `1.5px solid ${colors.border}`,
-      borderRadius: '10px', padding: '12px 14px',
+      borderRadius: '8px', padding: '12px 14px',
     }}>
       <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
         Completed
@@ -59,7 +59,7 @@ export function CompletionSummaryCard({
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           padding: '6px 0', borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
         }}>
-          <span style={{ fontSize: '11.5px', color: colors.secondary }}>{row.label}</span>
+          <span style={{ fontSize: '12px', color: colors.secondary }}>{row.label}</span>
           <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
             {shown(row.key)}
           </span>
@@ -79,7 +79,7 @@ export function CompletedOnFilter({
   const inputId = useId()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      <label htmlFor={inputId} style={{ fontSize: '11.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
+      <label htmlFor={inputId} style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
         Completed on:
       </label>
       <input
@@ -89,7 +89,7 @@ export function CompletedOnFilter({
         onChange={e => onChange(e.target.value)}
         style={{
           padding: '3px 8px', background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: '6px', outline: 'none', fontSize: '11.5px',
+          borderRadius: '6px', outline: 'none', fontSize: '12px',
           color: value ? colors.primary : colors.muted, cursor: 'pointer',
         }}
       />
@@ -100,7 +100,7 @@ export function CompletedOnFilter({
           aria-label="Clear completed date"
           style={{
             padding: '3px 8px', background: 'transparent', border: `1px solid ${colors.border}`,
-            borderRadius: '6px', fontSize: '11px', color: colors.secondary, cursor: 'pointer',
+            borderRadius: '6px', fontSize: '12px', color: colors.secondary, cursor: 'pointer',
           }}
         >
           Clear
@@ -144,7 +144,7 @@ export function CompletedPager({
       gap: '8px', flexWrap: 'wrap', marginTop: '12px',
     }}>
       {button('‹ Previous', page - 1, page <= 1)}
-      <span style={{ fontSize: '11.5px', color: colors.muted }}>
+      <span style={{ fontSize: '12px', color: colors.muted }}>
         {`Page ${page} of ${pages} · ${first}–${last} of ${total}`}
       </span>
       {button('Next ›', page + 1, page >= pages)}

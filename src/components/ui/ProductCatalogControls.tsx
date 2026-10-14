@@ -31,7 +31,7 @@ const controlStyle: React.CSSProperties = {
   color: colors.primary,
   background: colors.base,
   border: `1.5px solid ${colors.borderSoft}`,
-  borderRadius: '7px',
+  borderRadius: '8px',
   padding: '0 10px',
   outline: 'none',
   boxSizing: 'border-box',
@@ -92,7 +92,7 @@ export function ProductToolbar({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 20, height: 20,
               color: colors.muted, background: 'transparent',
-              border: 'none', borderRadius: '4px', cursor: 'pointer', padding: 0,
+              border: 'none', borderRadius: '6px', cursor: 'pointer', padding: 0,
             }}
           >
             <X size={13} strokeWidth={2} />
@@ -171,9 +171,9 @@ function pageBtnStyle(state: 'active' | 'idle' | 'disabled'): React.CSSPropertie
     fontWeight: state === 'active' ? 600 : 500,
     fontFamily: font.body,
     color: state === 'active' ? '#fff' : state === 'disabled' ? colors.muted : colors.secondary,
-    background: state === 'active' ? '#1A2035' : colors.base,
-    border: `1.5px solid ${state === 'active' ? '#1A2035' : colors.border}`,
-    borderRadius: '7px',
+    background: state === 'active' ? '#303536' : colors.base,
+    border: `1.5px solid ${state === 'active' ? '#303536' : colors.border}`,
+    borderRadius: '8px',
     padding: '0 9px',
     cursor: state === 'disabled' ? 'not-allowed' : 'pointer',
     opacity: state === 'disabled' ? 0.55 : 1,

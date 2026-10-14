@@ -223,7 +223,7 @@ export function WhatsAppTestPanel({
 
         <p
           id="review-recipient-number-help"
-          style={{ fontSize: '11px', color: colors.muted, margin: '6px 0 0', lineHeight: 1.5 }}
+          style={{ fontSize: '12px', color: colors.muted, margin: '6px 0 0', lineHeight: 1.5 }}
         >
           Include the country code. Spaces, hyphens and brackets are fine. The number is
           re-checked on the server, and only the last four digits are ever stored.
@@ -236,7 +236,7 @@ export function WhatsAppTestPanel({
         )}
 
         {normalized.ok && (
-          <p style={{ fontSize: '11px', color: colors.tertiary, margin: '6px 0 0' }}>
+          <p style={{ fontSize: '12px', color: colors.tertiary, margin: '6px 0 0' }}>
             This will open a chat with {maskWhatsAppNumber(normalized.e164)}.
           </p>
         )}
@@ -247,7 +247,7 @@ export function WhatsAppTestPanel({
         style={{
           display: 'flex', gap: '9px', alignItems: 'flex-start',
           padding: '10px 12px', borderRadius: '8px',
-          background: colors.blueTint, border: '1px solid rgba(85,133,232,0.22)',
+          background: colors.brandTint, border: '1px solid rgba(51,90,134,0.22)',
           fontSize: '12px', lineHeight: 1.55, color: colors.secondary,
           cursor: enabled ? 'pointer' : 'not-allowed',
         }}
@@ -282,7 +282,7 @@ export function WhatsAppTestPanel({
               data-testid="review-message-preview"
               style={{
                 margin: 0, padding: '12px', borderRadius: '8px',
-                background: '#F9FAFB',
+                background: '#FBFAF8',
                 border: `1px solid ${colors.border}`,
                 fontSize: '12px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word', fontFamily: 'inherit', color: colors.primary,
@@ -290,7 +290,7 @@ export function WhatsAppTestPanel({
             >
               {preview.message}
             </pre>
-            <p style={{ fontSize: '11px', color: colors.muted, margin: 0 }}>
+            <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>
               This is exactly what WhatsApp will be handed, addressed to{' '}
               {maskFromLastFour(preview.target.lastFour)}.
             </p>
@@ -314,7 +314,7 @@ export function WhatsAppTestPanel({
           <Send size={14} strokeWidth={2.2} />
           {busy ? 'Opening…' : cooling ? 'Opened — wait a moment' : 'Open WhatsApp'}
         </button>
-        <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '12px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
           WhatsApp opens with this text ready, and nothing else — nothing is attached. You still
           have to press send there; BOE never sends it for you.
         </p>
@@ -326,7 +326,7 @@ export function WhatsAppTestPanel({
           timing, which exists to guarantee the permission check completes
           before anything opens at all.
         */}
-        <p style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
           If this opens a WhatsApp web page instead of the app, look for “Open in the WhatsApp
           app” or “Continue to chat” there — it is the same message, just one extra tap.
         </p>
@@ -364,7 +364,7 @@ export function ConfirmSentControl({
     return (
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: '7px',
-        color: '#166534', fontSize: '12px', fontWeight: 600,
+        color: '#276247', fontSize: '12px', fontWeight: 600,
       }}>
         <CheckCircle2 size={14} strokeWidth={2.2} />
         You confirmed you sent this review.
@@ -388,7 +388,7 @@ export function ConfirmSentControl({
         <CheckCircle2 size={14} strokeWidth={2.2} />
         {busy ? 'Recording…' : 'Confirm sent'}
       </button>
-      <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
+      <p style={{ fontSize: '12px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
         Only press this after you have actually sent the message in WhatsApp. Opening WhatsApp does
         not do it for you, and nothing else in BOE will.
       </p>

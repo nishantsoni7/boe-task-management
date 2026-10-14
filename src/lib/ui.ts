@@ -39,11 +39,11 @@ export function taskStatusLabel(
 // ─── Priority dot color ───────────────────────────────────────────────────────
 export function priorityDotColor(priority: TaskPriority | string): string {
   const map: Record<string, string> = {
-    high:   '#D94F4F',
-    medium: '#E8A030',
-    low:    '#42475A',
+    high:   '#B42332',
+    medium: '#805B0D',
+    low:    '#686D6C',
   }
-  return map[priority] ?? '#42475A'
+  return map[priority] ?? '#686D6C'
 }
 
 // ─── Avatar initials ──────────────────────────────────────────────────────────

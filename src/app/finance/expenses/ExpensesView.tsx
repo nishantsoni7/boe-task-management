@@ -765,7 +765,7 @@ export function ExpensesView() {
             style={{
               display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
               gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
-              padding: '10px 12px', borderRadius: '10px',
+              padding: '10px 12px', borderRadius: '8px',
               border: `1px solid ${colors.border}`, background: colors.raised,
             }}
           >
@@ -797,7 +797,7 @@ export function ExpensesView() {
               style={{
                 width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                 gap: '10px', flexWrap: 'wrap', marginBottom: '10px', padding: '9px 12px', minHeight: '44px',
-                borderRadius: '10px', textAlign: 'left',
+                borderRadius: '8px', textAlign: 'left',
                 border: `1px solid ${STATE_TONE.pending.border}`, background: STATE_TONE.pending.bg,
               }}
             >
@@ -1104,10 +1104,10 @@ function TabButton({ id, label, active, badge, onClick }: {
         <span
           data-testid="needs-details-badge"
           style={{
-            minWidth: '19px', height: '19px', padding: '0 5px', borderRadius: '10px',
+            minWidth: '19px', height: '19px', padding: '0 5px', borderRadius: '8px',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '10.5px', fontWeight: 700,
-            background: 'rgba(217,148,0,0.16)', color: '#8A5A00',
+            fontSize: '12px', fontWeight: 700,
+            background: 'rgba(196,138,26,0.16)', color: '#805B0D',
           }}
         >
           {badge > 99 ? '99+' : badge}
@@ -1161,7 +1161,7 @@ function ReimbursementChip({ row }: { row: ExpenseListRow & { bills?: { id: stri
           data-reimbursement-state={state}
           title={REIMBURSEMENT_STATE_LABEL[state]}
           style={{
-            fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
+            fontSize: '12px', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
             color: tone.fg, background: tone.bg, border: `1px solid ${tone.border}`, lineHeight: 1.5,
           }}
         >
@@ -1226,7 +1226,7 @@ function EmptyState({ title, body, action, tone }: {
       padding: '36px 20px', textAlign: 'center',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
     }}>
-      <div style={{ fontSize: '13px', fontWeight: 600, color: tone === 'error' ? '#C13030' : colors.secondary }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: tone === 'error' ? '#B42332' : colors.secondary }}>
         {title}
       </div>
       {body && <div style={{ fontSize: '12px', color: colors.muted }}>{body}</div>}
@@ -1237,7 +1237,7 @@ function EmptyState({ title, body, action, tone }: {
 
 const TH: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left',
-  fontSize: '10px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 700, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
   borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
@@ -1360,7 +1360,7 @@ export function ExpenseTable({
                     <button
                       onClick={() => onDelete(row)}
                       className="boe-btn boe-btn-ghost"
-                      style={{ padding: '4px 7px', fontSize: '12px', color: '#C13030', lineHeight: 1 }}
+                      style={{ padding: '4px 7px', fontSize: '12px', color: '#B42332', lineHeight: 1 }}
                       aria-label={`Delete the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
                       title="Delete"
                     >
@@ -1431,12 +1431,12 @@ export function ExpenseCards({
             </span>
           </div>
 
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             {fmtDate(row.expense_date)} · {categoryName(row.category_id)} · {expensePaymentModeLabel(row.payment_mode)}
           </div>
 
           {(reimbursementState(row) !== 'unknown' || ((row as ExpenseViewRow).bills?.length ?? 0) > 0) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: colors.muted, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: colors.muted, minWidth: 0 }}>
               <ReimbursementChip row={row} />
               {row.paid_from === 'personal' && (
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1447,13 +1447,13 @@ export function ExpenseCards({
           )}
 
           {row.remark && (
-            <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
               {row.remark}
             </div>
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: colors.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {personName(row.created_by)}
             </span>
             <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
@@ -1471,7 +1471,7 @@ export function ExpenseCards({
                 <button
                   onClick={() => onDelete(row)}
                   className="boe-btn boe-btn-ghost"
-                  style={{ minHeight: '40px', padding: '6px 12px', fontSize: '12.5px', color: '#C13030' }}
+                  style={{ minHeight: '40px', padding: '6px 12px', fontSize: '12.5px', color: '#B42332' }}
                   aria-label={`Delete the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
                 >
                   Delete

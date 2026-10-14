@@ -239,7 +239,7 @@ export default function ShowroomCategoriesPage() {
         style={{
           display: 'flex', gap: '10px', marginBottom: '24px',
           background: colors.base, border: `1.5px solid ${colors.border}`,
-          borderRadius: '10px', padding: '14px 16px', alignItems: 'center',
+          borderRadius: '8px', padding: '14px 16px', alignItems: 'center',
         }}
       >
         <input
@@ -254,7 +254,7 @@ export default function ShowroomCategoriesPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: '7px',
             fontSize: '13px', fontWeight: 600,
-            color: '#fff', background: '#1A2035',
+            color: '#fff', background: '#B9472E',
             border: 'none', borderRadius: '8px',
             padding: '9px 16px', cursor: adding ? 'default' : 'pointer',
             opacity: adding ? 0.7 : 1, whiteSpace: 'nowrap', flexShrink: 0,
@@ -279,7 +279,7 @@ export default function ShowroomCategoriesPage() {
                 display: 'flex', alignItems: 'center', gap: '14px',
                 background: colors.base,
                 border: `1.5px solid ${colors.border}`,
-                borderRadius: '10px',
+                borderRadius: '8px',
                 padding: '12px 16px',
                 opacity: cat.is_active ? 1 : 0.6,
               }}
@@ -373,12 +373,12 @@ function CategoriesSkeleton() {
             display: 'flex', alignItems: 'center', gap: '14px',
             background: colors.base,
             border: `1.5px solid ${colors.border}`,
-            borderRadius: '10px',
+            borderRadius: '8px',
             padding: '12px 16px',
           }}
         >
           <div style={{ width: 32, height: 32, borderRadius: '8px', background: colors.raised, flexShrink: 0 }} />
-          <div style={{ width: 160, height: 14, borderRadius: '4px', background: colors.raised }} />
+          <div style={{ width: 160, height: 14, borderRadius: '6px', background: colors.raised }} />
         </div>
       ))}
     </div>
@@ -388,8 +388,8 @@ function CategoriesSkeleton() {
 function actionBtnStyle(variant: 'neutral' | 'red' | 'green'): React.CSSProperties {
   const palette = {
     neutral: { color: colors.secondary, background: colors.float, border: colors.border },
-    red:     { color: colors.red,       background: colors.redTint, border: 'rgba(217,79,79,0.2)' },
-    green:   { color: colors.green,     background: colors.greenTint, border: 'rgba(69,168,112,0.2)' },
+    red:     { color: colors.red,       background: colors.redTint, border: 'rgba(180,35,50,0.2)' },
+    green:   { color: colors.green,     background: colors.greenTint, border: 'rgba(39,98,71,0.2)' },
   }[variant]
   return {
     display: 'flex', alignItems: 'center', gap: '5px',
@@ -406,13 +406,13 @@ const inputStyle: React.CSSProperties = {
   padding: '9px 11px',
   height: '36px',
   fontSize: '13px',
-  color: '#111318',
+  color: '#303536',
   background: '#fff',
-  border: '1.5px solid rgba(0,0,0,0.13)',
-  borderRadius: '7px',
+  border: '1.5px solid #CFC8BF',
+  borderRadius: '8px',
   outline: 'none',
   boxSizing: 'border-box',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
 }
 
 // ── Delete Confirm Modal ──────────────────────────────────────────────────────
@@ -436,9 +436,9 @@ function DeleteConfirmModal({
         padding: '20px',
       }}
     >
-      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '9px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '8px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Trash2 size={16} strokeWidth={2.2} color={colors.red} />
           </div>
           <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Delete Category</span>
@@ -447,7 +447,7 @@ function DeleteConfirmModal({
           Are you sure you want to delete <strong style={{ color: colors.primary }}>{category.name}</strong>?
         </p>
         {error && (
-          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
+          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px', marginBottom: '14px' }}>{error}</div>
         )}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy}

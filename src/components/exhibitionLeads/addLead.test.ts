@@ -106,7 +106,7 @@ describe('adding is always one tap away on a phone', () => {
     assert.match(shell, /const showAddBar = addAllowed && !pathname\.startsWith\(`\$\{BASE\}\/add`\)/)
     assert.match(shell, /<Link href=\{`\$\{BASE\}\/add`\} className=\{a\.fab\} aria-label="Add a new lead">/)
     assert.match(css, /\.fab \{ display: none; \}/, 'hidden unless a phone')
-    assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.fab \{[^}]*position: fixed;[^}]*min-height: 58px;[^}]*background: #DC1F2E/)
+    assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.fab \{[^}]*position: fixed;[^}]*min-height: 58px;[^}]*background: #B9472E/)
     assert.match(css, /safe-area-inset-bottom/)
   })
   test('the bar steps aside for a sheet and leaves room under the last row', () => {
@@ -118,7 +118,7 @@ describe('adding is always one tap away on a phone', () => {
     assert.match(shell, /\{ href: `\$\{BASE\}\/add`, label: 'Add Lead'/)
     assert.ok(shell.indexOf("label: 'Add Lead'") < shell.indexOf("label: 'My Leads'"))
     assert.match(shell, /const primary = item\.href === `\$\{BASE\}\/add`/)
-    assert.match(shell, /background: '#DC1F2E', color: '#fff'/)
+    assert.match(shell, /background: '#B9472E', color: '#fff'/)
   })
   test('the module still opens on Add Lead', () => {
     assert.match(read('src/app/exhibition-leads/page.tsx'), /redirect\('\/exhibition-leads\/add'\)/)

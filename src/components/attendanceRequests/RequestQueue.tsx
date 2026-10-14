@@ -182,7 +182,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                           <div className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</div>
                           <div className={styles.cellSub}>
                             {r.employee?.employee_code}
-                            {r.employee && !r.employee.is_active && <span style={{ color: '#DC2626', fontWeight: 600 }}> · inactive</span>}
+                            {r.employee && !r.employee.is_active && <span style={{ color: '#B42332', fontWeight: 600 }}> · inactive</span>}
                           </div>
                         </td>
                         <td>
@@ -194,7 +194,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                         </td>
                         <td>
                           <div>{formatIstDateTime(r.submitted_at)}</div>
-                          <div className={styles.cellSub} style={{ color: submissionTiming(r) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+                          <div className={styles.cellSub} style={{ color: submissionTiming(r) === 'before_shift' ? '#276247' : '#805B0D', fontWeight: 600 }}>
                             {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                           </div>
                         </td>
@@ -230,7 +230,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                       <div className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</div>
                       <div className={styles.cellSub}>
                         {r.employee?.employee_code}
-                        {r.employee && !r.employee.is_active && <span style={{ color: '#DC2626', fontWeight: 600 }}> · inactive</span>}
+                        {r.employee && !r.employee.is_active && <span style={{ color: '#B42332', fontWeight: 600 }}> · inactive</span>}
                       </div>
                     </div>
                     <span className={styles.badge} style={{ background: tone.bg, color: tone.fg }}>{REQUEST_STATUS_LABEL[r.status]}</span>
@@ -243,7 +243,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                   </div>
                   <div className={styles.cellSub}>
                     Submitted {formatIstDateTime(r.submitted_at)} ·{' '}
-                    <span style={{ color: submissionTiming(r) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+                    <span style={{ color: submissionTiming(r) === 'before_shift' ? '#276247' : '#805B0D', fontWeight: 600 }}>
                       {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                     </span>
                   </div>

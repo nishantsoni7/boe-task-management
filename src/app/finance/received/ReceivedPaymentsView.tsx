@@ -498,7 +498,7 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
       </label>
       {children}
@@ -508,7 +508,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
+    <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px' }}>
       {message}
     </div>
   )
@@ -577,7 +577,7 @@ export function ConfirmedListEmptyState({
 // matches the Payment Requests page's DetailsModal styling exactly.
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
       {children}
     </div>
   )
@@ -634,12 +634,12 @@ function StatusBadge({ status, destination }: {
 }) {
   const meta = destination !== undefined
     ? paymentDisplayStateMeta(status, destination)
-    : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+    : STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -653,16 +653,16 @@ function VerificationBadge({ status, destination }: {
 }) {
   const meta = destination !== undefined
     ? paymentDisplayStateMeta(status, destination)
-    : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+    : STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span
       title={PAYMENT_VERIFICATION_LABEL[paymentRowFigures({
         id: '', amount: null, status, order_id: null,
       }).verification]}
       style={{
-        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+        display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
         background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+        fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
       }}
     >
       {meta.label}
@@ -739,7 +739,7 @@ export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }
   if (summary.targets.length === 0) {
     return (
       <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-        <strong style={{ color: '#9A3412' }}>
+        <strong style={{ color: '#805B0D' }}>
           No funds from this payment have been allocated yet.
         </strong>{' '}
         The whole of {formatMoney(String(amount))} is still free to be assigned to a PI or an Order.
@@ -782,7 +782,7 @@ export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }
                       onClick={() => onOpen(href)}
                       style={{
                         background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                        font: 'inherit', fontWeight: 600, color: colors.blue,
+                        font: 'inherit', fontWeight: 600, color: colors.brandInk,
                         textDecoration: 'underline', textUnderlineOffset: '2px', wordBreak: 'break-word',
                       }}
                     >
@@ -832,7 +832,7 @@ export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }
           </span>
           <strong style={{
             color: summary.state === 'over' ? colors.red
-              : summary.unallocated && summary.unallocated !== '0' ? '#9A3412'
+              : summary.unallocated && summary.unallocated !== '0' ? '#805B0D'
               : colors.muted,
             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
           }}>
@@ -1263,7 +1263,7 @@ function EditPaymentModal({
       <Field label="Customer">
         <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
           style={{ width: '100%' }} />
-        <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
           Read from the records this payment is allocated to. Allocate or
           reverse an allocation to change it.
         </span>
@@ -1274,7 +1274,7 @@ function EditPaymentModal({
             onChange={set('amount')} placeholder="0" style={{ width: '100%' }}
             aria-invalid={amountInputProblem(form.amount) !== null} />
           {amountInputProblem(form.amount) && (
-            <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4, marginTop: '4px' }}>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4, marginTop: '4px' }}>
               {amountInputProblem(form.amount)}
             </div>
           )}
@@ -1313,7 +1313,7 @@ function EditPaymentModal({
           placeholder="Order number" style={{ width: '100%' }}
           readOnly={isLinkageStatus} disabled={isLinkageStatus} />
         {isLinkageStatus && (
-          <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
             Set when the payment was recorded. Funds are attached with Allocate Funds.
           </span>
         )}
@@ -1341,7 +1341,7 @@ function EditPaymentModal({
 const TH_STYLE: React.CSSProperties = {
   padding: '8px 12px',
   textAlign: 'left',
-  fontSize: '10px',
+  fontSize: '12px',
   fontWeight: 700,
   color: colors.muted,
   textTransform: 'uppercase',
@@ -1373,10 +1373,10 @@ function canOfferAllocateFunds(r: PaymentRequest): boolean {
 const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'success' | 'danger', {
   bg: string; color: string; border: string
 }> = {
-  neutral: { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' },
-  warning: { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  success: { bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  danger:  { bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
+  neutral: { bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' },
+  warning: { bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  success: { bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
+  danger:  { bg: '#FBE9EC', color: '#B42332', border: '#E9B9C1' },
 }
 
 /**
@@ -1398,12 +1398,12 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   onOpen?: () => void
 }) {
   if (status === 'loading') {
-    return <span aria-label="Loading allocation status" style={{ fontSize: '11px', color: colors.muted }}>…</span>
+    return <span aria-label="Loading allocation status" style={{ fontSize: '12px', color: colors.muted }}>…</span>
   }
   if (!status || status === 'unavailable') {
     return (
       <span title="The complete allocation status could not be loaded. Open the payment for details."
-            style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+            style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
         Status unavailable
       </span>
     )
@@ -1425,9 +1425,9 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
   // "Over-allocated" must never wrap inside a table cell.
   const chip: React.CSSProperties = {
-    display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
+    display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
     background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '10.5px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
+    fontSize: '12px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
   }
 
   if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
@@ -1496,8 +1496,8 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
   if (view.kind === 'none') {
     return (
       <span style={{
-        ...small, display: 'inline-block', padding: '0 6px', borderRadius: '4px',
-        background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 600,
+        ...small, display: 'inline-block', padding: '0 6px', borderRadius: '6px',
+        background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0', fontWeight: 600,
         // A chip, not a bar: inside the card's column flex it would stretch.
         whiteSpace: 'nowrap', alignSelf: 'flex-start',
       }}>
@@ -1532,7 +1532,7 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: '200px', contain: 'inline-size' }}
     >
       {view.lines.length > 1 && (
-        <div style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
           {allocationCountLabel(view.lines.length)}
         </div>
       )}
@@ -1571,10 +1571,10 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         )
       })}
       {view.unallocated && (
-        <div role="listitem" style={{ ...lineStyle, color: '#92400E', fontWeight: 600 }}>
+        <div role="listitem" style={{ ...lineStyle, color: '#805B0D', fontWeight: 600 }}>
           <span style={nameStyle}>{UNALLOCATED_LINE_WORD}</span>
           <span aria-hidden="true" style={{ flexShrink: 0 }}>·</span>
-          <span style={{ ...amountStyle, color: '#92400E' }}>{fmtAmount(view.unallocated)}</span>
+          <span style={{ ...amountStyle, color: '#805B0D' }}>{fmtAmount(view.unallocated)}</span>
         </div>
       )}
     </div>
@@ -1702,7 +1702,7 @@ export function ReceivedPaymentsTable({
                   {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
                       primary identifier now; request_number is retained in the
                       database but is no longer shown prominently. */}
-                  <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                     {r.human_payment_id}
                   </td>
 
@@ -2022,7 +2022,7 @@ function RowActionsMenu({ label, actions }: {
         // be seen at 0,0 before placeMenu has run.
         visibility: placement ? 'visible' : 'hidden',
         background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
-        boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
+        boxShadow: '0 6px 20px rgba(48,53,54,0.12)', minWidth: 150, padding: 4,
       }}
     >
       {actions.map((action, index) => (
@@ -2134,7 +2134,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
               onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
               onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = r.id === highlightId ? colors.amberTint : 'transparent' }}
             >
-              <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+              <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                 {r.human_payment_id}
               </td>
               <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
@@ -2164,7 +2164,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
                   <button
                     onClick={() => onView(r)}
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
+                    style={{ padding: '3px 8px', fontSize: '12px', fontWeight: 500 }}
                   >
                     Review
                   </button>
@@ -2220,22 +2220,22 @@ function PaymentsToVerifyCards({ rows, canManage, highlightId, onView, onEdit }:
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <VerificationBadge status={r.status} />
-            <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
               {r.human_payment_id}
             </span>
-            <span style={{ fontSize: '11px', color: colors.muted }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
               {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} · {fmtDate(r.payment_date)}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: colors.muted, marginRight: 'auto' }} title={r.submitted_by_name ?? undefined}>
+            <span style={{ fontSize: '12px', color: colors.muted, marginRight: 'auto' }} title={r.submitted_by_name ?? undefined}>
               {conciseName(r.submitted_by_name)}
             </span>
             {canManage && (
               <button
                 onClick={e => { e.stopPropagation(); onEdit(r) }}
                 className="boe-btn boe-btn-ghost"
-                style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 500 }}
+                style={{ padding: '3px 10px', fontSize: '12px', fontWeight: 500 }}
               >
                 Edit
               </button>
@@ -2316,7 +2316,7 @@ export function ReceivedPaymentsCards({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', color: colors.muted }}>
+              <span style={{ fontSize: '12px', color: colors.muted }}>
                 {fmtDate(r.payment_date)} · {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
               </span>
             </div>
@@ -2326,7 +2326,7 @@ export function ReceivedPaymentsCards({
                 the status). Initiated by / Approved by are no longer on the
                 card; both are in the payment's details. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-              <span style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 {ALLOCATED_AGAINST_LABEL}
               </span>
               <AllocatedAgainstCell
@@ -3528,7 +3528,7 @@ function ReceivedPaymentsViewInner(
           <button
             onClick={() => setRecordNotice(null)}
             className="boe-btn boe-btn-ghost"
-            style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '11px', flexShrink: 0 }}
+            style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '12px', flexShrink: 0 }}
           >
             Dismiss
           </button>

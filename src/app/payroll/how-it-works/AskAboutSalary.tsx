@@ -76,18 +76,18 @@ export function AskAboutSalary({ token }: { token: string }) {
     >
       <h2
         id="ask-about-salary"
-        style={{ fontSize: 15.5, fontWeight: 700, color: '#111318', letterSpacing: '-0.01em', margin: 0 }}
+        style={{ fontSize: 15.5, fontWeight: 700, color: '#303536', letterSpacing: '-0.01em', margin: 0 }}
       >
         Ask About Your Salary
       </h2>
-      <p style={{ fontSize: 12.5, color: '#8C94A6', margin: '3px 0 0', lineHeight: 1.5 }}>
+      <p style={{ fontSize: 12.5, color: '#686D6C', margin: '3px 0 0', lineHeight: 1.5 }}>
         Ask a question about BOE attendance, deductions, adjustments, or salary settlement.
       </p>
 
       {state.status === 'unconfigured' ? (
         <div style={{
-          marginTop: 14, padding: '12px 14px', borderRadius: 9,
-          background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#5B6474', lineHeight: 1.6,
+          marginTop: 14, padding: '12px 14px', borderRadius: 8,
+          background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#686D6C', lineHeight: 1.6,
         }}>
           {ASK_DISABLED_MESSAGE}
         </div>
@@ -114,14 +114,14 @@ export function AskAboutSalary({ token }: { token: string }) {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(question) }
               }}
               style={{
-                width: '100%', padding: '10px 12px', borderRadius: 9,
+                width: '100%', padding: '10px 12px', borderRadius: 8,
                 border: `1px solid ${colors.border}`, fontSize: 13, fontFamily: 'inherit',
                 color: colors.primary, background: busy ? 'rgba(0,0,0,0.02)' : '#fff',
                 resize: 'vertical', lineHeight: 1.5,
               }}
             />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11.5, color: '#A9AFBD', fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: 12, color: '#686D6C', fontVariantNumeric: 'tabular-nums' }}>
                 {question.length}/{MAX_QUESTION_LENGTH}
               </span>
               <button
@@ -143,8 +143,8 @@ export function AskAboutSalary({ token }: { token: string }) {
           {state.status === 'idle' && (
             <div style={{ marginTop: 14 }}>
               <div style={{
-                fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.09em', color: '#8C94A6', marginBottom: 8,
+                fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.09em', color: '#686D6C', marginBottom: 8,
               }}>
                 Try one of these
               </div>
@@ -157,7 +157,7 @@ export function AskAboutSalary({ token }: { token: string }) {
                     style={{
                       padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
                       border: `1px solid ${colors.border}`, background: '#fff',
-                      fontSize: 12, color: '#3D4455', textAlign: 'left', lineHeight: 1.4,
+                      fontSize: 12, color: '#4C5352', textAlign: 'left', lineHeight: 1.4,
                     }}
                   >
                     {s}
@@ -171,8 +171,8 @@ export function AskAboutSalary({ token }: { token: string }) {
             <div
               role="status"
               style={{
-                marginTop: 14, padding: '12px 14px', borderRadius: 9,
-                background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#6B7280',
+                marginTop: 14, padding: '12px 14px', borderRadius: 8,
+                background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#686D6C',
               }}
             >
               Reading the payroll rules…
@@ -181,16 +181,16 @@ export function AskAboutSalary({ token }: { token: string }) {
 
           {state.status === 'answered' && (
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12.5, color: '#8C94A6', marginBottom: 6 }}>
+              <div style={{ fontSize: 12.5, color: '#686D6C', marginBottom: 6 }}>
                 {state.question}
               </div>
               <div style={{
-                padding: '13px 15px', borderRadius: 9,
-                background: 'rgba(79,111,208,0.05)', border: '1px solid rgba(79,111,208,0.22)',
+                padding: '13px 15px', borderRadius: 8,
+                background: 'rgba(51,90,134,0.05)', border: '1px solid rgba(51,90,134,0.22)',
               }}>
                 <AnswerText text={state.answer} />
               </div>
-              <div style={{ fontSize: 11.5, color: '#A9AFBD', marginTop: 7, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 12, color: '#686D6C', marginTop: 7, lineHeight: 1.5 }}>
                 Answered from BOE&rsquo;s payroll rules. It has no access to your payroll records —
                 open the month in My Payroll for your own figures.
               </div>
@@ -201,9 +201,9 @@ export function AskAboutSalary({ token }: { token: string }) {
             <div
               role="alert"
               style={{
-                marginTop: 14, padding: '12px 14px', borderRadius: 9,
-                background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)',
-                fontSize: 12.5, color: '#B42318', lineHeight: 1.55,
+                marginTop: 14, padding: '12px 14px', borderRadius: 8,
+                background: 'rgba(180,35,50,0.06)', border: '1px solid rgba(180,35,50,0.22)',
+                fontSize: 12.5, color: '#B42332', lineHeight: 1.55,
                 display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
               }}
             >
@@ -236,7 +236,7 @@ function AnswerText({ text }: { text: string }) {
   const blocks = text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
 
   return (
-    <div style={{ fontSize: 13, color: '#3D4455', lineHeight: 1.65 }}>
+    <div style={{ fontSize: 13, color: '#4C5352', lineHeight: 1.65 }}>
       {blocks.map((block, i) => {
         const lines = block.split('\n').map(l => l.trim()).filter(Boolean)
         const isList = lines.length > 0 && lines.every(l => /^[-*]\s+/.test(l))
@@ -260,7 +260,7 @@ function AnswerText({ text }: { text: string }) {
 function bold(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, i) =>
     part.startsWith('**') && part.endsWith('**')
-      ? <strong key={i} style={{ fontWeight: 600, color: '#111318' }}>{part.slice(2, -2)}</strong>
+      ? <strong key={i} style={{ fontWeight: 600, color: '#303536' }}>{part.slice(2, -2)}</strong>
       : <span key={i}>{part}</span>,
   )
 }

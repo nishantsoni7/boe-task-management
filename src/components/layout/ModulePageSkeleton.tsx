@@ -35,7 +35,7 @@ function TableRows({ rows = 6 }: { rows?: number }) {
           key={i}
           style={{
             display: 'flex', alignItems: 'center', gap: 16, padding: '13px 14px',
-            borderBottom: i < rows - 1 ? '1px solid #F0F2F5' : 'none',
+            borderBottom: i < rows - 1 ? '1px solid #F1EEE9' : 'none',
           }}
         >
           <Block w="14%" h={11} />

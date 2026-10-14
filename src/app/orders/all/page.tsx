@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
+import { legibleOn } from '@/components/ui/StatusTabs'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
@@ -50,11 +51,11 @@ type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  running:            { label: 'Running',             bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
-  on_hold:            { label: 'On Hold',             bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
-  dispatched:         { label: 'Dispatched',          bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+  running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
+  cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
 }
 
 // 'requested' is gone (20260702000000): an Order exists only after its Order
@@ -86,8 +87,8 @@ const badgeAccent = (key: string): TabAccent => ({
 
 const TAB_ACCENT: Record<StatusFilter, TabAccent> = {
   all: {
-    color: '#DC1F2E', tint: 'rgba(220,31,46,0.055)',
-    badge: 'rgba(220,31,46,0.09)', badgeActive: 'rgba(220,31,46,0.17)',
+    color: '#B9472E', tint: 'rgba(185,71,46,0.055)',
+    badge: 'rgba(185,71,46,0.09)', badgeActive: 'rgba(185,71,46,0.17)',
   },
   running:            badgeAccent('running'),
   on_hold:            badgeAccent('on_hold'),
@@ -212,13 +213,13 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  const meta = STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color,
       border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -514,14 +515,14 @@ export default function AllOrdersPage() {
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: '13px', color: '#166534',
+          background: '#E8F2EC', border: '1px solid #BCD8C8',
+          fontSize: '13px', color: '#276247',
         }}>
           <span>Request deleted successfully.</span>
           <button
             onClick={() => setDeletedBanner(false)}
             aria-label="Dismiss"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#276247', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
           </button>
@@ -538,8 +539,8 @@ export default function AllOrdersPage() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
             padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
-            background: '#FFF7ED', border: '1px solid #FED7AA',
-            fontSize: '13px', color: '#9A3412',
+            background: '#FAF0DA', border: '1px solid #E6D2A0',
+            fontSize: '13px', color: '#805B0D',
           }}
         >
           <span>{OPERATIONS_REVIEW_QUEUE_BANNER}</span>
@@ -632,7 +633,7 @@ export default function AllOrdersPage() {
       <div style={{
         background: colors.base,
         border: `1px solid ${colors.border}`,
-        borderRadius: '10px',
+        borderRadius: '8px',
         overflow: 'hidden',
       }}>
         {/* Status navigation. Icon + status hue + count badge make each state
@@ -678,7 +679,7 @@ export default function AllOrdersPage() {
                   <span style={{
                     minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
                     background: active ? accent.badgeActive : accent.badge,
-                    color: accent.color, fontSize: '10px', fontWeight: 700,
+                    color: legibleOn(accent.color, active ? accent.badgeActive : accent.badge), fontSize: '12px', fontWeight: 700,
                     lineHeight: '15px', textAlign: 'center',
                   }}>
                     {tabCounts[key]}
@@ -689,7 +690,7 @@ export default function AllOrdersPage() {
           </div>
           <div aria-live="polite" style={{
             display: 'flex', alignItems: 'center', flexShrink: 0,
-            fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap',
+            fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
           }}>
             {listLoading
               ? 'Loading…'
@@ -706,7 +707,7 @@ export default function AllOrdersPage() {
           <div role="alert" style={{
             display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
             margin: '12px 14px 0', padding: '9px 12px', borderRadius: '8px',
-            background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+            background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
           }}>
             <span style={{ flex: 1, minWidth: 0 }}>{loadError}</span>
             <button type="button" onClick={() => { void loadOrders() }} className="boe-btn boe-btn-ghost" style={{ padding: '4px 12px', fontSize: '12px' }}>
@@ -786,7 +787,7 @@ export default function AllOrdersPage() {
                   {['Order #', 'Client', 'Requested By', 'Assigned To', 'Confirm Date', 'Due Date', 'Value', 'Status'].map(h => (
                     <th key={h} style={{
                       padding: '8px 16px', textAlign: 'left',
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
+                      fontSize: '12px', fontWeight: 600, color: colors.muted,
                       textTransform: 'uppercase', letterSpacing: '0.05em',
                       whiteSpace: 'nowrap',
                     }}>{h}</th>
@@ -814,8 +815,8 @@ export default function AllOrdersPage() {
                            the animation is on the small dot in the badge and
                            nowhere else. */
                         ...(updateLabel ? {
-                          background: colors.blueTint,
-                          boxShadow: `inset 3px 0 0 ${colors.blue}`,
+                          background: colors.brandTint,
+                          boxShadow: `inset 3px 0 0 ${colors.brand}`,
                         } : null),
                       }}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
@@ -834,7 +835,7 @@ export default function AllOrdersPage() {
                       }}
                       onMouseLeave={e => {
                         (e.currentTarget as HTMLTableRowElement).style.background =
-                          updateLabel ? colors.blueTint : 'transparent'
+                          updateLabel ? colors.brandTint : 'transparent'
                       }}
                     >
                       <td style={{ padding: '11px 16px', fontWeight: updateLabel ? 800 : 600, color: colors.primary, whiteSpace: 'nowrap' }}>
@@ -873,7 +874,7 @@ export default function AllOrdersPage() {
                       </td>
                       <td style={{ padding: '11px 16px', whiteSpace: 'nowrap', color: overdue ? colors.red : colors.secondary, fontWeight: overdue ? 600 : 400 }}>
                         {fmtDate(o.due_date)}
-                        {overdue && <span style={{ marginLeft: '4px', fontSize: '10px' }}>overdue</span>}
+                        {overdue && <span style={{ marginLeft: '4px', fontSize: '12px' }}>overdue</span>}
                       </td>
                       <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                         {fmtAmount(o.total_value)}

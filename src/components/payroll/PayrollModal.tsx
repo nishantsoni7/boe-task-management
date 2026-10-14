@@ -192,13 +192,13 @@ export function PayrollField({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <label style={{
-        fontSize: 11, fontWeight: 600, color: colors.muted,
+        fontSize: 12, fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
       </label>
       {children}
-      {hint && <div style={{ fontSize: 11, color: colors.muted }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: colors.muted }}>{hint}</div>}
     </div>
   )
 }
@@ -239,7 +239,7 @@ export function PayrollModalError({ message }: { message: string }) {
   return (
     <div role="alert" style={{
       padding: '10px 12px', borderRadius: 8,
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: 12,
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: 12,
     }}>
       {message}
     </div>

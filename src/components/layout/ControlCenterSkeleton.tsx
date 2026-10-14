@@ -14,7 +14,7 @@
 // the shell's own transitions are enough motion for a state that lasts a moment.
 
 const ROWS = 6
-const BLOCK = '#E8EBF0'
+const BLOCK = '#ECE7E0'
 
 function Block({ w, h, radius = 4 }: { w: string | number; h: number; radius?: number }) {
   return <div style={{ width: w, height: h, borderRadius: radius, background: BLOCK, flexShrink: 0 }} />
@@ -29,7 +29,7 @@ export function ControlCenterSkeleton() {
       </div>
       <div
         style={{
-          marginTop: 20, border: '1px solid #E8EBF0', borderRadius: 10,
+          marginTop: 20, border: '1px solid #ECE7E0', borderRadius: 8,
           background: '#fff', overflow: 'hidden',
         }}
       >
@@ -38,7 +38,7 @@ export function ControlCenterSkeleton() {
             key={i}
             style={{
               display: 'flex', alignItems: 'center', gap: 16, padding: '13px 12px',
-              borderBottom: i < ROWS - 1 ? '1px solid #F0F2F5' : 'none',
+              borderBottom: i < ROWS - 1 ? '1px solid #F1EEE9' : 'none',
             }}
           >
             <Block w="26%" h={11} />

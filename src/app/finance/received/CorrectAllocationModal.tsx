@@ -264,10 +264,10 @@ export function CorrectAllocationBody(props: {
       <>
         <PaymentFigures payment={payment} allocated={position.allocated} unallocated={position.unallocated} />
         <div style={{
-          border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: '8px',
+          border: '1px solid #E6D2A0', background: '#FAF0DA', borderRadius: '8px',
           padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px',
         }}>
-          <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#92400E' }}>Confirm the reversal</div>
+          <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#805B0D' }}>Confirm the reversal</div>
           <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(110px, auto) 1fr', gap: '4px 12px', fontSize: '13px' }}>
             <dt style={DT}>Allocation</dt>
             <dd style={DD}>{ledgerTargetName(selected)}{selected.clientName ? ` · ${selected.clientName}` : ''}</dd>
@@ -278,7 +278,7 @@ export function CorrectAllocationBody(props: {
             <dt style={DT}>Reason</dt>
             <dd style={{ ...DD, whiteSpace: 'pre-wrap' }}>{reason.trim()}</dd>
           </dl>
-          <p style={{ margin: 0, fontSize: '12px', color: '#92400E', lineHeight: 1.5 }}>
+          <p style={{ margin: 0, fontSize: '12px', color: '#805B0D', lineHeight: 1.5 }}>
             The payment itself does not change. {ledgerTargetName(selected)} will no longer count this
             money. The allocation is kept as reversed history with your name, the time and this reason,
             and cannot be made active again — to assign the money, use Allocate Funds afterwards.
@@ -326,8 +326,8 @@ export function CorrectAllocationBody(props: {
                 htmlFor={inputId}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer',
-                  border: `1px solid ${checked ? colors.blue : colors.border}`,
-                  background: checked ? colors.blueTint : 'transparent',
+                  border: `1px solid ${checked ? colors.brand : colors.border}`,
+                  background: checked ? colors.brandTint : 'transparent',
                   borderRadius: '8px', padding: '10px 12px',
                 }}
               >
@@ -373,7 +373,7 @@ export function CorrectAllocationBody(props: {
             placeholder="e.g. Customer asked for this advance to be adjusted against Order 529"
             style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
           />
-          <span style={{ fontSize: '11px', color: colors.muted }}>Kept permanently with the payment’s history.</span>
+          <span style={{ fontSize: '12px', color: colors.muted }}>Kept permanently with the payment’s history.</span>
         </label>
       )}
 
@@ -435,7 +435,7 @@ function ReversedHistory({ entries }: { entries: AllocationLedgerEntry[] }) {
             </span>
             <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatMoney(e.amount)}</span>
           </div>
-          <div style={{ fontSize: '11.5px', color: colors.muted }}>
+          <div style={{ fontSize: '12px', color: colors.muted }}>
             Reversed{e.reversedByName ? ` by ${e.reversedByName}` : ''}{e.reversedAt ? ` on ${fmtDateTime(e.reversedAt)}` : ''}
           </div>
           {e.reversalReason && (
@@ -454,9 +454,9 @@ function NoticeBox({ notice }: { notice: Notice }) {
   return (
     <div role="alert" style={{
       fontSize: '12.5px', lineHeight: 1.5, borderRadius: '6px', padding: '8px 12px',
-      color: error ? colors.red : '#92400E',
-      background: error ? colors.redTint : '#FFFBEB',
-      border: `1px solid ${error ? colors.border : '#FDE68A'}`,
+      color: error ? colors.red : '#805B0D',
+      background: error ? colors.redTint : '#FAF0DA',
+      border: `1px solid ${error ? colors.border : '#E6D2A0'}`,
     }}>
       {notice.text}
     </div>
@@ -492,7 +492,7 @@ function fmtDateTime(iso: string) {
 }
 
 const LABEL: React.CSSProperties = {
-  fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 const MUTED: React.CSSProperties = { margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }

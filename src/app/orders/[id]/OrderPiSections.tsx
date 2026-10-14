@@ -189,7 +189,7 @@ export function OrderPiSummaryCard({
             type="button"
             onClick={onOpenPi}
             className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap' }}
+            style={{ padding: '4px 10px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}
             title="Open the approved PI this Order was created from"
           >
             Open PI
@@ -294,7 +294,7 @@ export function OrderPiSummaryCard({
                   </span>
                 </button>
                 {downloadError && (
-                  <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }}>
+                  <div style={{ fontSize: '12px', color: colors.red, lineHeight: 1.45 }}>
                     {downloadError}
                   </div>
                 )}
@@ -567,10 +567,10 @@ export function OrderPiProducts({
             {unresolvedImages > 0 && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '2px 8px', borderRadius: '5px',
-                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                padding: '2px 8px', borderRadius: '6px',
+                fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
                 background: colors.redTint, color: colors.red,
-                border: '1px solid rgba(217,79,79,0.25)',
+                border: '1px solid rgba(180,35,50,0.25)',
               }}>
                 {unresolvedImages} image{unresolvedImages === 1 ? '' : 's'} unavailable
               </span>
@@ -634,7 +634,7 @@ export function OrderPiProducts({
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                 borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
               }}>
-                <span style={{ fontSize: '11px', color: colors.muted }}>Line total</span>
+                <span style={{ fontSize: '12px', color: colors.muted }}>Line total</span>
                 <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {formatInr(p.lineTotal)}
                 </span>
@@ -726,9 +726,9 @@ export function OrderPiProducts({
 // again when they do.
 
 const VERSION_TONE: Record<PiVersionTone, { bg: string; color: string; border: string }> = {
-  green:   { bg: colors.greenTint, color: colors.green, border: 'rgba(69,168,112,0.3)' },
-  amber:   { bg: colors.amberTint, color: colors.amber, border: 'rgba(190,140,40,0.28)' },
-  red:     { bg: colors.redTint,   color: colors.red,   border: 'rgba(217,79,79,0.3)' },
+  green:   { bg: colors.greenTint, color: colors.green, border: 'rgba(39,98,71,0.3)' },
+  amber:   { bg: colors.amberTint, color: colors.amber, border: 'rgba(196,138,26,0.28)' },
+  red:     { bg: colors.redTint,   color: colors.red,   border: 'rgba(180,35,50,0.3)' },
   neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
 }
 
@@ -746,7 +746,7 @@ function PiVersionRow({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {heading && (
         <div style={{
-          fontSize: '11px', fontWeight: 700, color: colors.muted,
+          fontSize: '12px', fontWeight: 700, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
           {heading}
@@ -759,13 +759,13 @@ function PiVersionRow({
       }}>
         <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{version.label}</span>
         <span style={{
-          display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: '5px',
-          fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+          display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: '6px',
+          fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
           background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
         }}>
           {version.statusLabel}
         </span>
-        <span style={{ fontSize: '11.5px', color: colors.muted, flex: '1 1 200px', minWidth: 0 }}>
+        <span style={{ fontSize: '12px', color: colors.muted, flex: '1 1 200px', minWidth: 0 }}>
           Uploaded by {version.uploadedBy} · {version.uploadedAt}
           {version.decisionLine ? ` · ${version.decisionLine}` : ''}
         </span>
@@ -867,7 +867,7 @@ export function OrderPiHistoryCard({
                   className="boe-btn boe-btn-primary"
                   onClick={() => onApprove(pending)}
                   disabled={busy}
-                  style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
+                  style={{ background: '#276247', borderColor: '#276247' }}
                 >
                   {APPROVE_REVISION_BUTTON_LABEL}
                 </button>
@@ -876,7 +876,7 @@ export function OrderPiHistoryCard({
                   className="boe-btn boe-btn-ghost"
                   onClick={() => onReject(pending)}
                   disabled={busy}
-                  style={{ color: colors.red, borderColor: 'rgba(217,79,79,0.35)' }}
+                  style={{ color: colors.red, borderColor: 'rgba(180,35,50,0.35)' }}
                 >
                   {REJECT_REVISION_BUTTON_LABEL}
                 </button>
@@ -887,7 +887,7 @@ export function OrderPiHistoryCard({
         {past.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{
-              fontSize: '11px', fontWeight: 700, color: colors.muted,
+              fontSize: '12px', fontWeight: 700, color: colors.muted,
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               {PI_HISTORY_PAST_HEADING}

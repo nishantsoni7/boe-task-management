@@ -12,12 +12,12 @@
   margin: 0 0 16px;
   font-size: 13.5px;
   line-height: 1.6;
-  color: #4A5261;
+  color: #4C5352;
   max-width: 72ch;
 }
 
 .list { list-style: none; margin: 0; padding: 0; }
-.list li + li { border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.list li + li { border-top: 1px solid #E4DED7; }
 
 .item {
   display: flex;
@@ -28,12 +28,12 @@
   text-decoration: none;
   color: inherit;
 }
-.item:hover { background: #FAFBFC; }
-.item:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.item:hover { background: #FBFAF8; }
+.item:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
 .itemText { flex: 1; min-width: 0; }
-.itemTitle { font-size: 14px; font-weight: 600; color: #111318; }
-.itemDesc { font-size: 12.5px; color: #6B7384; line-height: 1.45; margin-top: 2px; }
-.chevron { flex-shrink: 0; color: #9AA1B0; font-size: 18px; line-height: 1; }
+.itemTitle { font-size: 14px; font-weight: 600; color: #303536; }
+.itemDesc { font-size: 12.5px; color: #686D6C; line-height: 1.45; margin-top: 2px; }
+.chevron { flex-shrink: 0; color: #686D6C; font-size: 18px; line-height: 1; }
 
 @media (max-width: 767px) {
   .groups { grid-template-columns: minmax(0, 1fr); }

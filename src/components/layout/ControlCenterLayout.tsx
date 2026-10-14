@@ -166,10 +166,10 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
             aria-label="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
           >
             <Home size={14} strokeWidth={2} />
@@ -254,8 +254,8 @@ function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome }: H
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 32, height: 32, borderRadius: '8px',
             background: 'rgba(0,0,0,0.05)',
-            border: '1px solid rgba(0,0,0,0.10)',
-            color: '#6B7384', cursor: 'pointer', flexShrink: 0,
+            border: '1px solid #CFC8BF',
+            color: '#686D6C', cursor: 'pointer', flexShrink: 0,
           }}
         >
           <Home size={14} strokeWidth={2} />
@@ -381,10 +381,10 @@ function NavItem({
       aria-current={active ? 'page' : undefined}
       style={{
         fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none',
-        color: danger && !active ? '#B0364A' : undefined,
+        color: danger && !active ? '#A12438' : undefined,
       }}
     >
-      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}

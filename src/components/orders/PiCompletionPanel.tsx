@@ -122,7 +122,7 @@ export function PiCompletionPanel({
       <div className="pi-completion-head">
         {locked
           ? <Lock size={16} aria-hidden="true" style={{ color: colors.secondary }} />
-          : <ClipboardCheck size={16} aria-hidden="true" style={{ color: colors.blue }} />}
+          : <ClipboardCheck size={16} aria-hidden="true" style={{ color: colors.brand }} />}
         <h2 className="pi-completion-title">{title}</h2>
       </div>
 
@@ -191,11 +191,11 @@ export function PiLockedNotice({ title, body, onRequestChange }: {
       data-testid="pi-locked-notice"
       style={{
         display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap',
-        border: '1px solid rgba(85,133,232,0.45)', background: colors.blueTint,
+        border: '1px solid rgba(51,90,134,0.45)', background: colors.brandTint,
         borderRadius: '12px', padding: '12px 16px',
       }}
     >
-      <Lock size={18} aria-hidden="true" style={{ color: colors.blue, flexShrink: 0 }} />
+      <Lock size={18} aria-hidden="true" style={{ color: colors.brand, flexShrink: 0 }} />
       <div style={{ flex: '1 1 260px', minWidth: 0 }}>
         <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{title}</div>
         <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>{body}</div>

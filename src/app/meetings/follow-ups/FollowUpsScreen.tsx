@@ -368,7 +368,7 @@ export function FollowUpsScreen() {
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -381,7 +381,7 @@ export function FollowUpsScreen() {
 
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}>
         <StatusTabs
           tabs={tabs}
@@ -420,7 +420,7 @@ export function FollowUpsScreen() {
                   {['Due', 'Order', 'Product', 'Meeting', 'Owner', 'Last Update', 'Task', ''].map(h => (
                     <th key={h} style={{
                       padding: '7px 12px', textAlign: 'left',
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
+                      fontSize: '12px', fontWeight: 600, color: colors.muted,
                       textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
@@ -437,13 +437,13 @@ export function FollowUpsScreen() {
                           {formatMeetingDate(row.nextFollowUpDate)}
                         </div>
                         {due === 'overdue' && row.nextFollowUpDate && (
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: meta?.color }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: meta?.color }}>
                             {daysOverdue(row.nextFollowUpDate, today)} day
                             {daysOverdue(row.nextFollowUpDate, today) === 1 ? '' : 's'} overdue
                           </div>
                         )}
                         {due === 'today' && (
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: meta?.color }}>Due today</div>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: meta?.color }}>Due today</div>
                         )}
                       </td>
                       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
@@ -460,7 +460,7 @@ export function FollowUpsScreen() {
                       </td>
                       <td style={{ padding: '10px 12px', minWidth: '140px' }}>
                         <div style={{ fontWeight: 600, color: colors.primary }}>{row.sku}</div>
-                        <div style={{ fontSize: '11.5px', color: colors.muted }}>{row.productName}</div>
+                        <div style={{ fontSize: '12px', color: colors.muted }}>{row.productName}</div>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <MeetingBadge meta={MEETING_TYPE_META[row.meetingType]} />
@@ -475,7 +475,7 @@ export function FollowUpsScreen() {
                         <div style={{ color: row.latestUpdate ? colors.primary : colors.muted, lineHeight: 1.4 }}>
                           {row.latestUpdate ?? 'No update recorded'}
                         </div>
-                        <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
+                        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                           {row.lastUpdatedAt ? formatMeetingDate(row.lastUpdatedAt) : '—'}
                         </div>
                       </td>
@@ -493,7 +493,7 @@ export function FollowUpsScreen() {
                             </span>
                           </button>
                         ) : (
-                          <span style={{ fontSize: '11.5px', color: colors.muted }}>—</span>
+                          <span style={{ fontSize: '12px', color: colors.muted }}>—</span>
                         )}
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -508,7 +508,7 @@ export function FollowUpsScreen() {
                         ) : (
                           <span
                             title="This meeting is completed — reopen it to record a change"
-                            style={{ fontSize: '11px', color: colors.muted }}
+                            style={{ fontSize: '12px', color: colors.muted }}
                           >
                             Read-only
                           </span>
@@ -556,7 +556,7 @@ function FollowUpCard({
 
   return (
     <div style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px',
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '11px 13px', marginBottom: '8px', background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
@@ -579,7 +579,7 @@ function FollowUpCard({
           {row.orderNumber} · {row.sku}
         </span>
       </button>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>{row.productName}</div>
+      <div style={{ fontSize: '12px', color: colors.muted }}>{row.productName}</div>
 
       <div style={{
         marginTop: '7px', fontSize: '12.5px',
@@ -592,7 +592,7 @@ function FollowUpCard({
         display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '8px',
       }}>
         <MeetingBadge meta={ITEM_STATUS_META[row.status]} />
-        <span style={{ fontSize: '11.5px', color: colors.muted }}>
+        <span style={{ fontSize: '12px', color: colors.muted }}>
           {departmentLabel(row.responsibleDepartment)}
         </span>
         {row.linkedTaskId && (

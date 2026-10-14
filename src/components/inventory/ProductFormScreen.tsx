@@ -378,7 +378,7 @@ function ProductForm({
               {deleting ? <Loader2 size={17} className={s.spin} /> : <Trash2 size={17} />} Delete
             </button>
           </>}>
-          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: '#333B4A' }}>The product disappears from the stock list and cannot be booked. This cannot be undone from the app.</p>
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: '#303536' }}>The product disappears from the stock list and cannot be booked. This cannot be undone from the app.</p>
           {deleteError && <Notice kind="err">{deleteError}</Notice>}
         </Sheet>
       )}

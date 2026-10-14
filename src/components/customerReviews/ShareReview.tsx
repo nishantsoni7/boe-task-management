@@ -251,7 +251,7 @@ export function ShareReviewButton({
             : <Share2 size={13} strokeWidth={2} />}
           {working ? 'Preparing…' : 'Share on WhatsApp'}
         </button>
-        <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+        <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
           {/*
             SAYS WHERE THE IMAGES CAME FROM, not just how many. A candidate
             sharing an image review is posting one project's photographs, and
@@ -270,7 +270,7 @@ export function ShareReviewButton({
         role="status" so every outcome is announced. The wording is chosen so
         that no state claims a message was sent — because none of them knows.
       */}
-      <span role="status" style={{ fontSize: '11px', lineHeight: 1.55, color: state.kind === 'error' ? colors.red : colors.tertiary }}>
+      <span role="status" style={{ fontSize: '12px', lineHeight: 1.55, color: state.kind === 'error' ? colors.red : colors.tertiary }}>
         {state.kind === 'opened'
           ? 'Your share sheet was opened. Choose WhatsApp and the recipient there, then press send yourself — BOE does not send anything for you.'
           : state.kind === 'manual'

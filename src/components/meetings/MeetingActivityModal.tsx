@@ -21,8 +21,8 @@ import { formatMeetingTimestamp, type MeetingActivityEntry } from '@/lib/meeting
 
 const TONE_COLOR: Record<'neutral' | 'blue' | 'green' | 'amber', string> = {
   neutral: colors.muted,
-  blue:    colors.blue,
-  green:   '#2E8A58',
+  blue:    colors.brand,
+  green:   '#276247',
   amber:   colors.amber,
 }
 
@@ -46,7 +46,7 @@ export function MeetingActivityModal({
       {reopened && (
         <div style={{
           padding: '9px 12px', borderRadius: '8px',
-          background: colors.amberTint, border: '1px solid rgba(232,160,48,0.28)',
+          background: colors.amberTint, border: '1px solid rgba(196,138,26,0.28)',
           fontSize: '12px', color: '#8A5A10', lineHeight: 1.45,
         }}>
           This meeting was reopened after being completed. Every completion is kept below —
@@ -80,10 +80,10 @@ export function MeetingActivityModal({
                   <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>
                     {ACTIVITY_EVENT_LABEL[entry.event_type]}
                   </div>
-                  <div style={{ fontSize: '11.5px', color: colors.secondary, marginTop: '1px' }}>
+                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>
                     {entry.actor_name?.trim() || 'Unknown'}
                   </div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
                     {formatMeetingTimestamp(entry.created_at)}
                   </div>
                 </div>
@@ -93,7 +93,7 @@ export function MeetingActivityModal({
         </div>
       )}
 
-      <div style={{ fontSize: '11px', color: colors.muted, borderTop: `1px solid ${colors.border}`, paddingTop: '10px' }}>
+      <div style={{ fontSize: '12px', color: colors.muted, borderTop: `1px solid ${colors.border}`, paddingTop: '10px' }}>
         Product and SKU updates are recorded separately — open the history on any product row.
       </div>
     </MeetingModal>

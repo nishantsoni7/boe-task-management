@@ -155,7 +155,7 @@ function TableHead({ cols }: { cols: string[] }) {
         {cols.map(h => (
           <th key={h} style={{
             padding: '10px 16px', textAlign: 'left',
-            fontSize: '11px', fontWeight: 600,
+            fontSize: '12px', fontWeight: 600,
             color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
             whiteSpace: 'nowrap',
           }}>{h}</th>
@@ -177,7 +177,7 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{
       padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px',
     }}>
       {message}
     </div>
@@ -188,7 +188,7 @@ function SuccessBanner({ message }: { message: string }) {
   return (
     <div role="status" style={{
       padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
-      background: 'rgba(22,163,74,0.10)', color: '#15803D', fontSize: '12px',
+      background: 'rgba(39,98,71,0.10)', color: '#276247', fontSize: '12px',
     }}>
       {message}
     </div>
@@ -210,7 +210,7 @@ const ACCESS_STATUS_BADGE: Record<string, string> = {
 function Badge({ status, map }: { status: string; map: Record<string, string> }) {
   const cls = map[status] ?? 'boe-badge-pending'
   const label = status.replace(/_/g, ' ')
-  return <span className={`boe-badge ${cls}`} style={{ fontSize: '10px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{label}</span>
+  return <span className={`boe-badge ${cls}`} style={{ fontSize: '12px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{label}</span>
 }
 
 const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
@@ -329,7 +329,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
                       : <span style={{ fontWeight: 600, color: colors.primary }}>—</span>}
                   </div>
                   {asset?.specifications && (
-                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>{asset.specifications}</div>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>{asset.specifications}</div>
                   )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', fontSize: '12px', color: colors.secondary }}>
                     <span>{categoryLabel(catalogue, asset?.asset_type)}</span>
@@ -376,7 +376,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
                             ? <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
                             : <div style={{ fontWeight: 600, color: colors.primary }}>—</div>}
                           {asset?.specifications && (
-                            <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
+                            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
                               {asset.specifications}
                             </div>
                           )}
@@ -388,17 +388,17 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {row.status === 'pending_acceptance' && (
-                              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setAccepting(row)}>
+                              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAccepting(row)}>
                                 Accept Handover
                               </button>
                             )}
                             {row.accepted_at && (
-                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setPrinting(row)}>
+                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setPrinting(row)}>
                                 Print Handover Sheet
                               </button>
                             )}
                             {canRequest && asset && (
-                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setRequesting(asset)}>
+                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setRequesting(asset)}>
                                 Request Modification
                               </button>
                             )}
@@ -493,7 +493,7 @@ function MyAccess({ userId, supabase, isMobile }: { userId: string; supabase: Su
                 <div style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.secondary, marginBottom: '8px' }}>{r.username}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Badge status={r.status} map={ACCESS_STATUS_BADGE} />
-                  <span style={{ fontSize: '11px', color: colors.muted }}>{fmtDate(r.assigned_at)}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{fmtDate(r.assigned_at)}</span>
                 </div>
               </div>
             ))}
@@ -709,7 +709,7 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
   ) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
       <span style={{
-        fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{label}</span>
       <select
@@ -797,7 +797,7 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
           {filterSelect('Warranty', 'warranty', WARRANTY_STATUS_OPTIONS.map(w => ({ value: w, label: WARRANTY_STATUS_LABEL[w] })))}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, gridColumn: isMobile ? '1 / -1' : undefined }}>
             <span style={{
-              fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+              fontSize: '12px', fontWeight: 600, color: colors.muted,
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>Purchased Between</span>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -828,7 +828,7 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
             const canAssign = caps.canAssignAsset && asset.status === 'available'
             return (
               <div key={asset.id} className="boe-card" style={{ padding: '14px 16px' }}>
-                <div style={{ fontFamily: 'monospace', fontSize: '10.5px', color: colors.muted, marginBottom: '2px' }}>{asset.asset_code}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.muted, marginBottom: '2px' }}>{asset.asset_code}</div>
                 <div style={{ fontSize: '14px', marginBottom: '2px' }}>
                   <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
                 </div>
@@ -839,14 +839,14 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                    <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                       {assetStatusLabel(asset.status)}
                     </span>
                     {row.assignment?.status === 'pending_acceptance' && (
-                      <span className="boe-badge boe-badge-pending" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>Not accepted</span>
+                      <span className="boe-badge boe-badge-pending" style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>Not accepted</span>
                     )}
                     {anyWarranty && (
-                      <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                      <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                         {WARRANTY_STATUS_LABEL[warranty]}
                       </span>
                     )}
@@ -884,31 +884,31 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
                       <td style={{ padding: '10px 12px' }}>
                         <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
                         {asset.serial_no && (
-                          <div style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace', marginTop: '2px' }}>
+                          <div style={{ fontSize: '12px', color: colors.muted, fontFamily: 'monospace', marginTop: '2px' }}>
                             {asset.serial_no}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '10px 12px', color: colors.secondary, fontFamily: 'monospace', fontSize: '11.5px', whiteSpace: 'nowrap' }}>{asset.asset_code}</td>
+                      <td style={{ padding: '10px 12px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'nowrap' }}>{asset.asset_code}</td>
                       <td style={{ padding: '10px 12px', color: colors.secondary }}>
                         <div>{row.categoryName}</div>
-                        {row.productName && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>{row.productName}</div>}
+                        {row.productName && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>{row.productName}</div>}
                       </td>
                       <td style={{ padding: '10px 12px', color: colors.secondary }}>
                         {holderLabel}
                         {row.assignment?.status === 'pending_acceptance' && (
-                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>Not yet accepted</div>
+                          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>Not yet accepted</div>
                         )}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                        <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {assetStatusLabel(asset.status)}
                         </span>
                       </td>
                       <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>{assetConditionLabel(asset.condition)}</td>
                       {anyWarranty && (
                         <td style={{ padding: '10px 12px' }}>
-                          <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                          <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                             {WARRANTY_STATUS_LABEL[warranty]}
                           </span>
                         </td>
@@ -917,9 +917,9 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
                           {canAssign && (
-                            <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>
+                            <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>
                           )}
-                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => openAsset(asset)}>Open</button>
+                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => openAsset(asset)}>Open</button>
                         </div>
                       </td>
                     </tr>
@@ -1102,11 +1102,11 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px' }}>{row.asset_name_snapshot}</div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
               {REQUEST_TYPE_LABEL[row.request_type]} request · {employeeName(row.requested_by)} · {fmtDate(row.created_at)}
             </div>
           </div>
-          <span className={`boe-badge ${REQUEST_STATUS_BADGE[row.status]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+          <span className={`boe-badge ${REQUEST_STATUS_BADGE[row.status]}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
             {REQUEST_STATUS_LABEL[row.status]}
           </span>
         </div>
@@ -1114,13 +1114,13 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
         <div style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'pre-wrap' }}>{row.reason}</div>
 
         {changes.length > 0 && (
-          <div style={{ fontSize: '11.5px', color: colors.secondary, background: colors.raised, borderRadius: '8px', padding: '8px 10px' }}>
+          <div style={{ fontSize: '12px', color: colors.secondary, background: colors.raised, borderRadius: '8px', padding: '8px 10px' }}>
             {changes.map(line => <div key={line}>{line}</div>)}
           </div>
         )}
 
         {row.status !== 'pending' && (
-          <div style={{ fontSize: '11px', color: colors.muted }}>
+          <div style={{ fontSize: '12px', color: colors.muted }}>
             {REQUEST_STATUS_LABEL[row.status]} by {employeeName(row.reviewed_by)} on {fmtDate(row.reviewed_at)}
             {row.review_note ? ` — ${row.review_note}` : ''}
           </div>
@@ -1138,7 +1138,7 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
                 {busyId === row.id ? 'Working…' : 'Approve'}
               </button>
             )}
-            <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 14px', fontSize: '12px', color: '#C13030' }} disabled={busyId === row.id} onClick={() => setRejecting(row)}>
+            <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 14px', fontSize: '12px', color: '#B42332' }} disabled={busyId === row.id} onClick={() => setRejecting(row)}>
               Reject
             </button>
           </div>
@@ -1363,8 +1363,8 @@ function AccessRegister({
                     <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(r.assigned_at)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setEditingRow(r)}>Update Credentials</button>
-                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === r.id} onClick={() => handleToggleStatus(r)}>
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setEditingRow(r)}>Update Credentials</button>
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }} disabled={busyId === r.id} onClick={() => handleToggleStatus(r)}>
                           {r.status === 'active' ? 'Disable Access' : 'Re-enable Access'}
                         </button>
                       </div>

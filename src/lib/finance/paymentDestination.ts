@@ -293,14 +293,14 @@ export const PAYMENT_DISPLAY_STATE_META: Record<
   PaymentDisplayState,
   { label: string; bg: string; color: string; border: string }
 > = {
-  pending:             { label: 'Pending',               bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  needs_clarification: { label: 'Needs Clarification',   bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
-  rejected:            { label: 'Rejected',              bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
-  received:            { label: 'Received Payment',      bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
+  pending:             { label: 'Pending',               bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  needs_clarification: { label: 'Needs Clarification',   bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  rejected:            { label: 'Rejected',              bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
+  received:            { label: 'Received Payment',      bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
   // NOT "Order No. Pending". The money arrived and is verified; what it has not
   // got is a home. That is what the words say, and Allocate Funds is what fixes
   // it — an Order number is one of several answers, not the only one.
-  received_unallocated:{ label: 'Received — Unallocated', bg: '#FFF7ED', color: '#92400E', border: '#FED7AA' },
+  received_unallocated:{ label: 'Received — Unallocated', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
 }
 
 /**

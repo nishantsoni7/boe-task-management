@@ -156,7 +156,7 @@ export function MeetingInboxBody({
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -176,7 +176,7 @@ export function MeetingInboxBody({
       {!loadError && (
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}>
         <div style={{ padding: '11px 14px', borderBottom: `1px solid ${colors.border}` }}>
           <p style={{ margin: 0, fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
@@ -211,16 +211,16 @@ export function MeetingInboxBody({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
                       <MeetingBadge meta={meta} />
                       {item.after_sales_tag && (
-                        <span style={{ fontSize: '11px', color: colors.muted }}>
+                        <span style={{ fontSize: '12px', color: colors.muted }}>
                           {AFTER_SALES_TAG_LABEL[item.after_sales_tag]}
                         </span>
                       )}
                       {/* Neutral on purpose: amber is the After Sales category's colour,
                           and a waiting state wearing it read as a second category chip. */}
                       <span style={{
-                        fontSize: '11px', color: colors.secondary, fontWeight: 600,
+                        fontSize: '12px', color: colors.secondary, fontWeight: 600,
                         background: colors.raised, border: `1px solid ${colors.borderSoft}`,
-                        padding: '2px 8px', borderRadius: '5px',
+                        padding: '2px 8px', borderRadius: '6px',
                       }}>
                         Waiting for a meeting
                       </span>
@@ -231,7 +231,7 @@ export function MeetingInboxBody({
                     }}>
                       {item.title}
                     </div>
-                    <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                       Order {item.order_number}
                       {item.customer_name ? ` · ${item.customer_name}` : ''}
                       {' · raised by '}{item.created_by_name ?? 'Unknown'}
@@ -245,7 +245,7 @@ export function MeetingInboxBody({
                         {item.details}
                       </p>
                     )}
-                    <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '6px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '6px' }}>
                       Next {review.label} review will pick this up automatically.
                       {item.source_task_id && !readableTasks.has(item.source_task_id)
                         && ' Raised from a task you do not have access to.'}

@@ -59,7 +59,7 @@ export function ReviewCard({
     <article
       style={{
         display: 'flex', flexDirection: 'column', gap: '9px',
-        padding: '13px', borderRadius: '10px', minWidth: 0,
+        padding: '13px', borderRadius: '8px', minWidth: 0,
         border: `1px solid ${colors.border}`,
         background: waiting ? colors.raised : '#FFFFFF',
         // A review nobody can start is visibly quieter than one they can.
@@ -79,19 +79,19 @@ export function ReviewCard({
         <ReviewTypeBadge type={card.review_type} />
         <ReadinessBadge card={card} />
         {returned && (
-          <ReviewBadge meta={{ label: 'Returned', bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' }} />
+          <ReviewBadge meta={{ label: 'Returned', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' }} />
         )}
         <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
         <span style={{
-          marginLeft: 'auto', fontFamily: 'var(--font-mono)',
-          fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap',
+          marginLeft: 'auto', fontFamily: 'var(--font-body)',
+          fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap',
         }}>
           {card.card_ref}
         </span>
       </div>
 
       <div>
-        <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '3px' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '3px' }}>
           {testCategoryLabel(card.test_category)}
         </div>
         <h3 style={{
@@ -110,7 +110,7 @@ export function ReviewCard({
       </p>
 
       {assigneeName && (
-        <div style={{ fontSize: '11px', color: colors.tertiary }}>
+        <div style={{ fontSize: '12px', color: colors.tertiary }}>
           Assigned to <strong style={{ color: colors.secondary }}>{assigneeName}</strong>
         </div>
       )}
@@ -120,7 +120,7 @@ export function ReviewCard({
         alignItems: 'center', flexWrap: 'wrap',
       }}>
         {waiting ? (
-          <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>
+          <span style={{ fontSize: '12px', color: '#805B0D', fontWeight: 600 }}>
             Waiting for project images
           </span>
         ) : actionLabel && onAction ? (

@@ -95,13 +95,13 @@ export function HistoryScreen() {
         </div>
         {error && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: colors.red }}>{error}</p>}
         {rows === null ? <p role="status" style={{ margin: 0, fontSize: 12.5, color: colors.muted }}>Loading the history…</p>
-          : shown.length === 0 ? <p style={{ margin: 0, padding: '14px 16px', borderRadius: 10, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>No generated reviews match.</p>
+          : shown.length === 0 ? <p style={{ margin: 0, padding: '14px 16px', borderRadius: 8, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>No generated reviews match.</p>
           : shown.map(r => (
-            <details key={r.id} style={{ borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0 }}>
+            <details key={r.id} style={{ borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0 }}>
               <summary style={{ cursor: 'pointer', padding: '10px 14px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 13, color: colors.primary }}>{r.card_ref}</strong>
                 <ReviewBadge meta={TEST_CARD_STATUS_META[r.status]} />
-                {r.deleted_at && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.red }}>Deleted</span>}
+                {r.deleted_at && <span style={{ fontSize: 12, fontWeight: 700, color: colors.red }}>Deleted</span>}
                 <span style={{ fontSize: 12.5, color: colors.secondary, overflowWrap: 'anywhere', flex: '1 1 160px', minWidth: 0 }}>{r.test_title}</span>
               </summary>
               <dl style={{ margin: 0, padding: '4px 14px 14px', display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '4px 12px', fontSize: 12.5, color: colors.secondary }}>

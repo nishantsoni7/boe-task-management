@@ -78,7 +78,7 @@ export function VerifyPanel({
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: '8px',
-      padding: '11px 13px', borderRadius: '9px',
+      padding: '11px 13px', borderRadius: '8px',
       border: `1px solid ${meta.border}`, background: meta.bg,
     }}>
       <div style={{ fontSize: '13px', fontWeight: 700, color: meta.color, lineHeight: 1.5 }}>
@@ -108,7 +108,7 @@ export function VerifyPanel({
         <Row label="Evidence" value={hasEvidence ? 'A screenshot is attached below' : 'No screenshot attached'} />
       </dl>
 
-      <p style={{ margin: 0, fontSize: '11px', color: meta.color, opacity: 0.85, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: '12px', color: meta.color, opacity: 0.85, lineHeight: 1.6 }}>
         The credits are posted to the employee who booked this review, not to you, in the same
         transaction that verifies it. Verifying twice is refused — a verified review is final.
       </p>

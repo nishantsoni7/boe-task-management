@@ -119,11 +119,11 @@ export function PaymentProofView({
         onClick={openProof}
         disabled={opening}
         className="boe-btn boe-btn-ghost"
-        style={{ padding: '4px 12px', fontSize: '11px', fontWeight: 600, color: colors.blue, flexShrink: 0 }}
+        style={{ padding: '4px 12px', fontSize: '12px', fontWeight: 600, color: colors.brand, flexShrink: 0 }}
       >
         {opening ? 'Opening…' : 'View'}
       </button>
-      {error && <span style={{ fontSize: '11px', color: colors.red, width: '100%' }}>{error}</span>}
+      {error && <span style={{ fontSize: '12px', color: colors.red, width: '100%' }}>{error}</span>}
     </div>
   )
 

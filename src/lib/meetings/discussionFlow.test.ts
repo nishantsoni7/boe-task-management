@@ -391,7 +391,7 @@ describe('defects found by rendering the real components', () => {
 
   test('the Inbox waiting chip does not wear the After Sales amber', () => {
     const chip = INBOX.slice(INBOX.indexOf('Waiting for a meeting') - 500, INBOX.indexOf('Waiting for a meeting'))
-    assert.ok(!/#FFFBEB|#FDE68A|#92400E/.test(chip))
+    assert.ok(!/#FAF0DA|#E6D2A0|#805B0D/.test(chip))
   })
 })
 

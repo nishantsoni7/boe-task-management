@@ -471,7 +471,7 @@ function TestDataCleanupInner() {
 
               <div style={{ marginBottom: 14 }}>
                 <span className={cc.fieldLabel}>Also removed</span>
-                <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7 }}>
+                <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.7 }}>
                   {Object.entries(preview.counts)
                     // The four ROW types already listed above by name are
                     // excluded here; what is left is the dependent rows
@@ -489,9 +489,9 @@ function TestDataCleanupInner() {
                     resolved server-side, and a wall of storage paths is
                     not what an admin is deciding on. */}
                 {preview.submission_storage_prefix && (
-                  <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7, marginTop: 4 }}>
+                  <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.7, marginTop: 4 }}>
                     Every PI file under{' '}
-                    <code className={cc.mono} style={{ color: '#111318' }}>
+                    <code className={cc.mono} style={{ color: '#303536' }}>
                       {preview.submission_storage_prefix}
                     </code>
                   </div>

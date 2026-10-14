@@ -27,26 +27,26 @@ export function ViewModeBanner() {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       flexWrap: 'wrap', gap: '8px',
       padding: '12px 20px',
-      background: '#FFFBEB',
+      background: '#FAF0DA',
       border: '1.5px solid #FCD34D',
-      borderRadius: '10px',
+      borderRadius: '8px',
       marginBottom: '20px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Eye size={16} color="#D97706" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+        <Eye size={16} color="#805B0D" strokeWidth={2.2} style={{ flexShrink: 0 }} />
         <div>
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#78350F', letterSpacing: '-0.01em' }}>
             ADMIN VIEW MODE — Viewing as <strong>{viewAsProfile.full_name}</strong>
           </div>
-          <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '1px' }}>
+          <div style={{ fontSize: '12px', color: '#805B0D', marginTop: '1px' }}>
             You are observing this user&apos;s workspace. All actions are disabled.
           </div>
         </div>
         <span style={{
-          fontSize: '10px', fontWeight: 700,
-          color: '#B45309', background: '#FEF3C7',
-          borderRadius: '4px', padding: '2px 8px',
-          border: '1px solid #FDE68A',
+          fontSize: '12px', fontWeight: 700,
+          color: '#805B0D', background: '#FAF0DA',
+          borderRadius: '6px', padding: '2px 8px',
+          border: '1px solid #E6D2A0',
           whiteSpace: 'nowrap',
         }}>
           READ ONLY
@@ -57,8 +57,8 @@ export function ViewModeBanner() {
         style={{
           display: 'flex', alignItems: 'center', gap: '5px',
           fontSize: '12px', fontWeight: 600,
-          color: '#92400E', background: '#FEF3C7',
-          border: '1px solid #FDE68A', borderRadius: '6px',
+          color: '#805B0D', background: '#FAF0DA',
+          border: '1px solid #E6D2A0', borderRadius: '6px',
           padding: '6px 14px', cursor: 'pointer',
           whiteSpace: 'nowrap',
         }}
@@ -128,32 +128,32 @@ export function ViewModeSidebarSection({
   return (
     <div style={{
       marginTop: 'auto',
-      borderTop: '1px solid rgba(0,0,0,0.07)',
+      borderTop: '1px solid #E4DED7',
       padding: '10px 10px 6px',
     }}>
       {inViewMode ? (
         /* ── View mode active: show viewed-user chip + Exit button ── */
         <div style={{ padding: '8px 10px 6px' }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: '#D97706',
+            fontSize: '12px', fontWeight: 700, color: '#805B0D',
             textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px',
           }}>
             Viewing As
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
             <div style={{
-              width: 28, height: 28, borderRadius: '7px',
-              background: '#FEF3C7',
+              width: 28, height: 28, borderRadius: '8px',
+              background: '#FAF0DA',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '11px', fontWeight: 700, color: '#D97706', flexShrink: 0,
+              fontSize: '12px', fontWeight: 700, color: '#805B0D', flexShrink: 0,
             }}>
               {initials(viewAsProfile?.full_name ?? '')}
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#303536', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {viewAsProfile?.full_name}
               </div>
-              <div style={{ fontSize: '10.5px', color: '#D97706' }}>
+              <div style={{ fontSize: '12px', color: '#805B0D' }}>
                 {viewAsProfile ? employeeSubtitle(viewAsProfile) : ''}
               </div>
             </div>
@@ -163,8 +163,8 @@ export function ViewModeSidebarSection({
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '6px', fontSize: '12px', fontWeight: 600,
-              color: '#92400E', background: '#FEF3C7',
-              border: '1px solid #FDE68A', borderRadius: '7px',
+              color: '#805B0D', background: '#FAF0DA',
+              border: '1px solid #E6D2A0', borderRadius: '8px',
               padding: '6px 10px', cursor: 'pointer',
             }}
           >
@@ -183,8 +183,8 @@ export function ViewModeSidebarSection({
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   fontSize: '12px', fontWeight: 500,
-                  color: '#3D4455', background: 'rgba(0,0,0,0.04)',
-                  border: '1px solid rgba(0,0,0,0.08)', borderRadius: '7px',
+                  color: '#4C5352', background: 'rgba(0,0,0,0.04)',
+                  border: '1px solid #E4DED7', borderRadius: '8px',
                   padding: '6px 10px', cursor: 'pointer',
                 }}
               >
@@ -208,15 +208,15 @@ export function ViewModeSidebarSection({
                   <div style={{
                     position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
                     background: '#fff',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '10px',
+                    border: '1px solid #E4DED7',
+                    borderRadius: '8px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                     zIndex: 50,
                     maxHeight: '260px',
                     overflowY: 'auto',
                     padding: '6px',
                   }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
                       View as member
                     </div>
                     {members
@@ -227,28 +227,28 @@ export function ViewModeSidebarSection({
                           onClick={() => handleEnterViewMode(member)}
                           style={{
                             width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-                            padding: '7px 8px', borderRadius: '7px',
+                            padding: '7px 8px', borderRadius: '8px',
                             background: 'none', border: 'none', cursor: 'pointer',
                             textAlign: 'left', transition: 'background 0.1s',
                           }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#FBFAF8')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         >
                           <div style={{
                             width: 26, height: 26, borderRadius: '6px',
-                            background: '#1A2035',
+                            background: '#303536',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '10px', fontWeight: 700, color: '#DC1F2E', flexShrink: 0,
+                            fontSize: '12px', fontWeight: 700, color: '#B9472E', flexShrink: 0,
                           }}>
                             {initials(member.full_name)}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#303536', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {member.full_name}
                             </div>
                             {/* Their designation, not `member` — the switcher
                                 names people the way the rest of the app does. */}
-                            <div style={{ fontSize: '10.5px', color: '#8C94A6' }}>
+                            <div style={{ fontSize: '12px', color: '#686D6C' }}>
                               {employeeSubtitle(member)}
                             </div>
                           </div>
@@ -383,24 +383,24 @@ function UserMenu({
       >
         <span style={{
           width: 30, height: 30, borderRadius: '8px',
-          background: '#1A2035',
+          background: '#F8EAE4',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '11px', fontWeight: 700,
-          color: '#DC1F2E', flexShrink: 0,
+          fontSize: '12px', fontWeight: 700,
+          color: '#963B27', flexShrink: 0,
           letterSpacing: '0.02em',
         }}>
           {initials(profile.full_name)}
         </span>
         <span style={{ minWidth: 0, flex: 1 }}>
           <span style={{
-            display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#111318',
+            display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#303536',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {profile.full_name}
           </span>
           {subtitle && (
             <span style={{
-              display: 'block', fontSize: '10.5px', color: '#8C94A6',
+              display: 'block', fontSize: '12px', color: '#686D6C',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {subtitle}
@@ -410,7 +410,7 @@ function UserMenu({
         <ChevronDown
           size={13} strokeWidth={2}
           style={{
-            flexShrink: 0, color: '#8C94A6',
+            flexShrink: 0, color: '#686D6C',
             transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s',
           }}
         />
@@ -431,8 +431,8 @@ function UserMenu({
             style={{
               position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
               background: '#fff',
-              border: '1px solid #E5E7EB',
-              borderRadius: '10px',
+              border: '1px solid #E4DED7',
+              borderRadius: '8px',
               boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
               zIndex: 50,
               padding: '5px',
@@ -449,17 +449,17 @@ function UserMenu({
                 onKeyDown={e => onItemKeyDown(e, index)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: '9px',
-                  padding: '8px 10px', borderRadius: '7px',
+                  padding: '8px 10px', borderRadius: '8px',
                   background: 'none', border: 'none', cursor: 'pointer',
                   textAlign: 'left', font: 'inherit',
                   fontSize: '12.5px',
-                  color: item.current ? '#111318' : '#3D4455',
+                  color: item.current ? '#303536' : '#4C5352',
                   fontWeight: item.current ? 600 : 400,
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
               >
-                <span style={{ color: item.current ? '#DC1F2E' : '#8C94A6', display: 'flex' }}>{item.icon}</span>
+                <span style={{ color: item.current ? '#B9472E' : '#686D6C', display: 'flex' }}>{item.icon}</span>
                 {item.label}
               </button>
             ))}

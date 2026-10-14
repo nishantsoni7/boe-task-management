@@ -57,7 +57,7 @@ const CELL: React.CSSProperties = {
 }
 
 const HEAD: React.CSSProperties = {
-  ...CELL, fontSize: '11px', fontWeight: 700, color: colors.secondary,
+  ...CELL, fontSize: '12px', fontWeight: 700, color: colors.secondary,
   textTransform: 'uppercase', letterSpacing: '0.04em',
 }
 
@@ -165,9 +165,9 @@ export function EmployeeProgress({ supabase }: { supabase: SupabaseClient }) {
                 {row.name}
               </td>
               <td style={CELL}>{row.counts.all.assigned}</td>
-              <td style={{ ...CELL, color: '#166534', fontWeight: 600 }}>{row.counts.all.posted}</td>
+              <td style={{ ...CELL, color: '#276247', fontWeight: 600 }}>{row.counts.all.posted}</td>
               <td style={CELL}>{row.counts.all.verified}</td>
-              <td style={{ ...CELL, color: row.counts.all.remaining > 0 ? '#92400E' : colors.muted, fontWeight: 600 }}>
+              <td style={{ ...CELL, color: row.counts.all.remaining > 0 ? '#805B0D' : colors.muted, fontWeight: 600 }}>
                 {row.counts.all.remaining}
               </td>
               <td style={{ ...CELL, textAlign: 'left', color: colors.secondary }}>

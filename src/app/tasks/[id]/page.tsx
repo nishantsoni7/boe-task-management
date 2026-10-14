@@ -61,8 +61,8 @@ import {
 
 // The gold used for pending_approval is the "important" gold, not the amber of
 // `waiting` — the two are adjacent states and must not read as one.
-const APPROVAL_GOLD      = '#A57F14'
-const APPROVAL_GOLD_TINT = 'rgba(196,154,40,0.10)'
+const APPROVAL_GOLD      = '#805B0D'
+const APPROVAL_GOLD_TINT = 'rgba(183,137,42,0.10)'
 
 const STATUS_COLORS: Record<string, string> = {
   pending:          colors.muted,
@@ -72,7 +72,7 @@ const STATUS_COLORS: Record<string, string> = {
   blocked:          colors.red,
   pending_approval: APPROVAL_GOLD,
   completed:        colors.green,
-  cancelled:        '#78716C',
+  cancelled:        '#686D6C',
 }
 
 const STATUS_TINTS: Record<string, string> = {
@@ -83,7 +83,7 @@ const STATUS_TINTS: Record<string, string> = {
   blocked:          colors.redTint,
   pending_approval: APPROVAL_GOLD_TINT,
   completed:        colors.greenTint,
-  cancelled:        '#F5F5F4',
+  cancelled:        '#F1EEE9',
 }
 
 const CANCEL_REASONS = [
@@ -1444,10 +1444,10 @@ export default function TaskDetailPage() {
     ? (log.find(e => e.action === 'status_changed' && e.to_status === 'completed')?.created_at ?? null)
     : null
   const qStatusColor = isQuotation
-    ? (task.status === 'completed' ? colors.green : '#DC1F2E')
+    ? (task.status === 'completed' ? colors.green : '#B9472E')
     : statusColor
   const qStatusTint = isQuotation
-    ? (task.status === 'completed' ? colors.greenTint : '#FEF2F2')
+    ? (task.status === 'completed' ? colors.greenTint : '#FBE9EC')
     : statusTint
   const qStatusLabel = isQuotation
     ? (task.status === 'completed' ? 'Completed' : 'Open')
@@ -1519,12 +1519,12 @@ export default function TaskDetailPage() {
           </button>
           <span>{isQuotation ? 'Quotation Details' : 'Task Details'}</span>
           <span style={{
-            fontSize: '11px', fontWeight: 700,
+            fontSize: '12px', fontWeight: 700,
             letterSpacing: '0.06em', textTransform: 'uppercase',
-            color: isQuotation ? '#DC1F2E' : relationColor,
-            background: isQuotation ? 'rgba(220,31,46,0.08)' : relationColor + '14',
-            border: `1px solid ${isQuotation ? 'rgba(220,31,46,0.20)' : relationColor + '28'}`,
-            padding: '3px 10px', borderRadius: '20px',
+            color: isQuotation ? '#B9472E' : relationColor,
+            background: isQuotation ? 'rgba(185,71,46,0.08)' : relationColor + '14',
+            border: `1px solid ${isQuotation ? 'rgba(185,71,46,0.20)' : relationColor + '28'}`,
+            padding: '3px 10px', borderRadius: '12px',
           }}>
             {isQuotation ? 'QUOTATION' : relationLabel}
           </span>
@@ -1577,14 +1577,14 @@ export default function TaskDetailPage() {
                       <button
                         onClick={saveTitle}
                         disabled={savingTitle}
-                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingTitle ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingTitle ? 0.6 : 1 }}
+                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.brand}`, background: colors.brand, color: '#ffffff', fontSize: '12px', fontWeight: 600, cursor: savingTitle ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingTitle ? 0.6 : 1 }}
                       >
                         {savingTitle ? '…' : 'Save'}
                       </button>
                       <button
                         onClick={() => setEditingTitle(false)}
                         disabled={savingTitle}
-                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
                       >
                         Cancel
                       </button>
@@ -1605,10 +1605,10 @@ export default function TaskDetailPage() {
                     {isQuotation && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center',
-                        padding: '3px 10px', borderRadius: '20px',
+                        padding: '3px 10px', borderRadius: '12px',
                         background: priorityStyle.bg,
                         border: `1px solid ${priorityStyle.fg}30`,
-                        fontSize: '11px', fontWeight: 700, color: priorityStyle.fg,
+                        fontSize: '12px', fontWeight: 700, color: priorityStyle.fg,
                         flexShrink: 0, marginTop: '3px',
                       }}>
                         {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
@@ -1617,7 +1617,7 @@ export default function TaskDetailPage() {
                     {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditTitle(task.title); setEditingTitle(true); setEditingDescription(false) }}
-                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
+                        style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
                       >
                         Edit
                       </button>
@@ -1630,22 +1630,22 @@ export default function TaskDetailPage() {
               {isQuotation ? (
                 creatorName && (
                   <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <UserRound size={15} color="#DC1F2E" />
-                    <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>Requested by:</span>
-                    <span style={{ fontSize: '13px', color: '#DC1F2E', fontWeight: 700 }}>{creatorName}</span>
+                    <UserRound size={15} color="#B9472E" />
+                    <span style={{ fontSize: '13px', color: '#686D6C', fontWeight: 500 }}>Requested by:</span>
+                    <span style={{ fontSize: '13px', color: '#B9472E', fontWeight: 700 }}>{creatorName}</span>
                   </div>
                 )
               ) : (
                 (isDelegated ? assigneeName : (isSelfTask ? true : creatorName)) && (
                   <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {isDelegated
-                      ? <UserCheck size={15} color="#2563EB" />
-                      : <UserRound size={15} color="#2563EB" />
+                      ? <UserCheck size={15} color="#335A86" />
+                      : <UserRound size={15} color="#335A86" />
                     }
-                    <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
+                    <span style={{ fontSize: '13px', color: '#686D6C', fontWeight: 500 }}>
                       {isDelegated ? 'Assigned To:' : 'Assigned by:'}
                     </span>
-                    <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600 }}>
+                    <span style={{ fontSize: '13px', color: '#335A86', fontWeight: 600 }}>
                       {isDelegated ? assigneeName : (isSelfTask ? 'Self' : creatorName)}
                     </span>
                   </div>
@@ -1658,10 +1658,10 @@ export default function TaskDetailPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      padding: '4px 10px', borderRadius: '20px',
+                      padding: '4px 10px', borderRadius: '12px',
                       background: colors.float, border: `1px solid ${colors.border}`,
                     }}>
-                      <span style={{ fontSize: '11.5px', color: colors.secondary, fontWeight: 500 }}>📞 {task.contact_number}</span>
+                      <span style={{ fontSize: '12px', color: colors.secondary, fontWeight: 500 }}>📞 {task.contact_number}</span>
                     </div>
                   </div>
                 ) : null
@@ -1671,17 +1671,17 @@ export default function TaskDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: '6px',
-                      padding: '4px 10px', borderRadius: '20px',
+                      padding: '4px 10px', borderRadius: '12px',
                       background: riskOverdue ? colors.redTint : colors.float,
                       border: `1px solid ${riskOverdue ? colors.red + '40' : colors.border}`,
                     }}>
-                      <span style={{ fontSize: '11.5px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
+                      <span style={{ fontSize: '12px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
                         {task.due_date ? <>Due: <strong>{formatFullDate(task.due_date)}</strong>{riskOverdue && ' · Overdue'}</> : 'No due date'}
                       </span>
                       {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingDueDate && (
                         <button
                           onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
-                          style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                          style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
                         >
                           Edit
                         </button>
@@ -1699,18 +1699,18 @@ export default function TaskDetailPage() {
                         <button
                           onClick={saveDueDate}
                           disabled={savingDueDate}
-                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDueDate ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDueDate ? 0.6 : 1 }}
+                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.brand}`, background: colors.brand, color: '#ffffff', fontSize: '12px', fontWeight: 600, cursor: savingDueDate ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDueDate ? 0.6 : 1 }}
                         >
                           {savingDueDate ? '…' : 'Save'}
                         </button>
                         <button
                           onClick={() => { setEditingDueDate(false); setDueDateMsg(null) }}
                           disabled={savingDueDate}
-                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
                         >
                           Cancel
                         </button>
-                        {dueDateMsg && <span style={{ fontSize: '11px', color: dueDateMsg.ok ? colors.green : colors.red }}>{dueDateMsg.text}</span>}
+                        {dueDateMsg && <span style={{ fontSize: '12px', color: dueDateMsg.ok ? colors.green : colors.red }}>{dueDateMsg.text}</span>}
                       </div>
                     )}
                   </div>
@@ -1719,17 +1719,17 @@ export default function TaskDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: '6px',
-                      padding: '4px 10px', borderRadius: '20px',
+                      padding: '4px 10px', borderRadius: '12px',
                       background: priorityStyle.bg,
                       border: `1px solid ${priorityStyle.fg}30`,
                     }}>
-                      <span style={{ fontSize: '11.5px', color: priorityStyle.fg, fontWeight: 600 }}>
+                      <span style={{ fontSize: '12px', color: priorityStyle.fg, fontWeight: 600 }}>
                         Priority: {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                       </span>
                       {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingPriority && (
                         <button
                           onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
-                          style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                          style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
                         >
                           Edit
                         </button>
@@ -1746,11 +1746,11 @@ export default function TaskDetailPage() {
                               type="button"
                               onClick={() => setEditPriority(p)}
                               style={{
-                                padding: '5px 10px', borderRadius: '5px',
+                                padding: '5px 10px', borderRadius: '6px',
                                 border: `1.5px solid ${active ? ps.fg : colors.border}`,
                                 background: active ? ps.bg : 'transparent',
                                 color: active ? ps.fg : colors.tertiary,
-                                fontSize: '11.5px', fontWeight: active ? 600 : 400,
+                                fontSize: '12px', fontWeight: active ? 600 : 400,
                                 cursor: 'pointer', textTransform: 'capitalize',
                                 fontFamily: font.body, transition: 'all 0.12s',
                               }}
@@ -1762,18 +1762,18 @@ export default function TaskDetailPage() {
                         <button
                           onClick={savePriority}
                           disabled={savingPriority}
-                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingPriority ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingPriority ? 0.6 : 1 }}
+                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.brand}`, background: colors.brand, color: '#ffffff', fontSize: '12px', fontWeight: 600, cursor: savingPriority ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingPriority ? 0.6 : 1 }}
                         >
                           {savingPriority ? '…' : 'Save'}
                         </button>
                         <button
                           onClick={() => { setEditingPriority(false); setPriorityMsg(null) }}
                           disabled={savingPriority}
-                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
                         >
                           Cancel
                         </button>
-                        {priorityMsg && <span style={{ fontSize: '11px', color: priorityMsg.ok ? colors.green : colors.red }}>{priorityMsg.text}</span>}
+                        {priorityMsg && <span style={{ fontSize: '12px', color: priorityMsg.ok ? colors.green : colors.red }}>{priorityMsg.text}</span>}
                       </div>
                     )}
                   </div>
@@ -1783,11 +1783,11 @@ export default function TaskDetailPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{
                         display: 'inline-flex', alignItems: 'center',
-                        fontSize: '11px', fontWeight: 600,
+                        fontSize: '12px', fontWeight: 600,
                         color: agingColor,
                         background: `${agingColor}14`,
                         border: `1px solid ${agingColor}28`,
-                        padding: '4px 10px', borderRadius: '20px',
+                        padding: '4px 10px', borderRadius: '12px',
                       }}>
                         {aging.label} · {aging.daysSinceUpdate}d
                       </span>
@@ -1810,14 +1810,14 @@ export default function TaskDetailPage() {
                     <button
                       onClick={saveDescription}
                       disabled={savingDescription}
-                      style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDescription ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDescription ? 0.6 : 1 }}
+                      style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.brand}`, background: colors.brand, color: '#ffffff', fontSize: '12px', fontWeight: 600, cursor: savingDescription ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDescription ? 0.6 : 1 }}
                     >
                       {savingDescription ? '…' : 'Save'}
                     </button>
                     <button
                       onClick={() => setEditingDescription(false)}
                       disabled={savingDescription}
-                      style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                      style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
                     >
                       Cancel
                     </button>
@@ -1826,7 +1826,7 @@ export default function TaskDetailPage() {
               ) : (
                 <div style={{ marginTop: '12px' }}>
                   {isQuotation && (
-                    <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: '0 0 4px' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: '0 0 4px' }}>
                       Notes
                     </p>
                   )}
@@ -1845,7 +1845,7 @@ export default function TaskDetailPage() {
                     {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
-                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
+                        style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
                       >
                         Edit
                       </button>
@@ -2032,11 +2032,11 @@ export default function TaskDetailPage() {
                       title="Copy & Assign"
                       style={{
                         ...actionBase,
-                        border: `1.5px solid ${colors.blue}55`,
-                        background: '#ffffff', color: colors.blue,
+                        border: `1.5px solid ${colors.brand}55`,
+                        background: '#ffffff', color: colors.brandInk,
                         cursor: 'pointer',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
+                      onMouseEnter={e => { e.currentTarget.style.background = colors.brandTint }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
                       <UserCheck size={compactActions ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
@@ -2051,11 +2051,11 @@ export default function TaskDetailPage() {
                       title="Cancel task"
                       style={{
                         ...actionBase,
-                        border: '1.5px solid #78716C33',
-                        background: '#ffffff', color: '#78716C',
+                        border: '1.5px solid #686D6C33',
+                        background: '#ffffff', color: '#686D6C',
                         cursor: 'pointer',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F4' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F1EEE9' }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
                       <Ban size={compactActions ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
@@ -2088,7 +2088,7 @@ export default function TaskDetailPage() {
 
               {/* Cancelled: Restore option */}
               {task.status === 'cancelled' && (isCreator || isAdmin) && (
-                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #78716C20' }}>
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #686D6C20' }}>
                   <button
                     onClick={async () => {
                       const confirmed = window.confirm(
@@ -2149,12 +2149,12 @@ export default function TaskDetailPage() {
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                       padding: '8px 14px', borderRadius: '8px',
-                      border: `1.5px solid ${colors.blue}55`,
-                      background: '#ffffff', color: colors.blue,
+                      border: `1.5px solid ${colors.brand}55`,
+                      background: '#ffffff', color: colors.brandInk,
                       fontSize: '12px', fontWeight: 600,
                       cursor: 'pointer', fontFamily: font.body,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
+                    onMouseEnter={e => { e.currentTarget.style.background = colors.brandTint }}
                     onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                   >
                     <UserCheck size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
@@ -2177,18 +2177,18 @@ export default function TaskDetailPage() {
               {/* Top row: label + badge left, Change Status button right */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <span style={{
-                  fontSize: '10px', fontWeight: 700,
+                  fontSize: '12px', fontWeight: 700,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
                   color: qStatusColor, flexShrink: 0,
                 }}>
                   {isQuotation ? 'Quotation Status' : 'Current Status'}
                 </span>
                 <span style={{
-                  fontSize: '13px', fontWeight: 700, letterSpacing: '0.01em',
-                  color: '#ffffff',
-                  padding: '4px 14px', borderRadius: '20px',
-                  background: qStatusColor,
-                  boxShadow: `0 1px 4px ${qStatusColor}40`,
+                  fontSize: '13px', fontWeight: 600, letterSpacing: '0.01em',
+                  color: qStatusColor,
+                  padding: '3px 10px', borderRadius: '6px',
+                  background: '#ffffff',
+                  border: `1px solid ${qStatusColor}40`,
                   flexShrink: 0,
                 }}>
                   {qStatusLabel}
@@ -2210,11 +2210,11 @@ export default function TaskDetailPage() {
                     }}
                     style={{
                       marginLeft: 'auto',
-                      padding: '5px 13px', borderRadius: '7px',
+                      padding: '5px 13px', borderRadius: '8px',
                       border: `1.5px solid ${colors.border}`,
                       background: '#ffffff',
                       color: colors.secondary,
-                      fontSize: '11.5px', fontWeight: 600,
+                      fontSize: '12px', fontWeight: 600,
                       cursor: 'pointer', fontFamily: font.body,
                       transition: 'all 0.15s',
                     }}
@@ -2230,13 +2230,13 @@ export default function TaskDetailPage() {
               {isQuotation && (
                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '6px' }}>
                   <div>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Requested</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Requested</div>
                     <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary, marginTop: '2px' }}>
                       {formatDateTime(task.created_at)}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</div>
                     <div style={{ fontSize: '12.5px', fontWeight: 600, color: quotationCompletedAt ? colors.green : colors.muted, marginTop: '2px' }}>
                       {quotationCompletedAt ? formatDateTime(quotationCompletedAt) : '—'}
                     </div>
@@ -2246,7 +2246,7 @@ export default function TaskDetailPage() {
 
               {/* Waiting On (non-quotation) */}
               {!isQuotation && task.status === 'waiting' && task.waiting_on_type && (
-                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '12px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Waiting for: </span>
                   {task.waiting_on_type === 'team_member'
                     ? (teamMembers.find(m => m.id === task.waiting_on_user_id)?.full_name ?? 'Team member')
@@ -2257,7 +2257,7 @@ export default function TaskDetailPage() {
 
               {/* Blocker (non-quotation) */}
               {!isQuotation && task.status === 'blocked' && task.blocker_reason && (
-                <MultilineText style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
+                <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Blocker: </span>
                   {task.blocker_reason}
                 </MultilineText>
@@ -2265,14 +2265,14 @@ export default function TaskDetailPage() {
 
               {/* Latest note (non-quotation) */}
               {!isQuotation && !noteIsDuplicateOfBlocker && currentStatusNote && (
-                <MultilineText style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
+                <MultilineText style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Reason: </span>
                   {currentStatusNote}
                 </MultilineText>
               )}
 
               {!isQuotation && latestNoteEntry && (
-                <p style={{ fontSize: '10px', color: statusColor, margin: '2px 0 0', fontWeight: 500 }}>
+                <p style={{ fontSize: '12px', color: statusColor, margin: '2px 0 0', fontWeight: 500 }}>
                   Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                 </p>
               )}
@@ -2316,30 +2316,30 @@ export default function TaskDetailPage() {
                         : `Awaiting approval from ${creatorName ?? 'the task creator'}`}
                     </p>
                     <span style={{
-                      fontSize: '9.5px', fontWeight: 700,
+                      fontSize: '12px', fontWeight: 700,
                       letterSpacing: '0.07em', textTransform: 'uppercase',
                       color: APPROVAL_GOLD, background: '#ffffff',
                       border: `1px solid ${APPROVAL_GOLD}33`,
-                      padding: '2px 8px', borderRadius: '20px',
+                      padding: '2px 8px', borderRadius: '12px',
                       flexShrink: 0, whiteSpace: 'nowrap',
                     }}>
                       {qStatusLabel}
                     </span>
                   </div>
 
-                  <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
+                  <p style={{ fontSize: '12px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
                     {isCreator
                       ? `${assigneeName} submitted this task for review.`
                       : `Submitted to ${creatorName ?? 'the task creator'} for review.`}
                   </p>
-                  <p style={{ fontSize: '11.5px', color: colors.tertiary, margin: '2px 0 0', lineHeight: 1.5 }}>
+                  <p style={{ fontSize: '12px', color: colors.tertiary, margin: '2px 0 0', lineHeight: 1.5 }}>
                     {isCreator
                       ? 'Approve to complete the task, or return it to Working with what needs correcting.'
                       : 'You can still post updates here, and you will be notified when it is approved or returned.'}
                   </p>
 
                   {latestNoteEntry && (
-                    <p style={{ fontSize: '10px', color: APPROVAL_GOLD, margin: '6px 0 0', fontWeight: 500 }}>
+                    <p style={{ fontSize: '12px', color: APPROVAL_GOLD, margin: '6px 0 0', fontWeight: 500 }}>
                       Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                     </p>
                   )}
@@ -2381,7 +2381,7 @@ export default function TaskDetailPage() {
               background: '#ffffff',
             }}>
               <span style={{
-                fontSize: '10px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 letterSpacing: '0.09em', textTransform: 'uppercase',
                 color: colors.muted,
               }}>
@@ -2404,8 +2404,8 @@ export default function TaskDetailPage() {
                     style={{
                       resize: 'none', height: '98px', paddingBottom: '36px',
                       width: '100%', boxSizing: 'border-box',
-                      border: `1.5px dashed ${commentDropActive ? colors.blue : colors.border}`,
-                      background: commentDropActive ? colors.blueTint : '#F0F2F5',
+                      border: `1.5px dashed ${commentDropActive ? colors.brand : colors.border}`,
+                      background: commentDropActive ? colors.brandTint : '#F1EEE9',
                       borderRadius: '8px',
                       fontSize: '12.5px', lineHeight: 1.5,
                       transition: 'border-color 0.15s, background 0.15s',
@@ -2416,7 +2416,7 @@ export default function TaskDetailPage() {
                       position: 'absolute', inset: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       pointerEvents: 'none',
-                      fontSize: '12px', fontWeight: 600, color: colors.blue,
+                      fontSize: '12px', fontWeight: 600, color: colors.brand,
                       background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
                     }}>
                       Drop files to attach
@@ -2428,8 +2428,8 @@ export default function TaskDetailPage() {
                       position: 'absolute', bottom: '9px', right: '10px',
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       width: '28px', height: '28px', borderRadius: '50%',
-                      background: commentAttachments.length > 0 ? colors.blueTint : '#ffffff',
-                      border: `1.5px solid ${commentAttachments.length > 0 ? colors.blue + '55' : colors.border}`,
+                      background: commentAttachments.length > 0 ? colors.brandTint : '#ffffff',
+                      border: `1.5px solid ${commentAttachments.length > 0 ? colors.brand + '55' : colors.border}`,
                       fontSize: '13px', cursor: 'pointer', userSelect: 'none',
                       transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                     }}
@@ -2447,7 +2447,7 @@ export default function TaskDetailPage() {
                     />
                   </label>
                 </div>
-                <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
+                <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>
                   Drop files here, paste copied files, or browse
                 </p>
                 {/* Selected files list — each row shows its own upload state, because
@@ -2456,14 +2456,14 @@ export default function TaskDetailPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {commentAttachments.map(a => (
                       <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '10.5px', color: colors.blue, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: '12px', color: colors.brand, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           📎 {a.fileName} <span style={{ color: colors.tertiary }}>({(a.size / 1024).toFixed(0)} KB)</span>
                         </span>
                         <span
                           role="status"
                           title={a.error ?? undefined}
                           style={{
-                            fontSize: '10px', fontWeight: 600, flexShrink: 0,
+                            fontSize: '12px', fontWeight: 600, flexShrink: 0,
                             color: a.status === 'failed' ? colors.red
                                  : a.status === 'uploaded' ? colors.green
                                  : colors.secondary,
@@ -2476,8 +2476,8 @@ export default function TaskDetailPage() {
                             type="button"
                             onClick={() => retryCommentAttachment(a.id)}
                             style={{
-                              background: 'none', border: `1px solid ${colors.blue}`, borderRadius: '5px',
-                              cursor: 'pointer', color: colors.blue, fontSize: '10px', fontWeight: 600,
+                              background: 'none', border: `1px solid ${colors.brand}`, borderRadius: '6px',
+                              cursor: 'pointer', color: colors.brandInk, fontSize: '12px', fontWeight: 600,
                               padding: '1px 6px', flexShrink: 0, fontFamily: font.body,
                             }}
                           >
@@ -2500,13 +2500,13 @@ export default function TaskDetailPage() {
                   </div>
                 )}
                 {(commentUploadError ?? failureSummary(commentAttachments)) && (
-                  <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>
+                  <p style={{ fontSize: '12px', color: colors.red, margin: 0 }}>
                     {commentUploadError ?? failureSummary(commentAttachments)}
                   </p>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
+                  <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                   <button
                     onClick={saveComment}
                     // Blocked only by an in-flight submit or a failed upload —
@@ -2517,14 +2517,14 @@ export default function TaskDetailPage() {
                       : undefined}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      padding: '6px 18px', borderRadius: '7px',
-                      border: `1.5px solid ${colors.blue}`,
-                      background: colors.blue, color: '#ffffff',
+                      padding: '6px 18px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.brand}`,
+                      background: colors.brand, color: '#ffffff',
                       fontSize: '12px', fontWeight: 600,
                       cursor: commentSaving ? 'not-allowed' : 'pointer',
                       fontFamily: font.body,
                       opacity: commentSaving ? 0.6 : 1, transition: 'all 0.15s',
-                      boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
+                      boxShadow: '0 2px 6px rgba(185,71,46,0.25)',
                       flexShrink: 0,
                     }}
                   >
@@ -2542,23 +2542,23 @@ export default function TaskDetailPage() {
           {/* Activity */}
           <div className="boe-card boe-activity-card" style={{
             padding: '0', display: 'flex', flexDirection: 'column',
-            background: '#ffffff', border: '1px solid #E1E5EA',
-            borderRadius: '10px', boxShadow: 'none',
+            background: '#ffffff', border: '1px solid #E4DED7',
+            borderRadius: '8px', boxShadow: 'none',
           }}>
             {/* Header */}
             <div style={{
               padding: '12px 16px 11px',
-              borderBottom: '1px solid #E9ECF1',
+              borderBottom: '1px solid #E4DED7',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: '#20242D', letterSpacing: '-0.01em' }}>
+              <span style={{ fontSize: '15px', fontWeight: 600, color: '#303536', letterSpacing: '-0.01em' }}>
                 {isQuotation ? 'Quotation History' : 'Activity'}
               </span>
               {displayLog.length > 0 && (
                 <span style={{
-                  fontSize: '11px', fontWeight: 500, color: '#7C8595',
-                  background: '#F4F6F8', border: '1px solid #E3E7EC',
-                  padding: '2px 7px', borderRadius: '20px', letterSpacing: '0.02em', lineHeight: 1.4,
+                  fontSize: '12px', fontWeight: 500, color: '#686D6C',
+                  background: '#F1EEE9', border: '1px solid #E4DED7',
+                  padding: '2px 7px', borderRadius: '12px', letterSpacing: '0.02em', lineHeight: 1.4,
                 }}>
                   {displayLog.length} {displayLog.length === 1 ? 'event' : 'events'}
                 </span>
@@ -2567,8 +2567,8 @@ export default function TaskDetailPage() {
 
             {activityState !== 'ready' && (
               <div role={activityState === 'error' ? 'alert' : 'status'} style={{
-                padding: '8px 16px', fontSize: '12px', color: activityState === 'error' ? '#B42318' : colors.muted,
-                borderBottom: '1px solid #E9ECF1', display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '8px 16px', fontSize: '12px', color: activityState === 'error' ? '#B42332' : colors.muted,
+                borderBottom: '1px solid #E4DED7', display: 'flex', alignItems: 'center', gap: '10px',
               }}>
                 {activityState === 'error' ? (
                   <>
@@ -2583,7 +2583,7 @@ export default function TaskDetailPage() {
 
             {displayLog.length === 0 ? (
               <div style={{ padding: '20px 16px' }}>
-                <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                   No activity yet.
                 </p>
               </div>
@@ -2677,8 +2677,8 @@ export default function TaskDetailPage() {
                     const dotColor =
                       entry.action === 'acknowledged'     ? colors.green
                       : entry.action === 'status_changed' && entry.to_status
-                        ? (STATUS_COLORS[entry.to_status] ?? '#B8C0CC')
-                      : '#B8C0CC'
+                        ? (STATUS_COLORS[entry.to_status] ?? '#CFC8BF')
+                      : '#CFC8BF'
                     const isComment   = entry.action === 'note_added'
                     const isEditing   = editingActivityId === entry.id
                     const isDeleting  = deletingActivityId === entry.id
@@ -2705,7 +2705,7 @@ export default function TaskDetailPage() {
                         style={{
                           display: 'flex', alignItems: 'flex-start', gap: '12px',
                           padding: '16px 20px',
-                          borderBottom: i < displayLog.length - 1 ? '1px solid #E9ECF1' : 'none',
+                          borderBottom: i < displayLog.length - 1 ? '1px solid #E4DED7' : 'none',
                         }}
                       >
                         {/* Dot */}
@@ -2732,17 +2732,17 @@ export default function TaskDetailPage() {
                               {entry.action === 'created' && isSelfTask && !isQuotation ? (
                                 <>
                                   <span style={{ fontWeight: 400, color: colors.secondary }}>Task created by </span>
-                                  <span style={{ fontWeight: 500, color: '#2F3440' }}>Self</span>
+                                  <span style={{ fontWeight: 500, color: '#303536' }}>Self</span>
                                 </>
                               ) : (
                                 <>
-                                  <span style={{ fontWeight: 500, color: '#2F3440' }}>{entry.actor_name ?? 'Someone'}</span>
+                                  <span style={{ fontWeight: 500, color: '#303536' }}>{entry.actor_name ?? 'Someone'}</span>
                                   <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
                                 </>
                               )}
                             </p>
                             <span style={{
-                              fontSize: '12px', fontWeight: 400, color: '#98A1B2',
+                              fontSize: '12px', fontWeight: 400, color: '#686D6C',
                               lineHeight: 1.4, whiteSpace: 'nowrap', flexShrink: 0, paddingTop: '1px',
                             }}>
                               {formatActivityTimestamp(entry.created_at)}
@@ -2763,9 +2763,9 @@ export default function TaskDetailPage() {
                                   disabled={savingActivityEdit}
                                   style={{
                                     padding: '4px 12px', borderRadius: '6px',
-                                    border: `1.5px solid ${colors.blue}`,
-                                    background: colors.blue, color: '#ffffff',
-                                    fontSize: '11px', fontWeight: 600,
+                                    border: `1.5px solid ${colors.brand}`,
+                                    background: colors.brand, color: '#ffffff',
+                                    fontSize: '12px', fontWeight: 600,
                                     cursor: savingActivityEdit ? 'not-allowed' : 'pointer',
                                     fontFamily: font.body, opacity: savingActivityEdit ? 0.6 : 1,
                                   }}
@@ -2779,7 +2779,7 @@ export default function TaskDetailPage() {
                                     padding: '4px 10px', borderRadius: '6px',
                                     border: `1.5px solid ${colors.border}`,
                                     background: 'transparent', color: colors.tertiary,
-                                    fontSize: '11px', fontWeight: 500,
+                                    fontSize: '12px', fontWeight: 500,
                                     cursor: 'pointer', fontFamily: font.body,
                                   }}
                                 >
@@ -2793,19 +2793,19 @@ export default function TaskDetailPage() {
                               {showDiff && (
                                 <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                   <span style={{
-                                    fontSize: '12.5px', fontWeight: 400, color: '#8B93A1',
-                                    background: '#F4F5F7', border: '1px solid #E4E7EC',
-                                    padding: '1.5px 7px', borderRadius: '4px',
+                                    fontSize: '12.5px', fontWeight: 400, color: '#686D6C',
+                                    background: '#F7F5F1', border: '1px solid #E4DED7',
+                                    padding: '1.5px 7px', borderRadius: '6px',
                                     textDecoration: 'line-through',
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={oldDisplay}>
                                     {oldDisplay}
                                   </span>
-                                  <span style={{ fontSize: '12.5px', fontWeight: 400, color: '#98A2B3', flexShrink: 0 }}>→</span>
+                                  <span style={{ fontSize: '12.5px', fontWeight: 400, color: '#686D6C', flexShrink: 0 }}>→</span>
                                   <span style={{
-                                    fontSize: '12.5px', fontWeight: 500, color: '#344054',
-                                    background: '#F8F9FB', border: '1px solid #DDE1E7',
-                                    padding: '1.5px 7px', borderRadius: '4px',
+                                    fontSize: '12.5px', fontWeight: 500, color: '#303536',
+                                    background: '#FBFAF8', border: '1px solid #E4DED7',
+                                    padding: '1.5px 7px', borderRadius: '6px',
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={newDisplay}>
                                     {newDisplay}
@@ -2824,7 +2824,7 @@ export default function TaskDetailPage() {
                               {entry.note && entry.action !== 'task_copied' && (
                                 <ExpandableText style={{
                                   margin: isComment ? '6px 0 0' : '8px 0 0',
-                                  color: isComment ? '#596273' : '#667085',
+                                  color: isComment ? '#4C5352' : '#686D6C',
                                   fontSize: isComment ? '12.5px' : '11.5px',
                                   fontWeight: 400,
                                   lineHeight: isComment ? 1.55 : 1.5,
@@ -2842,17 +2842,17 @@ export default function TaskDetailPage() {
                                 onClick={() => { const p = resolveAttachmentPath(entry); if (p) openPreview(p) }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '10.5px', fontWeight: 500, color: colors.blue,
+                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
                                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                                 }}
                               >
                                 📎 View Attachment
                               </button>
                               <span style={{
-                                fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
                                 textTransform: 'uppercase', color: colors.muted,
                                 background: colors.float, border: `1px solid ${colors.border}`,
-                                padding: '1px 6px', borderRadius: '20px',
+                                padding: '1px 6px', borderRadius: '12px',
                               }}>
                                 {getFileTypeLabel(resolveAttachmentPath(entry) ?? '')}
                               </span>
@@ -2864,17 +2864,17 @@ export default function TaskDetailPage() {
                                 onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '10.5px', fontWeight: 500, color: colors.blue,
+                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
                                   background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                                 }}
                               >
                                 📎 {att.file_name ?? 'Attachment'}
                               </button>
                               <span style={{
-                                fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
                                 textTransform: 'uppercase', color: colors.muted,
                                 background: colors.float, border: `1px solid ${colors.border}`,
-                                padding: '1px 6px', borderRadius: '20px',
+                                padding: '1px 6px', borderRadius: '12px',
                               }}>
                                 {att.file_type ?? getFileTypeLabel(att.url)}
                               </span>
@@ -2961,7 +2961,7 @@ export default function TaskDetailPage() {
               <label
                 htmlFor="boe-return-reason"
                 style={{
-                  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                  fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
                   letterSpacing: '0.07em',
                   color: returnReasonError ? colors.red : colors.muted,
                 }}
@@ -2983,7 +2983,7 @@ export default function TaskDetailPage() {
                 autoFocus
               />
               {returnReasonError && (
-                <span style={{ fontSize: '11px', color: colors.red, fontWeight: 600 }}>{returnReasonError}</span>
+                <span style={{ fontSize: '12px', color: colors.red, fontWeight: 600 }}>{returnReasonError}</span>
               )}
             </div>
 
@@ -3100,7 +3100,7 @@ export default function TaskDetailPage() {
                 display: 'flex', flexDirection: 'column', gap: '10px',
               }}>
                 <p style={{
-                  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                  fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
                   letterSpacing: '0.07em', margin: 0,
                   color: waitingOnError ? colors.red : colors.amber,
                 }}>
@@ -3114,11 +3114,11 @@ export default function TaskDetailPage() {
                       type="button"
                       onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText(''); setWaitingOnError(false) }}
                       style={{
-                        flex: 1, padding: '7px 8px', borderRadius: '7px',
+                        flex: 1, padding: '7px 8px', borderRadius: '8px',
                         border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
                         background: waitingOnType === t ? `${colors.amber}18` : '#ffffff',
                         color: waitingOnType === t ? colors.amber : colors.tertiary,
-                        fontSize: '11.5px', fontWeight: waitingOnType === t ? 600 : 400,
+                        fontSize: '12px', fontWeight: waitingOnType === t ? 600 : 400,
                         cursor: 'pointer', transition: 'all 0.12s', fontFamily: font.body,
                       }}
                     >
@@ -3159,7 +3159,7 @@ export default function TaskDetailPage() {
                   onClick={() => setModalOpen(false)}
                   disabled={saving}
                   style={{
-                    padding: '7px 16px', borderRadius: '7px',
+                    padding: '7px 16px', borderRadius: '8px',
                     border: `1.5px solid ${colors.border}`,
                     background: 'transparent', color: colors.tertiary,
                     fontSize: '12px', fontWeight: 500,
@@ -3196,7 +3196,7 @@ export default function TaskDetailPage() {
                   }}
                   disabled={saving || statusUpdating}
                   style={{
-                    padding: '7px 18px', borderRadius: '7px',
+                    padding: '7px 18px', borderRadius: '8px',
                     border: `1.5px solid ${STATUS_COLORS[modalStatus] ?? colors.blue}`,
                     background: STATUS_COLORS[modalStatus] ?? colors.blue,
                     color: '#ffffff',
@@ -3260,7 +3260,7 @@ export default function TaskDetailPage() {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
+              <p style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
                 Reason <span style={{ color: colors.red }}>*</span>
               </p>
               {CANCEL_REASONS.map(r => (
@@ -3269,10 +3269,10 @@ export default function TaskDetailPage() {
                   type="button"
                   onClick={() => { setCancelReason(r); if (r !== 'Other') setCancelOtherText('') }}
                   style={{
-                    padding: '9px 12px', borderRadius: '7px', textAlign: 'left',
-                    border: `1.5px solid ${cancelReason === r ? '#78716C' : colors.border}`,
-                    background: cancelReason === r ? '#F5F5F4' : colors.float,
-                    color: cancelReason === r ? '#44403C' : colors.secondary,
+                    padding: '9px 12px', borderRadius: '8px', textAlign: 'left',
+                    border: `1.5px solid ${cancelReason === r ? '#686D6C' : colors.border}`,
+                    background: cancelReason === r ? '#F1EEE9' : colors.float,
+                    color: cancelReason === r ? '#303536' : colors.secondary,
                     fontSize: '13px', fontWeight: cancelReason === r ? 600 : 400,
                     cursor: 'pointer', transition: 'all 0.12s', fontFamily: font.body,
                   }}
@@ -3284,7 +3284,7 @@ export default function TaskDetailPage() {
 
             {cancelReason === 'Other' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
+                <p style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
                   Specify reason <span style={{ color: colors.red }}>*</span>
                 </p>
                 <input
@@ -3304,7 +3304,7 @@ export default function TaskDetailPage() {
                 onClick={() => setCancelModalOpen(false)}
                 disabled={cancelling}
                 style={{
-                  padding: '7px 16px', borderRadius: '7px',
+                  padding: '7px 16px', borderRadius: '8px',
                   border: `1.5px solid ${colors.border}`,
                   background: 'transparent', color: colors.tertiary,
                   fontSize: '12px', fontWeight: 500,
@@ -3317,9 +3317,9 @@ export default function TaskDetailPage() {
                 onClick={handleCancelTask}
                 disabled={cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())}
                 style={{
-                  padding: '7px 18px', borderRadius: '7px',
-                  border: '1.5px solid #78716C',
-                  background: '#78716C', color: '#ffffff',
+                  padding: '7px 18px', borderRadius: '8px',
+                  border: '1.5px solid #686D6C',
+                  background: '#686D6C', color: '#ffffff',
                   fontSize: '12px', fontWeight: 600,
                   cursor: (cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())) ? 'not-allowed' : 'pointer',
                   fontFamily: font.body,
@@ -3389,7 +3389,7 @@ export default function TaskDetailPage() {
           <button
             onClick={() => router.push(`/tasks/${lastCopied.id}`)}
             style={{
-              fontSize: '12px', fontWeight: 600, color: colors.blue,
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk,
               background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: font.body,
             }}
           >

@@ -36,7 +36,7 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
       onClick={onNavigate}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
     >
-      <span aria-hidden="true" style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span aria-hidden="true" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}

@@ -61,8 +61,8 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
             title="BOE OS Home"
             aria-label="BOE OS Home"
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)', border: '1px solid rgba(220,31,46,0.20)', color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.20)', color: '#963B27', cursor: 'pointer', flexShrink: 0,
             }}
           >
             <Home size={14} strokeWidth={2} />
@@ -81,10 +81,10 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
                 aria-current={active ? 'page' : undefined}
                 onClick={() => { setSidebarOpen(false); router.push(item.href) }}
                 style={primary
-                  ? { background: '#DC1F2E', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 12px', marginBottom: '10px', boxShadow: '0 2px 6px rgba(220,31,46,0.30)' }
+                  ? { background: '#B9472E', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 12px', marginBottom: '10px', boxShadow: '0 2px 6px rgba(185,71,46,0.30)' }
                   : { fontWeight: active ? 600 : undefined, marginBottom: '2px' }}
               >
-                <span style={{ color: primary ? '#fff' : '#DC1F2E', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: primary ? '#fff' : '#B9472E', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 {item.label}

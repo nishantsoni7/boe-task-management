@@ -245,10 +245,10 @@ export function CustomReviewSubmissions({
       <ReviewRewardRules settings={settings} />
 
       {canSubmit && loaded && allowance.limitMessage && (
-        <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#92400E', fontWeight: 600 }}>{allowance.limitMessage}</p>
+        <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#805B0D', fontWeight: 600 }}>{allowance.limitMessage}</p>
       )}
       {notice && (
-        <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>
+        <p role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600, margin: 0 }}>{notice}</p>
       )}
       {loadError && (
         <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{loadError}</p>
@@ -263,8 +263,8 @@ export function CustomReviewSubmissions({
 
       {rejected.length > 0 && (
         <p role="note" style={{
-          margin: 0, padding: '9px 12px', borderRadius: '9px', fontSize: '12.5px', lineHeight: 1.5,
-          border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+          margin: 0, padding: '9px 12px', borderRadius: '8px', fontSize: '12.5px', lineHeight: 1.5,
+          border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332',
         }}>
           {rejected.length === 1 ? '1 rejected review needs' : `${rejected.length} rejected reviews need`} your correction.
           Open Edit &amp; Reapply to fix it and send the same review back for approval.
@@ -361,8 +361,8 @@ function SubmissionRow({
   const Icon = row.review_type === 'image' ? ImageIcon : FileText
   return (
     <li style={{
-      padding: '12px 14px', borderRadius: '10px', background: colors.base,
-      border: `1px solid ${row.status === 'rejected' ? '#FECACA' : colors.borderSoft}`,
+      padding: '12px 14px', borderRadius: '8px', background: colors.base,
+      border: `1px solid ${row.status === 'rejected' ? '#E9B9C1' : colors.borderSoft}`,
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px',
     }}>
       <div style={{ flex: '1 1 240px', minWidth: 0 }}>
@@ -373,10 +373,10 @@ function SubmissionRow({
           </span>
           <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
           {row.reapplication_count > 0 && row.status === 'pending_verification' && (
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#3B5BC0' }}>Reapplied</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#335A86' }}>Reapplied</span>
           )}
           {row.edit_count > 0 && (
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#3B5BC0' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#335A86' }}>
               {row.reward_held ? 'Edited · Pending Approval again · credit on hold' : 'Edited'}
             </span>
           )}
@@ -385,21 +385,21 @@ function SubmissionRow({
           {row.submission_ref} · Published {formatSubmissionDay(row.published_on)} · Submitted {formatSubmissionDay(istDateOf(row.submitted_at))}
         </div>
         {row.status === 'rejected' && (
-          <div style={{ fontSize: '12px', color: '#B91C1C', marginTop: '4px', overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: '#B42332', marginTop: '4px', overflowWrap: 'anywhere', lineHeight: 1.5 }}>
             Rejected {formatSubmissionMoment(row.rejected_at)}{rejectedBy ? ` by ${rejectedBy}` : ''}
             {row.rejection_reason ? <> — {row.rejection_reason}</> : null}
           </div>
         )}
       </div>
       {row.status === 'approved' && row.credits_awarded != null && (
-        <span style={{ fontSize: '14px', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: '#276247', fontVariantNumeric: 'tabular-nums' }}>
           {formatCredits(Number(row.credits_awarded), { signed: true })}
         </span>
       )}
       {row.reward_held && row.credits_awarded != null && (
         <span
           title="Still in your BOE Credits balance. It does not count towards the leaderboard while the review is pending."
-          style={{ fontSize: '12px', fontWeight: 600, color: '#92400E', maxWidth: '190px', lineHeight: 1.4 }}
+          style={{ fontSize: '12px', fontWeight: 600, color: '#805B0D', maxWidth: '190px', lineHeight: 1.4 }}
         >
           {formatCredits(Number(row.credits_awarded))} on hold — still in your balance until it is decided
         </span>
@@ -442,7 +442,7 @@ function SubmissionRow({
             className="boe-btn boe-btn-ghost"
             onClick={onDelete}
             aria-label={`Delete ${row.submission_ref}`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', fontSize: '12px', minHeight: '44px', color: '#B91C1C' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', fontSize: '12px', minHeight: '44px', color: '#B42332' }}
           >
             <Trash2 size={13} strokeWidth={2.2} />
             Delete
@@ -510,7 +510,7 @@ function DeleteConfirmSheet({
             Cancel
           </button>
           <button type="button" className="boe-btn boe-btn-primary" onClick={() => { void confirm() }} disabled={busy}
-            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}>
+            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B42332', borderColor: '#B42332' }}>
             {busy ? 'Deleting…' : 'Delete'}
           </button>
         </div>
@@ -540,11 +540,11 @@ function DuplicateWarning({ view }: { view: EmployeeDuplicateView }) {
       aria-labelledby="duplicate-warning-title"
       style={{
         display: 'flex', gap: '10px', alignItems: 'flex-start',
-        padding: '11px 13px', borderRadius: '10px',
-        border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E',
+        padding: '11px 13px', borderRadius: '8px',
+        border: '1px solid #E6D2A0', background: '#FAF0DA', color: '#805B0D',
       }}
     >
-      <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px', color: '#D97706' }} />
+      <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px', color: '#805B0D' }} />
       <div style={{ minWidth: 0, fontSize: '12.5px', lineHeight: 1.55 }}>
         <div id="duplicate-warning-title" style={{ fontWeight: 700 }}>
           {unavailable ? DUPLICATE_UNAVAILABLE_TITLE : DUPLICATE_WARNING_TITLE}
@@ -581,7 +581,7 @@ function DuplicateWarning({ view }: { view: EmployeeDuplicateView }) {
 }
 
 const labelStyle: React.CSSProperties = { fontSize: '12.5px', fontWeight: 600, color: colors.primary }
-const hintStyle: React.CSSProperties = { fontSize: '11px', color: colors.muted, lineHeight: 1.5 }
+const hintStyle: React.CSSProperties = { fontSize: '12px', color: colors.muted, lineHeight: 1.5 }
 const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', borderRadius: '8px', fontSize: '13.5px', minHeight: '44px',
@@ -801,8 +801,8 @@ function CustomReviewFormSheet({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {original && (
           <section style={{
-            padding: '10px 12px', borderRadius: '9px', border: '1px solid #FECACA', background: '#FEF2F2',
-            fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.55, overflowWrap: 'anywhere',
+            padding: '10px 12px', borderRadius: '8px', border: '1px solid #E9B9C1', background: '#FBE9EC',
+            fontSize: '12.5px', color: '#B42332', lineHeight: 1.55, overflowWrap: 'anywhere',
           }}>
             <strong>Rejected {formatSubmissionMoment(original.rejected_at)}</strong>
             {original.rejection_reason ? <div>{original.rejection_reason}</div> : null}
@@ -811,8 +811,8 @@ function CustomReviewFormSheet({
 
         {editing && lockedType && (
           <p role="note" style={{
-            margin: 0, padding: '10px 12px', borderRadius: '9px', border: '1px solid #FDE68A', background: '#FFFBEB',
-            fontSize: '12.5px', color: '#92400E', lineHeight: 1.55,
+            margin: 0, padding: '10px 12px', borderRadius: '8px', border: '1px solid #E6D2A0', background: '#FAF0DA',
+            fontSize: '12.5px', color: '#805B0D', lineHeight: 1.55,
           }}>
             {APPROVED_EDIT_NOTICE}
           </p>
@@ -847,7 +847,7 @@ function CustomReviewFormSheet({
                   onClick={() => { setReviewType(type); setError(null) }}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    minHeight: '44px', padding: '8px 10px', borderRadius: '9px',
+                    minHeight: '44px', padding: '8px 10px', borderRadius: '8px',
                     fontSize: '13px', fontWeight: 600, fontFamily: 'inherit',
                     cursor: busy || unavailable ? 'not-allowed' : 'pointer',
                     opacity: unavailable ? 0.5 : 1,
@@ -863,7 +863,7 @@ function CustomReviewFormSheet({
             })}
           </div>
           {blockedMessage && (
-            <span style={{ fontSize: '12px', color: '#92400E', lineHeight: 1.5 }}>{blockedMessage}</span>
+            <span style={{ fontSize: '12px', color: '#805B0D', lineHeight: 1.5 }}>{blockedMessage}</span>
           )}
         </div>
 
@@ -919,7 +919,7 @@ function CustomReviewFormSheet({
               src={preview}
               alt="Screenshot preview"
               style={{
-                width: '100%', maxHeight: '260px', objectFit: 'contain', borderRadius: '9px',
+                width: '100%', maxHeight: '260px', objectFit: 'contain', borderRadius: '8px',
                 border: `1px solid ${colors.border}`, background: colors.float,
               }}
             />

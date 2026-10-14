@@ -47,7 +47,7 @@ function markerColor(row: ActivityRow): string {
   if (row.event_type === 'status_changed') {
     const to = row.payload?.to_status
     if (to === 'rejected')            return colors.red
-    if (to === 'needs_clarification') return colors.blue
+    if (to === 'needs_clarification') return colors.brand
     if (to === 'approved_unlinked' || to === 'approved_linked') return colors.green
   }
   if (row.event_type === 'order_linked')   return colors.green
@@ -120,7 +120,7 @@ export function PaymentRequestActivity({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {heading ?? (
-        <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Activity
         </div>
       )}

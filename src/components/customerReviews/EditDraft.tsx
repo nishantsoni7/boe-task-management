@@ -177,7 +177,7 @@ export function EditDraftFields({ editor }: { editor: DraftEditor }) {
         role="status" so the save is announced rather than only shown. A spinner
         on a button tells a screen-reader user nothing.
       */}
-      <span role="status" style={{ fontSize: '11px', color: colors.tertiary, lineHeight: 1.4 }}>
+      <span role="status" style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.4 }}>
         {saving ? 'Saving your changes…' : ' '}
       </span>
     </div>
@@ -247,7 +247,7 @@ export function DraftEditedNote({ card, compact = false }: { card: TestCard; com
       style={{
         display: 'inline-flex', alignItems: 'center',
         padding: compact ? '2px 6px' : '3px 8px',
-        borderRadius: '5px', background: '#FEF6E7', border: '1px solid #F5DFB0',
+        borderRadius: '6px', background: '#FEF6E7', border: '1px solid #F5DFB0',
         fontSize: compact ? '10px' : '11px', color: '#8A5A0B', lineHeight: 1.4,
       }}
     >
@@ -268,7 +268,7 @@ function Field({
     <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <span style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline' }}>
         <span style={{
-          fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+          fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.05em', color: colors.tertiary,
         }}>
           {label}
@@ -277,7 +277,7 @@ function Field({
           The counter turns red rather than the input clamping. Silently
           truncating what somebody typed is worse than telling them it is long.
         */}
-        <span style={{ fontSize: '11px', color: over ? colors.red : colors.muted }}>
+        <span style={{ fontSize: '12px', color: over ? colors.red : colors.muted }}>
           {hint}
         </span>
       </span>

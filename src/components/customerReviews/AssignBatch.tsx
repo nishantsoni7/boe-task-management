@@ -180,7 +180,7 @@ export function AssignBatch({
         </button>
       </div>
 
-      <p style={{ fontSize: '11px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
+      <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
         All {size} go to one employee, and only they see them. The
         {' '}{imageReviewsFor(size)} image reviews get different projects where enough are ready.
       </p>
@@ -189,7 +189,7 @@ export function AssignBatch({
         peopleError
           ? <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0, lineHeight: 1.6 }}>{peopleError}</p>
           : (
-            <p role="status" style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.6 }}>
+            <p role="status" style={{ fontSize: '12px', color: '#805B0D', margin: 0, lineHeight: 1.6 }}>
               No employee currently holds the permission to use the Review Workflow, so there is
               nobody to assign this batch to. Grant it in Control Center first.
             </p>
@@ -384,7 +384,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
               {row.eligible} of {row.size} ready
             </span>
-            <span style={{ fontSize: '11.5px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
               {row.text} Text · {row.image} Image
             </span>
             {/*
@@ -396,16 +396,16 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             */}
             {row.intendedFor && names.get(row.intendedFor) && (
               <span style={{
-                padding: '2px 8px', borderRadius: '5px',
-                background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
-                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                padding: '2px 8px', borderRadius: '6px',
+                background: '#EAF0F8', color: '#335A86', border: '1px solid #C3D3E6',
+                fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
               }}>
                 Generated for {names.get(row.intendedFor)}
               </span>
             )}
             <span style={{
-              marginLeft: 'auto', fontFamily: 'var(--font-mono)',
-              fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
+              marginLeft: 'auto', fontFamily: 'var(--font-body)',
+              fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
             }}>
               {row.batchId.slice(0, 8)}
             </span>

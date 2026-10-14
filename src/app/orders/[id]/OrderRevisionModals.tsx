@@ -77,7 +77,7 @@ import {
 } from '@/lib/orders/operationsHandoff'
 
 const TEXTAREA: React.CSSProperties = {
-  padding: '8px 10px', borderRadius: '7px',
+  padding: '8px 10px', borderRadius: '8px',
   border: `1px solid ${colors.border}`, background: colors.base, color: colors.primary,
   fontSize: '13px', width: '100%', boxSizing: 'border-box', outline: 'none',
   minHeight: '64px', resize: 'vertical', fontFamily: 'inherit',
@@ -355,7 +355,7 @@ export function OperationsHandoffDecisionModal({
               onChange={e => setChecked(e.target.checked)} />
             <span>{REALIGN_CHECK_LABEL}</span>
           </label>
-          {touched && !checked && <div style={{ fontSize: '11px', color: '#C13030' }}>{REALIGN_CHECK_REQUIRED}</div>}
+          {touched && !checked && <div style={{ fontSize: '12px', color: '#B42332' }}>{REALIGN_CHECK_REQUIRED}</div>}
         </div>
       )}
       {alsoAccepts && !withdrawing && !realign && (

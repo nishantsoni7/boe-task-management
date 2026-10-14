@@ -69,15 +69,15 @@ const LIST_PARAMS = {
 
 function PriorityBadge({ priority }: { priority: string }) {
   const cfg = priority === 'high'
-    ? { color: '#B45309', bg: '#FFFBEB' }
+    ? { color: '#805B0D', bg: '#FAF0DA' }
     : priority === 'low'
-      ? { color: '#6B7280', bg: '#F3F4F6' }
-      : { color: '#374151', bg: '#F3F4F6' }
+      ? { color: '#686D6C', bg: '#F1EEE9' }
+      : { color: '#4C5352', bg: '#F1EEE9' }
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 600,
+      fontSize: '12px', fontWeight: 600,
       color: cfg.color, background: cfg.bg,
-      borderRadius: '4px', padding: '1px 6px',
+      borderRadius: '6px', padding: '1px 6px',
       textTransform: 'capitalize', flexShrink: 0,
     }}>{priority}</span>
   )
@@ -124,7 +124,7 @@ function RequestCard({
       {/* Customer */}
       <div style={{ minWidth: 0, padding: '10px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', color: '#DC1F2E', background: 'rgba(220,31,46,0.08)', border: '1px solid rgba(220,31,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '1px 5px', borderRadius: '6px', color: '#963B27', background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
           <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.customer_name ?? task.title}
           </span>
@@ -132,7 +132,7 @@ function RequestCard({
         {task.company_name && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Building2 size={10} color={colors.muted} />
-            <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {task.company_name}
             </span>
           </div>
@@ -144,7 +144,7 @@ function RequestCard({
       <div style={{ minWidth: 0, padding: '0 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <User size={10} color={colors.muted} />
-          <span style={{ fontSize: '11px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '12px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {assignerName(task, userMap)}
           </span>
         </div>
@@ -159,14 +159,14 @@ function RequestCard({
 
       {/* Created Date — the request's own created_at, not last_update_at. */}
       <div style={{ minWidth: 0, padding: '0 4px' }}>
-        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
       {/* Notes */}
       <div style={{ minWidth: 0, padding: '0 4px' }}>
-        <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
           {task.note?.trim() || '—'}
         </span>
       </div>
@@ -185,7 +185,7 @@ function RequestCard({
             background: hoveredView ? 'rgba(155,111,212,0.10)' : 'transparent',
             border: `1px solid ${hoveredView ? 'rgba(155,111,212,0.30)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? '#DC1F2E' : colors.muted,
+            color: hoveredView ? '#B9472E' : colors.muted,
           }}
         >
           <ExternalLink size={12} />
@@ -356,7 +356,7 @@ function QuotationRequestsContent() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: '#DC1F2E', color: '#fff',
+              background: '#B9472E', color: '#fff',
               fontSize: '12px', fontWeight: 600, cursor: 'pointer',
               transition: 'opacity 0.12s', whiteSpace: 'nowrap',
             }}
@@ -376,7 +376,7 @@ function QuotationRequestsContent() {
             (cf. `.product-toolbar-grid`). */}
         <div className="boe-qtn-toolbar">
           {/* Prominent Pending / Closed toggle */}
-          <div className="boe-qtn-toolbar-tabs" style={{ display: 'flex', gap: '0', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid #E5E7EB', width: 'fit-content', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+          <div className="boe-qtn-toolbar-tabs" style={{ display: 'flex', gap: '0', borderRadius: '8px', overflow: 'hidden', border: '1.5px solid #E4DED7', width: 'fit-content', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
             {([
               { key: 'pending', label: 'Pending Quotations', count: pendingCount },
               { key: 'closed',  label: 'Closed Quotations',  count: closedCount  },
@@ -389,21 +389,21 @@ function QuotationRequestsContent() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '7px',
                     padding: '8px 14px',
-                    background: active ? '#DC1F2E' : '#F9FAFB',
-                    color: active ? '#fff' : '#374151',
+                    background: active ? '#B9472E' : '#FBFAF8',
+                    color: active ? '#fff' : '#4C5352',
                     fontSize: '12.5px', fontWeight: 700,
                     border: 'none',
-                    borderLeft: i > 0 ? '1.5px solid #E5E7EB' : 'none',
+                    borderLeft: i > 0 ? '1.5px solid #E4DED7' : 'none',
                     cursor: 'pointer', transition: 'all 0.15s',
                     fontFamily: 'inherit', whiteSpace: 'nowrap',
                   }}
                 >
                   {tab.label}
                   <span style={{
-                    fontSize: '11px', fontWeight: 700,
-                    padding: '1px 6px', borderRadius: '20px',
-                    background: active ? 'rgba(255,255,255,0.22)' : '#E5E7EB',
-                    color: active ? '#fff' : '#6B7280',
+                    fontSize: '12px', fontWeight: 700,
+                    padding: '1px 6px', borderRadius: '12px',
+                    background: active ? 'rgba(0,0,0,0.2)' : '#E4DED7',
+                    color: active ? '#fff' : '#595D5B',
                   }}>
                     {tab.count}
                   </span>
@@ -505,9 +505,9 @@ function QuotationRequestsContent() {
             gridTemplateColumns: GRID_COLUMNS,
             columnGap: '12px',
             padding: '8px 4px',
-            background: 'rgba(248,250,252,0.9)',
+            background: 'rgba(251,250,248,0.9)',
             borderBottom: `1px solid ${colors.border}`,
-            fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+            fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '0.07em', color: colors.muted,
           }}>
             <div style={{ paddingLeft: '6px' }}>Customer</div>
@@ -529,7 +529,7 @@ function QuotationRequestsContent() {
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
                 margin: '8px', padding: '10px 14px', borderRadius: '8px',
-                background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+                background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
               }}
             >
               <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>

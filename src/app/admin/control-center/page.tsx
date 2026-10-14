@@ -392,7 +392,7 @@ function moduleAllowedSummary(
   }
   if (mod.visibility_type === 'custom') {
     const ids = mod.allowed_user_ids ?? []
-    if (ids.length === 0) return <span style={{ color: '#D94F4F' }}>Custom · no members</span>
+    if (ids.length === 0) return <span style={{ color: '#B42332' }}>Custom · no members</span>
     return (
       <span title={ids.map(memberLabel).join(', ')} style={{ cursor: 'help' }}>
         Custom · {ids.length} member{ids.length === 1 ? '' : 's'}
@@ -537,8 +537,8 @@ function OrderNumberCycleTab() {
               only after a save. */}
           <div className={cc.muted} style={{ fontSize: 12.5 }}>
             {preview
-              ? <>will be saved as <strong style={{ color: '#111318', fontSize: 15 }}>{preview}</strong></>
-              : input.trim() ? <span style={{ color: '#D94F4F' }}>{parsed.ok ? '' : parsed.error}</span> : null}
+              ? <>will be saved as <strong style={{ color: '#303536', fontSize: 15 }}>{preview}</strong></>
+              : input.trim() ? <span style={{ color: '#B42332' }}>{parsed.ok ? '' : parsed.error}</span> : null}
           </div>
           <button className="boe-btn boe-btn-primary" onClick={save} disabled={!canSave}>
             {saving ? 'Saving…' : 'Save'}

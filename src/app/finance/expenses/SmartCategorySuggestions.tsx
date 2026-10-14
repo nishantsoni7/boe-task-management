@@ -62,14 +62,14 @@ export function SmartCategorySuggestions({
       data-testid="smart-category-suggestions"
       style={{
         display: 'flex', flexDirection: 'column', gap: '8px',
-        padding: '10px 12px', borderRadius: '10px',
+        padding: '10px 12px', borderRadius: '8px',
         border: `1px solid ${colors.border}`, background: colors.raised,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <Sparkles size={13} strokeWidth={2} color={colors.muted} aria-hidden="true" />
         <span style={{
-          fontSize: '10.5px', fontWeight: 700, color: colors.muted,
+          fontSize: '12px', fontWeight: 700, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.06em',
         }}>
           {SMART_SUGGESTION_LABEL}
@@ -105,13 +105,13 @@ export function SmartCategorySuggestions({
                 <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {s.categoryName}
                 </span>
-                <span style={{ fontSize: '10.5px', color: colors.muted, lineHeight: 1.4 }}>
+                <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.4 }}>
                   {s.reasonText}
                 </span>
               </button>
             ))}
           </div>
-          <div style={{ fontSize: '10.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Suggested from earlier expenses. Pick any other category if none fits.
           </div>
         </>
@@ -125,7 +125,7 @@ export function SmartCategorySuggestions({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
           {result.newCategory.similar.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <span style={{ fontSize: '11px', color: colors.tertiary, lineHeight: 1.5 }}>
+              <span style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
                 {result.newCategory.reasonText} Similar existing categories:
               </span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -145,7 +145,7 @@ export function SmartCategorySuggestions({
             </div>
           )}
           {result.newCategory.similar.length === 0 && (
-            <span style={{ fontSize: '11px', color: colors.tertiary, lineHeight: 1.5 }}>
+            <span style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
               {result.newCategory.reasonText}
             </span>
           )}
@@ -155,7 +155,7 @@ export function SmartCategorySuggestions({
             paddingTop: '6px', borderTop: `1px dashed ${colors.border}`,
           }}>
             <span style={{
-              fontSize: '10px', fontWeight: 700, color: colors.muted,
+              fontSize: '12px', fontWeight: 700, color: colors.muted,
               textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
               {SUGGESTED_NEW_CATEGORY_LABEL}

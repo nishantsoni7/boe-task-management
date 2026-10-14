@@ -20,13 +20,13 @@ export type TabKey =
 export type SectionKey = TabKey | 'notifications'
 
 export const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementType }[] = [
-  { key: 'all',              label: 'All Requests',     accent: '#5B7FA6', Icon: LayoutList  },
-  { key: 'pending_approval', label: 'Pending Approval', accent: '#B45309', Icon: Clock       },
-  { key: 'approved',         label: 'Approved',         accent: '#2E9E6B', Icon: CheckCheck  },
-  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#7C3AED', Icon: Send        },
-  { key: 'dispatched',       label: 'Dispatched / Out', accent: '#1A2035', Icon: Truck       },
-  { key: 'rejected',         label: 'Rejected',         accent: '#D94F4F', Icon: ThumbsDown  },
-  { key: 'closed',           label: 'Closed',           accent: '#6B7A99', Icon: Archive     },
+  { key: 'all',              label: 'All Requests',     accent: '#335A86', Icon: LayoutList  },
+  { key: 'pending_approval', label: 'Pending Approval', accent: '#805B0D', Icon: Clock       },
+  { key: 'approved',         label: 'Approved',         accent: '#276247', Icon: CheckCheck  },
+  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#335A86', Icon: Send        },
+  { key: 'dispatched',       label: 'Dispatched / Out', accent: '#303536', Icon: Truck       },
+  { key: 'rejected',         label: 'Rejected',         accent: '#B42332', Icon: ThumbsDown  },
+  { key: 'closed',           label: 'Closed',           accent: '#686D6C', Icon: Archive     },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -95,13 +95,13 @@ export function SamplesLayout({
             title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -120,15 +120,15 @@ export function SamplesLayout({
                 onClick={() => onTabSelect(tab.key)}
                 style={{ fontWeight: isActive ? 600 : 400, marginBottom: i < TABS.length - 1 ? '2px' : 0 }}
               >
-                <span style={{ color: isActive ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: isActive ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 {tab.label}
                 {count > 0 && (
                   <span style={{
                     marginLeft: 'auto',
-                    fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-                    background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
+                    fontSize: '12px', fontWeight: 600, color: '#595D5B',
+                    background: '#E4DED7', borderRadius: '999px',
                     padding: '1px 6px', lineHeight: '15px',
                   }}>
                     {count}
@@ -147,15 +147,15 @@ export function SamplesLayout({
               className="boe-notif-alert"
             >
               <div className="boe-notif-alert-bell">
-                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
+                <Bell size={24} strokeWidth={1.8} color="#B9472E" />
               </div>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1 }}>
+              <div style={{ fontSize: '28px', fontWeight: 800, color: '#303536', lineHeight: 1 }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadCount === 1 ? 'notification' : 'notifications'}
               </div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: '#DC1F2E', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#B9472E', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Tap to review →
               </div>
             </button>
@@ -165,7 +165,7 @@ export function SamplesLayout({
             <button
               onClick={() => router.push('/samples/notifications')}
               className={`boe-nav-item${activeSection === 'notifications' ? ' active' : ''}`}
-              style={{ color: activeSection === 'notifications' ? '#111318' : '#8C94A6', fontSize: '12.5px', gap: '8px' }}
+              style={{ color: activeSection === 'notifications' ? '#303536' : '#686D6C', fontSize: '12.5px', gap: '8px' }}
             >
               <Bell size={14} strokeWidth={1.8} />
               Notifications
@@ -199,14 +199,14 @@ export function SamplesLayout({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
-                border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#DC1F2E' : '#6B7384',
+                background: refreshing ? 'rgba(185,71,46,0.08)' : 'rgba(0,0,0,0.05)',
+                border: '1px solid #CFC8BF',
+                color: refreshing ? '#B9472E' : '#686D6C',
                 cursor: refreshing ? 'default' : 'pointer',
                 flexShrink: 0, transition: 'background 0.15s, color 0.15s',
               }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
-              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(185,71,46,0.08)'; e.currentTarget.style.color = '#B9472E' } }}
+              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#686D6C' } }}
             >
               <RefreshCw
                 size={14}

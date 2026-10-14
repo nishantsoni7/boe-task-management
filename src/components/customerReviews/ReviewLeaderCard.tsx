@@ -35,12 +35,12 @@ export function ReviewLeaderCard({ isMobile = false }: { isMobile?: boolean }) {
     <section
       aria-label="Review leaderboard"
       style={{
-        marginBottom: isMobile ? '18px' : '22px', padding: '10px 14px', borderRadius: '10px',
+        marginBottom: isMobile ? '18px' : '22px', padding: '10px 14px', borderRadius: '8px',
         border: `1px solid ${colors.borderSoft}`, background: colors.base,
         display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px', minWidth: 0,
       }}
     >
-      <Trophy size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: '#B45309', flexShrink: 0 }} />
+      <Trophy size={16} strokeWidth={1.8} aria-hidden="true" style={{ color: '#805B0D', flexShrink: 0 }} />
       {card.isPending ? (
         <span role="status" style={{ fontSize: '12.5px', color: colors.muted }}>Review leaderboard…</span>
       ) : card.isError || !data ? (

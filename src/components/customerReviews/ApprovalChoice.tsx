@@ -107,10 +107,10 @@ function ChoiceCard({
         // the verifier has just been reading.
         display: 'flex', gap: '10px', alignItems: 'flex-start', textAlign: 'left',
         width: '100%', minHeight: '44px', padding: '12px',
-        borderRadius: '10px', cursor: disabled ? 'not-allowed' : 'pointer',
-        border: `1px solid ${selected ? colors.blue : colors.border}`,
-        background: selected ? '#F5F9FF' : colors.raised,
-        boxShadow: selected ? `inset 0 0 0 1px ${colors.blue}` : 'none',
+        borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer',
+        border: `1px solid ${selected ? colors.brand : colors.border}`,
+        background: selected ? '#FBFAF8' : colors.raised,
+        boxShadow: selected ? `inset 0 0 0 1px ${colors.brand}` : 'none',
         fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
       }}
     >
@@ -120,8 +120,8 @@ function ChoiceCard({
           flexShrink: 0, width: '20px', height: '20px', marginTop: '1px',
           borderRadius: '999px', display: 'inline-flex',
           alignItems: 'center', justifyContent: 'center',
-          border: `1.5px solid ${selected ? colors.blue : colors.border}`,
-          background: selected ? colors.blue : '#FFFFFF',
+          border: `1.5px solid ${selected ? colors.brand : colors.border}`,
+          background: selected ? colors.brand : '#FFFFFF',
           color: '#FFFFFF',
         }}
       >
@@ -131,7 +131,7 @@ function ChoiceCard({
         <span style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           fontSize: '13px', fontWeight: 600,
-          color: selected ? colors.blue : colors.primary,
+          color: selected ? colors.brand : colors.primary,
         }}>
           <Icon size={14} strokeWidth={2} />
           {title}
@@ -145,7 +145,7 @@ function ChoiceCard({
         {note && (
           <span style={{
             display: 'block', marginTop: '4px',
-            fontSize: '11px', color: colors.muted, lineHeight: 1.5,
+            fontSize: '12px', color: colors.muted, lineHeight: 1.5,
           }}>
             {note}
           </span>

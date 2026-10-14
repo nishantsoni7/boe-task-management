@@ -79,9 +79,9 @@ export function AdjustCreditsModal({
           style={inputStyle}
           autoFocus
         />
-        {amountIssue && <div style={{ fontSize: 11.5, color: '#C13030' }}>{amountIssue}</div>}
+        {amountIssue && <div style={{ fontSize: 12, color: '#B42332' }}>{amountIssue}</div>}
         {after != null && (
-          <div style={{ fontSize: 11.5, color: colors.tertiary }}>
+          <div style={{ fontSize: 12, color: colors.tertiary }}>
             After this entry: {formatCredits(after)}
           </div>
         )}

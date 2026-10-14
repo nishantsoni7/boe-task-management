@@ -997,9 +997,9 @@ const closedHtml = (over: Partial<StatusCardProps> = {}) =>
 // piPaymentDetails.render.test.tsx.
 const segment = (html: string, name: 'confirmed' | 'awaiting' | 'unpaid') =>
   html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
-const GREEN = 'background:#45A870'
-const AMBER = 'background:#E8A030'
-const RED = 'background:#D94F4F'
+const GREEN = 'background:#276247'
+const AMBER = 'background:#805B0D'
+const RED = 'background:#B42332'
 
 /** The element one part of the received figure was drawn as: button or div. */
 const metricTag = (html: string, key: 'confirmed' | 'awaiting'): string | null =>
@@ -1530,7 +1530,7 @@ describe('the overview states the two dates it has, large, and pauses the one it
     assert.ok(!t.includes('Not provided') && !t.includes('Not set'))
     assert.ok(!/Needed|required|warning/i.test(text(groupOf(html, TOP_SALES_LABEL))))
     const css = pageCss()
-    assert.ok(/\.pi-detail-date-pending \{[^}]*color: #6b7384/.test(css), 'muted grey, not amber')
+    assert.ok(/\.pi-detail-date-pending \{[^}]*color: #686D6C/.test(css), 'muted grey, not amber')
   })
 
   test('once submitted, a date the record lacks is said as before', () => {
@@ -1549,7 +1549,7 @@ describe('the overview states the two dates it has, large, and pauses the one it
     assert.ok(size('pi-detail-date-value') >= size('pi-detail-date-label') * 1.6,
       'the value, not the label, is what grew')
     assert.ok(weight('pi-detail-date-value') >= 700)
-    assert.ok(size('pi-detail-date-note') <= 11.5, 'the commitment stays secondary')
+    assert.ok(size('pi-detail-date-note') <= 12, 'the commitment stays secondary')
   })
 })
 
@@ -1859,7 +1859,7 @@ describe('the commercial breakdown is nine lines of arithmetic that end at the G
     assert.ok(css.indexOf('.pi-detail-breakdown-grand dd {') > css.indexOf('.pi-detail-breakdown-row dd {'))
   })
 
-  test('the Discount label and amount are red (#B42318) and the amount leads with a minus', () => {
+  test('the Discount label and amount are red (#B42332) and the amount leads with a minus', () => {
     const discount = shown[1]
     assert.equal(discount.label, 'Discount')
     assert.ok(discount.classes.includes('pi-detail-breakdown-deduction'))
@@ -1868,7 +1868,7 @@ describe('the commercial breakdown is nine lines of arithmetic that end at the G
     assert.ok(discount.value.startsWith('−₹'), `"${discount.value}" must lead with a minus sign`)
     assert.equal(discount.value, `−${formatInr(50000)}`)
     const css = breakdownCss()
-    assert.match(css, /\.pi-detail-breakdown-deduction dt,\n\.pi-detail-breakdown-deduction dd \{[^}]*color: #B42318;/,
+    assert.match(css, /\.pi-detail-breakdown-deduction dt,\n\.pi-detail-breakdown-deduction dd \{[^}]*color: #B42332;/,
       'both the label and the amount take the red')
     // The red wins over the amount’s own colour: it is at least as specific and later.
     assert.ok(css.indexOf('.pi-detail-breakdown-deduction dd') > css.indexOf('.pi-detail-breakdown-amount {'))
@@ -2938,14 +2938,14 @@ describe('the commercial breakdown outranks the activity trail', () => {
 
   test('the two cards are visibly different surfaces, not two identical whites', () => {
     assert.ok(commercial.includes('background:#FFFFFF'), 'the money card keeps the strong white')
-    assert.ok(activity.includes('background:#F8F9FB'), 'the trail takes a light cool grey')
+    assert.ok(activity.includes('background:#FBFAF8'), 'the trail takes a light cool grey')
     assert.ok(!activity.includes('background:#FFFFFF'))
   })
 
   test('the money card is warm-bordered and softly raised; the trail is neither', () => {
-    assert.ok(commercial.includes('border-color:rgba(232,160,48,0.30)'), 'a warm hairline')
-    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(16,24,40,0.05)'), 'shallow and low-opacity')
-    assert.ok(activity.includes('border-color:rgba(0,0,0,0.09)'), 'a neutral grey hairline')
+    assert.ok(commercial.includes('border-color:rgba(196,138,26,0.30)'), 'a warm hairline')
+    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(48,53,54,0.05)'), 'shallow and low-opacity')
+    assert.ok(activity.includes('border-color:#E4DED7'), 'a neutral grey hairline')
     assert.ok(activity.includes('box-shadow:none'))
     // Restraint: no gradient, no filled bar, no decorative icon on the money card.
     for (const loud of ['gradient', 'svg']) {
@@ -2954,10 +2954,10 @@ describe('the commercial breakdown outranks the activity trail', () => {
   })
 
   test('their headers are distinguishable without either shouting', () => {
-    assert.ok(commercial.includes('background:rgba(232,160,48,0.05)'), 'a very pale cream')
-    assert.ok(commercial.includes('border-bottom:1px solid rgba(232,160,48,0.20)'))
+    assert.ok(commercial.includes('background:rgba(196,138,26,0.05)'), 'a very pale cream')
+    assert.ok(commercial.includes('border-bottom:1px solid rgba(196,138,26,0.20)'))
     // The trail's heading is softer by a weight and a shade.
-    assert.ok(activity.includes('font-weight:600;color:#4A5261'))
+    assert.ok(activity.includes('font-weight:600;color:#4C5352'))
     assert.ok(!activity.includes('background:rgba(232,160,48'))
   })
 
@@ -2969,8 +2969,8 @@ describe('the commercial breakdown outranks the activity trail', () => {
     // beside every other row's, one step up and no more.
     const css = read(GLOBAL_CSS)
     const rule = css.slice(css.indexOf('.pi-commercial-grand-total {'))
-    assert.ok(/background: rgba\(232, 160, 48, 0\.08\)/.test(rule), 'a pale warm highlight')
-    assert.ok(/border-top: 2px solid rgba\(232, 160, 48, 0\.42\)/.test(rule), 'a stronger top border')
+    assert.ok(/background: rgba\(185,71,46, 0\.07\)/.test(rule), 'a pale warm highlight')
+    assert.ok(/border-top: 2px solid rgba\(185,71,46, 0\.4\)/.test(rule), 'a stronger top border')
     const total = commercial.slice(commercial.indexOf('pi-commercial-grand-total'))
     assert.ok(total.includes('font-weight:700'), 'bold label and bold amount')
     assert.ok(total.includes('font-size:15px'), 'and the amount a single step larger')
@@ -2995,7 +2995,7 @@ describe('the commercial breakdown outranks the activity trail', () => {
   })
 
   test('the markers are softened, and never the only channel', () => {
-    const softened = ['#A4ABB9', '#7A9DE0', '#D9A552', '#6BB68C', '#CE7272']
+    const softened = ['#686D6C', '#C3D3E6', '#C48A1A', '#6BB68C', '#CE7272']
     const sections = read(SECTIONS)
     for (const tone of softened) {
       assert.ok(sections.includes(tone), `${tone} must be one of the five markers`)
@@ -3012,17 +3012,17 @@ describe('the commercial breakdown outranks the activity trail', () => {
   test('the connector is lighter than the card it sits in', () => {
     const css = read(GLOBAL_CSS)
     const line = css.slice(css.indexOf('.pi-detail-timeline-line {'))
-    assert.ok(/background: rgba\(0, 0, 0, 0\.07\)/.test(line.slice(0, 400)))
+    assert.ok(/background: #F1EEE9/.test(line.slice(0, 400)))
   })
 
   test('nobody lost contrast to the restyle', () => {
     const sections = read(SECTIONS)
     // The trail's ground moved off pure white, so the timestamp and the actor
     // line were DARKENED rather than left muted — quieter must not mean harder
-    // to read. colors.muted (#8C94A6) would have fallen to 2.89:1 on #F8F9FB.
+    // to read. colors.muted (#686D6C) would have fallen to 2.89:1 on #FBFAF8.
     assert.ok(!/color: colors\.muted, whiteSpace: 'nowrap' \}\}>\s*\{entry\.at\}/.test(sections))
     assert.ok(sections.includes("color: colors.tertiary, whiteSpace: 'nowrap' }}>"))
-    assert.ok(activity.includes('color:#111318'), 'event titles stay at full strength')
+    assert.ok(activity.includes('color:#303536'), 'event titles stay at full strength')
   })
 })
 
@@ -3157,7 +3157,7 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.ok(/\.pi-detail-figures-grid \{[^}]*flex: 1 1 auto/.test(css), 'the grid fills the container’s height')
     assert.ok(/\.pi-detail-figure \{[^}]*justify-content: center/.test(css))
     assert.ok(/\.pi-detail-figure-value,\s*\.pi-detail-figure-absent \{[^}]*font-size: 22px/.test(css), 'large values')
-    assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 11\.5px/.test(css), 'and muted labels')
+    assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 12px/.test(css), 'and muted labels')
   })
 
   test('payment status: headline beside its parts when wide, stacked when narrow, never wider than its column', () => {
@@ -3215,16 +3215,16 @@ describe('the layout is CSS, at real breakpoints', () => {
       const body = rule(`.boe-btn-primary.pi-approve-btn${state}`)
       assert.ok(body.includes('color: #FFFFFF'), `white text and icon${state ? ` on ${state}` : ''}`)
     }
-    assert.ok(rule('.boe-btn-primary.pi-approve-btn').includes('background: #2F7A52'))
-    assert.ok(rule('.boe-btn-primary.pi-approve-btn:focus-visible').includes('outline: 2px solid #1F5A3A'))
+    assert.ok(rule('.boe-btn-primary.pi-approve-btn').includes('background: #276247'))
+    assert.ok(rule('.boe-btn-primary.pi-approve-btn:focus-visible').includes('outline: 2px solid #276247'))
     const disabled = rule('.boe-btn-primary.pi-approve-btn:disabled')
-    assert.ok(disabled.includes('background: #E3F0E8') && disabled.includes('color: #1F5A3A'),
+    assert.ok(disabled.includes('background: #E3F0E8') && disabled.includes('color: #276247'),
       'disabled: pale green with dark-green text, never grey text on the green ground')
     assert.ok(css.indexOf('.boe-btn-primary.pi-approve-btn:disabled') > css.indexOf('.boe-btn-primary.pi-approve-btn:hover'),
       'the disabled rule comes last, so hovering a disabled control changes nothing')
 
     const sections = read(SECTIONS)
-    assert.ok(!sections.includes("background: '#2F7A52'"), 'no inline green that the disabled rule cannot reach')
+    assert.ok(!sections.includes("background: '#276247'"), 'no inline green that the disabled rule cannot reach')
     assert.equal((sections.match(/className="boe-btn boe-btn-primary pi-approve-btn"/g) ?? []).length, 2,
       'the review decision and the advance decision')
   })

@@ -45,15 +45,15 @@ function formatDate(d: string | null) {
 }
 
 const PRIORITY_PILL: Record<string, { label: string; fg: string; bg: string }> = {
-  high:   { label: 'High',   fg: '#C0392B', bg: 'rgba(192,57,43,0.09)'  },
-  medium: { label: 'Medium', fg: '#D4831A', bg: 'rgba(212,131,26,0.09)' },
+  high:   { label: 'High',   fg: '#B42332', bg: 'rgba(180,35,50,0.09)'  },
+  medium: { label: 'Medium', fg: '#805B0D', bg: 'rgba(196,138,26,0.09)' },
   low:    { label: 'Low',    fg: colors.muted, bg: 'rgba(0,0,0,0.04)'   },
 }
 
 function col(label: string, width?: number, align: 'left' | 'right' | 'center' = 'left') {
   return (
     <div style={{
-      fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.06em',
+      fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em',
       textTransform: 'uppercase', color: colors.muted,
       width, flex: width ? undefined : 1,
       textAlign: align, padding: '0 8px', whiteSpace: 'nowrap',
@@ -187,21 +187,21 @@ function ViewAllTasksContent() {
       onSignOut={handleLogout}
       actions={hasFilter ? (
         <a href="/performance/team" style={{
-          fontSize: 12, fontWeight: 600, color: '#8C94A6', textDecoration: 'none',
-          border: '1px solid #EEF0F4', padding: '6px 14px', borderRadius: 7,
+          fontSize: 12, fontWeight: 600, color: '#686D6C', textDecoration: 'none',
+          border: '1px solid #F1EEE9', padding: '6px 14px', borderRadius: 8,
         }}>← Team Performance</a>
       ) : undefined}
     >
       {filterContext && (
         <div style={{
-          background: '#5585E808', border: '1px solid #5585E820', borderRadius: 8,
+          background: '#335A8608', border: '1px solid #335A8620', borderRadius: 8,
           padding: '9px 14px', marginBottom: 12,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
         }}>
-          <span style={{ fontSize: 12, color: '#5585E8', fontWeight: 500 }}>
+          <span style={{ fontSize: 12, color: '#335A86', fontWeight: 500 }}>
             Filtered — {filterContext}
           </span>
-          <Link href="/tasks/all" style={{ fontSize: 11, color: '#8C94A6', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/tasks/all" style={{ fontSize: 12, color: '#686D6C', textDecoration: 'none', fontWeight: 500 }}>
             Clear filter ✕
           </Link>
         </div>
@@ -212,7 +212,7 @@ function ViewAllTasksContent() {
           {tasks.length === 0 ? (
             <div style={{
               background: colors.base, border: `1.5px solid ${colors.border}`,
-              borderRadius: '10px', padding: '52px 24px',
+              borderRadius: '8px', padding: '52px 24px',
               textAlign: 'center', color: colors.muted, fontSize: '13px',
             }}>
               No tasks found.
@@ -228,7 +228,7 @@ function ViewAllTasksContent() {
                 style={{
                   background: colors.base,
                   border: `1.5px solid ${overdue ? colors.red + '44' : colors.border}`,
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   padding: '12px 14px',
                   cursor: 'pointer',
                 }}
@@ -240,17 +240,17 @@ function ViewAllTasksContent() {
                   marginBottom: '8px', lineHeight: 1.4,
                   display: 'flex', alignItems: 'flex-start', gap: '5px',
                 }}>
-                  {task.is_urgent && <span style={{ color: '#C49A28', flexShrink: 0 }}>⭐</span>}
+                  {task.is_urgent && <span style={{ color: '#805B0D', flexShrink: 0 }}>⭐</span>}
                   {task.title}
                 </div>
                 {/* Row 2: meta */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                  <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px' }} />
-                  <span style={{ fontSize: '10.5px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '1px 7px', borderRadius: '5px' }}>
+                  <span className={statusBadgeClass(task.status)} style={{ fontSize: '12px' }} />
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '1px 7px', borderRadius: '6px' }}>
                     {pill.label}
                   </span>
                   {task.due_date && (
-                    <span style={{ fontSize: '11px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
+                    <span style={{ fontSize: '12px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
                       {formatDate(task.due_date)}
                     </span>
                   )}
@@ -258,12 +258,12 @@ function ViewAllTasksContent() {
                 {/* Row 3: assignee + creator */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
                   {task.assigned_to && userMap[task.assigned_to] && (
-                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                    <span style={{ fontSize: '12px', color: colors.muted }}>
                       To: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.assigned_to]}</span>
                     </span>
                   )}
                   {task.created_by && userMap[task.created_by] && task.created_by !== task.assigned_to && (
-                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                    <span style={{ fontSize: '12px', color: colors.muted }}>
                       By: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.created_by]}</span>
                     </span>
                   )}
@@ -271,7 +271,7 @@ function ViewAllTasksContent() {
               </div>
             )
           })}
-          <div style={{ padding: '4px 2px', fontSize: '11px', color: colors.muted }}>
+          <div style={{ padding: '4px 2px', fontSize: '12px', color: colors.muted }}>
             {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}
           </div>
         </div>
@@ -280,7 +280,7 @@ function ViewAllTasksContent() {
         <div style={{
           background: colors.base,
           border: `1.5px solid ${colors.border}`,
-          borderRadius: '10px',
+          borderRadius: '8px',
           overflow: 'hidden',
         }}>
           {/* Table header */}
@@ -324,7 +324,7 @@ function ViewAllTasksContent() {
                   {/* Task name */}
                   <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {task.is_urgent && (
-                      <span style={{ fontSize: '11px', color: '#C49A28', flexShrink: 0 }}>⭐</span>
+                      <span style={{ fontSize: '12px', color: '#805B0D', flexShrink: 0 }}>⭐</span>
                     )}
                     <span style={{
                       fontSize: '13px', fontWeight: 500,
@@ -353,7 +353,7 @@ function ViewAllTasksContent() {
                   </div>
                   {/* Priority */}
                   <div style={{ width: '72px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
                       {pill.label}
                     </span>
                   </div>
@@ -369,7 +369,7 @@ function ViewAllTasksContent() {
           )}
 
           <div style={{
-            padding: '9px 20px', fontSize: '11px', color: colors.muted,
+            padding: '9px 20px', fontSize: '12px', color: colors.muted,
             borderTop: `1px solid ${colors.border}`, background: colors.raised,
           }}>
             {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}
@@ -384,7 +384,7 @@ function ViewAllTasksContent() {
             onClick={() => setState({ page: page - 1 })}
             disabled={page <= 1 || fetching}
             style={{
-              padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
+              padding: '6px 14px', borderRadius: '8px', fontSize: '13px',
               border: `1px solid ${colors.border}`, background: colors.base,
               color: page <= 1 ? colors.muted : colors.primary,
               cursor: page <= 1 ? 'not-allowed' : 'pointer',
@@ -399,7 +399,7 @@ function ViewAllTasksContent() {
             onClick={() => setState({ page: page + 1 })}
             disabled={page >= Math.ceil(total / PAGE_SIZE) || fetching}
             style={{
-              padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
+              padding: '6px 14px', borderRadius: '8px', fontSize: '13px',
               border: `1px solid ${colors.border}`, background: colors.base,
               color: page >= Math.ceil(total / PAGE_SIZE) ? colors.muted : colors.primary,
               cursor: page >= Math.ceil(total / PAGE_SIZE) ? 'not-allowed' : 'pointer',

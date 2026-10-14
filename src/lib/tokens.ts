@@ -1,48 +1,63 @@
-// ─── BOE Design tokens (JS mirror of CSS @theme) ─────────────────────────────
-// Use CSS classes from globals.css wherever possible.
-// Import from here only when you need a token in a dynamic inline style
-// (e.g. a border color derived from data at runtime).
+// ─── BOE Design tokens (JS mirror of the CSS custom properties) ──────────────
+// The source of truth is the :root block in app/globals.css (--boe-*).
+// Use CSS classes / var(--boe-*) wherever possible. Import from here only when
+// you need a token in a dynamic inline style (e.g. a colour derived from data).
 
 export const colors = {
   // Surfaces
-  void:    '#F4F5F7',
-  base:    '#FFFFFF',
-  raised:  '#F8F9FB',
-  float:   '#EEF0F4',
-  hover:   '#E8EBF0',
+  void:    '#F7F5F1',   // page canvas
+  base:    '#FFFFFF',   // content surface
+  raised:  '#FBFAF8',
+  float:   '#F1EEE9',
+  hover:   '#ECE7E0',
 
   // Text
-  primary:   '#111318',
-  secondary: '#4A5261',
-  tertiary:  '#6B7384',
-  muted:     '#8C94A6',
+  primary:   '#303536',
+  secondary: '#4C5352',
+  tertiary:  '#686D6C',
+  muted:     '#686D6C',
 
-  // Accents
-  amber: '#E8A030',
-  red:   '#D94F4F',
-  green: '#45A870',
-  blue:  '#5585E8',
+  // Brand / action
+  brand:      '#B9472E',
+  brandHover: '#9E3B25',
+  brandInk:   '#963B27',
+  brandTint:  '#F8EAE4',
+
+  // Status foreground (text, icons, solid marks)
+  amber: '#805B0D',   // waiting
+  red:   '#B42332',   // error / destructive
+  green: '#276247',   // completed
+  blue:  '#335A86',   // working
 
   // Borders
-  border:     'rgba(0,0,0,0.08)',
-  borderSoft: 'rgba(0,0,0,0.13)',
-  borderMed:  'rgba(0,0,0,0.18)',
+  border:     '#E4DED7',
+  borderSoft: '#CFC8BF',
+  borderMed:  '#B9B2A9',
+  borderInput: '#8C8379',  // form-control boundary, 3:1 on white and canvas (--boe-border-input)
 
-  // Tinted backgrounds (alert states)
-  amberTint: 'rgba(232,160,48,0.08)',
-  redTint:   'rgba(217,79,79,0.07)',
-  greenTint: 'rgba(69,168,112,0.07)',
-  blueTint:  'rgba(85,133,232,0.07)',
+  // Status backgrounds
+  amberTint: '#FAF0DA',
+  redTint:   '#FBE9EC',
+  greenTint: '#E8F2EC',
+  blueTint:  '#EAF0F8',
+} as const
+
+export const status = {
+  pending:   { fg: '#595D5B', bg: '#EEECE8' },
+  working:   { fg: '#335A86', bg: '#EAF0F8' },
+  waiting:   { fg: '#805B0D', bg: '#FAF0DA' },
+  blocked:   { fg: '#A12438', bg: '#FBE9EC' },
+  completed: { fg: '#276247', bg: '#E8F2EC' },
 } as const
 
 export const font = {
-  display: 'var(--font-display, Syne, sans-serif)',
-  body:    'var(--font-body, DM Sans, sans-serif)',
-  mono:    'var(--font-mono, DM Mono, monospace)',
+  display: 'var(--font-display)',
+  body:    'var(--font-body)',
+  mono:    'var(--font-body)',
 } as const
 
 export const radius = {
-  sm: '5px',
+  sm: '6px',
   md: '8px',
-  lg: '10px',
+  lg: '12px',
 } as const

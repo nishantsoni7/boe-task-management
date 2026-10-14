@@ -102,7 +102,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       </div>
 
       {error && (
-        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#DC2626' }}>{error}</div>
+        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#B42332' }}>{error}</div>
       )}
 
       {loaded && rows.length === 0 && !error && (
@@ -115,7 +115,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
             const tone = statusTone(r.status)
             return (
               <li key={r.id} style={{
-                border: `1px solid ${colors.border}`, borderRadius: 10, padding: '10px 12px',
+                border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px',
                 display: 'flex', flexDirection: 'column', gap: 4,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
@@ -123,7 +123,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                     {REQUEST_TYPE_LABEL[r.request_type]}
                   </div>
                   <span style={{
-                    fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                     background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
                   }}>
                     {REQUEST_STATUS_LABEL[r.status]}
@@ -133,18 +133,18 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                 <div style={{ fontSize: 12, color: colors.tertiary }}>
                   {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                 </div>
-                <div style={{ fontSize: 11.5, color: colors.muted }}>
+                <div style={{ fontSize: 12, color: colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)}
                   {' · '}{SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>
+                  <div style={{ fontSize: 12, color: colors.muted }}>
                     {REQUEST_STATUS_LABEL[r.status]} by {r.decider?.full_name ?? 'Admin'} · {formatIstDateTime(r.decided_at)}
                     {r.decision_note ? ` — ${r.decision_note}` : ''}
                   </div>
                 )}
                 {r.status === 'cancelled' && r.cancel_reason && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>{r.cancel_reason}</div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>{r.cancel_reason}</div>
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
                   {canEmployeeCorrect(r, now) && (

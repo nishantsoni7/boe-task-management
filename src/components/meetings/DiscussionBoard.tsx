@@ -62,7 +62,7 @@ export function DiscussionBoard({
         aria-labelledby="discussion-board-heading"
         style={{
           background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: '10px', overflow: 'hidden',
+          borderRadius: '8px', overflow: 'hidden',
         }}
       >
         <div style={{ padding: '11px 13px 9px', borderBottom: `1px solid ${colors.border}` }}>
@@ -103,7 +103,7 @@ export function DiscussionBoard({
       aria-labelledby="discussion-board-heading"
       style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}
     >
       <div style={{
@@ -120,18 +120,18 @@ export function DiscussionBoard({
           </h2>
           {/* The compact meeting summary. Every number is a word as well as a
               colour, so nothing here depends on colour to be understood. */}
-          <p style={{ fontSize: '11.5px', color: colors.muted, margin: '2px 0 0' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, margin: '2px 0 0' }}>
             {summary.total} item{summary.total === 1 ? '' : 's'}
             {' · '}
-            <span style={{ color: '#2E8A58', fontWeight: 600 }}>{summary.discussed} discussed</span>
+            <span style={{ color: '#276247', fontWeight: 600 }}>{summary.discussed} discussed</span>
             {' · '}
-            <span style={{ color: summary.toDiscuss > 0 ? '#92400E' : colors.muted, fontWeight: 600 }}>
+            <span style={{ color: summary.toDiscuss > 0 ? '#805B0D' : colors.muted, fontWeight: 600 }}>
               {summary.toDiscuss} still to discuss
             </span>
             {summary.resolvedHere > 0 && (
               <>
                 {' · '}
-                <span style={{ color: '#166534', fontWeight: 600 }}>
+                <span style={{ color: '#276247', fontWeight: 600 }}>
                   {summary.resolvedHere} {resolvedWords}
                 </span>
               </>
@@ -177,7 +177,7 @@ export function DiscussionBoard({
                 aria-pressed={selected}
                 onClick={() => onFilter(key)}
                 style={{
-                  padding: '5px 11px', borderRadius: '7px', cursor: 'pointer',
+                  padding: '5px 11px', borderRadius: '8px', cursor: 'pointer',
                   fontSize: '12px', fontWeight: selected ? 700 : 500,
                   border: `1px solid ${selected ? colors.borderMed : colors.border}`,
                   background: selected ? colors.float : 'transparent',
@@ -234,7 +234,7 @@ export function DiscussionBoard({
                 {['Issue', 'Latest position', 'This meeting', 'History', 'Next review', 'Status', ''].map(head => (
                   <th key={head} scope="col" style={{
                     padding: '7px 12px', textAlign: 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                   }}>{head}</th>
                 ))}
@@ -319,7 +319,7 @@ function IssueCell({ row }: { row: DiscussionRow }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
         <MeetingBadge meta={DISCUSSION_CATEGORY_META[item.category]} />
         {item.after_sales_tag && (
-          <span style={{ fontSize: '11px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             {AFTER_SALES_TAG_LABEL[item.after_sales_tag]}
           </span>
         )}
@@ -327,7 +327,7 @@ function IssueCell({ row }: { row: DiscussionRow }) {
       <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, marginTop: '3px', lineHeight: 1.35 }}>
         {item.title}
       </div>
-      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
         Order {item.order_number}
         {item.customer_name ? ` · ${item.customer_name}` : ''}
       </div>
@@ -366,7 +366,7 @@ function StateCell({ row }: { row: DiscussionRow }) {
     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px' }}>
       <MeetingBadge meta={DISCUSSION_STATE_META[row.recordedState]} />
       {row.changedSince && (
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           Now {DISCUSSION_STATE_META[row.item.state].label}
         </span>
       )}
@@ -377,20 +377,20 @@ function StateCell({ row }: { row: DiscussionRow }) {
 function TodayCell({ row, resolvedWords }: { row: DiscussionRow; resolvedWords: string }) {
   if (row.recordedState === 'resolved' && row.resolvedHere) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#166534', fontWeight: 600 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#276247', fontWeight: 600 }}>
         <CheckCircle2 size={12} strokeWidth={2.2} aria-hidden="true" /> {resolvedWords.charAt(0).toUpperCase() + resolvedWords.slice(1)}
       </span>
     )
   }
   if (!isDiscussedHere(row.appearance)) {
     return (
-      <span style={{ fontSize: '12px', color: row.recordedState === 'open' ? '#92400E' : colors.muted, fontWeight: 600 }}>
+      <span style={{ fontSize: '12px', color: row.recordedState === 'open' ? '#805B0D' : colors.muted, fontWeight: 600 }}>
         {row.recordedState === 'open' ? 'Not discussed yet' : 'Resolved earlier'}
       </span>
     )
   }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#2E8A58', fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#276247', fontWeight: 600 }}>
       <CheckCircle2 size={12} strokeWidth={2.2} /> Discussed
     </span>
   )
@@ -405,7 +405,7 @@ function HistoryCell({ row }: { row: DiscussionRow }) {
     parts.push(`${row.linkedTaskIds.length} task${row.linkedTaskIds.length === 1 ? '' : 's'}`)
   }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
       <span>{parts.join(' · ')}</span>
       {row.evidenceCount > 0 && (
         <span
@@ -431,7 +431,7 @@ function DiscussionCard({ row, resolvedWords, onOpen }: { row: DiscussionRow; re
       style={{
         width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', padding: '11px 13px',
+        borderRadius: '8px', padding: '11px 13px',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
@@ -443,7 +443,7 @@ function DiscussionCard({ row, resolvedWords, onOpen }: { row: DiscussionRow; re
       </div>
       <div style={{
         display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px',
-        fontSize: '11.5px', color: colors.muted, alignItems: 'center',
+        fontSize: '12px', color: colors.muted, alignItems: 'center',
       }}>
         <TodayCell row={row} resolvedWords={resolvedWords} />
         <HistoryCell row={row} />

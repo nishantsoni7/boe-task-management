@@ -144,7 +144,7 @@ export function ReviewSheet({
             </h2>
             {subtitle && (
               <p style={{
-                margin: '3px 0 0', fontSize: '11px', color: colors.tertiary,
+                margin: '3px 0 0', fontSize: '12px', color: colors.tertiary,
                 lineHeight: 1.4, overflowWrap: 'anywhere',
               }}>
                 {subtitle}

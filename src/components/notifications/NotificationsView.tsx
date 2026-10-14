@@ -347,12 +347,12 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // ── Toolbar button base style helpers ─────────────────────────────────────
   const toolBtn = (active: boolean, danger = false) => ({
     display: 'inline-flex' as const, alignItems: 'center' as const, gap: '6px',
-    padding: '7px 14px', borderRadius: '7px',
+    padding: '7px 14px', borderRadius: '8px',
     fontSize: '12px', fontWeight: 600,
     fontFamily: font.body,
     transition: 'all 0.15s',
-    border: `1.5px solid ${active ? (danger ? colors.red : colors.blue) : colors.border}`,
-    background: active && !danger ? colors.blue : 'transparent',
+    border: `1.5px solid ${active ? (danger ? colors.red : colors.brand) : colors.border}`,
+    background: active && !danger ? colors.brand : 'transparent',
     color: active ? (danger ? colors.red : '#ffffff') : colors.muted,
     cursor: active ? 'pointer' : 'not-allowed',
     opacity: 1,
@@ -442,10 +442,10 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
             key={tab}
             onClick={() => setFilter(tab)}
             style={{
-              padding: '5px 14px', borderRadius: '20px',
+              padding: '5px 14px', borderRadius: '12px',
               fontSize: '12px', fontWeight: 600,
-              border: `1.5px solid ${filter === tab ? colors.blue : colors.border}`,
-              background: filter === tab ? colors.blue : 'transparent',
+              border: `1.5px solid ${filter === tab ? colors.brand : colors.border}`,
+              background: filter === tab ? colors.brand : 'transparent',
               color: filter === tab ? '#fff' : colors.secondary,
               cursor: 'pointer', fontFamily: font.body,
               transition: 'all 0.12s',
@@ -536,7 +536,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
             disabled={loadingOlder}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', borderRadius: '7px',
+              padding: '7px 14px', borderRadius: '8px',
               fontSize: '12px', fontWeight: 600, fontFamily: font.body,
               border: `1.5px solid ${colors.border}`,
               background: 'transparent',

@@ -77,7 +77,7 @@ type Props = {
 }
 
 const FIELD_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
@@ -291,7 +291,7 @@ function Header({
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
       borderLeft: `3px solid ${meta.color}`,
-      borderRadius: '10px', padding: '10px 15px 13px',
+      borderRadius: '8px', padding: '10px 15px 13px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
         <button
@@ -306,7 +306,7 @@ function Header({
           <ArrowLeft size={14} strokeWidth={2} /> Meeting board
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ fontSize: '11.5px', color: colors.muted, marginRight: '3px' }}>
+          <span style={{ fontSize: '12px', color: colors.muted, marginRight: '3px' }}>
             Item {index} of {total}
           </span>
           <IconAction label="Previous item" onClick={() => onPrev?.()} disabled={!onPrev}>
@@ -321,19 +321,19 @@ function Header({
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', marginTop: '4px' }}>
         <MeetingBadge meta={meta} />
         {item.after_sales_tag && (
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             {AFTER_SALES_TAG_LABEL[item.after_sales_tag]}
           </span>
         )}
         <span className="meeting-discussion-sr-only">In this meeting:</span>
         <MeetingBadge meta={DISCUSSION_STATE_META[row.recordedState]} />
         {row.changedSince && (
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             Now {DISCUSSION_STATE_META[item.state].label}
           </span>
         )}
         {appearance.carried_from_id && (
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             Carried forward from the previous review
           </span>
         )}
@@ -375,7 +375,7 @@ function Header({
             Raised from task: {sourceTask.title}
           </button>
         ) : (
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             Raised from a task you do not have access to
           </span>
         ))}
@@ -393,7 +393,7 @@ function Header({
 const LINK_BUTTON: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: '4px',
   background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0',
-  fontSize: '11.5px', fontWeight: 600, color: colors.blue, textAlign: 'left',
+  fontSize: '12px', fontWeight: 600, color: colors.brandInk, textAlign: 'left',
 }
 
 function IconAction({
@@ -413,7 +413,7 @@ function IconAction({
       title={label}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 26, height: 26, borderRadius: '7px',
+        width: 26, height: 26, borderRadius: '8px',
         border: `1px solid ${colors.border}`, background: colors.base,
         color: disabled ? colors.muted : colors.secondary,
         cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
@@ -759,7 +759,7 @@ function DiscussionComposer({
                 )}
               </div>
               <div style={{
-                fontSize: '11px', marginTop: '3px', lineHeight: 1.35,
+                fontSize: '12px', marginTop: '3px', lineHeight: 1.35,
                 color: target.state === 'failed' ? colors.red : colors.muted,
               }}>
                 {target.error ?? STAGE_LABEL[target.state]}
@@ -773,7 +773,7 @@ function DiscussionComposer({
         <div role="alert" style={{
           padding: '8px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.5,
           background: notice.tone === 'error' ? colors.redTint : colors.greenTint,
-          color: notice.tone === 'error' ? colors.red : '#2E8A58',
+          color: notice.tone === 'error' ? colors.red : '#276247',
         }}>
           {notice.message}
         </div>
@@ -793,13 +793,13 @@ function EventList({ events }: { events: MeetingDiscussionEvent[] }) {
             <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
               {DISCUSSION_EVENT_LABEL[event.event_type]}
             </span>
-            <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
               {event.actor_name ?? 'Unknown'} · {formatMeetingTimestamp(event.created_at)}
             </span>
           </div>
           {event.new_update && (
             <div style={{
-              marginTop: '5px', padding: '8px 10px', borderRadius: '7px',
+              marginTop: '5px', padding: '8px 10px', borderRadius: '8px',
               background: colors.raised, borderLeft: `2px solid ${colors.blue}`,
               fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
             }}>
@@ -807,12 +807,12 @@ function EventList({ events }: { events: MeetingDiscussionEvent[] }) {
             </div>
           )}
           {event.detail && (
-            <div style={{ marginTop: '4px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+            <div style={{ marginTop: '4px', fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
               {event.detail}
             </div>
           )}
           {event.new_review_date && (
-            <div style={{ marginTop: '3px', fontSize: '11.5px', color: colors.secondary }}>
+            <div style={{ marginTop: '3px', fontSize: '12px', color: colors.secondary }}>
               Next review set to {formatMeetingDate(event.new_review_date)}
             </div>
           )}
@@ -866,7 +866,7 @@ function LinkedTasks({
                 style={{ display: 'inline', verticalAlign: '-1px' }}
               />
             </span>
-            <span style={{ fontSize: '11px', color: colors.muted, minWidth: 0, overflowWrap: 'anywhere' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, minWidth: 0, overflowWrap: 'anywhere' }}>
               {task.assignee_name ?? 'Unassigned'}
               {task.due_date ? ` · due ${formatMeetingDate(task.due_date)}` : ''}
               {' · '}{task.status}
@@ -940,7 +940,7 @@ function EarlierMeetings({
           const key = group.appearanceId ?? `loose-${position}`
           const expanded = position === 0 ? !open.has(key) : open.has(key)
           return (
-            <div key={key} style={{ border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden' }}>
+            <div key={key} style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
               <button
                 type="button"
                 onClick={() => toggle(key)}
@@ -962,7 +962,7 @@ function EarlierMeetings({
                 }}>
                   {group.meetingTitle}
                 </span>
-                <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
                   {summaryLine(group)}
                 </span>
               </button>
@@ -972,7 +972,7 @@ function EarlierMeetings({
                   {group.update && <Quote label="Position recorded">{group.update}</Quote>}
                   {group.decision && <Quote label="Decision" accent={colors.green}>{group.decision}</Quote>}
                   {group.nextReviewDate && (
-                    <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                    <div style={{ fontSize: '12px', color: colors.muted }}>
                       Next review set to {formatMeetingDate(group.nextReviewDate)}
                     </div>
                   )}
@@ -1035,7 +1035,7 @@ function summaryLine(group: DiscussionMeetingGroup): string {
 function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section style={{
-      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
       {children}
@@ -1048,14 +1048,14 @@ function PanelHeading({ title, detail }: { title: string; detail?: string }) {
     <div>
       <h3 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, color: colors.primary }}>{title}</h3>
       {detail && (
-        <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>{detail}</p>
+        <p style={{ margin: '1px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{detail}</p>
       )}
     </div>
   )
 }
 
 function Quote({
-  label, children, accent = colors.blue,
+  label, children, accent = colors.brand,
 }: {
   label: string
   children: React.ReactNode
@@ -1065,7 +1065,7 @@ function Quote({
     <div>
       <div style={FIELD_LABEL}>{label}</div>
       <div style={{
-        marginTop: '4px', padding: '8px 11px', borderRadius: '7px',
+        marginTop: '4px', padding: '8px 11px', borderRadius: '8px',
         background: colors.raised, borderLeft: `2px solid ${accent}`,
         fontSize: '12.5px', color: colors.primary, lineHeight: 1.5, whiteSpace: 'pre-wrap',
       }}>
@@ -1081,9 +1081,9 @@ function Banner({ tone, children }: { tone: 'success' | 'muted'; children: React
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: '7px',
       padding: '9px 12px', borderRadius: '8px',
-      background: success ? '#F0FDF4' : colors.raised,
-      border: `1px solid ${success ? '#BBF7D0' : colors.border}`,
-      fontSize: '12px', color: success ? '#166534' : colors.secondary, lineHeight: 1.55,
+      background: success ? '#E8F2EC' : colors.raised,
+      border: `1px solid ${success ? '#BCD8C8' : colors.border}`,
+      fontSize: '12px', color: success ? '#276247' : colors.secondary, lineHeight: 1.55,
     }}>
       {children}
     </div>

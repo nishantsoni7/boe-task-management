@@ -104,7 +104,7 @@ export default function ProductPage() {
         <div style={{ textAlign: 'center', padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: 48, height: 48, borderRadius: '12px',
-            background: 'rgba(232,160,48,0.10)',
+            background: 'rgba(196,138,26,0.10)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
           }}>
             ⚠
@@ -120,8 +120,8 @@ export default function ProductPage() {
             style={{
               marginTop: '8px',
               padding: '11px 24px',
-              background: '#1A2035', color: '#fff',
-              border: 'none', borderRadius: '9px',
+              background: '#B9472E', color: '#fff',
+              border: 'none', borderRadius: '8px',
               fontSize: '14px', fontWeight: 600,
               cursor: 'pointer', fontFamily: font.body,
             }}
@@ -140,7 +140,7 @@ export default function ProductPage() {
         <div style={{ textAlign: 'center', padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
           <div style={{
             width: 48, height: 48, borderRadius: '12px',
-            background: 'rgba(217,79,79,0.08)',
+            background: 'rgba(180,35,50,0.08)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
           }}>
             ✕
@@ -157,7 +157,7 @@ export default function ProductPage() {
               marginTop: '8px',
               padding: '11px 24px',
               background: colors.float, color: colors.secondary,
-              border: `1px solid ${colors.border}`, borderRadius: '9px',
+              border: `1px solid ${colors.border}`, borderRadius: '8px',
               fontSize: '14px', fontWeight: 600,
               cursor: 'pointer', fontFamily: font.body,
             }}
@@ -215,7 +215,7 @@ export default function ProductPage() {
               style={{
                 width: 64, height: 64, flexShrink: 0,
                 borderRadius: '8px', objectFit: 'cover',
-                border: `1.5px solid ${i === 0 ? '#1A2035' : colors.border}`,
+                border: `1.5px solid ${i === 0 ? '#303536' : colors.border}`,
               }}
             />
           ))}
@@ -225,13 +225,13 @@ export default function ProductPage() {
       {/* Code + category */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
         <span style={{
-          fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
-          color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-          borderRadius: '4px', padding: '2px 7px',
+          fontFamily: font.mono, fontSize: '12px', fontWeight: 600,
+          color: '#303536', background: 'rgba(48,53,54,0.07)',
+          borderRadius: '6px', padding: '2px 7px',
         }}>
           {product.product_code}
         </span>
-        <span style={{ fontSize: '11px', color: colors.muted }}>
+        <span style={{ fontSize: '12px', color: colors.muted }}>
           {product.category}
         </span>
       </div>
@@ -249,7 +249,7 @@ export default function ProductPage() {
       {/* MRP */}
       <div style={{
         fontSize: '20px', fontWeight: 700,
-        color: '#1A2035',
+        color: '#303536',
         fontFamily: font.mono,
         marginBottom: dimStr ? '8px' : '20px',
       }}>
@@ -284,12 +284,12 @@ export default function ProductPage() {
         <div style={{
           background: colors.raised,
           border: `1px solid ${colors.border}`,
-          borderRadius: '10px',
+          borderRadius: '8px',
           padding: '14px 16px',
           marginBottom: '24px',
         }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
+            fontSize: '12px', fontWeight: 700, letterSpacing: '0.07em',
             textTransform: 'uppercase', color: colors.muted, marginBottom: '10px',
           }}>
             Specifications
@@ -345,9 +345,9 @@ export default function ProductPage() {
           disabled={added}
           style={{
             width: '100%', padding: '15px',
-            background: added ? '#45A870' : '#1A2035',
+            background: added ? '#276247' : '#303536',
             color: '#fff',
-            border: 'none', borderRadius: '10px',
+            border: 'none', borderRadius: '8px',
             fontSize: '15px', fontWeight: 600,
             cursor: added ? 'default' : 'pointer',
             fontFamily: font.body,
@@ -367,11 +367,11 @@ export default function ProductPage() {
             role="status"
             aria-live="polite"
             style={{
-              background: 'rgba(69,168,112,0.09)',
-              border: '1px solid rgba(69,168,112,0.25)',
-              borderRadius: '9px',
+              background: 'rgba(39,98,71,0.09)',
+              border: '1px solid rgba(39,98,71,0.25)',
+              borderRadius: '8px',
               padding: '10px 13px',
-              fontSize: '13px', fontWeight: 500, color: '#2F7A52',
+              fontSize: '13px', fontWeight: 500, color: '#276247',
               lineHeight: 1.5,
             }}
           >
@@ -384,7 +384,7 @@ export default function ProductPage() {
           style={{
             width: '100%', padding: '12px',
             background: 'none', color: colors.tertiary,
-            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
             fontSize: '13px', fontWeight: 500,
             cursor: 'pointer', fontFamily: font.body,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -395,8 +395,8 @@ export default function ProductPage() {
               knows how much is on the list without opening it. */}
           {selectionLabel && !selectionLabel.startsWith('0 ') && (
             <span style={{
-              fontSize: '11.5px', fontWeight: 600, color: colors.secondary,
-              background: colors.float, borderRadius: '5px', padding: '2px 7px',
+              fontSize: '12px', fontWeight: 600, color: colors.secondary,
+              background: colors.float, borderRadius: '6px', padding: '2px 7px',
             }}>
               {selectionLabel}
             </span>
@@ -437,11 +437,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       }}>
         <div style={{
           width: 26, height: 26, borderRadius: '6px',
-          background: '#1A2035',
+          background: '#303536',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#DC1F2E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B9472E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
@@ -456,7 +456,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         width: '100%', maxWidth: '480px',
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '16px',
+        borderRadius: '12px',
         padding: '20px 18px 24px',
         boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
       }}>

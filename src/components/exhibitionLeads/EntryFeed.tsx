@@ -101,7 +101,7 @@ export function RecentList({ entries }: { entries: readonly OutboxEntry[] }) {
           <li key={e.id} className={a.recentRow}>
             <span
               className={a.dot} aria-hidden="true"
-              style={{ background: LEAD_TYPE_ACCENTS[String(e.values.leadType)] ?? '#9AA1AE' }}
+              style={{ background: LEAD_TYPE_ACCENTS[String(e.values.leadType)] ?? '#686D6C' }}
             />
             <span className={a.recentName}>{e.name}</span>
             <span className={a.recentMeta}>{leadTypeLabel(e.values.leadType)} · {timeOf(e.createdAt)}</span>

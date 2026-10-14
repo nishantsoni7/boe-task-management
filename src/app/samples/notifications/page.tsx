@@ -22,14 +22,14 @@ import {
 // ─── Event label map ──────────────────────────────────────────────────────────
 
 const EVENT_META: Record<string, { label: string; color: string; bg: string }> = {
-  sample_request_created:   { label: 'New Request',  color: colors.blue,  bg: colors.blueTint  },
+  sample_request_created:   { label: 'New Request',  color: colors.brand,  bg: colors.brandTint  },
   sample_request_approved:  { label: 'Approved',     color: colors.green, bg: colors.greenTint },
   sample_request_rejected:  { label: 'Rejected',     color: colors.red,   bg: colors.redTint   },
-  sample_request_reapplied: { label: 'Reapplied',    color: colors.blue,  bg: colors.blueTint  },
+  sample_request_reapplied: { label: 'Reapplied',    color: colors.brand,  bg: colors.brandTint  },
   sample_request_edited:    { label: 'Edited',       color: colors.muted, bg: colors.float     },
   sample_request_deleted:   { label: 'Deleted',      color: colors.red,   bg: colors.redTint   },
-  sample_qr_submitted:      { label: 'QR Submitted', color: '#7C3AED',    bg: '#EDE9FE'        },
-  sample_dispatched:        { label: 'Dispatched',   color: '#1A2035',    bg: '#1A203514'      },
+  sample_qr_submitted:      { label: 'QR Submitted', color: '#335A86',    bg: '#EAF0F8'        },
+  sample_dispatched:        { label: 'Dispatched',   color: '#303536',    bg: '#30353614'      },
   sample_followup:          { label: 'Follow-up',    color: colors.muted, bg: colors.float     },
   sample_returned:          { label: 'Returned',     color: colors.green, bg: colors.greenTint },
   sample_lost:              { label: 'Lost',         color: colors.red,   bg: colors.redTint   },
@@ -50,9 +50,9 @@ function formatTs(iso: string) {
 // blue treatment NotificationsView uses, so a selected row reads identically in
 // both modules. Unselected rows keep Sample Tracking's amber unread accent.
 const rowBackground = (isSelected: boolean, isRead: boolean, hover = false) => {
-  if (isSelected) return 'rgba(85,133,232,0.10)'
+  if (isSelected) return 'rgba(185,71,46,0.10)'
   if (isRead)     return hover ? colors.float : '#fff'
-  return hover ? 'rgba(232,160,48,0.08)' : 'rgba(232,160,48,0.04)'
+  return hover ? 'rgba(196,138,26,0.08)' : 'rgba(196,138,26,0.04)'
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -191,12 +191,12 @@ export default function SampleNotificationsPage() {
   // ── Toolbar button base style helpers (identical to NotificationsView) ────
   const toolBtn = (active: boolean, danger = false) => ({
     display: 'inline-flex' as const, alignItems: 'center' as const, gap: '6px',
-    padding: '7px 14px', borderRadius: '7px',
+    padding: '7px 14px', borderRadius: '8px',
     fontSize: '12px', fontWeight: 600,
     fontFamily: font.body,
     transition: 'all 0.15s',
-    border: `1.5px solid ${active ? (danger ? colors.red : colors.blue) : colors.border}`,
-    background: active && !danger ? colors.blue : 'transparent',
+    border: `1.5px solid ${active ? (danger ? colors.red : colors.brand) : colors.border}`,
+    background: active && !danger ? colors.brand : 'transparent',
     color: active ? (danger ? colors.red : '#ffffff') : colors.muted,
     cursor: active ? 'pointer' : 'not-allowed',
     opacity: 1,
@@ -292,7 +292,7 @@ export default function SampleNotificationsPage() {
             </div>
           </div>
         ) : (
-          <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
             {rows.map((n, i) => {
               const em = eventMeta(n.event)
               const isSelected = selected.has(n.id)
@@ -305,8 +305,8 @@ export default function SampleNotificationsPage() {
                     display: 'flex', alignItems: 'flex-start',
                     background: rowBackground(isSelected, n.is_read),
                     borderLeft: isSelected
-                      ? `3px solid ${colors.blue}`
-                      : n.is_read ? '3px solid transparent' : '3px solid #E8A030',
+                      ? `3px solid ${colors.brand}`
+                      : n.is_read ? '3px solid transparent' : '3px solid #C48A1A',
                     borderBottom: i < rows.length - 1 ? `1px solid ${colors.border}` : 'none',
                     cursor: 'pointer',
                     transition: 'background 0.1s',
@@ -331,9 +331,9 @@ export default function SampleNotificationsPage() {
                     }}
                   >
                     <span style={{
-                      width: '16px', height: '16px', borderRadius: '4px',
-                      border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
-                      background: isSelected ? colors.blue : 'transparent',
+                      width: '16px', height: '16px', borderRadius: '6px',
+                      border: `1.5px solid ${isSelected ? colors.brand : colors.borderSoft}`,
+                      background: isSelected ? colors.brand : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                       transition: 'all 0.12s',
@@ -344,7 +344,7 @@ export default function SampleNotificationsPage() {
 
                   {/* Icon */}
                   <div style={{
-                    width: 34, height: 34, borderRadius: '9px', flexShrink: 0,
+                    width: 34, height: 34, borderRadius: '8px', flexShrink: 0,
                     background: em.bg,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     margin: '14px 12px 0 0',
@@ -356,7 +356,7 @@ export default function SampleNotificationsPage() {
                   <div style={{ flex: 1, minWidth: 0, padding: '13px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
                       <span style={{
-                        fontSize: '10px', fontWeight: 700,
+                        fontSize: '12px', fontWeight: 700,
                         color: em.color, background: em.bg,
                         padding: '1px 7px', borderRadius: '999px',
                         textTransform: 'uppercase', letterSpacing: '0.04em',
@@ -366,7 +366,7 @@ export default function SampleNotificationsPage() {
                       {!n.is_read && (
                         <span style={{
                           width: 7, height: 7, borderRadius: '50%',
-                          background: '#E8A030', display: 'inline-block', flexShrink: 0,
+                          background: '#B9472E', display: 'inline-block', flexShrink: 0,
                         }} />
                       )}
                     </div>
@@ -381,7 +381,7 @@ export default function SampleNotificationsPage() {
                         {n.body}
                       </div>
                     )}
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '5px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '5px' }}>
                       {formatTs(n.created_at)}
                     </div>
                   </div>

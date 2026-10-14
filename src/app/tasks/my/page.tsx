@@ -75,8 +75,8 @@ type TaskType = MyTaskType
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#B06035'    },
-  medium: { label: 'Med',  color: '#C07820'    },
+  high:   { label: 'High', color: '#A12438'    },
+  medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
 
@@ -105,9 +105,9 @@ const LIST_GRID_COLUMNS =
 
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
-  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
-  { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
-  { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
+  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#B9472E' },
+  { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#276247' },
+  { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#B9472E' },
 ]
 
 // ─── URL-backed list state ────────────────────────────────────────────────────
@@ -163,11 +163,11 @@ function TaskCard({
   const cardBackground = completed
     ? colors.base
     : isImportant
-      ? (hovered ? 'rgba(196,154,40,0.08)' : 'rgba(196,154,40,0.04)')
+      ? (hovered ? 'rgba(183,137,42,0.08)' : 'rgba(183,137,42,0.04)')
       : (hovered ? colors.raised : colors.base)
 
   const cardBorder = isImportant
-    ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
+    ? `1.5px solid rgba(183,137,42,${hovered ? '0.40' : '0.20'})`
     : `1.5px solid ${colors.border}`
 
   const titleColor = completed ? colors.muted : colors.primary
@@ -192,7 +192,7 @@ function TaskCard({
             on this card that cannot be guessed from the rest of it. The
             actions sit on row 2. */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
@@ -217,18 +217,18 @@ function TaskCard({
             {/* The mobile card shows no status column, so this state — the one
                 that explains why the row carries no action — is called out. */}
             {awaitingApproval && (
-              <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              <span className={statusBadgeClass(task.status)} style={{ fontSize: '12px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {AWAITING_APPROVAL_LABEL}
               </span>
             )}
             {!isSelf && assignerName && (
-              <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#335A86', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
                 {assignerName}
               </span>
             )}
-            <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
             {dateStr && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '12px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
                 {overdue && <AlertCircle size={9} />}{dateStr}
               </span>
             )}
@@ -246,10 +246,10 @@ function TaskCard({
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     width: '36px', height: '36px', borderRadius: '6px',
-                    background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
-                    border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+                    background: onComplete ? `${colors.green}12` : `${colors.brand}12`,
+                    border: `1px solid ${onComplete ? colors.green + '35' : colors.brand + '35'}`,
                     cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
-                    color: onComplete ? colors.green : colors.blue,
+                    color: onComplete ? colors.green : colors.brand,
                     opacity: actionBusy ? 0.55 : 1,
                   }}
                 >
@@ -297,7 +297,7 @@ function TaskCard({
         boxShadow: hovered
           ? '0 2px 8px rgba(0,0,0,0.09)'
           : isImportant
-            ? '0 1px 4px rgba(196,154,40,0.08)'
+            ? '0 1px 4px rgba(183,137,42,0.08)'
             : '0 1px 3px rgba(0,0,0,0.04)',
         opacity: completed ? 0.5 : 1,
         transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
@@ -310,7 +310,7 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {task.is_urgent
-          ? <Star size={11} fill="#C49A28" color="#C49A28" />
+          ? <Star size={11} fill="#B7892A" color="#B7892A" />
           : <div style={{ width: '11px' }} />
         }
       </div>
@@ -328,7 +328,7 @@ function TaskCard({
           {task.title}
         </span>
         {isPinned && (
-          <span style={{ fontSize: '9px', fontWeight: 700, color: '#92710A', background: 'rgba(196,154,40,0.12)', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#92710A', background: 'rgba(183,137,42,0.12)', borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
             Today&apos;s Focus
           </span>
         )}
@@ -346,11 +346,11 @@ function TaskCard({
             display: 'inline-block',
             maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '10.5px', fontWeight: 600,
-            padding: '1px 7px', borderRadius: '20px',
+            fontSize: '12px', fontWeight: 600,
+            padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
-              ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'       }
-              : { color: '#6B4FA0',     background: 'rgba(155,111,212,0.10)' }
+              ? { color: colors.secondary,  background: 'rgba(0,0,0,0.05)'       }
+              : { color: '#335A86',     background: 'rgba(155,111,212,0.10)' }
             ),
           }}
         >
@@ -364,14 +364,14 @@ function TaskCard({
       }}>
         {task.due_date ? (() => {
           const isToday = task.due_date === TODAY_STR
-          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#E8A030' : colors.secondary
+          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#805B0D' : colors.secondary
           return (
-            <span style={{ fontSize: '11px', color: dueDateColor, whiteSpace: 'nowrap', fontWeight: isOverdue(task) || isToday ? 600 : 400 }}>
+            <span style={{ fontSize: '12px', color: dueDateColor, whiteSpace: 'nowrap', fontWeight: isOverdue(task) || isToday ? 600 : 400 }}>
               {formatDate(task.due_date)}
             </span>
           )
         })() : (
-          <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>No Due Date</span>
+          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>No Due Date</span>
         )}
       </div>
 
@@ -379,7 +379,7 @@ function TaskCard({
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
           {priority.label}
         </span>
       </div>
@@ -388,7 +388,7 @@ function TaskCard({
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
+        <span className={statusBadgeClass(task.status)} style={{ fontSize: '12px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
           {/* Named exactly as the tab that holds it, so a row and the tab it
               came from cannot say two different things. Every other status
               keeps its usual assignee-side wording. */}
@@ -410,10 +410,10 @@ function TaskCard({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
-              background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
-              border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+              background: onComplete ? `${colors.green}12` : `${colors.brand}12`,
+              border: `1px solid ${onComplete ? colors.green + '35' : colors.brand + '35'}`,
               cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
-              color: onComplete ? colors.green : colors.blue,
+              color: onComplete ? colors.green : colors.brand,
               opacity: actionBusy ? 0.55 : 1,
             }}
           >
@@ -431,11 +431,11 @@ function TaskCard({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
               background: isPinned
-                ? 'rgba(196,154,40,0.10)'
-                : hoveredPin ? 'rgba(91,127,166,0.10)' : 'transparent',
-              border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : hoveredPin ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+                ? 'rgba(183,137,42,0.10)'
+                : hoveredPin ? 'rgba(51,90,134,0.10)' : 'transparent',
+              border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : hoveredPin ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
               cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-              color: isPinned ? '#C49A28' : hoveredPin ? '#5B7FA6' : colors.muted,
+              color: isPinned ? '#805B0D' : hoveredPin ? '#963B27' : colors.muted,
             }}
           >
             <Pin size={11} />
@@ -451,10 +451,10 @@ function TaskCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '26px', height: '26px', borderRadius: '6px',
-                background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent',
-                border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+                background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
+                border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
                 cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-                color: hoveredEdit ? '#5B7FA6' : colors.muted,
+                color: hoveredEdit ? '#963B27' : colors.muted,
               }}
             >
               <Pencil size={11} />
@@ -642,9 +642,9 @@ function CreateSelfTaskModal({
   }
 
   const PRIORITY_CFG = {
-    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',   text: '#16a34a' },
-    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',   text: '#d97706' },
-    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)',   text: '#dc2626' },
+    low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',   text: '#276247' },
+    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',   text: '#805B0D' },
+    high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)',   text: '#B42332' },
   } as const
 
   return (
@@ -672,7 +672,7 @@ function CreateSelfTaskModal({
 
         {/* Title */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Task Name <span style={{ color: colors.red }}>*</span>
           </label>
           <input
@@ -685,14 +685,14 @@ function CreateSelfTaskModal({
             autoFocus
           />
           {titleDirty && !title.trim() && (
-            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
+            <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
           )}
         </div>
 
         {/* Priority + Due Date */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
               Priority <span style={{ color: colors.red }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: '4px' }}>
@@ -705,7 +705,7 @@ function CreateSelfTaskModal({
                     onClick={() => { setPriority(p); setPriorityDirty(true) }}
                     style={{
                       flex: 1, textAlign: 'center', textTransform: 'capitalize',
-                      fontSize: '11px', fontWeight: selected ? 700 : 500,
+                      fontSize: '12px', fontWeight: selected ? 700 : 500,
                       padding: '5px 2px', borderRadius: '6px',
                       border: `1px solid ${selected ? cfg.bg : cfg.border}`,
                       background: selected ? cfg.bg : 'transparent',
@@ -719,11 +719,11 @@ function CreateSelfTaskModal({
               })}
             </div>
             {priorityDirty && !priority && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Required</p>
             )}
           </div>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
               Due Date <span style={{ color: colors.red }}>*</span>
             </label>
             <input
@@ -734,14 +734,14 @@ function CreateSelfTaskModal({
               style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }}
             />
             {dateDirty && !dueDate && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Required</p>
             )}
           </div>
         </div>
 
         {/* Description */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Note <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
           </label>
           <textarea
@@ -757,7 +757,7 @@ function CreateSelfTaskModal({
 
         {/* Attachments */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Attachments <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
           </label>
           <input
@@ -773,8 +773,8 @@ function CreateSelfTaskModal({
               {attachFiles.map((f, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '6px', background: colors.raised, border: `1px solid ${colors.border}` }}>
                   <Paperclip size={11} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: '11px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                  <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                   <button
                     onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
@@ -795,33 +795,33 @@ function CreateSelfTaskModal({
             <button
               onClick={() => attachInputRef.current?.click()}
               style={{
-                width: '100%', padding: '7px 0', borderRadius: '7px',
-                border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
-                background: attachDropActive ? colors.blueTint : colors.raised,
+                width: '100%', padding: '7px 0', borderRadius: '8px',
+                border: `1.5px dashed ${attachDropActive ? colors.brand : colors.border}`,
+                background: attachDropActive ? colors.brandTint : colors.raised,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
             >
               <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
-              <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
-              <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
+              <span style={{ fontSize: '12px', color: colors.secondary }}>Add files</span>
+              <span style={{ fontSize: '12px', color: colors.muted }}>— 10 MB total</span>
             </button>
             {attachDropActive && (
               <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 pointerEvents: 'none',
-                fontSize: '11px', fontWeight: 600, color: colors.blue,
-                background: 'rgba(255,255,255,0.6)', borderRadius: '7px',
+                fontSize: '12px', fontWeight: 600, color: colors.brand,
+                background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
               }}>
                 Drop files to attach
               </div>
             )}
           </div>
-          <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
             Drop files here, paste copied files into the note, or browse
           </p>
-          {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
+          {attachError && <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
         </div>
 
         {/* Important toggle */}
@@ -831,16 +831,16 @@ function CreateSelfTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
             {isUrgent ? 'Marked Important' : 'Mark Important'}
           </span>
           <div style={{
-            width: '30px', height: '17px', borderRadius: '9px',
-            background: isUrgent ? '#C49A28' : colors.float,
+            width: '30px', height: '17px', borderRadius: '8px',
+            background: isUrgent ? '#B7892A' : colors.float,
             position: 'relative', flexShrink: 0,
             transition: 'background 0.16s', border: `1px solid ${colors.border}`,
           }}>
@@ -861,7 +861,7 @@ function CreateSelfTaskModal({
           <button
             onClick={onClose}
             style={{
-              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`,
               background: 'transparent', cursor: 'pointer',
               fontSize: '12px', fontWeight: 600, color: colors.secondary,
             }}
@@ -872,7 +872,7 @@ function CreateSelfTaskModal({
             onClick={handleSubmit}
             disabled={!canSave}
             style={{
-              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              padding: '7px 18px', borderRadius: '8px', border: 'none',
               background: canSave ? colors.primary : colors.float,
               color: canSave ? '#fff' : colors.muted,
               cursor: canSave ? 'pointer' : 'not-allowed',
@@ -961,7 +961,7 @@ function EditTaskModal({
 
         {/* Title */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Task Name <span style={{ color: colors.red }}>*</span>
           </label>
           <input
@@ -975,7 +975,7 @@ function EditTaskModal({
 
         {/* Note */}
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Note <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
           </label>
           <textarea
@@ -990,14 +990,14 @@ function EditTaskModal({
         {/* Priority + Due Date */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Priority</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Priority</label>
             <div style={{ display: 'flex', gap: '4px' }}>
               {PRIORITIES_EDIT.map(p => (
                 <button
                   key={p}
                   onClick={() => setPriority(p)}
                   className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`}
-                  style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize', fontSize: '10px', padding: '3px 0' }}
+                  style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize', fontSize: '12px', padding: '3px 0' }}
                 >
                   {p}
                 </button>
@@ -1005,7 +1005,7 @@ function EditTaskModal({
             </div>
           </div>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Due Date</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Due Date</label>
             <input
               type="date"
               value={dueDate}
@@ -1023,16 +1023,16 @@ function EditTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
             Mark Important
           </span>
           <div style={{
-            width: '30px', height: '17px', borderRadius: '9px',
-            background: isUrgent ? '#C49A28' : colors.float,
+            width: '30px', height: '17px', borderRadius: '8px',
+            background: isUrgent ? '#B7892A' : colors.float,
             position: 'relative', flexShrink: 0,
             transition: 'background 0.16s', border: `1px solid ${colors.border}`,
           }}>
@@ -1053,7 +1053,7 @@ function EditTaskModal({
           <button
             onClick={onClose}
             style={{
-              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`,
               background: 'transparent', cursor: 'pointer',
               fontSize: '12px', fontWeight: 600, color: colors.secondary,
             }}
@@ -1064,7 +1064,7 @@ function EditTaskModal({
             onClick={handleSave}
             disabled={!canSave}
             style={{
-              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              padding: '7px 18px', borderRadius: '8px', border: 'none',
               background: canSave ? colors.primary : colors.float,
               color: canSave ? '#fff' : colors.muted,
               cursor: canSave ? 'pointer' : 'not-allowed',
@@ -1108,13 +1108,13 @@ function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: n
             padding: isMobile ? '10px 12px' : '0 14px',
           }}
         >
-          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: 'rgba(0,0,0,0.06)', flexShrink: 0 }} />
-          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.06)' }} />
+          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: '#E4DED7', flexShrink: 0 }} />
+          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
           {!isMobile && (
             <>
-              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
             </>
           )}
         </div>
@@ -1618,7 +1618,7 @@ function MyTasksContent() {
         <div style={{
           display: 'flex',
           flexDirection: isMobile ? 'column' : 'row',
-          borderRadius: '20px',
+          borderRadius: '12px',
           border: `1px solid ${colors.border}`,
           background: '#fff',
           overflow: 'hidden',
@@ -1661,7 +1661,7 @@ function MyTasksContent() {
                           padding: '7px 6px',
                           background: isActive ? item.accent : 'transparent',
                           border: `1.5px solid ${isActive ? item.accent : colors.border}`,
-                          borderRadius: '20px', cursor: 'pointer', outline: 'none',
+                          borderRadius: '12px', cursor: 'pointer', outline: 'none',
                           transition: 'all 0.12s', minWidth: 0,
                         }}
                       >
@@ -1669,7 +1669,7 @@ function MyTasksContent() {
                         <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary, whiteSpace: 'nowrap' }}>
                           {item.label}
                         </span>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.8)' : colors.muted }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#FFFFFF' : colors.secondary }}>
                           {typeCounts[item.key]}
                         </span>
                       </button>
@@ -1683,17 +1683,17 @@ function MyTasksContent() {
               <div style={{
                 width: '84px', flexShrink: 0,
                 position: 'relative',
-                background: 'rgba(248,250,252,0.6)',
+                background: 'rgba(251,250,248,0.6)',
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
-                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#F1EEE9', zIndex: 0 }} />
                 {/* Two lines, because 84px will not hold "TASK TYPE" on one. */}
                 <div style={{
                   height: RAIL_HEADING_HEIGHT, boxSizing: 'border-box',
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
                   borderBottom: `1px solid ${colors.border}`,
-                  fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+                  fontSize: '12px', fontWeight: 600, letterSpacing: '0.07em',
                   textTransform: 'uppercase', color: colors.muted,
                   lineHeight: 1.2, userSelect: 'none',
                 }}>
@@ -1719,7 +1719,7 @@ function MyTasksContent() {
                         justifyContent: 'center', gap: '7px', padding: '12px 6px',
                         background: isActive ? '#fff' : 'transparent',
                         border: 'none',
-                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #eef2f7' : 'none',
+                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #F1EEE9' : 'none',
                         borderLeft: `3px solid ${isActive ? item.accent : 'transparent'}`,
                         cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
                         ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
@@ -1738,7 +1738,7 @@ function MyTasksContent() {
                         fontSize: '12px', fontWeight: 700,
                         color: typeCounts[item.key] > 0 ? item.accent : colors.muted,
                         background: isActive ? `${item.accent}18` : 'rgba(0,0,0,0.04)',
-                        padding: '1px 6px', borderRadius: '10px',
+                        padding: '1px 6px', borderRadius: '8px',
                         minWidth: '22px', textAlign: 'center',
                       }}>
                         {typeCounts[item.key]}
@@ -1791,7 +1791,7 @@ function MyTasksContent() {
                     padding: '6px 10px',
                     background: colors.raised, border: `1px solid ${colors.border}`,
                     borderRadius: '6px', outline: 'none',
-                    fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
+                    fontSize: '12px', color: filterAssignedBy ? colors.primary : colors.muted,
                     cursor: 'pointer',
                   }}
                 >
@@ -1817,7 +1817,7 @@ function MyTasksContent() {
                   padding: '6px 10px',
                   background: colors.raised, border: `1px solid ${colors.border}`,
                   borderRadius: '6px', outline: 'none',
-                  fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
+                  fontSize: '12px', color: filterPriority ? colors.primary : colors.muted,
                   cursor: 'pointer',
                 }}
               >
@@ -1832,7 +1832,7 @@ function MyTasksContent() {
               <div style={{
                 marginLeft: 'auto',
                 display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.raised, border: `1px solid ${colors.border}`,
+                background: colors.raised, border: `1px solid ${colors.borderInput}`,
                 borderRadius: '6px', padding: '6px 10px',
                 minWidth: '160px',
               }}>
@@ -1862,10 +1862,10 @@ function MyTasksContent() {
                 alignItems: 'center',
                 margin: '8px 24px 0',
                 padding: '8px 0',
-                borderRadius: '10px',
-                background: 'rgba(248,250,252,0.85)',
+                borderRadius: '8px',
+                background: 'rgba(251,250,248,0.85)',
                 border: `1px solid ${colors.border}`,
-                fontSize: '10px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.07em',
                 color: colors.muted,
               }}>
@@ -1920,7 +1920,7 @@ function MyTasksContent() {
                     }
                   />
                 ))}
-                <div style={{ padding: '4px 4px', fontSize: '11px', color: colors.muted }}>
+                <div style={{ padding: '4px 4px', fontSize: '12px', color: colors.muted }}>
                   {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
                 </div>
               </div>

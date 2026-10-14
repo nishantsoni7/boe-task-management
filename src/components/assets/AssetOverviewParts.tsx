@@ -50,17 +50,17 @@ export function OverviewCounts({ summary, onOpen, isMobile }: {
           onClick={() => onOpen(t.key)}
           style={{
             padding: isMobile ? '10px 12px' : '12px 16px', textAlign: 'left', cursor: 'pointer',
-            border: `1px solid ${t.alert ? 'rgba(217,79,79,0.35)' : colors.border}`,
+            border: `1px solid ${t.alert ? 'rgba(180,35,50,0.35)' : colors.border}`,
             display: 'flex', flexDirection: 'column', gap: '2px', font: 'inherit',
           }}
         >
-          <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {t.label}
           </span>
-          <span style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#C13030' : colors.primary, lineHeight: 1.2 }}>
+          <span style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#B42332' : colors.primary, lineHeight: 1.2 }}>
             {t.value}
           </span>
-          {t.hint && <span style={{ fontSize: '10.5px', color: colors.muted }}>{t.hint}</span>}
+          {t.hint && <span style={{ fontSize: '12px', color: colors.muted }}>{t.hint}</span>}
         </button>
       ))}
     </div>
@@ -99,7 +99,7 @@ export function LensTabs({ lens, onChange, attentionCount, peopleCount }: {
               padding: '8px 12px', fontSize: '12.5px', font: 'inherit',
               fontWeight: active ? 600 : 500,
               color: active ? colors.primary : colors.muted,
-              borderBottom: `2px solid ${active ? '#DC1F2E' : 'transparent'}`,
+              borderBottom: `2px solid ${active ? '#B9472E' : 'transparent'}`,
               marginBottom: '-1px',
             }}
           >
@@ -153,29 +153,29 @@ export function AttentionList({ groups, onOpenAsset, catalogueLine }: {
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
               {g.items.map(item => (
                 <span key={item.reason} className={`boe-badge ${ATTENTION_TONE[item.reason] ?? 'boe-badge-pending'}`}
-                  style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                  style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                   {item.label}
                 </span>
               ))}
             </div>
             <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
               {g.row.asset.asset_name}
-              <span style={{ fontWeight: 400, color: colors.muted, fontFamily: 'monospace', fontSize: '11px', marginLeft: '8px' }}>
+              <span style={{ fontWeight: 400, color: colors.muted, fontFamily: 'monospace', fontSize: '12px', marginLeft: '8px' }}>
                 {g.row.asset.asset_code}
               </span>
             </div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
               {catalogueLine(g)} · {g.row.holderLabel}
             </div>
             {g.items.map(item => (
-              <div key={item.reason} style={{ fontSize: '11.5px', color: colors.secondary, marginTop: '2px' }}>
+              <div key={item.reason} style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
                 {item.detail}
               </div>
             ))}
           </div>
           <button
             className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 12px', fontSize: '11.5px', flexShrink: 0 }}
+            style={{ padding: '4px 12px', fontSize: '12px', flexShrink: 0 }}
             onClick={() => onOpenAsset(g.row.asset.id)}
           >
             Open
@@ -228,12 +228,12 @@ export function PeopleList({ people, onSelect }: {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{p.name}</div>
-                <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
                   {p.categories.map(c => c.count > 1 ? `${c.name} ×${c.count}` : c.name).join(' · ')}
                 </div>
               </div>
               {p.awaitingAcceptance > 0 && (
-                <span className="boe-badge boe-badge-pending" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                <span className="boe-badge boe-badge-pending" style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                   {p.awaitingAcceptance} not accepted
                 </span>
               )}
@@ -299,7 +299,7 @@ export function CategoryCountsTable({ rows, onSelect, isMobile }: {
 
   const th = (label: string, align: 'left' | 'right' = 'right') => (
     <th style={{
-      padding: '10px 16px', textAlign: align, fontSize: '11px', fontWeight: 600, color: colors.muted,
+      padding: '10px 16px', textAlign: align, fontSize: '12px', fontWeight: 600, color: colors.muted,
       textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
     }}>{label}</th>
   )

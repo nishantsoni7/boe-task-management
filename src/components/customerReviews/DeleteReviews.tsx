@@ -43,9 +43,9 @@ import {
 
 /** Danger styling, in one place so every destructive control matches. */
 const DANGER = {
-  bg: '#FEF2F2',
-  border: '#FECACA',
-  color: '#B91C1C',
+  bg: '#FBE9EC',
+  border: '#E9B9C1',
+  color: '#B42332',
 } as const
 
 const dangerButton = {
@@ -179,7 +179,7 @@ export function DeleteReviewsSheet({
           role="alert"
           style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
-            padding: '11px 12px', borderRadius: '9px',
+            padding: '11px 12px', borderRadius: '8px',
             background: DANGER.bg, border: `1px solid ${DANGER.border}`,
           }}
         >
@@ -210,7 +210,7 @@ export function DeleteReviewsSheet({
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: colors.tertiary }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: colors.tertiary }}>
                 {card.card_ref}
               </div>
               <div style={{
@@ -220,7 +220,7 @@ export function DeleteReviewsSheet({
                 {card.test_title}
               </div>
               {deletionWarning(card) && (
-                <div style={{ fontSize: '11px', color: DANGER.color, lineHeight: 1.45, marginTop: '3px' }}>
+                <div style={{ fontSize: '12px', color: DANGER.color, lineHeight: 1.45, marginTop: '3px' }}>
                   {deletionWarning(card)}
                 </div>
               )}
@@ -229,7 +229,7 @@ export function DeleteReviewsSheet({
           </li>
         ))}
         {cards.length > 6 && (
-          <li style={{ fontSize: '11.5px', color: colors.muted, paddingLeft: '2px' }}>
+          <li style={{ fontSize: '12px', color: colors.muted, paddingLeft: '2px' }}>
             …and {cards.length - 6} more.
           </li>
         )}
@@ -251,7 +251,7 @@ export function DeleteReviewsSheet({
       </p>
 
       {n > 1 && (
-        <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
           All {n} are deleted together, or none of them are — if one has already gone,
           nothing changes and you can try again against a refreshed list.
         </p>
@@ -275,7 +275,7 @@ function StageBadge({ card }: { card: Pick<TestCard, 'status' | 'sent_confirmed_
   const label = card.status === 'booked' && card.sent_confirmed_at ? 'Sent' : meta.label
   return (
     <span style={{
-      flexShrink: 0, fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap',
+      flexShrink: 0, fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
       padding: '3px 8px', borderRadius: '999px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
     }}>
@@ -397,7 +397,7 @@ export function DeleteAllReviewsSheet({
       ) : (
         <>
           <div style={{
-            border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden',
+            border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
           }}>
             {rows.map((r, i) => (
               <div
@@ -430,7 +430,7 @@ export function DeleteAllReviewsSheet({
               role="alert"
               style={{
                 display: 'flex', gap: '9px', alignItems: 'flex-start',
-                padding: '11px 12px', borderRadius: '9px',
+                padding: '11px 12px', borderRadius: '8px',
                 background: DANGER.bg, border: `1px solid ${DANGER.border}`,
               }}
             >
@@ -454,7 +454,7 @@ export function DeleteAllReviewsSheet({
             display: 'flex', flexDirection: 'column', gap: '6px',
             fontSize: '12px', color: colors.secondary,
           }}>
-            Type <strong style={{ fontFamily: 'var(--font-mono)' }}>{DELETE_ALL_PHRASE}</strong> to confirm
+            Type <strong style={{ fontFamily: 'var(--font-body)' }}>{DELETE_ALL_PHRASE}</strong> to confirm
             <input
               type="text"
               value={typed}
@@ -465,7 +465,7 @@ export function DeleteAllReviewsSheet({
               spellCheck={false}
               aria-label={`Type ${DELETE_ALL_PHRASE} to confirm deleting every review`}
               className="boe-input"
-              style={{ minHeight: '44px', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}
+              style={{ minHeight: '44px', fontFamily: 'var(--font-body)', letterSpacing: '0.04em' }}
             />
           </label>
         </>
@@ -504,7 +504,7 @@ export function DeleteAllReviewsBar({
         <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
           Clear the module
         </div>
-        <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: '2px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           Deletes every review in every stage, including ones candidates are holding.
         </p>
       </div>

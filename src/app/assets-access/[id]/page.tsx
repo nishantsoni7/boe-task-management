@@ -153,14 +153,14 @@ const TRANSFER_EVENT_LABEL: Record<string, string> = {
 
 const TONE_COLOR: Record<string, string> = {
   neutral:  colors.muted,
-  positive: '#15803D',
-  warning:  '#B45309',
-  critical: '#C13030',
+  positive: '#276247',
+  warning:  '#805B0D',
+  critical: '#B42332',
 }
 
 /** BOE red, the module's one accent. Used for primary, active and destructive. */
-const BOE_RED = '#DC1F2E'
-const DANGER_TEXT = '#B42318'
+const BOE_RED = '#B9472E'
+const DANGER_TEXT = '#B42332'
 
 /**
  * Above the sidebar (z-100, globals.css) so the menu panel is never clipped by
@@ -201,7 +201,7 @@ function Panel({ message }: { message: string }) {
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: '11.5px', fontWeight: 700, color: colors.muted,
+      fontSize: '12px', fontWeight: 700, color: colors.muted,
       textTransform: 'uppercase', letterSpacing: '0.05em',
     }}>
       {children}
@@ -251,7 +251,7 @@ function DetailField({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
       <div style={{
-        fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
@@ -316,13 +316,13 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   return (
     <div className="boe-card" style={{ padding: '14px 16px', minWidth: 0 }}>
       <div style={{
-        fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
       }}>
         {label}
       </div>
       <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary }}>{value}</div>
-      {hint && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>{hint}</div>}
+      {hint && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>{hint}</div>}
     </div>
   )
 }
@@ -332,8 +332,8 @@ function Banner({ kind, message }: { kind: 'error' | 'success'; message: string 
   return (
     <div role={isError ? 'alert' : 'status'} style={{
       padding: '10px 12px', borderRadius: '8px',
-      background: isError ? 'rgba(217,79,79,0.1)' : 'rgba(22,163,74,0.10)',
-      color: isError ? '#C13030' : '#15803D',
+      background: isError ? 'rgba(180,35,50,0.1)' : 'rgba(39,98,71,0.10)',
+      color: isError ? '#B42332' : '#276247',
       fontSize: '12px',
     }}>
       {message}
@@ -439,7 +439,7 @@ function MoreActionsMenu({
           style={{
             position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: MENU_Z,
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: '9px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+            borderRadius: '8px', boxShadow: '0 8px 24px rgba(51,90,134,0.14)',
             minWidth: '218px', padding: '4px 0', overflow: 'hidden',
           }}
         >
@@ -468,7 +468,7 @@ function MoreActionsMenu({
                   font: 'inherit', fontSize: '13px', cursor: 'pointer',
                   color: item.danger ? DANGER_TEXT : colors.secondary,
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = item.danger ? '#FEF3F2' : colors.raised }}
+                onMouseEnter={e => { e.currentTarget.style.background = item.danger ? '#FBE9EC' : colors.raised }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
               >
                 {ASSET_ACTION_LABEL[item.key]}
@@ -834,10 +834,10 @@ export default function AssetDetailPage() {
                 <span style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.muted, letterSpacing: '0.02em' }}>
                   {asset.asset_code}
                 </span>
-                <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                   {assetStatusLabel(asset.status)}
                 </span>
-                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                   Warranty: {WARRANTY_STATUS_LABEL[warranty]}
                 </span>
               </div>
@@ -922,7 +922,7 @@ export default function AssetDetailPage() {
                 onKeyDown={e => onTabKeyDown(e, index)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '7px',
-                  padding: '6px 14px', borderRadius: '20px',
+                  padding: '6px 14px', borderRadius: '12px',
                   fontSize: '12px', fontWeight: 600,
                   border: `1.5px solid ${active ? BOE_RED : colors.border}`,
                   background: active ? BOE_RED : colors.base,
@@ -933,8 +933,8 @@ export default function AssetDetailPage() {
                 {t.label}
                 {count !== null && (
                   <span style={{
-                    fontFamily: 'monospace', fontSize: '10.5px', lineHeight: 1,
-                    padding: '3px 6px', borderRadius: '10px',
+                    fontFamily: 'monospace', fontSize: '12px', lineHeight: 1,
+                    padding: '3px 6px', borderRadius: '8px',
                     background: active ? 'rgba(255,255,255,0.22)' : colors.float,
                     color: active ? '#fff' : colors.tertiary,
                   }}>
@@ -1020,7 +1020,7 @@ export default function AssetDetailPage() {
               display: 'inline-flex', alignItems: 'center', gap: '3px',
               background: 'none', border: 'none', padding: '2px 4px 2px 0',
               font: 'inherit', fontSize: '12px', fontWeight: 600,
-              color: colors.tertiary, cursor: 'pointer', borderRadius: '5px',
+              color: colors.tertiary, cursor: 'pointer', borderRadius: '6px',
             }}
             onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
             onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
@@ -1214,13 +1214,13 @@ function OverviewTab({
               <span style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, wordBreak: 'break-word' }}>
                 {custody.label}
               </span>
-              <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px' }}>
+              <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '12px' }}>
                 {assetStatusLabel(asset.status)}
               </span>
               {openAssignment && (
                 <span
                   className={`boe-badge ${ACCEPTANCE_META[openAssignment.status]?.cls ?? 'boe-badge-pending'}`}
-                  style={{ fontSize: '10px' }}
+                  style={{ fontSize: '12px' }}
                 >
                   {ACCEPTANCE_META[openAssignment.status]?.label ?? humanizeToken(openAssignment.status)}
                 </span>
@@ -1232,8 +1232,8 @@ function OverviewTab({
                 and this is where a reader sees it. */}
             {custody.inconsistent && (
               <div role="alert" style={{
-                padding: '8px 10px', borderRadius: '7px', fontSize: '11.5px',
-                background: 'rgba(217,79,79,0.08)', color: DANGER_TEXT,
+                padding: '8px 10px', borderRadius: '8px', fontSize: '12px',
+                background: 'rgba(180,35,50,0.08)', color: DANGER_TEXT,
               }}>
                 This asset&rsquo;s status and its custody records disagree. Review the assignment history.
               </div>
@@ -1269,10 +1269,10 @@ function OverviewTab({
                 {openAssignment.accepted_at ? (
                   <div style={{
                     display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
-                    padding: '8px 10px', borderRadius: '7px',
-                    background: 'rgba(69,168,112,0.10)',
+                    padding: '8px 10px', borderRadius: '8px',
+                    background: 'rgba(39,98,71,0.10)',
                   }}>
-                    <span className="boe-badge boe-badge-completed" style={{ fontSize: '10px' }}>Accepted</span>
+                    <span className="boe-badge boe-badge-completed" style={{ fontSize: '12px' }}>Accepted</span>
                     <span style={{ fontSize: '12px', color: colors.primary }}>
                       {employeeName(openAssignment.accepted_by ?? openAssignment.employee_id) ?? 'The custodian'}
                       {' · '}
@@ -1350,7 +1350,7 @@ function OverviewTab({
                 onClick={() => onShowTab('activity')}
                 style={{
                   background: 'none', border: 'none', padding: 0, font: 'inherit',
-                  fontSize: '11.5px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
+                  fontSize: '12px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
                 }}
               >
                 View all ({activity.length})
@@ -1369,7 +1369,7 @@ function OverviewTab({
                       <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
                         {assetActivityTitle(entry.event_type)}
                       </span>
-                      <span style={{ fontSize: '11px', color: colors.muted }}>{fmtDateTime(entry.event_at)}</span>
+                      <span style={{ fontSize: '12px', color: colors.muted }}>{fmtDateTime(entry.event_at)}</span>
                     </div>
                     <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>{entry.summary}</div>
                   </div>
@@ -1396,10 +1396,10 @@ function OverviewTab({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '10px' }}>
+                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '12px' }}>
                   {WARRANTY_STATUS_LABEL[warranty]}
                 </span>
-                {warrantyDetail && <span style={{ fontSize: '11.5px', color: colors.muted }}>{warrantyDetail}</span>}
+                {warrantyDetail && <span style={{ fontSize: '12px', color: colors.muted }}>{warrantyDetail}</span>}
               </div>
               <SideFact label="Start"  value={asset.warranty_start_date ? fmtDate(asset.warranty_start_date) : null} />
               <SideFact label="Expiry" value={asset.warranty_expiry_date ? fmtDate(asset.warranty_expiry_date) : null} />
@@ -1423,7 +1423,7 @@ function OverviewTab({
               <SideFact label="Last service"   value={serviceSummary.lastServiceDate ? fmtDate(serviceSummary.lastServiceDate) : null} />
               <SideFact label="Next service"   value={serviceSummary.upcomingServiceDate ? fmtDate(serviceSummary.upcomingServiceDate) : null} />
               {serviceSummary.openRecordCount > 0 && (
-                <div style={{ fontSize: '11.5px', color: '#B45309' }}>
+                <div style={{ fontSize: '12px', color: '#805B0D' }}>
                   {serviceSummary.openRecordCount} record{serviceSummary.openRecordCount === 1 ? '' : 's'} still open.
                 </div>
               )}
@@ -1440,7 +1440,7 @@ function OverviewTab({
               onClick={() => onShowTab('warranty')}
               style={{
                 background: 'none', border: 'none', padding: 0, font: 'inherit',
-                fontSize: '11.5px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
+                fontSize: '12px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
               }}
             >
               View all ({documents.length})
@@ -1471,7 +1471,7 @@ function OverviewTab({
                   }}>
                     {d.file_name}
                   </div>
-                  <div style={{ fontSize: '11px', color: colors.muted }}>
+                  <div style={{ fontSize: '12px', color: colors.muted }}>
                     {ASSET_DOCUMENT_TYPE_LABEL[d.doc_type] ?? humanizeToken(d.doc_type)}
                     {' · '}{formatFileSize(d.file_size)}
                   </div>
@@ -1532,16 +1532,16 @@ function AssignmentsTab({
                 <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '4px' }}>
                   {side(t.from_employee_id, t.from_location, t.from_employee_name)} → {side(t.to_employee_id, t.to_location, t.to_employee_name)}
                 </div>
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
                   {fmtDateTime(t.transfer_date)}
                   {t.effective_date ? ` · Handover ${fmtDate(t.effective_date)}` : ''}
                 </div>
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                   By {t.performed_by_name ?? (t.performed_by ? employeeName(t.performed_by) : null) ?? 'the system'}
                   {t.condition ? ` · ${assetConditionLabel(t.condition)}` : ''}
                 </div>
                 {t.remarks && (
-                  <div style={{ fontSize: '11.5px', color: colors.secondary, marginTop: '6px', whiteSpace: 'pre-wrap' }}>
+                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '6px', whiteSpace: 'pre-wrap' }}>
                     {t.remarks}
                   </div>
                 )}
@@ -1556,7 +1556,7 @@ function AssignmentsTab({
                   <tr style={{ background: colors.raised, borderBottom: `1px solid ${colors.border}` }}>
                     {['Event', 'From', 'To', 'Departments', 'Recorded', 'Handover', 'Condition', 'By', 'Remarks'].map(h => (
                       <th key={h} style={{
-                        padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 600,
+                        padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: 600,
                         color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                       }}>{h}</th>
                     ))}
@@ -1603,7 +1603,7 @@ function AssignmentsTab({
                   <tr style={{ background: colors.raised, borderBottom: `1px solid ${colors.border}` }}>
                     {['Employee', 'Assigned By', 'Assigned', 'Accepted', 'Ended', 'State'].map(h => (
                       <th key={h} style={{
-                        padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 600,
+                        padding: '10px 12px', textAlign: 'left', fontSize: '12px', fontWeight: 600,
                         color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                       }}>{h}</th>
                     ))}
@@ -1618,7 +1618,7 @@ function AssignmentsTab({
                       <td style={{ padding: '10px 12px', color: colors.muted, whiteSpace: 'nowrap' }}>{fmtDate(a.accepted_at)}</td>
                       <td style={{ padding: '10px 12px', color: colors.muted, whiteSpace: 'nowrap' }}>{fmtDate(a.returned_at ?? a.lost_at)}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <span className={`boe-badge ${ACCEPTANCE_META[a.status]?.cls ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                        <span className={`boe-badge ${ACCEPTANCE_META[a.status]?.cls ?? 'boe-badge-pending'}`} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {ACCEPTANCE_META[a.status]?.label ?? humanizeToken(a.status)}
                         </span>
                       </td>
@@ -1670,13 +1670,13 @@ function ServiceTab({
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {s.status === 'in_progress' && (
-                    <span className="boe-badge boe-badge-pending" style={{ fontSize: '10px' }}>Away for service</span>
+                    <span className="boe-badge boe-badge-pending" style={{ fontSize: '12px' }}>Away for service</span>
                   )}
                   <span style={{ fontWeight: 700, color: colors.primary, fontSize: '13.5px' }}>{fmtMoney(s.cost)}</span>
                 </div>
               </div>
 
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Sent {fmtDate(s.sent_date)} · Returned {fmtDate(s.returned_date)}
                 {s.next_service_date ? ` · Next ${fmtDate(s.next_service_date)}` : ''}
               </div>
@@ -1697,7 +1697,7 @@ function ServiceTab({
                 </div>
               )}
 
-              <div style={{ fontSize: '11px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 {s.condition_after ? `Condition after: ${ASSET_CONDITION_LABEL[s.condition_after] ?? s.condition_after} · ` : ''}
                 Recorded by {(s.recorded_by ? names[s.recorded_by] : null) ?? 'the system'} on {fmtDate(s.created_at)}
               </div>
@@ -1751,16 +1751,16 @@ function WarrantyTab({
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               <div style={{
-                fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+                fontSize: '12px', fontWeight: 600, color: colors.muted,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 Status
               </div>
               <div>
-                <span className={`boe-badge ${WARRANTY_BADGE[status]}`} style={{ fontSize: '10px' }}>
+                <span className={`boe-badge ${WARRANTY_BADGE[status]}`} style={{ fontSize: '12px' }}>
                   {WARRANTY_STATUS_LABEL[status]}
                 </span>
-                {detail && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>{detail}</div>}
+                {detail && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>{detail}</div>}
               </div>
             </div>
             <DetailField label="Warranty Start"  value={asset.warranty_start_date ? fmtDate(asset.warranty_start_date) : null} />
@@ -1812,7 +1812,7 @@ function WarrantyTab({
                   <div style={{ fontWeight: 600, color: colors.primary, fontSize: '13px', wordBreak: 'break-word' }}>
                     {d.file_name}
                   </div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                     {ASSET_DOCUMENT_TYPE_LABEL[d.doc_type] ?? humanizeToken(d.doc_type)}
                     {' · '}{formatFileSize(d.file_size)}
                     {' · '}Uploaded by {names[d.uploaded_by] ?? 'an employee'} on {fmtDate(d.created_at)}
@@ -1883,14 +1883,14 @@ function ActivityTab({
                   <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                     {assetActivityTitle(entry.event_type)}
                   </span>
-                  <span style={{ fontSize: '11px', color: colors.muted }}>{fmtDateTime(entry.event_at)}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{fmtDateTime(entry.event_at)}</span>
                 </div>
 
                 <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '2px' }}>
                   {entry.summary}
                 </div>
 
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px' }}>
                   {actor ? `By ${actor}` : 'By the system'}
                   {employee && employee !== actor ? ` · Employee: ${employee}` : ''}
                 </div>
@@ -1898,7 +1898,7 @@ function ActivityTab({
                 {lines.length > 0 && (
                   <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     {lines.map((line, i) => (
-                      <div key={i} style={{ fontSize: '11.5px', color: colors.secondary, wordBreak: 'break-word' }}>
+                      <div key={i} style={{ fontSize: '12px', color: colors.secondary, wordBreak: 'break-word' }}>
                         <span style={{ color: colors.muted }}>{line.label}: </span>
                         {line.value}
                       </div>

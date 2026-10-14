@@ -170,10 +170,10 @@ export function QuickCapture({
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: '3px', flexShrink: 0, width: '72px', minHeight: '44px', padding: '8px',
-                fontSize: '10.5px', fontWeight: 600,
-                background: voice.listening ? 'rgba(217,79,79,0.10)' : colors.base,
-                color: voice.listening ? '#C13030' : colors.primary,
-                border: `1px solid ${voice.listening ? 'rgba(217,79,79,0.35)' : colors.borderSoft}`,
+                fontSize: '12px', fontWeight: 600,
+                background: voice.listening ? 'rgba(180,35,50,0.10)' : colors.base,
+                color: voice.listening ? '#B42332' : colors.primary,
+                border: `1px solid ${voice.listening ? 'rgba(180,35,50,0.35)' : colors.borderSoft}`,
               }}
             >
               <Mic size={18} strokeWidth={1.9} />
@@ -181,21 +181,21 @@ export function QuickCapture({
             </button>
           )}
         </div>
-        <div id="quick-capture-hint" style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+        <div id="quick-capture-hint" style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {QUICK_CAPTURE_HINT}
         </div>
         {!voice.supported && (
-          <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             {VOICE_UNSUPPORTED_MESSAGE}
           </div>
         )}
         {voice.message && (
-          <div role="status" style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
+          <div role="status" style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
             {voice.message}
           </div>
         )}
         {shownProblem && (
-          <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>
+          <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>
             {shownProblem}
           </div>
         )}
@@ -209,7 +209,7 @@ export function QuickCapture({
         <div
           data-testid="quick-capture-preview"
           style={{
-            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
             background: colors.raised, padding: '10px 12px',
             display: 'flex', flexDirection: 'column', gap: '5px',
           }}
@@ -217,10 +217,10 @@ export function QuickCapture({
           <div style={{ fontSize: '12.5px', color: colors.primary, lineHeight: 1.5 }}>
             {preview.parsed_amount !== null
               ? <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatMoney(preview.parsed_amount)}</strong>
-              : <span style={{ color: '#8A5A00', fontWeight: 600 }}>Amount not heard</span>}
+              : <span style={{ color: '#805B0D', fontWeight: 600 }}>Amount not heard</span>}
             {preview.parsed_paid_to && <> · {preview.parsed_paid_to}</>}
           </div>
-          <div style={{ fontSize: '11px', color: missing.length > 0 ? '#8A5A00' : colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: missing.length > 0 ? '#805B0D' : colors.muted, lineHeight: 1.5 }}>
             {draftMissingSummary(missing)}
             {missing.length > 0 && ' — you can fill these in later.'}
           </div>
@@ -230,7 +230,7 @@ export function QuickCapture({
       {error && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px',
-          background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px', lineHeight: 1.5,
+          background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px', lineHeight: 1.5,
         }}>
           {error}
         </div>
@@ -259,7 +259,7 @@ export function QuickCapture({
       {/* The shapes that work, learned by using them rather than by reading a
           manual. Tapping one fills the box — it does not save it. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-        <span style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Try
         </span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -270,7 +270,7 @@ export function QuickCapture({
               disabled={saving}
               onClick={() => { setText(example); setError(null) }}
               className="boe-btn boe-btn-ghost"
-              style={{ minHeight: '36px', padding: '5px 10px', fontSize: '11.5px', color: colors.tertiary }}
+              style={{ minHeight: '36px', padding: '5px 10px', fontSize: '12px', color: colors.tertiary }}
             >
               {example}
             </button>

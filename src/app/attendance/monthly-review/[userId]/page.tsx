@@ -53,18 +53,18 @@ function formatTime(iso: string | null): string {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string; label: string }> = {
-    present:       { bg: 'rgba(16,185,129,0.1)',  color: '#059669', label: 'Present' },
-    checked_in:    { bg: 'rgba(59,130,246,0.1)',  color: '#2563EB', label: 'Checked In' },
-    absent:        { bg: 'rgba(239,68,68,0.1)',   color: '#DC2626', label: 'Absent' },
-    half_day:      { bg: 'rgba(245,158,11,0.1)',  color: '#D97706', label: 'Half Day' },
-    late:          { bg: 'rgba(249,115,22,0.1)',  color: '#EA580C', label: 'Late' },
-    missing_punch: { bg: 'rgba(139,92,246,0.1)',  color: '#7C3AED', label: 'Missing Punch' },
+    present:       { bg: 'rgba(39,98,71,0.1)',  color: '#276247', label: 'Present' },
+    checked_in:    { bg: 'rgba(51,90,134,0.1)',  color: '#335A86', label: 'Checked In' },
+    absent:        { bg: 'rgba(180,35,50,0.1)',   color: '#B42332', label: 'Absent' },
+    half_day:      { bg: 'rgba(104,109,108,0.1)',  color: '#595D5B', label: 'Half Day' },
+    late:          { bg: 'rgba(196,138,26,0.1)',  color: '#805B0D', label: 'Late' },
+    missing_punch: { bg: 'rgba(180,35,50,0.1)',  color: '#A12438', label: 'Missing Punch' },
   }
-  const s = map[status] ?? { bg: 'rgba(140,148,166,0.1)', color: '#8C94A6', label: status }
+  const s = map[status] ?? { bg: 'rgba(104,109,108,0.1)', color: '#686D6C', label: status }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 9px', borderRadius: 20,
-      fontSize: 11.5, fontWeight: 600, background: s.bg, color: s.color,
+      display: 'inline-block', padding: '2px 9px', borderRadius: 12,
+      fontSize: 12, fontWeight: 600, background: s.bg, color: s.color,
       textTransform: 'capitalize',
     }}>
       {s.label}
@@ -184,7 +184,7 @@ export default function EmployeeMonthlyDetailPage() {
         {employee && (
           <div style={{
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '16px 20px', marginBottom: 20,
+            borderRadius: 8, padding: '16px 20px', marginBottom: 20,
             display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
           }}>
             <div>
@@ -195,14 +195,14 @@ export default function EmployeeMonthlyDetailPage() {
             </div>
             <div style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period</div>
               <div style={{ fontSize: 13, color: colors.primary, marginTop: 2 }}>{monthLabel}</div>
             </div>
             {employee.office_timing && (
               <>
                 <div style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Office Timing</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Office Timing</div>
                   <div style={{ fontSize: 13, color: colors.primary, marginTop: 2 }}>{employee.office_timing}</div>
                 </div>
               </>
@@ -216,9 +216,9 @@ export default function EmployeeMonthlyDetailPage() {
         {/* ── Error ── */}
         {error && (
           <div style={{
-            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+            background: 'rgba(180,35,50,0.08)', border: '1px solid rgba(180,35,50,0.3)',
             borderRadius: 8, padding: '12px 16px', marginBottom: 16,
-            fontSize: 13, color: '#DC2626',
+            fontSize: 13, color: '#B42332',
           }}>
             {error}
           </div>
@@ -242,28 +242,28 @@ export default function EmployeeMonthlyDetailPage() {
           const absent = records.filter(r => r.status === 'absent').length
           const total_records = records.length
           const pct = total_records > 0 ? Math.round((present + half_day * 0.5) / total_records * 1000) / 10 : 0
-          const pctColor = pct >= 90 ? '#059669' : pct >= 75 ? '#D97706' : '#DC2626'
+          const pctColor = pct >= 90 ? '#276247' : pct >= 75 ? '#805B0D' : '#B42332'
           const hrs = Math.floor(totalHours); const mins = Math.round((totalHours - hrs) * 60)
           const hoursLabel = totalHours <= 0 ? '—' : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`
           return (
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
               {[
-                { label: 'Present',        value: String(present),       color: '#3B82F6' },
-                { label: 'Half Day',       value: String(half_day),      color: '#F59E0B' },
-                { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#DC2626' : '#6B7384' },
-                { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#7C3AED' : '#6B7384' },
-                { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#D97706' : '#6B7384' },
-                { label: 'Productive Hrs', value: hoursLabel,            color: '#059669' },
+                { label: 'Present',        value: String(present),       color: '#335A86' },
+                { label: 'Half Day',       value: String(half_day),      color: '#595D5B' },
+                { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#B42332' : '#686D6C' },
+                { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#A12438' : '#686D6C' },
+                { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#805B0D' : '#686D6C' },
+                { label: 'Productive Hrs', value: hoursLabel,            color: '#276247' },
                 { label: 'Attendance %',   value: total_records === 0 ? '—' : `${pct}%`, color: pctColor },
               ].map(k => (
                 <div key={k.label} style={{
-                  background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)',
-                  borderRadius: 10, padding: '14px 18px', minWidth: 90,
+                  background: '#FFFFFF', border: '1px solid #E4DED7',
+                  borderRadius: 8, padding: '14px 18px', minWidth: 90,
                 }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: k.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                     {k.value}
                   </div>
-                  <div style={{ fontSize: 11, color: '#6B7384', marginTop: 5 }}>{k.label}</div>
+                  <div style={{ fontSize: 12, color: '#686D6C', marginTop: 5 }}>{k.label}</div>
                 </div>
               ))}
             </div>
@@ -274,7 +274,7 @@ export default function EmployeeMonthlyDetailPage() {
         {fetching ? (
           <div style={{
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '48px 24px', textAlign: 'center',
+            borderRadius: 8, padding: '48px 24px', textAlign: 'center',
             color: colors.tertiary, fontSize: 13,
           }}>
             Loading records…
@@ -282,7 +282,7 @@ export default function EmployeeMonthlyDetailPage() {
         ) : records.length > 0 ? (
           <div style={{
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, overflow: 'hidden',
+            borderRadius: 8, overflow: 'hidden',
           }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -292,7 +292,7 @@ export default function EmployeeMonthlyDetailPage() {
                       <th key={col} style={{
                         padding: '10px 16px',
                         textAlign: col === 'Date' ? 'left' : 'center',
-                        fontSize: 11, fontWeight: 600, color: colors.tertiary,
+                        fontSize: 12, fontWeight: 600, color: colors.tertiary,
                         textTransform: 'uppercase', letterSpacing: '0.05em',
                         whiteSpace: 'nowrap',
                       }}>
@@ -331,7 +331,7 @@ export default function EmployeeMonthlyDetailPage() {
                         {fmtLateDuration(rec.late_minutes)}
                       </td>
                       <td style={{ padding: '11px 16px', textAlign: 'center', whiteSpace: 'nowrap',
-                        color: rec.penalty ? '#7C3AED' : colors.tertiary,
+                        color: rec.penalty ? '#335A86' : colors.tertiary,
                         fontWeight: rec.penalty ? 600 : 400,
                       }}>
                         {rec.penalty ?? '—'}
@@ -345,7 +345,7 @@ export default function EmployeeMonthlyDetailPage() {
         ) : !error && (
           <div style={{
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '48px 24px', textAlign: 'center',
+            borderRadius: 8, padding: '48px 24px', textAlign: 'center',
             color: colors.tertiary, fontSize: 13,
           }}>
             No attendance records found for this employee in {monthLabel}.

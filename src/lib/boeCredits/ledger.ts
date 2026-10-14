@@ -63,14 +63,14 @@ export function creditTransactionTone(row: Pick<CreditTransaction, 'transaction_
   fg: string
 } {
   switch (row.transaction_type) {
-    case 'review_reward':      return { dot: '#059669', fg: '#047857' }
-    case 'redemption':         return { dot: '#4F6FD0', fg: '#3B63B8' }
-    case 'reversal':           return { dot: '#B45309', fg: '#B45309' }
-    case 'review_month_lapse': return { dot: '#DC2626', fg: '#B91C1C' }
+    case 'review_reward':      return { dot: '#276247', fg: '#276247' }
+    case 'redemption':         return { dot: '#335A86', fg: '#335A86' }
+    case 'reversal':           return { dot: '#805B0D', fg: '#805B0D' }
+    case 'review_month_lapse': return { dot: '#B42332', fg: '#B42332' }
     case 'admin_adjustment':
       return row.credits >= 0
-        ? { dot: '#059669', fg: '#047857' }
-        : { dot: '#DC2626', fg: '#B91C1C' }
+        ? { dot: '#276247', fg: '#276247' }
+        : { dot: '#B42332', fg: '#B42332' }
   }
 }
 

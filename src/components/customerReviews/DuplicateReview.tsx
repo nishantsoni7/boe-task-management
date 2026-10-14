@@ -80,9 +80,9 @@ export function duplicateBadge(s: DuplicateSummary | undefined): { label: string
 }
 
 const TONES = {
-  amber: { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  red:   { bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
-  grey:  { bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' },
+  amber: { bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  red:   { bg: '#FBE9EC', color: '#B42332', border: '#E9B9C1' },
+  grey:  { bg: '#F1EEE9', color: '#4C5352', border: '#CFC8BF' },
 } as const
 
 export function DuplicateBadge({ summary }: { summary: DuplicateSummary | undefined }) {
@@ -92,7 +92,7 @@ export function DuplicateBadge({ summary }: { summary: DuplicateSummary | undefi
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
-      fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+      fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
       background: t.bg, color: t.color, border: `1px solid ${t.border}`,
     }}>
       {badge.tone !== 'grey' && <AlertTriangle size={11} strokeWidth={2.4} aria-hidden="true" />}
@@ -170,7 +170,7 @@ export function DuplicatePanel({
   if (state.kind === 'loading') return <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>Checking for duplicates…</p>
   if (state.kind === 'error') {
     return (
-      <p role="status" style={{ margin: 0, fontSize: '12px', color: '#92400E' }}>
+      <p role="status" style={{ margin: 0, fontSize: '12px', color: '#805B0D' }}>
         {DUPLICATE_UNAVAILABLE_TITLE}. The duplicate results could not be loaded.
       </p>
     )
@@ -192,14 +192,14 @@ export function DuplicatePanel({
 
   return (
     <section aria-label="Possible duplicates" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <h3 style={{ margin: 0, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
+      <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
         Duplicate check
       </h3>
 
       {state.status === 'unavailable' && (
         <p role="status" style={{
-          margin: 0, padding: '9px 12px', borderRadius: '9px', fontSize: '12.5px', lineHeight: 1.5,
-          border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E',
+          margin: 0, padding: '9px 12px', borderRadius: '8px', fontSize: '12.5px', lineHeight: 1.5,
+          border: '1px solid #E6D2A0', background: '#FAF0DA', color: '#805B0D',
         }}>
           <strong>{DUPLICATE_UNAVAILABLE_TITLE}.</strong> The check did not run when this review was saved, so it is not confirmed as unique.
         </p>
@@ -259,7 +259,7 @@ function FlagRow({
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px',
-      padding: '9px 12px', borderRadius: '9px', border: `1px solid ${tone.border}`, background: tone.bg,
+      padding: '9px 12px', borderRadius: '8px', border: `1px solid ${tone.border}`, background: tone.bg,
     }}>
       <div style={{ flex: '1 1 220px', minWidth: 0, fontSize: '12.5px', lineHeight: 1.5, color: tone.color }}>
         <div style={{ fontWeight: 700 }}>
@@ -375,8 +375,8 @@ function DuplicateCompareSheet({
         {error && <p role="alert" style={{ margin: 0, fontSize: '12.5px', color: colors.red }}>{error}</p>}
 
         <section aria-label="Evidence" style={{
-          padding: '10px 12px', borderRadius: '9px', border: '1px solid #FDE68A', background: '#FFFBEB',
-          fontSize: '12.5px', lineHeight: 1.55, color: '#92400E',
+          padding: '10px 12px', borderRadius: '8px', border: '1px solid #E6D2A0', background: '#FAF0DA',
+          fontSize: '12.5px', lineHeight: 1.55, color: '#805B0D',
         }}>
           <strong>{DUPLICATE_STRENGTH_LABELS[flag.strength]}</strong>
           {flag.matched_was_deleted ? ' — the earlier review was deleted by its employee' : ''}
@@ -412,7 +412,7 @@ function DuplicateCompareSheet({
         </div>
 
         {rejectedForDuplicate && flag.decision === 'different' ? (
-          <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#92400E', lineHeight: 1.5 }}>
+          <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#805B0D', lineHeight: 1.5 }}>
             This review was rejected when it was first marked a duplicate. Changing the decision to Different review did not restore it or any credit: the employee can Edit &amp; Reapply it if it earned no credit, otherwise they submit it again as a new review (or an administrator posts a BOE Credits adjustment).
           </p>
         ) : null}
@@ -453,8 +453,8 @@ function DuplicateCompareSheet({
             </label>
             {confirmingDuplicate ? (
               <div role="alert" style={{
-                display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', borderRadius: '9px',
-                border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: '12.5px', lineHeight: 1.55,
+                display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', borderRadius: '8px',
+                border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332', fontSize: '12.5px', lineHeight: 1.55,
               }}>
                 <strong>Mark {submission.submission_ref} as a duplicate?</strong>
                 {rewarded ? (
@@ -469,7 +469,7 @@ function DuplicateCompareSheet({
                 )}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { void decide('duplicate') }}
-                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}>
+                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B42332', borderColor: '#B42332' }}>
                     {busy ? 'Recording…' : 'Yes, mark as duplicate'}
                   </button>
                   <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => setConfirmingDuplicate(false)}
@@ -486,7 +486,7 @@ function DuplicateCompareSheet({
                     className="boe-btn boe-btn-primary"
                     disabled={busy}
                     onClick={() => setConfirmingDuplicate(true)}
-                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}
+                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B42332', borderColor: '#B42332' }}
                   >
                     Duplicate
                   </button>
@@ -502,7 +502,7 @@ function DuplicateCompareSheet({
                 </button>
               </div>
             )}
-            <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               <strong>Duplicate</strong> rejects the review and reverses its credit once. <strong>Different review</strong>{' '}changes nothing
               about the review&apos;s status or credit; if it follows a Duplicate decision it removes the duplicate mark but restores no credit.
               A shared name alone cannot be confirmed as a duplicate. If the employee edits the review it is checked again and this decision does not carry over.

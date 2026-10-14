@@ -143,7 +143,7 @@ export function ItemUpdateModal({
           background: colors.raised, border: `1px solid ${colors.border}`,
         }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: colors.muted,
+            fontSize: '12px', fontWeight: 700, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
           }}>
             Standing commitment
@@ -154,12 +154,12 @@ export function ItemUpdateModal({
           {/* One step further back, for the reader who wants the direction of
               travel rather than just the last line. */}
           {previousUpdate && (
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '6px', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '6px', lineHeight: 1.4 }}>
               <span style={{ fontWeight: 600 }}>Before that: </span>{previousUpdate}
             </div>
           )}
           {item.next_follow_up_date && (
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '6px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '6px' }}>
               Committed follow-up: {formatMeetingDate(item.next_follow_up_date)}
             </div>
           )}
@@ -263,7 +263,7 @@ export function ItemUpdateModal({
             onClick={() => setShowMore(true)}
             style={{
               alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
-              fontSize: '12px', fontWeight: 600, color: colors.blue, cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk, cursor: 'pointer',
             }}
           >
             More detail — stage and issue
@@ -288,7 +288,7 @@ export function ItemUpdateModal({
           ) : undefined}
         />
 
-        <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'right' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, textAlign: 'right' }}>
           Ctrl + Enter saves
         </div>
       </div>

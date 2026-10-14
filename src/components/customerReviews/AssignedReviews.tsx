@@ -36,7 +36,7 @@ import { REVIEW_TYPE_META, type ReviewType, type TestCard } from '@/lib/customer
 
 const PANEL: React.CSSProperties = {
   border: `1px solid ${colors.borderSoft}`,
-  borderRadius: '10px',
+  borderRadius: '8px',
   background: colors.base,
   padding: '12px 14px',
 }
@@ -51,7 +51,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
       }}>
         {value}
       </div>
-      <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '2px' }}>{label}</div>
+      <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>{label}</div>
     </div>
   )
 }
@@ -69,8 +69,8 @@ export function AssignedCounts({ counts }: { counts: ReviewCounts }) {
   return (
     <div style={{ ...PANEL, display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
       <Stat label="Assigned" value={counts.assigned} />
-      <Stat label="Posted" value={counts.posted} tone="#166534" />
-      <Stat label="Remaining" value={counts.remaining} tone={counts.remaining > 0 ? '#92400E' : colors.secondary} />
+      <Stat label="Posted" value={counts.posted} tone="#276247" />
+      <Stat label="Remaining" value={counts.remaining} tone={counts.remaining > 0 ? '#805B0D' : colors.secondary} />
       <Stat label="Available now" value={counts.available} />
     </div>
   )
@@ -121,8 +121,8 @@ export function ReadinessBadge({
     return <ReviewBadge meta={{ label: CHECKING_IMAGES_LABEL, bg: colors.raised, color: colors.tertiary, border: colors.border }} />
   }
   return readiness === 'ready'
-    ? <ReviewBadge meta={{ label: READY_LABEL, bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' }} />
-    : <ReviewBadge meta={{ label: AWAITING_IMAGES_LABEL, bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' }} />
+    ? <ReviewBadge meta={{ label: READY_LABEL, bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' }} />
+    : <ReviewBadge meta={{ label: AWAITING_IMAGES_LABEL, bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' }} />
 }
 
 /** The type badge. Small, and never the same colour as any status. */

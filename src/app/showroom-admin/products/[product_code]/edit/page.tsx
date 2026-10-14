@@ -67,7 +67,7 @@ const FORM_CSS = `
 .form-card {
   background: var(--fc-base);
   border: 1.5px solid var(--fc-border);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 28px;
 }
 .form-section {
@@ -78,7 +78,7 @@ const FORM_CSS = `
 .section-label {
   font-size: 13px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #303536;
   margin: 0;
 }
 .product-field-grid {
@@ -657,7 +657,7 @@ function EditProductContent() {
                 fontSize: '12px', color: colors.tertiary,
                 background: colors.raised,
                 border: `1px solid ${colors.border}`,
-                borderRadius: '7px', padding: '10px 12px',
+                borderRadius: '8px', padding: '10px 12px',
                 marginTop: '-8px',
               }}>
                 Status: <strong>{product.is_active ? 'Active' : 'Inactive'}</strong> —
@@ -707,14 +707,14 @@ function EditProductContent() {
 /** Placeholder in the shape of the edit layout, so nothing jumps on arrival. */
 function FormSkeleton() {
   const bar = (width: string | number, height = 14) => (
-    <div style={{ width, height, borderRadius: '4px', background: colors.raised }} />
+    <div style={{ width, height, borderRadius: '6px', background: colors.raised }} />
   )
   return (
     <div className="product-edit-layout">
       <div style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '16px', padding: '28px',
+        borderRadius: '12px', padding: '28px',
         display: 'flex', flexDirection: 'column', gap: '18px',
       }}>
         {bar(120, 13)}
@@ -734,7 +734,7 @@ function FormSkeleton() {
         <div style={{
           background: colors.base,
           border: `1.5px solid ${colors.border}`,
-          borderRadius: '16px', padding: '16px',
+          borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
           {bar(90, 13)}
@@ -768,7 +768,7 @@ function DiscardChangesModal({
       }}
     >
       <div style={{
-        background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400,
+        background: '#fff', borderRadius: '12px', width: '100%', maxWidth: 400,
         padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
         <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '10px' }}>
@@ -892,7 +892,7 @@ function ImagesEditor({ images, onChange }: { images: string[]; onChange: (imgs:
       <div>
         <button type="button" onClick={add} style={addSpecBtnStyle}>+ Add Image URL</button>
       </div>
-      <span style={{ fontSize: '11px', color: '#888' }}>First URL is the primary display image</span>
+      <span style={{ fontSize: '12px', color: '#686D6C' }}>First URL is the primary display image</span>
     </div>
   )
 }
@@ -905,25 +905,25 @@ function DimsEditor({ dims, onChange }: { dims: DimState; onChange: (d: DimState
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: '12px', alignItems: 'end' }}>
         <div className="product-field">
-          <span className="field-label" style={{ color: '#555' }}>Width</span>
+          <span className="field-label" style={{ color: '#4C5352' }}>Width</span>
           <input value={dims.width} onChange={e => set('width', e.target.value)} placeholder="e.g. 24" type="number" min="0" step="0.1" style={inputStyle} />
         </div>
         <div className="product-field">
-          <span className="field-label" style={{ color: '#555' }}>Depth</span>
+          <span className="field-label" style={{ color: '#4C5352' }}>Depth</span>
           <input value={dims.depth} onChange={e => set('depth', e.target.value)} placeholder="e.g. 24" type="number" min="0" step="0.1" style={inputStyle} />
         </div>
         <div className="product-field">
-          <span className="field-label" style={{ color: '#555' }}>Height</span>
+          <span className="field-label" style={{ color: '#4C5352' }}>Height</span>
           <input value={dims.height} onChange={e => set('height', e.target.value)} placeholder="e.g. 32" type="number" min="0" step="0.1" style={inputStyle} />
         </div>
         <div className="product-field">
-          <span className="field-label" style={{ color: '#555' }}>Unit</span>
+          <span className="field-label" style={{ color: '#4C5352' }}>Unit</span>
           <select value={dims.unit} onChange={e => set('unit', e.target.value)} style={inputStyle}>
             {DIM_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
       </div>
-      <span style={{ fontSize: '11px', color: '#888' }}>Leave blank for any dimension you don&apos;t want to display</span>
+      <span style={{ fontSize: '12px', color: '#686D6C' }}>Leave blank for any dimension you don&apos;t want to display</span>
     </div>
   )
 }
@@ -945,29 +945,29 @@ const inputStyle: React.CSSProperties = {
   padding: '9px 11px',
   height: '36px',
   fontSize: '13px',
-  color: '#111318',
+  color: '#303536',
   background: '#fff',
-  border: '1.5px solid rgba(0,0,0,0.13)',
-  borderRadius: '7px',
+  border: '1.5px solid #CFC8BF',
+  borderRadius: '8px',
   outline: 'none',
   boxSizing: 'border-box',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
 }
 
 const removeBtnStyle: React.CSSProperties = {
   width: '36px',
   height: '36px',
   flexShrink: 0,
-  border: '1.5px solid rgba(0,0,0,0.13)',
-  borderRadius: '7px',
+  border: '1.5px solid #CFC8BF',
+  borderRadius: '8px',
   background: '#fff',
-  color: '#888',
+  color: '#686D6C',
   cursor: 'pointer',
   fontSize: '16px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
 }
 
 const addSpecBtnStyle: React.CSSProperties = {
@@ -975,34 +975,34 @@ const addSpecBtnStyle: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 500,
   background: 'transparent',
-  color: '#555',
-  border: '1px solid rgba(0,0,0,0.13)',
+  color: '#4C5352',
+  border: '1px solid #CFC8BF',
   borderRadius: '6px',
   cursor: 'pointer',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
 }
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: '10px 24px',
-  background: '#1A2035',
+  background: '#303536',
   color: '#fff',
   border: 'none',
   borderRadius: '8px',
   fontSize: '13px',
   fontWeight: 600,
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
   whiteSpace: 'nowrap',
 }
 
 const cancelBtnStyle: React.CSSProperties = {
   padding: '10px 20px',
   background: 'transparent',
-  color: '#555',
-  border: '1px solid rgba(0,0,0,0.13)',
+  color: '#4C5352',
+  border: '1px solid #CFC8BF',
   borderRadius: '8px',
   fontSize: '13px',
   fontWeight: 500,
   cursor: 'pointer',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
   whiteSpace: 'nowrap',
 }

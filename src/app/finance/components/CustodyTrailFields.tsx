@@ -57,12 +57,12 @@ export function newCustodyDraftKey(): string {
 }
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 700, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
 }
 
 const FIELD_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
@@ -116,10 +116,10 @@ function SavedActivity({ line }: { line: ReturnType<typeof custodyEventLine> }) 
           <span style={{ fontSize: '12.5px', color: colors.secondary, wordBreak: 'break-word' }}>{line.people}</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: '2px' }}>
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>{line.when}</span>
-          <span style={{ fontSize: '11.5px', color: colors.muted }}>· {line.modeLabel}</span>
+          <span style={{ fontSize: '12px', color: colors.muted }}>{line.when}</span>
+          <span style={{ fontSize: '12px', color: colors.muted }}>· {line.modeLabel}</span>
           {line.legacy && (
-            <span style={{ fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
               · Recorded before the activity trail existed
             </span>
           )}
@@ -158,7 +158,7 @@ export function CustodyTrailView({
       <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
       {ordered.length === 0 ? (
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           padding: '10px 12px', fontSize: '13px', color: colors.muted,
         }}>
           {emptyLabel ?? 'No collection or handover recorded yet.'}
@@ -166,7 +166,7 @@ export function CustodyTrailView({
       ) : (
         <ul style={{
           listStyle: 'none', margin: 0, padding: 0,
-          border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+          border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
         }}>
           {ordered.map((e, i) => (
             <li key={e.id} style={{ position: 'relative', marginTop: i === 0 ? '-1px' : 0 }}>
@@ -271,7 +271,7 @@ export function CustodyTrailFields({
     }}>
       <div>
         <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
-        <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+        <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {CUSTODY_TRAIL_NOTE}
         </p>
       </div>
@@ -310,7 +310,7 @@ export function CustodyTrailFields({
                 disabled={disabled}
                 className="boe-btn boe-btn-ghost"
                 aria-label={`Remove activity ${index + 1}`}
-                style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                style={{ padding: '2px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
               >
                 <X size={12} aria-hidden="true" /> Remove
               </button>
@@ -412,7 +412,7 @@ export function CustodyTrailFields({
             </LabelledField>
 
             {error && (
-              <span role="alert" style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.5 }}>
+              <span role="alert" style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
                 {error}
               </span>
             )}

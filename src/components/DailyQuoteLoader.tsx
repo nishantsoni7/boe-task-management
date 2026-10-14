@@ -202,7 +202,7 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0F1422',
+        background: '#F7F5F1',
         zIndex: 9999,
         padding: '32px 24px',
         opacity: visible ? 1 : 0,
@@ -212,9 +212,11 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{ marginBottom: '48px' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/branding/boe-logo-white.png"
+            src="/branding/boe-logo-full.png"
             alt="Best of Exports"
-            style={{ maxWidth: '180px', width: '100%', height: 'auto', opacity: 0.85 }}
+            width={720}
+            height={543}
+            style={{ maxWidth: '168px', width: '100%', height: 'auto' }}
           />
         </div>
 
@@ -222,8 +224,8 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{
           fontSize: '64px',
           lineHeight: 1,
-          color: '#1A2A4A',
-          fontFamily: 'Georgia, serif',
+          color: '#F1D5CB',
+          fontFamily: 'var(--font-display)',
           marginBottom: '16px',
           alignSelf: 'flex-start',
           maxWidth: '520px',
@@ -235,8 +237,9 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         {/* Quote text */}
         <p style={{
           fontSize: 'clamp(18px, 4vw, 26px)',
-          fontWeight: 500,
-          color: '#E2E8F0',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          color: '#303536',
           lineHeight: 1.55,
           textAlign: 'center',
           maxWidth: '520px',
@@ -250,13 +253,13 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{
           width: '40px',
           height: '2px',
-          background: '#1E3A5F',
+          background: '#E4DED7',
           borderRadius: '999px',
           overflow: 'hidden',
         }}>
           <div style={{
             height: '100%',
-            background: '#4A90D9',
+            background: '#B9472E',
             borderRadius: '999px',
             animation: 'boe-progress 2.1s linear forwards',
           }} />

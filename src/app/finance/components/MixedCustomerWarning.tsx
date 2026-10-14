@@ -36,14 +36,14 @@ export function MixedCustomerWarning({
     <div
       role="alert"
       style={{
-        border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: '8px',
+        border: '1px solid #E6D2A0', background: '#FAF0DA', borderRadius: '8px',
         padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px',
       }}
     >
-      <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400E' }}>
+      <div style={{ fontSize: '13px', fontWeight: 700, color: '#805B0D' }}>
         {incomplete ? MIXED_CUSTOMER_INCOMPLETE_TITLE : MIXED_CUSTOMER_TITLE}
       </div>
-      <div style={{ fontSize: '12px', color: '#92400E', lineHeight: 1.5 }}>
+      <div style={{ fontSize: '12px', color: '#805B0D', lineHeight: 1.5 }}>
         {incomplete
           ? MIXED_CUSTOMER_INCOMPLETE_NOTE
           : 'Check this is intended. The payment will be shown as “Multiple customers”.'}

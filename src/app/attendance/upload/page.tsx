@@ -113,12 +113,12 @@ function Stat({ label, value, color }: { label: string; value: number | string; 
 /** A titled white surface. `warning` tints the head amber for things that need attention. */
 function Section({ title, warning, children }: { title: React.ReactNode; warning?: boolean; children: React.ReactNode }) {
   return (
-    <section className={ui.surface} style={warning ? { borderColor: 'rgba(232,160,48,0.45)' } : undefined}>
+    <section className={ui.surface} style={warning ? { borderColor: 'rgba(196,138,26,0.45)' } : undefined}>
       <div
         className={ui.surfaceHead}
-        style={warning ? { background: 'rgba(232,160,48,0.08)' } : undefined}
+        style={warning ? { background: 'rgba(196,138,26,0.08)' } : undefined}
       >
-        <h2 className={ui.surfaceTitle} style={warning ? { color: '#92400E' } : undefined}>{title}</h2>
+        <h2 className={ui.surfaceTitle} style={warning ? { color: '#805B0D' } : undefined}>{title}</h2>
       </div>
       {children}
     </section>
@@ -488,8 +488,8 @@ export default function AttendanceUploadPage() {
                 <div className={`${ui.surfaceBody} ${ui.stack}`}>
                   <div className={styles.stats}>
                     <Stat label="Employees detected" value={preview.detectedEmployees} />
-                    <Stat label="Matched" value={preview.matchedCount} color="#047857" />
-                    <Stat label="Unmatched" value={preview.unmatchedCount} color={preview.unmatchedCount > 0 ? '#B45309' : '#6B7384'} />
+                    <Stat label="Matched" value={preview.matchedCount} color="#276247" />
+                    <Stat label="Unmatched" value={preview.unmatchedCount} color={preview.unmatchedCount > 0 ? '#805B0D' : '#686D6C'} />
                   </div>
 
                   {/* Codes an admin named an employee for. Shown as the server
@@ -598,7 +598,7 @@ export default function AttendanceUploadPage() {
                                     <div className={ui.sub} style={{ padding: '8px 2px' }}>Loading employees…</div>
                                   )}
                                   {employeesError && (
-                                    <div role="alert" style={{ fontSize: 12.5, color: '#B91C1C', padding: '8px 2px' }}>{employeesError}</div>
+                                    <div role="alert" style={{ fontSize: 12.5, color: '#B42332', padding: '8px 2px' }}>{employeesError}</div>
                                   )}
                                   {!loadingEmployees && !employeesError && (
                                     <div className={styles.picker}>
@@ -653,12 +653,12 @@ export default function AttendanceUploadPage() {
               <Section title="Import safety" warning={preview.allUnchanged}>
                 <div className={`${ui.surfaceBody} ${ui.stack}`} style={{ gap: 10 }}>
                   <div className={styles.stats}>
-                    <Stat label="New records" value={preview.newCount} color={preview.newCount > 0 ? '#1D4ED8' : '#6B7384'} />
-                    <Stat label="Modified records" value={preview.modifiedCount} color={preview.modifiedCount > 0 ? '#6D28D9' : '#6B7384'} />
-                    <Stat label="Unchanged" value={preview.unchangedCount} color={preview.unchangedCount > 0 ? '#047857' : '#6B7384'} />
+                    <Stat label="New records" value={preview.newCount} color={preview.newCount > 0 ? '#335A86' : '#686D6C'} />
+                    <Stat label="Modified records" value={preview.modifiedCount} color={preview.modifiedCount > 0 ? '#805B0D' : '#686D6C'} />
+                    <Stat label="Unchanged" value={preview.unchangedCount} color={preview.unchangedCount > 0 ? '#276247' : '#686D6C'} />
                   </div>
                   {preview.allUnchanged && (
-                    <div style={{ fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>
+                    <div style={{ fontSize: 13, color: '#B42332', fontWeight: 500 }}>
                       This attendance data already appears to be imported. No changes found.
                     </div>
                   )}
@@ -767,7 +767,7 @@ export default function AttendanceUploadPage() {
                   <Stat label="Records inserted" value={result.imported} />
                   <Stat label="Records corrected" value={result.updated} />
                   <Stat label="Unchanged" value={result.unchanged ?? 0} />
-                  <Stat label="Records skipped" value={result.skipped} color={result.skipped > 0 ? '#B45309' : undefined} />
+                  <Stat label="Records skipped" value={result.skipped} color={result.skipped > 0 ? '#805B0D' : undefined} />
                 </div>
               </Notice>
             </div>
@@ -806,7 +806,7 @@ export default function AttendanceUploadPage() {
                     <li key={i} className={`${ui.surface} ${ui.card}`}>
                       <div className={ui.strong}>{emp.name}</div>
                       {emp.employee_code && <div className={ui.sub}>{emp.employee_code}</div>}
-                      <div style={{ fontSize: 13, color: '#4A5261' }}>
+                      <div style={{ fontSize: 13, color: '#4C5352' }}>
                         {emp.inserted} inserted · {emp.updated} corrected · {emp.unchanged ?? 0} unchanged
                       </div>
                     </li>
@@ -822,11 +822,11 @@ export default function AttendanceUploadPage() {
                 <Section title="Manually matched codes">
                   <div className={`${ui.surfaceBody} ${ui.stack}`} style={{ gap: 6 }}>
                     {(result.manualMappings ?? []).map(m => (
-                      <div key={m.excel_code} style={{ fontSize: 13, color: '#4A5261' }}>
+                      <div key={m.excel_code} style={{ fontSize: 13, color: '#4C5352' }}>
                         <span className={styles.mono}>{m.excel_code}</span>
                         {' '}
                         {m.excel_name ? `("${m.excel_name}") ` : ''}
-                        imported as <strong style={{ color: '#111318' }}>{m.employee_name}</strong>
+                        imported as <strong style={{ color: '#303536' }}>{m.employee_name}</strong>
                       </div>
                     ))}
                   </div>

@@ -719,14 +719,14 @@ export function TestCardListScreen() {
           <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{actionError}</p>
         )}
         {approved && (
-          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
+          <p role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600, margin: 0 }}>
             {approved}
           </p>
         )}
         {verifiedNotice && (
-          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
+          <p role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600, margin: 0 }}>
             {verifiedNotice}
-            {verifiedMonthNote && <span style={{ fontWeight: 400, color: '#3D4455' }}> {verifiedMonthNote}</span>}
+            {verifiedMonthNote && <span style={{ fontWeight: 400, color: '#4C5352' }}> {verifiedMonthNote}</span>}
           </p>
         )}
         {loadError && (
@@ -737,7 +737,7 @@ export function TestCardListScreen() {
           <CardSkeletons />
         ) : filtered.length === 0 ? (
           <div style={{
-            padding: '28px 20px', borderRadius: '10px', textAlign: 'center',
+            padding: '28px 20px', borderRadius: '8px', textAlign: 'center',
             border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px',
             lineHeight: 1.6,
           }}>
@@ -750,7 +750,7 @@ export function TestCardListScreen() {
                     onClick={() => { setSearchInput(''); resetState() }}
                     style={{
                       background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-                      color: colors.blue, fontSize: '13px', textDecoration: 'underline',
+                      color: colors.brandInk, fontSize: '13px', textDecoration: 'underline',
                     }}
                   >
                     Clear filters
@@ -878,7 +878,7 @@ function CardSkeletons() {
     >
       {[0, 1, 2, 3].map(i => (
         <div key={i} style={{
-          height: '168px', borderRadius: '10px',
+          height: '168px', borderRadius: '8px',
           border: `1px solid ${colors.border}`, background: colors.raised,
           opacity: 0.6,
         }} />

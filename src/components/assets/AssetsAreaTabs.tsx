@@ -43,7 +43,7 @@ const AREA_ICON: Record<AssetsArea, React.ReactNode> = {
 
 const AREAS: AssetsArea[] = ['assets', 'access-records']
 
-const BOE_RED = '#DC1F2E'
+const BOE_RED = '#B9472E'
 
 export function AssetsAreaTabs({ active, onSelect, action, isMobile }: AssetsAreaTabsProps) {
   return (

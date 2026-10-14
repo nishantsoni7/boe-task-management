@@ -21,9 +21,9 @@ import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
 
 const PRIORITY_CFG = {
-  low:    { active: '#6B7280', activeBg: '#F9FAFB', border: 'rgba(107,114,128,0.30)' },
-  medium: { active: '#B45309', activeBg: '#FFFBEB', border: 'rgba(180,83,9,0.30)'   },
-  high:   { active: '#9B3D3D', activeBg: '#FEF2F2', border: 'rgba(155,61,61,0.35)'  },
+  low:    { active: '#686D6C', activeBg: '#FBFAF8', border: 'rgba(104,109,108,0.30)' },
+  medium: { active: '#805B0D', activeBg: '#FAF0DA', border: 'rgba(196,138,26,0.30)'   },
+  high:   { active: '#A12438', activeBg: '#FBE9EC', border: 'rgba(180,35,50,0.35)'  },
 } as const
 
 export default function NewQuotationRequestPage() {
@@ -225,7 +225,7 @@ export default function NewQuotationRequestPage() {
         <div style={{
           maxWidth: '520px', marginBottom: '16px', padding: '11px 16px',
           borderRadius: '8px', background: colors.greenTint,
-          border: `1px solid rgba(69,168,112,0.25)`,
+          border: `1px solid rgba(39,98,71,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -252,7 +252,7 @@ export default function NewQuotationRequestPage() {
         <div style={{
           maxWidth: '520px', marginBottom: '16px', padding: '11px 16px',
           borderRadius: '8px', background: colors.redTint,
-          border: `1px solid rgba(217,79,79,0.25)`,
+          border: `1px solid rgba(180,35,50,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         }}>
           <p style={{ fontSize: '13px', fontWeight: 500, color: colors.red }}>{submitError}</p>
@@ -274,8 +274,8 @@ export default function NewQuotationRequestPage() {
             borderRadius: '8px', background: 'rgba(155,111,212,0.05)',
             border: '1px solid rgba(155,111,212,0.15)',
           }}>
-            <Info size={13} color="#6B4FA0" style={{ flexShrink: 0, marginTop: '1px' }} />
-            <p style={{ fontSize: '12px', color: '#6B4FA0', lineHeight: 1.5 }}>
+            <Info size={13} color="#335A86" style={{ flexShrink: 0, marginTop: '1px' }} />
+            <p style={{ fontSize: '12px', color: '#335A86', lineHeight: 1.5 }}>
               Fill in the lead details and attach relevant files. The request will be sent for quotation preparation.
             </p>
           </div>
@@ -294,7 +294,7 @@ export default function NewQuotationRequestPage() {
               autoFocus
             />
             {nameDirty && !customerName.trim() && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Lead name is required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Lead name is required</p>
             )}
           </div>
 
@@ -325,11 +325,11 @@ export default function NewQuotationRequestPage() {
                       onClick={() => setPriority(p)}
                       style={{
                         flex: 1, padding: '6px 4px', borderRadius: '6px', cursor: 'pointer',
-                        fontSize: '11px', fontWeight: selected ? 700 : 500,
+                        fontSize: '12px', fontWeight: selected ? 700 : 500,
                         textTransform: 'capitalize',
                         border: `1px solid ${selected ? cfg.active : cfg.border}`,
                         background: selected ? cfg.activeBg : 'transparent',
-                        color: selected ? cfg.active : '#6B7280',
+                        color: selected ? cfg.active : '#686D6C',
                         transition: 'all 0.12s',
                       }}
                     >
@@ -365,7 +365,7 @@ export default function NewQuotationRequestPage() {
                   }}>
                     <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
                     <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                    <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                    <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                     <button
                       onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
@@ -388,36 +388,36 @@ export default function NewQuotationRequestPage() {
                 onClick={() => fileInputRef.current?.click()}
                 style={{
                   width: '100%', height: '42px', boxSizing: 'border-box',
-                  borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? '#6B4FA0' : 'rgba(155,111,212,0.30)'}`,
+                  borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? '#B9472E' : 'rgba(155,111,212,0.30)'}`,
                   background: attachDropActive ? 'rgba(155,111,212,0.08)' : 'rgba(155,111,212,0.03)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                   transition: 'border-color 0.15s, background 0.15s',
                 }}
               >
-                <Paperclip size={13} color="#6B4FA0" strokeWidth={1.8} />
-                <span style={{ fontSize: '12px', color: '#6B4FA0' }}>Add drawings, photos or spec sheet</span>
+                <Paperclip size={13} color="#335A86" strokeWidth={1.8} />
+                <span style={{ fontSize: '12px', color: '#335A86' }}>Add drawings, photos or spec sheet</span>
               </button>
               {attachDropActive && (
                 <div style={{
                   position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   pointerEvents: 'none',
-                  fontSize: '12px', fontWeight: 600, color: '#6B4FA0',
+                  fontSize: '12px', fontWeight: 600, color: '#335A86',
                   background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
                 }}>
                   Drop files to attach
                 </div>
               )}
             </div>
-            <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+            <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
               Drop files here, paste copied files into the notes, or browse
             </p>
             {attachDirty && attachFiles.length === 0 && !attachError && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>
                 Please attach at least one file for the quotation request.
               </p>
             )}
-            {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
+            {attachError && <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
           </div>
 
           {/* 4. Notes (optional) */}
@@ -436,7 +436,7 @@ export default function NewQuotationRequestPage() {
             />
           </div>
 
-          <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '10px' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginBottom: '10px' }}>
             <span style={{ color: colors.red }}>*</span> Required fields
           </p>
 
@@ -445,7 +445,7 @@ export default function NewQuotationRequestPage() {
             disabled={!canSubmit}
             style={{
               width: '100%', padding: '12px 0', borderRadius: '8px', border: 'none',
-              background: canSubmit ? '#6B4FA0' : colors.float,
+              background: canSubmit ? '#B9472E' : colors.float,
               color: canSubmit ? '#fff' : colors.muted,
               fontSize: '13px', fontWeight: 600,
               cursor: canSubmit ? 'pointer' : 'not-allowed',

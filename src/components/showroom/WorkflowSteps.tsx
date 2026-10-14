@@ -36,10 +36,10 @@ export function WorkflowSteps({ current }: { current: WorkflowStep | null }) {
                 not only where they are. */}
             <div style={{
               height: '3px', borderRadius: '2px',
-              background: active ? '#1A2035' : done ? 'rgba(26,32,53,0.35)' : colors.float,
+              background: active ? '#303536' : done ? 'rgba(48,53,54,0.35)' : colors.float,
             }} />
             <span style={{
-              fontSize: '10.5px',
+              fontSize: '12px',
               fontWeight: active ? 700 : 500,
               color: active ? colors.primary : colors.muted,
               letterSpacing: '0.01em',

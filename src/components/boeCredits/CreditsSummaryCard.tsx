@@ -53,14 +53,14 @@ export function CreditsSummaryCard({ token }: { token: string }) {
   return (
     <div style={{
       background: '#fff', borderRadius: 12,
-      border: '1px solid rgba(0,0,0,0.08)',
+      border: '1px solid #E4DED7',
       padding: '12px 16px', marginBottom: 16,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 12, flexWrap: 'wrap',
     }}>
       <div style={{ minWidth: 0 }}>
         <div style={{
-          fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+          fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.09em', color: colors.muted, marginBottom: 2,
         }}>
           BOE Credits
@@ -71,7 +71,7 @@ export function CreditsSummaryCard({ token }: { token: string }) {
         }}>
           {failed ? 'Unavailable' : ledger == null ? '…' : `${formatCredits(spendable)} spendable`}
         </div>
-        <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 3 }}>
+        <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
           {failed
             ? 'Your credits could not be loaded right now.'
             : provisional > 0

@@ -68,7 +68,7 @@ export function ChoiceGroup({
             <label
               className={`boe-choice ${s.choiceRegular}${accent ? ` ${s.accentChoice}` : ''}`}
               style={{
-                ...(invalid && !chosen(o.value) ? { borderColor: '#DC1F2E' } : null),
+                ...(invalid && !chosen(o.value) ? { borderColor: '#B42332' } : null),
                 ...(o.hint ? { paddingRight: 48 } : null),
                 ...(accent ? { ['--accent' as string]: accent } : null),
               }}
