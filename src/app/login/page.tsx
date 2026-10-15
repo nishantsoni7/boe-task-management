@@ -1,10 +1,12 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { colors, font } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { AlertBanner } from '@/components/ui/atoms'
+import { AuthShell, authButtonStyle, authLinkStyle } from '@/components/auth/AuthShell'
 import { safeReturnPath } from '@/lib/safeReturnPath'
 
 function LoginForm() {
@@ -32,110 +34,51 @@ function LoginForm() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: colors.void,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '0 16px',
-    }}>
-      <div style={{ width: '100%', maxWidth: '360px' }}>
-
-        {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/branding/boe-one-logo-full.png"
-            alt="Best of Exports"
-            width={1080}
-            height={821}
-            style={{
-              maxWidth: 'min(188px, 54vw)',
-              height: 'auto',
-              marginBottom: '16px',
-              display: 'block',
-              margin: '0 auto 16px',
-            }}
-          />
-          <p style={{ color: colors.tertiary, fontSize: '13px', lineHeight: 1.5 }}>
-            Tasks, follow-ups, accountability, and daily work tracking for the BOE team.
-          </p>
-        </div>
-
-        {/* Form card */}
-        <div className="boe-card" style={{ padding: '24px' }}>
-          <h2 style={{
-            color: colors.primary,
-            fontFamily: font.display,
-            fontWeight: 700,
-            fontSize: '18px',
-            marginBottom: '20px',
-          }}>
-            Sign in
-          </h2>
-
-          <div style={{ marginBottom: '12px' }}>
-            <label className="boe-input-label" htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@bestofexports.com"
-              className="boe-input"
-            />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label className="boe-input-label" htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="boe-input"
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            />
-          </div>
-
-          {error && (
-            <div style={{ marginBottom: '16px' }}>
-              <AlertBanner variant="red">
-                <p style={{ color: colors.red, fontSize: '13px' }}>{error}</p>
-              </AlertBanner>
-            </div>
-          )}
-
-          <button
-            onClick={handleLogin}
-            disabled={loading || !email || !password}
-            className="boe-btn boe-btn-primary"
-            style={{
-              width: '100%',
-              justifyContent: 'center',
-              padding: '12px',
-              fontSize: '14px',
-            }}
-          >
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
-        </div>
-
-        <p style={{
-          textAlign: 'center',
-          color: colors.muted,
-          fontSize: '12px',
-          marginTop: '20px',
-        }}>
-          Best of Exports — Internal use only
-        </p>
-
+    <AuthShell title="Sign in">
+      <div style={{ marginBottom: '12px' }}>
+        <label className="boe-input-label">Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="you@bestofexports.com"
+          className="boe-input"
+        />
       </div>
-    </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label className="boe-input-label">Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className="boe-input"
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+        />
+      </div>
+
+      {error && (
+        <div style={{ marginBottom: '16px' }}>
+          <AlertBanner variant="red">
+            <p style={{ color: colors.red, fontSize: '13px' }}>{error}</p>
+          </AlertBanner>
+        </div>
+      )}
+
+      <button
+        onClick={handleLogin}
+        disabled={loading || !email || !password}
+        className="boe-btn boe-btn-primary"
+        style={authButtonStyle}
+      >
+        {loading ? 'Signing in...' : 'Sign in'}
+      </button>
+
+      <Link href="/forgot-password" style={authLinkStyle}>
+        Forgot password?
+      </Link>
+    </AuthShell>
   )
 }
 
