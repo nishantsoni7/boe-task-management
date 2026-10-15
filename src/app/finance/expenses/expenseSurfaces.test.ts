@@ -775,6 +775,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/inventory/notifications.test.ts and supabase/tests/inventory_notifications_suite.sql.
       if (f === 'supabase/migrations/20270314000000_inventory_notification_types.sql') continue
       if (f === 'supabase/migrations/20270314000100_inventory_booking_notifications.sql') continue
+      // And Meetings write RPCs requiring module entry (20270315000000): the two shared guards re-issued, held by
+      // src/lib/meetings/moduleEntryGuard.test.ts and supabase/tests/meetings_rpc_module_entry_assertions.sql.
+      if (f === 'supabase/migrations/20270315000000_meetings_rpcs_require_module_entry.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -3028,6 +3031,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
 
+  // Meetings write RPCs require module entry (20270315000000): the two shared guards re-issued so a user whose Meetings
+  // 'view' was removed can no longer write through a SECURITY DEFINER function. One migration, its text check, its SQL
+  // assertions and local runner. No Finance or Orders file. Named files only, never a directory.
+  const ALLOWED_MEETINGS_MODULE_ENTRY = new Set([
+    'supabase/migrations/20270315000000_meetings_rpcs_require_module_entry.sql',
+    'src/lib/meetings/moduleEntryGuard.test.ts',
+    'supabase/tests/meetings_rpc_module_entry_assertions.sql',
+    'supabase/tests/run_meetings_rpc_module_entry_local.sh',
+  ])
+
   // Inventory (20270313000000): a new module of its own, one migration, its screens, hook, library and layout,
   // and the launcher card. It reaches no Finance or Orders file. Named files only, never a directory.
   const ALLOWED_INVENTORY = new Set([
@@ -3273,7 +3286,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_TASK_ACKNOWLEDGE.has(f) &&
     !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f) &&
     !ALLOWED_EXHIBITION_LEADS.has(f) &&
-    !ALLOWED_INVENTORY.has(f)
+    !ALLOWED_INVENTORY.has(f) &&
+    !ALLOWED_MEETINGS_MODULE_ENTRY.has(f)
 
   test('the Dashboard View As allowance is EXACTLY its two named files', () => {
     assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
@@ -3594,7 +3608,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // edits the two suites whose below-40% reasons are now one of three.
       // The advance on the total before GST (20270227000000) adds its suite and gives every
       // fixture that prices a PI a total_before_gst beside its grand_total.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting|admin_actions|admin_race)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|exhibition_leads|inventory_module|inventory_notifications|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting|admin_actions|admin_race)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|exhibition_leads|inventory_module|inventory_notifications|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment|meetings_rpc_module_entry/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3746,7 +3760,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_TASK_ACKNOWLEDGE.has(file)
         || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file)
         || ALLOWED_EXHIBITION_LEADS.has(file)
-        || ALLOWED_INVENTORY.has(file),
+        || ALLOWED_INVENTORY.has(file)
+        || ALLOWED_MEETINGS_MODULE_ENTRY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

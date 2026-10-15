@@ -341,6 +341,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270314000000_inventory_notification_types.sql',
 
     '20270314000100_inventory_booking_notifications.sql',
+    '20270315000000_meetings_rpcs_require_module_entry.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

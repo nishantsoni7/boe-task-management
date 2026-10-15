@@ -1082,6 +1082,7 @@ describe('the applied migrations are frozen', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ])
   })
 
@@ -1415,6 +1416,7 @@ describe('the applied migrations are frozen', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

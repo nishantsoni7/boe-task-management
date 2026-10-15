@@ -572,6 +572,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
