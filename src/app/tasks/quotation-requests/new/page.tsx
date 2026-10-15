@@ -18,7 +18,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 
 // Every quotation request is assigned to this user (resolved by email at init).
-const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
+// It must match the owner's CURRENT sign-in email: when Nishant's admin account
+// moved from admin@bestofexports.com to his personal address, an unchanged
+// value here would have found nobody and left new requests without an owner.
+const DEFAULT_QUOTATION_OWNER = 'soni.nishant7@gmail.com'
 
 const PRIORITY_CFG = {
   low:    { active: '#686D6C', activeBg: '#FBFAF8', border: 'rgba(104,109,108,0.30)' },
