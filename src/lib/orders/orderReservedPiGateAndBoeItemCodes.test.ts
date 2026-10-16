@@ -480,6 +480,8 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
 
       '20270316000000_order_submission_deletion_awaiting_approval.sql',
+
+      '20270317000000_order_submission_admin_order_deletion.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

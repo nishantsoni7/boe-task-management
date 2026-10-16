@@ -661,6 +661,7 @@ export type OrderHeaderActionKey =
   | 'review_change_request'
   | 'withdraw_acceptance'
   | 'cleanup'
+  | 'delete_order'
 
 export type OrderActionLayout = {
   /** The one filled button, or null when nothing on this Order is the obvious next move. */
@@ -679,6 +680,8 @@ export type OrderActionInput = {
   /** This reader may review, and at least one request is pending. */
   canReviewChangeRequests: boolean
   canCleanUp: boolean
+  /** An administrator, not previewing: may permanently delete this Order (20270317000000). */
+  canDeleteOrder?: boolean
   /**
    * The assigned operations reviewer may withdraw the acceptance of the PI
    * version in force. Optional: an Order with no handoff has nothing to withdraw.
@@ -712,6 +715,8 @@ export function arrangeOrderActions(input: OrderActionInput): OrderActionLayout 
   if (input.canWithdrawAcceptance) overflow.push('withdraw_acceptance')
   if (input.canRequest) overflow.push('request_cancel')
   if (input.canCleanUp) overflow.push('cleanup')
+  // Last, and only ever in the overflow: the one action that cannot be undone.
+  if (input.canDeleteOrder) overflow.push('delete_order')
 
   return { primary, secondary, overflow }
 }
