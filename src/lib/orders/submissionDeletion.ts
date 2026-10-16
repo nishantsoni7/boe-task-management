@@ -201,6 +201,13 @@ export type DeletionBlocker = {
   kind: DeletionBlockerKind
   /** How many such records name this PI. Never an id, and never an amount. */
   count: number
+  /**
+   * Of `count`, how many are payment records that were allocated and have since
+   * been reversed or cancelled. Only ever set for `payment_allocation`. Those are
+   * kept permanently and nothing the reader can do will release them, unlike an
+   * allocation that is still active.
+   */
+  reversed?: number
 }
 
 export const DELETION_BLOCKER_KINDS: readonly DeletionBlockerKind[] = [
@@ -230,12 +237,30 @@ export function parseDeletionBlockers(value: unknown): DeletionBlocker[] {
     const count = (entry as { count?: unknown } | null)?.count
     if (!isDeletionBlockerKind(kind) || seen.has(kind)) continue
     if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) continue
+    const reversed = (entry as { reversed?: unknown }).reversed
     seen.add(kind)
-    blockers.push({ kind, count })
+    blockers.push(kind === 'payment_allocation'
+      && typeof reversed === 'number' && Number.isInteger(reversed)
+      && reversed >= 1 && reversed <= count
+      ? { kind, count, reversed }
+      : { kind, count })
   }
   return DELETION_BLOCKER_KINDS
     .map(kind => blockers.find(blocker => blocker.kind === kind))
     .filter((blocker): blocker is DeletionBlocker => blocker !== undefined)
+}
+
+// A reversed allocation is not a payment "allocated to" the PI any more, and no
+// action by the reader releases it: the payment was confirmed, then corrected, or
+// its request was rejected and kept. The earlier wording sent such a reader to a
+// payments list that was empty, which is what this replaces. A payment its owner
+// deleted before approval is not counted here at all: it is erased with the PI.
+function reversedPaymentSentence(reversed: number): string {
+  return reversed === 1
+    ? 'A payment record that was once allocated to this PI has since been reversed or cancelled.'
+      + ' That record is kept permanently, so the PI stays.'
+    : `${reversed} payment records that were once allocated to this PI have since been reversed or`
+      + ' cancelled. Those records are kept permanently, so the PI stays.'
 }
 
 const BLOCKER_SENTENCE: Record<DeletionBlockerKind, (count: number) => string> = {
@@ -277,7 +302,16 @@ const BLOCKER_SENTENCE: Record<DeletionBlockerKind, (count: number) => string> =
  */
 export function describeDeletionBlockers(blockers: readonly DeletionBlocker[]): string {
   const sentences = parseDeletionBlockers(blockers)
-    .map(blocker => BLOCKER_SENTENCE[blocker.kind](blocker.count))
+    .map(blocker => {
+      if (blocker.kind !== 'payment_allocation' || !blocker.reversed) {
+        return BLOCKER_SENTENCE[blocker.kind](blocker.count)
+      }
+      const active = blocker.count - blocker.reversed
+      return [
+        active > 0 ? BLOCKER_SENTENCE.payment_allocation(active) : '',
+        reversedPaymentSentence(blocker.reversed),
+      ].filter(Boolean).join(' ')
+    })
   return sentences.length === 0
     ? 'Another record still refers to this PI, so it cannot be deleted.'
     : sentences.join(' ')
@@ -324,6 +358,11 @@ export type SubmissionDeletionFailure = {
    * Finance route for a payment blocker without re-parsing the message.
    */
   blockerKinds?: readonly DeletionBlockerKind[]
+  /**
+   * True when a payment that is still allocated (not merely reversed) is in the
+   * way, i.e. when sending the reader to Received Payments can actually help.
+   */
+  paymentStillAllocated?: boolean
 }
 
 type FailureCopy = Omit<SubmissionDeletionFailure, 'code'>
@@ -453,5 +492,7 @@ export function describeDeletionFailure(
     ...copy,
     message: parsed.length === 0 ? copy.message : describeDeletionBlockers(parsed),
     blockerKinds: parsed.map(blocker => blocker.kind),
+    paymentStillAllocated: parsed.some(blocker =>
+      blocker.kind === 'payment_allocation' && blocker.count - (blocker.reversed ?? 0) > 0),
   }
 }

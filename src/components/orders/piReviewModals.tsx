@@ -1725,7 +1725,7 @@ export function PiDeleteConfirmModal({
               and if they are not, the page will simply not show them a Delete.
               It names the list and no payment, so it discloses nothing this
               dialog has not already said. */}
-          {failure?.blockerKinds?.includes('payment_allocation') && (
+          {failure?.blockerKinds?.includes('payment_allocation') && failure.paymentStillAllocated !== false && (
             <a
               href={PAYMENT_BLOCKER_HREF}
               style={{

@@ -210,6 +210,31 @@ describe('the dialog distinguishes running, retryable, blocked and completed', (
     assert.ok(/Finance/.test(html), 'the remedy is named, not just the obstacle')
   })
 
+  test('BLOCKED by a reversed payment says it is kept, and offers no dead-end link', () => {
+    // Nothing is "allocated" any more and Received Payments will not list it, so
+    // sending the reader there is the defect this wording replaces.
+    const html = render({
+      failure: describeDeletionFailure('BLOCKED', [
+        { kind: 'payment_allocation', count: 1, reversed: 1 },
+      ]),
+    })
+    assert.ok(html.includes('has since been reversed or cancelled'))
+    assert.ok(html.includes('kept permanently'))
+    assert.ok(!html.includes('is allocated to this PI'))
+    assert.ok(!html.includes('Open Received Payments'))
+  })
+
+  test('BLOCKED by an active and a reversed payment says both and keeps the link', () => {
+    const html = render({
+      failure: describeDeletionFailure('BLOCKED', [
+        { kind: 'payment_allocation', count: 3, reversed: 1 },
+      ]),
+    })
+    assert.ok(html.includes('2 payments are allocated to this PI'))
+    assert.ok(html.includes('has since been reversed or cancelled'))
+    assert.ok(html.includes('Open Received Payments'))
+  })
+
   test('BLOCKED carries no id, no amount and no payment reference', () => {
     const html = render({
       failure: describeDeletionFailure('BLOCKED', [

@@ -69,6 +69,34 @@ export const DELETION_BLOCKER_SOURCES: readonly {
 ]
 
 /**
+ * Payment records that still keep this PI, asked of the database rather than
+ * counted here: whether a reversed allocation is a leftover that is erased with
+ * its PI (its payment was deleted before it was ever approved) or a record that
+ * must stay is one predicate, shared with the delete guard, so what this says
+ * blocks and what Postgres refuses cannot disagree.
+ *
+ * STILL A COUNT AND NOTHING ELSE, and still fails closed: a malformed answer is
+ * an error, never "nothing is in the way".
+ */
+async function readPaymentBlocker(
+  service: SupabaseClient,
+  submissionId: string,
+): Promise<{ kind: DeletionBlockerKind; count: number; reversed?: number }> {
+  const { data, error } = await service.rpc('order_submission_blocking_allocations', {
+    p_submission_id: submissionId,
+  })
+  const row = Array.isArray(data) ? data[0] : data
+  const active = (row as { active_count?: unknown } | null | undefined)?.active_count
+  const reversed = (row as { reversed_count?: unknown } | null | undefined)?.reversed_count
+  if (error || typeof active !== 'number' || typeof reversed !== 'number') {
+    throw new Error('Could not read payments for this PI.')
+  }
+  return reversed > 0
+    ? { kind: 'payment_allocation', count: active + reversed, reversed }
+    : { kind: 'payment_allocation', count: active }
+}
+
+/**
  * How many records of each protected kind still name this PI.
  *
  * COUNTS ONLY, AND HEAD REQUESTS ONLY. Nothing about these rows is needed to
@@ -96,6 +124,7 @@ export async function readDeletionBlockers(
   }
 
   const counts = await Promise.all(DELETION_BLOCKER_SOURCES.map(async source => {
+    if (source.kind === 'payment_allocation') return readPaymentBlocker(service, submissionId)
     const { count, error } = await service
       .from(source.table)
       .select('id', { count: 'exact', head: true })
