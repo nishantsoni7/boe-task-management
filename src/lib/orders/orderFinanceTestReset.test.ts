@@ -619,6 +619,10 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
 
       // A PI awaiting approval can be deleted, with the documents sent with it.
       '20270316000000_order_submission_deletion_awaiting_approval.sql',
+
+      // An administrator can permanently delete a Confirmed Order. It borrows the
+      // cleanup context for one transaction but never touches Finance.
+      '20270317000000_order_submission_admin_order_deletion.sql',
     ])
   })
 
