@@ -334,6 +334,28 @@ export async function removeAllObjectsForSubmission(
 }
 
 /**
+ * Remove the supporting documents (Design Files, Client PO) sent with one PI,
+ * under the reserved pi-documents/{pi_id}/ prefix.
+ *
+ * A SIBLING OF removeAllObjectsForSubmission, not a widening of it: the workbook
+ * and images live under submissions/{id}, the documents under pi-documents/{id},
+ * and each call can only ever reach the prefix it builds from a validated uuid.
+ * Called by the PI delete route before finalization erases the document rows.
+ */
+export async function removeAllObjectsForPiDocuments(
+  service: SupabaseClient,
+  submissionId: string,
+  /** The keys the document register names, read by the caller from the database. */
+  recordedPaths: readonly string[],
+  options: { onRemoveAttempt?: () => void } = {},
+): Promise<SubmissionObjectRemoval> {
+  if (!SUBMISSION_ID_RE.test(submissionId)) {
+    throw new Error('A valid submissionId is required.')
+  }
+  return removeAllObjectsUnderPrefix(service, `pi-documents/${submissionId}`, recordedPaths, options)
+}
+
+/**
  * Remove every storage object belonging solely to one CONFIRMED ORDER — its
  * generated documents, under the reserved orders/{order_id}/versions/ prefix.
  *

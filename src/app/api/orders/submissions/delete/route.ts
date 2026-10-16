@@ -8,6 +8,7 @@ import {
 } from '@/lib/orders/submissionDeletion'
 import {
   SUBMISSION_ID_RE,
+  removeAllObjectsForPiDocuments,
   removeAllObjectsForSubmission,
 } from '@/lib/orders/submissionFilesServer'
 import { readDeletionBlockers } from '@/lib/orders/submissionDeletionBlockersServer'
@@ -391,10 +392,40 @@ export async function POST(req: NextRequest) {
 
   let removal
   try {
+    // READ FIRST. The document register is asked before a single object is
+    // removed, so a failed read is a settled failure with nothing destroyed and
+    // the reservation is simply given back.
+    const { data: docRows, error: docErr } = await service
+      .from('order_document_submission_files')
+      .select('storage_path, order_document_submissions!inner(pi_submission_id)')
+      .eq('order_document_submissions.pi_submission_id', submissionId)
+    if (docErr) throw new Error('Could not read the document register for this PI.')
+    const onRemoveAttempt = () => { removalAttempted = true }
     removal = await removeAllObjectsForSubmission(
-      service, submissionId, reservation?.storage_paths ?? [],
-      { onRemoveAttempt: () => { removalAttempted = true } })
+      service, submissionId, reservation?.storage_paths ?? [], { onRemoveAttempt })
     if (removal.removalAttempted) removalAttempted = true
+
+    // The supporting documents sent with the PI live under their own prefix and
+    // their rows are erased by finalization, so their files go first, under the
+    // same rule: the reservation is kept once any remove request has been issued.
+    const documents = await removeAllObjectsForPiDocuments(
+      service, submissionId,
+      (docRows ?? []).map(row => (row as { storage_path: string }).storage_path),
+      { onRemoveAttempt })
+    if (documents.removalAttempted) removalAttempted = true
+    removal = {
+      ...removal,
+      found: [...removal.found, ...documents.found],
+      removed: [...removal.removed, ...documents.removed],
+      failed: [...removal.failed, ...documents.failed],
+      removalAttempted: removal.removalAttempted || documents.removalAttempted,
+      stats: {
+        directories: removal.stats.directories + documents.stats.directories,
+        batches: removal.stats.batches + documents.stats.batches,
+        listMs: removal.stats.listMs + documents.stats.listMs,
+        removeMs: removal.stats.removeMs + documents.stats.removeMs,
+      },
+    }
   } catch {
     // A SETTLED failure: every request this sweep started has finished, so
     // nothing is in flight and a release cannot be overtaken by a late deletion.
