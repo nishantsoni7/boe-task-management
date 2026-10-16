@@ -177,7 +177,7 @@ begin
   if tg_op = 'DELETE' and public.in_test_data_cleanup() then return old; end if;
   if tg_op = 'DELETE'
      and tg_table_name = 'order_pi_document_absences'
-     and public.order_submission_purge_in_progress(old.pi_submission_id) then
+     and public.order_submission_purge_in_progress((to_jsonb(old) ->> 'pi_submission_id')::uuid) then
     return old;
   end if;
   raise exception 'ORDER_DOCUMENT_HISTORY_IMMUTABLE: % rows cannot be changed or deleted', tg_table_name
