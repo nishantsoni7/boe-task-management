@@ -199,6 +199,7 @@ export function CustodyTrailFields({
   formatDateTime,
   defaultActorId,
   disabled,
+  showTitle = true,
 }: {
   supabase: ReturnType<typeof createClient>
   paymentMode: string
@@ -211,6 +212,8 @@ export function CustodyTrailFields({
   /** Seeds "Collected by" on the first activity — usually the submitter. */
   defaultActorId?: string
   disabled?: boolean
+  /** False when a step heading above already names the section. */
+  showTitle?: boolean
 }) {
   const [users, setUsers] = useState<UserOption[]>([])
   const uid = useId()
@@ -259,6 +262,10 @@ export function CustodyTrailFields({
 
   const add = (activityType: CustodyActivityType) => {
     const draft = emptyCustodyDraft(newCustodyDraftKey(), activityType)
+    // WHEN DEFAULTS TO NOW. Most activities are recorded as they happen, so the
+    // person confirms the time instead of typing it. It stays editable, and the
+    // server still refuses a time in the future.
+    draft.occurredAt = isoToLocalInput(new Date().toISOString())
     // The submitter collected it, until they say otherwise. Never applied to a
     // handover: who handed it over and who received it are both real choices.
     if (activityType === 'collected' && defaultActorId) draft.collectedBy = defaultActorId
@@ -276,8 +283,8 @@ export function CustodyTrailFields({
       display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
       <div>
-        <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
-        <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+        {showTitle && <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>}
+        <p style={{ margin: showTitle ? '4px 0 0' : 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {CUSTODY_TRAIL_NOTE}
         </p>
       </div>
