@@ -24,6 +24,7 @@ import { join } from 'node:path'
 import {
   CUSTODY_ACTIVITY_LABEL,
   CUSTODY_ACTIVITY_TYPES,
+  CUSTODY_OTHER_PERSON,
   CUSTODY_TRAIL_NOTE,
   CUSTODY_TRAIL_TITLE,
   custodyDraftError,
@@ -71,6 +72,7 @@ const stored = (over: Partial<CustodyEvent> = {}): CustodyEvent => ({
   occurredAt: '2026-08-20T09:00:00.000Z',
   collectedBy: 'user-1',
   handedBy: null,
+  handedByName: null,
   handedTo: null,
   remark: null,
   paymentModeAtEvent: 'pnb',
@@ -163,6 +165,42 @@ describe('a drafted activity', () => {
 // 3. THE PAYLOAD
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe('a handover by somebody who is not a BOE user', () => {
+  const outside = (over: Partial<CustodyDraft> = {}) =>
+    handover({ handedBy: CUSTODY_OTHER_PERSON, handedByName: 'Ramesh (factory)', ...over })
+
+  test('a typed name is accepted, and is required', () => {
+    assert.equal(custodyDraftError(outside()), null)
+    assert.match(custodyDraftError(outside({ handedByName: '  ' })) ?? '', /Type the name/)
+  })
+
+  test('it is sent as a name with no user id', () => {
+    const [e] = toRpcCustodyEvents([outside()])
+    assert.equal(e.handed_by, null)
+    assert.equal(e.handed_by_name, 'Ramesh (factory)')
+    assert.equal(e.handed_to, 'user-2')
+  })
+
+  test('a BOE user is still sent as an id with no name', () => {
+    const [e] = toRpcCustodyEvents([handover({ handedByName: 'stale' })])
+    assert.equal(e.handed_by, 'user-1')
+    assert.equal(e.handed_by_name, null)
+  })
+
+  test('the outside name is read back and shown', () => {
+    const line = custodyEventLine(
+      stored({ activityType: 'handed_over', collectedBy: null, handedBy: null, handedByName: 'Ramesh', handedTo: 'user-2' }),
+      NAMES, iso => iso)
+    assert.equal(line.people, 'Ramesh → Nitish')
+  })
+
+  test('the database stores it as an exclusive alternative', () => {
+    const sql = read('supabase/migrations/20270318000000_custody_handed_by_outside_name.sql')
+    assert.ok(sql.includes('add column if not exists handed_by_name text'))
+    assert.ok(sql.includes('v_from_name'))
+  })
+})
+
 describe('what is sent to the append door', () => {
   test('the key travels with the row — that is what defeats a retry', () => {
     const [sent] = toRpcCustodyEvents([draft({ key: 'stable-key' })])
@@ -172,7 +210,7 @@ describe('what is sent to the append door', () => {
   test('the unused half of the shape is sent as null, never omitted', () => {
     const [collected] = toRpcCustodyEvents([draft()])
     assert.deepEqual(Object.keys(collected).sort(),
-      ['activity_type', 'collected_by', 'handed_by', 'handed_to', 'key', 'occurred_at', 'remark'])
+      ['activity_type', 'collected_by', 'handed_by', 'handed_by_name', 'handed_to', 'key', 'occurred_at', 'remark'])
     assert.equal(collected.handed_by, null)
     assert.equal(collected.handed_to, null)
 

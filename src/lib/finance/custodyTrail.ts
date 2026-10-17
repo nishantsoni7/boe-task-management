@@ -69,6 +69,8 @@ export type CustodyEvent = {
   occurredAt: string
   collectedBy: string | null
   handedBy: string | null
+  /** A typed name for an outside person (not a BOE user) who handed it over. */
+  handedByName: string | null
   handedTo: string | null
   remark: string | null
   /** The payment mode in force when this happened. Never re-derived from today's. */
@@ -91,6 +93,7 @@ export type CustodyEventRow = {
   occurred_at: string
   collected_by_user_id: string | null
   handed_by_user_id: string | null
+  handed_by_name?: string | null
   handed_to_user_id: string | null
   remark: string | null
   payment_mode_at_event: string
@@ -105,6 +108,7 @@ export function readCustodyEvent(row: CustodyEventRow): CustodyEvent {
     occurredAt: row.occurred_at,
     collectedBy: row.collected_by_user_id,
     handedBy: row.handed_by_user_id,
+    handedByName: row.handed_by_name ?? null,
     handedTo: row.handed_to_user_id,
     remark: row.remark,
     paymentModeAtEvent: row.payment_mode_at_event,
@@ -164,6 +168,7 @@ export function legacyCustodyEvents(
       occurredAt: (paymentDate ?? '') || (row.handed_over_at ?? '') || '',
       collectedBy: row.collected_by_user_id,
       handedBy: null,
+      handedByName: null,
       handedTo: null,
       remark: collectionRemark,
       paymentModeAtEvent: row.payment_mode,
@@ -186,6 +191,7 @@ export function legacyCustodyEvents(
       // between. That assumption is written down here rather than smuggled in:
       // the collector is named as the hander, and the event is marked legacy.
       handedBy: row.collected_by_user_id,
+      handedByName: null,
       handedTo: row.handed_over_to_user_id,
       remark: !row.collected_by_user_id && note ? note : null,
       paymentModeAtEvent: row.payment_mode,
@@ -220,6 +226,14 @@ export function custodyTrail(
 
 // ── An unsaved activity, in a form ───────────────────────────────────────────
 
+/**
+ * The "Handed by" choice for somebody who is not a BOE user (factory staff who
+ * carry the money). Never sent to the server: it means "read handedByName".
+ */
+export const CUSTODY_OTHER_PERSON = '__other__'
+export const CUSTODY_OTHER_PERSON_LABEL = 'Someone else (type a name)'
+export const CUSTODY_OUTSIDE_NAME_MAX = 120
+
 export type CustodyDraft = {
   /**
    * THE IDEMPOTENCY KEY, minted once when the row appears and never changed.
@@ -236,12 +250,14 @@ export type CustodyDraft = {
   occurredAt: string
   collectedBy: string
   handedBy: string
+  /** Used only when handedBy is CUSTODY_OTHER_PERSON: an outside person's name. */
+  handedByName: string
   handedTo: string
   remark: string
 }
 
 export function emptyCustodyDraft(key: string, activityType: CustodyActivityType = 'collected'): CustodyDraft {
-  return { key, activityType, occurredAt: '', collectedBy: '', handedBy: '', handedTo: '', remark: '' }
+  return { key, activityType, occurredAt: '', collectedBy: '', handedBy: '', handedByName: '', handedTo: '', remark: '' }
 }
 
 /**
@@ -259,8 +275,13 @@ export function custodyDraftError(draft: CustodyDraft): string | null {
     return null
   }
   if (!draft.handedBy.trim()) return 'Select who handed the money over.'
+  const outside = draft.handedBy === CUSTODY_OTHER_PERSON
+  if (outside && !draft.handedByName.trim()) return 'Type the name of the person who handed the money over.'
+  if (outside && draft.handedByName.trim().length > CUSTODY_OUTSIDE_NAME_MAX) {
+    return 'The name of the person who handed the money over is too long.'
+  }
   if (!draft.handedTo.trim()) return 'Select who received the money.'
-  if (draft.handedBy.trim() === draft.handedTo.trim()) {
+  if (!outside && draft.handedBy.trim() === draft.handedTo.trim()) {
     return 'A handover needs two different people.'
   }
   return null
@@ -294,7 +315,8 @@ export function toRpcCustodyEvents(drafts: CustodyDraft[]): Record<string, strin
       activity_type: d.activityType,
       occurred_at:   localInputToIso(d.occurredAt),
       collected_by:  collected ? (d.collectedBy.trim() || null) : null,
-      handed_by:     collected ? null : (d.handedBy.trim() || null),
+      handed_by:     collected || d.handedBy === CUSTODY_OTHER_PERSON ? null : (d.handedBy.trim() || null),
+      handed_by_name: !collected && d.handedBy === CUSTODY_OTHER_PERSON ? (d.handedByName.trim() || null) : null,
       handed_to:     collected ? null : (d.handedTo.trim() || null),
       remark:        d.remark.trim() || null,
     }
@@ -351,12 +373,13 @@ export function custodyEventLine(
   formatDateTime: (iso: string) => string,
 ): CustodyEventLine {
   const who = (id: string | null) => (id ? names.get(id) || 'Unknown user' : 'Unknown user')
+  const handedByWho = event.handedByName?.trim() || who(event.handedBy)
   return {
     id: event.id,
     title: CUSTODY_ACTIVITY_LABEL[event.activityType],
     people: event.activityType === 'collected'
       ? who(event.collectedBy)
-      : `${who(event.handedBy)} → ${who(event.handedTo)}`,
+      : `${handedByWho} → ${who(event.handedTo)}`,
     when: event.occurredAt ? formatDateTime(event.occurredAt) : 'Date not recorded',
     remark: (event.remark ?? '').trim() || null,
     modeLabel: paymentModeLabel(event.paymentModeAtEvent),

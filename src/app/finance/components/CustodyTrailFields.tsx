@@ -31,6 +31,9 @@ import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import {
   CUSTODY_ACTIVITY_OPTIONS,
+  CUSTODY_OTHER_PERSON,
+  CUSTODY_OTHER_PERSON_LABEL,
+  CUSTODY_OUTSIDE_NAME_MAX,
   CUSTODY_TRAIL_NOTE,
   CUSTODY_TRAIL_TITLE,
   custodyDraftError,
@@ -81,12 +84,14 @@ function LabelledField({ label, htmlFor, children }: {
   )
 }
 
-function UserSelect({ id, value, onChange, users, disabled }: {
+function UserSelect({ id, value, onChange, users, disabled, allowOther }: {
   id: string
   value: string
   onChange: (v: string) => void
   users: UserOption[]
   disabled?: boolean
+  /** Adds a "someone else" choice, for people who are not BOE users. */
+  allowOther?: boolean
 }) {
   return (
     <select id={id} className="boe-input" value={value} disabled={disabled}
@@ -97,6 +102,7 @@ function UserSelect({ id, value, onChange, users, disabled }: {
           {u.inactive ? `${u.full_name} (inactive)` : u.full_name}
         </option>
       ))}
+      {allowOther && <option value={CUSTODY_OTHER_PERSON}>{CUSTODY_OTHER_PERSON_LABEL}</option>}
     </select>
   )
 }
@@ -382,10 +388,24 @@ export function CustodyTrailFields({
                   <UserSelect
                     id={`${uid}-${draft.key}-handed-by`}
                     value={draft.handedBy}
-                    onChange={v => patch(draft.key, { handedBy: v })}
+                    onChange={v => patch(draft.key, { handedBy: v, handedByName: v === CUSTODY_OTHER_PERSON ? draft.handedByName : '' })}
                     users={users}
                     disabled={disabled}
+                    allowOther
                   />
+                  {draft.handedBy === CUSTODY_OTHER_PERSON && (
+                    <input
+                      id={`${uid}-${draft.key}-handed-by-name`}
+                      className="boe-input"
+                      aria-label="Name of the person who handed the money over"
+                      value={draft.handedByName}
+                      disabled={disabled}
+                      maxLength={CUSTODY_OUTSIDE_NAME_MAX}
+                      onChange={e => patch(draft.key, { handedByName: e.target.value })}
+                      placeholder="Full name, e.g. factory staff"
+                      style={{ width: '100%', marginTop: '6px' }}
+                    />
+                  )}
                 </LabelledField>
                 <LabelledField label="Handed to" htmlFor={`${uid}-${draft.key}-handed-to`}>
                   <UserSelect
