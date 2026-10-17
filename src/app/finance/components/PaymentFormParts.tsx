@@ -12,11 +12,21 @@
 //   QuickDateField    the date, plus Today and Yesterday as one tap each
 //   FieldProblem      the red sentence under a field that needs attention
 //   OptionalDisclosure  a section that stays closed until somebody wants it
+//   FormDialog        the frame: header, a body that scrolls, a footer that does not
+//   PaymentDetailsFields  amount, date and mode — the same three on every payment form
 
-import { useId } from 'react'
+import { useId, useRef } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { paymentModeOptionsFor } from '@/lib/finance/paymentEntry'
+import {
+  FINANCE_MODAL_DIALOG_Z,
+  FINANCE_MODAL_OVERLAY_Z,
+  useDialogFocus,
+  useModalScrollLock,
+} from './FinanceModalShell'
+import { AmountInput } from './AmountInput'
+import { PaymentModeHint } from './PaymentModeHint'
 
 // ── A numbered step ──────────────────────────────────────────────────────────
 
@@ -194,5 +204,162 @@ export function OptionalDisclosure({ title, hint, open, onToggle, children }: {
       </button>
       <div id={bodyId} hidden={!open}>{open && children}</div>
     </div>
+  )
+}
+
+
+// ── The frame every payment form shares ──────────────────────────────────────
+//
+// A HEADER THAT STAYS, A BODY THAT SCROLLS, A FOOTER THAT STAYS. The buttons and
+// the summary of what is about to be sent never scroll out of reach, however
+// long the form grows. The backdrop is INERT: these forms hold unsaved input,
+// and a stray click must never throw it away. Escape and the close button are
+// the form's own guard's business, not this frame's.
+
+export function FormDialog({
+  title, subtitle, onClose, closeDisabled, width = '660px', summary, actions, children, banner,
+}: {
+  title: string
+  subtitle?: string
+  onClose: () => void
+  closeDisabled?: boolean
+  width?: string
+  /** What is about to be sent, in one line. */
+  summary?: React.ReactNode
+  /** The footer's buttons. */
+  actions: React.ReactNode
+  /** Sits above the steps, inside the scrolling body: a status notice, say. */
+  banner?: React.ReactNode
+  children: React.ReactNode
+}) {
+  useModalScrollLock()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 40px)',
+          background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+          zIndex: FINANCE_MODAL_DIALOG_Z, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          outline: 'none',
+        }}
+      >
+        <div style={{
+          padding: '14px 20px 12px', borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{title}</div>
+            {subtitle && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>{subtitle}</div>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={closeDisabled}
+            aria-label="Close"
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '4px 10px', fontSize: '13px', flexShrink: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{
+          padding: '16px 20px', overflowY: 'auto', flex: 1,
+          display: 'flex', flexDirection: 'column', gap: '20px',
+        }}>
+          {banner}
+          {children}
+        </div>
+
+        <div style={{
+          padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
+          display: 'flex', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', flexShrink: 0,
+        }}>
+          <div aria-live="polite" style={{ fontSize: '13px', color: colors.secondary, minWidth: 0, wordBreak: 'break-word' }}>
+            {summary}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>{actions}</div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Scroll to what needs attention ───────────────────────────────────────────
+
+/**
+ * After Send was pressed on an unfinished form: take the person to the first
+ * thing that needs them. Waits one frame so the problems it looks for have been
+ * drawn. A field marked aria-invalid wins over any other alert.
+ */
+export function scrollToFirstProblem(container: HTMLElement | null) {
+  requestAnimationFrame(() => {
+    const target = container?.querySelector<HTMLElement>('[aria-invalid="true"]')
+      ?? container?.querySelector<HTMLElement>('[role="alert"]')
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    target?.focus?.({ preventScroll: true })
+  })
+}
+
+// ── Amount, date and mode: the same three on every payment form ──────────────
+
+function DetailLabel({ text, required, htmlFor }: { text: string; required?: boolean; htmlFor?: string }) {
+  return (
+    <label htmlFor={htmlFor} style={{
+      fontSize: '12px', fontWeight: 600, color: colors.muted,
+      textTransform: 'uppercase', letterSpacing: '0.05em',
+    }}>
+      {text}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
+    </label>
+  )
+}
+
+export function PaymentDetailsFields({
+  amount, onAmount, date, onDate, mode, onMode, disabled,
+  amountProblem, dateProblem, amountLabel = 'Amount', modeHintId,
+}: {
+  amount: string
+  onAmount: (next: string) => void
+  date: string
+  onDate: (next: string) => void
+  mode: string
+  onMode: (next: string) => void
+  disabled?: boolean
+  amountProblem?: string | null
+  dateProblem?: string | null
+  amountLabel?: string
+  modeHintId?: string
+}) {
+  const hintId = modeHintId ?? 'payment-mode-hint'
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <DetailLabel text={amountLabel} required />
+          <AmountInput prefix="₹" value={amount} onChange={onAmount} />
+          <FieldProblem message={amountProblem ?? null} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <DetailLabel text="Payment Date" required />
+          <QuickDateField value={date} onChange={onDate} disabled={disabled} invalid={!!dateProblem} />
+          <FieldProblem message={dateProblem ?? null} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <DetailLabel text="Payment Mode" required />
+        <PaymentModePicker value={mode} onChange={onMode} disabled={disabled} describedBy={hintId} />
+        <PaymentModeHint mode={mode} id={hintId} />
+      </div>
+    </>
   )
 }

@@ -3040,6 +3040,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/finance/components/PaymentEntryFields.tsx',
     'src/app/finance/components/PaymentFormParts.tsx',
     'src/app/finance/paymentRequestForm.test.ts',
+    // Record Payment and Edit Payment, on the same frame (2026-10-17).
+    'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    'src/app/finance/paymentFormsRecordEdit.test.ts',
+    'src/lib/finance/paymentEntry.test.ts',
   ])
 
   const ALLOWED_INVENTORY = new Set([

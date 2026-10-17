@@ -59,9 +59,15 @@ import { useRef, useState } from 'react'
 import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
-import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { sanitizeAmountInput } from '@/lib/currency'
+import {
+  FormDialog,
+  FormStep,
+  OptionalDisclosure,
+  PaymentDetailsFields,
+  scrollToFirstProblem,
+} from '@/app/finance/components/PaymentFormParts'
 import {
   EMPTY_ALLOCATION_ROW,
   duplicateTargetKeys,
@@ -85,7 +91,7 @@ import {
   DEFAULT_PAYMENT_MODE,
   SUSPENSE_NOTICE,
   destinationTargetKind,
-  paymentModeOptionsFor,
+  paymentModeLabel,
   type PaymentDestination,
 } from '@/lib/finance/paymentEntry'
 import {
@@ -103,7 +109,6 @@ import {
 import { validateProofFile } from '@/lib/paymentProof'
 import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
-import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
 import {
   MIXED_CUSTOMER_BLOCKED_REASON,
   customerGroups,
@@ -248,6 +253,11 @@ export function RecordSplitPaymentModal({
 
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
+  // Problems are named only after Record Payment was pressed, and clear as they are put right.
+  const [showProblems, setShowProblems] = useState(false)
+  // Proof and notes stay closed unless something is already in them.
+  const [proofOpen, setProofOpen] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
 
   // ONE SUBMISSION, NOT ONE PER CLICK. `saving` re-renders and a second click can
   // land inside the same tick; a ref is read and written synchronously, so it is
@@ -334,6 +344,27 @@ export function RecordSplitPaymentModal({
       allocationCount: recordedWithoutProof.allocationCount,
       verified:        completion.verified,
     })
+  }
+
+  // ── What is still missing, in words ──
+  // Presentation only: `blocked` and the database decide. These sentences say
+  // WHICH field is unanswered instead of leaving a button grey.
+  const amountProblem = showProblems && amount.trim() === '' ? 'Enter the amount received.' : null
+  const dateProblem = showProblems && !paymentDate ? 'Pick the date it was paid.' : null
+  const otherProblem = showProblems && blocked && amount.trim() !== '' && paymentDate ? blocked : null
+
+  // RECORD IS NEVER GREYED OUT. An unfinished entry names what is missing and
+  // takes the person to it. A finished one goes to handleSave, whose own guard is
+  // the one that stops a double submission.
+  const reviewAndRecord = () => {
+    if (saving || submitting.current) return
+    if (blocked) {
+      setShowProblems(true)
+      if (attachError) setProofOpen(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
+    void handleSave()
   }
 
   const changeDestination = (next: PaymentDestination) => {
@@ -458,85 +489,198 @@ export function RecordSplitPaymentModal({
     })
   }
 
+  const summary = [
+    totals.payment === null ? null : formatMoney(totals.payment),
+    paymentModeLabel(paymentMode),
+    targetKind && totals.payment !== null
+      ? (totals.overAllocated
+          ? `Over by ${formatMoney((totals.remaining ?? '').replace('-', ''))}`
+          : `${formatMoney(totals.remaining)} left to allocate`)
+      : destination === 'suspense' ? 'Suspense Entry' : null,
+  ].filter(Boolean).join(' · ')
+
+  const carriesCustody = modeRequiresCustodyTrail(paymentMode)
+
   return (
-    <FinanceModal
+    <>
+    <FormDialog
       title={RECORD_PAYMENT_MODAL_TITLE}
+      subtitle="Finance verifies it before it counts as received"
       /* ✕ asks before it discards; so does Escape, through the guard's own
-         capture-phase listener, which stops this shell's from also firing. */
+         capture-phase listener. A backdrop click does nothing at all — the
+         project's Form Modal Dismissal Rule. */
       onClose={guard.requestClose}
-      width="700px"
-      /* Holds unsaved input, so a backdrop click must never discard it —
-         the project's Form Modal Dismissal Rule. */
-      closeOnBackdropClick={false}
+      closeDisabled={saving}
+      width="720px"
+      summary={recordedWithoutProof ? null : summary}
+      actions={recordedWithoutProof ? (
+        <>
+          <button
+            onClick={() => onRecorded(recordedWithoutProof)}
+            disabled={retryingProof}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '7px 16px', fontSize: '13px' }}
+          >
+            Close
+          </button>
+          {attachFile && (
+            <button
+              onClick={retryProof}
+              disabled={retryingProof}
+              className="boe-btn boe-btn-primary"
+              style={{ padding: '7px 16px', fontSize: '13px', opacity: retryingProof ? 0.6 : 1 }}
+            >
+              {retryingProof ? 'Uploading…' : 'Retry proof upload'}
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <button onClick={guard.requestClose} disabled={saving}
+                  className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            Cancel
+          </button>
+          <button
+            onClick={reviewAndRecord}
+            disabled={saving}
+            className="boe-btn boe-btn-primary"
+            style={{ padding: '7px 16px', fontSize: '13px' }}
+          >
+            {saving ? 'Recording…' : RECORD_PAYMENT_ACTION_LABEL}
+          </button>
+        </>
+      )}
     >
-      <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
-        One payment, divided across every record it actually paid for.
-        Anything not allocated stays as an available balance on the payment.
-        Finance still verifies it before it counts as received.
-      </div>
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* ── 1. Where the money is for ── */}
-      <DestinationCards value={destination} onChange={changeDestination} disabled={saving} />
+      <FormStep number={1} title="What is this payment for?">
+        <DestinationCards value={destination} onChange={changeDestination} disabled={saving} />
 
-      {destination === 'suspense' && (
-        <p style={{
-          margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5,
-          padding: '10px 12px', borderRadius: '8px', background: colors.hover,
-        }}>
-          {SUSPENSE_NOTICE}
-        </p>
+        {destination === 'suspense' && (
+          <p style={{
+            margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+            padding: '10px 12px', borderRadius: '8px', background: colors.hover,
+          }}>
+            {SUSPENSE_NOTICE}
+          </p>
+        )}
+      </FormStep>
+
+      {/* ── 2. The payment itself ──
+          THE FOUR ACCOUNTS, from the one shared list — the same four the Payment
+          Request form offers — with one plain line under the choice saying what
+          kind of route it is. */}
+      <FormStep number={2} title="Payment">
+        <PaymentDetailsFields
+          amountLabel="Amount received"
+          amount={amount}
+          onAmount={v => { setAmount(sanitizeAmountInput(v)); setError(null) }}
+          date={paymentDate}
+          onDate={v => { setPaymentDate(v); setError(null) }}
+          mode={paymentMode}
+          onMode={v => { setPaymentMode(v); setError(null) }}
+          disabled={saving}
+          amountProblem={amountProblem}
+          dateProblem={dateProblem}
+          modeHintId="rsp-mode-hint"
+        />
+      </FormStep>
+
+      {/* ── 3. WHO CARRIED IT — for PNB and Paytm only. ── */}
+      {carriesCustody && (
+        <FormStep number={3} title="Who carried the money" hint="Optional">
+          <CustodyTrailFields
+            supabase={supabase}
+            paymentMode={paymentMode}
+            drafts={custody}
+            onDraftsChange={setCustody}
+            defaultActorId={userId ?? undefined}
+            disabled={saving}
+            showTitle={false}
+          />
+        </FormStep>
       )}
 
-      {/* ── 2. The payment itself ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-        <Field label="Amount received" htmlFor="rsp-amount">
-          <input
-            id="rsp-amount" className="boe-input" inputMode="decimal" value={amount} autoFocus
-            onChange={e => { setAmount(sanitizeAmountInput(e.target.value)); setError(null) }}
-            placeholder="0.00"
-            style={{ width: '100%' }}
-          />
-        </Field>
-        <Field label="Payment date" htmlFor="rsp-date">
-          <input
-            id="rsp-date" className="boe-input" type="date" value={paymentDate}
-            onChange={e => { setPaymentDate(e.target.value); setError(null) }}
-            style={{ width: '100%' }}
-          />
-        </Field>
-        {/* THE FOUR ACCOUNTS, from the one shared list — the same four the
-            Payment Request form offers — with one plain line under the choice
-            saying what kind of route it is. */}
-        <Field label="Payment mode" htmlFor="rsp-mode">
-          <select
-            id="rsp-mode" className="boe-input" value={paymentMode}
-            onChange={e => { setPaymentMode(e.target.value); setError(null) }}
-            aria-describedby="rsp-mode-hint"
-            style={{ width: '100%' }}
-          >
-            {paymentModeOptionsFor(null).map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
+      {/* ── The targets, when the destination has any ── */}
+      {targetKind && (
+        <FormStep number={carriesCustody ? 4 : 3} title={destination === 'pi_draft' ? 'Divide it across PI Drafts' : 'Divide it across Orders'}>
+          <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+            Anything not allocated stays as an available balance on the payment.
+          </p>
+
+          {/* ── The three figures, always on screen ──
+              Total received, total allocated, and what is left. Shown continuously
+              rather than on save, because the whole point of the form is the
+              arithmetic and somebody typing four rows must see it as they go. */}
+          <div style={{
+            background: colors.raised, border: `1px solid ${colors.border}`, borderRadius: '8px',
+            padding: '12px 14px', display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px',
+          }}>
+            <Figure label="Payment" value={totals.payment === null ? '—' : formatMoney(totals.payment)} />
+            <Figure label="Allocated" value={formatMoney(totals.allocated)} />
+            <Figure
+              label={totals.overAllocated ? 'Over by' : 'Left to allocate'}
+              value={
+                totals.remaining === null ? '—'
+                  : formatMoney(totals.overAllocated ? totals.remaining.replace('-', '') : totals.remaining)
+              }
+              strong
+              tone={totals.overAllocated ? colors.red : undefined}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {rows.map((row, index) => (
+              <AllocationRow
+                key={row.key}
+                row={row}
+                index={index}
+                kind={targetKind}
+                supabase={supabase}
+                duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
+                picking={pickerFor === row.key}
+                onPick={() => setPickerFor(row.key)}
+                onClosePicker={() => setPickerFor(null)}
+                onChange={patch => patchRow(row.key, patch)}
+                onRemove={() => removeRow(row.key)}
+              />
             ))}
-          </select>
-          <PaymentModeHint mode={paymentMode} id="rsp-mode-hint" />
-        </Field>
-      </div>
+          </div>
 
-      {/* WHO CARRIED IT — for PNB and Paytm only. */}
-      <CustodyTrailFields
-        supabase={supabase}
-        paymentMode={paymentMode}
-        drafts={custody}
-        onDraftsChange={setCustody}
-        defaultActorId={userId ?? undefined}
-        disabled={saving}
-      />
+          <button
+            type="button"
+            onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '6px 12px', fontSize: '12px', alignSelf: 'flex-start' }}
+          >
+            + Add allocation
+          </button>
 
-      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the
-          remark under ONE heading, exactly as the two Payment Request forms ask
-          them. Three parts of one question; three columns in the database,
-          because they mean three things. */}
-      <ProofReferenceSection>
+          {mixedCustomers && (
+            <MixedCustomerWarning
+              groups={customers}
+              confirmed={mixedConfirmed}
+              onConfirmedChange={next => setMixedConfirmedFor(next ? customerSignature(customers) : null)}
+              disabled={saving}
+            />
+          )}
+        </FormStep>
+      )}
+
+      {/* PAYMENT PROOF / REFERENCE — closed until wanted. The attachment, the
+          reference and the remark stay one section; the database keeps three
+          columns because they mean three things. What was typed lives in this
+          form's state, so closing the section never loses it. A recorded payment
+          whose proof failed keeps it open: the retry button needs the file. */}
+      <OptionalDisclosure
+        title="Add proof or notes"
+        hint={attachFile ? 'Proof attached' : (reference.trim() || remarks.trim()) ? 'Added' : 'Optional'}
+        open={proofOpen || recordedWithoutProof !== null}
+        onToggle={() => setProofOpen(o => !o)}
+      >
+        <ProofReferenceSection>
         <ProofReferenceField
           label="Payment reference"
           htmlFor="rsp-reference"
@@ -597,79 +741,11 @@ export function RecordSplitPaymentModal({
           />
         </ProofReferenceField>
       </ProofReferenceSection>
+      </OptionalDisclosure>
 
-      {/* ── The three figures, always on screen ──
-          Total received, total allocated, and what is left. Shown continuously
-          rather than on save, because the whole point of the form is the
-          arithmetic and somebody typing four rows must see it as they go. */}
-      <div style={{
-        background: colors.raised, border: `1px solid ${colors.border}`, borderRadius: '8px',
-        padding: '12px 14px', display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px',
-      }}>
-        <Figure label="Payment" value={totals.payment === null ? '—' : formatMoney(totals.payment)} />
-        <Figure label="Allocated" value={formatMoney(totals.allocated)} />
-        <Figure
-          label={totals.overAllocated ? 'Over by' : 'Left to allocate'}
-          value={
-            totals.remaining === null ? '—'
-              : formatMoney(totals.overAllocated ? totals.remaining.replace('-', '') : totals.remaining)
-          }
-          strong
-          tone={totals.overAllocated ? colors.red : undefined}
-        />
-      </div>
-
-      {/* ── 3. The targets, when the destination has any ── */}
-      {targetKind && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-            <span style={LABEL}>
-              {destination === 'pi_draft' ? 'PI Drafts' : 'Orders'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '4px 10px', fontSize: '12px' }}
-            >
-              + Add allocation
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {rows.map((row, index) => (
-              <AllocationRow
-                key={row.key}
-                row={row}
-                index={index}
-                kind={targetKind}
-                supabase={supabase}
-                duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
-                picking={pickerFor === row.key}
-                onPick={() => setPickerFor(row.key)}
-                onClosePicker={() => setPickerFor(null)}
-                onChange={patch => patchRow(row.key, patch)}
-                onRemove={() => removeRow(row.key)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {mixedCustomers && (
-        <MixedCustomerWarning
-          groups={customers}
-          confirmed={mixedConfirmed}
-          onConfirmedChange={next => setMixedConfirmedFor(next ? customerSignature(customers) : null)}
-          disabled={saving}
-        />
-      )}
-
-      {/* The reason the control is disabled, always stated. A greyed-out button
-          with no explanation is what has somebody clicking it repeatedly. */}
-      {blocked && !error && (
-        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{blocked}</div>
+      {/* WHAT IS STILL MISSING — named after the button was pressed, in words. */}
+      {otherProblem && (
+        <div role="alert" style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>{otherProblem}</div>
       )}
 
       {error && (
@@ -693,54 +769,15 @@ export function RecordSplitPaymentModal({
         </div>
       )}
 
-      {recordedWithoutProof ? (
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => onRecorded(recordedWithoutProof)}
-          disabled={retryingProof}
-          className="boe-btn boe-btn-ghost"
-          style={{ padding: '8px 18px', fontSize: '13px' }}
-        >
-          Close
-        </button>
-        {attachFile && (
-          <button
-            onClick={retryProof}
-            disabled={retryingProof}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px', opacity: retryingProof ? 0.6 : 1 }}
-          >
-            {retryingProof ? 'Uploading…' : 'Retry proof upload'}
-          </button>
-        )}
       </div>
-      ) : (
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={guard.requestClose} disabled={saving}
-                className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={blocked !== null || saving}
-          className="boe-btn boe-btn-primary"
-          style={{
-            padding: '8px 18px', fontSize: '13px',
-            opacity: (blocked !== null || saving) ? 0.6 : 1,
-            cursor: (blocked !== null || saving) ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Recording…' : RECORD_PAYMENT_ACTION_LABEL}
-        </button>
-      </div>
-      )}
+    </FormDialog>
 
-      <DiscardConfirmation
-        open={guard.asking}
-        onKeepEditing={guard.keepEditing}
-        onDiscard={guard.discard}
-      />
-    </FinanceModal>
+    <DiscardConfirmation
+      open={guard.asking}
+      onKeepEditing={guard.keepEditing}
+      onDiscard={guard.discard}
+    />
+    </>
   )
 }
 
@@ -975,19 +1012,6 @@ function AllocationRow({
 const LABEL: React.CSSProperties = {
   fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
-}
-
-function Field({ label, htmlFor, children }: {
-  label: string
-  htmlFor: string
-  children: React.ReactNode
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-      <label style={LABEL} htmlFor={htmlFor}>{label}</label>
-      {children}
-    </div>
-  )
 }
 
 function Figure({ label, value, strong, tone }: {
