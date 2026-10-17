@@ -71,6 +71,9 @@ import { PI_DRAFT_STATUS_LABEL, isPiDraftStatus } from './draftsView'
 export const DELETABLE_SUBMISSION_STATUSES: readonly string[] = [
   'draft',
   'needs_changes',
+  // Awaiting approval. The reservation freezes the PI against a reviewer for as
+  // long as the delete runs; a PI that is approved first is refused instead.
+  'submitted',
   'rejected',
 ]
 
@@ -144,7 +147,7 @@ export const DELETE_PI_RETRY_LABEL = 'Retry deletion'
  * their own draft is ceremony that trains people to type without reading.
  */
 export const DELETE_PI_WARNING =
-  'This will permanently delete the PI, its workbook, product images and activity history. '
+  'This will permanently delete the PI, its workbook, product images, supporting documents and activity history. '
   + 'This action cannot be undone.'
 
 export const DELETE_PI_SUCCESS = 'PI deleted.'
@@ -379,7 +382,7 @@ const FAILURE_COPY: Record<SubmissionDeletionCode, FailureCopy> = {
   // The one an employee is most likely to meet: they opened the dialog on a
   // draft and submitted it in another tab while it was open.
   STATUS_CHANGED: {
-    message: 'This PI is now under review and cannot be deleted. Its status has been refreshed.',
+    message: 'This PI was approved while this window was open, so it can no longer be deleted here. Its status has been refreshed.',
     refresh: true, retryable: false, blocked: false,
   },
   NOT_FOUND: {

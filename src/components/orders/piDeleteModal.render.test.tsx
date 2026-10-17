@@ -128,13 +128,13 @@ describe('a failed deletion keeps the dialog open and says why', () => {
     }
   })
 
-  test('a PI that entered review explains itself in the dialog', () => {
+  test('a PI that was approved meanwhile explains itself in the dialog', () => {
     const html = render({
       status: 'draft',
       failure: describeDeletionFailure('STATUS_CHANGED'),
     })
-    assert.ok(/under review/i.test(html))
-    assert.ok(/cannot be deleted/i.test(html))
+    assert.ok(/was approved/i.test(html))
+    assert.ok(/no longer be deleted/i.test(html))
   })
 
   test('no raw database text ever reaches it', () => {

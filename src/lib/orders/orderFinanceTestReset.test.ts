@@ -616,6 +616,9 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // child is an acknowledged absence, can be deleted. Touches neither the
       // reset protocol nor the deletion claim.
       '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
+
+      // A PI awaiting approval can be deleted, with the documents sent with it.
+      '20270316000000_order_submission_deletion_awaiting_approval.sql',
     ])
   })
 

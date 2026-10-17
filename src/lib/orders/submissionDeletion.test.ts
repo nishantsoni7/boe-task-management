@@ -71,12 +71,13 @@ const nobody:  DeletionActor = { userId: null,  isAdmin: false }
 // ── Status eligibility ────────────────────────────────────────────────────────
 
 describe('which states a PI may be deleted from', () => {
-  test('the three the business named, and no others', () => {
-    assert.deepEqual([...DELETABLE_SUBMISSION_STATUSES], ['draft', 'needs_changes', 'rejected'])
+  test('the four the business named, and no others', () => {
+    assert.deepEqual([...DELETABLE_SUBMISSION_STATUSES],
+      ['draft', 'needs_changes', 'submitted', 'rejected'])
   })
 
-  test('a PI under review is not one of them', () => {
-    assert.equal(submissionStatusIsDeletable('submitted'), false)
+  test('a PI awaiting approval is one of them', () => {
+    assert.equal(submissionStatusIsDeletable('submitted'), true)
   })
 
   test('nor is an approved one', () => {
@@ -98,7 +99,7 @@ describe('which states a PI may be deleted from', () => {
     // be a silent gap. There is none.
     for (const status of PI_DRAFT_STATUSES) {
       const deletable = submissionStatusIsDeletable(status)
-      assert.equal(deletable, ['draft', 'needs_changes', 'rejected'].includes(status),
+      assert.equal(deletable, ['draft', 'needs_changes', 'submitted', 'rejected'].includes(status),
         `${status} is decided deliberately`)
     }
   })
@@ -117,8 +118,8 @@ describe('the whole authorization matrix, cell by cell', () => {
     ['rejected',      owner,  'owner',      true],
     ['rejected',      admin,  'admin',      true],
     ['rejected',      other,  'other user', false],
-    ['submitted',     owner,  'owner',      false],
-    ['submitted',     admin,  'admin',      false],
+    ['submitted',     owner,  'owner',      true],
+    ['submitted',     admin,  'admin',      true],
     ['submitted',     other,  'other user', false],
     ['approved',      owner,  'owner',      false],
     ['approved',      admin,  'admin',      false],
@@ -154,8 +155,10 @@ describe('what ownership means, and what it does not', () => {
 
   test('an admin needs no ownership, but still needs an eligible status', () => {
     assert.ok(canDeleteSubmission(pi({ created_by: OTHER, submitted_by: OTHER }), admin))
+    assert.ok(canDeleteSubmission(
+      pi({ status: 'submitted', created_by: OTHER, submitted_by: OTHER }), admin))
     assert.equal(
-      canDeleteSubmission(pi({ status: 'submitted', created_by: OTHER, submitted_by: OTHER }), admin),
+      canDeleteSubmission(pi({ status: 'approved', created_by: OTHER, submitted_by: OTHER }), admin),
       false)
   })
 })
@@ -219,9 +222,9 @@ describe('the confirmation says what is about to happen', () => {
 
   test('the warning names everything that goes, and says it is permanent', () => {
     assert.equal(DELETE_PI_WARNING,
-      'This will permanently delete the PI, its workbook, product images and activity history. '
+      'This will permanently delete the PI, its workbook, product images, supporting documents and activity history. '
       + 'This action cannot be undone.')
-    for (const thing of ['workbook', 'product images', 'activity history']) {
+    for (const thing of ['workbook', 'product images', 'supporting documents', 'activity history']) {
       assert.ok(DELETE_PI_WARNING.includes(thing), `${thing} must be named`)
     }
     assert.ok(/permanently/.test(DELETE_PI_WARNING))
@@ -293,10 +296,10 @@ describe('every failure becomes a stable code and a usable sentence', () => {
     assert.equal(describeDeletionFailure('UNAUTHORIZED').refresh, false)
   })
 
-  test('a PI that entered review explains itself, rather than blaming the person', () => {
+  test('a PI that was approved meanwhile explains itself, rather than blaming the person', () => {
     const failure = describeDeletionFailure('STATUS_CHANGED')
-    assert.ok(/under review/i.test(failure.message))
-    assert.ok(/cannot be deleted/i.test(failure.message))
+    assert.ok(/was approved/i.test(failure.message))
+    assert.ok(/no longer be deleted/i.test(failure.message))
     assert.ok(/refreshed/i.test(failure.message))
   })
 
@@ -420,7 +423,7 @@ describe('the route reserves the record before it removes a single file', () => 
     assert.ok(route.includes('if (removal.failed.length > 0)'))
 
     assert.ok(route.includes('let removalAttempted = false'))
-    assert.ok(route.includes('onRemoveAttempt: () => { removalAttempted = true }'),
+    assert.ok(route.includes('const onRemoveAttempt = () => { removalAttempted = true }'),
       'the flag is set BEFORE each request, so a throw cannot hide it')
     // SCOPED TO THE SWEEP AND AFTER, which is the region this rule is about. A
     // release becomes unsafe only once a remove request could have gone out, so
@@ -946,9 +949,21 @@ describe('the storage sweep takes this submission’s files and nothing else', (
     // anything.
     assert.ok(!helper.includes('export async function removeAllObjectsUnderPrefix'))
     const calls = [...helper.matchAll(/removeAllObjectsUnderPrefix\(service, ([^,]+),/g)].map(m => m[1])
-    assert.deepEqual(calls, ['`submissions/${submissionId}`', '`orders/${orderId}`'])
+    assert.deepEqual(calls,
+      ['`submissions/${submissionId}`', '`pi-documents/${submissionId}`', '`orders/${orderId}`'])
     assert.ok(helper.includes("if (!SUBMISSION_ID_RE.test(submissionId))"))
     assert.ok(helper.includes("if (!SUBMISSION_ID_RE.test(orderId))"))
+  })
+
+  test('a PI’s supporting documents are swept by their OWN prefix, after the workbook', () => {
+    // pi-documents/{pi}/ is built from the same validated uuid, by its own entry
+    // point, and the route removes them before finalization erases their rows.
+    assert.ok(helper.includes('export async function removeAllObjectsForPiDocuments'))
+    const route = read('src/app/api/orders/submissions/delete/route.ts')
+    const workbook = route.indexOf('removeAllObjectsForSubmission(')
+    const documents = route.indexOf('removeAllObjectsForPiDocuments(')
+    const finalize = route.indexOf("'finalize_order_submission_deletion'")
+    assert.ok(workbook > 0 && documents > workbook && finalize > documents)
   })
 
   test('an Order’s documents are swept by their OWN prefix, never the PI’s', () => {
