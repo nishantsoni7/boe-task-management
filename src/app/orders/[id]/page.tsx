@@ -85,6 +85,8 @@ import {
   CancelOrderModal,
   ReviewChangeRequestModal,
 } from './OrderAmendmentModals'
+import { DeleteOrderModal } from './DeleteOrderModal'
+import { DELETE_ORDER_ACTION_LABEL, canDeleteOrder } from '@/lib/orders/orderDeletion'
 import {
   canAmendOrderDirectly,
   canRequestOrderChange,
@@ -737,6 +739,7 @@ export default function OrderDetailPage() {
   const [amendOpen,      setAmendOpen]      = useState(false)
   const [requestOpen,    setRequestOpen]    = useState(false)
   const [cancelOpen,     setCancelOpen]     = useState(false)
+  const [deleteOrderOpen, setDeleteOrderOpen] = useState(false)
   const [reviewing,      setReviewing]      = useState<OrderChangeRequest | null>(null)
 
   // ── The approved PI this Order came from ──
@@ -2748,6 +2751,7 @@ export default function OrderDetailPage() {
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
     canCleanUp: profile?.role === 'admin' && !viewAsUserId && canCleanUp,
+    canDeleteOrder: canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId }),
   })
 
   const actionLabel = (key: OrderHeaderActionKey): string => {
@@ -2761,6 +2765,7 @@ export default function OrderDetailPage() {
         return pendingRequests.length === 1 ? 'Review change request' : `Review ${pendingRequests.length} change requests`
       case 'withdraw_acceptance': return WITHDRAW_ACCEPTANCE_LABEL
       case 'cleanup':             return 'Clean Up Test Transaction'
+      case 'delete_order':        return DELETE_ORDER_ACTION_LABEL
     }
   }
 
@@ -2771,6 +2776,7 @@ export default function OrderDetailPage() {
     if (key === 'request_change' && myPendingEdit) return 'You already have a change request awaiting review'
     if (key === 'request_cancel' && myPendingCancel) return 'You already have a cancellation request awaiting review'
     if (key === 'cleanup') return 'This Order was created during system testing'
+    if (key === 'delete_order') return 'Permanently delete this Order and its PI. Refused while any payment is allocated.'
     return undefined
   }
 
@@ -2805,6 +2811,10 @@ export default function OrderDetailPage() {
       case 'cleanup':
         router.push(`/admin/control-center/test-data-cleanup?type=order&id=${order.id}`)
         return
+      // An administrator may permanently delete an Order (20270317000000). The
+      // dialog asks for the Order number; the database checks the role, the
+      // number and that no payment is allocated.
+      case 'delete_order':         setDeleteOrderOpen(true); return
     }
   }
 
@@ -3405,6 +3415,13 @@ export default function OrderDetailPage() {
           /* Nothing to announce: this RAISES a change request, and the Order
              itself has not moved. The decision on it does announce. */
           onDone={() => afterChange(null)}
+        />
+      )}
+      {deleteOrderOpen && order && (
+        <DeleteOrderModal
+          orderId={order.id}
+          displayNumber={String(order.display_number)}
+          onClose={() => setDeleteOrderOpen(false)}
         />
       )}
       {cancelOpen && amendableOrder && (
