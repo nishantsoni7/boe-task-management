@@ -15,7 +15,7 @@ import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, p
 import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
-import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { useActiveUsers, warmMyTasksCaches } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
@@ -354,6 +354,17 @@ export default function DashboardPage() {
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  // Warm what the next click most likely opens. My Tasks' first visit paid two
+  // sequential round trips (tasks, then creator names) before it had anything to
+  // show; started here, once the Dashboard's own read has landed, both are in
+  // the cache by the time the person clicks. Not under View As: that preview
+  // belongs to another user and must not seed the signed-in user's cache.
+  const dashboardLoaded = dashboardTasks.isSuccess
+  useEffect(() => {
+    if (!dashboardLoaded || viewAsUserId || !loggedInId) return
+    warmMyTasksCaches(queryClient, loggedInId)
+  }, [dashboardLoaded, viewAsUserId, loggedInId, queryClient])
 
   // ── EXPLICIT MANUAL REFRESH ONLY. NOT TAB VISIBILITY. ──────────────────────
   //

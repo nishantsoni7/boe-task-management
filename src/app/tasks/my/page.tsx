@@ -15,7 +15,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
-import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
+import { useMyTasks, useAllUserNames } from '@/hooks/queries/useMyTasks'
 import {
   AWAITING_APPROVAL_LABEL,
   MY_TASK_TAB_LABELS,
@@ -1232,11 +1232,11 @@ function MyTasksContent() {
   const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
-  const creatorIds = useMemo(
-    () => [...new Set(allTasksRaw.map(t => t.created_by))],
-    [allTasksRaw]
-  )
-  const { data: userMap = {} } = useUserNames(creatorIds)
+  // The shared name table rather than one keyed on this list's creator ids: that
+  // key could only be fetched AFTER the tasks arrived (a second round trip on
+  // every first visit) and could never be warmed ahead of the click. The table
+  // is one cached read the Dashboard warms and Assigned By Me already uses.
+  const { data: userMap = {} } = useAllUserNames()
 
   // Re-read when something ASKS for it — the Refresh button, or a return to the
   // tab — and not merely because this component mounted.
@@ -1281,9 +1281,20 @@ function MyTasksContent() {
   // batch of fifteen into a batch per keystroke — paying more to warm a route
   // the reader has not asked for. Once per arrival, for the view they arrived
   // on, is the trade the old code was already making.
+  //
+  // EACH HREF IS WARMED ONCE PER ARRIVAL. `allTasksRaw` changes identity on every
+  // refetch (focus, the 30s stale window, any mutation), and this effect re-ran
+  // the whole batch each time — measured on production as the same fifteen task
+  // pages requested again two seconds after the first pass.
+  const warmedHrefs = useRef(new Set<string>())
   useEffect(() => {
     if (allTasksRaw.length === 0) return
-    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(taskDetailHref(t.id, returnTo)))
+    allTasksRaw.slice(0, 15).forEach(t => {
+      const href = taskDetailHref(t.id, returnTo)
+      if (warmedHrefs.current.has(href)) return
+      warmedHrefs.current.add(href)
+      router.prefetch(href)
+    })
   }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── THE FIX FOR THE FALSE EMPTY STATE ────────────────────────────────────

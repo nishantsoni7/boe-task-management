@@ -1116,9 +1116,18 @@ function AssignedByMeContent() {
   // search, so not one of those fifteen requests could ever be used. Same
   // count, same cost, now spent on the thing that is asked for. `returnTo` is
   // deliberately not a dependency — see the matching note on /tasks/my.
+  //
+  // Each href is warmed once per arrival: `allTasksRaw` changes identity on
+  // every refetch, and the effect used to re-request the same batch each time.
+  const warmedHrefs = useRef(new Set<string>())
   useEffect(() => {
     if (allTasksRaw.length === 0) return
-    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(taskDetailHref(t.id, returnTo)))
+    allTasksRaw.slice(0, 15).forEach(t => {
+      const href = taskDetailHref(t.id, returnTo)
+      if (warmedHrefs.current.has(href)) return
+      warmedHrefs.current.add(href)
+      router.prefetch(href)
+    })
   }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
