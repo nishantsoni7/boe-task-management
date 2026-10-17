@@ -60,6 +60,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const code = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
+const FORM_PARTS = 'src/app/finance/components/PaymentFormParts.tsx'
 const REQUEST_FORM   = 'src/app/finance/page.tsx'
 const RECORD_FORM    = 'src/app/finance/received/RecordSplitPaymentModal.tsx'
 const SHARED_FIELDS  = 'src/app/finance/components/PaymentEntryFields.tsx'
@@ -463,9 +464,15 @@ describe('choosing the record a payment is for', () => {
 
 describe('a form modal never throws away what somebody typed', () => {
   test('backdrop click closes neither form', () => {
+    // Record Payment and the edit modal draw the shared FormDialog, whose overlay
+    // is inert — proved below by the overlay carrying no click handler at all.
     const record = code(read(RECORD_FORM))
-    assert.ok(record.includes('closeOnBackdropClick={false}'),
-      'Record Payment must opt out of backdrop dismissal')
+    assert.ok(record.includes('<FormDialog'), 'Record Payment must use the shared dialog frame')
+    const frame = read(FORM_PARTS)
+    const frameOverlay = frame.slice(frame.indexOf('export function FormDialog'), frame.indexOf('role="dialog"'))
+    assert.ok(frameOverlay.length > 0, 'the shared overlay must still be there to check')
+    assert.equal(/onClick=/.test(frameOverlay), false,
+      'the shared dialog overlay must be inert — a stray click is not a decision')
 
     // The Payment Request form draws its own overlay, so the proof is that the
     // overlay carries no click handler at all.
@@ -555,7 +562,7 @@ describe('a form modal never throws away what somebody typed', () => {
     assert.ok(shell.includes("if (e.key !== 'Tab') return"))
     for (const file of BOTH_FORMS) {
       const src = modalSource(file)
-      assert.ok(/useDialogFocus|FinanceModal/.test(src), `${file} must use the shared dialog focus`)
+      assert.ok(/useDialogFocus|FinanceModal|FormDialog/.test(src), `${file} must use the shared dialog focus`)
     }
   })
 })
@@ -572,12 +579,12 @@ describe('both layouts stay usable', () => {
   test('neither dialog can be wider than the viewport', () => {
     // The Payment Request form draws its own frame; Record Payment uses the
     // shared shell, so the shell is where its cap lives.
-    for (const file of [REQUEST_FORM, 'src/app/finance/components/FinanceModalShell.tsx']) {
+    for (const file of [REQUEST_FORM, FORM_PARTS, 'src/app/finance/components/FinanceModalShell.tsx']) {
       const src = read(file)
       assert.ok(/maxWidth: 'calc\(100vw - \d+px\)'/.test(src), `${file} must fit a narrow screen`)
     }
-    assert.ok(code(read(RECORD_FORM)).includes('<FinanceModal'),
-      'Record Payment must use the shell that carries the cap')
+    assert.ok(code(read(RECORD_FORM)).includes('<FormDialog'),
+      'Record Payment must use the frame that carries the cap')
   })
 
   test('the card is a real radio group, named and checkable by a screen reader', () => {
@@ -822,7 +829,7 @@ describe('the correction form', () => {
     assert.ok(src.includes('useDiscardGuard'), 'dirty Escape/✕/Cancel must ask')
     assert.ok(src.includes('guard.requestClose'))
     assert.ok(src.includes('<DiscardConfirmation'))
-    assert.ok(src.includes('closeOnBackdropClick={false}'), 'the backdrop must stay inert')
+    assert.ok(src.includes('<FormDialog'), 'the edit form uses the shared frame, whose backdrop is inert')
     assert.ok(src.includes('submitting.current'), 'a second click must not submit twice')
     for (const api of ['localStorage', 'sessionStorage', 'indexedDB']) {
       assert.equal(src.includes(api), false, `nothing about a correction belongs in ${api}`)
@@ -1063,9 +1070,12 @@ describe('what each payment mode is, in plain words', () => {
 
   test('shown on entry, editing and verification screens', () => {
     const request = read(REQUEST_FORM)
-    assert.equal((request.match(/<PaymentModeHint /g) ?? []).length, 3,
-      'Payment Request entry, its edit modal, and the verification modal')
-    assert.ok(read(RECORD_FORM).includes('<PaymentModeHint mode={paymentMode}'))
+    assert.equal((request.match(/<PaymentModeHint /g) ?? []).length, 2,
+      'Payment Request entry and the verification modal draw it directly')
+    assert.ok(read(FORM_PARTS).includes('<PaymentModeHint mode={mode}'),
+      'the shared payment-details block draws it for Record Payment and the edit modal')
+    assert.ok(read(RECORD_FORM).includes('<PaymentDetailsFields'))
+    assert.ok(request.includes('<PaymentDetailsFields'))
     assert.ok(read('src/app/finance/received/ReceivedPaymentsView.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
     assert.ok(read('src/components/orders/PiPaymentCard.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
   })

@@ -41,7 +41,6 @@ import {
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
 import {
-  FinanceModal,
   RequestModalShell,
   useDialogFocus,
   useModalScrollLock,
@@ -88,10 +87,13 @@ import { CustodyTrailFields } from './components/CustodyTrailFields'
 import { PaymentModeHint } from './components/PaymentModeHint'
 import {
   FieldProblem,
+  FormDialog,
   FormStep,
   OptionalDisclosure,
+  PaymentDetailsFields,
   PaymentModePicker,
   QuickDateField,
+  scrollToFirstProblem,
 } from './components/PaymentFormParts'
 import {
   PaymentCustodyTrail,
@@ -107,7 +109,6 @@ import {
   isPaymentMode,
   paymentEntryErrorMessage,
   paymentModeLabel,
-  paymentModeOptionsFor,
   type PaymentDestination as PaymentEntryDestination,
 } from '@/lib/finance/paymentEntry'
 import {
@@ -1617,8 +1618,6 @@ type EditPaymentModalProps = {
 }
 
 function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: EditPaymentModalProps) {
-  useModalScrollLock()
-
   const [form, setForm] = useState({
     amount:      String(r.amount),
     paymentDate: r.payment_date,
@@ -1686,6 +1685,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+  // Problems are named only after Save was pressed, and clear as they are put right.
+  const [showProblems, setShowProblems] = useState(false)
+  // Proof and notes open by themselves when the request already has some.
+  const [proofOpen, setProofOpen] = useState(!!((r.proof_note ?? '').trim() || (r.sales_note ?? '').trim()))
+  const formRef = useRef<HTMLDivElement>(null)
 
   // Set once an approval was detected mid-edit: the request is gone from this
   // page's jurisdiction, so retrying the save can only fail the same way.
@@ -1735,6 +1739,38 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       clientName: c.clientName,
       totalValue: typeof c.value === 'string' ? Number(c.value) : c.value,
     }))
+  }
+
+  // ── What is still missing, in words ──
+  // Presentation only: canSubmit and the database decide.
+  const needsTarget = entry !== null && destinationNeedsTarget(entry.destination)
+  const targetProblem = showProblems && entry !== null && needsTarget && !entry.target
+    ? (entry.destination === 'pi_draft'
+        ? 'Choose which PI Draft this payment is for.'
+        : 'Choose which Confirmed Order this payment is for.')
+    : null
+  const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
+  const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
+
+  const summary = [
+    isValidAmount(form.amount) ? `₹${groupIndianDigits(form.amount)}` : null,
+    paymentModeLabel(paymentMode),
+    entry?.target
+      ? `${entry.target.reference} · ${entry.target.clientName}`
+      : entry?.destination === 'suspense' ? 'Suspense Entry' : null,
+  ].filter(Boolean).join(' · ')
+
+  // SAVE IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing and
+  // takes the person to it. Only a form still reading what the payment is for
+  // waits — saving then would write Suspense over a request that had not loaded.
+  const reviewAndSave = () => {
+    if (saving || submitting.current || entry === null) return
+    if (!canSubmit) {
+      setShowProblems(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
+    void handleSave()
   }
 
   const handleSave = async () => {
@@ -1805,17 +1841,19 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   }
 
   return (
-    // Once an approval has been detected, every dismissal path refreshes so the
-    // table stops showing the request as still editable (see the same note on
-    // DeleteConfirmModal).
-    <FinanceModal
+    <>
+    {/* Once an approval has been detected, every dismissal path refreshes so the
+        table stops showing the request as still editable (see the same note on
+        DeleteConfirmModal). ✕ and Escape ask before discarding; a backdrop click
+        does nothing at all — the rule both entry forms carry. */}
+    <FormDialog
       title={!isAdmin && r.status === 'rejected' ? 'Reapply Payment Request' : 'Edit Payment Request'}
-      /* ✕ and Escape ask before discarding; a backdrop click does nothing at
-         all. The same rule both entry forms carry. */
+      subtitle={r.request_number}
       onClose={guard.requestClose}
-      width="620px"
-      closeOnBackdropClick={false}
-    >
+      closeDisabled={saving}
+      width="660px"
+      summary={stale ? null : summary}
+      banner={<>
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
@@ -1848,71 +1886,104 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           </div>
         </div>
       )}
+      </>}
+      actions={stale ? (
+        /* Once an approval has been detected there is nothing left to save here,
+           so the form's actions collapse to a single dismissal that also
+           refreshes the table (onSaved) — never a retry that must fail again. */
+        <button onClick={onSaved} className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+          Close
+        </button>
+      ) : (
+        <>
+          <button onClick={guard.requestClose} disabled={saving}
+            className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
+          <button onClick={reviewAndSave} disabled={saving || entry === null}
+            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            {!isAdmin && r.status === 'rejected'
+              ? (saving ? 'Reapplying…' : 'Save & Reapply')
+              : (saving ? 'Saving…' : 'Save Changes')}
+          </button>
+        </>
+      )}
+    >
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
       {/* WHAT THIS PAYMENT IS FOR — the same three cards the submission form
           offers, preloaded with what was chosen. Changing one clears the target
           the old one carried; the customer beneath is read-only and is
           re-derived server-side from whichever record is picked. */}
-      {entry === null ? (
-        <div style={{
-          padding: '11px 12px', borderRadius: '8px',
-          border: `1px solid ${colors.border}`, background: colors.raised,
-          fontSize: '13px', color: colors.muted,
-        }}>
-          Reading what this payment is for…
-        </div>
-      ) : (
-        <PaymentEntryFields
-          state={entry}
-          onChange={next => { setEntry(next); setError(null) }}
-          onSearch={searchTargets}
+      <FormStep number={1} title="What is this payment for?">
+        {entry === null ? (
+          <div style={{
+            padding: '11px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            fontSize: '13px', color: colors.muted,
+          }}>
+            Reading what this payment is for…
+          </div>
+        ) : (
+          <PaymentEntryFields
+            state={entry}
+            onChange={next => { setEntry(next); setError(null) }}
+            onSearch={searchTargets}
+            disabled={saving}
+            problem={targetProblem}
+          />
+        )}
+      </FormStep>
+
+      <FormStep number={2} title="Payment">
+        {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION. Without it, opening
+            this form on a 2026 payment would silently move it onto HDFC the
+            moment anything else was saved. The picker draws paymentModeOptionsFor,
+            which adds it, marked retired, and only ever for a row that already
+            carries one — a new entry never sees it. */}
+        <PaymentDetailsFields
+          amount={form.amount}
+          onAmount={v => setForm(prev => ({ ...prev, amount: v }))}
+          date={form.paymentDate}
+          onDate={v => setForm(prev => ({ ...prev, paymentDate: v }))}
+          mode={paymentMode}
+          onMode={setPaymentMode}
           disabled={saving}
+          amountProblem={amountProblem}
+          dateProblem={dateProblem}
+          modeHintId="edit-payment-mode-hint"
         />
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Amount (₹)" required>
-          <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
-        </Field>
-        <Field label="Payment Date" required>
-          <input className="boe-input" type="date" value={form.paymentDate}
-            onChange={set('paymentDate')} style={{ width: '100%' }} />
-        </Field>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Payment Mode" required>
-          <select className="boe-input" value={paymentMode} disabled={saving}
-            onChange={e => setPaymentMode(e.target.value)} style={{ width: '100%' }}>
-            {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION. Without it,
-                opening this form on a 2026 payment would silently move it onto
-                HDFC the moment anything else was saved. paymentModeOptionsFor
-                adds it, marked retired, and only ever for a row that already
-                carries one — a new entry never sees it. */}
-            {paymentModeOptionsFor(paymentMode).map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-          <PaymentModeHint mode={paymentMode} />
-        </Field>
-      </div>
+      </FormStep>
 
       {/* WHO CARRIED IT. Adding an activity is possible for as long as the
           request is editable — which is what makes "collect today, hand over
           tomorrow, record it then" work. What is ALREADY saved is shown by the
           details popup and cannot be changed here or anywhere. */}
-      <CustodyTrailFields
-        supabase={supabase}
-        paymentMode={paymentMode}
-        drafts={custody}
-        onDraftsChange={setCustody}
-        // The submitter is who collected the cash, not whoever is editing — an
-        // admin correcting someone else's request must not become the collector
-        // by opening the form.
-        defaultActorId={r.submitted_by}
-        disabled={saving}
-      />
+      {modeRequiresCustodyTrail(paymentMode) && (
+        <FormStep number={3} title="Who carried the money" hint="Optional">
+          <CustodyTrailFields
+            supabase={supabase}
+            paymentMode={paymentMode}
+            drafts={custody}
+            onDraftsChange={setCustody}
+            // The submitter is who collected the cash, not whoever is editing — an
+            // admin correcting someone else's request must not become the collector
+            // by opening the form.
+            defaultActorId={r.submitted_by}
+            disabled={saving}
+            showTitle={false}
+          />
+        </FormStep>
+      )}
 
       {/* PAYMENT PROOF / REFERENCE — one heading over the reference and the
-          notes, exactly as the submission form and Record Payment ask them. */}
-      <ProofReferenceSection>
+          notes, closed until wanted unless the request already has some. What was
+          typed lives in this form's state, so closing never loses it. */}
+      <OptionalDisclosure
+        title="Add proof or notes"
+        hint={(form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
+        open={proofOpen}
+        onToggle={() => setProofOpen(o => !o)}
+      >
+        <ProofReferenceSection>
         <ProofReferenceField label="Payment reference">
           <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
             placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
@@ -1924,35 +1995,19 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
             rows={2} style={{ width: '100%', resize: 'vertical' }} />
         </ProofReferenceField>
       </ProofReferenceSection>
-      {error && <ErrorBanner message={error} />}
-      {/* Once an approval has been detected there is nothing left to save here,
-          so the form's actions collapse to a single dismissal that also
-          refreshes the table (onSaved) — never a retry that must fail again. */}
-      {stale ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onSaved} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            Close
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={guard.requestClose} disabled={saving}
-            className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-          <button onClick={handleSave} disabled={!canSubmit || saving}
-            className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            {!isAdmin && r.status === 'rejected'
-              ? (saving ? 'Reapplying…' : 'Save & Reapply')
-              : (saving ? 'Saving…' : 'Save Changes')}
-          </button>
-        </div>
-      )}
+      </OptionalDisclosure>
 
-      <DiscardConfirmation
-        open={guard.asking}
-        onKeepEditing={guard.keepEditing}
-        onDiscard={guard.discard}
-      />
-    </FinanceModal>
+      {error && <ErrorBanner message={error} />}
+
+      </div>
+    </FormDialog>
+
+    <DiscardConfirmation
+      open={guard.asking}
+      onKeepEditing={guard.keepEditing}
+      onDiscard={guard.discard}
+    />
+    </>
   )
 }
 
