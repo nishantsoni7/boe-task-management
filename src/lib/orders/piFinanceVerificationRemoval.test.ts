@@ -571,6 +571,8 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+
+      '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
     ])
 
     const previous = lf(readFileSync(

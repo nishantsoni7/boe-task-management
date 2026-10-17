@@ -615,7 +615,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // intents of a payment its owner deleted before approval, and whose only
       // child is an acknowledged absence, can be deleted. Touches neither the
       // reset protocol nor the deletion claim.
-      '20270315000000_pi_deletion_releases_deleted_payment_allocations.sql',
+      '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
     ])
   })
 
