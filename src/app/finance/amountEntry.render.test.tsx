@@ -71,14 +71,15 @@ describe('typing and pasting 1000.005', () => {
 
   test('the surfaces without a reason line of their own show it inline, at once', () => {
     const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
-    // The PI form's button is disabled while the amount is wrong, so a message
-    // that waited for a press would never appear.
+    // Both draw the shared PaymentDetailsFields, whose AmountInput prints the
+    // reason inline and at once; the PI form only adds the missing/out-of-range
+    // sentence after Record was pressed, never the same one twice.
     const pi = read('src/components/orders/PiPaymentCard.tsx')
-    assert.ok(pi.includes('const amountMessage = amountInputProblem(form.amount) ?? (touched ? errors.amount ?? null : null)'))
-    assert.ok(pi.includes('{amountMessage && <div role="alert" style={ERR}>{amountMessage}</div>}'))
-    // The Received Payments edit form.
+    assert.ok(pi.includes('<PaymentDetailsFields'))
+    assert.ok(pi.includes('const amountMessage = amountInputProblem(form.amount) ? null : (touched ? errors.amount ?? null : null)'))
     const edit = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    assert.ok(edit.includes('{amountInputProblem(form.amount)}'))
+    assert.ok(edit.includes('<PaymentDetailsFields'))
+    assert.ok(read('src/app/finance/components/PaymentFormParts.tsx').includes('<AmountInput'))
   })
 })
 

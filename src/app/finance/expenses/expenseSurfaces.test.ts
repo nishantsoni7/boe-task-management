@@ -3044,6 +3044,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/finance/received/RecordSplitPaymentModal.tsx',
     'src/app/finance/paymentFormsRecordEdit.test.ts',
     'src/lib/finance/paymentEntry.test.ts',
+    // The remaining payment-section forms, on the same frame (2026-10-18).
+    'src/app/finance/received/ReceivedPaymentsView.tsx',
+    'src/app/finance/received/AllocateFundsModal.tsx',
+    'src/app/finance/received/AllocatePaymentModal.tsx',
+    'src/app/finance/received/CorrectAllocationModal.tsx',
+    'src/components/orders/PiPaymentCard.tsx',
+    'src/app/finance/received/correctAllocation.render.test.tsx',
+    'src/components/orders/piPaymentDetails.render.test.tsx',
+    'src/app/finance/paymentFormsRemaining.test.ts',
+    'src/app/finance/amountEntry.render.test.tsx',
   ])
 
   const ALLOWED_INVENTORY = new Set([
@@ -3780,7 +3790,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // ReceivedPaymentsView.tsx is held to ONE change (20270116000000): its two
     // PI Draft name reads select PI_DRAFT_NAME_COLUMNS (adds draft_reference) so
     // a draft is named by its PID. Every changed line must be exactly that.
-    if (touched.has('src/app/finance/received/ReceivedPaymentsView.tsx')) {
+    // …and, since 2026-10-18, by the Edit Received Payment form's move onto the
+    // shared payment-form frame (ALLOWED_PAYMENT_FORM_REDESIGN): presentation only,
+    // pinned by paymentFormsRemaining.test.ts.
+    if (touched.has('src/app/finance/received/ReceivedPaymentsView.tsx')
+        && !ALLOWED_PAYMENT_FORM_REDESIGN.has('src/app/finance/received/ReceivedPaymentsView.tsx')) {
       const diff = execFileSync('git', ['diff', 'origin/main', '--', 'src/app/finance/received/ReceivedPaymentsView.tsx'],
         { cwd: process.cwd(), encoding: 'utf8' })
       const moved = diff.split('\n')

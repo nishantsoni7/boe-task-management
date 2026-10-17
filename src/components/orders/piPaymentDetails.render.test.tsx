@@ -369,7 +369,8 @@ describe('the views switch inside the one dialog', () => {
 
   test('the dialog is reused, not duplicated, and a switch is held while a decision is open', () => {
     const source = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentCard.tsx'), 'utf8')
-    assert.equal((source.match(/<FinanceModal\b/g) ?? []).length, 2, 'Add payment and Payment details — no third dialog')
+    assert.equal((source.match(/<FinanceModal\b/g) ?? []).length, 1, 'Payment details is the one FinanceModal')
+    assert.equal((source.match(/<FormDialog\b/g) ?? []).length, 1, 'Add payment is the one FormDialog — no third dialog')
     assert.ok(source.includes('title={PAYMENT_FILTER_TITLE[filter]}'))
     assert.ok(source.includes('if (busyRef.current || armed !== null) return'))
   })

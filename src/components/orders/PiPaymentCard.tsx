@@ -16,13 +16,20 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
-import { amountInputProblem } from '@/lib/currency'
+import { amountInputProblem, groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
-import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
+import {
+  FieldProblem,
+  FormDialog,
+  FormStep,
+  OptionalDisclosure,
+  PaymentDetailsFields,
+  scrollToFirstProblem,
+} from '@/app/finance/components/PaymentFormParts'
+import { paymentModeLabel } from '@/lib/finance/paymentEntry'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   EMPTY_PI_PAYMENT_FORM,
-  PI_PAYMENT_MODES,
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canSubmitPiPayment,
@@ -205,14 +212,9 @@ export type PiPaymentStatusFigures = {
 // ── Add Payment ───────────────────────────────────────────────────────────────
 
 const LABEL: React.CSSProperties = {
-  fontSize: '12px', fontWeight: 600, color: colors.secondary, marginBottom: '4px',
+  fontSize: '12px', fontWeight: 600, color: colors.muted, marginBottom: '4px',
+  textTransform: 'uppercase', letterSpacing: '0.05em',
 }
-const INPUT: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', fontSize: '13px',
-  border: `1px solid ${colors.borderSoft}`, borderRadius: '6px',
-  background: colors.base, color: colors.primary, boxSizing: 'border-box',
-}
-const ERR: React.CSSProperties = { fontSize: '12px', color: colors.red, marginTop: '3px' }
 
 export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   todayIso: string
@@ -224,6 +226,8 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   const [proof, setProof] = useState<File | null>(null)
   const [touched, setTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [extrasOpen, setExtrasOpen] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
   // Belt and braces alongside `saving`: a second click that lands in the same
   // tick, before the parent's saving state has propagated, is still refused.
   const submittedRef = useRef(false)
@@ -231,15 +235,25 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
 
   const errors = validatePiPaymentForm(form, todayIso)
   const allowed = canSubmitPiPayment({ form, todayIso, saving, submitted })
-  // An amount that cannot be accepted says why AT ONCE, like every other payment
-  // form: the button is disabled while it is wrong, so waiting for a press to
-  // reveal the reason would never reveal it (PR #172 review).
-  const amountMessage = amountInputProblem(form.amount) ?? (touched ? errors.amount ?? null : null)
+  const busy = saving || submitted
+  // An amount that cannot be accepted says why AT ONCE (AmountInput prints it
+  // under the field); a missing or out-of-range one is named after Record was
+  // pressed, so the same sentence is never printed twice.
+  const amountMessage = amountInputProblem(form.amount) ? null : (touched ? errors.amount ?? null : null)
 
   const set = (k: keyof PiPaymentFormState) => (v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  // RECORD IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing
+  // under each field and takes the person to the first one. Only a payment
+  // already on its way waits. canSubmitPiPayment still decides whether anything
+  // is sent.
   const submit = async () => {
-    if (submittedRef.current || !allowed) { setTouched(true); return }
+    if (submittedRef.current || saving) return
+    if (!allowed) {
+      setTouched(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
     submittedRef.current = true
     setSubmitted(true)
     setError(null)
@@ -252,58 +266,82 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
     }
   }
 
+  const summary = [
+    isValidAmount(form.amount) ? `₹${groupIndianDigits(form.amount)}` : null,
+    form.paymentMode ? paymentModeLabel(form.paymentMode) : null,
+  ].filter(Boolean).join(' · ')
+
+  const extrasAdded = !!(form.reference.trim() || form.remarks.trim() || proof)
+
   return (
-    <FinanceModal title="Add payment" onClose={onClose} width="440px" closeOnBackdropClick={false}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div>
-          <div style={LABEL}>Amount received <span style={{ color: colors.red }}>*</span></div>
-          <input
-            style={INPUT} inputMode="decimal" autoFocus placeholder="0.00" data-amount-input
-            value={form.amount} onChange={e => set('amount')(e.target.value)}
+    <FormDialog
+      title="Add payment"
+      onClose={onClose}
+      closeDisabled={busy}
+      closeOnEscape
+      width="520px"
+      summary={summary}
+      actions={
+        <>
+          <button type="button" onClick={onClose} disabled={busy}
+            className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            Cancel
+          </button>
+          <button type="button" onClick={submit} disabled={busy}
+            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            {busy ? 'Recording…' : 'Record payment'}
+          </button>
+        </>
+      }
+    >
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <FormStep number={1} title="Payment">
+          <PaymentDetailsFields
+            amount={form.amount}
+            onAmount={set('amount')}
+            date={form.paymentDate}
+            onDate={set('paymentDate')}
+            mode={form.paymentMode}
+            onMode={set('paymentMode')}
+            disabled={busy}
+            amountLabel="Amount received"
+            amountProblem={amountMessage}
+            dateProblem={touched ? errors.paymentDate ?? null : null}
+            modeHintId="pi-payment-mode-hint"
           />
-          {amountMessage && <div role="alert" style={ERR}>{amountMessage}</div>}
-        </div>
+          <FieldProblem message={touched ? errors.paymentMode ?? null : null} />
+        </FormStep>
 
-        <div>
-          <div style={LABEL}>Payment date <span style={{ color: colors.red }}>*</span></div>
-          <input
-            style={INPUT} type="date" max={todayIso}
-            value={form.paymentDate} onChange={e => set('paymentDate')(e.target.value)}
-          />
-          {touched && errors.paymentDate && <div style={ERR}>{errors.paymentDate}</div>}
-        </div>
-
-        <div>
-          <div style={LABEL}>Payment mode <span style={{ color: colors.red }}>*</span></div>
-          <select style={INPUT} value={form.paymentMode} onChange={e => set('paymentMode')(e.target.value)}>
-            <option value="">Select…</option>
-            {PI_PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-          <PaymentModeHint mode={form.paymentMode} />
-          {touched && errors.paymentMode && <div style={ERR}>{errors.paymentMode}</div>}
-        </div>
-
-        <div>
-          <div style={LABEL}>Reference / UTR <span style={{ color: colors.muted }}>(optional)</span></div>
-          <input style={INPUT} value={form.reference} onChange={e => set('reference')(e.target.value)} />
-        </div>
-
-        <div>
-          <div style={LABEL}>Remarks <span style={{ color: colors.muted }}>(optional)</span></div>
-          <input style={INPUT} value={form.remarks} onChange={e => set('remarks')(e.target.value)} />
-        </div>
-
-        <div>
-          <div style={LABEL}>Payment proof <span style={{ color: colors.muted }}>(optional)</span></div>
-          <input
-            style={{ ...INPUT, padding: '6px 8px' }} type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-            onChange={e => setProof(e.target.files?.[0] ?? null)}
-          />
-        </div>
+        <OptionalDisclosure
+          title="Add reference, remarks or proof"
+          hint={extrasAdded ? 'Added' : 'Optional'}
+          open={extrasOpen}
+          onToggle={() => setExtrasOpen(o => !o)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <div style={LABEL}>Reference / UTR</div>
+              <input className="boe-input" style={{ width: '100%' }} value={form.reference}
+                onChange={e => set('reference')(e.target.value)} />
+            </div>
+            <div>
+              <div style={LABEL}>Remarks</div>
+              <input className="boe-input" style={{ width: '100%' }} value={form.remarks}
+                onChange={e => set('remarks')(e.target.value)} />
+            </div>
+            <div>
+              <div style={LABEL}>Payment proof</div>
+              <input
+                className="boe-input" style={{ width: '100%' }} type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                onChange={e => setProof(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          </div>
+        </OptionalDisclosure>
 
         {error && (
-          <div style={{
+          <div role="alert" style={{
             fontSize: '12px', color: colors.red, background: colors.redTint,
             border: '1px solid rgba(180,35,50,0.2)', borderRadius: '6px', padding: '8px 10px',
           }}>
@@ -318,32 +356,8 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
           This records that a payment was received. Finance verifies it separately —
           nothing counts as confirmed until they do.
         </div>
-
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '2px' }}>
-          <button
-            type="button" onClick={onClose} disabled={saving || submitted}
-            style={{
-              padding: '8px 14px', fontSize: '12px', fontWeight: 600, borderRadius: '6px',
-              border: `1px solid ${colors.borderSoft}`, background: colors.base,
-              color: colors.secondary, cursor: saving || submitted ? 'not-allowed' : 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button" onClick={submit} disabled={!allowed}
-            style={{
-              padding: '8px 14px', fontSize: '12px', fontWeight: 600, borderRadius: '6px',
-              border: 'none', background: allowed ? colors.primary : colors.hover,
-              color: allowed ? '#fff' : colors.muted,
-              cursor: allowed ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {saving || submitted ? 'Recording…' : 'Record payment'}
-          </button>
-        </div>
       </div>
-    </FinanceModal>
+    </FormDialog>
   )
 }
 

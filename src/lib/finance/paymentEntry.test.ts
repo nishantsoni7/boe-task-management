@@ -1076,8 +1076,8 @@ describe('what each payment mode is, in plain words', () => {
       'the shared payment-details block draws it for Record Payment and the edit modal')
     assert.ok(read(RECORD_FORM).includes('<PaymentDetailsFields'))
     assert.ok(request.includes('<PaymentDetailsFields'))
-    assert.ok(read('src/app/finance/received/ReceivedPaymentsView.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
-    assert.ok(read('src/components/orders/PiPaymentCard.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
+    assert.ok(read('src/app/finance/received/ReceivedPaymentsView.tsx').includes('<PaymentDetailsFields'))
+    assert.ok(read('src/components/orders/PiPaymentCard.tsx').includes('<PaymentDetailsFields'))
   })
 
   test('never on a payment list', () => {
