@@ -476,6 +476,10 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+
+      '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
+
+      '20270316000000_order_submission_deletion_awaiting_approval.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

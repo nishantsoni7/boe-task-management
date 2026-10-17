@@ -43,6 +43,10 @@ const OTHER      = '22222222-2222-4222-8222-222222222222'
 type Query = { table: string; columns: string; head: boolean; count?: string; column: string; value: unknown }
 
 type FakeOptions = {
+  /** What order_submission_blocking_allocations answers. Defaults to 0 / 0. */
+  payments?: { active?: number; reversed?: number }
+  /** Make the payment question itself fail, or answer nonsense. */
+  paymentsFail?: 'error' | 'malformed'
   /** table → how many rows name the submission. Absent reads as none. */
   counts?: Record<string, number>
   /** Tables whose query must come back with an error. */
@@ -53,7 +57,22 @@ type FakeOptions = {
 
 function fakeService(options: FakeOptions = {}) {
   const queries: Query[] = []
+  const rpcCalls: { name: string; args: unknown }[] = []
   const client = {
+    rpc(name: string, args: unknown) {
+      rpcCalls.push({ name, args })
+      if (options.paymentsFail === 'error') {
+        return Promise.resolve({ data: null, error: { message: 'nope' } })
+      }
+      if (options.paymentsFail === 'malformed') return Promise.resolve({ data: [], error: null })
+      return Promise.resolve({
+        data: [{
+          active_count: options.payments?.active ?? options.counts?.[ALLOCATIONS] ?? 0,
+          reversed_count: options.payments?.reversed ?? 0,
+        }],
+        error: null,
+      })
+    },
     from(table: string) {
       return {
         select(columns: string, opts?: { count?: string; head?: boolean }) {
@@ -75,7 +94,7 @@ function fakeService(options: FakeOptions = {}) {
       }
     },
   } as unknown as SupabaseClient
-  return { client, queries }
+  return { client, queries, rpcCalls }
 }
 
 const ALLOCATIONS = 'finance_payment_allocations'
@@ -168,17 +187,20 @@ describe('every NO ACTION reference to a PI submission is on the list', () => {
 // ── Reading them ──────────────────────────────────────────────────────────────
 
 describe('a PI nothing refers to reports nothing', () => {
-  test('all three tables are asked, and the answer is empty', async () => {
-    const { client, queries } = fakeService()
+  test('every source is asked, and the answer is empty', async () => {
+    const { client, queries, rpcCalls } = fakeService()
     assert.deepEqual(await readDeletionBlockers(client, SUBMISSION), [])
-    assert.deepEqual(queries.map(query => query.table).sort(),
-      [ALLOCATIONS, ORDERS, CORRECTIONS].sort())
+    // Payments are asked through the shared predicate, the other two by head count.
+    assert.deepEqual(queries.map(query => query.table).sort(), [ORDERS, CORRECTIONS].sort())
+    assert.deepEqual(rpcCalls,
+      [{ name: 'order_submission_blocking_allocations', args: { p_submission_id: SUBMISSION } }])
   })
 
   test('each table is asked about THIS submission, by its own column', async () => {
     const { client, queries } = fakeService()
     await readDeletionBlockers(client, SUBMISSION)
     for (const source of DELETION_BLOCKER_SOURCES) {
+      if (source.kind === 'payment_allocation') continue
       const query = queries.find(entry => entry.table === source.table)
       assert.ok(query, `${source.table} must be asked`)
       assert.equal(query.column, source.column)
@@ -215,6 +237,7 @@ describe('what is in the way is counted, and only counted', () => {
   })
 
   test('NOTHING but the count is read: head requests, no columns', async () => {
+    // (Payments go through a counting RPC that returns two integers.)
     // A payment allocation is a record the person deleting the PI may well not
     // be permitted to read. The refusal needs to know it exists; it does not
     // need — and must not carry — its id, its amount or its payment.
@@ -227,25 +250,35 @@ describe('what is in the way is counted, and only counted', () => {
     }
   })
 
-  test('a REVERSED allocation still counts, because it is still there', async () => {
-    // 20260918000000: 'reversed' is how an allocation ends, and it is never
-    // deleted. The foreign key does not care about the status column, so a check
-    // that filtered reversed rows out would report a clear path immediately
-    // before Postgres refused one.
-    const { client, queries } = fakeService({ counts: { [ALLOCATIONS]: 1 } })
-    await readDeletionBlockers(client, SUBMISSION)
-    const query = queries.find(entry => entry.table === ALLOCATIONS)
-    assert.equal(query?.column, 'order_submission_id',
-      'the only filter is the submission; status is not consulted')
+  test('a REVERSED allocation of a payment that stays still counts', async () => {
+    // 20260918000000: 'reversed' is how an allocation ends and it is never
+    // deleted, so one that is kept refuses the foreign key like an active one.
+    // Only the database knows which are leftovers of a payment deleted before
+    // approval (erased with the PI by 20270315000000); this module does not guess.
+    const { client } = fakeService({ payments: { active: 0, reversed: 1 } })
     assert.deepEqual(await readDeletionBlockers(client, SUBMISSION),
-      [{ kind: 'payment_allocation', count: 1 }])
+      [{ kind: 'payment_allocation', count: 1, reversed: 1 }])
   })
 
-  test('the source file names no status filter at all', () => {
+  test('active and reversed are reported together, with the reversed share named', async () => {
+    const { client } = fakeService({ payments: { active: 2, reversed: 1 } })
+    assert.deepEqual(await readDeletionBlockers(client, SUBMISSION),
+      [{ kind: 'payment_allocation', count: 3, reversed: 1 }])
+  })
+
+  test('nothing blocking per the database means nothing is reported', async () => {
+    // The rejected PI whose only allocation is a leftover of a payment the owner
+    // deleted: the database counts 0 / 0 and the PI may be deleted.
+    const { client } = fakeService({ payments: { active: 0, reversed: 0 } })
+    assert.deepEqual(await readDeletionBlockers(client, SUBMISSION), [])
+  })
+
+  test('the payment question has one shared definition, not a status filter here', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/lib/orders/submissionDeletionBlockersServer.ts'), 'utf8')
-    const code = source.split('\n')
-      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//')).join('\n')
+    const code = source.split(/\r?\n/)
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//')).join(' ')
+    assert.ok(code.includes('order_submission_blocking_allocations'))
     assert.ok(!code.includes("'active'"))
     assert.ok(!code.includes("'reversed'"))
   })
@@ -255,15 +288,20 @@ describe('what is in the way is counted, and only counted', () => {
 
 describe('an unanswered question is never read as "nothing is in the way"', () => {
   test('a query that errors throws rather than returning an empty list', async () => {
-    const { client } = fakeService({ fails: new Set([ALLOCATIONS]) })
+    const { client } = fakeService({ fails: new Set([ORDERS]) })
     await assert.rejects(() => readDeletionBlockers(client, SUBMISSION))
   })
 
   test('a failure in ANY of the three throws', async () => {
-    for (const table of [ALLOCATIONS, CORRECTIONS, ORDERS]) {
+    for (const table of [CORRECTIONS, ORDERS]) {
       const { client } = fakeService({ fails: new Set([table]) })
       await assert.rejects(() => readDeletionBlockers(client, SUBMISSION),
         `${table} failing must not pass silently`)
+    }
+    for (const paymentsFail of ['error', 'malformed'] as const) {
+      const { client } = fakeService({ paymentsFail })
+      await assert.rejects(() => readDeletionBlockers(client, SUBMISSION),
+        `a ${paymentsFail} payment answer must not pass silently`)
     }
   })
 
@@ -313,7 +351,7 @@ describe('an unanswered question is never read as "nothing is in the way"', () =
 describe('a second read is a second question, not a remembered answer', () => {
   test('the same reader called twice sees rows that appeared in between', async () => {
     const counts: Record<string, number> = {}
-    const { client, queries } = fakeService({ counts })
+    const { client, queries, rpcCalls } = fakeService({ counts })
 
     const before = await readDeletionBlockers(client, SUBMISSION)
     assert.deepEqual(before, [], 'nothing refers to this PI yet')
@@ -325,7 +363,7 @@ describe('a second read is a second question, not a remembered answer', () => {
     assert.deepEqual(after, [{ kind: 'payment_allocation', count: 1 }],
       'the second read must report what the first could not have seen')
 
-    assert.equal(queries.length, DELETION_BLOCKER_SOURCES.length * 2,
+    assert.equal(queries.length + rpcCalls.length, DELETION_BLOCKER_SOURCES.length * 2,
       'every source is queried again on the second call; nothing is served from memory')
   })
 
