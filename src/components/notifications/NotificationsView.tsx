@@ -180,10 +180,17 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   }, [authReady, userId])
 
   // Prefetch task detail pages for notifications in view
+  // Each href once per arrival: `notifications` changes identity on every
+  // refetch and optimistic update, and several rows share one task.
+  const warmedHrefs = useRef(new Set<string>())
   useEffect(() => {
     if (notifications.length === 0) return
     notifications.slice(0, 12).forEach(n => {
-      if (n.task_id) router.prefetch(taskDetailHref(n.task_id, pathname))
+      if (!n.task_id) return
+      const href = taskDetailHref(n.task_id, pathname)
+      if (warmedHrefs.current.has(href)) return
+      warmedHrefs.current.add(href)
+      router.prefetch(href)
     })
   }, [notifications]) // eslint-disable-line react-hooks/exhaustive-deps
 

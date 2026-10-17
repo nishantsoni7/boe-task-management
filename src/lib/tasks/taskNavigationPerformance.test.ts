@@ -173,9 +173,18 @@ describe('/tasks/my does not re-read itself merely for mounting', () => {
 describe('the lists prefetch the URL they will actually open', () => {
   for (const [name, code] of [['/tasks/my', MY], ['/tasks/assigned-by-me', ABM]] as const) {
     test(`${name} warms the href its rows navigate to`, () => {
-      assert.ok(code.includes('router.prefetch(taskDetailHref(t.id, returnTo))'))
+      assert.ok(code.includes('const href = taskDetailHref(t.id, returnTo)'))
+      assert.ok(code.includes('router.prefetch(href)'))
       assert.equal(code.includes('router.prefetch(`/tasks/${t.id}`)'), false,
         'the router cache is keyed by the full href — a bare path is never the one asked for')
+    })
+
+    test(`${name} warms each href once per arrival, not once per refetch`, () => {
+      // allTasksRaw changes identity on every refetch; without the set the whole
+      // batch of fifteen was requested again each time.
+      assert.ok(code.includes('const warmedHrefs = useRef(new Set<string>())'))
+      assert.ok(code.includes('if (warmedHrefs.current.has(href)) return'))
+      assert.ok(code.includes('warmedHrefs.current.add(href)'))
     })
   }
 })
@@ -403,5 +412,27 @@ describe('the create forms do not navigate — the list they return to is correc
   test('an assigned task corrects both the assignee’s list and the creator’s', () => {
     assert.ok(CREATE.includes("queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })"))
     assert.ok(CREATE.includes('queryClient.invalidateQueries({ queryKey: assignedByMeKey(actorId) })'))
+  })
+})
+
+describe('the Dashboard warms My Tasks before the click', () => {
+  const DASH = read('src/app/dashboard/page.tsx')
+  const HOOK = read('src/hooks/queries/useMyTasks.ts')
+
+  test('it warms only once its own read has landed, and never under View As', () => {
+    assert.ok(DASH.includes('const dashboardLoaded = dashboardTasks.isSuccess'))
+    assert.ok(DASH.includes('if (!dashboardLoaded || viewAsUserId || !loggedInId) return'))
+    assert.ok(DASH.includes('warmMyTasksCaches(queryClient, loggedInId)'))
+  })
+
+  test('the warm-up and the page share one option object, so the keys cannot drift', () => {
+    assert.ok(HOOK.includes('return useQuery<Task[]>(myTasksQueryOptions(userId))'))
+    assert.ok(HOOK.includes('qc.prefetchQuery(myTasksQueryOptions(userId))'))
+    assert.ok(HOOK.includes('qc.prefetchQuery(allUserNamesQueryOptions())'))
+  })
+
+  test('My Tasks reads names from the shared table, not a key that needs its own tasks first', () => {
+    assert.ok(MY.includes('const { data: userMap = {} } = useAllUserNames()'))
+    assert.equal(MY.includes('useUserNames(creatorIds)'), false)
   })
 })

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { isValidUUID } from '@/lib/ui'
 import { perfStart } from '@/lib/perf'
@@ -26,9 +26,17 @@ const TASK_COLUMNS = [
  * no local number attached to it.
  */
 export function useMyTasks(userId: string | null | undefined) {
-  return useQuery<Task[]>({
-    queryKey: ['tasks', 'assigned-to', userId],
-    queryFn: async () => {
+  return useQuery<Task[]>(myTasksQueryOptions(userId))
+}
+
+/**
+ * The options behind useMyTasks, exported so the Dashboard can warm exactly
+ * this entry (see warmMyTasksCaches) with the same key and the same function.
+ */
+export function myTasksQueryOptions(userId: string | null | undefined) {
+  return {
+    queryKey: ['tasks', 'assigned-to', userId] as const,
+    queryFn: async (): Promise<Task[]> => {
       if (!userId) return []
       const done = perfStart('task.list.load')
       try {
@@ -48,7 +56,7 @@ export function useMyTasks(userId: string | null | undefined) {
     enabled: isValidUUID(userId),
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-  })
+  }
 }
 
 /** Creator names for a list of user IDs. */
@@ -89,9 +97,13 @@ export function useUserNames(userIds: string[]) {
  * already uses for the identical reason.
  */
 export function useAllUserNames() {
-  return useQuery<Record<string, string>>({
-    queryKey: ['user-names', 'all'],
-    queryFn: async () => {
+  return useQuery<Record<string, string>>(allUserNamesQueryOptions())
+}
+
+export function allUserNamesQueryOptions() {
+  return {
+    queryKey: ['user-names', 'all'] as const,
+    queryFn: async (): Promise<Record<string, string>> => {
       const supabase = createClient()
       const { data } = await supabase
         .from('users')
@@ -102,7 +114,20 @@ export function useAllUserNames() {
     },
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-  })
+  }
+}
+
+/**
+ * Warm the two reads My Tasks opens with — the task list and the name table —
+ * while the person is still on the Dashboard, so the first click lands on data
+ * already in the cache. Both use the option objects the pages themselves use,
+ * so the keys cannot drift. prefetchQuery skips an entry that is still fresh,
+ * and a failed warm-up is swallowed: it must cost nothing.
+ */
+export function warmMyTasksCaches(qc: QueryClient, userId: string | null | undefined) {
+  if (!isValidUUID(userId)) return
+  void qc.prefetchQuery(myTasksQueryOptions(userId))
+  void qc.prefetchQuery(allUserNamesQueryOptions())
 }
 
 /**

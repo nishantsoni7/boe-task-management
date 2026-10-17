@@ -293,7 +293,9 @@ describe('every entry point passes its own view (8–12)', () => {
   test('Notifications: row open, title link and prefetch all carry the page', () => {
     const view = codeOf(read('src/components/notifications/NotificationsView.tsx'))
     assert.ok(view.includes('const href = withTaskReturnTo(getNotificationMeta(n).href, pathname)'))
-    assert.ok(view.includes('router.prefetch(taskDetailHref(n.task_id, pathname))'))
+    assert.ok(view.includes('const href = taskDetailHref(n.task_id, pathname)'))
+    assert.ok(view.includes('router.prefetch(href)'))
+    assert.ok(view.includes('if (warmedHrefs.current.has(href)) return'))
     assert.ok(view.includes('returnTo={pathname}'))
     const group = codeOf(read('src/components/notifications/NotificationTaskGroup.tsx'))
     assert.ok(group.includes('const taskHref = withTaskReturnTo(href, returnTo)'))
