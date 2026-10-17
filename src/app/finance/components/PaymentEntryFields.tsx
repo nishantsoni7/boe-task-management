@@ -17,6 +17,7 @@
 // no code path here sends a name — the server reads it from the target.
 
 import { useId, useRef, useState } from 'react'
+import { formatMoney } from '@/lib/finance/piPaymentView'
 import { colors } from '@/lib/tokens'
 import { FileText, PackageCheck, Wallet, Search, Check, type LucideIcon } from 'lucide-react'
 import {
@@ -154,7 +155,7 @@ export function DestinationCards({
 // ── The whole block ──────────────────────────────────────────────────────────
 
 export function PaymentEntryFields({
-  state, onChange, onSearch, disabled, initialQuery,
+  state, onChange, onSearch, disabled, initialQuery, autoFocusSearch, problem,
 }: {
   state: PaymentEntryState
   onChange: (next: PaymentEntryState) => void
@@ -170,6 +171,10 @@ export function PaymentEntryFields({
    * because the customer is read from whichever record they actually pick.
    */
   initialQuery?: string
+  /** Put the cursor in the search box when it first appears. */
+  autoFocusSearch?: boolean
+  /** A sentence under the search box, shown when it has been left unanswered. */
+  problem?: string | null
 }) {
   const groupId = useId()
   const [query, setQuery] = useState(initialQuery ?? '')
@@ -243,12 +248,19 @@ export function PaymentEntryFields({
               className="boe-input"
               value={query}
               disabled={disabled}
+              autoFocus={autoFocusSearch}
+              aria-invalid={problem ? true : undefined}
               onChange={e => runSearch(e.target.value)}
               placeholder={state.destination === 'pi_draft'
                 ? 'Search PI number or customer' : 'Search Order number or customer'}
               style={{ width: '100%', paddingLeft: '30px' }}
             />
           </div>
+          {problem && (
+            <p role="alert" style={{ margin: '4px 0 0', fontSize: '12px', color: colors.red, lineHeight: 1.4 }}>
+              {problem}
+            </p>
+          )}
           {searching && (
             <p style={{ margin: '6px 0 0', fontSize: '12px', color: colors.muted }}>Searching…</p>
           )}
@@ -263,6 +275,9 @@ export function PaymentEntryFields({
                           style={{ width: '100%', textAlign: 'left' }}>
                     <span style={{ fontWeight: 600 }}>{t.reference}</span>
                     <span style={{ color: colors.muted }}> · {t.clientName}</span>
+                    {typeof t.totalValue === 'number' && Number.isFinite(t.totalValue) && t.totalValue > 0 && (
+                      <span style={{ color: colors.muted, float: 'right' }}>{formatMoney(t.totalValue)}</span>
+                    )}
                   </button>
                 </li>
               ))}

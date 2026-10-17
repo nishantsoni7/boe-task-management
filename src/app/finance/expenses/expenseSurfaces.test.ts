@@ -3030,6 +3030,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
 
   // Inventory (20270313000000): a new module of its own, one migration, its screens, hook, library and layout,
   // and the launcher card. It reaches no Finance or Orders file. Named files only, never a directory.
+  // Send Payment Request form redesign (2026-10-17): presentation only. Numbered steps, one-tap
+  // payment mode, Today/Yesterday chips, a rupee prefix, a closed-until-wanted proof section, a
+  // live summary and a Send button that names what is missing. Every rule is unchanged and still
+  // decided by submit_payment_request; the form's own source is held by paymentRequestForm.test.ts.
+  const ALLOWED_PAYMENT_FORM_REDESIGN = new Set([
+    'src/app/finance/components/AmountInput.tsx',
+    'src/app/finance/components/CustodyTrailFields.tsx',
+    'src/app/finance/components/PaymentEntryFields.tsx',
+    'src/app/finance/components/PaymentFormParts.tsx',
+    'src/app/finance/paymentRequestForm.test.ts',
+  ])
+
   const ALLOWED_INVENTORY = new Set([
     'supabase/migrations/20270314000000_inventory_notification_types.sql',
     'supabase/migrations/20270314000100_inventory_booking_notifications.sql',
@@ -3273,7 +3285,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_TASK_ACKNOWLEDGE.has(f) &&
     !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f) &&
     !ALLOWED_EXHIBITION_LEADS.has(f) &&
-    !ALLOWED_INVENTORY.has(f)
+    !ALLOWED_INVENTORY.has(f) &&
+    !ALLOWED_PAYMENT_FORM_REDESIGN.has(f)
 
   test('the Dashboard View As allowance is EXACTLY its two named files', () => {
     assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
@@ -3746,7 +3759,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_TASK_ACKNOWLEDGE.has(file)
         || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file)
         || ALLOWED_EXHIBITION_LEADS.has(file)
-        || ALLOWED_INVENTORY.has(file),
+        || ALLOWED_INVENTORY.has(file)
+        || ALLOWED_PAYMENT_FORM_REDESIGN.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

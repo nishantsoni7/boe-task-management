@@ -1082,6 +1082,11 @@ describe('the applied migrations are frozen', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+
+      '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
+      '20270316000000_order_submission_deletion_awaiting_approval.sql',
+      '20270317000000_order_submission_admin_order_deletion.sql',
+      '20270318000000_custody_handed_by_outside_name.sql',
     ])
   })
 
@@ -1415,6 +1420,11 @@ describe('the applied migrations are frozen', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+
+      '20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql',
+      '20270316000000_order_submission_deletion_awaiting_approval.sql',
+      '20270317000000_order_submission_admin_order_deletion.sql',
+      '20270318000000_custody_handed_by_outside_name.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

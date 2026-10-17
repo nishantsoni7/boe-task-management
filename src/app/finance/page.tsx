@@ -29,7 +29,7 @@ import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/l
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { isValidAmount } from '@/lib/currency'
+import { groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { AmountInput } from './components/AmountInput'
 import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { formatMoney } from '@/lib/finance/piPaymentView'
@@ -87,6 +87,13 @@ import {
 import { CustodyTrailFields } from './components/CustodyTrailFields'
 import { PaymentModeHint } from './components/PaymentModeHint'
 import {
+  FieldProblem,
+  FormStep,
+  OptionalDisclosure,
+  PaymentModePicker,
+  QuickDateField,
+} from './components/PaymentFormParts'
+import {
   PaymentCustodyTrail,
   PaymentDestinationSummary,
   usePaymentDestination,
@@ -96,6 +103,7 @@ import { ProofReferenceField, ProofReferenceSection } from './components/ProofRe
 import {
   DEFAULT_PAYMENT_MODE,
   customerDisplayName,
+  destinationNeedsTarget,
   isPaymentMode,
   paymentEntryErrorMessage,
   paymentModeLabel,
@@ -1134,6 +1142,11 @@ function NewPaymentConfirmationModal({
   const [custody, setCustody] = useState<CustodyDraft[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+  // Nothing is shouted at a person who has not finished. Problems are named only
+  // after they press Send, and each one clears the moment it is put right.
+  const [showProblems, setShowProblems] = useState(false)
+  // Proof and notes stay closed unless something is already in them.
+  const [proofOpen, setProofOpen] = useState(!!(initialSalesNote ?? '').trim())
 
   // ONE SUBMISSION, NOT ONE PER CLICK. `saving` re-renders and a second click
   // can land inside the same tick; a ref is read and written synchronously, so
@@ -1189,6 +1202,46 @@ function NewPaymentConfirmationModal({
     attachFile !== null
 
   const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
+
+  // ── What is still missing, in words ──
+  // Presentation only: canSubmit and the server decide. These sentences say WHICH
+  // field is unanswered, instead of leaving a button grey with no explanation.
+  const needsTarget = destinationNeedsTarget(entry.destination)
+  const targetProblem = showProblems && needsTarget && !entry.target
+    ? (entry.destination === 'pi_draft'
+        ? 'Choose which PI Draft this payment is for.'
+        : 'Choose which Confirmed Order this payment is for.')
+    : null
+  const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
+  const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
+
+  const summary = [
+    isValidAmount(form.amount) ? `₹${groupIndianDigits(form.amount)}` : null,
+    paymentModeLabel(form.paymentMode),
+    entry.target
+      ? `${entry.target.reference} · ${entry.target.clientName}`
+      : entry.destination === 'suspense' ? 'Suspense Entry' : null,
+  ].filter(Boolean).join(' · ')
+
+  // SEND IS NEVER GREYED OUT. An unfinished form names what is missing and takes
+  // the person to it. A finished one goes to handleSubmit, whose own guard is the
+  // one that stops a double submission.
+  const reviewAndSend = () => {
+    if (saving || submitting.current) return
+    if (!canSubmit) {
+      setShowProblems(true)
+      if (attachError) setProofOpen(true)
+      requestAnimationFrame(() => {
+        const dialog = dialogRef.current
+        const target = dialog?.querySelector<HTMLElement>('[aria-invalid="true"]')
+          ?? dialog?.querySelector<HTMLElement>('[role="alert"]')
+        target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        target?.focus?.({ preventScroll: true })
+      })
+      return
+    }
+    void handleSubmit()
+  }
 
   // The SAME search Record Payment and Allocate Funds use — same sources, same
   // RLS scoping, same eligibility filters — narrowed to the one kind this
@@ -1383,30 +1436,39 @@ function NewPaymentConfirmationModal({
         {/* ── Scrollable body ── */}
         <div style={{
           padding: '16px 20px', overflowY: 'auto', flex: 1,
-          display: 'flex', flexDirection: 'column', gap: '14px',
+          display: 'flex', flexDirection: 'column', gap: '20px',
         }}>
 
-          {/* 1. Where the money is for — and, for the two targeted
-              destinations, 2. which record. The customer follows from it and is
-              shown read-only; there is no field to type one into. */}
-          <PaymentEntryFields
-            state={entry}
-            onChange={next => { setEntry(next); setError(null) }}
-            onSearch={searchTargets}
-            disabled={saving}
-            initialQuery={initialClientName}
-          />
+          {/* 1. What the money is for — and, for the two targeted destinations,
+              which record. The customer follows from it and is shown read-only;
+              there is no field to type one into. */}
+          <FormStep number={1} title="What is this payment for?">
+            <PaymentEntryFields
+              state={entry}
+              onChange={next => { setEntry(next); setError(null) }}
+              onSearch={searchTargets}
+              disabled={saving}
+              initialQuery={initialClientName}
+              autoFocusSearch
+              problem={targetProblem}
+            />
+          </FormStep>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-
-            {/* 3. The payment itself. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <Field label="Amount (₹)" required>
-                <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
+          {/* 2. The payment itself. */}
+          <FormStep number={2} title="Payment">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+              <Field label="Amount" required>
+                <AmountInput prefix="₹" value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
+                <FieldProblem message={amountProblem} />
               </Field>
               <Field label="Payment Date" required>
-                <input className="boe-input" type="date" value={form.paymentDate}
-                  onChange={set('paymentDate')} style={{ width: '100%' }} />
+                <QuickDateField
+                  value={form.paymentDate}
+                  onChange={v => setForm(prev => ({ ...prev, paymentDate: v }))}
+                  disabled={saving}
+                  invalid={!!dateProblem}
+                />
+                <FieldProblem message={dateProblem} />
               </Field>
             </div>
 
@@ -1414,33 +1476,43 @@ function NewPaymentConfirmationModal({
                 receiving-account question: the account picker answered
                 payment_mode and received_in at once, and the mode IS the account
                 now. What each account means internally is not printed. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <Field label="Payment Mode" required>
-                <select className="boe-input" value={form.paymentMode}
-                  onChange={set('paymentMode')} disabled={saving} style={{ width: '100%' }}>
-                  {paymentModeOptionsFor(null).map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-                <PaymentModeHint mode={form.paymentMode} />
-              </Field>
-            </div>
+            <Field label="Payment Mode" required>
+              <PaymentModePicker
+                value={form.paymentMode}
+                onChange={v => setForm(prev => ({ ...prev, paymentMode: v }))}
+                disabled={saving}
+                describedBy="payment-mode-hint"
+              />
+              <PaymentModeHint mode={form.paymentMode} id="payment-mode-hint" />
+            </Field>
+          </FormStep>
 
-            {/* WHO CARRIED IT — for PNB and Paytm only, decided by the mode and
-                decided again server-side. */}
-            <CustodyTrailFields
-              supabase={supabase}
-              paymentMode={form.paymentMode}
-              drafts={custody}
-              onDraftsChange={setCustody}
-              defaultActorId={userId}
-              disabled={saving}
-            />
+          {/* 3. WHO CARRIED IT — for PNB and Paytm only, decided by the mode and
+              decided again server-side. */}
+          {modeRequiresCustodyTrail(form.paymentMode) && (
+            <FormStep number={3} title="Who carried the money" hint="Optional">
+              <CustodyTrailFields
+                supabase={supabase}
+                paymentMode={form.paymentMode}
+                drafts={custody}
+                onDraftsChange={setCustody}
+                defaultActorId={userId}
+                disabled={saving}
+                showTitle={false}
+              />
+            </FormStep>
+          )}
 
-            {/* 4. PAYMENT PROOF / REFERENCE — the attachment, the reference and
-                the note to Finance, under ONE heading. Three parts of the same
-                question, asked together; the database keeps three columns
-                because they mean three things. */}
+          {/* PAYMENT PROOF / REFERENCE — closed until wanted. The attachment, the
+              reference and the note to Finance stay one section; the database
+              keeps three columns because they mean three things. What was typed
+              lives in this form's state, so closing the section never loses it. */}
+          <OptionalDisclosure
+            title="Add proof or notes"
+            hint={attachFile ? 'Proof attached' : (form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
+            open={proofOpen}
+            onToggle={() => setProofOpen(o => !o)}
+          >
             <ProofReferenceSection>
               <ProofReferenceField
                 label="Payment reference"
@@ -1496,9 +1568,7 @@ function NewPaymentConfirmationModal({
                   rows={2} style={{ width: '100%', resize: 'vertical' }} />
               </ProofReferenceField>
             </ProofReferenceSection>
-
-
-          </div>
+          </OptionalDisclosure>
 
           {error && <ErrorBanner message={error} />}
 
@@ -1507,16 +1577,22 @@ function NewPaymentConfirmationModal({
         {/* ── Footer ── */}
         <div style={{
           padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
-          display: 'flex', gap: '8px', justifyContent: 'flex-end', flexShrink: 0,
+          display: 'flex', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', flexShrink: 0,
         }}>
-          <button onClick={guard.requestClose} disabled={saving}
-            className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
-            Cancel
-          </button>
-          <button onClick={handleSubmit} disabled={!canSubmit || saving}
-            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
-            {saving ? 'Submitting…' : 'Submit Request'}
-          </button>
+          <div aria-live="polite" style={{ fontSize: '13px', color: colors.secondary, minWidth: 0, wordBreak: 'break-word' }}>
+            {summary}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+            <button onClick={guard.requestClose} disabled={saving}
+              className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+              Cancel
+            </button>
+            <button onClick={reviewAndSend} disabled={saving}
+              className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+              {saving ? 'Submitting…' : 'Submit Request'}
+            </button>
+          </div>
         </div>
 
       </div>
