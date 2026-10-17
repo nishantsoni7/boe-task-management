@@ -178,7 +178,7 @@ export function PaymentCustodyTrail({
     if (!supabase) return
     const { data } = await supabase
       .from('finance_payment_custody_events')
-      .select('id, activity_type, occurred_at, collected_by_user_id, handed_by_user_id, handed_to_user_id, remark, payment_mode_at_event, created_by, created_at')
+      .select('id, activity_type, occurred_at, collected_by_user_id, handed_by_user_id, handed_by_name, handed_to_user_id, remark, payment_mode_at_event, created_by, created_at')
       .eq('payment_request_id', payment.id)
       .order('occurred_at', { ascending: true })
 
