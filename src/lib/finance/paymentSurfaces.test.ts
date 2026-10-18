@@ -477,7 +477,8 @@ describe('each page asks the database for its own half', () => {
 
   test('the filter cards are not drawn on Payments to Verify', () => {
     // REVISED (owner, 2026-10-19): no tabs; the summary cards are the filter.
-    assert.ok(view.includes("{surface === 'confirmed' && (\n        <ConfirmedSummaryCards"))
+    // \s+ rather than \n: CI checks out with CRLF line endings.
+    assert.ok(/\{surface === 'confirmed' && \(\s+<ConfirmedSummaryCards/.test(view))
   })
 
   test('Payments to Verify keeps Status and drops the money columns', () => {
