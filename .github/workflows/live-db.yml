@@ -1,0 +1,63 @@
+# The database-backed suites (payroll routes, attendance/payroll/objection/users
+# isolation). They create real auth users and rows, so they must run against a
+# DISPOSABLE Supabase project, never production: the shared target guard refuses a
+# hosted project unless it is named explicitly (see scripts/lib/uatEnv.mjs).
+#
+# SETUP (one time, by the repository owner):
+#   1. Create a throwaway Supabase project and apply supabase/migrations to it.
+#   2. Add repository secrets: TEST_SUPABASE_URL, TEST_SUPABASE_ANON_KEY,
+#      TEST_SUPABASE_SERVICE_ROLE_KEY, and TEST_SUPABASE_OVERRIDE (the value I-KNOW-THIS-IS-NOT-PRODUCTION:<project-ref>, i.e. the exact
+#      override phrase the guard expects for that project reference).
+# Until the secrets exist this workflow reports "not configured" and passes, so it
+# never blocks anything; once they exist, a missing database becomes a failure.
+name: Live database tests
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+
+jobs:
+  live-db:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+      REQUIRE_LIVE_DB_TESTS: '1'
+    steps:
+      - name: Configured?
+        id: cfg
+        shell: bash
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "TEST_SUPABASE_* secrets are not set - live database tests not configured."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.cfg.outputs.run == 'true'
+        uses: actions/checkout@v4
+      - if: steps.cfg.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.cfg.outputs.run == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Live database suites (one at a time - they share fixtures)
+        if: steps.cfg.outputs.run == 'true'
+        shell: bash
+        env:
+          UAT_ALLOW_REMOTE_TARGET: ${{ secrets.TEST_SUPABASE_OVERRIDE }}
+        run: |
+          npx tsx --test --test-concurrency=1 \
+            src/app/api/payroll/delete/route.test.ts \
+            src/app/api/payroll/periods/route.test.ts \
+            src/app/api/payroll/settlementAuth.test.ts \
+            src/app/api/payroll/unlock/route.test.ts \
+            src/lib/security/attendancePayrollApiIsolation.test.ts \
+            src/lib/security/attendancePayrollIsolation.test.ts \
+            src/lib/security/objectionIsolation.test.ts \
+            src/lib/security/usersPrivateColumns.test.ts

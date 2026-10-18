@@ -12,7 +12,6 @@ const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8')
 
 const FORMS = [
   ['AllocateFundsModal', read('src', 'app', 'finance', 'received', 'AllocateFundsModal.tsx')],
-  ['AllocatePaymentModal', read('src', 'app', 'finance', 'received', 'AllocatePaymentModal.tsx')],
   ['CorrectAllocationModal', read('src', 'app', 'finance', 'received', 'CorrectAllocationModal.tsx')],
   ['PiPaymentCard', read('src', 'components', 'orders', 'PiPaymentCard.tsx')],
 ] as const
@@ -36,10 +35,10 @@ describe('the remaining payment forms share the frame', () => {
 })
 
 describe('an unfinished form never greys out its primary button', () => {
-  test('Allocate Funds, Allocate Payment, Add payment and Edit Received Payment name what is missing and scroll to it', () => {
+  test('Allocate Funds, Add payment and Edit Received Payment name what is missing and scroll to it', () => {
     const view = read('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx')
     const edit = view.slice(view.indexOf('function EditPaymentModal('), view.indexOf('// ── Table ───'))
-    for (const src of [FORMS[0][1], FORMS[1][1], FORMS[3][1], edit]) {
+    for (const src of [FORMS[0][1], FORMS[2][1], edit]) {
       assert.ok(src.includes('scrollToFirstProblem('))
       assert.ok(!/disabled=\{blocked/.test(src), 'no button is disabled by the blocked reason')
       assert.ok(!/disabled=\{!allowed\}/.test(src))
@@ -48,7 +47,7 @@ describe('an unfinished form never greys out its primary button', () => {
   })
 
   test('Review reversal is only ever disabled by nothing, and says what is missing', () => {
-    const src = FORMS[2][1]
+    const src = FORMS[1][1]
     assert.ok(!/onClick=\{props\.onReview\} disabled/.test(src))
     assert.ok(src.includes('props.attempted ? blocked : null'))
   })
@@ -57,8 +56,7 @@ describe('an unfinished form never greys out its primary button', () => {
 describe('every server door is unchanged', () => {
   test('the RPC names', () => {
     assert.ok(FORMS[0][1].includes("supabase.rpc('allocate_payment_to_targets'"))
-    assert.ok(FORMS[1][1].includes("supabase.rpc('allocate_payment_to_target'"))
-    assert.ok(FORMS[2][1].includes('performAllocationReversal('))
+    assert.ok(FORMS[1][1].includes('performAllocationReversal('))
   })
 
   test('the backdrop is inert: no form passes a click handler to the overlay', () => {
