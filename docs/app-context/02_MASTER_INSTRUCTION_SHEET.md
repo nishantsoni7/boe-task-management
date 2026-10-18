@@ -27,6 +27,7 @@
 
 Do these in order, every time, even for "small" requests:
 
+0. **Owner reminders:** run `node "$HOME/BOE-Development/backups/tools/owner-reminders.mjs" --due` and tell the owner what is due, in plain words, before anything else (`05_OWNER_ROUTINE.md`).
 1. Read `docs/app-context/01_APP_CONTEXT.md` (system map, conventions, module status table).
 2. Open the dossier(s) in `docs/app-context/modules/` for **every module the request names or touches** — and for every module it *could* touch through shared tables, RPCs, notifications, permissions or navigation. Read the dossier's "Traps" and "Recheck before changing" sections in full.
 3. Read the project memory index (`MEMORY.md`) and open each entry relevant to those modules.

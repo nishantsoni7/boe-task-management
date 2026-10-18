@@ -11,7 +11,7 @@ import { DEV_ROOT, MAIN_REPO, ensureDir, git, log } from './lib.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tools = ensureDir(path.join(DEV_ROOT, 'backups', 'tools'))
 const hooks = ensureDir(path.join(DEV_ROOT, 'backups', 'hooks'))
-for (const f of fs.readdirSync(path.join(repoRoot, 'scripts', 'backup')).filter((f) => f.endsWith('.mjs'))) {
+for (const f of fs.readdirSync(path.join(repoRoot, 'scripts', 'backup')).filter((f) => f.endsWith('.mjs') || f.endsWith('.cmd'))) {
   fs.copyFileSync(path.join(repoRoot, 'scripts', 'backup', f), path.join(tools, f))
 }
 for (const f of fs.readdirSync(path.join(repoRoot, '.githooks'))) {

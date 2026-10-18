@@ -5,15 +5,23 @@
 
 ## Snapshot
 
-- Commit: `f5e70b51` — Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
-- Commits on this branch: 885
+- Commit: `206e7497` — Docs: private mirror repo is live; token renewal date (#342)
+- Commits on this branch: 893
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
-- Migrations: 330 (first `20260530_create_positions.sql`, latest `20270318000000_custody_handed_by_outside_name.sql`)
+- Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 601   Next.js 16.2.6, React 19.2.4
+- Test files: 602   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
+- `c3ecf2c9` 2026-10-18 Backup mirror: use our token (stop checkout persisting its own) (#341)
+- `b77318dd` 2026-10-18 Docs: Meetings module-entry fix shipped and applied (#340)
+- `40270642` 2026-10-18 Meetings: every write RPC requires Meetings module entry (#310)
+- `27b3bcbe` 2026-10-18 Docs: record backup decisions (Supabase daily backups, no PITR, daily schedule) (#339)
+- `eb76e55f` 2026-10-18 Backups: include the storage mirror in the second copy (#338)
+- `144e2948` 2026-10-18 Backups: report tables the service role cannot read (#337)
+- `2e4f61ad` 2026-10-18 Tests: run the payment forms in a real DOM instead of reading their source (#336)
 - `f5e70b51` 2026-10-18 Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
 - `468fad89` 2026-10-18 Live-DB drift warning, two more view splits, testing policy (#334)
 - `84a387dd` 2026-10-18 Live-DB tests: reference seed and the exact setup that makes all 206 pass (#333)
@@ -31,14 +39,6 @@
 - `0b06be5e` 2026-10-17 Orders: let an administrator permanently delete a Confirmed Order (#320)
 - `8a1ca3ab` 2026-10-17 PI delete: erase leftovers of payments deleted before approval (#317)
 - `07b591df` 2026-10-15 Quotation requests: find the owner by Nishant's new sign-in email (#316)
-- `8f441a19` 2026-10-15 Sign in: reset a forgotten password by email (#315)
-- `46f3ac85` 2026-10-14 Match the PDF accent red to the new emblem (#314)
-- `db2a5d4e` 2026-10-14 Delete the old Best of Exports logo file (#313)
-- `9448b5cf` 2026-10-14 Use the new Best of Exports emblem as the BOE One mark (#312)
-- `fcf184fb` 2026-10-14 Rename the visible app name to BOE One (#311)
-- `245dcbde` 2026-10-14 BOE OS rebrand: one visual identity across every module (draft) (#309)
-- `3e9a943c` 2026-10-14 Meetings: import a PI workbook into a meeting; photographs and specs on item rows (#308)
-- `25bd4ea7` 2026-10-13 Control Center: six navigation hubs, section tabs, Find anything, and a useful Home (#307)
 
 ## Pages by top-level area
 
@@ -137,7 +137,7 @@
 - `src/lib/finance` — 38 source, 46 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
-- `src/lib/meetings` — 16 source, 16 test
+- `src/lib/meetings` — 16 source, 17 test
 - `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
@@ -347,7 +347,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270216000000_test_data_cleanup_pi_version_set_null.sql`
 - `20270217000000_order_submission_cleanup_number_choice.sql`
 - `20270220000000_asset_catalogue.sql`
 - `20270221000000_orders_dashboard_factory_focus.sql`
@@ -377,6 +376,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270316000000_order_submission_deletion_awaiting_approval.sql`
 - `20270317000000_order_submission_admin_order_deletion.sql`
 - `20270318000000_custody_handed_by_outside_name.sql`
+- `20270319000000_meetings_rpcs_require_module_entry.sql`
 
 ## All SQL function names
 
