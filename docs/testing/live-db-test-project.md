@@ -49,3 +49,10 @@ REQUIRE_LIVE_DB_TESTS=1 UAT_ALLOW_REMOTE_TARGET=I-KNOW-THIS-IS-NOT-PRODUCTION:<p
 ```
 
 Run them one at a time: they share fixtures, and two runs at once delete each other's rows.
+
+## Keeping the schema current
+
+The test database is a copy of production's schema as of the migration named in
+`supabase/tests/live-db-schema-version.txt`. The nightly workflow prints a warning when the repository has a
+newer migration. To refresh: repeat step 2 (dump, apply to a fresh or emptied test project, reset privileges,
+seed), then update that file to the newest migration the dump reflects.

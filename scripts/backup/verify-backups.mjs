@@ -2,7 +2,7 @@
 //   node scripts/backup/verify-backups.mjs [--max-age-hours 36]
 import fs from 'node:fs'
 import path from 'node:path'
-import { BACKUP_ROOT, MAIN_REPO, DEV_ROOT, GITHUB_REPO, git, gitTry, readStatus } from './lib.mjs'
+import { BACKUP_ROOT, MAIN_REPO, GITHUB_REPO, git, gitTry, readStatus } from './lib.mjs'
 
 const i = process.argv.indexOf('--max-age-hours')
 const maxH = i > 0 ? Number(process.argv[i + 1]) : 36

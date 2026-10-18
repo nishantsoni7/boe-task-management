@@ -14,6 +14,10 @@ import { join } from 'node:path'
 export const SCREEN_SIBLINGS: Record<string, string[]> = {
   'src/app/finance/received/ReceivedPaymentsView.tsx': [
     'src/app/finance/received/receivedPaymentsModel.tsx',
+    'src/app/finance/received/receivedPaymentsAtoms.tsx',
+  ],
+  'src/app/finance/page.tsx': [
+    'src/app/finance/paymentRequestsModel.tsx',
   ],
 }
 

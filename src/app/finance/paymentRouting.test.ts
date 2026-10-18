@@ -19,6 +19,7 @@ import {
 } from '@/lib/finance/paymentClassification'
 import { directOrderOf, paymentLinks, linkCounts } from '@/lib/finance/paymentLinks'
 import type { PaymentAllocationSummary } from '@/lib/finance/paymentAllocations'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 
 // Every status finance_payment_requests allows (20260628000200 + the two
 // approved states added by 20260688/20260690). Named here so the exhaustiveness
@@ -300,7 +301,7 @@ describe('nobody decides a payment they recorded, unless they may verify their o
 })
 
 describe('the details modal actually offers verification', () => {
-  const SOURCE = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
+  const SOURCE = readScreenSource('src/app/finance/page.tsx')
 
   test('it draws the control from the shared rule, not a local condition', () => {
     assert.ok(SOURCE.includes('canVerifyPayment(r.status, mayApprovePayments)'),
