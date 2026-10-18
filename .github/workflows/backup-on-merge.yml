@@ -82,6 +82,6 @@ jobs:
           set -euo pipefail
           test -n "$MIRROR_TOKEN" || { echo "BACKUP_MIRROR_TOKEN secret is not set"; exit 1; }
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          URL="https://x-access-token:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git"
+          URL="https://${MIRROR_REPO%%/*}:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git"
           git push "$URL" '+refs/remotes/origin/*:refs/heads/*' --force
           git push "$URL" --tags --force
