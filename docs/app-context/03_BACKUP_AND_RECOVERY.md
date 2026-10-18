@@ -93,6 +93,7 @@ What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUP
 4. The Minop device callback URL embeds a path token — reconfigure the MORX/Minop cloud with the new URL if the domain changed.
 
 ### 5.4 Supabase project lost or data corrupted
+> **Rehearsed 2026-10-18** (`scripts/backup/restore-rehearsal.mjs`, free, local Docker): the newest export decrypts, un-gzips and loads cleanly - 156 tables, 96,121 rows, 21 auth users; every row count and every numeric column sum matched the backup's own record; a deliberately tampered copy was caught. This proves the DATA layer. It does NOT prove a schema rebuild: `docs/migrations-are-not-self-contained.md` - the migrations cannot rebuild an empty database on their own. **So for a real disaster use Supabase's platform backup first** (Database > Backups > Restore, or "Restore to new project"); use the export only for data Supabase cannot give back (the 5 unreadable tables are the exception - they exist ONLY in the platform backups).
 1. **Prefer Supabase's own restore** (dashboard → Database → Backups / PITR) if the plan has it — it is transactionally consistent.
 2. Otherwise build a new project and restore in this order:
    1. Create the project (same region, Tokyo); note new URL/keys.
@@ -122,7 +123,7 @@ Any one of: the L10 second copy, a GitHub artifact + password manager, or the pr
 - [ ] Record Vercel project settings that are not in git: team/project name, domain(s), DNS provider, Node version, build command overrides, env var list with Production/Preview scoping (names only in docs).
 - [ ] Record GitHub ruleset "Protect main" JSON: `gh api repos/nishantsoni7/boe-task-management/rulesets` → keep a copy in the password manager.
 - [ ] The repository is **public**. Nothing secret may ever be committed; if the owner wants it private, change it in GitHub settings (Vercel's GitHub integration keeps working).
-- [ ] Quarterly: do a real restore rehearsal of the database export into a disposable Supabase project and record the result in `CHANGELOG.md`.
+- [x] Quarterly: restore rehearsal - `node ~/BOE-Development/backups/tools/restore-rehearsal.mjs` (needs Docker Desktop running; first done 2026-10-18; the reminder system asks every 90 days). Record the result in `CHANGELOG.md`.
 
 ## 7. Recovery-point summary
 

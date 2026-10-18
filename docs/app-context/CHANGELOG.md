@@ -13,6 +13,9 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
 - Migrations: none.
 
+## 2026-10-18 (restore rehearsal)
+- First restore rehearsal PASSED: 156 tables / 96,121 rows / 21 auth users from the newest export loaded into a throwaway local Postgres with all counts and numeric sums matching; negative test (tampered manifest) correctly failed. Not covered: the 5 service-role-unreadable tables; schema (not rebuildable from migrations alone - use Supabase platform backups for a real disaster).
+
 ## 2026-10-18 (final) — Owner reminder system
 - `scripts/backup/owner-reminders.mjs` + `05_OWNER_ROUTINE.md`: nine recurring owner routines with schedules, automatic measurement where possible, a daily Windows pop-up from the 9:30 pm task, and a rule in `AGENTS.md` that every Claude session reports what is due before other work.
 
