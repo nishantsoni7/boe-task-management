@@ -7913,6 +7913,15 @@ tr:hover .boe-payment-id-copy,
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+/* EMPTY STATES in the Finance lists: a soft icon disc above the message the
+   page already says. Drawn here so the text, roles and buttons stay exactly as
+   they were. */
+.boe-finance-empty::before {
+  content: ''; display: block; width: 44px; height: 44px; margin: 0 auto 12px;
+  border-radius: 50%; background-color: #F1EEE9;
+  background-repeat: no-repeat; background-position: center; background-size: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23686D6C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='5' width='20' height='14' rx='2'/%3E%3Cline x1='2' y1='10' x2='22' y2='10'/%3E%3C/svg%3E");
+}
 .boe-list-count {
   font-size: 12px; color: #686D6C; white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -7948,9 +7957,9 @@ tr:hover .boe-payment-id-copy,
 }
 .boe-list-tabs::-webkit-scrollbar { display: none; }
 .boe-list-tab {
-  padding: 9px 10px 8px; border: none; background: transparent;
+  padding: 12px 12px 11px; border: none; background: transparent;
   border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0;
-  font-size: 12px; font-weight: 500; color: #303536;
+  font-size: 13px; font-weight: 500; color: #303536;
   white-space: nowrap; flex-shrink: 0; cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
@@ -7988,18 +7997,19 @@ tr:hover .boe-payment-id-copy,
 }
 .boe-row-action--view {
   width: 50px;
-  background: #FFFFFF; color: #303536;
-  border: 1px solid #CFC8BF;
+  background: #FFFFFF; color: #4C5352; font-weight: 500;
+  border: 1px solid #E4DED7;
 }
 .boe-row-action--view:hover,
-.boe-row-action--view:focus-visible { background: #F7F5F1; border-color: #CFC8BF; }
+.boe-row-action--view:focus-visible { background: #F7F5F1; border-color: #CFC8BF; color: #303536; }
+/* Allocate is the row's one real next step: the brand outline (redesign 2026-10). */
 .boe-row-action--allocate {
   width: 70px;
-  background: rgba(51,90,134,0.08); color: #335A86;
-  border: 1px solid rgba(51,90,134,0.35);
+  background: #FFFFFF; color: #963B27;
+  border: 1px solid rgba(185,71,46,0.55);
 }
 .boe-row-action--allocate:hover,
-.boe-row-action--allocate:focus-visible { background: rgba(185,71,46,0.16); }
+.boe-row-action--allocate:focus-visible { background: rgba(185,71,46,0.08); border-color: #B9472E; }
 .boe-row-action:focus-visible { outline: 2px solid rgba(196,138,26,0.45); outline-offset: 1px; }
 .boe-row-more {
   display: inline-flex; align-items: center; justify-content: center;
@@ -9924,3 +9934,174 @@ select.boe-req-control {
   }
 }
 .order-activity-item:first-child { border-top: 0; padding-top: 0; }
+
+/* ══ FINANCE LISTS — the Notion-style list (Concept A, 2026-10) ═══════════════
+   Payment Requests, Confirmed Payments and Payments to Verify share these.
+   Quiet surfaces, one hairline grid, the figures carry the weight; colour is
+   kept for status (a dot, a soft pill), never for chrome. */
+
+/* Summary cards (Confirmed Payments). */
+.fin-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+@media (max-width: 900px) { .fin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fin-stat {
+  background: #FFFFFF; border: 1px solid #ECE7E0; border-radius: 12px;
+  padding: 14px 16px; min-width: 0; text-align: left; font: inherit; color: inherit;
+}
+button.fin-stat { cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+button.fin-stat:hover { border-color: #CFC8BF; }
+button.fin-stat[aria-pressed="true"] { border-color: #303536; }
+.fin-stat-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #686D6C; }
+.fin-stat-value {
+  margin-top: 6px; font-size: 20px; font-weight: 600; color: #303536;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fin-stat-sub { margin-top: 2px; font-size: 12px; color: #8F9392; }
+.fin-stats-note { margin: -6px 0 14px; font-size: 12px; color: #A12438; }
+
+/* The colour key: one small dot per status, used by tabs, cards and pills. */
+.fin-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.fin-dot--zero    { background: #E2A93B; }
+.fin-dot--partial { background: #4F7FB8; }
+.fin-dot--full    { background: #3F9B6E; }
+.fin-dot--over    { background: #C9485B; }
+.fin-dot--neutral { background: #A8A39C; }
+
+/* The list surface. */
+/* overflow stays VISIBLE so the Paid date panel is never clipped by a short
+   list; the corners are kept by rounding the first and last cells instead. */
+.fin-board { background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 12px; overflow: visible; }
+.fin-board > .fin-viewbar { border-radius: 12px 12px 0 0; }
+.fin-table tbody tr:last-child td:first-child { border-bottom-left-radius: 11px; }
+.fin-table tbody tr:last-child td:last-child { border-bottom-right-radius: 11px; }
+
+/* The view bar: tabs on the left, search and filters on the right. */
+.fin-viewbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px;
+  padding: 0 12px; border-bottom: 1px solid #ECE7E0; min-height: 48px;
+}
+.fin-tabs { display: flex; align-items: stretch; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.fin-tabs::-webkit-scrollbar { display: none; }
+.fin-tab {
+  position: relative; height: 48px; display: inline-flex; align-items: center; gap: 8px;
+  padding: 0 10px; border: 0; background: none; cursor: pointer; flex-shrink: 0;
+  font: 500 13px var(--boe-font-body); color: #686D6C; white-space: nowrap;
+}
+.fin-tab:hover { color: #303536; }
+.fin-tab[aria-selected="true"] { color: #303536; font-weight: 600; }
+.fin-tab[aria-selected="true"]::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: 0;
+  height: 2px; border-radius: 2px; background: #303536;
+}
+.fin-tab:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: -4px !important; border-radius: 6px; }
+.fin-tab-count { font-size: 12px; font-weight: 500; color: #8F9392; font-variant-numeric: tabular-nums; }
+.fin-tools { margin-left: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; min-width: 0; }
+.fin-tools .boe-list-search { height: 32px; flex: 0 1 260px; }
+.fin-count { font-size: 12px; color: #8F9392; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .fin-tools { margin-left: 0; width: 100%; }
+  .fin-tools .boe-list-search { flex: 1 1 100%; max-width: none; }
+}
+
+/* "Paid date" filter chip: a native <details> popover holding the two dates. */
+.fin-chip { position: relative; }
+.fin-chip > summary {
+  list-style: none; height: 32px; padding: 0 10px; border-radius: 8px;
+  border: 1px dashed #CFC8BF; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; color: #4C5352; cursor: pointer; white-space: nowrap;
+}
+.fin-chip > summary::-webkit-details-marker { display: none; }
+.fin-chip > summary:hover { background: #FAF8F5; }
+.fin-chip.is-set > summary { border-style: solid; border-color: #303536; color: #303536; background: #F3F0EB; }
+.fin-chip-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+  background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 10px;
+  box-shadow: var(--boe-shadow-float, 0 8px 24px rgba(0,0,0,0.12));
+  padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 240px;
+}
+@media (max-width: 700px) { .fin-chip-panel { left: 0; right: auto; } }
+
+/* The table. Fixed layout, one hairline grid. */
+.fin-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.fin-table th {
+  height: 36px; padding: 0 8px; text-align: left; vertical-align: middle;
+  font-size: 12px; font-weight: 500; color: #686D6C; background: #FFFFFF;
+  border-bottom: 1px solid #ECE7E0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-transform: none !important; letter-spacing: 0 !important;
+}
+.fin-table td {
+  height: 52px; padding: 6px 8px; vertical-align: middle; font-size: 13px; color: #303536;
+  border-bottom: 1px solid #ECE7E0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fin-table th + th, .fin-table td + td { border-left: 1px solid #F1EEE9; }
+.fin-table tbody tr:last-child td { border-bottom: 0; }
+.fin-table tbody tr { cursor: pointer; }
+.fin-table tbody tr:hover td { background: #FAF8F5; }
+.fin-table tbody tr.is-highlighted td { background: #FDF6E7; }
+.fin-table .fin-num { text-align: right; font-variant-numeric: tabular-nums; }
+.fin-amount { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fin-muted { color: #686D6C; }
+.fin-sub { display: block; margin-top: 2px; font-size: 12px; color: #8F9392; overflow: hidden; text-overflow: ellipsis; }
+.fin-primary-text { font-weight: 500; overflow: hidden; text-overflow: ellipsis; display: block; }
+
+/* Status: a soft pill with a dot. */
+.fin-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 100%;
+}
+.fin-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.fin-pill--zero    { background: #FAF0DA; color: #805B0D; }
+.fin-pill--partial { background: #EAF0F8; color: #335A86; }
+.fin-pill--full    { background: #E8F2EC; color: #276247; }
+.fin-pill--over    { background: #FBE9EC; color: #A12438; }
+.fin-pill--neutral { background: #EEECE8; color: #595D5B; }
+
+/* "Left to allocate" meter in Allocated against. */
+.fin-meter { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fin-meter-bar { flex: 0 0 56px; height: 6px; border-radius: 3px; background: #F1EEE9; overflow: hidden; }
+.fin-meter-bar > span { display: block; height: 100%; border-radius: 3px; }
+
+/* The Payment ID, quiet: plain monospace with a copy icon on hover. */
+.fin-table .boe-payment-id { background: none; border: 0; padding: 0; gap: 4px; }
+.fin-table .boe-payment-id-text { font-weight: 500; color: #4C5352; }
+.fin-table .boe-payment-id-copy { opacity: 0; }
+.fin-table tr:hover .boe-payment-id-copy, .fin-table .boe-payment-id-copy:focus-visible { opacity: 1; }
+@media (hover: none) { .fin-table .boe-payment-id-copy { opacity: 1; } }
+
+/* Initials for Requested by. */
+.fin-person { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.fin-avatar {
+  width: 22px; height: 22px; border-radius: 50%; background: #F3F0EB; color: #686D6C;
+  font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.fin-person > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+
+/* Empty state: an invitation, not an apology. */
+.fin-empty { padding: 64px 24px; text-align: center; }
+.fin-empty-icon {
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 14px;
+  background: #F3F0EB; color: #686D6C; display: flex; align-items: center; justify-content: center;
+}
+.fin-empty-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #303536; }
+.fin-empty-body { margin: 0 auto 16px; max-width: 400px; font-size: 13px; line-height: 1.6; color: #686D6C; }
+
+/* Footer under a list (page position). */
+.fin-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid #ECE7E0; font-size: 12px; color: #8F9392; }
+
+/* Row actions as icons (redesign 2026-10): one fixed 28px square per action,
+   in the order View, Edit, Allocate, Delete; an empty slot keeps the others
+   in place. Width arithmetic: lib/finance/rowActions.ts (ROW_ACTION_TARGET_PX). */
+.boe-row-icon, .boe-row-icon-slot { width: 28px; height: 28px; flex-shrink: 0; }
+.boe-row-icon {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: #686D6C; cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.boe-row-icon:hover, .boe-row-icon:focus-visible { background: #F3F0EB; color: #303536; }
+.boe-row-icon--allocate { color: #963B27; border-color: rgba(185,71,46,0.35); }
+.boe-row-icon--allocate:hover, .boe-row-icon--allocate:focus-visible { background: rgba(185,71,46,0.08); color: #963B27; border-color: #B9472E; }
+.boe-row-icon--delete:hover, .boe-row-icon--delete:focus-visible { background: #FBE9EC; color: #B42332; }
+@media (max-width: 900px) { .fin-stats[style] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+.boe-row-icon--delete { color: #B42332; }

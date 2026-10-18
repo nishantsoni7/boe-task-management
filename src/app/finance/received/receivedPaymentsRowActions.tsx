@@ -6,7 +6,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Eye, MoreHorizontal, Pencil, Split, Trash2, type LucideIcon } from 'lucide-react'
 import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
-import { ROW_ACTION_GAP_PX, rowActionLayout, type RowActionKey } from '@/lib/finance/rowActions'
+import { ROW_ACTION_GAP_PX, ROW_ACTION_KEYS, rowActionLayout, type RowActionKey } from '@/lib/finance/rowActions'
 import { colors } from '@/lib/tokens'
 import { PAYMENT_DELETE_CONFIRM_LABEL } from '@/lib/finance/paymentDeletion'
 import { ALLOCATE_FUNDS_ACTION_LABEL } from './AllocateFundsModal'
@@ -43,7 +43,7 @@ export function rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete }: {
     },
     edit: {
       Icon: Pencil,
-      text: 'Edit payment',
+      text: 'Edit',
       label: r => `Edit ${r.human_payment_id ?? 'this payment'}`,
       run: r => onEdit(r),
     },
@@ -59,13 +59,14 @@ export function rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete }: {
 }
 
 /**
- * A row's actions: the routine ones as WORDS, the rest behind "More actions".
+ * A row's actions as ICONS (redesign 2026-10): View, Edit, Allocate, Delete,
+ * each with a tooltip and an accessible name that names the payment.
  *
- * View is always a labelled button; Allocate is one whenever the payment has
- * money left to place. Edit and Delete live in the menu, Delete last and in
- * red, so destroying a payment is never the same kind of control as viewing
- * one, never beside it, and never one mis-aimed click away. See
- * lib/finance/rowActions.ts for the split and for the width it adds up to.
+ * In a TABLE ROW (`slots`) every action owns a fixed square, and an action the
+ * reader may not take leaves its square EMPTY, so each icon sits at the same x
+ * on every row and the column reads as a column. Delete is last, in red, and
+ * still opens its own confirmation. See lib/finance/rowActions.ts for the order
+ * and for the width it adds up to.
  *
  * It decides NO permission. `actions` is the row's own visibleRowActions()
  * answer; an action the reader may not take is not rendered at all.
@@ -74,15 +75,11 @@ export function PaymentRowActions({ row, actions, meta, slots = false }: {
   row: PaymentRequest
   actions: readonly RowActionKey[]
   meta: RowActionMeta
-  /**
-   * TABLE ROWS: every control in a fixed slot — View at the left edge of the
-   * cell, Allocate beside it, More pinned to the right edge — so each one sits
-   * at the same x on every row and the column reads as a column. Right-aligning
-   * the whole group made View jump sideways wherever Allocate was absent.
-   */
+  /** TABLE ROWS: one fixed square per possible action, empty when absent. */
   slots?: boolean
 }) {
-  const { inline, menu } = rowActionLayout(actions)
+  const { inline } = rowActionLayout(actions)
+  const keys: readonly RowActionKey[] = slots ? ROW_ACTION_KEYS : inline
   return (
     <div
       className={`boe-row-actions${slots ? ' boe-row-actions--slots' : ''}`}
@@ -90,30 +87,22 @@ export function PaymentRowActions({ row, actions, meta, slots = false }: {
       // The row opens the record on click; an action must not also do that.
       onClick={e => e.stopPropagation()}
     >
-      {inline.map(key => (
-        <button
-          key={key}
-          type="button"
-          className={`boe-row-action boe-row-action--${key}`}
-          aria-label={meta[key].label(row)}
-          onClick={event => { event.stopPropagation(); meta[key].run(row) }}
-        >
-          {meta[key].text}
-        </button>
-      ))}
-      {menu.length > 0 && (
-        <span className="boe-row-actions-menu">
-          <RowActionsMenu
-            label={`More actions for ${row.human_payment_id ?? 'this payment'}`}
-            actions={menu.map(key => ({
-              label: meta[key].text,
-              onSelect: () => meta[key].run(row),
-              danger: meta[key].danger,
-              Icon: meta[key].Icon,
-            }))}
-          />
-        </span>
-      )}
+      {keys.map(key => {
+        if (!inline.includes(key)) return <span key={key} className="boe-row-icon-slot" aria-hidden="true" />
+        const { Icon } = meta[key]
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`boe-row-icon boe-row-icon--${key}`}
+            aria-label={meta[key].label(row)}
+            title={meta[key].text}
+            onClick={event => { event.stopPropagation(); meta[key].run(row) }}
+          >
+            <Icon size={15} aria-hidden="true" />
+          </button>
+        )
+      })}
     </div>
   )
 }

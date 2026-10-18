@@ -4,6 +4,7 @@ import { paymentDisplayStateMeta, type PaymentDestination } from '@/lib/finance/
 import { PAYMENT_VERIFICATION_LABEL, paymentRowFigures } from '@/lib/finance/paymentClassification'
 import type { ConfirmedListEmptyKind } from '@/app/finance/receivedPaymentsQuery'
 import { ErrorBanner, STATUS_META } from './receivedPaymentsModel'
+import { FinanceEmpty } from '../components/FinanceListParts'
 
 
 // Display atoms of Received Payments (empty state, section headers, detail rows, status and
@@ -27,7 +28,7 @@ export function ConfirmedListEmptyState({
   onShowAll: () => void
 }) {
   const box: React.CSSProperties = {
-    padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6,
+    padding: '56px 20px', textAlign: 'center', color: colors.muted, fontSize: '14px', lineHeight: 1.6,
   }
   if (kind === 'loading') {
     return <div role="status" style={box}>Loading…</div>
@@ -55,17 +56,19 @@ export function ConfirmedListEmptyState({
         ? `No payments are ${statusLabel} right now.`
         : 'No payments match the current search or dates.'
     return (
-      <div role="status" style={box}>
-        {message}
-        <div style={{ marginTop: '10px' }}>
-          <button type="button" onClick={onShowAll} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+      <FinanceEmpty
+        icon="search"
+        title={message}
+        body="Clear the search, dates or status to see every payment."
+        action={
+          <button type="button" onClick={onShowAll} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
             Show all payments
           </button>
-        </div>
-      </div>
+        }
+      />
     )
   }
-  return <div role="status" style={box}>{noneText}</div>
+  return <FinanceEmpty title={noneText} body="Payments appear here once they are verified." />
 }
 
 // Compact uppercase section label used inside RequestModalShell cards —

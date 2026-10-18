@@ -108,6 +108,13 @@ function headers(markup: string): string[] {
   return [...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map(m => m[1])
 }
 
+/** The <td> cells of the first body row, in order, as raw markup. */
+function firstRowCellHtml(markup: string): string[] {
+  const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
+  const tr = body.slice(0, body.indexOf('</tr>'))
+  return [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1])
+}
+
 /** The <td> cells of the first body row, in order, stripped of markup. */
 function firstRowCells(markup: string): string[] {
   const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
@@ -121,15 +128,16 @@ function firstRowCells(markup: string): string[] {
 describe('1. the required column order', () => {
   test('1a. nine headers, in the order the screen calls for', () => {
     assert.deepEqual(headers(render([row()])), [
-      'Payment ID', 'Client', 'Amount', 'Payment Date', 'Payment Mode',
-      'Against', 'Status', 'Requested By', 'Action',
+      // REVISED (redesign 2026-10): the owner's order.
+      'Payment ID', 'Amount', 'Client', 'Paid on', 'Payment mode',
+      'Against', 'Added by', 'Status', 'Actions',
     ])
   })
 
-  test('1b. Payment Mode sits between Payment Date and Against, not at the end', () => {
+  test('1b. Payment mode sits between Paid on and Against, not at the end', () => {
     const h = headers(render([row()]))
-    assert.equal(h.indexOf('Payment Mode'), h.indexOf('Payment Date') + 1)
-    assert.equal(h.indexOf('Against'), h.indexOf('Payment Mode') + 1)
+    assert.equal(h.indexOf('Payment mode'), h.indexOf('Paid on') + 1)
+    assert.equal(h.indexOf('Against'), h.indexOf('Payment mode') + 1)
   })
 
   test('1c. every body row has one cell per header', () => {
@@ -145,11 +153,11 @@ describe('1. the required column order', () => {
   test('1d. the preserved columns still carry their values', () => {
     const cells = firstRowCells(render([row()]))
     assert.equal(cells[0], 'P-AA-0001')                       // Payment ID
-    assert.ok(cells[1].startsWith('Sharma Furnishings'))      // Client
-    assert.ok(cells[3].length > 0)                            // Payment Date
-    assert.ok(cells[6].length > 0)                            // Status
-    assert.equal(cells[7], 'Anita Rao')                       // Requested By
-    assert.ok(cells[8].includes('View'))                      // Action
+    assert.ok(cells[2].startsWith('Sharma Furnishings'))      // Client
+    assert.ok(cells[3].length > 0)                            // Paid on
+    assert.ok(cells[7].length > 0)                            // Status
+    assert.ok(cells[6].endsWith('Anita Rao'))                 // Added by (initials + name)
+    assert.ok(firstRowCellHtml(render([row()]))[8].includes('aria-label="View payment request P-AA-0001"')) // Actions
   })
 })
 
@@ -163,7 +171,7 @@ describe('2. Pending is stated once, in Status', () => {
     for (const isAdmin of [true, false]) {
       for (const status of ['pending_approval', 'needs_clarification', 'rejected', 'approved']) {
         const cells = firstRowCells(render([row({ status })], { isAdmin }))
-        assert.equal(cells[1], 'Sharma Furnishings Pvt Ltd',
+        assert.equal(cells[2], 'Sharma Furnishings Pvt Ltd',
           `client cell must hold the name alone (isAdmin=${isAdmin}, status=${status})`)
       }
     }
@@ -172,14 +180,14 @@ describe('2. Pending is stated once, in Status', () => {
   test('2b. and no OTHER badge took its place in that cell', () => {
     const markup = render([row()])
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
-    const clientCell = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][1][1]
+    const clientCell = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][2][1]
     // One element, holding one string. A chip would be a second.
     assert.equal([...clientCell.matchAll(/<span|<div/g)].length, 1)
   })
 
   test('2c. Pending is still visible — in the Status column', () => {
     const cells = firstRowCells(render([row({ status: 'pending_approval' })]))
-    assert.match(cells[6], /Pending/i)
+    assert.match(cells[7], /Pending/i)
   })
 
   test('2d. the capability is no longer passed to the table at all', () => {
@@ -193,38 +201,41 @@ describe('2. Pending is stated once, in Status', () => {
   })
 })
 
-// ── 3. Amount is left-aligned ────────────────────────────────────────────────
+// ── 3. Amount is right-aligned (redesign 2026-10) ────────────────────────────
+//
+// REVISED. Amount used to read left. In the Notion-style grid every row is a
+// ledger line, so the figures right-align and line up by place value down the
+// column, header and value together (`.fin-num`).
 
-describe('3. Amount reads left, header and value together', () => {
+describe('3. Amount reads right, header and value together', () => {
   const markup = render([row()])
 
-  test('3a. the header carries no right alignment', () => {
+  test('3a. the header is right-aligned', () => {
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
-    const th = [...head.matchAll(/<th\b[^>]*>/g)][2][0]
-    assert.equal(/text-align:\s*right/.test(th), false, 'Amount header must not be right-aligned')
+    const th = [...head.matchAll(/<th\b[^>]*>/g)][1][0]
+    assert.match(th, /text-align:\s*right/, 'Amount header is right-aligned')
   })
 
-  test('3b. nor does the value cell', () => {
+  test('3b. and so is the value cell', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
-    const td = [...body.matchAll(/<td[^>]*>/g)][2][0]
-    assert.equal(/text-align:\s*right/.test(td), false, 'Amount cell must not be right-aligned')
+    const td = [...body.matchAll(/<td[^>]*>/g)][1][0]
+    assert.match(td, /class="fin-num"/, 'Amount cell carries the right-aligned numeric class')
   })
 
-  test('3c. Action is still right-aligned — it is the only column that should be', () => {
+  test('3c. Amount and Action are the only right-aligned headers', () => {
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
     const ths = [...head.matchAll(/<th\b[^>]*>/g)].map(m => m[0])
-    assert.equal(ths.filter(t => /text-align:\s*right/.test(t)).length, 1)
+    assert.equal(ths.filter(t => /text-align:\s*right/.test(t)).length, 2)
     assert.match(ths[8], /text-align:\s*right/)
   })
 
   test('3d. Indian currency formatting and weight are preserved', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
-    const [open, value] = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][2]
-      .slice(0, 2) as [string, string]
+    const value = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][1][1]
     // 1,25,000 — lakh grouping, not 125,000.
     assert.match(value, /1,25,000/)
-    assert.match(open, /font-weight:\s*700/)
-    assert.match(open, /font-variant-numeric:\s*tabular-nums/)
+    // Weight and tabular figures come from .fin-amount / .fin-num.
+    assert.match(value, /class="fin-amount"/)
   })
 })
 
@@ -245,8 +256,8 @@ describe('4. the blank band between Client and Amount is closed', () => {
     const widths = [...colgroup.matchAll(/width:\s*(\d+)%/g)].map(m => Number(m[1]))
     // Wide enough for a normal name, and no longer the widest thing on screen:
     // Against, which holds the longest prose, is the column that may be.
-    assert.ok(widths[1] >= 12, 'Client must still fit an ordinary name')
-    assert.ok(widths[1] <= widths[5], 'Client must not out-reserve the longest-text column')
+    assert.ok(widths[2] >= 12, 'Client must still fit an ordinary name')
+    assert.ok(widths[2] <= widths[5], 'Client must not out-reserve the longest-text column')
   })
 
   test('4c. no fixed table layout, and no forced minimum width', () => {
@@ -258,7 +269,9 @@ describe('4. the blank band between Client and Amount is closed', () => {
   test('4d. the long-text cells still truncate with the full value on hover', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
     assert.ok(body.includes('title="Sharma Furnishings Pvt Ltd"'), 'client keeps its title')
-    assert.equal([...body.matchAll(/text-overflow:\s*ellipsis/g)].length >= 3, true)
+    assert.equal([...body.matchAll(/text-overflow:\s*ellipsis/g)].length >= 2, true)
+    // Requested By truncates through .fin-person and keeps its full name.
+    assert.ok(body.includes('title="Anita Rao"'), 'requested-by keeps its title')
   })
 })
 
@@ -363,9 +376,9 @@ describe('6. no new query, and the narrow-width view keeps the column', () => {
   })
 
   test('6d. the actions stay usable — they are still the last cell, unwrapped', () => {
-    const cells = firstRowCells(render([row()], { isAdmin: true }))
-    assert.ok(cells[8].includes('View'))
-    assert.ok(cells[8].includes('Delete'), 'an admin still gets Delete')
+    const cells = firstRowCellHtml(render([row()], { isAdmin: true }))
+    assert.ok(cells[8].includes('aria-label="View payment request'))
+    assert.ok(cells[8].includes('aria-label="Delete payment request'), 'an admin still gets Delete')
   })
 })
 
@@ -467,23 +480,25 @@ describe("7. the salesperson's list", () => {
 
   test("7h. Delete appears for the owner's unapproved rows only, beside View", () => {
     for (const status of ['pending_approval', 'needs_clarification', 'rejected']) {
-      const cells = firstRowCells(sales([row({ status })]))
-      assert.ok(cells[7].includes('View') && cells[7].includes('Delete'), `${status}: owner sees Delete`)
+      const cells = firstRowCellHtml(sales([row({ status })]))
+      assert.ok(cells[7].includes('aria-label="View payment request') && cells[7].includes('aria-label="Delete payment request'), `${status}: owner sees Delete`)
     }
     // Someone else's row, and an approved row, get no Delete.
-    const other = firstRowCells(sales([row({ submitted_by: '99999999-0000-4000-8000-000000000000' })]))
-    assert.equal(other[7].includes('Delete'), false)
+    const other = firstRowCellHtml(sales([row({ submitted_by: '99999999-0000-4000-8000-000000000000' })]))
+    assert.equal(other[7].includes('Delete payment request'), false)
     for (const status of ['approved_unlinked', 'approved_linked']) {
-      assert.equal(firstRowCells(sales([row({ status })]))[7].includes('Delete'), false, status)
+      assert.equal(firstRowCellHtml(sales([row({ status })]))[7].includes('Delete payment request'), false, status)
     }
   })
 
-  test('7i. the Delete control is compact and red', () => {
+  test('7i. the Delete control is a compact red icon', () => {
+    // REVISED (redesign 2026-10): an icon in a fixed 28px slot; red via CSS.
     const markup = sales([row()])
     const btn = markup.match(/<button[^>]*aria-label="Delete payment request P-AA-0001"[^>]*>/)?.[0] ?? ''
     assert.ok(btn.length > 0)
-    assert.match(btn, /color:\s*(var\([^)]*\)|#B42332)/i)
-    assert.match(btn, /font-size:\s*12px/)
+    assert.match(btn, /class="boe-row-icon boe-row-icon--delete"/)
+    assert.match(btn, /title="Delete"/)
+    assert.ok(readFileSync('src/app/globals.css', 'utf8').includes('.boe-row-icon--delete { color: #B42332; }'))
   })
 
   test('7j. the review list is unchanged for everyone else', () => {
@@ -492,8 +507,8 @@ describe("7. the salesperson's list", () => {
   })
 
   test("7k. a reviewer's own request can be deleted from the review list too", () => {
-    const cells = firstRowCells(render([row()]))
-    assert.ok(cells[8].includes('Delete'))
+    const cells = firstRowCellHtml(render([row()]))
+    assert.ok(cells[8].includes('aria-label="Delete payment request'))
   })
 })
 

@@ -33,6 +33,7 @@ import {
   type AllocationTargetRow,
 } from '@/lib/finance/allocatedAgainst'
 import { summarizePaymentAllocations } from '@/lib/finance/paymentAllocations'
+import { AllocationDetailsPopup } from './receivedPaymentsAllocationPopup'
 
 const noop = () => {}
 
@@ -110,12 +111,20 @@ const common = {
   allocatedAgainst: viewFor as never,
   targetHref: hrefFor,
   onOpenTarget: noop,
+  onShowAllocation: noop,
 }
 
 const desktop = renderToStaticMarkup(createElement(ReceivedPaymentsTable, { ...common, canManage: true, onEdit: noop }))
 const mobile = renderToStaticMarkup(createElement(ReceivedPaymentsCards, { ...common, canManage: true, onEdit: noop }))
 const cell = (view: AllocatedAgainstView, fill = false) =>
   renderToStaticMarkup(createElement(AllocatedAgainstCell, { view, hrefFor, onOpen: noop, fill }))
+/** The allocation popup the Allocation status pill opens, for one payment. */
+const popup = (id: string, onAllocate?: () => void) => {
+  const r = ROWS.find(p => p.id === id)!
+  return renderToStaticMarkup(createElement(AllocationDetailsPopup, {
+    payment: r as never, view: viewFor(r), hrefFor, onOpenTarget: noop, onAllocate, onClose: noop,
+  }))
+}
 
 /** The markup of one desktop row / mobile card, by its Payment ID. */
 function rowOf(html: string, id: string): string {
@@ -127,110 +136,109 @@ function rowOf(html: string, id: string): string {
 
 // ── The table ────────────────────────────────────────────────────────────────
 
-describe('desktop: the seven columns', () => {
+describe('desktop: the owner\'s columns (2026-10)', () => {
   test('headers in the required order', () => {
-    const headers = [...desktop.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1])
-    assert.deepEqual(headers, ['Payment ID', 'Amount', 'Received Date', 'Mode', 'Allocated Against', 'Allocation Status', 'Actions'])
+    // Payment ID, Amount, Client, Received on, Payment mode, Added by,
+    // Allocation status, Actions (named for screen readers only).
+    const headers = [...desktop.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(m => m[1].replace(/<[^>]+>/g, ''))
+    assert.deepEqual(headers, ['Payment ID', 'Amount', 'Client', 'Received on', 'Payment mode', 'Added by', 'Allocation status', 'Actions'])
   })
 
-  test('Initiated By and Approved By are not in any row', () => {
-    for (const gone of ['Initiated', 'Approved', 'Ishaan', 'Asha']) {
-      assert.ok(!desktop.includes(gone), `${gone} must not be in the table`)
-    }
-  })
-
-  test('every row keeps its Payment ID, amount, date, mode, status badge and actions', () => {
+  test('Added by names who recorded it; Approved By stays out of the row', () => {
     const r = rowOf(desktop, '0002')
-    // REVISED (usability pass): View is a labelled button on the row; Edit and
-    // Delete live behind "More actions", whose panel only renders when opened,
-    // so the row carries the trigger — named for this payment — not the entries.
-    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Fully Allocated',
-      'aria-label="View details for P-AA-0002"', 'aria-label="More actions for P-AA-0002"']) {
+    assert.ok(r.includes('Initiator Ishaan Kumar'), 'the recorder is the Added by column')
+    for (const gone of ['Approver', 'Asha']) assert.ok(!desktop.includes(gone), `${gone} must not be in the table`)
+  })
+
+  test('every row keeps its Payment ID, amount, client, date, mode, status pill and icon actions', () => {
+    const r = rowOf(desktop, '0002')
+    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Hotel ABC', '10 Sept 2026', 'HDFC', 'Fully Allocated',
+      'aria-label="View details for P-AA-0002"', 'aria-label="Edit P-AA-0002"']) {
       assert.ok(r.includes(text), text)
     }
-    assert.ok(!r.includes('boe-icon-action'), 'no unexplained icon squares are left in the row')
+    assert.ok(!r.includes('More actions'), 'no menu: every action is its own icon')
   })
 
-  test('the Allocated Against cell may wrap; no cell forces a sideways scroll', () => {
-    assert.ok(!/<table[^>]*min-width/.test(desktop), 'the table sets no minWidth')
-    assert.ok(desktop.includes('contain:inline-size'), 'a long name cannot widen the table')
-    assert.ok(desktop.includes('min-width:200px'), 'and the column keeps room for every amount')
-    const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>([^<]*)<\/th>/g)]
-      .map(m => [m[2], /width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
-    // REVISED (usability pass): compact MEASURED pixel widths for the fixed
-    // columns — the old 1% shrink-to-fit crowded them together on the left —
-    // and Allocated Against still takes the rest.
-    assert.deepEqual(widths, [
-      ['Payment ID', '80px'], ['Amount', '128px'], ['Received Date', '100px'], ['Mode', '92px'],
-      ['Allocated Against', 'auto'], ['Allocation Status', '156px'], ['Actions', '172px'],
-    ], 'fixed columns have measured widths; Allocated Against takes the rest')
-    assert.ok(desktop.includes('table-layout:fixed'), 'and the table lays out by them')
-    assert.ok(/<td style="[^"]*white-space:normal/.test(desktop), 'stacked lines are allowed in that one cell')
-  })
-})
-
-describe('every allocation case, in the row', () => {
-  test('no active allocation → Not allocated (never the obsolete allocated_order_number)', () => {
-    const r = rowOf(desktop, '0001')
-    assert.ok(r.includes('Not allocated'))
+  test('where the money went is no longer a row column', () => {
+    const r = rowOf(desktop, '0003')
+    assert.ok(!r.includes('Order 0425'), 'the targets live in the allocation popup')
     assert.ok(!r.includes('0999'), 'the obsolete single-Order field is not read')
   })
 
+  test('fixed widths sized to the data; Client takes the rest; no sideways scroll', () => {
+    assert.ok(!/<table[^>]*min-width/.test(desktop), 'the table sets no minWidth')
+    const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>(.*?)<\/th>/g)]
+      .map(m => [m[2].replace(/<[^>]+>/g, ''), /(?:^|;)width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
+    assert.deepEqual(widths, [
+      ['Payment ID', '100px'], ['Amount', '128px'], ['Client', 'auto'], ['Received on', '100px'],
+      ['Payment mode', '104px'], ['Added by', '132px'], ['Allocation status', '156px'], ['Actions', '140px'],
+    ])
+    assert.ok(desktop.includes('class="fin-table"'), 'and the table lays out by them (.fin-table is table-layout: fixed)')
+  })
+})
+
+describe('every allocation case, in the allocation popup', () => {
+  test('no active allocation → not allocated, and the whole amount is left', () => {
+    const p = popup('0001')
+    assert.ok(p.includes('Not allocated to any Order or PI Draft yet.'))
+    assert.ok(/Left to allocate<\/div><div[^>]*>₹5,00,000\.00/.test(p))
+    assert.ok(!p.includes('0999'), 'the obsolete single-Order field is not read')
+  })
+
   test('one Order, with its amount', () => {
-    const r = rowOf(desktop, '0002')
-    assert.ok(r.includes('Order 0425'))
-    assert.ok(/Order 0425<\/a>.*₹5,00,000\.00/.test(r))
-    assert.ok(!r.includes('Unallocated'), 'fully allocated: no remainder line')
-    assert.ok(!r.includes('allocations</div>'), 'one destination: no count heading')
+    const p = popup('0002')
+    assert.ok(/Order 0425<\/a>.*₹5,00,000\.00/.test(p))
+    assert.ok(/Left to allocate<\/div><div[^>]*>₹0\.00/.test(p), 'fully allocated: nothing left')
   })
 
-  test('mixed Orders and a PI Draft: a count, each target on its own line with its own amount, duplicates combined', () => {
-    const r = rowOf(desktop, '0003')
-    assert.ok(r.includes('3 allocations'), 'three DESTINATIONS, although four rows')
-    const items = [...r.matchAll(/role="listitem"/g)].length
-    assert.equal(items, 3, 'one line per destination')
-    assert.ok(/Order 0425<\/a>.*?₹2,00,000\.00/.test(r), 'the two 0425 rows summed')
-    assert.ok(/Order 0431<\/span>.*?₹1,50,000\.00/.test(r))
-    assert.ok(/PI Draft · Hotel ABC\.xlsx<\/span>.*?₹50,000\.00/.test(r))
+  test('mixed Orders and a PI Draft: each target on its own line with its own amount, duplicates combined', () => {
+    const p = popup('0003')
+    assert.equal([...p.matchAll(/<li /g)].length, 3, 'one line per destination')
+    assert.ok(/Order 0425<\/a>.*?₹2,00,000\.00/.test(p), 'the two 0425 rows summed')
+    assert.ok(/Order 0431<\/span>.*?₹1,50,000\.00/.test(p))
+    assert.ok(/PI Draft · Hotel ABC\.xlsx<\/span>.*?₹50,000\.00/.test(p))
+    assert.ok(/Allocated<\/div><div[^>]*>₹4,00,000\.00/.test(p))
   })
 
-  test('partial: the remaining amount is its own final line; the Partially Allocated badge stays', () => {
-    const r = rowOf(desktop, '0004')
-    assert.ok(/Unallocated<\/span>.*?₹1,00,000\.00/.test(r))
-    assert.ok(r.lastIndexOf('Unallocated') > r.indexOf('PI Draft'), 'after the targets')
-    assert.ok(r.includes('Partially Allocated'))
+  test('partial: what is left is stated; the Partially Allocated pill stays', () => {
+    const p = popup('0004')
+    assert.ok(/Left to allocate<\/div><div[^>]*>₹1,00,000\.00/.test(p))
+    assert.ok(p.includes('Partially Allocated'))
   })
 
-  test('over-allocated: every target shown, no remainder, the red badge kept', () => {
-    const r = rowOf(desktop, '0005')
-    assert.ok(r.includes('Order 0425') && r.includes('Order 0431'))
-    assert.ok(r.includes('₹80,000.00') && r.includes('₹30,000.00'))
-    assert.ok(!r.includes('Unallocated'))
-    assert.ok(r.includes('Over-allocated'))
+  test('over-allocated: every target shown, the flag and the red pill kept', () => {
+    const p = popup('0005')
+    assert.ok(p.includes('Order 0425') && p.includes('Order 0431'))
+    assert.ok(p.includes('₹80,000.00') && p.includes('₹30,000.00'))
+    assert.ok(p.includes('flagged for Admin review'))
+    assert.ok(p.includes('fin-pill--over'))
+  })
+
+  test('Allocate is offered only when the caller passes it (permission and money left)', () => {
+    assert.ok(popup('0004', noop).includes('Allocate Funds'))
+    assert.ok(!popup('0002').includes('Allocate Funds'))
   })
 })
 
 describe('links: only where the reader may already open the record', () => {
   test('an openable Order is a link; the others are text, not broken links', () => {
-    const r = rowOf(desktop, '0003')
-    assert.ok(r.includes(`href="/orders/${ORDER_425}"`))
-    assert.ok(!r.includes(ORDER_431), 'no href, id or door for an Order this reader cannot open')
-    assert.ok(!r.includes(PI_HOTEL))
+    const p = popup('0003')
+    assert.ok(p.includes(`href="/orders/${ORDER_425}"`))
+    assert.ok(!p.includes(ORDER_431), 'no href, id or door for an Order this reader cannot open')
+    assert.ok(!p.includes(PI_HOTEL))
   })
 
-  test('nothing in the cell edits or reverses an allocation', () => {
-    const r = rowOf(desktop, '0003')
-    const cellHtml = r.slice(r.indexOf('role="list"'), r.indexOf('</td>', r.indexOf('role="list"')))
-    assert.ok(!cellHtml.includes('<button'), 'no control but the links')
-    assert.ok(!/Reverse|Correct Allocation|Edit/.test(cellHtml))
+  test('nothing in the popup edits or reverses an allocation', () => {
+    const p = popup('0003', noop)
+    assert.ok(!/Reverse|Correct Allocation|>Edit</.test(p))
   })
 })
 
 // ── The cards ────────────────────────────────────────────────────────────────
 
 describe('mobile cards', () => {
-  test('Initiated by and Approved by are gone', () => {
-    for (const gone of ['Initiated by', 'Approved by', 'Ishaan', 'Asha']) {
+  test('Approved by is not on the card', () => {
+    for (const gone of ['Approved by', 'Asha']) {
       assert.ok(!mobile.includes(gone), gone)
     }
   })
@@ -246,9 +254,9 @@ describe('mobile cards', () => {
   test('Payment ID, amount, date, mode, status and permitted actions remain', () => {
     const c = rowOf(mobile, '0004')
     // The card offers the SAME actions as the table row, from the same
-    // component: Allocate as a word, Edit and Delete behind "More actions".
+    // component: every action an icon with its own name.
     for (const text of ['P-AA-0004', '₹7,50,000.00', 'Partially Allocated',
-      'aria-label="Allocate Funds for P-AA-0004"', 'aria-label="More actions for P-AA-0004"']) {
+      'aria-label="Allocate Funds for P-AA-0004"', 'aria-label="Edit P-AA-0004"']) {
       assert.ok(c.includes(text), text)
     }
   })

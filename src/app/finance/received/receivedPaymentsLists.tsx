@@ -24,9 +24,9 @@ export function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, on
   onEdit: (r: PaymentRequest) => void
 }) {
   const TD: React.CSSProperties = {
-    padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+    padding: '12px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap', verticalAlign: 'middle',
   }
-  const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
+  const TH: React.CSSProperties = { ...TH_STYLE, padding: '11px 10px' }
 
   return (
     <div style={{ width: '100%' }}>

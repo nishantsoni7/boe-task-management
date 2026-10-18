@@ -27,7 +27,24 @@ import {
   NO_FINANCE_CAPABILITIES,
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
-import { StatusTabs } from '@/components/ui/StatusTabs'
+import { FinanceStatusCards, FinanceEmpty, type FinanceTabTone } from './components/FinanceListParts'
+
+// The view-bar tabs (redesign 2026-10): sentence-case names, and the status
+// colour each one stands for — the same key the row pills use.
+const REQUEST_TAB_LABEL: Record<FilterTab, string> = {
+  pending: 'Pending',
+  clarification: 'Needs clarification',
+  rejected: 'Rejected',
+  archive: 'Archive',
+  all: 'All',
+}
+const REQUEST_TAB_TONE: Record<FilterTab, FinanceTabTone | undefined> = {
+  pending: 'zero',
+  clarification: 'partial',
+  rejected: 'over',
+  archive: 'neutral',
+  all: undefined,
+}
 import { REQUEST_STAGE_STATUSES, isOwnPaymentDecision } from './paymentRouting'
 import {
   COUNTED_TABS,
@@ -37,7 +54,6 @@ import {
   pageRange,
   parseFilterTab,
   paymentRequestsSearchFilter,
-  resultSummary,
   tabClauses,
   tabCounts,
   tabMatches,
@@ -706,48 +722,37 @@ function FinancePageInner() {
         </button>
       }
     >
-      {/* ── Search toolbar ── sits above the card so the form control and the
-          status navigation below never read as the same kind of control. */}
-      <div className="boe-list-toolbar" role="search" aria-label="Filter payment requests">
-        <label className="boe-list-search">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="search"
-            aria-label="Search payment requests"
-            placeholder="Payment ID, client or order…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-          />
-          {search && (
-            <button type="button" onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" className="boe-list-search-clear">✕</button>
-          )}
-        </label>
-      </div>
+      {/* ── The status cards ARE the filter (owner, 2026-10: no tabs) ── */}
+      <FinanceStatusCards
+        ariaLabel="Payment request status"
+        noun="request"
+        active={activeTab}
+        onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
+        cards={FILTER_TABS.map(t => ({ key: t.key, label: REQUEST_TAB_LABEL[t.key], tone: REQUEST_TAB_TONE[t.key], count: tabCount[t.key] }))}
+      />
 
-      <div className="boe-card" style={{ overflow: 'hidden' }}>
+      <div className="fin-board">
 
-        {/* ── Status navigation ── */}
-        <StatusTabs
-          tabs={FILTER_TABS.map(t => ({ ...t, count: tabCount[t.key] }))}
-          active={activeTab}
-          onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
-          summary={
-            // The size of the WHOLE narrowed set, from the database's exact
-            // count — not the length of the page in hand, which understates it
-            // the moment there is more than one page.
-            resultSummary({
-              loading: listLoading,
-              shown: visible.length,
-              total,
-              narrowed: search.trim() !== '',
-              page,
-              pages,
-              noun: 'request',
-            })
-          }
-        />
+        {/* ── The view bar ── the search. */}
+        <div className="fin-viewbar">
+          <div className="fin-tools" role="search" aria-label="Filter payment requests">
+            <label className="boe-list-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                aria-label="Search payment requests"
+                placeholder="Payment ID, client or order…"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1) }}
+              />
+              {search && (
+                <button type="button" onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+              )}
+            </label>
+          </div>
+        </div>
 
         {/* A FAILED REFRESH IS NOT EVIDENCE THE RECORDS ARE GONE. The rows
             already on screen stay, and this says which it is and offers the way
@@ -779,18 +784,29 @@ function FinancePageInner() {
              about the business; "no results for X" is a statement about the
              search, and it offers the way out. Confusing the two sends somebody
              hunting for a record that is merely filtered. */
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
-            {search.trim() ? (
-              <>
-                No results for &ldquo;{search.trim()}&rdquo;.
-                <div style={{ marginTop: '10px' }}>
-                  <button onClick={() => { setSearch(''); setPage(1) }} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
-                    Clear search
-                  </button>
-                </div>
-              </>
-            ) : EMPTY_MESSAGES[activeTab]}
-          </div>
+          search.trim() ? (
+            <FinanceEmpty
+              icon="search"
+              title={`No results for “${search.trim()}”.`}
+              body="Try a Payment ID, a client name or an order number."
+              action={
+                <button onClick={() => { setSearch(''); setPage(1) }} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
+                  Clear search
+                </button>
+              }
+            />
+          ) : (
+            <FinanceEmpty
+              icon={activeTab === 'pending' ? 'check' : 'card'}
+              title={EMPTY_MESSAGES[activeTab]}
+              body={activeTab === 'pending' ? 'You are all caught up. New payment requests from sales appear here for review.' : undefined}
+              action={activeTab === 'pending' ? (
+                <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
+                  + New request
+                </button>
+              ) : undefined}
+            />
+          )
         ) : (
           <PaymentsTable
             destinations={shownDestinations}

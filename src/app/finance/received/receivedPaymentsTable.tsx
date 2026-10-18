@@ -6,19 +6,21 @@ import { TABLE_CELL_PADDING_X_PX, visibleRowActions } from '@/lib/finance/rowAct
 import { colors } from '@/lib/tokens'
 import { PAYMENT_MODE_LABEL } from '@/lib/finance/paymentEntry'
 import { ALLOCATED_AGAINST_LABEL, ALLOCATION_DETAILS_UNAVAILABLE_TEXT, NOT_ALLOCATED_TEXT, UNALLOCATED_LINE_WORD, allocatedAgainstText, allocationBadgeState, allocationCountLabel, type AllocatedAgainstView } from '@/lib/finance/allocatedAgainst'
-import { CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
+import { ALLOCATED_AGAINST_MIN_PX, CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { PaymentIdChip } from '../components/PaymentIdChip'
+import { FinancePerson } from '../components/FinanceListParts'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './receivedPaymentsRowActions'
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 export const TH_STYLE: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '11px 12px',
   textAlign: 'left',
   fontSize: '12px',
-  fontWeight: 700,
-  color: colors.muted,
+  fontWeight: 600,
+  color: '#4C5352',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   whiteSpace: 'nowrap',
@@ -99,13 +101,13 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   //
   // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
   // "Over-allocated" must never wrap inside a table cell.
-  const chip: React.CSSProperties = {
-    display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
-    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '12px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
-  }
+  // REDESIGN 2026-10: a soft pill with a status dot (`.fin-pill`), the same
+  // colour key as the view-bar tabs and the summary cards. No border.
+  void style
+  const chip: React.CSSProperties = { padding: '2px 10px', borderRadius: '999px' }
+  const pillClass = `fin-pill fin-pill--${status}`
 
-  if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
+  if (!onOpen) return <span title={overTitle} className={pillClass} style={chip}>{meta.label}</span>
 
   return (
     <button
@@ -125,7 +127,7 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
         onOpen()
       }}
     >
-      <span style={chip}>{meta.label}</span>
+      <span className={pillClass} style={chip}>{meta.label}</span>
     </button>
   )
 }
@@ -170,13 +172,13 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
   }
   if (view.kind === 'none') {
     return (
-      <span style={{
-        ...small, display: 'inline-block', padding: '0 6px', borderRadius: '6px',
-        background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0', fontWeight: 600,
-        // A chip, not a bar: inside the card's column flex it would stretch.
-        whiteSpace: 'nowrap', alignSelf: 'flex-start',
-      }}>
-        {NOT_ALLOCATED_TEXT}
+      // PLAIN MUTED TEXT, NOT A SECOND CHIP. The row's Allocation Status badge
+      // already says "Zero Allocated" in colour; an amber chip here said the
+      // same thing again and made every unallocated row shout twice.
+      // An empty meter beside it reads as "nothing given a home yet" at a glance.
+      <span className="fin-meter" style={{ ...small, color: colors.muted, alignSelf: 'flex-start' }}>
+        <span className="fin-meter-bar" aria-hidden="true"><span style={{ width: '0%' }} /></span>
+        <span style={{ whiteSpace: 'nowrap' }}>{NOT_ALLOCATED_TEXT}</span>
       </span>
     )
   }
@@ -204,7 +206,7 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         // `contain: inline-size` removes the content from the table's width
         // calculation, the 200px floor keeps every amount readable. Measured:
         // see CONFIRMED_TABLE_MIN_CONTAINER_PX.
-        : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: '200px', contain: 'inline-size' }}
+        : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: `${ALLOCATED_AGAINST_MIN_PX}px`, contain: 'inline-size' }}
     >
       {view.lines.length > 1 && (
         <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -288,8 +290,7 @@ export function ReceivedPaymentsTable({
   canDeleteRow,
   onDelete,
   allocatedAgainst,
-  targetHref,
-  onOpenTarget,
+  onShowAllocation,
 }: {
   rows: PaymentRequest[]
   /** The Allocated Against cell for one row — see AllocatedAgainstCell. */
@@ -319,6 +320,8 @@ export function ReceivedPaymentsTable({
    */
   canDeleteRow: (r: PaymentRequest) => boolean
   onDelete: (r: PaymentRequest) => void
+  /** Opens the allocation popup (the Allocation status pill). */
+  onShowAllocation: (r: PaymentRequest) => void
 }) {
   // COMPACT, AND NO minWidth. Eleven columns at these paddings fit 1024px with
   // room over; the breakdown that would not fit lives in the expandable row
@@ -333,122 +336,89 @@ export function ReceivedPaymentsTable({
   }
 
   // 8px a side — TABLE_CELL_PADDING_X_PX, which the column widths and the
-  // Actions arithmetic both assume. Clipped text never happens silently: every
-  // compact cell's widest value was measured into its width.
+  // Actions arithmetic both assume. Everything else about a cell (height,
+  // hairlines, hover) is `.fin-table` in globals.css.
   const TD: React.CSSProperties = {
-    padding: `7px ${TABLE_CELL_PADDING_X_PX}px`, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis',
+    padding: `12px ${TABLE_CELL_PADDING_X_PX}px`,
   }
-  const TH: React.CSSProperties = { ...TH_STYLE, padding: `7px ${TABLE_CELL_PADDING_X_PX}px` }
+  const TH: React.CSSProperties = { padding: `0 ${TABLE_CELL_PADDING_X_PX}px` }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
 
   return (
     <div style={{ width: '100%' }}>
-      {/* FIXED LAYOUT: every compact column has a measured pixel width and
-          Allocated Against takes the rest, so the columns sit where the header
+      {/* FIXED LAYOUT: every column but Client has a pixel width sized to its
+          data, and Client takes the rest, so the columns sit where the header
           says they are whatever the rows contain. */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <table className="fin-table">
         <thead>
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
               <th key={column.key} style={{ ...TH, ...align(column.align), ...('width' in column ? { width: column.width } : {}) }}>
-                {column.label}
+                {column.key === 'actions' ? <span className="boe-sr-only">{column.label}</span> : column.label}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map(r => {
-            // NO PER-ROW FIGURE COMPUTATION. The exact figures were the
-            // expandable strip's, that strip is gone, and the detail modal
-            // computes them from the allocation ledger when it opens.
+            // NO PER-ROW FIGURE COMPUTATION. The allocation popup and the detail
+            // modal compute the figures from the allocation read when they open.
             const isHighlighted = r.id === highlightId
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
+            const mode = PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode
+            const client = customerDisplayName(r.client_name)
             return (
               <tr
                   key={r.id}
                   id={`payment-row-${r.id}`}
                   onClick={() => onView(r)}
-                  style={{ cursor: 'pointer', background: isHighlighted ? colors.amberTint : undefined }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
+                  className={isHighlighted ? 'is-highlighted' : undefined}
                 >
-                  {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
-                      primary identifier now; request_number is retained in the
-                      database but is no longer shown prominently. */}
+                  {/* PAYMENT ID — human_payment_id, never the raw UUID. */}
                   <td style={TD}>
                     <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
                   </td>
 
-                  {/* Left-aligned, with tabular figures kept: the digits still
-                      line up by place value down the column, they simply start
-                      at its left edge beside the Payment ID. */}
-                  <td style={{
-                    ...TD, fontSize: '13.5px', fontWeight: 700,
-                    color: colors.primary, fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {fmtAmount(r.amount)}
+                  {/* RIGHT-ALIGNED, tabular figures: digits line up by place
+                      value down the column. */}
+                  <td style={TD} className="fin-num">
+                    <span className="fin-amount">{fmtAmount(r.amount)}</span>
                   </td>
 
-                  {/* THE PAYMENT DATE, not created_at. When the money moved is a
-                      fact about the money; when the row was typed is a fact about
-                      the typing, and reconciling a bank statement needs the first. */}
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                    {fmtDate(r.payment_date)}
+                  {/* WHO PAID. "Not identified" (muted) for a Suspense payment. */}
+                  <td style={TD} title={client}>
+                    <span className="fin-primary-text" style={r.client_name ? undefined : { color: colors.muted, fontWeight: 400 }}>
+                      {client}
+                    </span>
                   </td>
 
-                  <td
-                    style={{ ...TD, fontSize: '12px', color: colors.secondary }}
-                    title={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
-                  >
-                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                  {/* THE PAYMENT DATE, not created_at — when the money moved. */}
+                  <td style={TD} className="fin-muted">{fmtDate(r.payment_date)}</td>
+
+                  <td style={TD} className="fin-muted" title={mode}>{mode}</td>
+
+                  {/* WHO RECORDED IT. */}
+                  <td style={TD}>
+                    <FinancePerson name={r.submitted_by_name} />
                   </td>
 
-                  {/* ALLOCATED AGAINST — every active destination with its
-                      amount, and what is left. Lines stack, so this is the one
-                      cell allowed to wrap; each NAME still truncates on its own
-                      line. Initiated By and Approved By left the table for it:
-                      they are audit facts, shown in the payment's details and
-                      Activity. */}
-                  <td style={{ ...TD, whiteSpace: 'normal', paddingTop: '6px', paddingBottom: '6px' }}>
-                    <AllocatedAgainstCell
-                      view={allocatedAgainst(r)}
-                      hrefFor={targetHref}
-                      onOpen={onOpenTarget}
-                    />
-                  </td>
-
-                  {/* THE BADGE IS THE DOOR TO THE FIGURES THE ROW NO LONGER
-                      PRINTS. Total Allocated and Remaining left the table
-                      together — they are two halves of one answer and neither
-                      can be acted on from a row — so the status that summarises
-                      them opens the record that shows them in full. */}
+                  {/* THE PILL IS THE DOOR TO WHERE THE MONEY WENT. It opens the
+                      allocation popup: every Order / PI Draft it is allocated
+                      to, with amounts, and what is left. */}
                   <td style={{ ...TD, overflow: 'visible' }} onClick={e => e.stopPropagation()}>
                     <ConfirmedAllocationBadge
                       status={allocationBadgeState(allocatedAgainst(r))}
                       paymentId={r.human_payment_id}
-                      onOpen={() => onView(r)}
+                      onOpen={() => onShowAllocation(r)}
                     />
                   </td>
 
-                  {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
-                      a View button and a "…" menu, so the common actions cost
-                      two clicks and one of them was hidden.
-
-                      WHICH actions appear is decided by visibleRowActions() in
-                      lib/finance/rowActions.ts, not by guards written out here
-                      — because the column's WIDTH is arithmetic over the
-                      maximum number of icons a row can show at once, and that
-                      maximum has to be derivable rather than counted by eye.
-
-                      Four actions, and attaching money is not among them:
-                      allocation is the only way funds reach an Order or a PI
-                      Draft, and it has its own control.
-
-                      An action a reader may not take is absent, not greyed: a
-                      disabled control invites a click that will never work. */}
-                  <td style={{ ...TD, textAlign: 'right', overflow: 'visible' }}>
+                  {/* EVERY PERMITTED ACTION, AS AN ICON in a fixed slot: View,
+                      Edit, Allocate, Delete. WHICH appear is decided by
+                      visibleRowActions() in lib/finance/rowActions.ts; an
+                      action a reader may not take is absent, not greyed. */}
+                  <td style={{ ...TD, overflow: 'visible' }}>
                     <PaymentRowActions
                       row={r}
                       actions={visibleRowActions({

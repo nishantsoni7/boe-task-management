@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `d9e5ee83` — Restore rehearsal: repeatable local check of the database export (#344)
-- Commits on this branch: 895
+- Commit: `7bd03807` — Finance lists: Notion-style redesign (Concept A) with summary cards
+- Commits on this branch: 898
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 603   Next.js 16.2.6, React 19.2.4
+- Test files: 604   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `7bd03807` 2026-10-18 Finance lists: Notion-style redesign (Concept A) with summary cards
+- `00102017` 2026-10-18 Finance lists redesign: roomier rows, pill badges, tab bars, empty states
+- `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
 - `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
@@ -36,9 +39,6 @@
 - `460846ef` 2026-10-18 Record Payment and Edit Payment: the same quick, clear form as Send Payment Request (#325)
 - `e896ee02` 2026-10-17 Send Payment Request: a form that is quick and clear to fill (#324)
 - `f0b6aebf` 2026-10-17 Custody trail: let an outside person be recorded as Handed By (#323)
-- `dff87d0a` 2026-10-17 Task navigation: warm My Tasks from the Dashboard, warm each task page once (#322)
-- `3d2ecbc3` 2026-10-17 Run Vercel functions in hnd1 (Tokyo), next to the Supabase database (#321)
-- `0b06be5e` 2026-10-17 Orders: let an administrator permanently delete a Confirmed Order (#320)
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 38 source, 46 test
+- `src/lib/finance` — 39 source, 47 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 17 test

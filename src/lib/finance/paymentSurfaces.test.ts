@@ -141,33 +141,37 @@ describe('the status list is the database’s, not this module’s', () => {
 // truncated column, and the two money figures because they are halves of one
 // answer that cannot be acted on from a row. Nothing left the QUERY.
 
-describe('Confirmed Payments has exactly seven primary columns, in this order', () => {
+describe('Confirmed Payments has exactly eight primary columns, in this order', () => {
+  // REVISED (owner, 2026-10-19): Payment ID, Amount, Client, Received on,
+  // Payment mode, Added by, Allocation status, Actions. Where the money went
+  // left the row for the popup the Allocation status pill opens.
   test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Payment ID', 'Amount', 'Received Date', 'Mode', 'Allocated Against',
-      'Allocation Status', 'Actions',
+      'Payment ID', 'Amount', 'Client', 'Received on', 'Payment mode',
+      'Added by', 'Allocation status', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 7)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 8)
   })
 
-  test('Initiated By and Approved By are no longer table columns', () => {
+  test('Approved By is not a table column; the recorder is "Added by"', () => {
     const keys = CONFIRMED_PAYMENT_COLUMNS.map(c => c.key) as string[]
     const labels = CONFIRMED_PAYMENT_COLUMNS.map(c => c.label) as string[]
-    for (const gone of ['initiated_by', 'approved_by']) assert.ok(!keys.includes(gone), gone)
-    for (const gone of ['Initiated By', 'Approved By']) assert.ok(!labels.includes(gone), gone)
+    assert.ok(!keys.includes('approved_by') && !labels.includes('Approved By'))
+    assert.ok(keys.includes('added_by'))
   })
 
-  test('Customer and the two money columns are gone from the column set', () => {
+  test('the two money columns stay out of the column set', () => {
     const keys = CONFIRMED_PAYMENT_COLUMNS.map(c => c.key) as string[]
-    for (const gone of ['customer', 'total_allocated', 'unallocated']) {
+    for (const gone of ['total_allocated', 'unallocated']) {
       assert.ok(!keys.includes(gone), `${gone} must not be a primary column`)
     }
   })
 
-  test('the date column is labelled Received Date', () => {
+  test('the date column is labelled Received on, and the account has its own column', () => {
     const date = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'date')
-    assert.equal(date?.label, 'Received Date',
+    assert.equal(date?.label, 'Received on',
       'a bank statement is reconciled against when the money moved')
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'mode')?.label, 'Payment mode')
   })
 
   test('the breakdown columns are the two exact allocation-destination figures, shown only in the detail modal', () => {
@@ -177,41 +181,37 @@ describe('Confirmed Payments has exactly seven primary columns, in this order', 
     assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
-  test('AMOUNT IS LEFT-ALIGNED, and so is every column', () => {
-    // Deliberate, and a departure from the app's other money columns. This table
-    // has ONE money column: there is no second figure beside it to compare
-    // against, and a lone right-aligned column pushes its values away from the
-    // identifier they belong to. tabular-nums still lines the digits up.
+  test('AMOUNT IS RIGHT-ALIGNED, and it is the only right-aligned column', () => {
+    // REVISED: in the grid every row is a ledger line, so the one money column
+    // lines up by place value. Actions stays left-aligned: its controls sit in
+    // FIXED SLOTS from the cell's left edge.
     const amount = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'amount')
-    assert.equal(amount?.align, 'left')
+    assert.equal(amount?.align, 'right')
     const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => (c.align as string) === 'right').map(c => c.key)
-    // REVISED (usability pass): Actions is left-aligned too. Its controls sit
-    // in FIXED SLOTS from the cell's left edge (View, then Allocate, More pinned
-    // right), so each lines up down the column; right-aligning the group made
-    // View jump sideways wherever Allocate was absent.
-    assert.deepEqual(right, [], 'no trailing column')
+    assert.deepEqual(right, ['amount'])
   })
 
-  test('the Amount CELL is left-aligned too, and keeps tabular figures', () => {
+  test('the Amount CELL is right-aligned too, and keeps tabular figures', () => {
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
                              view.indexOf('function RowActionsMenu'))
-    const cell = table.slice(table.indexOf('{fmtAmount(r.amount)}') - 400,
+    const cell = table.slice(table.indexOf('{fmtAmount(r.amount)}') - 200,
                              table.indexOf('{fmtAmount(r.amount)}'))
-    assert.ok(!cell.includes("textAlign: 'right'"),
-      'the header and the cell must agree')
-    assert.ok(cell.includes("fontVariantNumeric: 'tabular-nums'"),
+    // .fin-num = text-align: right + tabular-nums (globals.css).
+    assert.ok(cell.includes('className="fin-num"'), 'the header and the cell agree')
+    const css = read('src/app/globals.css')
+    assert.ok(/\.fin-table \.fin-num \{ text-align: right; font-variant-numeric: tabular-nums; \}/.test(css),
       'place-value alignment within the column is kept')
   })
 
   test('the columns carry width hints so seven do not drift apart on a wide screen', () => {
     const widths = CONFIRMED_PAYMENT_COLUMNS
       .filter(c => 'width' in c).map(c => c.key as string)
-    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'status', 'actions']) {
+    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'added_by', 'status', 'actions']) {
       assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
     }
-    // Allocated Against deliberately takes the slack; its cell caps itself.
-    for (const flexible of ['allocated_against']) {
+    // Client deliberately takes the slack; its cell truncates.
+    for (const flexible of ['client']) {
       assert.ok(!widths.includes(flexible), `${flexible} should absorb remaining width`)
     }
   })
@@ -280,15 +280,19 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
   const cardAt = (viewport: number) => (viewport >= 768 ? viewport - 260 - 44 : viewport - 26)
 
   test('the threshold sits above the measured table minimum, with headroom', () => {
-    const MEASURED_TABLE_MIN = 875
+    // REVISED (owner's columns, 2026-10-19): 860px of fixed columns + the
+    // 120px Client floor, computed from the column list, not browser-measured.
+    const MEASURED_TABLE_MIN = 960
     assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX >= MEASURED_TABLE_MIN + 25)
   })
 
-  test('cards at 320, 375, 768 and 1024; the table at 1280 and 1440', () => {
-    for (const vw of [320, 375, 768, 1024]) {
+  test('cards at 320, 375, 768, 1024 and 1280; the table at 1366 and 1440', () => {
+    // REVISED (2026-10-19): eight columns need ~980px, so a 1280px laptop
+    // (~976px content) now gets the cards. Agreed with the owner up front.
+    for (const vw of [320, 375, 768, 1024, 1280]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'cards', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
-    for (const vw of [1280, 1440]) {
+    for (const vw of [1366, 1440]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'table', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
   })
@@ -337,9 +341,11 @@ describe('Confirmed Payments table, continued', () => {
     assert.ok(table.includes('<PaymentRowActions'), 'drawn by the one shared action row')
     assert.ok(!table.includes('<IconAction'), 'no unexplained icon squares remain')
     const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
-    assert.ok(row.includes('rowActionLayout(actions)'), 'the inline/menu split is the shared rule')
-    assert.ok(row.includes('<RowActionsMenu'), 'Edit and Delete are behind the menu')
-    assert.ok(row.includes('{meta[key].text}'), 'and the inline actions are words')
+    // REVISED (owner, 2026-10-19): every action is an icon in a fixed slot,
+    // with its words as the tooltip.
+    assert.ok(row.includes('rowActionLayout(actions)'), 'the shared rule decides the set')
+    assert.ok(row.includes('title={meta[key].text}'), 'each icon carries its words as a tooltip')
+    assert.ok(row.includes('<Icon size={15} aria-hidden="true" />'), 'and draws its icon')
   })
 
   test('the overflow menu is keyboard reachable and named', () => {
@@ -469,9 +475,10 @@ describe('each page asks the database for its own half', () => {
     assert.ok(view.includes(".eq('complete_allocation_status', filters.confirmedFilter)"))
   })
 
-  test('the filter chips are not drawn on Payments to Verify', () => {
-    assert.ok(view.includes("{surface === 'confirmed' && ("))
-    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTERS.map(f =>'))
+  test('the filter cards are not drawn on Payments to Verify', () => {
+    // REVISED (owner, 2026-10-19): no tabs; the summary cards are the filter.
+    // \s+ rather than \n: CI checks out with CRLF line endings.
+    assert.ok(/\{surface === 'confirmed' && \(\s+<ConfirmedSummaryCards/.test(view))
   })
 
   test('Payments to Verify keeps Status and drops the money columns', () => {

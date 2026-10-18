@@ -3,6 +3,7 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import React from 'react'
+import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { colors } from '@/lib/tokens'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
@@ -12,6 +13,7 @@ import { paymentAgainstDisplay, type PaymentDestination } from '@/lib/finance/pa
 import { fmtDate, fmtAmount, canManageRequest, isStaleClarification, type PaymentRequest } from './paymentRequestsModel'
 import { StatusBadge, StaleBadge } from './paymentRequestsAtoms'
 import { PaymentIdChip } from './components/PaymentIdChip'
+import { FinancePerson } from './components/FinanceListParts'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
 //
@@ -29,16 +31,19 @@ import { PaymentIdChip } from './components/PaymentIdChip'
 // ── Payments table ────────────────────────────────────────────────────────────
 
 export const TH_STYLE: React.CSSProperties = {
-  padding: '8px 8px',
+  // Notion-style header (redesign 2026-10): 36px, quiet grey, no fill. The
+  // global table rule still forces sentence case on screen.
+  height: '36px',
+  padding: '0 10px',
   textAlign: 'left',
   fontSize: '12px',
-  fontWeight: 700,
-  color: colors.muted,
+  fontWeight: 500,
+  color: '#686D6C',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   whiteSpace: 'nowrap',
-  borderBottom: `1px solid ${colors.border}`,
-  background: colors.raised,
+  borderBottom: '1px solid #ECE7E0',
+  background: '#FFFFFF',
 }
 
 // Exported for src/app/finance/paymentRequestsTable.render.test.tsx, which
@@ -109,7 +114,8 @@ export function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '8px 8px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  // Height, hairlines and hover are `.fin-table` (globals.css).
+  const TD: React.CSSProperties = { padding: '6px 10px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
   // Money in the salesperson's list: right aligned, tabular digits, two decimals
   // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
   const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }
@@ -118,7 +124,7 @@ export function PaymentsTable({
     // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
     // width the compact 9-column set fits without scrolling (no forced minWidth).
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="fin-table" style={{ tableLayout: 'auto' }}>
         {/* ── WHY A COLGROUP, AND WHY PERCENTAGES ──────────────────────────
             Every cell in this table is `whiteSpace: nowrap`, so with nothing
             declared the browser gave each column its content width and then
@@ -145,15 +151,16 @@ export function PaymentsTable({
           </colgroup>
         ) : (
         <colgroup>
+          {/* REDESIGN 2026-10: the owner's order, sized to the data. */}
           <col style={{ width: '8%'  }} />{/* Payment ID   — monospace, fixed shape */}
+          <col style={{ width: '10%' }} />{/* Amount */}
           <col style={{ width: '15%' }} />{/* Client       — truncates past this */}
-          <col style={{ width: '9%'  }} />{/* Amount */}
-          <col style={{ width: '10%' }} />{/* Payment Date */}
-          <col style={{ width: '10%' }} />{/* Payment Mode */}
+          <col style={{ width: '8%'  }} />{/* Paid on */}
+          <col style={{ width: '8%'  }} />{/* Payment mode */}
           <col style={{ width: '16%' }} />{/* Against      — the longest prose */}
-          <col style={{ width: '11%' }} />{/* Status */}
-          <col style={{ width: '10%' }} />{/* Requested By */}
-          <col style={{ width: '11%' }} />{/* Action */}
+          <col style={{ width: '11%' }} />{/* Added by */}
+          <col style={{ width: '13%' }} />{/* Status */}
+          <col style={{ width: '11%' }} />{/* Actions */}
         </colgroup>
         )}
         <thead>
@@ -169,19 +176,14 @@ export function PaymentsTable({
               <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
             </>) : (<>
             <th style={TH_STYLE}>Payment ID</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Client</th>
-            {/* Amount is LEFT-aligned, header and value together. Right
-                alignment is for a column that is summed down its length;
-                this one never is, and the ragged left edge it produced sat
-                directly against the blank band above. tabular-nums keeps the
-                digits in vertical register without it. */}
-            <th style={TH_STYLE}>Amount</th>
-            <th style={TH_STYLE}>Payment Date</th>
-            <th style={TH_STYLE}>Payment Mode</th>
+            <th style={TH_STYLE}>Paid on</th>
+            <th style={TH_STYLE}>Payment mode</th>
             <th style={TH_STYLE}>Against</th>
+            <th style={TH_STYLE}>Added by</th>
             <th style={TH_STYLE}>Status</th>
-            <th style={TH_STYLE}>Requested By</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
             </>)}
           </tr>
         </thead>
@@ -282,46 +284,57 @@ export function PaymentsTable({
                 </div>
               </td>
             )
+            // ICONS IN FIXED SLOTS (redesign 2026-10): View, Edit (or Reapply
+            // for a salesperson's rejected request), Delete. An action the
+            // reader may not take leaves its slot empty, so each icon keeps its
+            // place down the column. Every icon has a tooltip and a name.
             const actionButtons = (
               <div
-                style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                className="boe-row-actions boe-row-actions--slots"
+                style={{ gap: '4px', justifyContent: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
                 <button
+                  type="button"
                   onClick={() => onView(r)}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
+                  className="boe-row-icon boe-row-icon--view"
+                  aria-label={`View payment request ${r.human_payment_id}`}
+                  title="View"
                 >
-                  View
+                  <Eye size={15} aria-hidden="true" />
                 </button>
-                {showEdit && (
+                {showEdit ? (
                   <button
+                    type="button"
                     onClick={() => onEdit(r)}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
+                    className="boe-row-icon boe-row-icon--edit"
+                    aria-label={`Edit payment request ${r.human_payment_id}`}
+                    title="Edit"
                   >
-                    Edit
+                    <Pencil size={15} aria-hidden="true" />
                   </button>
-                )}
-                {showReapply && (
+                ) : showReapply ? (
                   <button
+                    type="button"
                     onClick={() => onEdit(r)}
-                    className="boe-btn boe-btn-primary"
-                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 500 }}
+                    className="boe-row-icon boe-row-icon--allocate"
+                    aria-label={`Reapply payment request ${r.human_payment_id}`}
+                    title="Reapply"
                   >
-                    Reapply
+                    <RotateCcw size={15} aria-hidden="true" />
                   </button>
-                )}
-                {(showDelete || showDeleteOwn) && (
+                ) : <span className="boe-row-icon-slot" aria-hidden="true" />}
+                {(showDelete || showDeleteOwn) ? (
                   <button
+                    type="button"
                     onClick={() => onDelete(r)}
                     aria-label={`Delete payment request ${r.human_payment_id}`}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 9px', fontSize: '12px', fontWeight: 600, color: colors.red, border: `1px solid ${colors.red}` }}
+                    className="boe-row-icon boe-row-icon--delete"
+                    title="Delete"
                   >
-                    Delete
+                    <Trash2 size={15} aria-hidden="true" />
                   </button>
-                )}
+                ) : <span className="boe-row-icon-slot" aria-hidden="true" />}
               </div>
             )
             const actionCell = <td style={{ ...TD, textAlign: 'right' }}>{actionButtons}</td>
@@ -349,9 +362,10 @@ export function PaymentsTable({
                 key={r.id}
                 id={`payment-row-${r.id}`}
                 onClick={() => onRowClick(r)}
-                style={{ cursor: 'pointer', borderLeft: `3px solid ${accentColor}`, background: isHighlighted ? colors.amberTint : undefined }}
-                onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
+                // Status colour now lives in the pill (and its dot), not in a
+                // coloured left edge; hover and highlight are .fin-table's.
+                data-accent={accentColor}
+                className={isHighlighted ? 'is-highlighted' : undefined}
               >
                 {salesView ? (
                   <>
@@ -368,24 +382,19 @@ export function PaymentsTable({
                 ) : (
                   <>
                     {idCell}
-                    {clientCell}
-                    <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-                      {fmtAmount(r.amount)}
+                    <td style={TD} className="fin-num">
+                      <span className="fin-amount">{fmtAmount(r.amount)}</span>
                     </td>
+                    {clientCell}
                     {dateCell}
                     {modeCell}
                     {againstCell}
+                    <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                      <FinancePerson name={r.submitted_by_name} />
+                    </td>
                     <td style={TD}>
                       <StatusBadge status={r.status} destination={destination} />
                       {isStaleClarification(r, cutoff) && <StaleBadge />}
-                    </td>
-                    <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                      <div
-                        title={r.submitted_by_name ?? undefined}
-                        style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      >
-                        {r.submitted_by_name ?? '—'}
-                      </div>
                     </td>
                     {actionCell}
                   </>
