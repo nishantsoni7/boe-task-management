@@ -60,6 +60,7 @@ separately records money BOE **pays out** (small expenses, personal-payment reim
 | --- | --- |
 | `/finance` | **Payment Requests**: tabs Pending / Needs Clarification / Rejected / Archive / All (server-side filters in `paymentRequestsQuery.ts`); new/edit/reapply forms; admin/verifier review modal |
 | `/finance/received` | **Confirmed Payments** (`ReceivedPaymentsView`): allocation-status bar All / Zero / Partially / Fully Allocated; row actions View / Allocate (words), Edit and Delete behind "More"; cards below a 930px container threshold; deep links `?payment=<id>` and `?action=allocate` |
+| (all payment lists) | The Payment ID prints as `PaymentIdChip` (copy button; its click does not open the row). Search boxes use `.boe-list-search`, whose input has its own focus outline switched off because the box shows the ring (the global `:focus-visible !important` rule otherwise draws a second box inside it) |
 | `/finance/payments-to-verify` | Same view, `surface="to_verify"`: the other three statuses; verification stays here; no classification views |
 | `/finance/received/linked`, `/finance/received/unlinked` | **Retired** — forward (`router.replace`) to `/finance/received?view=…` preserving all other query params |
 | `/finance/expenses`, `/finance/expenses/new` | Expense log; new-expense/quick-capture form |

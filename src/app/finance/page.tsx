@@ -708,30 +708,22 @@ function FinancePageInner() {
     >
       {/* ── Search toolbar ── sits above the card so the form control and the
           status navigation below never read as the same kind of control. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
-        marginBottom: '10px',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: '1px solid var(--boe-border-input)',
-          borderRadius: '8px', padding: '6px 10px',
-          flex: 1, minWidth: '180px', maxWidth: '320px',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <div className="boe-list-toolbar" role="search" aria-label="Filter payment requests">
+        <label className="boe-list-search">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
-            type="text"
-            placeholder="Client or order…"
+            type="search"
+            aria-label="Search payment requests"
+            placeholder="Payment ID, client or order…"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
           />
           {search && (
-            <button onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+            <button type="button" onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" className="boe-list-search-clear">✕</button>
           )}
-        </div>
+        </label>
       </div>
 
       <div className="boe-card" style={{ overflow: 'hidden' }}>

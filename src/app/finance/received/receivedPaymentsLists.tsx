@@ -10,6 +10,7 @@ import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEn
 import { CustomerName } from '@/components/finance/CustomerName'
 import { ALLOCATED_AGAINST_LABEL, allocationBadgeState, type AllocatedAgainstView } from '@/lib/finance/allocatedAgainst'
 import { confirmedListMode, conciseName } from '@/lib/finance/paymentSurfaces'
+import { PaymentIdChip } from '../components/PaymentIdChip'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { VerificationBadge } from './receivedPaymentsAtoms'
 import { TH_STYLE, canOfferAllocateFunds, ConfirmedAllocationBadge, AllocatedAgainstCell, ReceivedPaymentsTable } from './receivedPaymentsTable'
@@ -52,8 +53,8 @@ export function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, on
               onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
               onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = r.id === highlightId ? colors.amberTint : 'transparent' }}
             >
-              <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
-                {r.human_payment_id}
+              <td style={TD}>
+                <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
               </td>
               <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                 <CustomerName name={r.client_name} />

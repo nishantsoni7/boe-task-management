@@ -7838,16 +7838,25 @@ h1.boe-page-title { margin-top: 0; }
 .boe-list-search {
   display: flex; align-items: center; gap: 6px;
   background: #FFFFFF; border: 1px solid var(--boe-border-input);
-  border-radius: 8px; padding: 0 10px; height: 32px;
+  border-radius: 8px; padding: 0 12px; height: 36px;
   flex: 1 1 220px; min-width: 0; max-width: 340px;
   cursor: text;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
-.boe-list-search:focus-within { border-color: rgba(185,71,46,0.55); box-shadow: 0 0 0 3px rgba(185,71,46,0.12); }
+.boe-list-search:hover { border-color: var(--boe-text-muted); }
+.boe-list-search:focus-within { border-color: var(--boe-brand); box-shadow: 0 0 0 3px rgba(185,71,46,0.22); }
 .boe-list-search input {
   flex: 1; min-width: 0; height: 100%;
   background: transparent; border: none; outline: none;
-  font-size: 12px; color: #303536;
+  font-size: 13px; color: #303536;
 }
+/* THE SEARCH BOX HAS ONE FOCUS RING, ON THE BOX. The global :focus-visible
+   rule (!important, so it beats inline styles) used to draw a second, square
+   outline round the bare input INSIDE this rounded box — a red rectangle
+   floating in the field. The box's own :focus-within ring above is the focus
+   indicator, so the inner one is switched off here, with enough specificity to
+   beat the global rule. */
+.boe-list-search input:focus-visible { outline: none !important; outline-offset: 0 !important; }
 .boe-list-search input::-webkit-search-cancel-button { display: none; }
 .boe-list-search-clear {
   background: none; border: none; cursor: pointer; color: #686D6C;
@@ -7870,10 +7879,40 @@ h1.boe-page-title { margin-top: 0; }
   font-size: 12px; color: #686D6C; white-space: nowrap;
 }
 .boe-list-date input {
-  width: 138px; min-width: 0; max-width: 100%;
-  height: 32px; padding: 0 8px; font-size: 12px;
+  width: 148px; min-width: 0; max-width: 100%;
+  /* .boe-input sets min-height from --boe-control-h, which beat height: 32px
+     and left the dates taller than the search box beside them. */
+  height: 36px; min-height: 36px; padding: 0 10px; font-size: 13px;
 }
-.boe-list-clear { height: 32px; padding: 0 10px; font-size: 12px; flex-shrink: 0; }
+.boe-list-clear { height: 36px; padding: 0 12px; font-size: 13px; flex-shrink: 0; }
+
+/* The Payment ID: a monospace chip with a copy button. The button is quiet
+   until the row is hovered or it has focus, and always visible on touch. */
+.boe-payment-id {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: #F1EEE9; border: 1px solid #E4DED7; border-radius: 6px;
+  padding: 1px 2px 1px 8px; white-space: nowrap;
+}
+.boe-payment-id-text {
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+  color: #303536; font-variant-numeric: tabular-nums;
+}
+.boe-payment-id--empty { color: #686D6C; padding: 1px 8px; }
+.boe-payment-id-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; background: transparent;
+  color: #686D6C; border-radius: 5px; cursor: pointer; opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+tr:hover .boe-payment-id-copy,
+.boe-payment-id-copy:hover,
+.boe-payment-id-copy:focus-visible { opacity: 1; background: #E4DED7; color: #303536; }
+@media (hover: none) { .boe-payment-id-copy { opacity: 1; } }
+.boe-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 .boe-list-count {
   font-size: 12px; color: #686D6C; white-space: nowrap;
   font-variant-numeric: tabular-nums;
