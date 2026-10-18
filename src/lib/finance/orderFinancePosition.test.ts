@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs'
 
 import { mergeOrderPayments, type OrderAllocationRow } from '@/lib/orders/orderPayments'
 import { formatMoney, piPaymentStatusLabel } from './piPaymentView'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 import {
   buildOrderFinancePosition,
   progressWidth,
@@ -525,7 +526,7 @@ describe('the same amount renders the same way everywhere', () => {
 
   test('every Order and Finance screen formats money through formatMoney', () => {
     for (const file of FILES) {
-      const source = readFileSync(file, 'utf8')
+      const source = readScreenSource(file)
       assert.ok(source.includes('const fmtAmount = formatMoney'),
         `${file} must not keep a money formatter of its own`)
     }
