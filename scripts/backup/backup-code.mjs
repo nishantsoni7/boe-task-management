@@ -23,8 +23,9 @@ if (!fs.existsSync(path.join(mirror, 'HEAD'))) {
 }
 for (const [k, v] of [['gc.auto', '0'], ['gc.pruneExpire', 'never'], ['gc.reflogExpire', 'never'], ['gc.reflogExpireUnreachable', 'never'], ['core.logAllRefUpdates', 'always']]) git(mirror, 'config', k, v)
 // Local view (includes branches that were never pushed, stashes, remote-tracking refs).
-let r = gitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/*:refs/local/*')
+let r = gitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/heads/*:refs/local/heads/*', '+refs/tags/*:refs/local/tags/*', '+refs/remotes/*:refs/local/remotes/*')
 if (!r.ok) throw new Error('mirror fetch from local repo failed: ' + r.err)
+gitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/stash:refs/local/stash') // absent when nothing is stashed
 result.steps.mirrorLocal = 'ok'
 // GitHub view (heads, tags, and the head of every pull request, merged or not).
 if (!quick && !noGithub) {

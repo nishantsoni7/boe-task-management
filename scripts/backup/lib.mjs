@@ -24,11 +24,14 @@ export const stamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, '').re
 export const log = (...a) => console.log(`[${new Date().toISOString()}]`, ...a)
 export function ensureDir(p) { assertNotDesktop(p); fs.mkdirSync(p, { recursive: true }); return p }
 
+// Git hooks export GIT_DIR/GIT_INDEX_FILE etc.; left in place they redirect every git call here into the hooked repository.
+const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|PREFIX|QUARANTINE_PATH)$/.test(k)))
+
 export function git(cwd, ...args) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  return execFileSync('git', args, { cwd, env: cleanEnv(), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 export function gitTry(cwd, ...args) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  const r = spawnSync('git', args, { cwd, env: cleanEnv(), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() }
 }
 
