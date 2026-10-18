@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `468fad89` — Live-DB drift warning, two more view splits, testing policy (#334)
-- Commits on this branch: 884
+- Commit: `f5e70b51` — Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
+- Commits on this branch: 885
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 330 (first `20260530_create_positions.sql`, latest `20270318000000_custody_handed_by_outside_name.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 598   Next.js 16.2.6, React 19.2.4
+- Test files: 601   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f5e70b51` 2026-10-18 Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
 - `468fad89` 2026-10-18 Live-DB drift warning, two more view splits, testing policy (#334)
 - `84a387dd` 2026-10-18 Live-DB tests: reference seed and the exact setup that makes all 206 pass (#333)
 - `d236c3dc` 2026-10-18 Docs: how to run the live-database suites; mark the 2026-10-14 baseline resolved (#332)
@@ -38,7 +39,6 @@
 - `245dcbde` 2026-10-14 BOE OS rebrand: one visual identity across every module (draft) (#309)
 - `3e9a943c` 2026-10-14 Meetings: import a PI workbook into a meeting; photographs and specs on item rows (#308)
 - `25bd4ea7` 2026-10-13 Control Center: six navigation hubs, section tabs, Find anything, and a useful Home (#307)
-- `2dde76a4` 2026-10-13 Inventory: notify approvers of new booking requests, and salespeople of decisions (#306)
 
 ## Pages by top-level area
 
@@ -150,7 +150,7 @@
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
 - `src/lib/tasks` — 18 source, 32 test
-- `src/lib/testing` — 4 source, 2 test
+- `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
 
