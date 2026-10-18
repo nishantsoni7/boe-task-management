@@ -145,42 +145,46 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  * field are still selected by the one bounded read and still reach the modal —
  * this is a change to what the TABLE draws, not to what the page knows.
  *
- * WIDTHS (REDESIGN 2026-10, Notion-style list). The table lays out `fixed`, and
- * every column except Allocated Against carries a PIXEL width (8px cell padding
- * a side, TABLE_CELL_PADDING_X_PX):
+ * WIDTHS (REDESIGN 2026-10, owner's column order). The table lays out `fixed`;
+ * every column except Client carries a PIXEL width sized to its widest value
+ * (8px cell padding a side, TABLE_CELL_PADDING_X_PX):
  *
- *   Payment ID         112   "P-ZZ-9999" in 12px monospace + the copy icon
- *   Client             140   truncates, full name in title
+ *   Payment ID         100   "P-ZZ-9999" in 12px monospace + the copy icon
  *   Amount             128   "₹12,34,56,789.00" in 14px semibold, RIGHT-aligned
- *   Received           104   the date, with the account on a second line
- *   Status             156   the "Over-allocated — review" pill
- *   Actions            172   computed — see ACTIONS_COLUMN_WIDTH_PX
+ *   Received on        100   "17 Sept 2026"
+ *   Payment mode       104   the "Payment mode" header is the widest thing
+ *   Added by           132   initials + a first and last name, truncating
+ *   Allocation status  156   the "Over-allocated — review" pill
+ *   Actions            140   computed — see ACTIONS_COLUMN_WIDTH_PX
  *
- * 812px of fixed columns plus Allocated Against's 150px floor = 962px, which
- * CONFIRMED_TABLE_MIN_CONTAINER_PX rounds up to 970: a 1280px window (~976px
- * content) still gets the table. Allocated Against takes all remaining room and
- * never widens the table (`contain: inline-size`): names truncate, amounts never.
+ * Client has no width and takes all remaining room (CONFIRMED_CLIENT_MIN_PX
+ * floor), so the one column whose text varies most is the one that grows.
+ * 860px fixed + 120px floor = 980px, which CONFIRMED_TABLE_MIN_CONTAINER_PX
+ * rounds up to 985. Where the money went is no longer a column: the Allocation
+ * status pill opens it (AllocationDetailsPopup).
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
-  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '112px' },
-  // Who paid, from the payment's own client_name ("Not identified" for Suspense).
-  { key: 'client',       label: 'Client',            align: 'left',  width: '140px' },
-  // RIGHT-ALIGNED now that the row is a grid: digits line up by place value
-  // down the column, the way every ledger reads.
+  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '100px' },
+  // RIGHT-ALIGNED: digits line up by place value down the column.
   { key: 'amount',       label: 'Amount',            align: 'right', width: '128px' },
-  // When the money arrived, and into which account (second line).
-  { key: 'date',         label: 'Received',          align: 'left',  width: '104px' },
-  // WHERE THE MONEY WENT: every active Order / PI Draft destination with its
-  // amount, stacked, plus any unallocated remainder. No width — it takes every
-  // pixel the fixed columns leave.
-  { key: 'allocated_against', label: 'Allocated against', align: 'left' },
-  // A status pill that is also a control; labels that must never wrap.
-  { key: 'status',       label: 'Status',            align: 'left',  width: '156px' },
+  // Who paid, from the payment's own client_name ("Not identified" for Suspense).
+  // No width — it takes the room the fixed columns leave.
+  { key: 'client',       label: 'Client',            align: 'left' },
+  // When the money arrived (payment_date, not created_at).
+  { key: 'date',         label: 'Received on',       align: 'left',  width: '100px' },
+  { key: 'mode',         label: 'Payment mode',      align: 'left',  width: '104px' },
+  // Who recorded the payment (submitted_by_name).
+  { key: 'added_by',     label: 'Added by',          align: 'left',  width: '132px' },
+  // A status pill that opens the allocation details; labels never wrap.
+  { key: 'status',       label: 'Allocation status', align: 'left',  width: '156px' },
   // WIDTH IS COMPUTED, NOT CHOSEN — see ACTIONS_COLUMN_WIDTH_PX in
   // lib/finance/rowActions.ts, which finds the widest row by enumerating the
   // visibility rules rather than trusting a count made by eye.
   { key: 'actions',      label: 'Actions',           align: 'left',  width: `${ACTIONS_COLUMN_WIDTH_PX}px` },
 ] as const
+
+/** The floor the flexible Client column keeps when the table is at its narrowest. */
+export const CONFIRMED_CLIENT_MIN_PX = 120
 
 /**
  * The breakdown fields shown only in the expandable row/card detail, so the
@@ -310,12 +314,12 @@ export const PAYMENTS_TABLE_BREAKPOINT = 1024
  * so an unforeseen wide value cannot be clipped. See the Finance workflow doc
  * §18 for every width tested.
  *
- * REVISED 2026-10 (redesign): the table gained a Client column and the fixed
- * columns now sum to 812px; with the 150px Allocated Against floor that is
- * 962px, rounded up to 970. 1280px (~976px card) still gets the table. NOT
- * re-measured in a browser yet — the overflow fallback above still protects it.
+ * REVISED 2026-10 (redesign, owner's columns): 860px of fixed columns plus the
+ * 120px Client floor = 980px, rounded up to 985. A 1280px window (~976px card)
+ * now gets CARDS; 1366px and wider get the table. NOT re-measured in a browser
+ * yet — the overflow fallback above still protects it.
  */
-export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 970
+export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 985
 
 /**
  * The floor Allocated Against keeps when the table is at its narrowest. Every

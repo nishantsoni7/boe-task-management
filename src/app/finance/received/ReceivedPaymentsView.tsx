@@ -27,7 +27,6 @@ import {
   type ConfirmedListEmptyKind,
   pageCount,
   pageRange,
-  resultSummary,
   receivedPaymentsSearchFilter,
   type PaymentView,
 } from '@/app/finance/receivedPaymentsQuery'
@@ -57,7 +56,7 @@ import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissi
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { CONFIRMED_ALLOCATION_FILTERS, CONFIRMED_ALLOCATION_FILTER_LABEL, DEFAULT_CONFIRMED_ALLOCATION_FILTER, PAYMENTS_TABLE_BREAKPOINT, PAYMENT_SURFACE_STATUSES, type ConfirmedAllocationFilter, type PaymentSurface } from '@/lib/finance/paymentSurfaces'
+import { CONFIRMED_ALLOCATION_FILTER_LABEL, DEFAULT_CONFIRMED_ALLOCATION_FILTER, PAYMENTS_TABLE_BREAKPOINT, PAYMENT_SURFACE_STATUSES, type ConfirmedAllocationFilter, type PaymentSurface } from '@/lib/finance/paymentSurfaces'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
   deriveFinanceCapabilities,
@@ -88,18 +87,10 @@ export { ReceivedPaymentsTable, AllocatedAgainstCell } from './receivedPaymentsT
 // @split: src/app/finance/received/receivedPaymentsTable.tsx private=TH_STYLE,canOfferAllocateFunds,CONFIRMED_ALLOCATION_TONE_STYLE,ConfirmedAllocationBadge
 
 import { ConfirmedSummaryCards } from './receivedPaymentsSummary'
-import { FinanceTabs, FilterChip, dateChipLabel } from '../components/FinanceListParts'
+import { FilterChip, dateChipLabel } from '../components/FinanceListParts'
+import { AllocationDetailsPopup } from './receivedPaymentsAllocationPopup'
 import { summarizeConfirmed, type ConfirmedSummary, type ConfirmedSummaryRow } from '@/lib/finance/confirmedSummary'
 import { fetchAllRows } from '@/lib/supabasePaging'
-
-// The view-bar tab names: sentence case, short; the status dot carries colour.
-const CONFIRMED_TAB_LABEL: Record<ConfirmedAllocationFilter, string> = {
-  all: 'All',
-  zero: 'Zero allocated',
-  partial: 'Partially allocated',
-  full: 'Fully allocated',
-  over: 'Over-allocated',
-}
 import { PaymentsToVerifyTable, PaymentsToVerifyCards, ConfirmedPaymentsList } from './receivedPaymentsLists'
 export { ConfirmedPaymentsList, ReceivedPaymentsCards } from './receivedPaymentsLists'
 // @split: src/app/finance/received/receivedPaymentsLists.tsx private=PaymentsToVerifyTable,PaymentsToVerifyCards,ConfirmedListProps
@@ -259,6 +250,8 @@ function ReceivedPaymentsViewInner(
   // single-target "Allocate" row action on Confirmed Payments with one that
   // can divide a payment across several targets in one atomic RPC call.
   const [allocateFundsTarget, setAllocateFundsTarget] = useState<PaymentRequest | null>(null)
+  // The Allocation status pill opens this: where the money went, in full.
+  const [allocationPopupTarget, setAllocationPopupTarget] = useState<PaymentRequest | null>(null)
   // Correct Allocation (finance.allocate_correct). One Finance modal at a time:
   // opening it closes the payment detail it was opened from.
   const [correctAllocationTarget, setCorrectAllocationTarget] = useState<PaymentRequest | null>(null)
@@ -1085,7 +1078,6 @@ function ReceivedPaymentsViewInner(
   // …but it IS a constraint on what the list can hold, so the count's wording
   // and the empty state take it into account.
   const statusNarrowed = surface === 'confirmed' && confirmedFilter !== DEFAULT_CONFIRMED_ALLOCATION_FILTER
-  const constrained = narrowed || statusNarrowed
   const pages = pageCount(total)
 
   const clearFilters = () => {
@@ -1169,26 +1161,11 @@ function ReceivedPaymentsViewInner(
       )}
 
       <div className="fin-board">
-        {/* ── The view bar: what the list is, and everything that narrows it ──
-            The allocation-status tabs on the left (read off
-            complete_allocation_status as a real database predicate, counted from
-            the summary read), and on the right the search, the "Paid date" chip
-            and the size of the WHOLE narrowed set from the database's exact
-            count. It wraps rather than overlapping when there is no room. */}
+        {/* ── The view bar: everything that narrows the list ──
+            The search and the "Paid date" chip. The status filter is the
+            summary cards above (owner, 2026-10: no tabs, no count here). It
+            wraps rather than overlapping when there is no room. */}
         <div className="fin-viewbar">
-          {surface === 'confirmed' && (
-            <FinanceTabs
-              ariaLabel="Allocation status"
-              active={confirmedFilter}
-              onSelect={applyConfirmedFilter}
-              tabs={CONFIRMED_ALLOCATION_FILTERS.map(f => ({
-                key: f,
-                label: CONFIRMED_TAB_LABEL[f],
-                tone: f === 'all' ? undefined : f,
-                count: summary ? summary[f].count : null,
-              }))}
-            />
-          )}
           <div className="fin-tools" role="search" aria-label="Filter payments">
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -1246,9 +1223,6 @@ function ReceivedPaymentsViewInner(
               </button>
             )}
 
-            <div aria-live="polite" className="fin-count">
-              {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed: constrained, page, pages })}
-            </div>
           </div>
         </div>
         {/* Table. A RE-READ KEEPS THE ROWS: the list used to be swapped for
@@ -1305,6 +1279,7 @@ function ReceivedPaymentsViewInner(
               allocatedAgainst={allocatedAgainstFor}
               targetHref={allocationTargetHref}
               onOpenTarget={href => router.push(href)}
+              onShowAllocation={r => setAllocationPopupTarget(r)}
             />
           )
         )}
@@ -1444,6 +1419,21 @@ function ReceivedPaymentsViewInner(
           this ever opens. A SUCCESSFUL allocation refreshes ONLY this
           payment's own row (refreshOneRow), never the whole list — filters,
           paging, search and scroll all survive it. */}
+      {/* ── Allocation details (the Allocation status pill) ── read-only; its
+          Allocate button hands over to Allocate Funds when money is left and
+          this reader may allocate. */}
+      {allocationPopupTarget && (
+        <AllocationDetailsPopup
+          payment={allocationPopupTarget}
+          view={allocatedAgainstFor(allocationPopupTarget)}
+          hrefFor={allocationTargetHref}
+          onOpenTarget={href => { setAllocationPopupTarget(null); router.push(href) }}
+          onAllocate={caps.canAllocatePayment && canOfferAllocateFunds(allocationPopupTarget)
+            ? () => { const t = allocationPopupTarget; setAllocationPopupTarget(null); setAllocateFundsTarget(t) }
+            : undefined}
+          onClose={() => setAllocationPopupTarget(null)}
+        />
+      )}
       {allocateFundsTarget && (
         <AllocateFundsModal
           payment={{

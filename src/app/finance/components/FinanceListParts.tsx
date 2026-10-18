@@ -21,33 +21,6 @@ export type FinanceTab<K extends string> = {
   count: number | null
 }
 
-/** Quiet text tabs: a status dot, the label, a grey count, an underline when active. */
-export function FinanceTabs<K extends string>({ tabs, active, onSelect, ariaLabel }: {
-  tabs: FinanceTab<K>[]
-  active: K
-  onSelect: (key: K) => void
-  ariaLabel: string
-}) {
-  return (
-    <div role="tablist" aria-label={ariaLabel} className="fin-tabs">
-      {tabs.map(t => (
-        <button
-          key={t.key}
-          type="button"
-          role="tab"
-          aria-selected={t.key === active}
-          className="fin-tab"
-          onClick={() => onSelect(t.key)}
-        >
-          {t.tone && <span aria-hidden="true" className={`fin-dot fin-dot--${t.tone}`} />}
-          {t.label}
-          {t.count !== null && <span className="fin-tab-count">{t.count}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 /** "3 Sep 2026 – 17 Oct 2026", "From 3 Sep 2026", "Until 17 Oct 2026", or the plain label. */
 export function dateChipLabel(from: string, to: string, fmt: (iso: string) => string): string {
   if (from && to) return `${fmt(from)} – ${fmt(to)}`
@@ -113,5 +86,35 @@ export function FinancePerson({ name }: { name: string | null | undefined }) {
       <span className="fin-avatar" aria-hidden="true">{initials}</span>
       <span>{clean}</span>
     </span>
+  )
+}
+
+/**
+ * Status cards that ARE the list's filter (Payment Requests, 2026-10: the owner
+ * removed the tabs). Each card shows how many records it holds and narrows the
+ * list when pressed; the pressed card is outlined. NULL count = not known yet,
+ * drawn as a dash, never as 0.
+ */
+export function FinanceStatusCards<K extends string>({ cards, active, onSelect, ariaLabel, noun }: {
+  cards: { key: K; label: string; tone?: FinanceTabTone; count: number | null }[]
+  active: K
+  onSelect: (key: K) => void
+  ariaLabel: string
+  /** Singular noun for the line under the number: "request" → "3 requests". */
+  noun: string
+}) {
+  return (
+    <div className="fin-stats" role="group" aria-label={ariaLabel} style={{ gridTemplateColumns: `repeat(${cards.length}, minmax(0, 1fr))` }}>
+      {cards.map(c => (
+        <button key={c.key} type="button" className="fin-stat" aria-pressed={active === c.key} onClick={() => onSelect(c.key)}>
+          <span className="fin-stat-label">
+            <span aria-hidden="true" className={`fin-dot fin-dot--${c.tone ?? 'neutral'}`} />
+            {c.label}
+          </span>
+          <span className="fin-stat-value" style={{ display: 'block' }}>{c.count ?? '—'}</span>
+          <span className="fin-stat-sub" style={{ display: 'block' }}>{c.count === 1 ? noun : `${noun}s`}</span>
+        </button>
+      ))}
+    </div>
   )
 }

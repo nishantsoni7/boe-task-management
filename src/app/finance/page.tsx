@@ -27,7 +27,7 @@ import {
   NO_FINANCE_CAPABILITIES,
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
-import { FinanceTabs, FinanceEmpty, type FinanceTabTone } from './components/FinanceListParts'
+import { FinanceStatusCards, FinanceEmpty, type FinanceTabTone } from './components/FinanceListParts'
 
 // The view-bar tabs (redesign 2026-10): sentence-case names, and the status
 // colour each one stands for — the same key the row pills use.
@@ -54,7 +54,6 @@ import {
   pageRange,
   parseFilterTab,
   paymentRequestsSearchFilter,
-  resultSummary,
   tabClauses,
   tabCounts,
   tabMatches,
@@ -723,18 +722,19 @@ function FinancePageInner() {
         </button>
       }
     >
+      {/* ── The status cards ARE the filter (owner, 2026-10: no tabs) ── */}
+      <FinanceStatusCards
+        ariaLabel="Payment request status"
+        noun="request"
+        active={activeTab}
+        onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
+        cards={FILTER_TABS.map(t => ({ key: t.key, label: REQUEST_TAB_LABEL[t.key], tone: REQUEST_TAB_TONE[t.key], count: tabCount[t.key] }))}
+      />
+
       <div className="fin-board">
 
-        {/* ── The view bar ── status tabs on the left; the search and the size
-            of the WHOLE narrowed set (the database's exact count, not the
-            length of the page in hand) on the right. */}
+        {/* ── The view bar ── the search. */}
         <div className="fin-viewbar">
-          <FinanceTabs
-            ariaLabel="Payment request status"
-            active={activeTab}
-            onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
-            tabs={FILTER_TABS.map(t => ({ key: t.key, label: REQUEST_TAB_LABEL[t.key], tone: REQUEST_TAB_TONE[t.key], count: tabCount[t.key] }))}
-          />
           <div className="fin-tools" role="search" aria-label="Filter payment requests">
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -751,17 +751,6 @@ function FinancePageInner() {
                 <button type="button" onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" className="boe-list-search-clear">✕</button>
               )}
             </label>
-            <div aria-live="polite" className="fin-count">
-              {resultSummary({
-                loading: listLoading,
-                shown: visible.length,
-                total,
-                narrowed: search.trim() !== '',
-                page,
-                pages,
-                noun: 'request',
-              })}
-            </div>
           </div>
         </div>
 

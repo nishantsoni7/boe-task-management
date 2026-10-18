@@ -19,7 +19,8 @@
 // The linkage inputs went with them — a row's actions no longer depend on
 // `order_id`, `order_request_id` or `payment_against` at all.
 
-export const ROW_ACTION_KEYS = ['view', 'allocate', 'edit', 'delete'] as const
+// REDESIGN 2026-10: the owner's order — View, Edit, Allocate, Delete — as icons.
+export const ROW_ACTION_KEYS = ['view', 'edit', 'allocate', 'delete'] as const
 export type RowActionKey = (typeof ROW_ACTION_KEYS)[number]
 
 /** Everything the visibility rules read. Nothing here is a permission decision
@@ -42,30 +43,23 @@ export type RowActionInput = {
  */
 export function visibleRowActions(input: RowActionInput): RowActionKey[] {
   const actions: RowActionKey[] = ['view']
-  if (input.offerAllocate) actions.push('allocate')
   if (input.canManage) actions.push('edit')
+  if (input.offerAllocate) actions.push('allocate')
   if (input.canDelete) actions.push('delete')
   return actions
 }
 
 // ── Where each action is drawn ───────────────────────────────────────────────
 //
-// THE ROUTINE ACTIONS ARE WORDS; THE REST ARE ONE CLICK AWAY. The column used to
-// be four equal icon squares — an eye, a split, a pencil and a bin — so viewing
-// a payment and deleting it looked like the same kind of act, and a reader who
-// did not know the glyphs had to hover each one to find out. Now:
-//
-//   View       a labelled button, always — the thing a reader most often wants
-//   Allocate   a labelled button, when there is money left to give a home —
-//              the one follow-up this list exists to prompt, so it stays one click
-//   Edit       inside "More actions", when finance.manage is held
-//   Delete     inside "More actions", LAST, in red, behind its own confirmation
-//
-// Delete is therefore never beside View, never the same size as View, and never
-// one mis-aimed click away. Nothing a reader could do before is gone.
+// REDESIGN 2026-10 (owner's request): every action is an ICON in its own fixed
+// slot, in the order View, Edit, Allocate, Delete. Each icon carries a tooltip
+// and an accessible name that names the payment. An action the reader may not
+// take leaves its slot EMPTY rather than shifting the others, so each icon sits
+// at the same x on every row. Delete is last, in red, and still opens its own
+// confirmation.
 
-export const INLINE_ROW_ACTIONS: readonly RowActionKey[] = ['view', 'allocate']
-export const MENU_ROW_ACTIONS: readonly RowActionKey[] = ['edit', 'delete']
+export const INLINE_ROW_ACTIONS: readonly RowActionKey[] = ['view', 'edit', 'allocate', 'delete']
+export const MENU_ROW_ACTIONS: readonly RowActionKey[] = []
 
 /** A row's actions split by where they are drawn, each group in draw order. */
 export function rowActionLayout(actions: readonly RowActionKey[]): {
@@ -73,38 +67,28 @@ export function rowActionLayout(actions: readonly RowActionKey[]): {
   menu: RowActionKey[]
 } {
   return {
-    inline: actions.filter(a => INLINE_ROW_ACTIONS.includes(a)),
-    menu: actions.filter(a => MENU_ROW_ACTIONS.includes(a)),
+    inline: ROW_ACTION_KEYS.filter(a => actions.includes(a) && INLINE_ROW_ACTIONS.includes(a)),
+    menu: ROW_ACTION_KEYS.filter(a => actions.includes(a) && MENU_ROW_ACTIONS.includes(a)),
   }
 }
 
 // ── The column has to be as wide as the widest row it can draw ───────────────
 //
-// Every width below is a FIXED size the CSS also sets (.boe-row-action--view,
-// --allocate, .boe-row-more), measured from the words at 12px/600 DM Sans plus
-// 10px of padding each side, so the arithmetic and the rendered row cannot
-// disagree.
+// Every width below is a FIXED size the CSS also sets (.boe-row-icon), so the
+// arithmetic and the rendered row cannot disagree.
 
-/** The labelled buttons. */
-export const ROW_ACTION_WIDTH_PX: Record<'view' | 'allocate', number> = {
-  view: 50,
-  allocate: 70,
-}
-/** The "More actions" trigger — a square, like every icon control in Finance. */
+/** One icon button — a square, like every icon control in Finance. */
 export const ROW_ACTION_TARGET_PX = 28
 /** Gap between adjacent controls in the cell. */
 export const ROW_ACTION_GAP_PX = 4
 /** Horizontal padding on ONE side of a Confirmed Payments table cell. */
 export const TABLE_CELL_PADDING_X_PX = 8
 
-/** The controls alone: the labelled buttons, the menu trigger if any entry
- *  needs it, and the gaps between them. */
+/** The controls alone: one square per action and the gaps between them. */
 export function actionGroupWidthPx(actions: readonly RowActionKey[]): number {
-  const { inline, menu } = rowActionLayout(actions)
-  const widths = inline.map(a => ROW_ACTION_WIDTH_PX[a as 'view' | 'allocate'])
-  if (menu.length > 0) widths.push(ROW_ACTION_TARGET_PX)
-  if (widths.length === 0) return 0
-  return widths.reduce((sum, w) => sum + w, 0) + (widths.length - 1) * ROW_ACTION_GAP_PX
+  const n = rowActionLayout(actions).inline.length
+  if (n === 0) return 0
+  return n * ROW_ACTION_TARGET_PX + (n - 1) * ROW_ACTION_GAP_PX
 }
 
 /** The whole cell: the group plus the padding on both sides. */
@@ -124,9 +108,7 @@ export function allRowActionInputs(): RowActionInput[] {
 
 /**
  * The widest group any row can draw, found by trying every combination of the
- * inputs rather than by reasoning about them. An action added or a rule relaxed
- * later moves this number by itself, and the width assertion that reads it
- * fails until the column is re-sized.
+ * inputs rather than by reasoning about them.
  */
 export function widestRowActions(): RowActionKey[] {
   let widest: RowActionKey[] = []
@@ -138,9 +120,8 @@ export function widestRowActions(): RowActionKey[] {
 }
 
 /**
- * The declared width of the Actions column, wide enough for the widest row.
- *
- * Computed, not chosen: View + Allocate + the menu trigger and two gaps, plus
- * the cell padding — 50 + 70 + 28 + 2 x 4 + 2 x 8 = 172px.
+ * The declared width of the Actions column, wide enough for the widest row:
+ * four squares and three gaps plus the cell padding — 4 x 28 + 3 x 4 + 2 x 8
+ * = 140px.
  */
 export const ACTIONS_COLUMN_WIDTH_PX = actionsColumnWidthPx(widestRowActions())

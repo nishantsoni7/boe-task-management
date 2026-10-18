@@ -141,23 +141,23 @@ describe('the status list is the database’s, not this module’s', () => {
 // truncated column, and the two money figures because they are halves of one
 // answer that cannot be acted on from a row. Nothing left the QUERY.
 
-describe('Confirmed Payments has exactly seven primary columns, in this order', () => {
-  // REVISED (redesign 2026-10, Notion-style list): Client is back as a column,
-  // Mode moved under the date (one "Received" cell), and the labels are
-  // sentence case. Still seven columns.
+describe('Confirmed Payments has exactly eight primary columns, in this order', () => {
+  // REVISED (owner, 2026-10-19): Payment ID, Amount, Client, Received on,
+  // Payment mode, Added by, Allocation status, Actions. Where the money went
+  // left the row for the popup the Allocation status pill opens.
   test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Payment ID', 'Client', 'Amount', 'Received', 'Allocated against',
-      'Status', 'Actions',
+      'Payment ID', 'Amount', 'Client', 'Received on', 'Payment mode',
+      'Added by', 'Allocation status', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 7)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 8)
   })
 
-  test('Initiated By and Approved By are no longer table columns', () => {
+  test('Approved By is not a table column; the recorder is "Added by"', () => {
     const keys = CONFIRMED_PAYMENT_COLUMNS.map(c => c.key) as string[]
     const labels = CONFIRMED_PAYMENT_COLUMNS.map(c => c.label) as string[]
-    for (const gone of ['initiated_by', 'approved_by']) assert.ok(!keys.includes(gone), gone)
-    for (const gone of ['Initiated By', 'Approved By']) assert.ok(!labels.includes(gone), gone)
+    assert.ok(!keys.includes('approved_by') && !labels.includes('Approved By'))
+    assert.ok(keys.includes('added_by'))
   })
 
   test('the two money columns stay out of the column set', () => {
@@ -167,13 +167,11 @@ describe('Confirmed Payments has exactly seven primary columns, in this order', 
     }
   })
 
-  test('the date column is labelled Received, and the account sits under it', () => {
+  test('the date column is labelled Received on, and the account has its own column', () => {
     const date = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'date')
-    assert.equal(date?.label, 'Received',
+    assert.equal(date?.label, 'Received on',
       'a bank statement is reconciled against when the money moved')
-    const table = read('src/app/finance/received/receivedPaymentsTable.tsx')
-    assert.ok(table.includes('{fmtDate(r.payment_date)}') && table.includes('<span className="fin-sub">{mode}</span>'),
-      'the date, with the account on its second line')
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'mode')?.label, 'Payment mode')
   })
 
   test('the breakdown columns are the two exact allocation-destination figures, shown only in the detail modal', () => {
@@ -209,11 +207,11 @@ describe('Confirmed Payments has exactly seven primary columns, in this order', 
   test('the columns carry width hints so seven do not drift apart on a wide screen', () => {
     const widths = CONFIRMED_PAYMENT_COLUMNS
       .filter(c => 'width' in c).map(c => c.key as string)
-    for (const sized of ['payment_id', 'client', 'amount', 'date', 'status', 'actions']) {
+    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'added_by', 'status', 'actions']) {
       assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
     }
-    // Allocated Against deliberately takes the slack; its cell caps itself.
-    for (const flexible of ['allocated_against']) {
+    // Client deliberately takes the slack; its cell truncates.
+    for (const flexible of ['client']) {
       assert.ok(!widths.includes(flexible), `${flexible} should absorb remaining width`)
     }
   })
@@ -282,17 +280,19 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
   const cardAt = (viewport: number) => (viewport >= 768 ? viewport - 260 - 44 : viewport - 26)
 
   test('the threshold sits above the measured table minimum, with headroom', () => {
-    // REVISED (redesign 2026-10): 812px of fixed columns + a 150px floor,
-    // computed from the column list, not yet re-measured in a browser.
-    const MEASURED_TABLE_MIN = 945
+    // REVISED (owner's columns, 2026-10-19): 860px of fixed columns + the
+    // 120px Client floor, computed from the column list, not browser-measured.
+    const MEASURED_TABLE_MIN = 960
     assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX >= MEASURED_TABLE_MIN + 25)
   })
 
-  test('cards at 320, 375, 768 and 1024; the table at 1280 and 1440', () => {
-    for (const vw of [320, 375, 768, 1024]) {
+  test('cards at 320, 375, 768, 1024 and 1280; the table at 1366 and 1440', () => {
+    // REVISED (2026-10-19): eight columns need ~980px, so a 1280px laptop
+    // (~976px content) now gets the cards. Agreed with the owner up front.
+    for (const vw of [320, 375, 768, 1024, 1280]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'cards', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
-    for (const vw of [1280, 1440]) {
+    for (const vw of [1366, 1440]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'table', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
   })
@@ -341,9 +341,11 @@ describe('Confirmed Payments table, continued', () => {
     assert.ok(table.includes('<PaymentRowActions'), 'drawn by the one shared action row')
     assert.ok(!table.includes('<IconAction'), 'no unexplained icon squares remain')
     const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
-    assert.ok(row.includes('rowActionLayout(actions)'), 'the inline/menu split is the shared rule')
-    assert.ok(row.includes('<RowActionsMenu'), 'Edit and Delete are behind the menu')
-    assert.ok(row.includes('{meta[key].text}'), 'and the inline actions are words')
+    // REVISED (owner, 2026-10-19): every action is an icon in a fixed slot,
+    // with its words as the tooltip.
+    assert.ok(row.includes('rowActionLayout(actions)'), 'the shared rule decides the set')
+    assert.ok(row.includes('title={meta[key].text}'), 'each icon carries its words as a tooltip')
+    assert.ok(row.includes('<Icon size={15} aria-hidden="true" />'), 'and draws its icon')
   })
 
   test('the overflow menu is keyboard reachable and named', () => {
@@ -473,9 +475,9 @@ describe('each page asks the database for its own half', () => {
     assert.ok(view.includes(".eq('complete_allocation_status', filters.confirmedFilter)"))
   })
 
-  test('the filter chips are not drawn on Payments to Verify', () => {
-    assert.ok(view.includes("{surface === 'confirmed' && ("))
-    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTERS.map(f =>'))
+  test('the filter cards are not drawn on Payments to Verify', () => {
+    // REVISED (owner, 2026-10-19): no tabs; the summary cards are the filter.
+    assert.ok(view.includes("{surface === 'confirmed' && (\n        <ConfirmedSummaryCards"))
   })
 
   test('Payments to Verify keeps Status and drops the money columns', () => {

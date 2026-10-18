@@ -46,7 +46,15 @@ export function ConfirmedSummaryCards({ summary, active, onSelect }: {
       </div>
       {summary.over.count > 0 && (
         <p className="fin-stats-note">
-          {plural(summary.over.count)} allocated beyond the amount received — open the Over-allocated tab to review.
+          {plural(summary.over.count)} allocated beyond the amount received.{' '}
+          <button
+            type="button"
+            onClick={() => onSelect('over')}
+            aria-pressed={active === 'over'}
+            style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+          >
+            Show them
+          </button>
         </p>
       )}
     </>

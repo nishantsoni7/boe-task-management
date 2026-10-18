@@ -9,6 +9,7 @@ import { ALLOCATED_AGAINST_LABEL, ALLOCATION_DETAILS_UNAVAILABLE_TEXT, NOT_ALLOC
 import { ALLOCATED_AGAINST_MIN_PX, CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { PaymentIdChip } from '../components/PaymentIdChip'
+import { FinancePerson } from '../components/FinanceListParts'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './receivedPaymentsRowActions'
 
@@ -289,8 +290,7 @@ export function ReceivedPaymentsTable({
   canDeleteRow,
   onDelete,
   allocatedAgainst,
-  targetHref,
-  onOpenTarget,
+  onShowAllocation,
 }: {
   rows: PaymentRequest[]
   /** The Allocated Against cell for one row — see AllocatedAgainstCell. */
@@ -320,6 +320,8 @@ export function ReceivedPaymentsTable({
    */
   canDeleteRow: (r: PaymentRequest) => boolean
   onDelete: (r: PaymentRequest) => void
+  /** Opens the allocation popup (the Allocation status pill). */
+  onShowAllocation: (r: PaymentRequest) => void
 }) {
   // COMPACT, AND NO minWidth. Eleven columns at these paddings fit 1024px with
   // room over; the breakdown that would not fit lives in the expandable row
@@ -345,9 +347,9 @@ export function ReceivedPaymentsTable({
 
   return (
     <div style={{ width: '100%' }}>
-      {/* FIXED LAYOUT: every compact column has a pixel width and Allocated
-          Against takes the rest, so the columns sit where the header says they
-          are whatever the rows contain. */}
+      {/* FIXED LAYOUT: every column but Client has a pixel width sized to its
+          data, and Client takes the rest, so the columns sit where the header
+          says they are whatever the rows contain. */}
       <table className="fin-table">
         <thead>
           <tr>
@@ -360,8 +362,8 @@ export function ReceivedPaymentsTable({
         </thead>
         <tbody>
           {rows.map(r => {
-            // NO PER-ROW FIGURE COMPUTATION. The detail modal computes the
-            // figures from the allocation ledger when it opens.
+            // NO PER-ROW FIGURE COMPUTATION. The allocation popup and the detail
+            // modal compute the figures from the allocation read when they open.
             const isHighlighted = r.id === highlightId
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
             const mode = PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode
@@ -378,6 +380,12 @@ export function ReceivedPaymentsTable({
                     <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
                   </td>
 
+                  {/* RIGHT-ALIGNED, tabular figures: digits line up by place
+                      value down the column. */}
+                  <td style={TD} className="fin-num">
+                    <span className="fin-amount">{fmtAmount(r.amount)}</span>
+                  </td>
+
                   {/* WHO PAID. "Not identified" (muted) for a Suspense payment. */}
                   <td style={TD} title={client}>
                     <span className="fin-primary-text" style={r.client_name ? undefined : { color: colors.muted, fontWeight: 400 }}>
@@ -385,63 +393,32 @@ export function ReceivedPaymentsTable({
                     </span>
                   </td>
 
-                  {/* RIGHT-ALIGNED, tabular figures: digits line up by place
-                      value down the column. */}
-                  <td style={TD} className="fin-num">
-                    <span className="fin-amount">{fmtAmount(r.amount)}</span>
+                  {/* THE PAYMENT DATE, not created_at — when the money moved. */}
+                  <td style={TD} className="fin-muted">{fmtDate(r.payment_date)}</td>
+
+                  <td style={TD} className="fin-muted" title={mode}>{mode}</td>
+
+                  {/* WHO RECORDED IT. */}
+                  <td style={TD}>
+                    <FinancePerson name={r.submitted_by_name} />
                   </td>
 
-                  {/* THE PAYMENT DATE, not created_at — when the money moved —
-                      with the account it arrived in underneath. */}
-                  <td style={TD} title={`${fmtDate(r.payment_date)} · ${mode}`}>
-                    <span className="fin-muted" style={{ display: 'block' }}>{fmtDate(r.payment_date)}</span>
-                    <span className="fin-sub">{mode}</span>
-                  </td>
-
-                  {/* ALLOCATED AGAINST — every active destination with its
-                      amount, and what is left. Lines stack, so this is the one
-                      cell allowed to wrap; each NAME still truncates on its own
-                      line. Initiated By and Approved By left the table for it:
-                      they are audit facts, shown in the payment's details and
-                      Activity. */}
-                  <td style={{ ...TD, whiteSpace: 'normal', paddingTop: '6px', paddingBottom: '6px' }}>
-                    <AllocatedAgainstCell
-                      view={allocatedAgainst(r)}
-                      hrefFor={targetHref}
-                      onOpen={onOpenTarget}
-                    />
-                  </td>
-
-                  {/* THE BADGE IS THE DOOR TO THE FIGURES THE ROW NO LONGER
-                      PRINTS. Total Allocated and Remaining left the table
-                      together — they are two halves of one answer and neither
-                      can be acted on from a row — so the status that summarises
-                      them opens the record that shows them in full. */}
+                  {/* THE PILL IS THE DOOR TO WHERE THE MONEY WENT. It opens the
+                      allocation popup: every Order / PI Draft it is allocated
+                      to, with amounts, and what is left. */}
                   <td style={{ ...TD, overflow: 'visible' }} onClick={e => e.stopPropagation()}>
                     <ConfirmedAllocationBadge
                       status={allocationBadgeState(allocatedAgainst(r))}
                       paymentId={r.human_payment_id}
-                      onOpen={() => onView(r)}
+                      onOpen={() => onShowAllocation(r)}
                     />
                   </td>
 
-                  {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
-                      a View button and a "…" menu, so the common actions cost
-                      two clicks and one of them was hidden.
-
-                      WHICH actions appear is decided by visibleRowActions() in
-                      lib/finance/rowActions.ts, not by guards written out here
-                      — because the column's WIDTH is arithmetic over the
-                      maximum number of icons a row can show at once, and that
-                      maximum has to be derivable rather than counted by eye.
-
-                      Four actions, and attaching money is not among them:
-                      allocation is the only way funds reach an Order or a PI
-                      Draft, and it has its own control.
-
-                      An action a reader may not take is absent, not greyed: a
-                      disabled control invites a click that will never work. */}
-                  <td style={{ ...TD, textAlign: 'right', overflow: 'visible' }}>
+                  {/* EVERY PERMITTED ACTION, AS AN ICON in a fixed slot: View,
+                      Edit, Allocate, Delete. WHICH appear is decided by
+                      visibleRowActions() in lib/finance/rowActions.ts; an
+                      action a reader may not take is absent, not greyed. */}
+                  <td style={{ ...TD, overflow: 'visible' }}>
                     <PaymentRowActions
                       row={r}
                       actions={visibleRowActions({
