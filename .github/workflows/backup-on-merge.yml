@@ -74,6 +74,10 @@ jobs:
           echo "API repo access HTTP: $R"
           U=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MIRROR_TOKEN}" https://api.github.com/user)
           echo "API token owner HTTP: $U"
+          curl -s -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}" | tr -d '
+ ' | grep -o '"permissions":{[^}]*}' || echo 'permissions: none reported'
+          echo -n "contents API HTTP: "; curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}/contents/"; echo
+          echo -n "git ls-remote: "; git ls-remote "https://${MIRROR_REPO%%/*}:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git" >/dev/null 2>&1 && echo ok || echo FAILED
       - name: Push all branches and tags to the private mirror
         env:
           MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
