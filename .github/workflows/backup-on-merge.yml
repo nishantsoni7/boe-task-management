@@ -70,10 +70,10 @@ jobs:
           case "$MIRROR_TOKEN" in github_pat_*) echo 'prefix: github_pat_ (fine-grained) ok';; ghp_*) echo 'prefix: ghp_ (classic)';; *) echo 'prefix: UNEXPECTED';; esac
           case "$MIRROR_TOKEN" in *[[:space:]]*) echo 'WHITESPACE FOUND in token';; *) echo 'no whitespace';; esac
           echo "repo variable: ${MIRROR_REPO}"
-          echo -n 'API repo access HTTP: '; curl -s -o /dev/null -w '%{http_code}
-' -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}"
-          echo -n 'API token owner HTTP: '; curl -s -o /dev/null -w '%{http_code}
-' -H "Authorization: Bearer ${MIRROR_TOKEN}" https://api.github.com/user
+          R=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}")
+          echo "API repo access HTTP: $R"
+          U=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MIRROR_TOKEN}" https://api.github.com/user)
+          echo "API token owner HTTP: $U"
       - name: Push all branches and tags to the private mirror
         env:
           MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
