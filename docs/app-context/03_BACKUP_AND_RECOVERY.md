@@ -32,7 +32,7 @@ All local backups live in `%USERPROFILE%\BOE-Development\backups\boe-task-manage
 | L8 GitHub bundle | Actions artifact `boe-code-bundle-<sha>` | **every push to `main`** + weekly | verified bundle of all branches | 90 days |
 | L9 private mirror repo (optional) | second private GitHub repo | every push to `main` | all branches + tags | forever |
 | L10 second copy (recommended) | `BOE_BACKUP_COPY_TO` folder | `backup-all.mjs` | newest bundle, DB snapshot, secrets, memory, git mirror | per run |
-| L11 Supabase platform backups | Supabase dashboard | provider | daily backups / PITR **depending on the plan** | owner must confirm plan |
+| L11 Supabase platform backups | Supabase dashboard → Database → Backups | provider, daily ~21:55 UTC | **Pro plan: 7 daily PHYSICAL backups confirmed 2026-10-18** (full database incl. the 5 tables the export cannot read; storage objects NOT included). **PITR deliberately NOT enabled (owner decision, cost)** | 7 days |
 
 **Encryption note.** Database tables and env files are encrypted with a passphrase (`BOE_BACKUP_PASSPHRASE`, or an auto-generated file `backups\.keys\backup-passphrase.txt`). **Copy that passphrase into your password manager once.** A laptop crash that also takes the key file makes the encrypted layers unreadable. Storage files are copied as-is (they are already served through signed URLs).
 
@@ -65,7 +65,7 @@ What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUP
 - **Automatic, offline, instant:** git hooks installed by `install-backup-system.mjs` → `backup-code.mjs --quick`. Hooks never block or fail a git command.
 - **Automatic on GitHub:** `.github/workflows/backup-on-merge.yml` on every push to `main`.
 - **Mandatory manual step after every merge:** `backup-all.mjs` then `verify-backups.mjs` (Master Instruction Sheet §8).
-- **Recommended schedule (Windows Task Scheduler, daily):**
+- **Daily schedule (INSTALLED 2026-10-18):** Windows Task Scheduler task `BOE Backup`, every day 21:30, runs `backups	oolsoe-backup-daily.cmd` (backup-all + verify, log in `backupsdaily-backup.log`; also copies to `D:BOE-Backups` when that drive is plugged in; runs on next start if the laptop was off). Disable/inspect with `Get-ScheduledTask 'BOE Backup'`. Original command form, for reference:
   ```powershell
   schtasks /Create /SC DAILY /ST 21:30 /TN "BOE Backup" /TR "node %USERPROFILE%\BOE-Development\backups\tools\backup-all.mjs" /F
   ```
@@ -116,8 +116,8 @@ Any one of: the L10 second copy, a GitHub artifact + password manager, or the pr
   ```
   `backup-database.mjs` prefers this file over `.env.local`; it is also included (encrypted) in every full backup. Until it exists the database layer reports FAIL in `verify-backups.mjs`.
 - [ ] Copy `backups\.keys\backup-passphrase.txt` to the password manager (and every production secret value: Supabase keys, `CRON_SECRET`, `FAL_KEY`, `ANTHROPIC_API_KEY`, Minop token, Vercel/GitHub account recovery codes).
-- [ ] Confirm the Supabase plan and whether daily backups / PITR are on (dashboard → Database → Backups). If on the free plan, consider upgrading: it is the only transactionally consistent database backup.
-- [ ] Choose a second location for `BOE_BACKUP_COPY_TO` (external drive or a cloud-synced folder **outside the Desktop**) and run a copy.
+- [x] Supabase plan confirmed Pro with 7 daily backups (2026-10-18). PITR not enabled by choice; recovery-point is therefore up to ~24 h for database data.
+- [x] Second copy: external drive `D:BOE-Backups` (set per run via `BOE_BACKUP_COPY_TO`; the daily task does it automatically when plugged in). Original note: choose a second location for `BOE_BACKUP_COPY_TO` (external drive or a cloud-synced folder **outside the Desktop**) and run a copy.
 - [ ] Optional: create the private mirror repo + token and set `BACKUP_MIRROR_REPO` / `BACKUP_MIRROR_TOKEN` (see header of the workflow file).
 - [ ] Record Vercel project settings that are not in git: team/project name, domain(s), DNS provider, Node version, build command overrides, env var list with Production/Preview scoping (names only in docs).
 - [ ] Record GitHub ruleset "Protect main" JSON: `gh api repos/nishantsoni7/boe-task-management/rulesets` → keep a copy in the password manager.
