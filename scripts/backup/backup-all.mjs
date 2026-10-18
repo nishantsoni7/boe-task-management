@@ -15,6 +15,9 @@ const run = (script, extra = []) => spawnSync(process.execPath, [path.join(here,
 const res = { code: run('backup-code.mjs', args.includes('--no-github') ? ['--no-github'] : []) }
 if (!args.includes('--skip-db')) res.database = run('backup-database.mjs', args.includes('--no-storage') ? ['--no-storage'] : [])
 
+// Copy a tree, skipping files already present with the same size (git objects are read-only and immutable).
+const copyMissing = (src, dst) => fs.cpSync(src, dst, { recursive: true, filter: (s, d) => !(fs.existsSync(d) && fs.statSync(s).isFile() && fs.statSync(d).size === fs.statSync(s).size) })
+
 const copyTo = process.env.BOE_BACKUP_COPY_TO
 if (copyTo) {
   assertNotDesktop(copyTo)
@@ -26,10 +29,15 @@ if (copyTo) {
   for (const [dir, re] of [['bundles', /\.bundle$/], ['database', /^\d/], ['secrets', /\.enc$/], ['memory', /^\d/]]) {
     const n = newest(dir, re)
     if (!n) continue
-    fs.cpSync(path.join(BACKUP_ROOT, dir, n), path.join(dest, dir, n), { recursive: true })
+    copyMissing(path.join(BACKUP_ROOT, dir, n), path.join(dest, dir, n))
     if (dir === 'bundles') fs.cpSync(path.join(BACKUP_ROOT, dir, n + '.sha256'), path.join(dest, dir, n + '.sha256'))
   }
-  fs.cpSync(path.join(BACKUP_ROOT, 'git'), path.join(dest, 'git'), { recursive: true })
+  copyMissing(path.join(BACKUP_ROOT, 'git'), path.join(dest, 'git'))
+  // Uploaded files: cumulative mirror, copied in full (skips files already present with the same size).
+  const sroot = path.join(BACKUP_ROOT, 'storage')
+  if (fs.existsSync(sroot)) {
+    copyMissing(sroot, path.join(dest, 'storage'))
+  }
   res.copiedTo = dest
 }
 writeStatus('all', res)
