@@ -36,7 +36,7 @@ const TASKS = [
   { id: 'github-security', kind: 'manual', everyDays: 90, title: 'Review GitHub security and access',
     how: 'GitHub > the repo > Security tab: open alerts? Settings > Rules: both main rules still Active? Settings > Collaborators: only people who should be there? Then tell Claude "done github-security".' },
   { id: 'restore-rehearsal', kind: 'manual', everyDays: 90, title: 'Test that a backup can really be restored',
-    how: 'Ask Claude to run a restore rehearsal of the latest database export into a disposable Supabase project (a backup you have never restored is only a hope). Then say "done restore-rehearsal".' },
+    how: 'Start Docker Desktop, then ask Claude "do the restore rehearsal" (it runs scripts/backup/restore-rehearsal.mjs: free, local, about 3 minutes, production untouched). Then say "done restore-rehearsal".' },
   { id: 'housekeeping', kind: 'manual', everyDays: 30, title: 'Tidy old branches and worktrees',
     how: 'Ask Claude to remove merged worktrees and fully-merged local branches (everything stays in the backups). Then say "done housekeeping".' },
   { id: 'supabase-key-rotation', kind: 'manual', everyDays: 365, title: 'Rotate the Supabase backup secret key',

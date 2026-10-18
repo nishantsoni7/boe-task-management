@@ -15,7 +15,7 @@ The owner is **not expected to remember any of this**. Three things remember for
 | Supabase still takes daily backups | monthly | owner says "done supabase-backups" | Supabase > Database > Backups > confirm a backup from the last 2 days |
 | Password manager still holds every key | every 6 months | "done password-manager" | Check passphrase, Supabase secret key, CRON_SECRET, FAL_KEY, ANTHROPIC_API_KEY, Minop token, GitHub + Vercel recovery codes |
 | GitHub security and access review | every 3 months | "done github-security" | Security tab alerts, the two main rules are Active, collaborators |
-| Restore rehearsal | every 3 months | "done restore-rehearsal" | Ask Claude to restore the latest database export into a disposable project |
+| Restore rehearsal | every 3 months | "done restore-rehearsal" | Start Docker Desktop, ask Claude "do the restore rehearsal" (free, local, ~3 min) |
 | Tidy old branches and worktrees | monthly | "done housekeeping" | Ask Claude to prune merged branches and worktrees |
 | Rotate the Supabase backup secret key | yearly | "done supabase-key-rotation" | Create a new key, update `backups/.env.backup`, delete the old key |
 | Renew the GitHub mirror token | **by 2027-09-17** (token expires 2027-10-17) | fixed date | Regenerate the `boe-mirror` token, update the `BACKUP_MIRROR_TOKEN` secret |
