@@ -75,7 +75,12 @@ jobs:
           curl -s -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}" | grep -E '"(push|pull|admin)":' || echo "permissions: none reported"
           C=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}/contents/")
           echo "contents API HTTP: $C"
-          if git ls-remote "https://${MIRROR_REPO%%/*}:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git" > /dev/null 2>&1; then echo "git ls-remote: ok"; else echo "git ls-remote: FAILED"; fi
+          B64=$(printf "x-access-token:%s" "$MIRROR_TOKEN" | base64 -w0)
+          if git -c http.extraheader="Authorization: Basic ${B64}" ls-remote "https://github.com/${MIRROR_REPO}.git" > /dev/null 2>&1; then echo "ls-remote via basic header: ok"; else echo "ls-remote via basic header: FAILED"; fi
+          B64O=$(printf "%s:%s" "${MIRROR_REPO%%/*}" "$MIRROR_TOKEN" | base64 -w0)
+          if git -c http.extraheader="Authorization: Basic ${B64O}" ls-remote "https://github.com/${MIRROR_REPO}.git" > /dev/null 2>&1; then echo "ls-remote via owner basic header: ok"; else echo "ls-remote via owner basic header: FAILED"; fi
+          if git -c http.extraheader="Authorization: Bearer ${MIRROR_TOKEN}" ls-remote "https://github.com/${MIRROR_REPO}.git" > /dev/null 2>&1; then echo "ls-remote via bearer header: ok"; else echo "ls-remote via bearer header: FAILED"; fi
+          GIT_TERMINAL_PROMPT=0 git ls-remote "https://github.com/${MIRROR_REPO}.git" 2>&1 | head -2 | sed "s/${MIRROR_TOKEN}/***/g"
       - name: Push all branches and tags to the private mirror
         env:
           MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
