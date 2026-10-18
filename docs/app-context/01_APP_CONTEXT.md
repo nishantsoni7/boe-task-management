@@ -1,0 +1,113 @@
+# BOE One — Application Context (system map)
+
+Verified against `main` @ `852e0493` (PR #326), 2026-10-18. Facts come from the code, migrations, GitHub, and the project memory; where a fact could not be proven from a checkout it is marked **(unverified)**. Machine-read facts (every route, table, function, env name) are in `APP_INVENTORY.generated.md`. Per-module depth is in `modules/`.
+
+## 1. What this is
+
+**BOE One** (formerly "BOE Task Management"; visible name changed in #311, new emblem #312) is the internal operating system of **Best of Exports (BOE)**: tasks, people, attendance & payroll, orders & finance, customer-review operations, meetings, assets, inventory, showroom, exhibition leads. It is a modular web app used mostly on **phones** by non-technical staff. Product principle: faster than WhatsApp, easier than ClickUp, operationally clear; consistency over experimentation.
+
+Owner/decision maker: Nishant Soni (admin). All business rules are owner decisions recorded in the dossiers; do not invent them.
+
+## 2. Stack & infrastructure
+
+| Layer | Fact |
+|---|---|
+| Framework | Next.js **16.2.6** (App Router, Turbopack), React **19.2.4**, TypeScript. Breaking changes vs. older Next: read `node_modules/next/dist/docs/` first |
+| Styling | Tailwind 4 + large hand-written CSS; fonts Manrope + Inter self-hosted; visual identity `docs/BOE_VISUAL_IDENTITY.md` |
+| Data | Supabase (Postgres + Auth + Storage), project `boe-task-management`, ref `albnsrohngkljfsrrrhf`, region Tokyo. **One live database** shared by production and any local run with real keys |
+| Libraries | `@supabase/ssr`, `@supabase/supabase-js`, `@tanstack/react-query`, `pdfkit` (external), `sharp`, `xlsx`, `fflate`, `qrcode.react`, `lucide-react` |
+| Hosting | Vercel; `vercel.json`: functions in **`hnd1`** (Tokyo, next to the DB — each DB round trip from elsewhere cost ~0.6 s), cron `/api/image-editor/cleanup` daily 03:00 UTC (needs `CRON_SECRET`) |
+| Source | GitHub `nishantsoni7/boe-task-management` — **public** repo. Ruleset "Protect main": PR required (squash/rebase only, 0 approvals), required check **Vercel**, linear history, no force-push, no deletion, no bypass. Merge to `main` = production deploy |
+| External services | fal.ai (Image Editor, `FAL_KEY`), Anthropic API (Exhibition Leads card scan, Payroll "Ask about your salary", `ANTHROPIC_API_KEY`), Minop/MORX attendance cloud (webhook receiver), WhatsApp share links (no API) |
+| Scale | 142 pages, 148 API routes, 330 migrations, ~150 tables, ~700 SQL functions, ~600 test files, ~880 commits |
+| Supabase keys | Legacy anon/service-role JWT keys were **disabled on 2026-08-16**; production uses the new publishable/secret keys (in Vercel). The local `.env.local` still holds the dead legacy keys |
+
+Env var names the code reads: see the generated inventory. Values live only in Vercel and `.env.local`/password manager — never in git.
+
+## 3. Architecture in one page
+
+- **Shell:** `src/app/layout.tsx` → `Providers` → per-module layout components in `src/components/layout/*Layout.tsx` (`DashboardLayout`, `OrdersLayout`, `FinanceLayout`, `ControlCenterLayout`, …) with `ModuleGuard`, `MobileBottomNav`, `ModuleSectionTabs`, `ModuleSwitchButton`. Launcher at `/modules` (card order is personal, stored by stable module keys: `src/lib/modules/moduleOrder.ts`). Standards: `docs/BOE Master Context/BOE_GLOBAL_NAVIGATION_STANDARD.md`, `BOE_MODULE_LAYOUT_STANDARD.md`.
+- **Auth:** Supabase Auth (email+password, admin-created users, forgot/reset password flow from #315). Server components/route handlers use `src/lib/supabase/server.ts` (cookie session, anon key). Privileged work uses `src/lib/supabase/admin.ts` (service role) **only in route handlers**, always re-scoped to the caller. There is no root `middleware.ts`/`proxy.ts`; gating is client guards (`ModuleGuard`, Control Center layout) plus per-route token checks — so every API route MUST check auth itself. Deactivating/soft-deleting a user does not end their Supabase session, and `is_active` is not an auth gate.
+- **Roles:** `admin`, `manager`, `member` (staff are called "employees" in the UI; + positions/departments). The role label alone grants little: module visibility (`app_modules`: `live | admin_only | department_only | custom | hidden`, resolved by `resolveModuleAccess` in `src/lib/moduleAccess.ts`) plus per-employee permission grants (`src/lib/permissions/*`, DB tables `permission_*`, `employee_permission_overrides`) decide access. **Grants, not role inheritance.** Attendance/Payroll management is admin-only regardless of visibility; `/my-attendance`, `/my-payroll`, `/my-credits` are self-service and token-derived.
+- **Reads/writes:** pages fetch through React Query hooks (`src/hooks/*`) calling `/api/*` routes or Supabase directly under RLS. Money/state transitions go through **`SECURITY DEFINER` RPCs** with `auth.uid()` guards. PostgREST caps at 1000 rows → `src/lib/supabasePaging.ts`.
+- **View As:** admin can preview as an employee: reads = viewed employee, writes remain the admin's and are refused while previewing (`src/lib/viewAs.ts`, `ViewAsContext`).
+- **Notifications:** table + category policy (`src/lib/notifications*`), per-module pages, bell, caches; `notifications.type` is a Postgres **enum** — a new type needs a migration applied *before* the code (otherwise the whole feed returns 500).
+- **Lists:** URL-state lists via `src/lib/listState.ts` / `useListUrlState`; scroll restore; dates in IST (`src/lib/istDate.ts`); currency `src/lib/currency.ts`; money is whole rupees or paise per module (see dossiers).
+- **Tests:** `npm test` = `tsx --test` over `src/**/*.test.ts(x)` and `scripts/**/*.test.mjs`. Many tests pin **source text** and **migration filename lists** (adding a migration breaks ~10–15 ledger-pin tests and the `expenseSurfaces` allowlist — update them). Live-DB suites write fixtures to whatever DB `.env.local` points at; the UAT guard refuses hosted targets. Clean `main` = **0 failures** (fixed in #327); lint baseline 0/0.
+- **Migrations:** `supabase/migrations/*.sql` (unique 14-digit versions; latest `20270318000000_custody_handed_by_outside_name.sql`). Immutable once applied (some pinned by SHA-256). `db push` is applied by the owner; confirm with `supabase migration list --linked`.
+
+## 4. Module status table
+
+Status at `852e0493`. Click through for the 12-section dossier. "Apply state" items marked (unverified) must be re-confirmed with `supabase migration list --linked` before relying on them.
+
+| # | Module | Status | Dossier | Notes |
+|---|---|---|---|---|
+| 01 | Orders (PI Drafts → approval → Confirmed Orders, amendments, admin delete, quotation requests) | Shipped, in live use | `modules/01-orders.md` | Order Requests retired. `approve_order_submission` is the only Order creator; approval gate = 40% of total before GST. Last migration `20270317…` (admin Delete Order, #320) apply state **(unverified)** |
+| 02 | Finance (received/confirmed payments, verification, allocations & correction, payment requests/expenses, custody) | Shipped | `modules/02-finance.md` | Payment forms share one frame (#324–#326). Allocation correction Phase 1 live; Phase 2 carry-over open |
+| 03 | Attendance | Shipped | `modules/03-attendance.md` | Raw `attendance_records` layer is overwritten by import; corrections live in `attendance_day_corrections`. `20270215000000` apply state **(unverified)** — if unapplied every payroll lock returns 503 |
+| 04 | Minop / MORX device integration | Raw receiver live; **processing disabled in code** | `modules/04-minop-device-integration.md` | Header webhook 401s the real device; only the path-token route receives. 2026-09-19 punch never reached BOE (callback URL unverified) |
+| 05 | Payroll | Shipped (admin) + self-service payslips | `modules/05-payroll.md` | ÷26 divisor; month cannot be generated/locked before it ends in IST; per-result lock/approval NOT built |
+| 06 | BOE Credits | Shipped phases 1A–1D + redemption switches | `modules/06-boe-credits.md` | Decimal credits; never edit `20261206000000` (repair `20261207000000`) |
+| 07 | Employee records, objections, My Issues | Partial | `modules/07-employee-records-and-issues.md` | Employee Records proper is planned |
+| 08 | Platform core (auth, shell, launcher, dashboard, BOE One identity, Vercel) | Shipped | `modules/08-platform-core.md` | |
+| 09 | Permissions & access control | Shipped (phases up to 3E; 3F observation) | `modules/09-permissions-access-control.md` | `npm run permissions:check` must be clean; fix drift with a targeted migration, not `permissions:sync` |
+| 10 | Members, org hierarchy, positions, Control Center | Shipped | `modules/10-members-org-control-center.md` | Six hubs, action queue, test-data cleanup, `checkLastAdministrator()` on 4 routes |
+| 11 | Task Management | Shipped | `modules/11-task-management.md` | Dynamic task route has no `loading.tsx` ⇒ no prefetch; navigation warm-caches (#322) |
+| 12 | Notifications | Shipped | `modules/12-notifications.md` | enum caveat; per-module categories |
+| 13 | Performance (personal vs team) | Shipped | `modules/13-performance.md` | `view` / `view_team` / `view_all` |
+| 14 | Review Workflow / Customer Reviews | Shipped | `modules/14-review-workflow.md` | Soft-deleted rows still match status predicates — always `deleted_at is null` |
+| 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass fix `20261214` is **not on main** |
+| 16 | Assets & Access | Shipped | `modules/16-assets-access.md` | `accept_employee_asset` overloads must not declare DEFAULT |
+| 17 | Inventory | Shipped | `modules/17-inventory.md` | public bucket — no price/customer data in paths |
+| 18 | Exhibition Leads | Shipped | `modules/18-exhibition-leads.md` | Anthropic scan; never force `tool_choice` |
+| 19 | Showroom QR & Showroom admin | Shipped, customer-facing | `modules/19-showroom-qr.md` | Preview must stay a read-only GET (number generation is a write) |
+| 20 | Sample Tracking | Shipped, thin | `modules/20-sample-tracking.md` | RLS is the only spec; `sample_notifications` table has no `create table` migration |
+| 21 | Image Editor | Shipped | `modules/21-image-editor.md` | fal.ai billed per press — never retry; `CRON_SECRET` required |
+| 22 | Announcements | Shipped | `modules/22-announcements.md` | Admin-only publishing; India date, never UTC |
+
+## 5. Decisions recorded but NOT built (do not assume they exist)
+
+Owner decisions of 2026-09-18 with no code on `main`: dispatch gate ₹1,000 + credit exception; void/refund/correction/customer credit; per-product fabric status + label PDF + quantity requests; PI "Next action" column. Also not built: payroll per-result locking / payslip approval / audit history; Employee Records module; encryption of `secret_value` (Assets); Showroom `converted`/`lost` quotation transitions (UI reads them, nothing writes them).
+
+## 6. Where older documentation is wrong (found 2026-10-18)
+
+Trust the code. These documents contradict it and should be corrected when next touched:
+- `docs/BOE Master Context/05_Business_Rules.md`: advance is now 40% of **Total before GST**; Finance verification is no longer required for PI approval; several "(branch)" features are merged (migrations `20270227`, `20261226`).
+- `ATTENDANCE_MINOP_INTEGRATION.md`: describes flag-gated processing/retry; code throws unconditionally and the `reprocess` route is gone.
+- `ATTENDANCE_PAYROLL_MODULE.md` / `ATTENDANCE_REQUESTS.md`: cite `/my-attendance/request` (does not exist) and "Draft PR #239".
+- `PAYROLL_RULES_V1.md`: says ÷30 and flat leave; code uses ÷26 and attendance-earned leave.
+- `BOE_CREDITS.md` banner and `CUSTOMER_REVIEW_OUTREACH.md`: list migrations as "not applied" that memory records as applied.
+- `DELETE /api/orders/[id]` message and `orderNumberReservation.ts` comments are stale; `finance.ts` "NOT YET WIRED" is wrong.
+- Memory notes about open PRs #172/#173, the amendment-guard defect, and "pre-existing failures" are stale (merged / fixed / forbidden concept).
+- `docs/Module Docs` lists Showroom Product Master as admin-only; routes admit any Showroom module user.
+
+## 7. Open owner-side items (re-verify each; none was changed by this documentation work)
+
+1. Apply state of migrations recorded as unapplied/unknown: `20270317…` (admin Delete Order), `20270215000000` (attendance requests + lock acknowledgement), `20270304…`, Assets `20261028`/`20261029`. Check `supabase migration list --linked`.
+2. Meetings RPC module-entry fix `20261214` (branch `fix/meetings-rpc-require-module-entry`, worktree `meetings-module-entry`) — unmerged, unapplied.
+3. Minop device callback delivery to BOE never confirmed.
+4. Local `.env.local` carries disabled legacy keys; database backup needs the new secret key in `backups\.env.backup` (see `03_BACKUP_AND_RECOVERY.md`).
+5. Test Data Cleanup flag: if enabled in production, new Orders are stamped `is_test_data` and excluded from dashboards/revenue — confirm it is off.
+6. The primary checkout `repositories/boe-task-management` sits on `feat/admin-order-deletion-main` (a pre-squash copy of #320). Several stale branches and worktrees exist (`ci-hygiene`, `nav-warm-caches`, `region-hnd1`, `meetings-module-entry`, `.claude/worktrees/clever-curran-*`).
+
+## 8. Cross-cutting traps (the ones that have already cost time or production)
+
+1. Merge = deploy; a merged PR that needs an unapplied migration breaks production (#119).
+2. Applied migrations are immutable — even comments; tests diff against `origin/main`, so a stale local `main` looks like a modified migration.
+3. Permissive RLS policies **OR** together; check USING and WITH CHECK separately (finance payment self-approval defect). Guard triggers hold the line on `finance_payment_requests`.
+4. `auth.uid()`-based definer RPCs cannot be called by the service-role client; never turn a query error into "Forbidden".
+5. PL/pgSQL `integer` variables silently round decimals; AFTER-trigger values already include the increment.
+6. `select('*')` on `users` is 42501 (private columns).
+7. `npm test` with a real `.env.local` writes fixtures into the live database.
+8. PowerShell/`sed -i` corrupt CRLF/UTF-8 files; heredocs eat backslashes in generated regex; `git commit -m` with quotes mangles in PowerShell — use `git commit -F`.
+9. Worktree `node_modules` is a junction — delete the junction before `git worktree remove --force`.
+10. Parallel sessions may have taken the same branch name — check `git ls-remote` and `list_sessions` before pushing.
+11. Supabase CLI `config.toml` with `[db.migrations] enabled=false` makes `db push --linked` silently do nothing.
+12. Next.js 16.2.6 JSX whitespace: write `{' '}` after an inline element before an entity; ES2017 regex flags fail only `next build`.
+
+12b. (from the platform review) The service role bypasses RLS and the `tasks_enforce_review_path` trigger — a new service-role write to `tasks` skips creator approval. `role_permissions` holds only admin rows; remove a bad seed with DELETE, never `allowed=false`. `permission_actions.display_name` is global per action key. New `users` columns need a GRANT and a `safeColumns.ts` entry. Soft-deleted users are never auto-purged although the UI says 30 days.
+13. Possible defects found while documenting (unconfirmed): `pi_exception_*`/`pi_revision_*`/`order_document_review_*` notification types missing from `ORDER_NOTIFICATION_TYPES`; `pi_correction_*` inserts with no enum migration; `/api/performance` reads `daily_performance_logs` which no migration creates; `isOverdue` in `src/lib/ui.ts` uses the UTC date; `/tasks/all` and `/manager` rely on RLS with no admin branch. See dossiers 12, 11, 13.
+
+## 9. Module-to-module dependencies (check these when touching either side)
+
+- Orders ↔ Finance (payments attach to PI/Orders; allocation ledger; `finance_received_payments` view) · Orders ↔ Meetings (order-discussion rail, PI workbook import) · Orders ↔ Notifications (type-gated) · Finance ↔ Assets (custody/handed-by trail) · Attendance → Payroll → BOE Credits (settlement line) → Review Workflow (credit rewards) · Attendance ↔ Minop · Payroll ↔ Employee objections · Permissions/Module access → every module launcher card · Control Center → announcements, action queue, test-data cleanup (touches Orders/Finance data) · Exhibition Leads/Inventory/Showroom share the Anthropic key / public storage conventions.
