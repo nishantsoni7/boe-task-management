@@ -7,6 +7,7 @@ import { colors } from '@/lib/tokens'
 import { PAYMENT_MODE_LABEL } from '@/lib/finance/paymentEntry'
 import { ALLOCATED_AGAINST_LABEL, ALLOCATION_DETAILS_UNAVAILABLE_TEXT, NOT_ALLOCATED_TEXT, UNALLOCATED_LINE_WORD, allocatedAgainstText, allocationBadgeState, allocationCountLabel, type AllocatedAgainstView } from '@/lib/finance/allocatedAgainst'
 import { CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
+import { PaymentIdChip } from '../components/PaymentIdChip'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './receivedPaymentsRowActions'
 
@@ -376,8 +377,8 @@ export function ReceivedPaymentsTable({
                   {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
                       primary identifier now; request_number is retained in the
                       database but is no longer shown prominently. */}
-                  <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.human_payment_id}
+                  <td style={TD}>
+                    <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
                   </td>
 
                   {/* Left-aligned, with tabular figures kept: the digits still

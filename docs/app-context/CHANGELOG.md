@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-18 — Finance lists polish: Payment ID chip, one search focus ring
+- Payment Requests and Confirmed Payments: the Payment ID (`human_payment_id`, already unique, immutable, never reused) prints as a copyable chip (`finance/components/PaymentIdChip.tsx`). The search box had a second square focus outline inside its rounded box (the global `:focus-visible !important` rule); now one ring on the box. Payment Requests uses the shared `.boe-list-search` toolbar and searches by Payment ID; date inputs match the search height (36px). CSS and components only. Migrations: none.
+
 ## 2026-10-18 — DOM tests for the payment forms
 - Added `jsdom` (dev dependency) and `src/lib/testing/domHarness.ts`. The payment forms (Add payment on a PI, Allocate Funds, Edit Received Payment, FormDialog and its parts) are now tested by running them in a DOM; the source-text checks they replace are removed. No product code changed. Migrations: none.
 

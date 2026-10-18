@@ -11,6 +11,7 @@ import { customerDisplayName, paymentModeLabel } from '@/lib/finance/paymentEntr
 import { paymentAgainstDisplay, type PaymentDestination } from '@/lib/finance/paymentDestination'
 import { fmtDate, fmtAmount, canManageRequest, isStaleClarification, type PaymentRequest } from './paymentRequestsModel'
 import { StatusBadge, StaleBadge } from './paymentRequestsAtoms'
+import { PaymentIdChip } from './components/PaymentIdChip'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
 //
@@ -219,8 +220,8 @@ export function PaymentsTable({
             const againstLink = againstHref(destination)
 
             const idCell = (
-              <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
-                {r.human_payment_id}
+              <td style={TD}>
+                <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
               </td>
             )
             // THE CLIENT CELL HOLDS THE CLIENT NAME, AND NOTHING ELSE (no status

@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `206e7497` — Docs: private mirror repo is live; token renewal date (#342)
-- Commits on this branch: 893
+- Commit: `d9e5ee83` — Restore rehearsal: repeatable local check of the database export (#344)
+- Commits on this branch: 895
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 602   Next.js 16.2.6, React 19.2.4
+- Test files: 603   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
+- `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
 - `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
 - `c3ecf2c9` 2026-10-18 Backup mirror: use our token (stop checkout persisting its own) (#341)
 - `b77318dd` 2026-10-18 Docs: Meetings module-entry fix shipped and applied (#340)
@@ -37,8 +39,6 @@
 - `dff87d0a` 2026-10-17 Task navigation: warm My Tasks from the Dashboard, warm each task page once (#322)
 - `3d2ecbc3` 2026-10-17 Run Vercel functions in hnd1 (Tokyo), next to the Supabase database (#321)
 - `0b06be5e` 2026-10-17 Orders: let an administrator permanently delete a Confirmed Order (#320)
-- `8a1ca3ab` 2026-10-17 PI delete: erase leftovers of payments deleted before approval (#317)
-- `07b591df` 2026-10-15 Quotation requests: find the owner by Nishant's new sign-in email (#316)
 
 ## Pages by top-level area
 
@@ -167,6 +167,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `BOE_MAIN_REPO` (1 reads)
 - `BOE_MEMORY_DIR` (1 reads)
 - `BOE_PERF_DEBUG` (1 reads)
+- `BOE_REHEARSAL_IMAGE` (1 reads)
 - `CRON_SECRET` (1 reads)
 - `EXHIBITION_SCAN_MODEL` (1 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
