@@ -56,7 +56,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 12 | Notifications | Shipped | `modules/12-notifications.md` | enum caveat; per-module categories |
 | 13 | Performance (personal vs team) | Shipped | `modules/13-performance.md` | `view` / `view_team` / `view_all` |
 | 14 | Review Workflow / Customer Reviews | Shipped | `modules/14-review-workflow.md` | Soft-deleted rows still match status predicates — always `deleted_at is null` |
-| 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass fix `20261214` is **not on main** |
+| 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass FIXED by `20270319000000` (applied 2026-10-18) |
 | 16 | Assets & Access | Shipped | `modules/16-assets-access.md` | `accept_employee_asset` overloads must not declare DEFAULT |
 | 17 | Inventory | Shipped | `modules/17-inventory.md` | public bucket — no price/customer data in paths |
 | 18 | Exhibition Leads | Shipped | `modules/18-exhibition-leads.md` | Anthropic scan; never force `tool_choice` |
@@ -83,8 +83,8 @@ Trust the code. These documents contradict it and should be corrected when next 
 
 ## 7. Open owner-side items (re-verify each; none was changed by this documentation work)
 
-1. **Migrations: RESOLVED 2026-10-18.** `supabase migration list --linked` shows every migration on `main` (through `20270318000000`) with a populated `remote`, including `20270317`, `20270215000000`, `20270304`, `20261028`, `20261029`, `20261219`, `20261220`. The only version absent from production is `20261214000000` (Meetings RPC module-entry fix), which is not on `main`. Re-check before relying on this after any later migration.
-2. Meetings RPC module-entry fix `20261214` (branch `fix/meetings-rpc-require-module-entry`, worktree `meetings-module-entry`) — unmerged, unapplied.
+1. **Migrations: RESOLVED 2026-10-18.** `supabase migration list --linked` shows every migration on `main` (through `20270318000000`) with a populated `remote`, including `20270317`, `20270215000000`, `20270304`, `20261028`, `20261029`, `20261219`, `20261220`. Nothing is pending (the Meetings fix was applied later the same day as `20270319000000`). Re-check before relying on this after any later migration.
+2. **Meetings RPC module-entry fix: DONE 2026-10-18** — PR #310 merged (`40270642`), migration `20270319000000_meetings_rpcs_require_module_entry.sql` applied to production after a rolled-back rehearsal (closed user refused 42501; admin unaffected). The old number `20261214` no longer exists.
 3. Minop device callback delivery to BOE never confirmed.
 4. Local `.env.local` carries disabled legacy keys; database backup needs the new secret key in `backups\.env.backup` (see `03_BACKUP_AND_RECOVERY.md`).
 5. Test Data Cleanup flag: if enabled in production, new Orders are stamped `is_test_data` and excluded from dashboards/revenue — confirm it is off.
