@@ -20,6 +20,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { canDeletePayment } from './paymentDeletion'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 
 const admin = { isAdmin: true }
 const staff = { isAdmin: false }
@@ -46,7 +47,7 @@ describe('who is offered Delete', () => {
   })
 
   test('Confirmed Payments reads the flag with the base-table read it already makes', () => {
-    const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
+    const view = readScreenSource('src/app/finance/received/ReceivedPaymentsView.tsx')
     assert.ok(view.includes("${LEGACY_CUSTODY_COLUMNS.join(', ')}, is_test_data`"))
     assert.ok(view.includes('is_test_data:             row.is_test_data === true,'))
     assert.ok(/NO_LEGACY_CUSTODY[\s\S]{0,400}?is_test_data: false/.test(view), 'unknown defaults to real')
