@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `852e0493` — Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
-- Commits on this branch: 878
+- Commit: `e55f08b0` — Docs and backups: app-context system, master instruction sheet, backup tooling
+- Commits on this branch: 880
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 330 (first `20260530_create_positions.sql`, latest `20270318000000_custody_handed_by_outside_name.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `e55f08b0` 2026-10-18 Docs and backups: app-context system, master instruction sheet, backup tooling
+- `e2e76290` 2026-10-18 CI gate, live-DB workflow, opt-in branch-scope guards, safe worktree removal, dead modal removed (#328)
 - `852e0493` 2026-10-18 Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
 - `5c39ee5a` 2026-10-18 Tests: clear the failing baseline on main (0 failures without a database) (#327)
 - `460846ef` 2026-10-18 Record Payment and Edit Payment: the same quick, clear form as Send Payment Request (#325)
@@ -37,8 +39,6 @@
 - `570a3ec3` 2026-10-13 Exhibition Leads: Admin closes an exhibition and the quick link follows (#304)
 - `236355d2` 2026-10-11 Exhibition Leads: duplicate names the holder; Residential-only coverage (#303)
 - `e2cd25e7` 2026-10-10 Exhibition Leads: Residential requirement, featured Add Exhibition Lead action (#302)
-- `45fad5aa` 2026-10-10 Exhibition Leads: stop forcing tool_choice so scanning works again (#301)
-- `c4b21f77` 2026-10-10 Exhibition Leads: one scanner that reads everything, and a View All Leads permission (#300)
 
 ## Pages by top-level area
 
@@ -169,6 +169,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `BOE_PERF_DEBUG` (1 reads)
 - `CRON_SECRET` (1 reads)
 - `EXHIBITION_SCAN_MODEL` (1 reads)
+- `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (5 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
 - `MINOP_ATTENDANCE_PROCESSING_ENABLED` (2 reads)
