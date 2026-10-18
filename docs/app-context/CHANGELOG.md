@@ -13,6 +13,10 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
 - Migrations: none.
 
+## 2026-10-18 (later) — Backups proven, migrations verified
+- First successful database + storage export (161 relations, 96,108 rows, 21 auth users). Five relations are denied to the service role and are not covered (see `03_BACKUP_AND_RECOVERY.md`). Second copy to an external drive works. Git-hook bug (stray `refs/local/*` in the real repo) fixed in #337.
+- Verified read-only: every migration on main is applied in production; only `20261214000000` (not on main) is absent.
+
 ## 2026-10-18 — App-context system and backup system introduced
 - Added `docs/app-context/` (this folder): `00_README_FIRST.md`, `01_APP_CONTEXT.md`, `02_MASTER_INSTRUCTION_SHEET.md`, `03_BACKUP_AND_RECOVERY.md`, `04_NEW_MODULE_CHECKLIST.md`, `modules/*.md` dossiers, and the generated `APP_INVENTORY.generated.md` (`scripts/generate-app-inventory.mjs`).
 - Added backup tooling `scripts/backup/*` (code mirror + bundle, uncommitted-work snapshot, memory copy, encrypted env copy, database + storage export, freshness verifier), versioned git hooks `.githooks/*`, and the GitHub Action `.github/workflows/backup-on-merge.yml`.
