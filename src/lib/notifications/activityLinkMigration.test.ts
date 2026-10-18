@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const MIGRATION = 'supabase/migrations/20261016000000_notifications_link_activity_log.sql'
@@ -131,7 +132,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
     const at = files.indexOf('20261016000000_notifications_link_activity_log.sql')
     assert.ok(at > 0, '116 is present')
     assert.equal(files[at - 1], '20261015000000_task_health_check_stops_notifying.sql')
-    assert.deepEqual(files.slice(at + 1), [
+    assertNamedSuccessors(files.slice(at + 1), [
       '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',

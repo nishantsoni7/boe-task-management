@@ -316,7 +316,7 @@ function note(id: string, over: Row = {}): Row {
 
 /** What U1's Task feed shows, newest first. */
 const U1_VISIBLE = ['visible-new', 'visible-read', 'visible-other-task']
-const HIDDEN = ['hidden-quotation', 'hidden-approval', 'hidden-system']
+const HIDDEN = ['hidden-quotation', 'hidden-approval', 'hidden-system', 'hidden-new-task']
 
 beforeEach(() => {
   db = {
@@ -333,11 +333,13 @@ beforeEach(() => {
     ],
     notifications: [
       note('visible-new', { created_at: at(5) }),
-      note('visible-read', { created_at: at(4), type: 'task_assigned', title: 'Admin assigned you a task', is_read: true }),
+      note('visible-read', { created_at: at(4), title: 'Admin changed the due date', is_read: true }),
       note('visible-other-task', { task_id: OTHER_TASK, created_at: at(2), title: 'Admin moved task to Working', is_read: true }),
       note('hidden-quotation', { task_id: QUOTE, created_at: at(6), type: 'task_assigned', title: 'New quotation request' }),
       note('hidden-approval', { created_at: at(7), title: 'Admin approved and completed task' }),
       note('hidden-system', { created_at: at(8), type: 'overdue', title: 'Task overdue' }),
+      // Written before a new task stopped notifying its assignee (#255): it stays in the table and is hidden from the feed.
+      note('hidden-new-task', { created_at: at(1), type: 'task_assigned', title: 'Admin assigned you a task' }),
       note('finance-row', { task_id: null, entity_id: 'e0000000-0000-4000-8000-000000000004', created_at: at(9), type: 'finance_submitted', title: 'Payment request submitted' }),
       note('someone-else', { user_id: U2, created_at: at(3) }),
     ],
@@ -500,7 +502,7 @@ describe('bulk scope', () => {
     assert.equal(status, 200)
     assert.equal(body.updatedCount, 1)
     assert.equal(body.unreadAffected, 1)
-    assert.deepEqual(unreadIds(U1), ['finance-row', 'hidden-approval', 'hidden-quotation', 'hidden-system'])
+    assert.deepEqual(unreadIds(U1), ['finance-row', 'hidden-approval', 'hidden-new-task', 'hidden-quotation', 'hidden-system'])
   })
 
   test('Mark read for one task stays inside that task and skips its hidden rows', async () => {
@@ -564,7 +566,7 @@ describe('bulk scope', () => {
     const retried = await send(MARK_READ, U1, '/api/notifications/mark-read', { method: 'POST', body: { all: true, category: 'task' } })
     assert.equal(retried.status, 200)
     assert.equal(retried.body.updatedCount, 451 - flipped)
-    assert.deepEqual(unreadIds(U1), ['finance-row', 'hidden-approval', 'hidden-quotation', 'hidden-system'])
+    assert.deepEqual(unreadIds(U1), ['finance-row', 'hidden-approval', 'hidden-new-task', 'hidden-quotation', 'hidden-system'])
   })
 })
 

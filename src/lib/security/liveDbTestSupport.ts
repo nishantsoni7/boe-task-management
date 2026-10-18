@@ -62,12 +62,30 @@ export function resolveLiveDbTestEnv(): LiveDbTestEnv {
   try {
     return resolveLiveDbTestEnvOrThrow()
   } catch (error) {
-    if (error instanceof UatEnvError) {
-      console.error(`\n${error.message}\n`)
-      process.exit(1)
-    }
+    if (error instanceof UatEnvError) skipLiveDbSuite(error.message)
     throw error
   }
+}
+
+/**
+ * A live-DB suite that cannot run HERE (no test database configured, or the
+ * guard refused a hosted project) is SKIPPED, not failed: the process ends 0
+ * before any test registers, and says why on stdout. A plain test run on a
+ * machine without a disposable database is therefore green for the right reason
+ * instead of red for a reason that is not a defect.
+ *
+ * Set REQUIRE_LIVE_DB_TESTS=1 where a database IS provisioned (CI, a release
+ * check) and the same condition fails the run again, so a broken environment
+ * can never pass silently there.
+ */
+export function skipLiveDbSuite(reason: string): never {
+  if (process.env.REQUIRE_LIVE_DB_TESTS === '1') {
+    console.error(`\n${reason}\n`)
+    process.exit(1)
+  }
+  console.log(`# SKIPPED live-database suite — ${reason.split('\n')[0]}`)
+  console.log('# (set REQUIRE_LIVE_DB_TESTS=1 to make this a failure)')
+  process.exit(0)
 }
 
 /** The result shape supabase-js resolves with: `{ data, error }`, never a throw. */

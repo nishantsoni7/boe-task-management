@@ -39,6 +39,7 @@ import {
   type ApprovalReadinessInput,
 } from './finalApproval'
 import { PAYMENT_AWAITING_VERIFICATION } from './paymentGate'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const MIGRATIONS = join(ROOT, 'supabase', 'migrations')
@@ -496,7 +497,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
     // So everything sorting after it is NAMED instead, which still refuses a
     // migration slipping in between this one and the state it was written
     // against — and still refuses this one being renumbered.
-    assert.deepEqual(applied.slice(at), [
+    assertNamedSuccessors(applied.slice(at), [
       MIGRATION_FILE,
       // The Confirmed Order's fabric and finish approvals. One new table, one
       // new private bucket, one write RPC. It neither re-emits

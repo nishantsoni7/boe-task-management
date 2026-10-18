@@ -33,6 +33,7 @@ import {
   type NotificationInsert,
   type NotificationInsertClient,
 } from './notificationWrites'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -363,11 +364,15 @@ describe('the read side excludes system types too', () => {
     // (order_update_production) in the transaction of the person's own write that left an aligned
     // Order short. No new type, no trigger on notifications, nothing scheduled.
     const ADVANCE_ON_BASE = '20270227000000_order_submission_advance_on_total_before_gst.sql'
+    // 20270304000000 re-creates the SAME review trail function once more (admin reject and delete): still a
+    // trigger on customer_review_custom_submissions — not on notifications — still one write using the same
+    // customer_review_* types, in the transaction of the person's own submit, reapply or edit. Nothing is scheduled.
+    const REVIEW_ADMIN_REJECT = '20270304000000_customer_review_admin_reject_and_delete.sql'
     // A fifteenth, 20270314000100, tells Inventory approvers that a PERSON asked to book units, and tells that person
     // what an approver decided: an AFTER trigger on inventory_bookings — not on notifications — in the transaction of
     // the person's own action, writing the two Inventory types only. Nothing is scheduled.
     const INVENTORY_BOOKINGS = '20270314000100_inventory_booking_notifications.sql'
-    assert.deepEqual(inserters, [
+    assertNamedSuccessors(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
       REVIEW_PHASE,
@@ -382,6 +387,7 @@ describe('the read side excludes system types too', () => {
       REVIEW_EDIT,
       REVIEW_DUPLICATE,
       ADVANCE_ON_BASE,
+      REVIEW_ADMIN_REJECT,
       INVENTORY_BOOKINGS,
     ])
     {
@@ -393,7 +399,7 @@ describe('the read side excludes system types too', () => {
       assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false)
       assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${ADVANCE_ON_BASE}: nothing is scheduled`)
     }
-    for (const f of [REVIEW_EDIT, REVIEW_DUPLICATE]) {
+    for (const f of [REVIEW_EDIT, REVIEW_DUPLICATE, REVIEW_ADMIN_REJECT]) {
       const sql = read(join(dir, f))
       assert.equal((sql.match(/insert\s+into\s+(public\.)?notifications/gi) ?? []).length, 1, `${f}: exactly one notification write`)
       assert.match(sql, /v_kind::notification_type/)
@@ -494,7 +500,7 @@ describe('the read side excludes system types too', () => {
         `${REVIEW_PHASE}: it fires on a submission or a status change, nothing scheduled`)
       assert.equal(/create\s+(or\s+replace\s+)?trigger/i.test(read(join(dir, REVIEW_TRAIL_REPAIR))), false,
         `${REVIEW_TRAIL_REPAIR}: it replaces the function only, and installs no trigger`)
-      for (const f of [REVIEW_PHASE, REVIEW_TRAIL_REPAIR, REVIEW_EDIT, REVIEW_DUPLICATE]) {
+      for (const f of [REVIEW_PHASE, REVIEW_TRAIL_REPAIR, REVIEW_EDIT, REVIEW_DUPLICATE, REVIEW_ADMIN_REJECT]) {
         const body = read(join(dir, f))
         assert.ok(body.includes("v_kind := 'customer_review_submitted';") && body.includes("v_kind := 'customer_review_reapplied';"),
           `${f}: it writes the two review types`)
@@ -503,7 +509,18 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
+    {
+      // Inventory: an AFTER trigger on inventory_bookings (not on notifications), in the transaction of the
+      // person's own request or decision, writing only the two Inventory types, nothing scheduled.
+      const sql = read(join(dir, INVENTORY_BOOKINGS))
+      assert.match(sql, /create trigger inventory_bookings_notify\s*\n\s*after insert or update of status on public\.inventory_bookings/, `${INVENTORY_BOOKINGS}: it fires on a booking`)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${INVENTORY_BOOKINGS}: nothing is scheduled`)
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      assert.deepEqual([...new Set(types)].sort(), ['inventory_booking_decided', 'inventory_booking_requested'])
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${INVENTORY_BOOKINGS} must not write ${t}`)
+    }
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

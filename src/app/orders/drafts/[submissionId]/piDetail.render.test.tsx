@@ -371,7 +371,11 @@ const pageCss = (): string => {
   const css = read(GLOBAL_CSS)
   const start = css.indexOf('   PI DETAIL — /orders/drafts/[submissionId]')
   assert.ok(start > 0, 'the page block must be findable by its own heading')
-  return css.slice(start)
+  // The block ENDS where the next page's heading begins. It used to run to the
+  // end of the file, so every block appended after it (Notifications,
+  // Announcements, …) was read as this page's and failed the grid checks.
+  const next = css.indexOf('\n/* ═', start)
+  return next === -1 ? css.slice(start) : css.slice(start, next)
 }
 
 // ── 1. The context row: the reserved number beside where review stands ────────
