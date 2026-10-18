@@ -25,6 +25,7 @@ import {
   type NotificationMutationDeps,
 } from '@/lib/notificationMutations'
 import { groupNotificationsByTask } from './grouping'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -262,7 +263,7 @@ describe('34/35. no regression into suppressed territory', () => {
   test('35. GROUPING added no migration — the newer files are not its doing', () => {
     const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
     const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
-    assert.deepEqual(newer, [
+    assertNamedSuccessors(newer, [
       '20261016000000_notifications_link_activity_log.sql',
       // Customer Review Outreach, the Top 3 Focus unpin and the Image Editor
       // registration — three separate modules added later still. Named rather

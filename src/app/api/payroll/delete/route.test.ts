@@ -36,16 +36,14 @@ import { NextRequest } from 'next/server'
 import { collectDeletionFacts, GET as deleteGET, POST as deletePOST } from './route'
 import { canDeletePayrollPeriod } from '@/lib/payroll/deletionRules'
 import { buildResultDetailPayload } from '@/lib/payroll/resultDetailPayload'
+import { resolveLiveDbTestEnv } from '@/lib/security/liveDbTestSupport'
 
 config({ path: '.env.local' })
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
-  process.exit(1)
-}
+// Through the shared target guard, like the other live-DB suites: it refuses a
+// hosted project that was not named explicitly, and SKIPS the file (rather than
+// failing it) when no test database is configured.
+const { url: SUPABASE_URL, serviceRoleKey: SERVICE_ROLE_KEY } = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 

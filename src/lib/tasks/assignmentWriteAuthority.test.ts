@@ -33,6 +33,7 @@ import {
   type AssignmentTaskRow,
 } from '@/lib/tasks/assignmentNotificationWriter.server'
 import type { NotificationInsert } from '@/lib/notificationWrites'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 
@@ -601,7 +602,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
     // exists, 118's statements are checked below, and 120 writes only
     // permission_modules and permission_actions rows. All three are named
     // rather than allowed by a loosened rule.
-    assert.deepEqual(newer, [
+    assertNamedSuccessors(newer, [
       '20261016000000_notifications_link_activity_log.sql',
       '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
