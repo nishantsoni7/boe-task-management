@@ -115,7 +115,7 @@ describe('Internal order details', () => {
     assert.ok(src.includes('aria-required="true"'))
   })
 
-  test('the form puts the same eight fields in the same order, four to a row', () => {
+  test('the form puts the same eight fields in the same order, every row filling twelve columns', () => {
     const order = ['order_confirmation_date', 'due_date', 'fabric_responsibility', 'salesperson_id', 'middleman_commission', 'billing_percentage', 'payment_terms', 'lead_source']
     const form = src.slice(src.indexOf('<form'))
     const at = [
@@ -123,7 +123,19 @@ describe('Internal order details', () => {
       form.indexOf('od-middleman-group'), form.indexOf('id={BILLING_ID}'), form.indexOf("orderDetailsInputId('payment_terms')"), form.indexOf("orderDetailsInputId('lead_source')"),
     ]
     assert.ok(at.every((n, i) => n > 0 && (i === 0 || n > at[i - 1])), `${order.join(' > ')}: ${at.join(',')}`)
-    assert.equal(form.split('span={3}').length - 1 >= 7, true)
+    // REVISED (Notion pass, 2026-10): rows of 3+3+6, 4+4+4 and 8+4, so the
+    // fabric options sit on one line and Payment terms is a real textarea.
+    const span = (field: string) => {
+      const at = form.indexOf(field)
+      return /span=\{(\d+)\}/.exec(form.slice(at, at + 400))?.[1]
+    }
+    assert.equal(span("'order_confirmation_date', 'due_date'"), '3', 'each date')
+    assert.equal(span('legend={ORDER_DETAILS_FIELD.fabric_responsibility.label}'), '6')
+    assert.equal(span("id={orderDetailsInputId('salesperson_id')} label="), '4')
+    assert.equal(span("legend={labelOf('middleman_commission')}"), '4')
+    assert.equal(span('id={BILLING_ID} label='), '4')
+    assert.equal(span("id={orderDetailsInputId('payment_terms')} label="), '8')
+    assert.equal(span("id={orderDetailsInputId('lead_source')} label="), '4')
   })
 
   test('stars only where Submit needs it: dates, fabric, commission — not salesperson or lead source', () => {

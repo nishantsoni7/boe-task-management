@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7bd03807` — Finance lists: Notion-style redesign (Concept A) with summary cards
-- Commits on this branch: 898
+- Commit: `037dec72` — Finance lists: Notion-style redesign with summary cards (#346)
+- Commits on this branch: 897
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,8 +14,7 @@
 
 ## Latest 25 commits
 
-- `7bd03807` 2026-10-18 Finance lists: Notion-style redesign (Concept A) with summary cards
-- `00102017` 2026-10-18 Finance lists redesign: roomier rows, pill badges, tab bars, empty states
+- `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
 - `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
@@ -39,6 +38,7 @@
 - `460846ef` 2026-10-18 Record Payment and Edit Payment: the same quick, clear form as Send Payment Request (#325)
 - `e896ee02` 2026-10-17 Send Payment Request: a form that is quick and clear to fill (#324)
 - `f0b6aebf` 2026-10-17 Custody trail: let an outside person be recorded as Handed By (#323)
+- `dff87d0a` 2026-10-17 Task navigation: warm My Tasks from the Dashboard, warm each task page once (#322)
 
 ## Pages by top-level area
 

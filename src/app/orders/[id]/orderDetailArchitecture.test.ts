@@ -64,9 +64,12 @@ describe('the page reads in one order, with no second summary', () => {
 
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
+    // REVISED (Notion pass, 2026-10): Payment moved into the right rail of the
+    // lower workspace, above the Commercial breakdown, so in source order it now
+    // follows the left column's Activity.
     assert.deepEqual(order, [
       'header', 'summary', 'attention', 'documents', 'products',
-      'payment', 'activity',
+      'activity', 'payment',
     ])
   })
 
@@ -516,18 +519,24 @@ describe('no Order fact is stated twice', () => {
     const main = lower.indexOf('order-lower-main')
     const aside = lower.indexOf('order-lower-aside')
     assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
-    // The three sections that belong on the left, in order, all before the aside.
+    // REVISED (Notion pass, 2026-10): the record (Activity) on the left; the
+    // money (Payment, then the Commercial working) in the right rail.
     const left = lower.slice(main, aside)
-    for (const section of ['PAYMENT_SECTION_TITLE', '<OrderActivityList']) {
-      assert.ok(left.includes(section), `${section} belongs in the left column`)
-    }
+    const right = lower.slice(aside)
+    assert.ok(left.includes('<OrderActivityList'), 'Activity belongs in the left column')
+    assert.ok(!left.includes('PAYMENT_SECTION_TITLE'), 'Payment is not in the left column')
+    assert.ok(right.indexOf('PAYMENT_SECTION_TITLE') > 0, 'Payment is in the money rail')
+    assert.ok(right.indexOf('PAYMENT_SECTION_TITLE') < right.indexOf('<OrderCommercialBreakdown'),
+      'above the Commercial breakdown')
   })
 })
 
 // ══ 4. The payment surface ══════════════════════════════════════════════════
 
 describe('the payment section states a position and opens its rows', () => {
-  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('order-lower-aside'))
+  // REVISED (Notion pass): the Payment card now ends where the Commercial
+  // breakdown begins, in the right rail.
+  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('<OrderCommercialBreakdown'))
 
   test('the inline PAYMENT RECORDS table is gone, with its explanatory prose', () => {
     assert.equal(/Payment records/i.test(body), false, 'the block is still drawn')
@@ -724,8 +733,10 @@ describe('the business rules this pass must not touch', () => {
     assert.equal((body.match(/ADD_PAYMENT_ACTION_LABEL/g) ?? []).length, 1)
     assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
     // Between the payment section's title and the section that follows it.
+    // REVISED (Notion pass): the section after Payment is now the Commercial
+    // breakdown in the same rail.
     const payment = body.indexOf('PAYMENT_SECTION_TITLE')
-    const after = body.indexOf('<OrderActivityList')
+    const after = body.indexOf('<OrderCommercialBreakdown')
     const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
     assert.ok(payment > 0 && after > payment)
     assert.ok(control > payment && control < after,

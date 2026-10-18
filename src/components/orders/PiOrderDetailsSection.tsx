@@ -304,8 +304,7 @@ export function PiOrderDetailsSection({
           </button>
         )}
         {!canEdit && locked && (
-          <button type="button" className="boe-btn boe-btn-ghost pi-section-action" disabled
-            style={{ opacity: 0.55, cursor: 'not-allowed' }}
+          <button type="button" className="boe-btn boe-btn-ghost pi-section-action pi-section-action--locked" disabled
             title="Locked while this PI is with management.">
             <Pencil size={12} aria-hidden /> Edit details
           </button>
@@ -335,6 +334,12 @@ export function PiOrderDetailsSection({
           className="pi-form-body"
           aria-label={`Edit ${ORDER_DETAILS_TITLE.toLowerCase()}`}
         >
+          {/* NOTION PASS (2026-10): EVERY ROW FILLS THE TWELVE COLUMNS.
+              Row 1 — the two dates (3 + 3) and Fabric responsibility (6), so its
+              three options sit on one line. Row 2 — Salesperson, Middleman
+              commission and Billing % (4 each). Row 3 — Payment terms (8, a
+              real textarea width) and Lead source (4). The commission follow-up
+              uses the same 6 / 6 and 4 / 8 tracks, so it lines up under them. */}
           <FormGrid>
             {(['order_confirmation_date', 'due_date'] as const).map(key => {
               const id = orderDetailsInputId(key)
@@ -354,7 +359,7 @@ export function PiOrderDetailsSection({
             <ChoiceGroup
               legend={ORDER_DETAILS_FIELD.fabric_responsibility.label}
               required
-              span={3}
+              span={6}
               describedById="od-fabric-group"
               help={<>Fabric cost on this PI: {fabricCost === null ? 'not stated' : formatInr(fabricCost)}.</>}
               error={field('fabric_responsibility')}
@@ -367,7 +372,7 @@ export function PiOrderDetailsSection({
               ))}
             </ChoiceGroup>
 
-            <FormField id={orderDetailsInputId('salesperson_id')} label={labelOf('salesperson_id')} span={3}
+            <FormField id={orderDetailsInputId('salesperson_id')} label={labelOf('salesperson_id')} span={4}
               help={salesDetailsAvailable ? undefined : 'Available once the database update for this section is applied.'}>
               <select id={orderDetailsInputId('salesperson_id')} className="pi-form-input" value={form.salesperson_id}
                 disabled={saving || !salesDetailsAvailable}
@@ -383,9 +388,9 @@ export function PiOrderDetailsSection({
 
             {/* The commission question; its follow-up sits under the row. */}
             {restricted ? (
-              <span className="pi-form-help pi-span-3">You may not read the middleman commission on this PI, so it is not edited here.</span>
+              <span className="pi-form-help pi-span-4">You may not read the middleman commission on this PI, so it is not edited here.</span>
             ) : (
-              <ChoiceGroup legend={labelOf('middleman_commission')} required span={3} describedById="od-middleman-group">
+              <ChoiceGroup legend={labelOf('middleman_commission')} required span={4} describedById="od-middleman-group">
                 {(['no', 'yes'] as const).map((answer, i) => (
                   <Choice key={answer} id={i === 0 ? orderDetailsInputId('middleman_commission') : undefined}
                     name="od-middleman" label={answer === 'yes' ? 'Yes' : 'No'} disabled={saving}
@@ -395,8 +400,8 @@ export function PiOrderDetailsSection({
               </ChoiceGroup>
             )}
 
-            <FormField id={BILLING_ID} label={ORDER_DETAILS_FIELD.billing_percentage.label} span={3} error={billingError}>
-              <div className="pi-input-suffix" style={{ flexBasis: 'auto', maxWidth: '160px' }}>
+            <FormField id={BILLING_ID} label={ORDER_DETAILS_FIELD.billing_percentage.label} span={4} error={billingError}>
+              <div className="pi-input-suffix">
                 <input id={BILLING_ID} type="text" inputMode="decimal" className="pi-form-input" placeholder="e.g. 65"
                   value={form.billing_percentage} disabled={saving}
                   aria-invalid={billingError ? true : undefined}
@@ -406,7 +411,7 @@ export function PiOrderDetailsSection({
               </div>
             </FormField>
 
-            <FormField id={orderDetailsInputId('payment_terms')} label={ORDER_DETAILS_FIELD.payment_terms.label} span={3} error={field('payment_terms')}>
+            <FormField id={orderDetailsInputId('payment_terms')} label={ORDER_DETAILS_FIELD.payment_terms.label} span={8} error={field('payment_terms')}>
               <textarea id={orderDetailsInputId('payment_terms')} rows={2} className="pi-form-input"
                 maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
                 placeholder="e.g. 30% advance, 70% before dispatch"
@@ -415,7 +420,7 @@ export function PiOrderDetailsSection({
                 onChange={e => set('payment_terms', e.target.value)} />
             </FormField>
 
-            <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} span={3} error={field('lead_source')}>
+            <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} span={4} error={field('lead_source')}>
               <select id={orderDetailsInputId('lead_source')} className="pi-form-input" value={form.lead_source}
                 disabled={saving || !salesDetailsAvailable}
                 aria-invalid={field('lead_source') ? true : undefined}
@@ -446,7 +451,7 @@ export function PiOrderDetailsSection({
                     ))}
                   </ChoiceGroup>
                   {form.middleman_commission_basis === 'amount' && (
-                    <FormField id="od-commission-amount" label="Amount (₹)" required span={3} error={field('middleman_commission_amount')}>
+                    <FormField id="od-commission-amount" label="Amount (₹)" required span={4} error={field('middleman_commission_amount')}>
                       <input id="od-commission-amount" type="number" inputMode="decimal" min="0.01" step="0.01" className="pi-form-input" data-amount-input
                         value={form.middleman_commission_amount} disabled={saving}
                         aria-required="true" aria-invalid={field('middleman_commission_amount') ? true : undefined}
@@ -456,7 +461,7 @@ export function PiOrderDetailsSection({
                   )}
                   {form.middleman_commission_basis === 'percent' && (
                     <>
-                      <FormField id="od-commission-percent" label="Percentage (%)" required span={3} error={field('middleman_commission_percent')}>
+                      <FormField id="od-commission-percent" label="Percentage (%)" required span={4} error={field('middleman_commission_percent')}>
                         <input id="od-commission-percent" type="number" inputMode="decimal" min="0.001" max="100" step="0.001" className="pi-form-input"
                           value={form.middleman_commission_percent} disabled={saving}
                           aria-required="true" aria-invalid={field('middleman_commission_percent') ? true : undefined}

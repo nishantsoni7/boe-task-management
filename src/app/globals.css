@@ -10105,3 +10105,132 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 .boe-row-icon--delete:hover, .boe-row-icon--delete:focus-visible { background: #FBE9EC; color: #B42332; }
 @media (max-width: 900px) { .fin-stats[style] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
 .boe-row-icon--delete { color: #B42332; }
+
+/* ══ ORDER DETAIL — NOTION PASS (2026-10) ══════════════════════════════════════
+   One page, a lot of data, and a clear priority, the way a Notion record page
+   reads: the title and its status first; a quiet property panel; then the work
+   in two columns — the record (documents, products, activity) on the left and
+   a 340–360px rail on the right that holds the short, glanceable things
+   (Fabric & Finish, Notes; then Payment and the Commercial working).
+
+   Every rule here OVERRIDES an earlier one by cascade order, so the original
+   blocks above (which tests read by first occurrence) are untouched. */
+
+/* The page is centred and capped, so a wide monitor gets even margins instead
+   of an empty band on the right. */
+.order-detail-page { width: 100%; max-width: 1440px; margin: 0 auto; gap: 16px; }
+
+/* Title: the order number as a page title, not a shout. */
+.order-command-title { font-size: 28px; text-transform: none; letter-spacing: -0.015em; }
+.order-status-pill { font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: none; padding: 3px 11px; }
+
+/* Every surface: white, a hairline, 12px corners — one family of cards. */
+.order-facts, .order-docs, .order-ff, .order-commercial, .order-notes, .order-activity {
+  border-color: #ECE7E0;
+  border-radius: 12px;
+}
+.order-products > div, .order-lower-main > div > div[style], .order-lower-aside-inner > div[style] {
+  border-radius: 12px !important;
+  border-color: #ECE7E0 !important;
+}
+
+/* The property panel: small grey group captions, muted labels on the left,
+   values on the right, hairline rows — a Notion property list in three
+   columns. */
+.order-sum-group { padding: 14px 20px 14px; border-left-color: #F1EEE9; }
+.order-sum-group-head {
+  margin: 0 0 6px; padding-bottom: 0; border-bottom: 0;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8F9392;
+}
+.order-sum-row { padding: 7px 0; }
+.order-sum-row + .order-sum-row { border-top-color: #F3F0EB; }
+.order-sum-label { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-sum-value { font-size: 14px; color: #303536; }
+
+/* ── Documents with a rail ──
+   Documents take the wide column; Fabric & Finish and Notes stack in the rail
+   beside it, where two short statuses and a paragraph belong. */
+.order-docs-row {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-areas: 'docs ff' 'docs notes' 'docs .';
+  grid-template-rows: auto auto 1fr;
+  gap: 16px;
+}
+.order-docs-row > .order-docs { grid-area: docs; }
+.order-docs-row > .order-ff { grid-area: ff; }
+.order-docs-row > .order-notes { grid-area: notes; }
+.order-docs-row > :not(.order-docs):not(.order-ff):not(.order-notes) { grid-column: 1 / -1; }
+
+/* Fabric & Finish as a rail card: title, one status per line, the action. */
+.order-docs-row > .order-ff { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; }
+.order-docs-row .order-ff-title { font-size: 14px; font-weight: 600; }
+.order-docs-row .order-ff-items { flex-direction: column; gap: 10px; }
+.order-docs-row .order-ff-item { justify-content: space-between; gap: 12px; }
+.order-docs-row .order-ff-label { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-docs-row .order-ff-value { justify-content: flex-end; text-align: right; }
+.order-docs-row .order-ff-end { margin-left: 0; padding-top: 10px; border-top: 1px solid #F3F0EB; }
+.order-docs-row .order-ff-end .order-status-note { max-width: none; text-align: left; }
+.order-docs-row .order-ff-end .order-status-action { width: 100%; justify-content: center; }
+
+/* Notes as a rail card. */
+.order-docs-row > .order-notes { padding: 14px 16px; }
+.order-notes-head { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: #8F9392; margin-bottom: 6px; }
+.order-notes-body { font-size: 13px; color: #303536; line-height: 1.6; }
+
+/* ── The lower workspace: the record left, the money right ── */
+.order-lower { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 16px; align-items: start; }
+.order-lower-main { gap: 16px; }
+.order-lower-aside-inner {
+  position: static; max-height: none; overflow: visible;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.order-commercial { padding: 14px 16px; }
+
+@media (max-width: 1100px) {
+  .order-docs-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'ff' 'notes' 'docs';
+    grid-template-rows: auto;
+  }
+  .order-lower { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ══ PI FORMS — NOTION PASS (2026-10) ═════════════════════════════════════════
+   Internal order details and the other PI forms: quiet inputs on white with a
+   hairline, one label style (13px, medium, muted), options that read as a
+   neutral segmented choice, and a follow-up set off by a hairline rather than
+   a coloured bar. Later than the original PI FORM rules, so it overrides them
+   by cascade order and leaves those rules (read by tests) as they are. */
+.pi-form-grid { gap: 16px 20px; }
+.pi-form-label { font-size: 13px; font-weight: 500; color: #4C5352; }
+.pi-form-choice-group legend { font-size: 13px; font-weight: 500; color: #4C5352; }
+.pi-form-input {
+  height: 38px;
+  border-color: #E4DED7;
+  background: #FFFFFF;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.pi-form-input:hover:not(:disabled) { border-color: #CFC8BF; }
+.pi-form-input:focus-visible { border-color: #B9472E; box-shadow: 0 0 0 3px rgba(185,71,46,0.14); outline: none !important; }
+textarea.pi-form-input { height: auto; }
+.pi-form-choice {
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 14px 0 10px;
+  border-color: #E4DED7;
+  font-size: 13.5px;
+}
+.pi-form-choice:hover { border-color: #CFC8BF; }
+.pi-form-choice[data-checked='true'] { border-color: #303536; background: #F3F0EB; font-weight: 500; }
+.pi-form-followup { padding: 4px 0 4px 18px; border-left: 2px solid #E4DED7; }
+.pi-form-footer { border-top-color: #ECE7E0; }
+.pi-section-action--locked { opacity: 0.55; cursor: not-allowed; }
+
+/* The read view of Internal order details: softer rules and one label style. */
+.pi-od-cell { border-left-color: #ECE7E0; }
+.pi-od-cell:nth-child(n + 5) { border-top-color: #ECE7E0; }
+.pi-od-cell dt { font-size: 13px; font-weight: 500; color: #686D6C; }
+.pi-od-cell dd { font-size: 14px; color: #303536; }
+@container (max-width: 880px) {
+  .pi-od-cell:nth-child(n + 3) { border-top-color: #ECE7E0; }
+}

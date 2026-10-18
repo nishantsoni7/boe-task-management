@@ -2994,18 +2994,6 @@ export default function OrderDetailPage() {
           ) : undefined}
         />
 
-        {/* ── Notes ──
-            OPERATIONAL CONTENT, and the one thing on Record Information that
-            was never metadata: somebody typed it about this Order for somebody
-            else to read. It keeps its own quiet block rather than following
-            that section out. */}
-        {order.notes && (
-          <section className="order-notes" aria-label="Order notes">
-            <div className="order-notes-head">Notes</div>
-            <div className="order-notes-body">{order.notes}</div>
-          </section>
-        )}
-
         {/* ══ 3. FABRIC & FINISH, THEN DOCUMENTS ══
             BOTH FULL WIDTH, STACKED. They used to share a two-thirds / one-third
             row: Fabric & Finish was a short card beside a tall one, and the
@@ -3034,6 +3022,18 @@ export default function OrderDetailPage() {
             onViewEvidence={path => { void viewEvidence(path) }}
             busyEvidence={proofBusy}
           />
+          {/* ── Notes ──
+              OPERATIONAL CONTENT, and the one thing on Record Information that
+              was never metadata: somebody typed it about this Order for somebody
+              else to read. It keeps its own quiet block rather than following
+              that section out. */}
+          {order.notes && (
+            <section className="order-notes" aria-label="Order notes">
+              <div className="order-notes-head">Notes</div>
+              <div className="order-notes-body">{order.notes}</div>
+            </section>
+          )}
+
           <OrderDocumentsPanel
             mainPi={mainPi}
             clientPo={clientPo}
@@ -3153,105 +3153,6 @@ export default function OrderDetailPage() {
             place on the page any of these figures appear. */}
         <div className="order-lower">
         <div className="order-lower-main">
-
-        {/* ══ 5. PAYMENT ══
-            THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
-
-            IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
-            blocks, a bar, a legend naming the bar's three shares, a grid of
-            three more captioned figures — one of which was the order value the
-            headline had just stated and another the sum of the two metrics —
-            and, underneath all of it, a permanently open table of every payment
-            with a paragraph explaining the table. The same rupees were on the
-            screen up to three times.
-
-            WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
-            verified (the headline, and the Verified button); how much is with
-            Finance (the Awaiting verification button); how much remains (the
-            Balance line); what share that is (the headline percentage). The
-            per-payment rows are behind the two buttons, which is where somebody
-            who wants them goes and where nobody else has to scroll past them.
-
-            EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
-            percentage, no status rule and no allocation rule changed here. */}
-        <PiCard>
-          <PiCardHeader
-            title={PAYMENT_SECTION_TITLE}
-            style={SECTION_HEADER_STYLE}
-            right={recordsReady ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                {/* ── Add payment ──
-                    A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
-                    opens record_payment_with_allocations’ one flow, seeded with
-                    this Order, and this page contains no payment form, no
-                    validation and no write of its own.
-
-                    DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
-                    button on — finance.allocate with module entry — plus the
-                    Order not being cancelled, which the RPC refuses anyway. A
-                    reader without it is offered no control at all, not a
-                    disabled one: the RPC would refuse them and a dead button
-                    only asks them to find that out.
-
-                    UNCHANGED IN THIS PASS: the same gate, the same label, the
-                    same modal, the same refresh. Only the payment COUNT that
-                    used to sit beside it has gone — each figure now states its
-                    own count on its own button. */}
-                {mayRecordPayment && (
-                  <button
-                    type="button"
-                    onClick={() => setRecordingPayment(true)}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
-                  >
-                    {ADD_PAYMENT_ACTION_LABEL}
-                  </button>
-                )}
-              </div>
-            ) : undefined}
-          />
-          <div style={{ padding: '11px 16px 13px' }}>
-            {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
-                names the payment and says plainly that verification has not
-                happened — recording money is not the same as its having
-                arrived, and this page must not let the two read alike. */}
-            {paymentNotice && (
-              <div className="order-pay-notice" role="status">
-                <span>{paymentNotice}</span>
-                <button
-                  type="button"
-                  onClick={() => setPaymentNotice(null)}
-                  aria-label="Dismiss"
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            <PaymentSummaryFigures
-              finance={finance}
-              loaded={recordsReady}
-              onOpenList={setPaymentList}
-            />
-            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
-                with the rest of the payment position, and nowhere above. */}
-            <AdvanceGatePanel
-              readiness={advance}
-              versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
-              isAdmin={mayApproveBelowAdvance}
-              approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
-              formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
-              onApprove={async reason => {
-                const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
-                if (!error) await reloadOrderRow()
-                return { error }
-              }}
-            />
-          </div>
-        </PiCard>
 
         {/* ══ ORDER RECORDS WAS HERE, AND EVERY FACT IT HELD IS STILL ON THIS
             PAGE. It carried one thing: the source PI, named, with a Download.
@@ -3382,6 +3283,109 @@ export default function OrderDetailPage() {
             literally the string the approved PI screen prints. */}
         <aside className="order-lower-aside" aria-label={ORDER_COMMERCIAL_TITLE}>
           <div className="order-lower-aside-inner">
+            {/* NOTION PASS (2026-10): THE MONEY COLUMN. Payment sits in the right
+                rail above the Commercial breakdown, so the right column is "the
+                money" and the left is the record; the rail no longer leaves a
+                tall empty column beside the activity list. */}
+        {/* ══ 5. PAYMENT ══
+            THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
+
+            IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
+            blocks, a bar, a legend naming the bar's three shares, a grid of
+            three more captioned figures — one of which was the order value the
+            headline had just stated and another the sum of the two metrics —
+            and, underneath all of it, a permanently open table of every payment
+            with a paragraph explaining the table. The same rupees were on the
+            screen up to three times.
+
+            WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
+            verified (the headline, and the Verified button); how much is with
+            Finance (the Awaiting verification button); how much remains (the
+            Balance line); what share that is (the headline percentage). The
+            per-payment rows are behind the two buttons, which is where somebody
+            who wants them goes and where nobody else has to scroll past them.
+
+            EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
+            percentage, no status rule and no allocation rule changed here. */}
+        <PiCard>
+          <PiCardHeader
+            title={PAYMENT_SECTION_TITLE}
+            style={SECTION_HEADER_STYLE}
+            right={recordsReady ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* ── Add payment ──
+                    A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
+                    opens record_payment_with_allocations’ one flow, seeded with
+                    this Order, and this page contains no payment form, no
+                    validation and no write of its own.
+
+                    DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
+                    button on — finance.allocate with module entry — plus the
+                    Order not being cancelled, which the RPC refuses anyway. A
+                    reader without it is offered no control at all, not a
+                    disabled one: the RPC would refuse them and a dead button
+                    only asks them to find that out.
+
+                    UNCHANGED IN THIS PASS: the same gate, the same label, the
+                    same modal, the same refresh. Only the payment COUNT that
+                    used to sit beside it has gone — each figure now states its
+                    own count on its own button. */}
+                {mayRecordPayment && (
+                  <button
+                    type="button"
+                    onClick={() => setRecordingPayment(true)}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
+                  >
+                    {ADD_PAYMENT_ACTION_LABEL}
+                  </button>
+                )}
+              </div>
+            ) : undefined}
+          />
+          <div style={{ padding: '11px 16px 13px' }}>
+            {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
+                names the payment and says plainly that verification has not
+                happened — recording money is not the same as its having
+                arrived, and this page must not let the two read alike. */}
+            {paymentNotice && (
+              <div className="order-pay-notice" role="status">
+                <span>{paymentNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setPaymentNotice(null)}
+                  aria-label="Dismiss"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            <PaymentSummaryFigures
+              finance={finance}
+              loaded={recordsReady}
+              onOpenList={setPaymentList}
+            />
+            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
+                with the rest of the payment position, and nowhere above. */}
+            <AdvanceGatePanel
+              readiness={advance}
+              versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
+              isAdmin={mayApproveBelowAdvance}
+              approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
+              formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
+              onApprove={async reason => {
+                const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
+                if (!error) await reloadOrderRow()
+                return { error }
+              }}
+            />
+          </div>
+        </PiCard>
+
             <div className="order-commercial">
               <OrderCommercialBreakdown lines={commercialLines} embedded />
               {!handoffReady && order.source_order_submission_id && (
