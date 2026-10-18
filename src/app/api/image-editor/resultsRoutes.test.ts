@@ -178,7 +178,10 @@ describe('the cleanup endpoint', () => {
     // This file did not exist before the sweep needed a schedule. A `functions`
     // block, a build override or a header rule smuggled in here would change how
     // every other route in the application is deployed.
-    assert.deepEqual(Object.keys(JSON.parse(VERCEL)).sort(), ['$schema', 'crons'])
+    // `regions` is deliberate (#321): functions run in hnd1, next to the database.
+    const parsed = JSON.parse(VERCEL)
+    assert.deepEqual(Object.keys(parsed).sort(), ['$schema', 'crons', 'regions'])
+    assert.deepEqual(parsed.regions, ['hnd1'])
   })
 })
 

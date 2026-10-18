@@ -24,6 +24,7 @@ import {
   failedRules,
   stripSqlComments,
 } from './healthCheckMigrationAudit'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 // A migration shaped like the one this change calls for: same signature, same
 // language and return type, no security clause (production is INVOKER, which
@@ -477,7 +478,7 @@ describe('the migration is placed correctly', () => {
     // participantAndOrderTotalSecurity.test.ts and deliberately not in FROZEN.
     // This assertion is exact, so a file cannot appear after 115 without being
     // named here.
-    assert.deepEqual(newer, [
+    assertNamedSuccessors(newer, [
       '20261016000000_notifications_link_activity_log.sql',
       '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',

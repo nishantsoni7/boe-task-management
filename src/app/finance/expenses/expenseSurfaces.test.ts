@@ -3034,6 +3034,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // payment mode, Today/Yesterday chips, a rupee prefix, a closed-until-wanted proof section, a
   // live summary and a Send button that names what is missing. Every rule is unchanged and still
   // decided by submit_payment_request; the form's own source is held by paymentRequestForm.test.ts.
+  // Test-baseline repair (2026-10-18): live-DB suites skip when no database is configured, stale
+  // fixtures brought in line with shipped behaviour. No production behaviour changed.
+  const ALLOWED_TEST_BASELINE_REPAIR = new Set([
+    'src/app/api/image-editor/resultsRoutes.test.ts',
+    'src/app/api/notifications/routeBehaviour.test.ts',
+    'src/app/api/payroll/delete/route.test.ts',
+    'src/app/api/payroll/periods/route.test.ts',
+    'src/app/api/payroll/unlock/route.test.ts',
+    'src/lib/security/liveDbTestSupport.ts',
+    'src/lib/testing/migrationOrder.ts',
+  ])
+
   const ALLOWED_PAYMENT_FORM_REDESIGN = new Set([
     'src/app/finance/components/AmountInput.tsx',
     'src/app/finance/components/CustodyTrailFields.tsx',
@@ -3300,7 +3312,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f) &&
     !ALLOWED_EXHIBITION_LEADS.has(f) &&
     !ALLOWED_INVENTORY.has(f) &&
-    !ALLOWED_PAYMENT_FORM_REDESIGN.has(f)
+    !ALLOWED_PAYMENT_FORM_REDESIGN.has(f) &&
+    !ALLOWED_TEST_BASELINE_REPAIR.has(f)
 
   test('the Dashboard View As allowance is EXACTLY its two named files', () => {
     assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
@@ -3774,7 +3787,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file)
         || ALLOWED_EXHIBITION_LEADS.has(file)
         || ALLOWED_INVENTORY.has(file)
-        || ALLOWED_PAYMENT_FORM_REDESIGN.has(file),
+        || ALLOWED_PAYMENT_FORM_REDESIGN.has(file)
+        || ALLOWED_TEST_BASELINE_REPAIR.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

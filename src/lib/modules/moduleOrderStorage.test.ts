@@ -33,6 +33,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PERSONAL_MODULE_ORDER_TABLE } from './moduleOrder'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 
@@ -609,7 +610,7 @@ describe('the database half of this verification', () => {
     // nothing that predated it was renumbered past it: every file before it on
     // disk is earlier, and the only later ones are the named successors.
     const later = all.filter(f => f > '20261228000000_personal_module_order.sql')
-    assert.deepEqual(later, [
+    assertNamedSuccessors(later, [
       // The PI-to-operations handoff: two new tables, one trigger on
       // order_pi_versions and two RPCs. It reaches nothing here.
       '20261229000000_order_operations_handoff.sql',

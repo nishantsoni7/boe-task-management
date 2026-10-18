@@ -33,6 +33,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { TEST_CARD_TRANSITIONS } from './status'
 import { TEST_CARD_STATUSES, TEST_CATEGORIES } from './types'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const MIGRATIONS = join(ROOT, 'supabase/migrations')
@@ -62,7 +63,7 @@ describe('the migration is one file, correctly sequenced', () => {
     // appearing behind this one still fails here and still has to be accounted
     // for on purpose. That is the property the original "is the head"
     // assertion was really defending.
-    assert.deepEqual(all.slice(all.indexOf(FILE) + 1), [
+    assertNamedSuccessors(all.slice(all.indexOf(FILE) + 1), [
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
       // The production seed for THIS module. It must sit behind the schema —

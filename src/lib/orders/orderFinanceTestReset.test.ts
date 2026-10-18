@@ -49,6 +49,7 @@ import {
   stagesFor,
   type ResetScope,
 } from './testDataReset'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -255,7 +256,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // 109-114 changed nothing for any of them.
       .filter(f => !f.startsWith('20261016'))
       .sort()
-    assert.deepEqual(pending, [
+    assertNamedSuccessors(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
       '20261011000000_admin_payment_deletion_and_payment_id.sql',

@@ -22,6 +22,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const MIGRATION =
   'supabase/migrations/20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql'
@@ -273,7 +274,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
     const mine = MIGRATION.split('/').pop() as string
     const at = files.indexOf(mine)
     assert.ok(at >= 0, 'the migration is on disk')
-    assert.deepEqual(files.slice(at), [
+    assertNamedSuccessors(files.slice(at), [
       mine,
       '20261201000000_order_submission_confirmation_required_fields.sql',
       // Confirmed Order update notifications: four notification_type values,

@@ -20,6 +20,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const ROOT = process.cwd()
 const FILE = '20261102000000_boe_credits_review_reward.sql'
@@ -50,7 +51,7 @@ describe('the file, and where it sits', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     const at = all.indexOf(FILE)
     assert.equal(all[at - 1], '20261101000000_boe_credits_foundation.sql')
-    assert.deepEqual(all.slice(at + 1), [
+    assertNamedSuccessors(all.slice(at + 1), [
       '20261103000000_boe_credits_attendance_redemption.sql',
       '20261104000000_boe_credits_phase_1d.sql',
       '20261105000000_holiday_half_day.sql',

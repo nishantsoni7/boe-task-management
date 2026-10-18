@@ -6,6 +6,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 // CRLF matters on Windows: `.` does not match \r, so comment stripping would fail.
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
@@ -80,7 +81,7 @@ describe('the migration', () => {
   test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
     assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
-    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+    assertNamedSuccessors(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
       // A payment's typed reference survives verification: a trigger on
       // finance_payment_requests, a carry-forward of unverified rows, and
       // pi_submission_payment_summary. It touches nothing Announcements creates.

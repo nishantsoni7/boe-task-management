@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
+import { assertNamedSuccessors } from '@/lib/testing/migrationOrder'
 
 const HOOK = fs.readFileSync('src/hooks/queries/useTopTasks.ts', 'utf8')
 const MIGRATION_FILE = '20261018000000_unpin_tasks_submitted_for_approval.sql'
@@ -67,7 +68,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
   const files = fs.readdirSync('supabase/migrations').filter(f => /^\d{14}_/.test(f)).sort()
   const at = files.indexOf(MIGRATION_FILE)
   assert.ok(at >= 0, '118 is present')
-  assert.deepEqual(files.slice(at + 1), [
+  assertNamedSuccessors(files.slice(at + 1), [
     '20261020000000_register_image_editor_module.sql',
     '20261021000000_seed_customer_review_test_cards.sql',
     '20261022000000_image_editor_result_history.sql',
