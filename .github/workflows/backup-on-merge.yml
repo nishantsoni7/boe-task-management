@@ -1,0 +1,74 @@
+name: Backup on merge
+
+# Every push to main (i.e. every merge) and a weekly schedule store a complete, verified
+# `git bundle` of ALL branches/tags as a workflow artifact (kept 90 days, the GitHub maximum).
+# Optionally also mirrors every branch and tag to a SECOND, PRIVATE repository so that deleting
+# or losing this repository does not lose the code. See docs/app-context/03_BACKUP_AND_RECOVERY.md.
+#
+# Optional mirror setup (one time, owner only):
+#   1. Create an empty PRIVATE repo, e.g. nishantsoni7/boe-task-management-mirror.
+#   2. Create a fine-grained token with "Contents: read & write" on ONLY that repo.
+#   3. In this repo: Settings > Secrets and variables > Actions:
+#        secret   BACKUP_MIRROR_TOKEN = <token>
+#        variable BACKUP_MIRROR_REPO  = nishantsoni7/boe-task-management-mirror
+# Nothing here touches the database, Vercel, or any deployment.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 2 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-on-merge
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch every branch
+        run: git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+      - name: Create and verify bundle
+        run: |
+          set -euo pipefail
+          SHORT=$(git rev-parse --short HEAD)
+          git bundle create "boe-code-${SHORT}.bundle" --all
+          git bundle verify "boe-code-${SHORT}.bundle"
+          sha256sum "boe-code-${SHORT}.bundle" | tee "boe-code-${SHORT}.bundle.sha256"
+          echo "SHORT=${SHORT}" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boe-code-bundle-${{ env.SHORT }}
+          path: |
+            boe-code-*.bundle
+            boe-code-*.bundle.sha256
+          retention-days: 90
+
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ vars.BACKUP_MIRROR_REPO != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push all branches and tags to the private mirror
+        env:
+          MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
+          MIRROR_REPO: ${{ vars.BACKUP_MIRROR_REPO }}
+        run: |
+          set -euo pipefail
+          test -n "$MIRROR_TOKEN" || { echo "BACKUP_MIRROR_TOKEN secret is not set"; exit 1; }
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          URL="https://x-access-token:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git"
+          git push "$URL" '+refs/remotes/origin/*:refs/heads/*' --force
+          git push "$URL" --tags --force
