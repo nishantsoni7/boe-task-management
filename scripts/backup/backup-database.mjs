@@ -76,7 +76,11 @@ for (const t of tables) {
     const sha = save(t, Buffer.from(lines.join('\n') + (lines.length ? '\n' : '')))
     manifest.tables[t] = { rows: lines.length, reportedCount: Number.isFinite(total) ? total : null, sha256OfGz: sha, hasPk: pk.length > 0 }
     if (Number.isFinite(total) && total !== lines.length) manifest.errors.push(`${t}: exported ${lines.length} but server reports ${total}`)
-  } catch (e) { manifest.errors.push(`${t}: ${e.message}`); manifest.tables[t] = { error: e.message } }
+  } catch (e) {
+    // 42501 = the service role is deliberately not granted SELECT. Not a failure of the backup; listed so nobody assumes it is covered.
+    if (/HTTP 403/.test(e.message) && /42501/.test(e.message)) { (manifest.unreadable ??= []).push(t); manifest.tables[t] = { unreadable: true } }
+    else { manifest.errors.push(`${t}: ${e.message}`); manifest.tables[t] = { error: e.message } }
+  }
 }
 
 // 3 ── auth users (profile data only; Supabase never exposes password hashes) ──
@@ -136,6 +140,7 @@ manifest.totalRows = Object.values(manifest.tables).reduce((n, t) => n + (t.rows
 fs.writeFileSync(path.join(outDir, 'MANIFEST.json'), JSON.stringify(manifest, null, 2))
 prune(path.join(BACKUP_ROOT, 'database'), /^\d/, 14)
 const ok = manifest.errors.length === 0 && Object.keys(manifest.tables).length > 0
-writeStatus('database', { ok, snapshot: ts, tables: Object.keys(manifest.tables).length, totalRows: manifest.totalRows, errors: manifest.errors.length, project: projectRef })
+writeStatus('database', { ok, snapshot: ts, tables: Object.keys(manifest.tables).length, totalRows: manifest.totalRows, errors: manifest.errors.length, unreadable: manifest.unreadable ?? [], project: projectRef })
+if (manifest.unreadable?.length) log(`NOT COVERED (permission denied for the service role): ${manifest.unreadable.join(', ')} - rely on Supabase platform backups for these`)
 log(`database backup ${ok ? 'OK' : 'FINISHED WITH ' + manifest.errors.length + ' ERROR(S)'} — ${Object.keys(manifest.tables).length} tables, ${manifest.totalRows} rows -> ${outDir}`)
 if (!ok) { console.error(manifest.errors.slice(0, 15).join('\n')); process.exitCode = 1 }
