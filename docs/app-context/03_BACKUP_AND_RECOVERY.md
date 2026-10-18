@@ -30,7 +30,7 @@ All local backups live in `%USERPROFILE%\BOE-Development\backups\boe-task-manage
 | L6 database | `database/<UTC>/` | `backup-database.mjs` | every exposed table as `*.jsonl.gz.enc`, `_auth_users`, `rest-openapi.json` (schema snapshot), `MANIFEST.json` (row counts + sha256 + per-table count cross-check) | newest 14 |
 | L7 storage | `storage/<bucket>/…` | `backup-database.mjs` | byte-for-byte copy of every bucket object, incremental by size | cumulative |
 | L8 GitHub bundle | Actions artifact `boe-code-bundle-<sha>` | **every push to `main`** + weekly | verified bundle of all branches | 90 days |
-| L9 private mirror repo (optional) | second private GitHub repo | every push to `main` | all branches + tags | forever |
+| L9 private mirror repo | `nishantsoni7/boe-task-management-mirror` (private) — **ACTIVE since 2026-10-18** | every push to `main` + weekly | all 241 branches + tags (verified equal to the source) | forever |
 | L10 second copy (recommended) | `BOE_BACKUP_COPY_TO` folder | `backup-all.mjs` | newest bundle, DB snapshot, secrets, memory, git mirror | per run |
 | L11 Supabase platform backups | Supabase dashboard → Database → Backups | provider, daily ~21:55 UTC | **Pro plan: 7 daily PHYSICAL backups confirmed 2026-10-18** (full database incl. the 5 tables the export cannot read; storage objects NOT included). **PITR deliberately NOT enabled (owner decision, cost)** | 7 days |
 
@@ -118,7 +118,7 @@ Any one of: the L10 second copy, a GitHub artifact + password manager, or the pr
 - [ ] Copy `backups\.keys\backup-passphrase.txt` to the password manager (and every production secret value: Supabase keys, `CRON_SECRET`, `FAL_KEY`, `ANTHROPIC_API_KEY`, Minop token, Vercel/GitHub account recovery codes).
 - [x] Supabase plan confirmed Pro with 7 daily backups (2026-10-18). PITR not enabled by choice; recovery-point is therefore up to ~24 h for database data.
 - [x] Second copy: external drive `D:BOE-Backups` (set per run via `BOE_BACKUP_COPY_TO`; the daily task does it automatically when plugged in). Original note: choose a second location for `BOE_BACKUP_COPY_TO` (external drive or a cloud-synced folder **outside the Desktop**) and run a copy.
-- [ ] Optional: create the private mirror repo + token and set `BACKUP_MIRROR_REPO` / `BACKUP_MIRROR_TOKEN` (see header of the workflow file).
+- [x] Private mirror repo created; secret `BACKUP_MIRROR_TOKEN` (fine-grained token `boe-mirror`, ONLY the mirror repo, Contents + Workflows read/write, **expires 2027-10-17 — renew before then**, then update the secret) and variable `BACKUP_MIRROR_REPO` set. If the mirror job ever fails with "Repository not found", check that `actions/checkout` still has `persist-credentials: false` in the mirror job.
 - [ ] Record Vercel project settings that are not in git: team/project name, domain(s), DNS provider, Node version, build command overrides, env var list with Production/Preview scoping (names only in docs).
 - [ ] Record GitHub ruleset "Protect main" JSON: `gh api repos/nishantsoni7/boe-task-management/rulesets` → keep a copy in the password manager.
 - [ ] The repository is **public**. Nothing secret may ever be committed; if the owner wants it private, change it in GitHub settings (Vercel's GitHub integration keeps working).
