@@ -26,6 +26,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 import {
   DESTINATION_KIND_LABEL,
   DESTINATION_LOADING,
@@ -375,7 +376,7 @@ describe('every surface reads one definition', () => {
 
   test('both pages resolve their badge through the shared function', () => {
     for (const file of [REQUEST_PAGE, RECEIVED_VIEW]) {
-      assert.ok(read(file).includes('paymentDisplayStateMeta(status, destination)'),
+      assert.ok(readScreenSource(file).includes('paymentDisplayStateMeta(status, destination)'),
         `${file} must decide its badge from the status AND the destination`)
     }
   })

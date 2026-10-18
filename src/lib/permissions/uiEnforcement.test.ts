@@ -24,6 +24,7 @@ import { deriveFinanceCapabilities } from './finance'
 import { deriveOrdersCapabilities } from './orders'
 import { presetAllowedActions } from './levels'
 import type { EffectivePermission } from './types'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -110,7 +111,7 @@ describe('Finance controls ask the capability helper', () => {
 
 describe('Finance ownership rules are unchanged', () => {
   test('editing an unapproved request is still ownership-based', () => {
-    const source = read(FINANCE_PAGE)
+    const source = readScreenSource(FINANCE_PAGE)
     assert.ok(
       source.includes('function canManageRequest(r: PaymentRequest, isAdmin: boolean, userId: string): boolean'),
       'the ownership helper must still exist',

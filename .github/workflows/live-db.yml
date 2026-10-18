@@ -46,6 +46,22 @@ jobs:
           cache: npm
       - if: steps.cfg.outputs.run == 'true'
         run: npm ci --no-audit --no-fund
+      - name: Is the test database's schema stale?
+        if: steps.cfg.outputs.run == 'true'
+        shell: bash
+        run: |
+          # supabase/tests/live-db-schema-version.txt names the newest migration the test
+          # database reflects (the schema was copied from production, not migrated). A newer
+          # migration in the repo may have changed the schema, so a failure below could be
+          # drift, not a defect. This is a WARNING only: an unapplied migration would also
+          # trigger it. To refresh: docs/testing/live-db-test-project.md, then update the file.
+          have=$(cat supabase/tests/live-db-schema-version.txt | tr -d '[:space:]')
+          newest=$(ls supabase/migrations | grep -E '^[0-9]{14}_' | sort | tail -1 | cut -c1-14)
+          if [[ "$newest" > "$have" ]]; then
+            echo "::warning title=Live-DB schema may be stale::Newest migration $newest is newer than the test database's recorded schema $have. If this run fails, re-sync the test database before suspecting a defect."
+          else
+            echo "Test database schema marker ($have) is current."
+          fi
       - name: Live database suites (one at a time - they share fixtures)
         if: steps.cfg.outputs.run == 'true'
         shell: bash

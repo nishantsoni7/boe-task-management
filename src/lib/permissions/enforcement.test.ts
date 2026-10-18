@@ -28,6 +28,7 @@ import {
   isActionEnforced,
   ENFORCEMENT_BADGE_LABEL,
 } from './enforcement'
+import { readScreenSource } from '@/lib/testing/readScreenSource'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -122,7 +123,7 @@ describe('the claims still match the code', () => {
   })
 
   test('Finance view, create and edit are still ownership-based, as claimed', () => {
-    const source = read('src/app/finance/page.tsx')
+    const source = readScreenSource('src/app/finance/page.tsx')
     assert.ok(
       source.includes('return !isApproved(r.status) && (isAdmin || r.submitted_by === userId)'),
       'the ownership rule backs the "still follow record ownership" wording',
