@@ -1,0 +1,40 @@
+# The gate for every pull request: types, lint, tests.
+#
+# Vercel builds the app but never runs the tests, which is how a failing
+# baseline reached main. Make this job ("verify") a REQUIRED status check in the
+# branch protection rules for main so a red run blocks the merge.
+#
+# Runs on Windows because that is where the suite is developed and known green
+# (line endings, path separators). Live-database suites SKIP here (no database is
+# configured): they run in live-db.yml against a disposable project.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A few suites diff against origin/main.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Types
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
