@@ -19,7 +19,6 @@ import { join } from 'node:path'
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
 
 const RECORD = 'src/app/finance/received/RecordSplitPaymentModal.tsx'
-const PARTS = 'src/app/finance/components/PaymentFormParts.tsx'
 
 function editSource(): string {
   const src = read('src/app/finance/page.tsx')
@@ -29,26 +28,8 @@ function editSource(): string {
   return src.slice(from, to)
 }
 
-describe('the shared frame', () => {
-  const parts = read(PARTS)
-  const frame = parts.slice(parts.indexOf('export function FormDialog'), parts.indexOf('export function scrollToFirstProblem'))
-
-  test('a header and a footer that stay, and a body that scrolls', () => {
-    assert.ok(frame.includes("overflowY: 'auto'"))
-    assert.ok(frame.includes('flexShrink: 0'))
-    assert.ok(frame.includes('aria-live="polite"'), 'the summary is announced as it changes')
-  })
-
-  test('it is a modal dialog that fits a narrow screen', () => {
-    assert.ok(frame.includes('role="dialog"') && frame.includes('aria-modal="true"'))
-    assert.ok(/maxWidth: 'calc\(100vw - \d+px\)'/.test(frame))
-  })
-
-  test('the backdrop is inert', () => {
-    const overlay = frame.slice(0, frame.indexOf('role="dialog"'))
-    assert.equal(/onClick=/.test(overlay), false)
-  })
-})
+// The shared frame (FormDialog) and parts are exercised for real in
+// src/app/finance/components/paymentFormParts.dom.test.tsx.
 
 describe('Record Payment', () => {
   const src = read(RECORD)
@@ -134,11 +115,6 @@ describe('Edit Payment', () => {
     assert.ok(src.includes("PAYMENT_ALREADY_APPROVED"))
     assert.ok(src.includes('setStale(true)'))
     assert.ok(src.includes('actions={stale ? ('))
-  })
-
-  test('a retired payment mode is still offered to the row that carries it', () => {
-    const parts = read(PARTS)
-    assert.ok(parts.includes('paymentModeOptionsFor(value)'))
   })
 
   test('the clarification and rejection notices are kept', () => {

@@ -9,8 +9,15 @@ A test that reads a `.tsx` file and asserts that it contains an exact string
 (`source.includes('<PaymentModeHint ...')`) breaks on any restyle or file split without anything having
 gone wrong. Prefer, in this order:
 
-1. **Render it.** `renderToStaticMarkup(createElement(Component, props))` and assert on what appears
-   (see `src/app/finance/received/correctAllocation.render.test.tsx`).
+1. **Run it in a DOM.** `src/lib/testing/domHarness.ts` mounts the real component in jsdom and drives it like a
+   person: `ui.click(ui.button('Record payment'))`, `ui.type(input, '2500')`, `ui.press('Escape')`, then asserts on
+   what is on screen and on what a fake database client was sent. Use it for anything about interaction: a button
+   that must not be greyed out, a problem named after a press, an inert backdrop, one press = one send. Import
+   the harness first in the file. Examples: `src/components/orders/addPiPayment.dom.test.tsx`,
+   `src/app/finance/received/paymentForms.dom.test.tsx`, `src/app/finance/components/paymentFormParts.dom.test.tsx`.
+   After writing one, break the behaviour on purpose and confirm the test fails.
+1b. **Render it to markup.** `renderToStaticMarkup(createElement(Component, props))` is enough for what a screen
+   shows in a given state (see `src/app/finance/received/correctAllocation.render.test.tsx`); it cannot click.
 2. **Test the pure function.** Rules belong in `src/lib/**` where they can be called directly.
 3. **Source text, only for a structural guarantee** that cannot be observed any other way (an RPC name,
    "no browser writes this table"). Keep the string short and stable.

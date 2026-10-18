@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-18 — DOM tests for the payment forms
+- Added `jsdom` (dev dependency) and `src/lib/testing/domHarness.ts`. The payment forms (Add payment on a PI, Allocate Funds, Edit Received Payment, FormDialog and its parts) are now tested by running them in a DOM; the source-text checks they replace are removed. No product code changed. Migrations: none.
+
 ## 2026-10-18 — Big Finance screens split; test-run mechanism for split screens
 - `finance/received/ReceivedPaymentsView.tsx` 3,850 → 1,468 lines and `finance/page.tsx` 3,796 → 946 lines: blocks moved into sibling files, each leaving a `// @split:` marker. No behavior change; exports re-exported from the original files.
 - Tests: `npm test` and `npm run test:file -- <path>` now preload `scripts/testing/screen-source-preload.mjs`, which puts split blocks back whenever a test file reads a screen as text. `scripts/dev/split-block.mjs` performs a split. Guard: `src/lib/testing/screenSplits.test.ts`. Bare `tsx --test` no longer sees the original layout.
