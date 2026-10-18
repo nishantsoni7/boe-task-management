@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
+    "test": "tsx --import ./scripts/testing/screen-source-preload.mjs --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
     "permissions:sync": "tsx scripts/sync-permissions.ts",
-    "permissions:check": "tsx scripts/sync-permissions.ts --check"
+    "permissions:check": "tsx scripts/sync-permissions.ts --check",
+    "test:file": "tsx --import ./scripts/testing/screen-source-preload.mjs --test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
