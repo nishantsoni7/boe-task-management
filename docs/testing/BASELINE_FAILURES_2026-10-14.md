@@ -1,3 +1,7 @@
+> **RESOLVED 2026-10-18** (PRs #327, #328). main now runs 0 failures with no database configured; the
+> database suites skip unless `REQUIRE_LIVE_DB_TESTS=1`, and CI (`verify`) is a required check. This file is a
+> historical record only. See docs/testing/live-db-test-project.md for the database suites.
+
 # Baseline unit-test failures (2026-10-14)
 
 The unit suite has 18 failing tests on **origin/main itself**, before any rebrand change. The rebrand
