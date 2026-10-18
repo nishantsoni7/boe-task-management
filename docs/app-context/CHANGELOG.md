@@ -13,6 +13,9 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
 - Migrations: none.
 
+## 2026-10-18 (evening) — Backup decisions
+- Supabase Pro daily backups confirmed (7 days). PITR declined by the owner (cost). Daily Task Scheduler backup installed (21:30). Passphrase stored in the owner's password manager. Second copy on `D:BOE-Backups`.
+
 ## 2026-10-18 (later) — Backups proven, migrations verified
 - First successful database + storage export (161 relations, 96,108 rows, 21 auth users). Five relations are denied to the service role and are not covered (see `03_BACKUP_AND_RECOVERY.md`). Second copy to an external drive works. Git-hook bug (stray `refs/local/*` in the real repo) fixed in #337.
 - Verified read-only: every migration on main is applied in production; only `20261214000000` (not on main) is absent.
