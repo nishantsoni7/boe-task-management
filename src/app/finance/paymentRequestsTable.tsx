@@ -12,6 +12,7 @@ import { paymentAgainstDisplay, type PaymentDestination } from '@/lib/finance/pa
 import { fmtDate, fmtAmount, canManageRequest, isStaleClarification, type PaymentRequest } from './paymentRequestsModel'
 import { StatusBadge, StaleBadge } from './paymentRequestsAtoms'
 import { PaymentIdChip } from './components/PaymentIdChip'
+import { FinancePerson } from './components/FinanceListParts'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
 //
@@ -29,16 +30,19 @@ import { PaymentIdChip } from './components/PaymentIdChip'
 // ── Payments table ────────────────────────────────────────────────────────────
 
 export const TH_STYLE: React.CSSProperties = {
-  padding: '11px 10px',
+  // Notion-style header (redesign 2026-10): 36px, quiet grey, no fill. The
+  // global table rule still forces sentence case on screen.
+  height: '36px',
+  padding: '0 10px',
   textAlign: 'left',
   fontSize: '12px',
-  fontWeight: 600,
-  color: '#4C5352',
+  fontWeight: 500,
+  color: '#686D6C',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   whiteSpace: 'nowrap',
-  borderBottom: `1px solid ${colors.border}`,
-  background: colors.raised,
+  borderBottom: '1px solid #ECE7E0',
+  background: '#FFFFFF',
 }
 
 // Exported for src/app/finance/paymentRequestsTable.render.test.tsx, which
@@ -109,7 +113,8 @@ export function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '12px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap', verticalAlign: 'middle' }
+  // Height, hairlines and hover are `.fin-table` (globals.css).
+  const TD: React.CSSProperties = { padding: '6px 10px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
   // Money in the salesperson's list: right aligned, tabular digits, two decimals
   // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
   const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }
@@ -118,7 +123,7 @@ export function PaymentsTable({
     // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
     // width the compact 9-column set fits without scrolling (no forced minWidth).
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="fin-table" style={{ tableLayout: 'auto' }}>
         {/* ── WHY A COLGROUP, AND WHY PERCENTAGES ──────────────────────────
             Every cell in this table is `whiteSpace: nowrap`, so with nothing
             declared the browser gave each column its content width and then
@@ -175,7 +180,7 @@ export function PaymentsTable({
                 this one never is, and the ragged left edge it produced sat
                 directly against the blank band above. tabular-nums keeps the
                 digits in vertical register without it. */}
-            <th style={TH_STYLE}>Amount</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
             <th style={TH_STYLE}>Payment Mode</th>
             <th style={TH_STYLE}>Against</th>
@@ -349,9 +354,10 @@ export function PaymentsTable({
                 key={r.id}
                 id={`payment-row-${r.id}`}
                 onClick={() => onRowClick(r)}
-                style={{ cursor: 'pointer', borderLeft: `3px solid ${accentColor}`, background: isHighlighted ? colors.amberTint : undefined }}
-                onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
+                // Status colour now lives in the pill (and its dot), not in a
+                // coloured left edge; hover and highlight are .fin-table's.
+                data-accent={accentColor}
+                className={isHighlighted ? 'is-highlighted' : undefined}
               >
                 {salesView ? (
                   <>
@@ -369,8 +375,8 @@ export function PaymentsTable({
                   <>
                     {idCell}
                     {clientCell}
-                    <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-                      {fmtAmount(r.amount)}
+                    <td style={TD} className="fin-num">
+                      <span className="fin-amount">{fmtAmount(r.amount)}</span>
                     </td>
                     {dateCell}
                     {modeCell}
@@ -380,12 +386,7 @@ export function PaymentsTable({
                       {isStaleClarification(r, cutoff) && <StaleBadge />}
                     </td>
                     <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                      <div
-                        title={r.submitted_by_name ?? undefined}
-                        style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      >
-                        {r.submitted_by_name ?? '—'}
-                      </div>
+                      <FinancePerson name={r.submitted_by_name} />
                     </td>
                     {actionCell}
                   </>

@@ -6,7 +6,8 @@ import { TABLE_CELL_PADDING_X_PX, visibleRowActions } from '@/lib/finance/rowAct
 import { colors } from '@/lib/tokens'
 import { PAYMENT_MODE_LABEL } from '@/lib/finance/paymentEntry'
 import { ALLOCATED_AGAINST_LABEL, ALLOCATION_DETAILS_UNAVAILABLE_TEXT, NOT_ALLOCATED_TEXT, UNALLOCATED_LINE_WORD, allocatedAgainstText, allocationBadgeState, allocationCountLabel, type AllocatedAgainstView } from '@/lib/finance/allocatedAgainst'
-import { CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
+import { ALLOCATED_AGAINST_MIN_PX, CONFIRMED_PAYMENT_COLUMNS, CONFIRMED_ALLOCATION_BADGE, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { PaymentIdChip } from '../components/PaymentIdChip'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './receivedPaymentsRowActions'
@@ -99,13 +100,13 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   //
   // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
   // "Over-allocated" must never wrap inside a table cell.
-  const chip: React.CSSProperties = {
-    display: 'inline-block', padding: '2px 10px', borderRadius: '999px',
-    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '12px', fontWeight: 600, lineHeight: '16px', whiteSpace: 'nowrap',
-  }
+  // REDESIGN 2026-10: a soft pill with a status dot (`.fin-pill`), the same
+  // colour key as the view-bar tabs and the summary cards. No border.
+  void style
+  const chip: React.CSSProperties = { padding: '2px 10px', borderRadius: '999px' }
+  const pillClass = `fin-pill fin-pill--${status}`
 
-  if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
+  if (!onOpen) return <span title={overTitle} className={pillClass} style={chip}>{meta.label}</span>
 
   return (
     <button
@@ -125,7 +126,7 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
         onOpen()
       }}
     >
-      <span style={chip}>{meta.label}</span>
+      <span className={pillClass} style={chip}>{meta.label}</span>
     </button>
   )
 }
@@ -173,11 +174,10 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
       // PLAIN MUTED TEXT, NOT A SECOND CHIP. The row's Allocation Status badge
       // already says "Zero Allocated" in colour; an amber chip here said the
       // same thing again and made every unallocated row shout twice.
-      <span style={{
-        ...small, display: 'inline-block', color: colors.muted,
-        whiteSpace: 'nowrap', alignSelf: 'flex-start',
-      }}>
-        {NOT_ALLOCATED_TEXT}
+      // An empty meter beside it reads as "nothing given a home yet" at a glance.
+      <span className="fin-meter" style={{ ...small, color: colors.muted, alignSelf: 'flex-start' }}>
+        <span className="fin-meter-bar" aria-hidden="true"><span style={{ width: '0%' }} /></span>
+        <span style={{ whiteSpace: 'nowrap' }}>{NOT_ALLOCATED_TEXT}</span>
       </span>
     )
   }
@@ -205,7 +205,7 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         // `contain: inline-size` removes the content from the table's width
         // calculation, the 200px floor keeps every amount readable. Measured:
         // see CONFIRMED_TABLE_MIN_CONTAINER_PX.
-        : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: '200px', contain: 'inline-size' }}
+        : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: `${ALLOCATED_AGAINST_MIN_PX}px`, contain: 'inline-size' }}
     >
       {view.lines.length > 1 && (
         <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -334,76 +334,68 @@ export function ReceivedPaymentsTable({
   }
 
   // 8px a side — TABLE_CELL_PADDING_X_PX, which the column widths and the
-  // Actions arithmetic both assume. Clipped text never happens silently: every
-  // compact cell's widest value was measured into its width.
+  // Actions arithmetic both assume. Everything else about a cell (height,
+  // hairlines, hover) is `.fin-table` in globals.css.
   const TD: React.CSSProperties = {
-    padding: `12px ${TABLE_CELL_PADDING_X_PX}px`, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle',
+    padding: `12px ${TABLE_CELL_PADDING_X_PX}px`,
   }
-  const TH: React.CSSProperties = { ...TH_STYLE, padding: `11px ${TABLE_CELL_PADDING_X_PX}px` }
+  const TH: React.CSSProperties = { padding: `0 ${TABLE_CELL_PADDING_X_PX}px` }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
 
   return (
     <div style={{ width: '100%' }}>
-      {/* FIXED LAYOUT: every compact column has a measured pixel width and
-          Allocated Against takes the rest, so the columns sit where the header
-          says they are whatever the rows contain. */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      {/* FIXED LAYOUT: every compact column has a pixel width and Allocated
+          Against takes the rest, so the columns sit where the header says they
+          are whatever the rows contain. */}
+      <table className="fin-table">
         <thead>
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
               <th key={column.key} style={{ ...TH, ...align(column.align), ...('width' in column ? { width: column.width } : {}) }}>
-                {column.label}
+                {column.key === 'actions' ? <span className="boe-sr-only">{column.label}</span> : column.label}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map(r => {
-            // NO PER-ROW FIGURE COMPUTATION. The exact figures were the
-            // expandable strip's, that strip is gone, and the detail modal
-            // computes them from the allocation ledger when it opens.
+            // NO PER-ROW FIGURE COMPUTATION. The detail modal computes the
+            // figures from the allocation ledger when it opens.
             const isHighlighted = r.id === highlightId
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
+            const mode = PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode
+            const client = customerDisplayName(r.client_name)
             return (
               <tr
                   key={r.id}
                   id={`payment-row-${r.id}`}
                   onClick={() => onView(r)}
-                  style={{ cursor: 'pointer', background: isHighlighted ? colors.amberTint : undefined }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
+                  className={isHighlighted ? 'is-highlighted' : undefined}
                 >
-                  {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
-                      primary identifier now; request_number is retained in the
-                      database but is no longer shown prominently. */}
+                  {/* PAYMENT ID — human_payment_id, never the raw UUID. */}
                   <td style={TD}>
                     <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
                   </td>
 
-                  {/* Left-aligned, with tabular figures kept: the digits still
-                      line up by place value down the column, they simply start
-                      at its left edge beside the Payment ID. */}
-                  <td style={{
-                    ...TD, fontSize: '13.5px', fontWeight: 700,
-                    color: colors.primary, fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {fmtAmount(r.amount)}
+                  {/* WHO PAID. "Not identified" (muted) for a Suspense payment. */}
+                  <td style={TD} title={client}>
+                    <span className="fin-primary-text" style={r.client_name ? undefined : { color: colors.muted, fontWeight: 400 }}>
+                      {client}
+                    </span>
                   </td>
 
-                  {/* THE PAYMENT DATE, not created_at. When the money moved is a
-                      fact about the money; when the row was typed is a fact about
-                      the typing, and reconciling a bank statement needs the first. */}
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                    {fmtDate(r.payment_date)}
+                  {/* RIGHT-ALIGNED, tabular figures: digits line up by place
+                      value down the column. */}
+                  <td style={TD} className="fin-num">
+                    <span className="fin-amount">{fmtAmount(r.amount)}</span>
                   </td>
 
-                  <td
-                    style={{ ...TD, fontSize: '12px', color: colors.secondary }}
-                    title={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
-                  >
-                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                  {/* THE PAYMENT DATE, not created_at — when the money moved —
+                      with the account it arrived in underneath. */}
+                  <td style={TD} title={`${fmtDate(r.payment_date)} · ${mode}`}>
+                    <span className="fin-muted" style={{ display: 'block' }}>{fmtDate(r.payment_date)}</span>
+                    <span className="fin-sub">{mode}</span>
                   </td>
 
                   {/* ALLOCATED AGAINST — every active destination with its

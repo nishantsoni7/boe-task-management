@@ -87,6 +87,19 @@ import { canOfferAllocateFunds } from './receivedPaymentsTable'
 export { ReceivedPaymentsTable, AllocatedAgainstCell } from './receivedPaymentsTable'
 // @split: src/app/finance/received/receivedPaymentsTable.tsx private=TH_STYLE,canOfferAllocateFunds,CONFIRMED_ALLOCATION_TONE_STYLE,ConfirmedAllocationBadge
 
+import { ConfirmedSummaryCards } from './receivedPaymentsSummary'
+import { FinanceTabs, FilterChip, dateChipLabel } from '../components/FinanceListParts'
+import { summarizeConfirmed, type ConfirmedSummary, type ConfirmedSummaryRow } from '@/lib/finance/confirmedSummary'
+import { fetchAllRows } from '@/lib/supabasePaging'
+
+// The view-bar tab names: sentence case, short; the status dot carries colour.
+const CONFIRMED_TAB_LABEL: Record<ConfirmedAllocationFilter, string> = {
+  all: 'All',
+  zero: 'Zero allocated',
+  partial: 'Partially allocated',
+  full: 'Fully allocated',
+  over: 'Over-allocated',
+}
 import { PaymentsToVerifyTable, PaymentsToVerifyCards, ConfirmedPaymentsList } from './receivedPaymentsLists'
 export { ConfirmedPaymentsList, ReceivedPaymentsCards } from './receivedPaymentsLists'
 // @split: src/app/finance/received/receivedPaymentsLists.tsx private=PaymentsToVerifyTable,PaymentsToVerifyCards,ConfirmedListProps
@@ -212,6 +225,12 @@ function ReceivedPaymentsViewInner(
   const setPage = (next: number | ((current: number) => number)) =>
     setPageState({ view, page: typeof next === 'function' ? next(page) : next })
   const [total,          setTotal]          = useState<number | null>(null)
+  // THE SUMMARY CARDS AND TAB COUNTS (Confirmed Payments only): every confirmed
+  // payment this reader may see, bucketed by its complete allocation status.
+  // NULL until known; a failed read leaves the cards out rather than drawing 0s.
+  const [summary,        setSummary]        = useState<ConfirmedSummary | null>(null)
+  const summaryToken   = useRef(0)
+  const lastListKey    = useRef<string | null>(null)
   // How much of each payment on THIS PAGE has been given a home. A second
   // bounded read keyed on the ids already on screen — one query for the page,
   // never one per row. Absent until it lands, and absent is `unknown`, never
@@ -344,9 +363,32 @@ function ReceivedPaymentsViewInner(
    */
   const canViewAllRef = useRef<Promise<boolean>>(Promise.resolve(false))
 
+  // One paged read of amount + complete status over the confirmed statuses,
+  // under the reader's RLS — the same set the list draws from, unfiltered.
+  const loadSummary = async () => {
+    if (surface !== 'confirmed') return
+    const token = ++summaryToken.current
+    const result = await fetchAllRows<ConfirmedSummaryRow & { id: string }>((from, to) =>
+      supabase
+        .from(RECEIVED_PAYMENTS_SOURCE)
+        .select('id, amount, complete_allocation_status')
+        .in('status', PAYMENT_SURFACE_STATUSES.confirmed as unknown as string[])
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: (ConfirmedSummaryRow & { id: string })[] | null; error: { message: string } | null }>,
+    )
+    if (token !== summaryToken.current) return
+    setSummary(result.ok && !result.truncated ? summarizeConfirmed(result.rows) : null)
+  }
+
   const loadRequests = async () => {
     const token = ++loadToken.current
     setListLoading(true)
+    // The summary does not depend on the narrowing, so it is re-read on the
+    // first load and on every REFRESH (same narrowing as last time: the refresh
+    // button, or a re-read after a mutation) — not on every keystroke.
+    const listKey = JSON.stringify(filters)
+    if (lastListKey.current === null || lastListKey.current === listKey) void loadSummary()
+    lastListKey.current = listKey
     // Same approved-only scope as before the split; the linkage predicate is
     // what makes the two pages disjoint. Filtered in the database rather than
     // in the browser so neither page ever holds the other's rows.
@@ -1099,78 +1141,12 @@ function ReceivedPaymentsViewInner(
         </button>
       )}
     >
-      {/* ── Toolbar: everything that NARROWS the list, and nothing else ──
-          One row, in the order a reader reaches for it: search, then when the
-          money arrived, then the way out of a narrowed view. The status tabs
-          and the result count head the list they describe (below), and the one
-          creating action is in the page header — the same arrangement as
-          Confirmed Orders, so both "confirmed" lists read the same way. It
-          wraps rather than overlapping when there is no room, and at 320px each
-          date keeps its own label on its own line. */}
-      <div className="boe-list-toolbar" role="search" aria-label="Filter payments">
-        <label className="boe-list-search">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="search"
-            aria-label="Search payments"
-            placeholder={meta.searchPlaceholder}
-            value={search}
-            onChange={e => applySearch(e.target.value)}
-          />
-          {search && (
-            <button type="button" onClick={() => applySearch('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
-          )}
-        </label>
-
-        {/* ── When the money arrived ──
-            Bounds the list by payment_date, which is the date Finance
-            reconciles against — not created_at, which is when somebody typed it
-            in. Either bound alone is a valid open-ended range, and a pair typed
-            the wrong way round is read as the range between them rather than
-            answered with an empty table. */}
-        <div className="boe-list-daterange" role="group" aria-label="Payment date">
-          <label className="boe-list-date">
-            <span>Paid from</span>
-            <input
-              id="payment-date-from"
-              type="date"
-              className="boe-input"
-              aria-label="Payments on or after"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={e => applyDateFrom(e.target.value)}
-            />
-          </label>
-          <label className="boe-list-date">
-            <span>to</span>
-            <input
-              id="payment-date-to"
-              type="date"
-              className="boe-input"
-              aria-label="Payments on or before"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={e => applyDateTo(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {narrowed && (
-          <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
-            Clear filters
-          </button>
-        )}
-
-        {/* Payments to Verify has no status tabs, so its count closes this row;
-            Confirmed Payments carries it on the tab bar below instead. */}
-        {surface !== 'confirmed' && (
-          <div aria-live="polite" className="boe-list-count" style={{ marginLeft: 'auto' }}>
-            {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed: constrained, page, pages })}
-          </div>
-        )}
-      </div>
+      {/* ── The summary cards (Confirmed Payments) ──
+          How much confirmed money there is and where it stands, at a glance.
+          Each card is also its tab: pressing one narrows the list below. */}
+      {surface === 'confirmed' && (
+        <ConfirmedSummaryCards summary={summary} active={confirmedFilter} onSelect={applyConfirmedFilter} />
+      )}
       {recordNotice && (
         <div
           role="status"
@@ -1192,37 +1168,89 @@ function ReceivedPaymentsViewInner(
         </div>
       )}
 
-      <div className="boe-card" style={{ overflow: 'hidden' }}>
-        {/* ── The allocation-status tabs, heading the list they narrow ──
-            All (default), Zero, Partially, Fully and Over-allocated — read off
-            complete_allocation_status as a real database predicate, never a
-            client-side filter over the page in hand. The size of the WHOLE
-            narrowed set sits at the right of the same bar, from the database's
-            exact count rather than the length of the page in hand. */}
-        {surface === 'confirmed' && (
-          <div className="boe-list-tabbar">
-            <div role="tablist" aria-label="Allocation status" className="boe-list-tabs">
-              {CONFIRMED_ALLOCATION_FILTERS.map(f => {
-                const active = f === confirmedFilter
-                return (
-                  <button
-                    key={f}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className="boe-list-tab"
-                    onClick={() => applyConfirmedFilter(f)}
-                  >
-                    {CONFIRMED_ALLOCATION_FILTER_LABEL[f]}
-                  </button>
-                )
-              })}
-            </div>
-            <div aria-live="polite" className="boe-list-count">
+      <div className="fin-board">
+        {/* ── The view bar: what the list is, and everything that narrows it ──
+            The allocation-status tabs on the left (read off
+            complete_allocation_status as a real database predicate, counted from
+            the summary read), and on the right the search, the "Paid date" chip
+            and the size of the WHOLE narrowed set from the database's exact
+            count. It wraps rather than overlapping when there is no room. */}
+        <div className="fin-viewbar">
+          {surface === 'confirmed' && (
+            <FinanceTabs
+              ariaLabel="Allocation status"
+              active={confirmedFilter}
+              onSelect={applyConfirmedFilter}
+              tabs={CONFIRMED_ALLOCATION_FILTERS.map(f => ({
+                key: f,
+                label: CONFIRMED_TAB_LABEL[f],
+                tone: f === 'all' ? undefined : f,
+                count: summary ? summary[f].count : null,
+              }))}
+            />
+          )}
+          <div className="fin-tools" role="search" aria-label="Filter payments">
+            <label className="boe-list-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                aria-label="Search payments"
+                placeholder={meta.searchPlaceholder}
+                value={search}
+                onChange={e => applySearch(e.target.value)}
+              />
+              {search && (
+                <button type="button" onClick={() => applySearch('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+              )}
+            </label>
+
+            {/* ── When the money arrived ──
+                Bounds the list by payment_date, which is the date Finance
+                reconciles against — not created_at. Either bound alone is a
+                valid open-ended range, and a pair typed the wrong way round is
+                read as the range between them. */}
+            <FilterChip label={dateChipLabel(dateFrom, dateTo, fmtDate)} isSet={!!(dateFrom || dateTo)}>
+              <div className="boe-list-daterange" role="group" aria-label="Payment date">
+                <label className="boe-list-date">
+                  <span>Paid from</span>
+                  <input
+                    id="payment-date-from"
+                    type="date"
+                    className="boe-input"
+                    aria-label="Payments on or after"
+                    value={dateFrom}
+                    max={dateTo || undefined}
+                    onChange={e => applyDateFrom(e.target.value)}
+                  />
+                </label>
+                <label className="boe-list-date">
+                  <span>to</span>
+                  <input
+                    id="payment-date-to"
+                    type="date"
+                    className="boe-input"
+                    aria-label="Payments on or before"
+                    value={dateTo}
+                    min={dateFrom || undefined}
+                    onChange={e => applyDateTo(e.target.value)}
+                  />
+                </label>
+              </div>
+            </FilterChip>
+
+            {narrowed && (
+              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
+                Clear filters
+              </button>
+            )}
+
+            <div aria-live="polite" className="fin-count">
               {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed: constrained, page, pages })}
             </div>
           </div>
-        )}
+        </div>
         {/* Table. A RE-READ KEEPS THE ROWS: the list used to be swapped for
             "Loading…" on every refresh and after every edit, which threw the
             reader back to the top of a page they were working down. The count

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `b0eefcac` — Finance lists: Payment ID chip, single search focus ring (#345)
-- Commits on this branch: 896
+- Commit: `00102017` — Finance lists redesign: roomier rows, pill badges, tab bars, empty states
+- Commits on this branch: 897
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 603   Next.js 16.2.6, React 19.2.4
+- Test files: 604   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `00102017` 2026-10-18 Finance lists redesign: roomier rows, pill badges, tab bars, empty states
 - `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
@@ -38,7 +39,6 @@
 - `e896ee02` 2026-10-17 Send Payment Request: a form that is quick and clear to fill (#324)
 - `f0b6aebf` 2026-10-17 Custody trail: let an outside person be recorded as Handed By (#323)
 - `dff87d0a` 2026-10-17 Task navigation: warm My Tasks from the Dashboard, warm each task page once (#322)
-- `3d2ecbc3` 2026-10-17 Run Vercel functions in hnd1 (Tokyo), next to the Supabase database (#321)
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 38 source, 46 test
+- `src/lib/finance` — 39 source, 47 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 17 test

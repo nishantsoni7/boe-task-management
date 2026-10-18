@@ -148,7 +148,7 @@ describe('1. the required column order', () => {
     assert.ok(cells[1].startsWith('Sharma Furnishings'))      // Client
     assert.ok(cells[3].length > 0)                            // Payment Date
     assert.ok(cells[6].length > 0)                            // Status
-    assert.equal(cells[7], 'Anita Rao')                       // Requested By
+    assert.ok(cells[7].endsWith('Anita Rao'))                 // Requested By (initials + name)
     assert.ok(cells[8].includes('View'))                      // Action
   })
 })
@@ -193,38 +193,41 @@ describe('2. Pending is stated once, in Status', () => {
   })
 })
 
-// ── 3. Amount is left-aligned ────────────────────────────────────────────────
+// ── 3. Amount is right-aligned (redesign 2026-10) ────────────────────────────
+//
+// REVISED. Amount used to read left. In the Notion-style grid every row is a
+// ledger line, so the figures right-align and line up by place value down the
+// column, header and value together (`.fin-num`).
 
-describe('3. Amount reads left, header and value together', () => {
+describe('3. Amount reads right, header and value together', () => {
   const markup = render([row()])
 
-  test('3a. the header carries no right alignment', () => {
+  test('3a. the header is right-aligned', () => {
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
     const th = [...head.matchAll(/<th\b[^>]*>/g)][2][0]
-    assert.equal(/text-align:\s*right/.test(th), false, 'Amount header must not be right-aligned')
+    assert.match(th, /text-align:\s*right/, 'Amount header is right-aligned')
   })
 
-  test('3b. nor does the value cell', () => {
+  test('3b. and so is the value cell', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
     const td = [...body.matchAll(/<td[^>]*>/g)][2][0]
-    assert.equal(/text-align:\s*right/.test(td), false, 'Amount cell must not be right-aligned')
+    assert.match(td, /class="fin-num"/, 'Amount cell carries the right-aligned numeric class')
   })
 
-  test('3c. Action is still right-aligned — it is the only column that should be', () => {
+  test('3c. Amount and Action are the only right-aligned headers', () => {
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
     const ths = [...head.matchAll(/<th\b[^>]*>/g)].map(m => m[0])
-    assert.equal(ths.filter(t => /text-align:\s*right/.test(t)).length, 1)
+    assert.equal(ths.filter(t => /text-align:\s*right/.test(t)).length, 2)
     assert.match(ths[8], /text-align:\s*right/)
   })
 
   test('3d. Indian currency formatting and weight are preserved', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
-    const [open, value] = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][2]
-      .slice(0, 2) as [string, string]
+    const value = [...body.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][2][1]
     // 1,25,000 — lakh grouping, not 125,000.
     assert.match(value, /1,25,000/)
-    assert.match(open, /font-weight:\s*700/)
-    assert.match(open, /font-variant-numeric:\s*tabular-nums/)
+    // Weight and tabular figures come from .fin-amount / .fin-num.
+    assert.match(value, /class="fin-amount"/)
   })
 })
 
@@ -258,7 +261,9 @@ describe('4. the blank band between Client and Amount is closed', () => {
   test('4d. the long-text cells still truncate with the full value on hover', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
     assert.ok(body.includes('title="Sharma Furnishings Pvt Ltd"'), 'client keeps its title')
-    assert.equal([...body.matchAll(/text-overflow:\s*ellipsis/g)].length >= 3, true)
+    assert.equal([...body.matchAll(/text-overflow:\s*ellipsis/g)].length >= 2, true)
+    // Requested By truncates through .fin-person and keeps its full name.
+    assert.ok(body.includes('title="Anita Rao"'), 'requested-by keeps its title')
   })
 })
 

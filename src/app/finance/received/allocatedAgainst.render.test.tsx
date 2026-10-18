@@ -129,8 +129,10 @@ function rowOf(html: string, id: string): string {
 
 describe('desktop: the seven columns', () => {
   test('headers in the required order', () => {
-    const headers = [...desktop.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1])
-    assert.deepEqual(headers, ['Payment ID', 'Amount', 'Received Date', 'Mode', 'Allocated Against', 'Allocation Status', 'Actions'])
+    // REVISED (redesign 2026-10): Client joined the row, the account moved under
+    // the date in Received, and Actions is named for screen readers only.
+    const headers = [...desktop.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(m => m[1].replace(/<[^>]+>/g, ''))
+    assert.deepEqual(headers, ['Payment ID', 'Client', 'Amount', 'Received', 'Allocated against', 'Status', 'Actions'])
   })
 
   test('Initiated By and Approved By are not in any row', () => {
@@ -154,17 +156,16 @@ describe('desktop: the seven columns', () => {
   test('the Allocated Against cell may wrap; no cell forces a sideways scroll', () => {
     assert.ok(!/<table[^>]*min-width/.test(desktop), 'the table sets no minWidth')
     assert.ok(desktop.includes('contain:inline-size'), 'a long name cannot widen the table')
-    assert.ok(desktop.includes('min-width:200px'), 'and the column keeps room for every amount')
-    const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>([^<]*)<\/th>/g)]
-      .map(m => [m[2], /width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
-    // REVISED (usability pass): compact MEASURED pixel widths for the fixed
-    // columns — the old 1% shrink-to-fit crowded them together on the left —
-    // and Allocated Against still takes the rest.
+    assert.ok(desktop.includes('min-width:150px'), 'and the column keeps room for every amount')
+    const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>(.*?)<\/th>/g)]
+      .map(m => [m[2].replace(/<[^>]+>/g, ''), /(?:^|;)width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
+    // REVISED (redesign 2026-10): pixel widths for the fixed columns, and
+    // Allocated Against still takes the rest.
     assert.deepEqual(widths, [
-      ['Payment ID', '80px'], ['Amount', '128px'], ['Received Date', '100px'], ['Mode', '92px'],
-      ['Allocated Against', 'auto'], ['Allocation Status', '156px'], ['Actions', '172px'],
-    ], 'fixed columns have measured widths; Allocated Against takes the rest')
-    assert.ok(desktop.includes('table-layout:fixed'), 'and the table lays out by them')
+      ['Payment ID', '112px'], ['Client', '140px'], ['Amount', '128px'], ['Received', '104px'],
+      ['Allocated against', 'auto'], ['Status', '156px'], ['Actions', '172px'],
+    ], 'fixed columns have pixel widths; Allocated against takes the rest')
+    assert.ok(desktop.includes('class="fin-table"'), 'and the table lays out by them (.fin-table is table-layout: fixed)')
     assert.ok(/<td style="[^"]*white-space:normal/.test(desktop), 'stacked lines are allowed in that one cell')
   })
 })

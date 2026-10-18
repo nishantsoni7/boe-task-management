@@ -209,12 +209,15 @@ describe('the menu escapes the card that clips it', () => {
       'and the unconditional downward placement is gone')
   })
 
-  test('the card still clips its own corners — the fix did not widen overflow', () => {
-    // The container's overflow is load-bearing: it keeps rows from bleeding
-    // past the rounded corners. Solving the menu by loosening it would trade
-    // one visual defect for another.
-    assert.ok(view.includes(`<div className="boe-card" style={{ overflow: 'hidden' }}>`),
-      'the card keeps overflow: hidden')
+  test('the list keeps its rounded corners without clipping what floats over it', () => {
+    // REVISED (redesign 2026-10). The list is now `.fin-board`, whose overflow
+    // is VISIBLE so the "Paid date" panel is never cut off by a short list.
+    // Rows still cannot bleed past the corners: the viewbar and the last row's
+    // outer cells carry the radius themselves. The menu stays portalled.
+    assert.ok(view.includes('<div className="fin-board">'), 'the list is the shared board')
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+    assert.ok(css.includes('.fin-table tbody tr:last-child td:first-child { border-bottom-left-radius: 11px; }'))
+    assert.ok(css.includes('.fin-table tbody tr:last-child td:last-child { border-bottom-right-radius: 11px; }'))
   })
 
   test('nothing was solved by padding the page or hiding actions', () => {
@@ -859,9 +862,11 @@ describe('the primary row shows seven columns and no money detail', () => {
       'Remaining is not a primary column')
   })
 
-  test('but the row still renders the seven that remain, in order', () => {
-    const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
-                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
+  test('but the row still renders its columns, in order', () => {
+    // REVISED (redesign 2026-10): Client is a column again (customerDisplayName,
+    // not <CustomerName>), and the account prints under the date.
+    const order = ['{r.human_payment_id}', '{client}', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
+                   '{mode}', '<AllocatedAgainstCell',
                    '<ConfirmedAllocationBadge', '<PaymentRowActions']
     let cursor = -1
     for (const marker of order) {
@@ -982,8 +987,11 @@ describe('every allocation status opens the payment record', () => {
   test('the status colours are the badge’s own, in both shapes', () => {
     assert.ok(body.includes('const chip: React.CSSProperties'),
       'one chip style serves the inert and the clickable badge')
-    assert.ok(body.includes('background: style.bg') && body.includes('color: style.color'),
-      'the per-status tone is unchanged')
+    // REVISED (redesign 2026-10): the colour is the shared status key,
+    // `.fin-pill--<status>`, the same one the tabs and summary cards use.
+    assert.ok(body.includes('const pillClass = `fin-pill fin-pill--${status}`'),
+      'each status wears its own tone')
+    assert.ok((body.match(/className=\{pillClass\}/g) ?? []).length === 2, 'in both shapes')
   })
 
   test('hover and focus deepen the badge rather than recolouring it', () => {
@@ -1379,7 +1387,8 @@ describe('the allocation status reads as a status, not a button', () => {
     // competing with the figures beside it, in a table whose muted text is 11px
     // and whose cells are 12px.
     const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
-    assert.ok(chip.includes("fontSize: '12px'"), 'smaller than the row’s own text')
+    const pill = css.slice(css.indexOf('.fin-pill {'), css.indexOf('}', css.indexOf('.fin-pill {')))
+    assert.ok(pill.includes('font-size: 12px'), 'smaller than the row’s own text')
     // Redesigned (Finance lists): a pill, 2px/10px, so a status reads as a
     // badge and the row's own figures stay the loudest thing in it.
     assert.ok(chip.includes("padding: '2px 10px'"), 'lightly padded')
@@ -1398,11 +1407,13 @@ describe('the allocation status reads as a status, not a button', () => {
   })
 
   test('every status keeps its own colour, and none wraps', () => {
-    const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
-    assert.ok(chip.includes('background: style.bg'))
-    assert.ok(chip.includes('color: style.color'))
-    assert.ok(chip.includes('border: `1px solid ${style.border}`'))
-    assert.ok(chip.includes("whiteSpace: 'nowrap'"),
+    // REVISED (redesign 2026-10): one CSS rule per status, and the pill itself
+    // never wraps.
+    for (const s of ['zero', 'partial', 'full', 'over']) {
+      assert.ok(css.includes(`.fin-pill--${s}`), `${s} has its own tone`)
+    }
+    const pill = css.slice(css.indexOf('.fin-pill {'), css.indexOf('}', css.indexOf('.fin-pill {')))
+    assert.ok(pill.includes('white-space: nowrap'),
       '"Partially Allocated" must never wrap inside a table cell')
     for (const status of CONFIRMED_ALLOCATION_STATUSES) {
       assert.ok(CONFIRMED_ALLOCATION_BADGE[status], `${status} keeps a badge`)
@@ -1419,19 +1430,16 @@ describe('the allocation status reads as a status, not a button', () => {
   })
 })
 
-// ══ 13. The toolbar ══════════════════════════════════════════════════════════
+// ══ 13. The view bar ═════════════════════════════════════════════════════════
 
-describe('the page has one hierarchy: header action, one row of narrowing, then the list', () => {
-  // REVISED 2026-09-18 (Orders & Finance usability pass). The toolbar used to
-  // carry two groups — narrowing on the left, the count and Record Payment on
-  // the right — under a separate strip of status chips, three rows for one
-  // workflow. Now, as on Confirmed Orders:
-  //   * Record Payment, the one CREATING action, is in the page header, where
-  //     every Orders and Finance page puts its primary action;
-  //   * the toolbar holds only what NARROWS the list, in one wrapping row;
-  //   * the status tabs and the exact result count head the list card.
-  const toolbar = view.slice(view.indexOf('{/* ── Toolbar: everything that NARROWS the list'),
-                             view.indexOf('{recordNotice &&'))
+describe('the page has one hierarchy: header action, summary, then the list with its view bar', () => {
+  // REVISED 2026-10 (Notion-style redesign). The narrowing moved INTO the list:
+  //   * Record Payment, the one CREATING action, stays in the page header;
+  //   * the summary cards sit between the header and the list;
+  //   * the list's view bar holds the status tabs on the left and, on the
+  //     right, the search, the "Paid date" chip and the exact result count.
+  const toolbar = view.slice(view.indexOf('{/* ── The view bar: what the list is'),
+                             view.indexOf('{/* Table. A RE-READ'))
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
   const rule = (selector: string) => {
     const at = css.indexOf(`${selector} {`)
@@ -1445,36 +1453,40 @@ describe('the page has one hierarchy: header action, one row of narrowing, then 
     const to = toolbar.indexOf('payment-date-to')
     assert.ok(search > -1 && from > search && to > from, 'Search, then Paid From, then Paid To')
     assert.ok(!toolbar.includes('RECORD_PAYMENT_ACTION_LABEL'), 'Record Payment is not a filter')
-    assert.ok(toolbar.includes('role="search"'), 'and the row is announced as the search region')
+    assert.ok(toolbar.includes('role="search"'), 'and the tools are announced as the search region')
+    assert.ok(toolbar.includes('<FilterChip label={dateChipLabel(dateFrom, dateTo, fmtDate)}'),
+      'the two dates live behind one "Paid date" chip')
   })
 
   test('Record Payment is the page header\'s action, gated on the capability that records one', () => {
-    const header = view.slice(view.indexOf('    <FinanceLayout'), view.indexOf('{/* ── Toolbar: everything that NARROWS'))
+    const header = view.slice(view.indexOf('    <FinanceLayout'), view.indexOf('{/* ── The summary cards'))
     assert.ok(header.includes('actions={caps.canAllocatePayment && ('),
       'unchanged: Finance module entry plus finance.allocate')
     assert.ok(header.includes('{RECORD_PAYMENT_ACTION_LABEL}'))
     assert.ok(header.includes('className="boe-btn boe-btn-primary"'), 'drawn as the page\'s primary action')
   })
 
-  test('the count heads the list it describes, muted, beside the tabs', () => {
-    const card = view.slice(view.indexOf('{/* ── The allocation-status tabs, heading the list they narrow ──'))
-    const bar = card.slice(0, card.indexOf('{/* Table.'))
-    assert.ok(bar.indexOf('role="tablist"') > -1 && bar.indexOf('resultSummary(') > bar.indexOf('role="tablist"'),
+  test('the count sits in the view bar, after the tabs, muted', () => {
+    assert.ok(toolbar.indexOf('<FinanceTabs') > -1 && toolbar.indexOf('resultSummary(') > toolbar.indexOf('<FinanceTabs'),
       'the tabs, then the size of the whole narrowed set')
-    assert.ok(bar.includes('aria-live="polite"'), 'announced when it changes')
-    assert.ok(rule('.boe-list-count').includes('color: #686D6C'), 'muted — an answer about the list, not an action')
+    assert.ok(toolbar.includes('aria-live="polite"'), 'announced when it changes')
+    assert.ok(rule('.fin-count').includes('color: #8F9392'), 'muted — an answer about the list, not an action')
   })
 
   test('it wraps rather than overlapping when there is no room', () => {
-    assert.ok(rule('.boe-list-toolbar').includes('flex-wrap: wrap'))
-    assert.ok(!/position: absolute/.test(rule('.boe-list-toolbar')), 'nothing is positioned absolutely')
+    // The bare rule, not `.fin-board > .fin-viewbar`, which comes first.
+    const viewbar = css.slice(css.indexOf('\n.fin-viewbar {'))
+    assert.ok(viewbar.slice(0, viewbar.indexOf('}')).includes('flex-wrap: wrap'), 'the view bar wraps')
+    assert.ok(rule('.fin-tools').includes('flex-wrap: wrap'))
     assert.ok(rule('.boe-list-search').includes('max-width: 340px'),
       'the search box takes the slack up to a readable width, not the whole row')
   })
 
-  test('Payments to Verify, which has no tabs, closes the toolbar row with its count', () => {
-    assert.ok(toolbar.includes("surface !== 'confirmed' && ("))
-    assert.ok(toolbar.slice(toolbar.indexOf("surface !== 'confirmed' && (")).includes('resultSummary('))
+  test('Payments to Verify, which has no tabs, still states its count', () => {
+    // The count is in the tools for every surface; only the tabs are Confirmed's.
+    assert.ok(/surface === 'confirmed' && \(\s*<FinanceTabs/.test(toolbar), 'tabs on Confirmed only')
+    const tools = toolbar.slice(toolbar.indexOf('className="fin-tools"'))
+    assert.ok(tools.includes('resultSummary('))
   })
 })
 
@@ -1482,9 +1494,10 @@ describe('the page has one hierarchy: header action, one row of narrowing, then 
 
 describe('the allocation tabs', () => {
   test('all five are still rendered from the shared list', () => {
-    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTERS.map(f => {'))
-    assert.ok(view.includes('role="tablist"') && view.includes('role="tab"'))
-    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTER_LABEL[f]'))
+    assert.ok(view.includes('tabs={CONFIRMED_ALLOCATION_FILTERS.map(f => ({'))
+    const parts = readFileSync(join(process.cwd(), 'src/app/finance/components/FinanceListParts.tsx'), 'utf8')
+    assert.ok(parts.includes('role="tablist"') && parts.includes('role="tab"'))
+    assert.ok(view.includes('label: CONFIRMED_TAB_LABEL[f]'))
     assert.deepEqual([...CONFIRMED_ALLOCATION_FILTERS],
       ['all', ...CONFIRMED_ALLOCATION_STATUSES])
   })
