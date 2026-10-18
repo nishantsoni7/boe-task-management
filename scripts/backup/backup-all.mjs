@@ -30,6 +30,11 @@ if (copyTo) {
     if (dir === 'bundles') fs.cpSync(path.join(BACKUP_ROOT, dir, n + '.sha256'), path.join(dest, dir, n + '.sha256'))
   }
   fs.cpSync(path.join(BACKUP_ROOT, 'git'), path.join(dest, 'git'), { recursive: true })
+  // Uploaded files: cumulative mirror, copied in full (skips files already present with the same size).
+  const sroot = path.join(BACKUP_ROOT, 'storage')
+  if (fs.existsSync(sroot)) {
+    fs.cpSync(sroot, path.join(dest, 'storage'), { recursive: true, filter: (src, dst) => !(fs.existsSync(dst) && fs.statSync(src).isFile() && fs.statSync(dst).size === fs.statSync(src).size) })
+  }
   res.copiedTo = dest
 }
 writeStatus('all', res)
