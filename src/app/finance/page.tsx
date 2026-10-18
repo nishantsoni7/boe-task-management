@@ -730,6 +730,7 @@ function FinancePageInner() {
 
         {/* ── Status navigation ── */}
         <StatusTabs
+          size="roomy"
           tabs={FILTER_TABS.map(t => ({ ...t, count: tabCount[t.key] }))}
           active={activeTab}
           onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
@@ -779,7 +780,7 @@ function FinancePageInner() {
              about the business; "no results for X" is a statement about the
              search, and it offers the way out. Confusing the two sends somebody
              hunting for a record that is merely filtered. */
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
+          <div className="boe-finance-empty" style={{ padding: '56px 20px', textAlign: 'center', color: colors.muted, fontSize: '14px', lineHeight: 1.6 }}>
             {search.trim() ? (
               <>
                 No results for &ldquo;{search.trim()}&rdquo;.

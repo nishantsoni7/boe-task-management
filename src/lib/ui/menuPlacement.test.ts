@@ -607,7 +607,9 @@ describe('the widest possible action group fits the declared Actions width', () 
     assert.ok(rule('.boe-row-more').includes(`width: ${ROW_ACTION_TARGET_PX}px`))
     assert.ok(ROW_ACTION_TARGET_PX >= 28 && ROW_ACTION_TARGET_PX <= 30,
       'a 28-30px trigger: comfortable to hit, still a table row and not a toolbar')
-    assert.ok(view.includes('padding: `7px ${TABLE_CELL_PADDING_X_PX}px`'),
+    // The vertical padding is a design choice (12px rows); only the horizontal
+    // padding feeds the width arithmetic.
+    assert.ok(view.includes('padding: `12px ${TABLE_CELL_PADDING_X_PX}px`'),
       'and the table cells use the padding the arithmetic assumed')
   })
 
@@ -1378,8 +1380,10 @@ describe('the allocation status reads as a status, not a button', () => {
     // and whose cells are 12px.
     const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
     assert.ok(chip.includes("fontSize: '12px'"), 'smaller than the row’s own text')
-    assert.ok(chip.includes("padding: '1px 6px'"), 'and barely padded')
-    assert.ok(chip.includes("borderRadius: '6px'"))
+    // Redesigned (Finance lists): a pill, 2px/10px, so a status reads as a
+    // badge and the row's own figures stay the loudest thing in it.
+    assert.ok(chip.includes("padding: '2px 10px'"), 'lightly padded')
+    assert.ok(chip.includes("borderRadius: '999px'"), 'a pill')
   })
 
   test('but the TARGET did not shrink with it', () => {

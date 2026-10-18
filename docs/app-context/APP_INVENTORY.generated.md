@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d9e5ee83` — Restore rehearsal: repeatable local check of the database export (#344)
-- Commits on this branch: 895
+- Commit: `b0eefcac` — Finance lists: Payment ID chip, single search focus ring (#345)
+- Commits on this branch: 896
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
 - `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
@@ -38,7 +39,6 @@
 - `f0b6aebf` 2026-10-17 Custody trail: let an outside person be recorded as Handed By (#323)
 - `dff87d0a` 2026-10-17 Task navigation: warm My Tasks from the Dashboard, warm each task page once (#322)
 - `3d2ecbc3` 2026-10-17 Run Vercel functions in hnd1 (Tokyo), next to the Supabase database (#321)
-- `0b06be5e` 2026-10-17 Orders: let an administrator permanently delete a Confirmed Order (#320)
 
 ## Pages by top-level area
 

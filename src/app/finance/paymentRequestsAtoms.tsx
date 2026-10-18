@@ -104,11 +104,12 @@ export function StatusBadge({ status, destination }: {
     : STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
+      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '2px 10px', borderRadius: '999px',
       background: meta.bg, color: meta.color,
       border: `1px solid ${meta.border}`,
-      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, lineHeight: '16px', whiteSpace: 'nowrap',
     }}>
+      <span aria-hidden="true" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
       {meta.label}
     </span>
   )

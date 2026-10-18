@@ -7913,6 +7913,15 @@ tr:hover .boe-payment-id-copy,
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+/* EMPTY STATES in the Finance lists: a soft icon disc above the message the
+   page already says. Drawn here so the text, roles and buttons stay exactly as
+   they were. */
+.boe-finance-empty::before {
+  content: ''; display: block; width: 44px; height: 44px; margin: 0 auto 12px;
+  border-radius: 50%; background-color: #F1EEE9;
+  background-repeat: no-repeat; background-position: center; background-size: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23686D6C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='5' width='20' height='14' rx='2'/%3E%3Cline x1='2' y1='10' x2='22' y2='10'/%3E%3C/svg%3E");
+}
 .boe-list-count {
   font-size: 12px; color: #686D6C; white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -7948,9 +7957,9 @@ tr:hover .boe-payment-id-copy,
 }
 .boe-list-tabs::-webkit-scrollbar { display: none; }
 .boe-list-tab {
-  padding: 9px 10px 8px; border: none; background: transparent;
+  padding: 12px 12px 11px; border: none; background: transparent;
   border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0;
-  font-size: 12px; font-weight: 500; color: #303536;
+  font-size: 13px; font-weight: 500; color: #303536;
   white-space: nowrap; flex-shrink: 0; cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }

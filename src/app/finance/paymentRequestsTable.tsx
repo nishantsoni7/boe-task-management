@@ -29,11 +29,11 @@ import { PaymentIdChip } from './components/PaymentIdChip'
 // ── Payments table ────────────────────────────────────────────────────────────
 
 export const TH_STYLE: React.CSSProperties = {
-  padding: '8px 8px',
+  padding: '11px 10px',
   textAlign: 'left',
   fontSize: '12px',
-  fontWeight: 700,
-  color: colors.muted,
+  fontWeight: 600,
+  color: '#4C5352',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   whiteSpace: 'nowrap',
@@ -109,7 +109,7 @@ export function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '8px 8px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  const TD: React.CSSProperties = { padding: '12px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap', verticalAlign: 'middle' }
   // Money in the salesperson's list: right aligned, tabular digits, two decimals
   // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
   const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }

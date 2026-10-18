@@ -14,11 +14,11 @@ import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './received
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 export const TH_STYLE: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '11px 12px',
   textAlign: 'left',
   fontSize: '12px',
-  fontWeight: 700,
-  color: colors.muted,
+  fontWeight: 600,
+  color: '#4C5352',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   whiteSpace: 'nowrap',
@@ -100,9 +100,9 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
   // "Over-allocated" must never wrap inside a table cell.
   const chip: React.CSSProperties = {
-    display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
+    display: 'inline-block', padding: '2px 10px', borderRadius: '999px',
     background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '12px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
+    fontSize: '12px', fontWeight: 600, lineHeight: '16px', whiteSpace: 'nowrap',
   }
 
   if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
@@ -170,10 +170,11 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
   }
   if (view.kind === 'none') {
     return (
+      // PLAIN MUTED TEXT, NOT A SECOND CHIP. The row's Allocation Status badge
+      // already says "Zero Allocated" in colour; an amber chip here said the
+      // same thing again and made every unallocated row shout twice.
       <span style={{
-        ...small, display: 'inline-block', padding: '0 6px', borderRadius: '6px',
-        background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0', fontWeight: 600,
-        // A chip, not a bar: inside the card's column flex it would stretch.
+        ...small, display: 'inline-block', color: colors.muted,
         whiteSpace: 'nowrap', alignSelf: 'flex-start',
       }}>
         {NOT_ALLOCATED_TEXT}
@@ -336,10 +337,10 @@ export function ReceivedPaymentsTable({
   // Actions arithmetic both assume. Clipped text never happens silently: every
   // compact cell's widest value was measured into its width.
   const TD: React.CSSProperties = {
-    padding: `7px ${TABLE_CELL_PADDING_X_PX}px`, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis',
+    padding: `12px ${TABLE_CELL_PADDING_X_PX}px`, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle',
   }
-  const TH: React.CSSProperties = { ...TH_STYLE, padding: `7px ${TABLE_CELL_PADDING_X_PX}px` }
+  const TH: React.CSSProperties = { ...TH_STYLE, padding: `11px ${TABLE_CELL_PADDING_X_PX}px` }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
 

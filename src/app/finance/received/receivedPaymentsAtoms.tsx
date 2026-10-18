@@ -27,7 +27,7 @@ export function ConfirmedListEmptyState({
   onShowAll: () => void
 }) {
   const box: React.CSSProperties = {
-    padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6,
+    padding: '56px 20px', textAlign: 'center', color: colors.muted, fontSize: '14px', lineHeight: 1.6,
   }
   if (kind === 'loading') {
     return <div role="status" style={box}>Loading…</div>
@@ -55,7 +55,7 @@ export function ConfirmedListEmptyState({
         ? `No payments are ${statusLabel} right now.`
         : 'No payments match the current search or dates.'
     return (
-      <div role="status" style={box}>
+      <div role="status" className="boe-finance-empty" style={box}>
         {message}
         <div style={{ marginTop: '10px' }}>
           <button type="button" onClick={onShowAll} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
@@ -65,7 +65,7 @@ export function ConfirmedListEmptyState({
       </div>
     )
   }
-  return <div role="status" style={box}>{noneText}</div>
+  return <div role="status" className="boe-finance-empty" style={box}>{noneText}</div>
 }
 
 // Compact uppercase section label used inside RequestModalShell cards —

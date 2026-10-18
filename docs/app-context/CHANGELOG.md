@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-18 — Finance lists redesign (Payment Requests, Confirmed Payments, Payments to Verify)
+- Visual only. Rows 12px tall (was 7–8px), header 11px, status and allocation badges are pills (Payment Requests badges carry a dot), the amber "Not allocated" chip is now muted text (the Allocation Status badge already says it), tab bars are 44px with 13px labels (`StatusTabs size="roomy"`, Finance only; `compact`/`touch` unchanged), empty states get an icon disc (`.boe-finance-empty`). Horizontal cell padding is untouched because the Confirmed table's measured column widths depend on it. Tests `menuPlacement.test.ts` updated for the new pill/padding values. Migrations: none.
+
 ## 2026-10-18 — Finance lists polish: Payment ID chip, one search focus ring
 - Payment Requests and Confirmed Payments: the Payment ID (`human_payment_id`, already unique, immutable, never reused) prints as a copyable chip (`finance/components/PaymentIdChip.tsx`). The search box had a second square focus outline inside its rounded box (the global `:focus-visible !important` rule); now one ring on the box. Payment Requests uses the shared `.boe-list-search` toolbar and searches by Payment ID; date inputs match the search height (36px). CSS and components only. Migrations: none.
 

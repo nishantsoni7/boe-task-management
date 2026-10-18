@@ -99,7 +99,7 @@ export type StatusTab<K extends string> = {
  * change that fixes it without moving Finance and Orders — the default is
  * byte-identical to what they render today.
  */
-export type StatusTabSize = 'compact' | 'touch'
+export type StatusTabSize = 'compact' | 'touch' | 'roomy'
 
 export function StatusTabs<K extends string>({
   tabs,
@@ -116,6 +116,10 @@ export function StatusTabs<K extends string>({
   size?: StatusTabSize
 }) {
   const touch = size === 'touch'
+  // `roomy` is Finance's own: the same strip with more air (a 44px bar and 13px
+  // labels) so it matches the Confirmed Payments tab bar. `compact` and `touch`
+  // render exactly as before.
+  const roomy = size === 'roomy'
   return (
     <div style={{
       display: 'flex', alignItems: 'stretch', gap: '12px',
@@ -137,12 +141,12 @@ export function StatusTabs<K extends string>({
                 display: 'flex', alignItems: 'center', gap: '5px',
                 // The touch size raises the HIT AREA and leaves the type alone:
                 // a taller tab is easier to press, a bigger one is just louder.
-                minHeight: touch ? '44px' : undefined,
-                padding: touch ? '10px 11px 9px' : '8px 8px 7px', border: 'none',
+                minHeight: touch || roomy ? '44px' : undefined,
+                padding: touch ? '10px 11px 9px' : roomy ? '11px 12px 10px' : '8px 8px 7px', border: 'none',
                 background: isActive ? accent.tint : 'transparent',
                 borderRadius: '6px 6px 0 0',
                 borderBottom: `2px solid ${isActive ? accent.color : 'transparent'}`,
-                fontSize: '12px', fontWeight: isActive ? 700 : 500,
+                fontSize: roomy ? '13px' : '12px', fontWeight: isActive ? 700 : 500,
                 color: isActive ? accent.color : colors.primary,
                 cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
                 transition: 'background 0.12s, color 0.12s',
