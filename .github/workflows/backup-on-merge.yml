@@ -61,6 +61,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check the mirror token (prints no secret)
+        env:
+          MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
+          MIRROR_REPO: ${{ vars.BACKUP_MIRROR_REPO }}
+        run: |
+          echo "token length: ${#MIRROR_TOKEN}"
+          case "$MIRROR_TOKEN" in github_pat_*) echo 'prefix: github_pat_ (fine-grained) ok';; ghp_*) echo 'prefix: ghp_ (classic)';; *) echo 'prefix: UNEXPECTED';; esac
+          case "$MIRROR_TOKEN" in *[[:space:]]*) echo 'WHITESPACE FOUND in token';; *) echo 'no whitespace';; esac
+          echo "repo variable: ${MIRROR_REPO}"
+          echo -n 'API repo access HTTP: '; curl -s -o /dev/null -w '%{http_code}
+' -H "Authorization: Bearer ${MIRROR_TOKEN}" "https://api.github.com/repos/${MIRROR_REPO}"
+          echo -n 'API token owner HTTP: '; curl -s -o /dev/null -w '%{http_code}
+' -H "Authorization: Bearer ${MIRROR_TOKEN}" https://api.github.com/user
       - name: Push all branches and tags to the private mirror
         env:
           MIRROR_TOKEN: ${{ secrets.BACKUP_MIRROR_TOKEN }}
