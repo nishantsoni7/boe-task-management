@@ -39,6 +39,7 @@ if (copyTo) {
     copyMissing(sroot, path.join(dest, 'storage'))
   }
   res.copiedTo = dest
+  writeStatus('second-copy', { path: dest })
 }
 writeStatus('all', res)
 log('backup-all finished', JSON.stringify(res))

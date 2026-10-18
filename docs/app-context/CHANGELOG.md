@@ -13,6 +13,9 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
 - Migrations: none.
 
+## 2026-10-18 (final) — Owner reminder system
+- `scripts/backup/owner-reminders.mjs` + `05_OWNER_ROUTINE.md`: nine recurring owner routines with schedules, automatic measurement where possible, a daily Windows pop-up from the 9:30 pm task, and a rule in `AGENTS.md` that every Claude session reports what is due before other work.
+
 ## 2026-10-18 (late night) — Private mirror repo live
 - `nishantsoni7/boe-task-management-mirror` (private) receives every branch and tag on each push to main (PR #341). Lessons: `actions/checkout` must use `persist-credentials: false` or its own token hides the mirror; a personal token needs the **Workflows** permission to push branches that contain workflow files. Known flake: `backup-all` can report `code:false` if run at the same instant as a git hook's quick backup (mirror lock); re-run it.
 

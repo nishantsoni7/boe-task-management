@@ -13,6 +13,7 @@ This folder is the **living memory of the application**. It exists so that every
 | 5 | `04_NEW_MODULE_CHECKLIST.md` | Tick-list when adding a module or a cross-cutting feature |
 | 6 | `03_BACKUP_AND_RECOVERY.md` | Backup layers, commands, and the restore runbooks |
 | 7 | `CHANGELOG.md` | What changed, when, and the apply state of each migration |
+| 8 | `05_OWNER_ROUTINE.md` | Recurring tasks the owner must do (drive copy, checks, renewals) — with the reminder script that remembers them |
 
 Older, deeper material stays valid but is secondary: `docs/BOE Master Context/*` (platform standards — navigation and layout standards are **mandatory**), `docs/Module Docs/*`, `docs/runbooks/*`, `docs/releases/*`, `docs/testing/*`, `docs/security/*`, `docs/BOE_VISUAL_IDENTITY.md`. Where an older document disagrees with `01_APP_CONTEXT.md` or the code, the code wins, then this folder.
 
