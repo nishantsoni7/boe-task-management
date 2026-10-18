@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-18 — Big Finance screens split; test-run mechanism for split screens
+- `finance/received/ReceivedPaymentsView.tsx` 3,850 → 1,468 lines and `finance/page.tsx` 3,796 → 946 lines: blocks moved into sibling files, each leaving a `// @split:` marker. No behavior change; exports re-exported from the original files.
+- Tests: `npm test` and `npm run test:file -- <path>` now preload `scripts/testing/screen-source-preload.mjs`, which puts split blocks back whenever a test file reads a screen as text. `scripts/dev/split-block.mjs` performs a split. Guard: `src/lib/testing/screenSplits.test.ts`. Bare `tsx --test` no longer sees the original layout.
+- Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
+- Migrations: none.
+
 ## 2026-10-18 — App-context system and backup system introduced
 - Added `docs/app-context/` (this folder): `00_README_FIRST.md`, `01_APP_CONTEXT.md`, `02_MASTER_INSTRUCTION_SHEET.md`, `03_BACKUP_AND_RECOVERY.md`, `04_NEW_MODULE_CHECKLIST.md`, `modules/*.md` dossiers, and the generated `APP_INVENTORY.generated.md` (`scripts/generate-app-inventory.mjs`).
 - Added backup tooling `scripts/backup/*` (code mirror + bundle, uncommitted-work snapshot, memory copy, encrypted env copy, database + storage export, freshness verifier), versioned git hooks `.githooks/*`, and the GitHub Action `.github/workflows/backup-on-merge.yml`.

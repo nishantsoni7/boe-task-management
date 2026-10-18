@@ -15,10 +15,21 @@ gone wrong. Prefer, in this order:
 3. **Source text, only for a structural guarantee** that cannot be observed any other way (an RPC name,
    "no browser writes this table"). Keep the string short and stable.
 
-When you must read a screen's source, use `readScreenSource(path)` (`src/lib/testing/readScreenSource.ts`).
-It returns the file plus its registered extracted siblings, so splitting a big screen does not break the test.
-A test that slices ONE FUNCTION by name (`indexOf('function Foo(')`) should keep reading the single file that
-holds that function; when you move such a function, update those slices in the same PR.
+## Splitting a screen
+
+Big screens (`ReceivedPaymentsView.tsx`, `finance/page.tsx`) are split into sibling files with
+`node scripts/dev/split-block.mjs <screen> "<start text>" "<end text>" <new file> [reexport...]`
+(set `MSYS_NO_PATHCONV=1` in Git Bash so `//` arguments survive). It moves the block, exports what the block
+declares, wires the imports and leaves a marker where the block was:
+
+    // @split: src/app/finance/received/receivedPaymentsAtoms.tsx private=SectionHeader,DetailRow
+
+Source-text tests keep working unchanged: **`npm test` and `npm run test:file -- <path>` preload
+`scripts/testing/screen-source-preload.mjs`**, which puts each block back in place whenever a *test file* reads
+a screen as text, so a test that slices a function out by name sees the original one-file layout. Run tests
+with those commands, not bare `tsx --test` (`screenSplits.test.ts` says so if you forget). Code that
+reads a screen through `readScreenSource(path)` gets the same expansion without the preload. After a split,
+run `npx eslint <files>` and drop the imports the screen no longer needs.
 
 ## Migration-order tests
 
