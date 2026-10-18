@@ -27,7 +27,18 @@ const IMAGE = process.env.BOE_REHEARSAL_IMAGE || 'public.ecr.aws/supabase/postgr
 const NAME = 'boe-restore-rehearsal'
 const tmp = ensureDir(path.join(BACKUP_ROOT, 'rehearsal-tmp', stamp()))
 const docker = (args, input) => spawnSync('docker', args, { input, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })
-const psql = (sql) => docker(['exec', '-i', NAME, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At', '-q'], sql)
+const sleep = (ms) => spawnSync(process.execPath, ['-e', `setTimeout(()=>{},${ms})`])
+// The database image restarts once while it finishes first-time setup. A call that arrives during the
+// restart fails to CONNECT (so nothing ran); retrying it is safe. Real SQL errors are returned unchanged.
+const psql = (sql) => {
+  let r
+  for (let i = 0; i < 12; i++) {
+    r = docker(['exec', '-i', NAME, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At', '-q'], sql)
+    if (r.status === 0 || !/connection to server|No such file or directory|the database system is (starting up|shutting down)|No such container/.test(r.stderr || '')) return r
+    sleep(2500)
+  }
+  return r
+}
 
 const TYPES = { uuid: 'uuid', text: 'text', boolean: 'boolean', integer: 'integer', 'timestamp with time zone': 'timestamptz', jsonb: 'jsonb', date: 'date', bigint: 'bigint', numeric: 'numeric', smallint: 'smallint', 'uuid[]': 'uuid[]', 'text[]': 'text[]', 'time without time zone': 'time' }
 const q = (id) => '"' + id.replace(/"/g, '""') + '"'
@@ -42,13 +53,17 @@ try {
   docker(['rm', '-f', NAME])
   const run = docker(['run', '-d', '--name', NAME, '-e', 'POSTGRES_PASSWORD=rehearsal', IMAGE])
   if (run.status !== 0) throw new Error('could not start the throwaway database: ' + run.stderr.slice(0, 300))
+  // The image restarts itself once during first-time setup, so "ready" is only believed after the
+  // schema has really been created and then read back.
   for (let i = 0; ; i++) {
-    if (docker(['exec', NAME, 'pg_isready', '-U', 'postgres']).status === 0 && psql('select 1').status === 0) break
-    if (i > 60) throw new Error('throwaway database did not become ready')
+    const ok = docker(['exec', NAME, 'pg_isready', '-U', 'postgres']).status === 0
+      && psql('create schema if not exists rehearsal;').status === 0
+      && psql("select count(*) from information_schema.schemata where schema_name = 'rehearsal'").stdout.trim() === '1'
+    if (ok) break
+    if (i > 90) throw new Error('throwaway database did not become ready')
     spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},2000)'])
   }
   log(`throwaway database ready (snapshot ${snap}, ${Object.keys(defs).length} relations in the schema snapshot)`)
-  psql('create schema if not exists rehearsal; set search_path = rehearsal;')
 
   let n = 0
   for (const t of Object.keys(manifest.tables).sort()) {
