@@ -56,6 +56,8 @@ node "$HOME/BOE-Development/backups/tools/decrypt-file.mjs" <file>.enc <output>
 
 What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`). No Docker, `psql` or `pg_dump`. It is **read-only** and never prints row data.
 
+**Not covered (found 2026-10-18).** The service role has no SELECT on five relations, so the export lists them as `unreadable` and does not copy them: `finance_payment_destinations`, `finance_received_payments` (a view over other tables that ARE exported), `order_advance_exception_voids`, `order_advance_exceptions`, `order_advance_holds`. For these rely on Supabase platform backups (L11). Do not grant SELECT just for backups without the owner's decision.
+
 **Honest limits.** (1) The REST export covers tables exposed through PostgREST in the `public` schema; the *schema itself* is restored from migrations, not from the export. (2) Auth password hashes are not exportable. (3) The export is a logical, row-level snapshot taken over several minutes, not a transactional point-in-time image — for point-in-time recovery rely on Supabase's own backups (L11). (4) Rows changed during the export can differ across tables by seconds. (5) Row counts are cross-checked against the server's exact count; a mismatch is listed in `MANIFEST.json` `errors`.
 
 ## 4. Triggers — when does each backup happen?

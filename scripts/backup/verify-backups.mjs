@@ -28,7 +28,7 @@ const latestBundle = fs.existsSync(bdir) ? fs.readdirSync(bdir).filter((f) => f.
 if (latestBundle) add('latest bundle verifies', gitTry(MAIN_REPO, 'bundle', 'verify', path.join(bdir, latestBundle)).ok, latestBundle)
 else add('latest bundle verifies', false, 'no bundle')
 const db = readStatus('database')
-add('database + storage export', !!db && db.ok && age(db.at) <= maxH, db ? `${age(db.at).toFixed(1)} h old, ${db.tables} tables, ${db.totalRows} rows, ${db.errors} errors` : 'never run')
+add('database + storage export', !!db && db.ok && age(db.at) <= maxH, db ? `${age(db.at).toFixed(1)} h old, ${db.tables} tables, ${db.totalRows} rows, ${db.errors} errors` + (db.unreadable?.length ? `, NOT COVERED: ${db.unreadable.join(' ')}` : '') : 'never run')
 const hp = gitTry(MAIN_REPO, 'config', '--get', 'core.hooksPath').out
 add('git hooks installed', hp.toLowerCase().includes('backups/hooks'), hp || 'core.hooksPath not set - run install-backup-system.mjs')
 const second = readStatus('all')
