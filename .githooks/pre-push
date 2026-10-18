@@ -1,0 +1,8 @@
+#!/bin/sh
+# BOE backup hook: refresh the local backup mirror (fast, offline, never blocks git).
+# Installed to BOE-Development/backups/hooks by scripts/backup/install-backup-system.mjs.
+T="$HOME/BOE-Development/backups/tools/backup-code.mjs"
+if [ -f "$T" ]; then
+  ( node "$T" --quick --repo "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" >/dev/null 2>&1 & ) >/dev/null 2>&1
+fi
+exit 0
