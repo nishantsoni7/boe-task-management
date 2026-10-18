@@ -32,7 +32,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
-import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import { FieldProblem, FormDialog, FormStep, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { amountInputProblem, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
 import {
@@ -163,6 +163,9 @@ export function AllocateFundsModal({
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Problems are named only after Allocate was pressed, and clear as they are put right.
+  const [attempted, setAttempted] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
   /** The customer set the person confirmed, as customerSignature() writes it. */
   const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
 
@@ -258,116 +261,134 @@ export function AllocateFundsModal({
     onAllocated()
   }
 
+  // ALLOCATE IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing
+  // under the rows and takes the person to it. `blocked` still decides whether
+  // anything is sent: handleAllocate refuses on it, exactly as before.
+  const reviewAndAllocate = () => {
+    if (saving) return
+    if (blocked) {
+      setAttempted(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
+    void handleAllocate()
+  }
+
+  const summary = remainingIsNegative
+    ? `Over by ${formatMoney(remaining.replace('-', ''))}`
+    : `${formatMoney(newTotal)} to allocate · ${formatMoney(remaining)} left`
+
   return (
-    <FinanceModal
+    <FormDialog
       title={ALLOCATE_FUNDS_MODAL_TITLE}
+      subtitle={payment.human_payment_id}
       onClose={onClose}
+      closeDisabled={saving}
+      closeOnEscape
       width="700px"
-      closeOnBackdropClick={!saving}
+      summary={summary}
+      actions={
+        <>
+          <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            Cancel
+          </button>
+          <button
+            onClick={reviewAndAllocate}
+            disabled={saving}
+            className="boe-btn boe-btn-primary"
+            style={{ padding: '7px 16px', fontSize: '13px' }}
+          >
+            {saving ? 'Allocating…' : ALLOCATE_FUNDS_ACTION_LABEL}
+          </button>
+        </>
+      }
     >
-      <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
-        Divide what is left of {payment.client_name ?? 'this payment'}&apos;s payment across up to 20
-        Orders or PI Drafts, in one submission. A refusal on any row leaves every row exactly as it
-        was — nothing partial is ever saved.
-      </div>
-
-      <div style={{
-        background: colors.raised, border: `1px solid ${colors.border}`, borderRadius: '8px',
-        padding: '12px 14px', display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px',
-      }}>
-        <Figure label="Payment amount" value={formatMoney(payment.amount)} />
-        <Figure label="Existing allocated" value={formatMoney(existingAllocated)} />
-        <Figure label="New allocation total" value={formatMoney(newTotal)} />
-        <Figure
-          label={remainingIsNegative ? 'Over by' : 'Remaining unallocated'}
-          value={formatMoney(remainingIsNegative ? remaining.replace('-', '') : remaining)}
-          strong
-          tone={remainingIsNegative ? colors.red : undefined}
-        />
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-        <span style={LABEL}>Allocations</span>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={fillRemaining}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '12px' }}
-          >
-            {ALLOCATE_FULL_REMAINING_LABEL}
-          </button>
-          <button
-            type="button"
-            onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '12px' }}
-            disabled={rows.length >= 20}
-          >
-            + Add allocation
-          </button>
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
+          Divide what is left of {payment.client_name ?? 'this payment'}&apos;s payment across up to 20
+          Orders or PI Drafts, in one submission. A refusal on any row leaves every row exactly as it
+          was — nothing partial is ever saved.
         </div>
-      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {rows.map((row, index) => (
-          <FundsAllocationRow
-            key={row.key}
-            row={row}
-            index={index}
-            supabase={supabase}
-            duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
-            picking={pickerFor === row.key}
-            onPick={() => setPickerFor(row.key)}
-            onClosePicker={() => setPickerFor(null)}
-            onChange={patch => patchRow(row.key, patch)}
-            onRemove={() => removeRow(row.key)}
-          />
-        ))}
-      </div>
-
-      {mixedCustomers && (
-        <MixedCustomerWarning
-          groups={customerCheck.groups}
-          incomplete={customerCheck.incomplete}
-          confirmed={mixedConfirmed}
-          onConfirmedChange={next => setMixedConfirmedFor(next ? customerCheck.signature : null)}
-          disabled={saving}
-        />
-      )}
-
-      {blocked && !error && (
-        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{blocked}</div>
-      )}
-
-      {error && (
-        <div role="alert" style={{
-          fontSize: '12px', color: colors.red, background: colors.redTint,
-          border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
+        <div style={{
+          background: colors.raised, border: `1px solid ${colors.border}`, borderRadius: '8px',
+          padding: '12px 14px', display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px',
         }}>
-          {error}
+          <Figure label="Payment amount" value={formatMoney(payment.amount)} />
+          <Figure label="Existing allocated" value={formatMoney(existingAllocated)} />
+          <Figure label="New allocation total" value={formatMoney(newTotal)} />
+          <Figure
+            label={remainingIsNegative ? 'Over by' : 'Remaining unallocated'}
+            value={formatMoney(remainingIsNegative ? remaining.replace('-', '') : remaining)}
+            strong
+            tone={remainingIsNegative ? colors.red : undefined}
+          />
         </div>
-      )}
 
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleAllocate}
-          disabled={blocked !== null || saving}
-          className="boe-btn boe-btn-primary"
-          style={{
-            padding: '8px 18px', fontSize: '13px',
-            opacity: (blocked !== null || saving) ? 0.6 : 1,
-            cursor: (blocked !== null || saving) ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Allocating…' : ALLOCATE_FUNDS_ACTION_LABEL}
-        </button>
+        <FormStep number={1} title="Where does the money go?">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={fillRemaining}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+              >
+                {ALLOCATE_FULL_REMAINING_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                disabled={rows.length >= 20}
+              >
+                + Add allocation
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {rows.map((row, index) => (
+              <FundsAllocationRow
+                key={row.key}
+                row={row}
+                index={index}
+                supabase={supabase}
+                duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
+                picking={pickerFor === row.key}
+                onPick={() => setPickerFor(row.key)}
+                onClosePicker={() => setPickerFor(null)}
+                onChange={patch => patchRow(row.key, patch)}
+                onRemove={() => removeRow(row.key)}
+              />
+            ))}
+          </div>
+
+          {mixedCustomers && (
+            <MixedCustomerWarning
+              groups={customerCheck.groups}
+              incomplete={customerCheck.incomplete}
+              confirmed={mixedConfirmed}
+              onConfirmedChange={next => setMixedConfirmedFor(next ? customerCheck.signature : null)}
+              disabled={saving}
+            />
+          )}
+
+          <FieldProblem message={attempted && blocked && !error ? blocked : null} />
+        </FormStep>
+
+        {error && (
+          <div role="alert" style={{
+            fontSize: '12px', color: colors.red, background: colors.redTint,
+            border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
+          }}>
+            {error}
+          </div>
+        )}
       </div>
-    </FinanceModal>
+    </FormDialog>
   )
 }
 

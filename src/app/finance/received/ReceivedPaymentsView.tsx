@@ -26,7 +26,7 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import type { ActivityTargetResolver } from '@/lib/finance/paymentActivityLabels'
-import { amountInputProblem, isValidAmount } from '@/lib/currency'
+import { groupIndianDigits, isValidAmount } from '@/lib/currency'
 // ONE payment-mode source for Order and Finance (20261013000000). This file
 // used to keep its own label map AND its own options array; both are gone.
 import {
@@ -39,11 +39,12 @@ import {
   usePaymentDestination,
 } from '@/app/finance/components/PaymentDestinationBlock'
 import {
-  paymentModeOptionsFor,
+  paymentModeLabel,
   PAYMENT_MODE_LABEL,
   customerDisplayName,
 } from '@/lib/finance/paymentEntry'
-import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
+import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
+import { FormDialog, FormStep, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
   canDeletePayment,
@@ -119,7 +120,6 @@ import {
 } from './AllocateFundsModal'
 import { CorrectAllocationModal } from './CorrectAllocationModal'
 import { CORRECT_ALLOCATION_ACTION_LABEL } from '@/lib/finance/allocationCorrection'
-import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
 import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
@@ -1225,6 +1225,25 @@ function EditPaymentModal({
 
   const canSubmit = isValidAmount(form.amount) && form.paymentDate
 
+  // Problems are named only after Save was pressed, and clear as they are put right.
+  const [showProblems, setShowProblems] = useState(false)
+  const [proofOpen, setProofOpen] = useState(!!(form.proofNote.trim() || form.salesNote.trim()))
+  const formRef = useRef<HTMLDivElement>(null)
+  const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
+  const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
+
+  // SAVE IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing and
+  // takes the person to it; canSubmit still decides whether anything is sent.
+  const reviewAndSave = () => {
+    if (saving) return
+    if (!canSubmit) {
+      setShowProblems(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
+    void handleSave()
+  }
+
   const handleSave = async () => {
     if (!canSubmit) return
     setSaving(true)
@@ -1258,83 +1277,103 @@ function EditPaymentModal({
     onSaved()
   }
 
+  const summary = [
+    isValidAmount(form.amount) ? `₹${groupIndianDigits(form.amount)}` : null,
+    paymentModeLabel(form.paymentMode),
+    customerDisplayName(r.client_name),
+  ].filter(Boolean).join(' · ')
+
   return (
-    <FinanceModal title="Edit Received Payment" onClose={onClose}>
-      <Field label="Customer">
-        <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
-          style={{ width: '100%' }} />
-        <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-          Read from the records this payment is allocated to. Allocate or
-          reverse an allocation to change it.
-        </span>
-      </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Amount (₹)" required>
-          <input className="boe-input" type="number" min="0" value={form.amount}
-            onChange={set('amount')} placeholder="0" style={{ width: '100%' }}
-            aria-invalid={amountInputProblem(form.amount) !== null} />
-          {amountInputProblem(form.amount) && (
-            <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4, marginTop: '4px' }}>
-              {amountInputProblem(form.amount)}
-            </div>
-          )}
-        </Field>
-        <Field label="Payment Date" required>
-          <input className="boe-input" type="date" value={form.paymentDate}
-            onChange={set('paymentDate')} style={{ width: '100%' }} />
-        </Field>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Payment Mode" required>
-          <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-            {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION, so correcting
-                some other field on a 2026 payment does not silently move it onto
-                one of the four. finance_payment_requests_enforce_current_payment_mode
-                allows exactly that: an UPDATE that leaves the mode alone. */}
-            {paymentModeOptionsFor(form.paymentMode).map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          <PaymentModeHint mode={form.paymentMode} />
-        </Field>
-        <Field label="Received In" required>
-          <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
-            {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-      </div>
-      <Field label="Payment Proof / Reference Note">
-        <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      <Field label="Order Number">
-        <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Order number" style={{ width: '100%' }}
-          readOnly={isLinkageStatus} disabled={isLinkageStatus} />
-        {isLinkageStatus && (
+    <FormDialog
+      title="Edit Received Payment"
+      subtitle={r.human_payment_id ?? undefined}
+      onClose={onClose}
+      closeDisabled={saving}
+      closeOnEscape
+      width="600px"
+      summary={summary}
+      actions={
+        <>
+          <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
+          <button onClick={reviewAndSave} disabled={saving}
+            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <Field label="Customer">
+          <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
+            style={{ width: '100%' }} />
           <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-            Set when the payment was recorded. Funds are attached with Allocate Funds.
+            Read from the records this payment is allocated to. Allocate or
+            reverse an allocation to change it.
           </span>
+        </Field>
+
+        <FormStep number={1} title="Payment">
+          {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION, so correcting
+              some other field on a 2026 payment does not silently move it onto
+              one of the four. The picker draws paymentModeOptionsFor, which adds
+              it, marked retired, only for a row that already carries one.
+              finance_payment_requests_enforce_current_payment_mode allows exactly
+              that: an UPDATE that leaves the mode alone. */}
+          <PaymentDetailsFields
+            amount={form.amount}
+            onAmount={v => setForm(prev => ({ ...prev, amount: v }))}
+            date={form.paymentDate}
+            onDate={v => setForm(prev => ({ ...prev, paymentDate: v }))}
+            mode={form.paymentMode}
+            onMode={v => setForm(prev => ({ ...prev, paymentMode: v }))}
+            disabled={saving}
+            amountProblem={amountProblem}
+            dateProblem={dateProblem}
+            modeHintId="edit-received-mode-hint"
+          />
+          <Field label="Received In" required>
+            <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
+              {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+        </FormStep>
+
+        <OptionalDisclosure
+          title="Add proof or notes"
+          hint={(form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
+          open={proofOpen}
+          onToggle={() => setProofOpen(o => !o)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <Field label="Payment Proof / Reference Note">
+              <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
+                placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
+                rows={2} style={{ width: '100%', resize: 'vertical' }} />
+            </Field>
+            <Field label="Sales Note (optional)">
+              <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+                placeholder="Any additional context"
+                rows={2} style={{ width: '100%', resize: 'vertical' }} />
+            </Field>
+          </div>
+        </OptionalDisclosure>
+
+        {isLinkageStatus ? (
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+            Funds are attached with Allocate Funds, not here.
+          </div>
+        ) : (
+          <Field label="Order Number">
+            <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
+              placeholder="Order number" style={{ width: '100%' }} />
+          </Field>
         )}
-      </Field>
-      <Field label="Sales Note (optional)">
-        <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-          placeholder="Any additional context"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-        <button onClick={handleSave} disabled={!canSubmit || saving}
-          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
+
+        {error && <ErrorBanner message={error} />}
       </div>
-    </FinanceModal>
+    </FormDialog>
   )
 }
-
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 

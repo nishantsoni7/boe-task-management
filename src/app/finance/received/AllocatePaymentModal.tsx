@@ -46,7 +46,7 @@
 import { useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
-import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import { FieldProblem, FormDialog, FormStep, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { amountInputProblem, isValidAmount } from '@/lib/currency'
 
@@ -302,6 +302,9 @@ export function AllocatePaymentModal({
   const [amount, setAmount] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Problems are named only after Allocate was pressed, and clear as they are put right.
+  const [attempted, setAttempted] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
 
   // Only the newest search may write results: a slow earlier query must never
   // overwrite a later one with stale rows.
@@ -350,8 +353,47 @@ export function AllocatePaymentModal({
     onAllocated()
   }
 
+  // ALLOCATE IS NEVER GREYED OUT BY AN UNFINISHED FORM: it names what is missing
+  // under the amount and takes the person to it. `blocked` still decides whether
+  // anything is sent — handleAllocate refuses on it, exactly as before.
+  const reviewAndAllocate = () => {
+    if (saving) return
+    if (blocked || !selected) {
+      setAttempted(true)
+      scrollToFirstProblem(formRef.current)
+      return
+    }
+    void handleAllocate()
+  }
+
   return (
-    <FinanceModal title={ALLOCATE_MODAL_TITLE} onClose={onClose}>
+    <FormDialog
+      title={ALLOCATE_MODAL_TITLE}
+      subtitle={payment.request_number}
+      onClose={onClose}
+      closeDisabled={saving}
+      closeOnEscape
+      width="560px"
+      summary={selected && amount.trim()
+        ? `${formatMoney(amount)} to ${selected.reference}`
+        : ceiling === null ? undefined : `${formatMoney(ceiling)} available`}
+      actions={
+        <>
+          <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            Cancel
+          </button>
+          <button
+            onClick={reviewAndAllocate}
+            disabled={saving}
+            className="boe-btn boe-btn-primary"
+            style={{ padding: '7px 16px', fontSize: '13px' }}
+          >
+            {saving ? 'Allocating…' : ALLOCATE_ACTION_LABEL}
+          </button>
+        </>
+      }
+    >
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* What is being spent. The available balance leads, because it is the
           figure the whole decision is bounded by. */}
       <div style={{
@@ -364,9 +406,7 @@ export function AllocatePaymentModal({
         <Figure label="Client" value={payment.client_name} />
       </div>
 
-      <label style={LABEL}>
-        Find an Order or PI Draft
-      </label>
+      <FormStep number={1} title="Find an Order or PI Draft">
       <div style={{
         display: 'flex', alignItems: 'center', gap: '6px',
         background: colors.raised, border: `1px solid ${colors.border}`,
@@ -375,6 +415,7 @@ export function AllocatePaymentModal({
         <input
           type="text"
           autoFocus
+          aria-label="Find an Order or PI Draft"
           value={query}
           onChange={e => runSearch(e.target.value)}
           placeholder="Order number, PI reference or client name…"
@@ -470,63 +511,40 @@ export function AllocatePaymentModal({
           </div>
         </div>
       )}
+      <FieldProblem message={attempted && !selected && !!ceiling ? 'Choose which Order or PI Draft this money is for.' : null} />
+      </FormStep>
 
-      <label style={LABEL} htmlFor="allocate-amount">
-        Amount to allocate
-      </label>
+      <FormStep number={2} title="Amount to allocate">
       <input
         id="allocate-amount"
         className="boe-input"
         inputMode="decimal"
+        aria-label="Amount to allocate"
+        aria-invalid={attempted && !!selected && !!blocked ? true : undefined}
         value={amount}
         disabled={ceiling === null || ceiling === 0}
         onChange={e => { setAmount(e.target.value); setError(null) }}
         placeholder={ceiling && ceiling > 0 ? `Up to ${formatMoney(ceiling)}` : '—'}
         style={{ width: '100%' }}
       />
-
-      {/* The reason the control is disabled, always stated. A greyed-out button
-          with no explanation is what has somebody clicking it repeatedly. */}
-      {blocked && !error && (
-        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{blocked}</div>
-      )}
+      {/* What is missing, named after Allocate was pressed. */}
+      <FieldProblem message={attempted && blocked && !error && (selected || !ceiling) ? blocked : null} />
+      </FormStep>
 
       {error && (
-        <div style={{
+        <div role="alert" style={{
           fontSize: '12px', color: colors.red, background: colors.redTint,
           border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
         }}>
           {error}
         </div>
       )}
-
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleAllocate}
-          disabled={blocked !== null || saving}
-          className="boe-btn boe-btn-primary"
-          style={{
-            padding: '8px 18px', fontSize: '13px',
-            opacity: (blocked !== null || saving) ? 0.6 : 1,
-            cursor: (blocked !== null || saving) ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Allocating…' : ALLOCATE_ACTION_LABEL}
-        </button>
       </div>
-    </FinanceModal>
+    </FormDialog>
   )
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────────
-
-const LABEL: React.CSSProperties = {
-  fontSize: '12px', fontWeight: 600, color: colors.muted,
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-}
 
 function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (

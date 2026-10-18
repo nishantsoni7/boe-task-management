@@ -15,7 +15,7 @@
 //   FormDialog        the frame: header, a body that scrolls, a footer that does not
 //   PaymentDetailsFields  amount, date and mode — the same three on every payment form
 
-import { useId, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { paymentModeOptionsFor } from '@/lib/finance/paymentEntry'
@@ -217,17 +217,19 @@ export function OptionalDisclosure({ title, hint, open, onToggle, children }: {
 // the form's own guard's business, not this frame's.
 
 export function FormDialog({
-  title, subtitle, onClose, closeDisabled, width = '660px', summary, actions, children, banner,
+  title, subtitle, onClose, closeDisabled, closeOnEscape, width = '660px', summary, actions, children, banner,
 }: {
   title: string
   subtitle?: string
   onClose: () => void
   closeDisabled?: boolean
+  /** Escape calls onClose. Off by default: a form with a discard guard wires its own Escape. */
+  closeOnEscape?: boolean
   width?: string
   /** What is about to be sent, in one line. */
   summary?: React.ReactNode
-  /** The footer's buttons. */
-  actions: React.ReactNode
+  /** The footer's buttons. Omit them (and the summary) for a form that pins its own. */
+  actions?: React.ReactNode
   /** Sits above the steps, inside the scrolling body: a status notice, say. */
   banner?: React.ReactNode
   children: React.ReactNode
@@ -235,6 +237,12 @@ export function FormDialog({
   useModalScrollLock()
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
+  useEffect(() => {
+    if (!closeOnEscape || closeDisabled) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [closeOnEscape, closeDisabled, onClose])
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
@@ -280,7 +288,7 @@ export function FormDialog({
           {children}
         </div>
 
-        <div style={{
+        {(actions || summary) && <div style={{
           padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
           display: 'flex', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between',
           flexWrap: 'wrap', flexShrink: 0,
@@ -289,7 +297,7 @@ export function FormDialog({
             {summary}
           </div>
           <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>{actions}</div>
-        </div>
+        </div>}
       </div>
     </>
   )

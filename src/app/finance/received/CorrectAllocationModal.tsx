@@ -33,7 +33,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
-import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import { FieldProblem, FormDialog, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import {
   CORRECTION_REASON_MAX,
@@ -88,6 +88,9 @@ export function CorrectAllocationModal({
   const [notice, setNotice] = useState<Notice | null>(null)
   const [result, setResult] = useState<{ amount: string; target: string; balance: string | null } | null>(null)
   const sending = useRef(false)
+  // The blocking sentence is named only after Review was pressed on an unfinished form.
+  const [attempted, setAttempted] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
   const loadToken = useRef(0)
 
   const reload = useCallback(async () => {
@@ -138,13 +141,17 @@ export function CorrectAllocationModal({
   }
 
   return (
-    <FinanceModal
+    <FormDialog
       title={CORRECT_ALLOCATION_MODAL_TITLE}
+      subtitle={payment.human_payment_id ?? undefined}
       onClose={onClose}
+      closeDisabled={saving}
+      closeOnEscape
       width="640px"
-      /* Holds a typed reason, so a stray backdrop click must not discard it. */
-      closeOnBackdropClick={false}
     >
+      {/* Holds a typed reason, so the backdrop is inert: only the close button,
+          Escape and the form's own buttons dismiss it. */}
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <CorrectAllocationBody
         payment={payment}
         entries={entries}
@@ -159,14 +166,20 @@ export function CorrectAllocationModal({
         canAllocate={canAllocate}
         onSelect={id => { setSelectedId(id); setNotice(null) }}
         onReasonChange={text => { setReason(text); setNotice(null) }}
-        onReview={() => { if (!correctionBlockedReason({ selected, reason })) setStep('confirm') }}
+        attempted={attempted}
+        onReview={() => {
+          if (!correctionBlockedReason({ selected, reason })) { setStep('confirm'); return }
+          setAttempted(true)
+          scrollToFirstProblem(formRef.current)
+        }}
         onBack={() => setStep('choose')}
         onConfirm={submit}
         onAnother={() => { setStep('choose'); setResult(null) }}
         onAllocateFunds={onAllocateFunds}
         onClose={onClose}
       />
-    </FinanceModal>
+      </div>
+    </FormDialog>
   )
 }
 
@@ -197,6 +210,8 @@ export function CorrectAllocationBody(props: {
   onAnother: () => void
   onAllocateFunds: () => void
   onClose: () => void
+  /** Review was pressed on an unfinished form: name what is missing. */
+  attempted?: boolean
 }) {
   const { payment, entries, readable, selectedId, reason, step, saving, notice, result } = props
 
@@ -377,7 +392,7 @@ export function CorrectAllocationBody(props: {
         </label>
       )}
 
-      {active.length > 0 && blocked && <p style={MUTED}>{blocked}</p>}
+      {active.length > 0 && <FieldProblem message={props.attempted ? blocked : null} />}
 
       <ReversedHistory entries={reversed} />
 
@@ -385,9 +400,9 @@ export function CorrectAllocationBody(props: {
         <button type="button" onClick={props.onClose} className="boe-btn boe-btn-ghost" style={BTN}>Cancel</button>
         {active.length > 0 && (
           <button
-            type="button" onClick={props.onReview} disabled={blocked !== null}
+            type="button" onClick={props.onReview}
             className="boe-btn boe-btn-primary"
-            style={{ ...BTN, opacity: blocked !== null ? 0.6 : 1, cursor: blocked !== null ? 'not-allowed' : 'pointer' }}
+            style={BTN}
           >
             Review reversal
           </button>
@@ -465,7 +480,12 @@ function NoticeBox({ notice }: { notice: Notice }) {
 
 function Footer({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap', paddingTop: '4px' }}>
+    // PINNED to the bottom of the dialog's scrolling body, so the buttons never scroll out of reach.
+    <div style={{
+      display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap',
+      position: 'sticky', bottom: '-16px', margin: '0 -20px -16px', padding: '10px 20px',
+      background: colors.base, borderTop: `1px solid ${colors.border}`,
+    }}>
       {children}
     </div>
   )

@@ -93,7 +93,12 @@ describe('choosing the allocation that is wrong', () => {
 
   test('the reason box is present and bounded; the review button waits for it', () => {
     assert.ok(/<textarea[^>]*maxLength="500"/i.test(html) || /<textarea[^>]*maxlength="500"/.test(html))
-    assert.ok(/<button[^>]*disabled=""[^>]*>Review reversal<\/button>/.test(html), 'disabled until chosen + reason')
+    assert.ok(/<button[^>]*>Review reversal<\/button>/.test(html))
+    assert.ok(!/<button[^>]*disabled=""[^>]*>Review reversal<\/button>/.test(html), 'an unfinished form never greys the button out')
+    assert.ok(!html.includes('role="alert"'), 'nothing is named before Review was pressed')
+    const pressed = body({ attempted: true })
+    assert.ok(pressed.includes('Choose the allocation that is wrong.'), 'after Review: what is missing, in words')
+    assert.ok(pressed.includes('role="alert"'), 'as an alert the form scrolls to')
   })
 
   test('reversed history stays visible with actor, time and reason', () => {
@@ -211,7 +216,7 @@ describe('the modal frame', () => {
     assert.ok(html.includes('role="dialog"'))
     assert.ok(html.includes('aria-modal="true"'))
     assert.ok(html.includes('aria-label="Correct Allocation"'))
-    assert.ok(html.includes('max-width:calc(100vw - 32px)'))
+    assert.ok(html.includes('max-width:calc(100vw - 24px)'))
     assert.ok(html.includes('tabindex="-1"'), 'the dialog takes focus on open')
   })
 })
