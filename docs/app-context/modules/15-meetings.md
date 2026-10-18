@@ -12,7 +12,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). Items marked "(u
 ## 2. Status at commit 852e0493
 
 - SHIPPED: base module (`20260814000000`), select-policy fix (`20260815000000`), PI import columns/bucket/functions (`20260831000000`, applied long before the UI; UI shipped #308 `3e9a943c` 2026-10-14), evidence (`20261203000000`, PR #146), order-discussion workflow + guide + Inbox (`20261213000000`, PR #164, squash `96475c9e`, applied to prod 2026-09-17).
-- NOT ON THIS CHECKOUT: `20261214000000_meetings_rpcs_require_module_entry.sql` (module-entry guard for write RPCs). `ls supabase/migrations | grep 202612` shows no such file and the only module-entry check in meetings SQL is in the `20261213` discussion functions. Memory says it was a local-only branch `fix/meetings-rpc-module-entry`, and "Meetings guard fix is draft PR #310" (unverified, from memory; not merged here). So the defect it fixes is UNFIXED at this commit (see section 9).
+- NOT ON THIS CHECKOUT: `20261214000000_meetings_rpcs_require_module_entry.sql` (module-entry guard for write RPCs). `ls supabase/migrations | grep 202612` shows no such file and the only module-entry check in meetings SQL is in the `20261213` discussion functions. Memory says it was a local-only branch `fix/meetings-rpc-module-entry`, and "Meetings guard fix is draft PR #310" (unverified, from memory; not merged here). So the defect it fixes is UNFIXED at this commit (see section 9). **RESOLVED 2026-10-18:** shipped as `20270319000000_meetings_rpcs_require_module_entry.sql` (PR #310, `40270642`), applied to production; both guards now check `module_entry_open('meetings')`. The text below is the historical description.
 - Production meeting data left by test (from memory, 2026-09-18): stale drafts of 12 Aug and 18 Aug and a "ZZ TEST - Repair Order Review ... safe to delete" meeting were deliberately kept; deletion is the owner's decision.
 - Production state of discussion/evidence rows at last check (2026-09-18): 0 (from memory).
 
@@ -110,7 +110,7 @@ Migrations: `20260814000000_create_meetings_module`, `20260815000000_fix_meeting
 
 ## 9. Known traps, gotchas, unfixed defects
 
-- UNFIXED on this checkout: `assert_meeting_editor()` and `can_edit_meeting()` (`20260814000000`) never check `module_entry_open('meetings')`. A user whose Meetings `view` was removed but who is lead/creator or holds `edit`/`manage` can still call the Order-rail write RPCs (add/save/remove order, add/save item, link item task, set status, import rows, set_meeting_item_image_path). Memory measured 64 refusal gaps (from memory). The fix `20261214000000` is not on main here. The discussion RPCs (20261213) ARE guarded by `assert_meeting_discussion_access()`.
+- UNFIXED on this checkout: `assert_meeting_editor()` and `can_edit_meeting()` (`20260814000000`) never check `module_entry_open('meetings')`. A user whose Meetings `view` was removed but who is lead/creator or holds `edit`/`manage` can still call the Order-rail write RPCs (add/save/remove order, add/save item, link item task, set status, import rows, set_meeting_item_image_path). Memory measured 64 refusal gaps (from memory). The fix `20261214000000` is not on main here. The discussion RPCs (20261213) ARE guarded by `assert_meeting_discussion_access()`. **RESOLVED 2026-10-18:** shipped as `20270319000000_meetings_rpcs_require_module_entry.sql` (PR #310, `40270642`), applied to production; both guards now check `module_entry_open('meetings')`. The text below is the historical description.
 - plpgsql: multi-target `SELECT ... INTO` takes scalar targets only (composite OUT params fail at call sites). `pg_get_function_identity_arguments()` returns parameter NAMES on this stack.
 - JS `String.replace` converts `$$` to `$` in SQL: use split/join when generating SQL.
 - CSS-append trap: `piDetail.render.test.tsx` `pageCss()` slices globals.css from its heading to EOF; a Meetings CSS block appended after it is judged by PI rules. Put new CSS before `PI DETAIL`.
@@ -132,7 +132,7 @@ Run: `npx tsx --test src/lib/meetings/*.test.ts` (on Windows with bracket paths 
 
 ## 11. Open items / next planned work
 
-- Land `20261214` module-entry fix for the Order-rail RPCs (draft PR #310 per memory, unverified) and apply it.
+- Land `20261214` module-entry fix for the Order-rail RPCs (draft PR #310 per memory, unverified) and apply it. **RESOLVED 2026-10-18:** shipped as `20270319000000_meetings_rpcs_require_module_entry.sql` (PR #310, `40270642`), applied to production; both guards now check `module_entry_open('meetings')`. The text below is the historical description.
 - Decide cleanup of stale prod meetings (12 Aug, 18 Aug drafts, "ZZ TEST").
 - Deferred from #146: evidence void/correction flow, later-meetings indicator, Orders link.
 - Unmerged WIP (old checkout commit `2102e980`): a cut of the Meetings sidebar to two entries; NOT carried over (would drop Inbox and Guide).
@@ -141,6 +141,6 @@ Run: `npx tsx --test src/lib/meetings/*.test.ts` (on Windows with bracket paths 
 ## 12. Recheck before changing this module
 
 - Read: `supabase/migrations/20260814000000_create_meetings_module.sql` (guards at lines ~351-470), `20261213000000_meeting_order_discussion_workflow.sql`, `20260831000000_meeting_pi_import.sql`, `src/lib/permissions/meetings.ts`, `src/app/meetings/layout.tsx`, `src/lib/meetings/discussion.ts`, `piImport.ts`, `evidence.ts`.
-- Query: `supabase migration list --linked`; check whether `20261214` exists on main (`ls supabase/migrations | grep meetings_rpcs`); `select proname, prosrc from pg_proc where proname in ('assert_meeting_editor','can_edit_meeting')` against the dump.
+- Query: `supabase migration list --linked`; check whether `20261214` exists on main (`ls supabase/migrations | grep meetings_rpcs`); `select proname, prosrc from pg_proc where proname in ('assert_meeting_editor','can_edit_meeting')` against the dump. **RESOLVED 2026-10-18:** shipped as `20270319000000_meetings_rpcs_require_module_entry.sql` (PR #310, `40270642`), applied to production; both guards now check `module_entry_open('meetings')`. The text below is the historical description.
 - Run: all `src/lib/meetings/*.test.ts`, the ledger-pin tests above (if you add a migration), `piDetail.render.test.tsx` (if you touch globals.css), and the local SQL runner.
 - Keep: both desktop (`ItemRow`) and phone (`ItemCard`) renderings in sync; never select `resolution_note` from the client.

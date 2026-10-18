@@ -13,6 +13,10 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Also this week (PRs #327–#334): main back to 0 failing tests; required `verify` CI check; nightly live-database suite (`supabase/tests/live-db-seed.sql`, `live-db-schema-version.txt`).
 - Migrations: none.
 
+## 2026-10-18 (night) — Meetings module-entry fix shipped
+- PR #310 merged (`40270642`). Migration `20270319000000_meetings_rpcs_require_module_entry.sql` (renumbered from `20270315000000`, which main already used) applied to production via `db push` after a dry run showing only that file; verified with `migration list --linked`. Backup taken before applying and after merging. Rollback: re-emit the previous guard definitions from `20260814000000_create_meetings_module.sql` in a new forward migration.
+- Housekeeping: 7 merged worktrees and 131 fully-merged local branches removed (all preserved in the backup mirror); main checkout moved back to `main`.
+
 ## 2026-10-18 (evening) — Backup decisions
 - Supabase Pro daily backups confirmed (7 days). PITR declined by the owner (cost). Daily Task Scheduler backup installed (21:30). Passphrase stored in the owner's password manager. Second copy on `D:BOE-Backups`.
 
