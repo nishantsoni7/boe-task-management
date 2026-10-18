@@ -12,15 +12,23 @@ project unless it is named explicitly.
 
 1. **Create a new Supabase project** used for nothing else (free tier is enough). Note its project ref (the
    `abcdefghijklmnop` in `https://abcdefghijklmnop.supabase.co`).
-2. **Give it the schema.** The migration history cannot build an empty database
-   (see `docs/migrations-are-not-self-contained.md`: `public.users`, `tasks`, `task_activity_log` and
-   `notifications` are created by no migration). So seed it from a **schema-only** copy of the real database,
-   never from data:
-   - dump the schema of production **read-only**: `supabase db dump --schema public --linked -f schema.sql`
-     (do NOT pass `--data-only`, and do not dump data);
-   - restore it into the new project (SQL editor or `psql`), then check `supabase migration list` against the
-     test project and apply only what is missing.
-   Keep `schema.sql` out of the repository.
+2. **Give it the schema, in three parts** (this exact sequence made all 206 live tests pass; the dump alone is NOT enough):
+   1. **Dump production's schema, read-only, no data** (needs Docker Desktop running for `pg_dump`):
+      `supabase db dump --linked --schema public -f prod_public_schema.sql`. Never pass `--data-only`. Keep the file out of the repository.
+   2. **Apply it to the test project only** (`supabase link --project-ref <test-ref>` in a separate working
+      folder, then `supabase db query --linked --file prod_public_schema.sql`).
+   3. **Reset privileges, then re-apply the dump's own grants.** The dump lists only the privileges that differ
+      from Supabase's defaults, and a new project hands anon/authenticated full access at table creation, so
+      the column-level protections (an employee cannot read `monthly_salary`) silently do not exist and 14
+      security tests fail. Build `grants.sql` as three `REVOKE ALL ON ALL TABLES|SEQUENCES|FUNCTIONS IN SCHEMA
+      public FROM [PUBLIC,] anon, authenticated, service_role;` statements followed by every line of the dump
+      that starts with `GRANT ` or `REVOKE ` (`grep -E '^(GRANT|REVOKE) ' prod_public_schema.sql`), and apply it.
+   Then apply the reference data and reference accounts the suites expect: `supabase db query --linked --file
+   supabase/tests/live-db-seed.sql`. It is the repository's own seed plus three fake `@example.invalid`
+   accounts; no production data. Add rows to it when a suite reports missing reference data.
+   The migration history cannot build this database itself
+   (see `docs/migrations-are-not-self-contained.md`), and it carries no migration ledger; for newer
+   migrations, re-dump and repeat.
 3. **Add repository secrets** (GitHub → Settings → Secrets and variables → Actions):
 
    | Secret | Value |
