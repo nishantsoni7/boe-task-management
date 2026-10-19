@@ -366,6 +366,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
 export const PAYMENT_DETAILS_TITLE = 'Payment details'
 export const APPROVE_PAYMENT_LABEL = 'Approve'
 export const REJECT_PAYMENT_LABEL = 'Reject'
+export const EDIT_PAYMENT_LABEL = 'Edit'
 
 /**
  * The dialog's three views, each titled for what it holds. Payment details is
@@ -456,7 +457,7 @@ function FilteredTotal({ tone, label, amount, count, share, total }: {
  * with Approve and Reject only where this viewer may decide it.
  */
 export function PiPaymentRow({
-  row, armed, note, busy, error, onOpenProof, onArm, onNote, onCancel, onConfirm,
+  row, armed, note, busy, error, onOpenProof, onArm, onNote, onCancel, onConfirm, onEdit,
 }: {
   row: PiPaymentRowView
   /** The decision started on THIS row, or null. */
@@ -469,6 +470,8 @@ export function PiPaymentRow({
   onNote: (value: string) => void
   onCancel: () => void
   onConfirm: () => void
+  /** Opens the correction form for this payment; drawn only where row.canEdit. */
+  onEdit?: () => void
 }) {
   const noteId = `pi-payment-note-${row.key}`
   const reasonMissing = armed === 'reject' && note.trim() === ''
@@ -534,24 +537,38 @@ export function PiPaymentRow({
         </div>
       )}
 
-      {row.canDecide && armed === null && (
+      {(row.canDecide || (row.canEdit && onEdit)) && armed === null && (
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '2px' }}>
-          <button
-            type="button"
-            onClick={() => onArm('approve')}
-            disabled={busy}
-            style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
-          >
-            {APPROVE_PAYMENT_LABEL}
-          </button>
-          <button
-            type="button"
-            onClick={() => onArm('reject')}
-            disabled={busy}
-            style={{ ...SMALL_BUTTON, border: '1px solid rgba(180,35,50,0.35)', background: colors.base, color: colors.red }}
-          >
-            {REJECT_PAYMENT_LABEL}
-          </button>
+          {row.canDecide && (
+            <>
+              <button
+                type="button"
+                onClick={() => onArm('approve')}
+                disabled={busy}
+                style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
+              >
+                {APPROVE_PAYMENT_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={() => onArm('reject')}
+                disabled={busy}
+                style={{ ...SMALL_BUTTON, border: '1px solid rgba(180,35,50,0.35)', background: colors.base, color: colors.red }}
+              >
+                {REJECT_PAYMENT_LABEL}
+              </button>
+            </>
+          )}
+          {row.canEdit && onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={busy}
+              style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
+            >
+              {EDIT_PAYMENT_LABEL}
+            </button>
+          )}
         </div>
       )}
 
@@ -625,7 +642,7 @@ export function PiPaymentRow({
  * one either: only a payment awaiting verification can be decided.
  */
 export function PiPaymentDetailsModal({
-  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds, initialFilter = 'all',
+  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds, onEdit, initialFilter = 'all',
 }: {
   summary: PiPaymentSummary | null
   /** The page's own status figures, so the dialog and the card cannot disagree. */
@@ -639,6 +656,12 @@ export function PiPaymentDetailsModal({
   onDecide: ((paymentId: string, decision: PaymentDecision, note: string) => Promise<string | null>) | null
   /** Payments this viewer recorded: they draw no decision, whatever the capability. */
   ownPaymentIds?: ReadonlySet<string>
+  /**
+   * Opens the correction form for one payment still with Finance. Null for
+   * anybody the page did not resolve as able to correct it: then no row draws
+   * Edit. Teams record the wrong amount or date; this is where it is fixed.
+   */
+  onEdit?: ((paymentId: string) => void) | null
   /** Which rows the dialog opens on. */
   initialFilter?: PiPaymentFilter
 }) {
@@ -658,6 +681,7 @@ export function PiPaymentDetailsModal({
   const rows = filterPiPaymentRows(allRows, filter).map(row => describePiPaymentRow(row, {
     canVerify: decisionsAllowed,
     ownPayment: ownPaymentIds?.has(row.payment_id) ?? false,
+    canEdit: Boolean(onEdit),
   }))
   const terms = filter === 'all' ? piPaymentTermLines(summary) : []
   const filterLocked = armed !== null || busy
@@ -806,6 +830,7 @@ export function PiPaymentDetailsModal({
                   onNote={setNote}
                   onCancel={() => { if (!busyRef.current) { setArmed(null); setError(null) } }}
                   onConfirm={() => { void confirm() }}
+                  onEdit={onEdit ? () => onEdit(row.paymentId) : undefined}
                 />
               )
             })}
