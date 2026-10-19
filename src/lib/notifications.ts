@@ -98,6 +98,25 @@ export const ORDER_NOTIFICATION_TYPES = [
   // are Orders work and open the Order, so they ride the Orders channel.
   'order_operations_review_requested',
   'order_operations_review_decided',
+  // WRITTEN BUT SHOWN NOWHERE until 2026-10-19 (owner audit): these rows were
+  // inserted — by the database or by /api/orders/submissions/notify — yet no
+  // category listed them, so they reached no feed, no badge and no "mark all
+  // read". They are Orders work, so they ride the Orders channel.
+  //   * the below-40% exception on a PI (request + two outcomes)
+  'pi_exception_requested',
+  'pi_exception_approved',
+  'pi_exception_rejected',
+  //   * a revised PI on a Confirmed Order (proposal + two outcomes)
+  'pi_revision_proposed',
+  'pi_revision_approved',
+  'pi_revision_rejected',
+  //   * Design Files / Client PO submissions (20270112000000)
+  'order_document_review_requested',
+  'order_document_review_decided',
+  // NOT the pi_correction_* events: those values are not in the
+  // notification_type enum yet, and naming a value the enum does not have in a
+  // `type.in.(...)` filter fails the whole read. They join this list with the
+  // migration that adds them.
 ] as const
 
 // Attendance & Payroll employee-raised issues (20260824000000).

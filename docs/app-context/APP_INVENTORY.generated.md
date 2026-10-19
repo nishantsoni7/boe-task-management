@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `e233340c` — Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
-- Commits on this branch: 904
+- Commit: `45f3b1f3` — Orders: sample choice on PI and Order; Confirmed Orders without Status (#354)
+- Commits on this branch: 905
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 332 (first `20260530_create_positions.sql`, latest `20270320000000_order_submission_sample_type.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 704   Enums: 0
-- Test files: 605   Next.js 16.2.6, React 19.2.4
+- Test files: 606   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `45f3b1f3` 2026-10-19 Orders: sample choice on PI and Order; Confirmed Orders without Status (#354)
 - `e233340c` 2026-10-19 Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
 - `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
 - `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
@@ -38,7 +39,6 @@
 - `84a387dd` 2026-10-18 Live-DB tests: reference seed and the exact setup that makes all 206 pass (#333)
 - `d236c3dc` 2026-10-18 Docs: how to run the live-database suites; mark the 2026-10-14 baseline resolved (#332)
 - `b3a7eb92` 2026-10-18 Received Payments: split the data model and helpers out of the 3,800-line view (#331)
-- `bf6880a0` 2026-10-18 Docs and backups: app-context system, master instruction sheet, backup tooling (#329)
 
 ## Pages by top-level area
 
@@ -141,7 +141,7 @@
 - `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
-- `src/lib/notifications` — 7 source, 21 test
+- `src/lib/notifications` — 7 source, 22 test
 - `src/lib/orders` — 68 source, 118 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test

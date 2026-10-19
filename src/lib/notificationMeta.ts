@@ -31,6 +31,11 @@ const OPERATIONS_REVIEW_TYPE_SET: ReadonlySet<string> = new Set([
   'order_operations_review_requested',
   'order_operations_review_decided',
 ])
+/** Design Files / Client PO submissions: entity_id is the Order, opened at its Documents card. */
+const DOCUMENT_REVIEW_TYPE_SET: ReadonlySet<string> = new Set([
+  'order_document_review_requested',
+  'order_document_review_decided',
+])
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
@@ -128,6 +133,10 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   pi_revision_proposed:      { label: 'Needs approval',  color: colors.amber, bg: colors.amberTint },
   pi_revision_approved:      { label: 'Approved',        color: colors.green, bg: colors.greenTint },
   pi_revision_rejected:      { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
+  // Design Files / Client PO submissions (20270112000000): amber while somebody
+  // must decide; blue for the decision, which reports what was decided.
+  order_document_review_requested: { label: 'Documents to review', color: colors.amber, bg: colors.amberTint },
+  order_document_review_decided:   { label: 'Documents decided',   color: colors.blue,  bg: colors.blueTint  },
   // Assets & Access
   asset_request_submitted:      { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
   asset_edit_request_submitted: { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
@@ -352,7 +361,11 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   // position, the reason and the two decision controls all are. Tested before
   // the `order` prefix below only because these types do not carry it; they are
   // listed here so a reader finds them beside the Orders branch they belong to.
-  if (type.startsWith('pi_exception')) {
+  // A REVISED PI (pi_revision_*) is the same: entity_id is the source PI's
+  // submission id (/api/orders/submissions/notify), and the PI page leads on to
+  // its Order. Until 2026-10-19 these fell through to "other" and were never
+  // listed in any feed.
+  if (type.startsWith('pi_exception') || type.startsWith('pi_revision')) {
     return {
       category: 'order',
       heading: 'Orders',
@@ -373,13 +386,17 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
     // THE OPERATIONS HANDOFF opens the Order at its Operations review card,
     // which names the exact PI version awaiting the reader and holds the two
     // decision controls. entity_id is the Order.
+    // DESIGN FILES / CLIENT PO opens the Order at its Documents card, where the
+    // submission and its Review change control are (queueHref).
     const href = n.entity_id
       ? (OPERATIONS_REVIEW_TYPE_SET.has(type)
           ? `/orders/${n.entity_id}#${OPERATIONS_REVIEW_ANCHOR}`
+          : DOCUMENT_REVIEW_TYPE_SET.has(type)
+            ? `/orders/${n.entity_id}#documents`
           : type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type)
             ? `/orders/${n.entity_id}`
             : `/orders/requests/${n.entity_id}?from=all`)
-      : '/orders/requests'
+      : (DOCUMENT_REVIEW_TYPE_SET.has(type) ? '/orders/all' : '/orders/requests')
     return {
       category: 'order',
       heading: 'Orders',
