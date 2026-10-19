@@ -65,7 +65,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
-import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, type PaymentRequest } from './paymentRequestsModel'
+import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, canManageRequest, type PaymentRequest } from './paymentRequestsModel'
 // Re-exported: other modules import the type from the page.
 export type { PaymentRequest } from './paymentRequestsModel'
 // @split: src/app/finance/paymentRequestsModel.tsx private=AdminAction,STATUS_META,ARCHIVE_TAB_ACCENT,FILTER_TABS,EMPTY_MESSAGES,fmtDate,fmtDateTime,fmtAmount,orderNoCell,friendlyDbErrorMessage,SEARCH_DEBOUNCE_MS,isApproved,APPROVED_RACE_MESSAGE,APPROVED_LOCK_NOTE,canManageRequest,isStaleClarification
@@ -879,6 +879,12 @@ function FinancePageInner() {
           request={reviewRequest}
           supabase={supabase}
           onClose={() => setReviewRequest(null)}
+          // Correct the amount, date, account or destination before deciding:
+          // the table's pencil, the same modal and the same edit_payment_request
+          // door, on the same rule (canManageRequest).
+          onEdit={canManageRequest(reviewRequest, isAdmin, userId)
+            ? (r => { setReviewRequest(null); setEditRequest(r) })
+            : undefined}
           // Approval is the ONE action on this page that creates a received
           // payment — a new_order approval lands in suspense with no linkage, so
           // the sidebar's Non-Linked count changes the moment it commits.

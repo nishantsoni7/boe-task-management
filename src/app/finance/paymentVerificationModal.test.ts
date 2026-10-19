@@ -203,3 +203,18 @@ describe('the decision keeps its prominence, and its wiring', () => {
     assert.equal((code.match(/\.rpc\(/g) ?? []).length, 1, 'the single approval RPC, unchanged')
   })
 })
+
+describe('a wrong payment can be corrected from the review, then decided', () => {
+  const edit = readFileSync(join(process.cwd(), 'src/app/finance/paymentRequestsAdminReview.tsx'), 'utf8')
+
+  test('the review draws Edit payment only when the page passes a handler', () => {
+    assert.ok(edit.includes('onEdit?: (r: PaymentRequest) => void'))
+    assert.ok(/\{onEdit && \(\s*<button/.test(edit))
+    assert.ok(edit.includes('Edit payment'))
+  })
+
+  test('the page hands over only where the table’s own edit rule allows', () => {
+    assert.ok(/onEdit=\{canManageRequest\(reviewRequest, isAdmin, userId\)/.test(source))
+    assert.ok(source.includes('setReviewRequest(null); setEditRequest(r)'))
+  })
+})
