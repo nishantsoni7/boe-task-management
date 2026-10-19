@@ -57,6 +57,7 @@
 
 import { useRef, useState } from 'react'
 import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
+import { notifyFinance } from '@/lib/notify'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { formatMoney } from '@/lib/finance/piPaymentView'
@@ -339,6 +340,15 @@ export function RecordSplitPaymentModal({
     }
     // The last call, after the proof (see paymentEntryCompletion.ts).
     const completion = await completePaymentEntry(supabase, recordedWithoutProof.paymentRequestId)
+    // Tell the verifiers a payment is waiting — the same notice the Finance
+    // form sends (owner audit, 2026-10-19: payments recorded here told nobody).
+    if (!completion.verified) {
+      void notifyFinance({
+        event: 'finance_submitted',
+        requestNumber: recordedWithoutProof.requestNumber,
+        entityId: recordedWithoutProof.paymentRequestId,
+      })
+    }
     onRecorded({
       requestNumber:   recordedWithoutProof.requestNumber,
       allocationCount: recordedWithoutProof.allocationCount,
@@ -482,6 +492,13 @@ export function RecordSplitPaymentModal({
     // with the proof still missing (above) does NOT complete, so the proof can
     // still be attached while the payment is pending.
     const completion = await completePaymentEntry(supabase, result.payment_request_id)
+    if (!completion.verified && result.request_number) {
+      void notifyFinance({
+        event: 'finance_submitted',
+        requestNumber: result.request_number,
+        entityId: result.payment_request_id,
+      })
+    }
     onRecorded({
       requestNumber:   result.request_number ?? '',
       allocationCount: result.allocation_count ?? 0,

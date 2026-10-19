@@ -113,10 +113,21 @@ export const ORDER_NOTIFICATION_TYPES = [
   //   * Design Files / Client PO submissions (20270112000000)
   'order_document_review_requested',
   'order_document_review_decided',
-  // NOT the pi_correction_* events: those values are not in the
-  // notification_type enum yet, and naming a value the enum does not have in a
-  // `type.in.(...)` filter fails the whole read. They join this list with the
-  // migration that adds them.
+  // Added to the enum by 20270321000000 (which must be applied before this
+  // code ships — a value the enum does not have fails the whole `type.in()`):
+  //   * a PI owner's correction request and its outcome (the route already
+  //     inserted these; every insert failed until the enum had them)
+  'pi_correction_requested',
+  'pi_correction_resolved',
+  'pi_correction_rejected',
+  //   * a PI sent for approval / returned or rejected (database, 20270321000001)
+  'pi_review_requested',
+  'pi_review_decided',
+  //   * an Order change request raised / decided (database)
+  'order_change_requested',
+  'order_change_decided',
+  //   * a Fabric or Finish approval status recorded (database)
+  'order_update_approval',
 ] as const
 
 // Attendance & Payroll employee-raised issues (20260824000000).
