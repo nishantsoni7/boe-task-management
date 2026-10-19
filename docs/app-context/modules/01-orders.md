@@ -69,7 +69,7 @@ Dispatch itself is just a status change by an admin (`ready_for_dispatch` -> `di
 | `/orders/notifications` | Order notifications |
 | `/orders/requests`, `/orders/requests/[id]` | **Retired** notice only |
 
-Nav (`OrdersLayout.tsx`): Dashboard, PI Drafts, Confirmed Orders (no badge on PI Drafts, by decision). Active-item logic: `src/lib/navigation/moduleNav.ts` (`activeOrdersNav`).
+Nav (`OrdersLayout.tsx`, owner 2026-10-19): Dashboard, Confirmed Orders, PI Drafts, Notifications (no badge on PI Drafts, by decision). Download PI Format is not a destination: it sits in a quiet "Resources" block at the foot of the sidebar, above the account (`.boe-sidebar-foot` / `.boe-sidebar-resources`, `PiFormatNavLink quiet`). Active-item logic: `src/lib/navigation/moduleNav.ts` (`activeOrdersNav`).
 Launch-time control surfaces live elsewhere: Control Center (`/admin/control-center` operations reviewer, order-update recipients, visibility scopes, number cycle), `/admin/control-center/test-data-cleanup`, `/admin/control-center/data-management`, Action Queue.
 
 ### 3.2 API routes (`src/app/api/orders/**`)

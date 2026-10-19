@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, List, FileText, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -124,10 +124,15 @@ export function OrdersLayout({
   // WHICH ONE IS LIT is activeOrdersNav's decision (src/lib/navigation/
   // moduleNav.ts), not a prefix test written here: an Order record lights
   // Confirmed Orders, and Upload PI and a PI record light PI Drafts.
+  //
+  // THE OWNER'S ORDER (2026-10-19): Dashboard, then Confirmed Orders, then PI
+  // Drafts. Download PI Format is NOT a destination — it saves a file — so it
+  // left this list for its own quiet "Resources" block at the foot of the
+  // sidebar (see below).
   const navItems: { label: string; path: string; icon: React.ReactNode; key: OrdersNavKey }[] = [
     { label: 'Dashboard',        path: '/orders',        icon: <LayoutDashboard size={15} strokeWidth={1.8} />, key: 'dashboard' },
-    { label: 'PI Drafts',        path: '/orders/drafts', icon: <FileText        size={15} strokeWidth={1.8} />, key: 'drafts' },
     { label: 'Confirmed Orders', path: '/orders/all',    icon: <List            size={15} strokeWidth={1.8} />, key: 'confirmed' },
+    { label: 'PI Drafts',        path: '/orders/drafts', icon: <FileText        size={15} strokeWidth={1.8} />, key: 'drafts' },
   ]
 
   return (
@@ -158,18 +163,14 @@ export function OrdersLayout({
             and Next prefetches each destination's code while it is on screen. */}
         <nav className="boe-sidebar-section" aria-label="Orders">
           {navItems.map(item => (
-            <Fragment key={item.path}>
-              <ShellNavLink
-                href={item.path}
-                label={item.label}
-                icon={item.icon}
-                active={item.key === activeKey}
-                onNavigate={() => setSidebarOpen(false)}
-              />
-              {/* The approved PI format sits right under PI Drafts (the page it is for). A file
-                  download, not a page: never lit, and the same action as the PI Drafts heading. */}
-              {item.key === 'drafts' ? <PiFormatNavLink onNavigate={() => setSidebarOpen(false)} /> : null}
-            </Fragment>
+            <ShellNavLink
+              key={item.path}
+              href={item.path}
+              label={item.label}
+              icon={item.icon}
+              active={item.key === activeKey}
+              onNavigate={() => setSidebarOpen(false)}
+            />
           ))}
 
           {/* Permanent Notifications entry — always visible, badge only when
@@ -214,12 +215,25 @@ export function OrdersLayout({
           </div>
         )}
 
-        {/* Bottom profile section */}
-        <ViewModeSidebarSection
-          profile={profile ?? sessionProfile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/orders"
-        />
+        {/* The foot of the sidebar: a quiet RESOURCES block, then the profile.
+            One wrapper takes the free space (margin-top: auto), so Resources
+            sits just above the account rather than floating mid-sidebar. */}
+        <div className="boe-sidebar-foot">
+          {/* DOWNLOAD PI FORMAT (owner, 2026-10-19): a file, not a page — so
+              not among the destinations above, never lit, smaller and muted.
+              The same action as the button on the PI Drafts heading. */}
+          <div className="boe-sidebar-resources" role="group" aria-label="Resources">
+            <div className="boe-sidebar-resources-label">Resources</div>
+            <PiFormatNavLink quiet onNavigate={() => setSidebarOpen(false)} />
+          </div>
+
+          {/* Bottom profile section */}
+          <ViewModeSidebarSection
+            profile={profile ?? sessionProfile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/orders"
+          />
+        </div>
 
       </aside>
 

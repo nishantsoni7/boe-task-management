@@ -26,8 +26,15 @@ describe('the PI format entry points', () => {
     assert.equal(PI_FORMAT_FILENAME, 'BOE-PI-Format.xlsx')
     assert.doesNotMatch(link, /fetch\(|Blob|createObjectURL|\.xlsx|storage/, 'no second template, no client-built file')
   })
-  test('the left navigation shows it directly after PI Drafts, never lit', () => {
-    assert.match(layout, /item\.key === 'drafts' \? <PiFormatNavLink/)
+  test('the sidebar offers it in its own quiet Resources block, not among the destinations, never lit', () => {
+    // Owner, 2026-10-19: a download is not navigation.
+    const nav = layout.slice(layout.indexOf('<nav '), layout.indexOf('</nav>'))
+    assert.doesNotMatch(nav, /PiFormatNavLink/, 'not inside the destinations list')
+    const resources = layout.slice(layout.indexOf('className="boe-sidebar-resources"'))
+    assert.match(resources, /^className="boe-sidebar-resources" role="group" aria-label="Resources">[\s\S]*?<PiFormatNavLink quiet /)
+    // Dashboard, then Confirmed Orders, then PI Drafts.
+    assert.ok(layout.indexOf("label: 'Dashboard'") < layout.indexOf("label: 'Confirmed Orders'"))
+    assert.ok(layout.indexOf("label: 'Confirmed Orders'") < layout.indexOf("label: 'PI Drafts'"))
     assert.doesNotMatch(link.slice(link.indexOf('PiFormatNavLink')), /aria-current/)
   })
   test('the PI Drafts heading shows it to everyone, not only holders of orders.create', () => {

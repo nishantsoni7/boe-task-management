@@ -10424,3 +10424,19 @@ textarea.pi-form-input { height: auto; }
 .pi-sample-type-hint { font-size: 12px; color: #686D6C; }
 .order-sample-select { height: 34px; max-width: 280px; font-size: 13.5px; }
 .order-pi-prop--sample dd { display: flex; flex-direction: column; gap: 4px; }
+
+/* ── Sidebar foot: a quiet Resources block above the account (2026-10-19) ──
+   For things that are not destinations (Orders: Download PI Format). Smaller,
+   muted, under a small caption — present, never competing with the nav. */
+.boe-sidebar-foot { margin-top: auto; display: flex; flex-direction: column; min-width: 0; }
+.boe-sidebar-resources { padding: 10px 10px 8px; border-top: 1px solid var(--boe-border); }
+.boe-sidebar-resources-label {
+  padding: 0 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8F9392;
+}
+.boe-nav-item.boe-nav-item--quiet { font-size: 13px; color: #686D6C; padding-top: 6px; padding-bottom: 6px; }
+.boe-nav-item.boe-nav-item--quiet:hover { color: #303536; }
