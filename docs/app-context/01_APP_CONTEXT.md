@@ -42,7 +42,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 
 | # | Module | Status | Dossier | Notes |
 |---|---|---|---|---|
-| 01 | Orders (PI Drafts → approval → Confirmed Orders, amendments, admin delete, quotation requests) | Shipped, in live use | `modules/01-orders.md` | Order Requests retired. `approve_order_submission` is the only Order creator; approval gate = 40% of total before GST. Last migration `20270317…` (admin Delete Order, #320) applied in production 2026-10-18 |
+| 01 | Orders (PI Drafts → approval → Confirmed Orders, amendments, admin delete, quotation requests) | Shipped, in live use | `modules/01-orders.md` | Order Requests retired. `approve_order_submission` is the only Order creator; approval gate = 40% of total before GST. Last migration `20270317…` (admin Delete Order, #320) applied in production 2026-10-18. Lists on the Finance list design: #348 (open, no SQL) |
 | 02 | Finance (received/confirmed payments, verification, allocations & correction, payment requests/expenses, custody) | Shipped | `modules/02-finance.md` | Payment forms share one frame (#324–#326). Allocation correction Phase 1 live; Phase 2 carry-over open |
 | 03 | Attendance | Shipped | `modules/03-attendance.md` | Raw `attendance_records` layer is overwritten by import; corrections live in `attendance_day_corrections`. `20270215000000` apply state **applied in production as of 2026-10-18** |
 | 04 | Minop / MORX device integration | Raw receiver live; **processing disabled in code** | `modules/04-minop-device-integration.md` | Header webhook 401s the real device; only the path-token route receives. 2026-09-19 punch never reached BOE (callback URL unverified) |

@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-19 — Orders lists on the Finance list design (Confirmed Orders, PI Drafts)
+## 2026-10-19 — Orders lists on the Finance list design (Confirmed Orders, PI Drafts) · PR #348 (open)
 - `/orders/all`: the status tab strip became six status cards that are the filter (`FinanceStatusCards`); the four dropdowns became chips in the view bar (Assignee, Order date, Source, Sort; `FilterChip` gained an `icon`); the "N of M visible" count is gone. Table is `.fin-table` (initials for people, lead source under the client, "Overdue" under the due date, right-aligned Value). Status colours (owner-approved): Running blue, On Hold amber, Ready for Dispatch green (was blue), Dispatched grey (was green), Cancelled red. Phone cards and every URL parameter unchanged.
 - `/orders/drafts`: new status cards (All, Draft, Submitted for Review, Needs Changes, Rejected) and a search box (client, PI reference, salesperson, uploader, submitter), both in the URL (`?status=`, `?q=`) and both narrowing the rows already read — no new query. The review queue is a labelled group inside the same board. Open Draft / Review PI / Delete are 28px icons. Phone cards below 1100px unchanged.
 - Shared: `FinanceEmpty` gained `file`/`box` icons; CSS "ORDERS LISTS on the Finance list" block (`.fin-group`, `.fin-table-wrap`, `.boe-row-icon--review`). Visual only: same reads, permissions and links. Migrations: none.
