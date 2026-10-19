@@ -102,44 +102,38 @@ describe('the Documents card', () => {
     assert.equal(/order-docs-grid/.test(html), false)
   })
 
-  test('PI history and Edit PI both sit on the Main PI row — one Edit PI, with its blocked state shown disabled', () => {
-    const withVersions = (edit: { onEdit: () => void; blockedNote: string | null } | null, notice: string | null = null) =>
+  test('PI history sits on the Main PI row; Edit PI is in the page header (owner, 2026-10-19)', () => {
+    const withVersions = (notice: string | null = null) =>
       renderToStaticMarkup(
         <OrderDocumentsPanel
           mainPi={mainPiCard(describePiVersionHistory([V1], NAMES, when))}
           design={designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2)}
           onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
           viewing={false} downloading={false}
-          piVersions={{ count: 2, onOpen: noop, edit, notice }}
+          piVersions={{ count: 2, onOpen: noop, notice }}
         />,
       )
-    const html = withVersions({ onEdit: noop, blockedNote: null })
+    const html = withVersions()
     const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
     assert.ok(main.includes('PI history (2)'))
-    // EDIT PI IS ON THIS ROW (it left the header and the history popup): one
-    // control, among the Main PI's own actions.
-    assert.equal((main.match(/Edit PI/g) ?? []).length, 1)
-    assert.ok(/<button type="button" class="boe-btn boe-btn-ghost order-doc-action">[^]*?Edit PI<\/button>/.test(html.slice(html.indexOf('class="order-docs-main"'))))
-    // …disabled, with the reason beside it, while a revision waits for a decision.
-    const blocked = withVersions({ onEdit: noop, blockedNote: 'A revised PI is waiting for a decision; Edit PI is available again once it is decided.' })
-    assert.ok(/<button type="button" class="boe-btn boe-btn-ghost order-doc-action" disabled=""[^>]*>[^]*?Edit PI<\/button>/.test(blocked))
-    assert.ok(text(blocked).includes('A revised PI is waiting for a decision'))
+    assert.equal(/Edit PI/.test(text(html)), false, 'no Edit PI anywhere in the Documents card')
     const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
     assert.ok(head.includes('Document history') && !head.includes('PI history'),
       'the two histories are named apart, each in its own place')
 
-    assert.ok(text(withVersions(null)).includes('PI history'))
     const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
-    // The page hands the row the same handler the header had (the Edit PI page) and the same gate.
-    assert.ok(page.includes('onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) }'), 'the row opens the Edit PI page')
+    // The header carries it, with the same handler and the same gate as before.
+    assert.ok(page.includes('onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) }'), 'it opens the Edit PI page')
     assert.ok(page.includes('blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null'), 'and is held, with the reason, while a revision is open')
-    assert.ok(!page.includes('EDIT_PI_LABEL'), 'the header no longer carries a second Edit PI button')
+    const header = page.slice(page.indexOf('<div className="order-command-actions">'), page.indexOf('actions.secondary.map'))
+    assert.match(header, /editPiAction && \(\s*<button[\s\S]*?disabled=\{!!editPiAction\.blockedNote\}[\s\S]*?Edit PI\s*<\/button>/)
+    assert.equal((page.match(/>\s*Edit PI\s*</g) ?? []).length, 1, 'one Edit PI on the page')
 
     // The outcome of the last proposal is said on the row.
-    assert.ok(text(withVersions({ onEdit: noop, blockedNote: null }, 'PI V2 sent to an Admin.')).includes('PI V2 sent to an Admin.'))
+    assert.ok(text(withVersions('PI V2 sent to an Admin.')).includes('PI V2 sent to an Admin.'))
 
-    // An Order the page gives no versions to (legacy / still loading): neither control.
-    assert.equal(/PI history|Edit PI/.test(text(card([accepted]))), false)
+    // An Order the page gives no versions to (legacy / still loading): no link.
+    assert.equal(/PI history/.test(text(card([accepted]))), false)
   })
 
   test('the Main PI row: one status, the two dates, the PI PDF and the uploaded workbook', () => {
@@ -321,13 +315,15 @@ describe('the Main PI as a property list, and Internal order details (owner, 202
     />,
   )
 
-  test('dates, reviewer and file are label/value properties; one primary action', () => {
-    const html = panel({ mainPiOperations: { label: 'Waiting for Operations', tone: 'amber', line: null, reviewer: 'Ravi' } })
+  test('only the two dates are properties — no reviewer, no file name; one primary action', () => {
+    const html = panel({ mainPiOperations: { label: 'Waiting for Operations', tone: 'amber', line: null } })
     const t = text(html)
     assert.ok(t.includes('Main PI · V1 Waiting for Operations'))
-    assert.ok(t.includes('Operations reviewer Ravi'))
-    assert.ok(t.includes('File PI-771.xlsx'))
-    assert.equal((html.match(/class="order-pi-prop"/g) ?? []).length, 4)
+    assert.ok(t.includes('Uploaded 2026-09-01') && t.includes('Approved 2026-09-02'))
+    assert.equal(/Operations reviewer|File PI-771/.test(t), false, 'owner: not required')
+    assert.equal((html.match(/class="order-pi-prop"/g) ?? []).length, 2)
+    // Main PI on the left, product pictures on the right, in one row once the card is wide.
+    assert.match(css, /@container \(min-width: 760px\) \{\n  \.order-docs-main \{\n    display: grid;\n    grid-template-columns: minmax\(0, 1fr\) auto;/)
     assert.equal((html.match(/boe-btn-primary/g) ?? []).length, 1, 'only View PI is primary')
     assert.match(html, /boe-btn boe-btn-secondary order-doc-action"[^>]*>[\s\S]*?Download original Excel/)
     assert.equal(/has not accepted it yet/.test(t), false, 'no repeated sentence')

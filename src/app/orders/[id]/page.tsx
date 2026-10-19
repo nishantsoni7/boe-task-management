@@ -2503,6 +2503,15 @@ export default function OrderDetailPage() {
   const mayEditPi = !viewAsUserId && order.status !== 'cancelled'
     && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))
   const piRevisionOpen = piVersions.some(v => isOpenRevision(v.status))
+  // EDIT PI, IN THE PAGE HEADER beside the Order's other record actions
+  // (owner, 2026-10-19 — it had moved onto the Main PI row). The same handler,
+  // gate and blocked state: it opens the full-page editor, an edit becomes a
+  // pending version, and while a revision waits for a decision it is shown
+  // disabled with the reason, so an unavailable action never looks available.
+  const editPiAction = piVersionsSource && mayEditPi ? {
+    onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) },
+    blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null,
+  } : null
 
   /**
    * WHAT THE ADVANCE COMES TO, and whether it reads Risky or Safe.
@@ -2629,14 +2638,11 @@ export default function OrderDetailPage() {
     ? {
         label: operationsView.status === 'awaiting' ? 'Waiting for Operations' : operationsView.statusLabel,
         tone: operationsView.tone,
-        // While Operations has it, the row lists the reviewer as a property
-        // beside the dates; the pill already says "Waiting for Operations" (owner,
-        // 2026-10-19). Unassigned or inactive says why, in the same place.
-        reviewer: operationsView.status === 'awaiting'
-          ? (operationsView.unassigned ? operationsView.reviewerLine : (operationsView.reviewerName ?? operationsView.reviewerLine))
-          : null,
+        // While Operations has it, the pill says "Waiting for Operations" and
+        // the reviewer's name is not repeated (owner, 2026-10-19). Only a
+        // problem is said: nobody assigned, or the reviewer can no longer act.
         line: operationsView.status === 'awaiting'
-          ? null
+          ? (operationsView.unassigned ? operationsView.reviewerLine : null)
           // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
           // Activity at the foot of the page (clarification_reason, required by
           // decide_order_operations_handoff).
@@ -2931,8 +2937,17 @@ export default function OrderDetailPage() {
                 onOutOfDate={() => { loadOrder() }}
               />
             )}
-            {/* EDIT PI is on the Main PI row of the Documents card now (one
-                control, the same handler, gate and blocked state). */}
+            {editPiAction && (
+              <button
+                type="button"
+                onClick={editPiAction.onEdit}
+                disabled={!!editPiAction.blockedNote}
+                title={editPiAction.blockedNote ?? undefined}
+                className="boe-record-action"
+              >
+                Edit PI
+              </button>
+            )}
             {actions.secondary.map(key => (
               <button
                 key={key}
@@ -3091,16 +3106,11 @@ export default function OrderDetailPage() {
                 onSelect={() => openVersionPdf(mainPi.version.id, true)}
               />
             ) : undefined}
-            /* PI HISTORY AND EDIT PI (20270115000000), on the Main PI row. The
-               versions popup and the editor are PiVersionHistory's, below;
-               the same gate the standalone PI versions strip used. */
+            /* PI HISTORY (20270115000000), on the Main PI row; the versions
+               popup is PiVersionHistory's, below. Edit PI is in the header. */
             piVersions={piVersionsSource ? {
               count: piVersions.length,
               onOpen: () => setPiVersionsOpen(true),
-              edit: mayEditPi ? {
-                onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) },
-                blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null,
-              } : null,
               notice: piNotice,
             } : undefined}
             updateMenu={docUpdateItems.length > 0 ? (
