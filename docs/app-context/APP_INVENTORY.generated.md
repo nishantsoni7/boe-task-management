@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `ddb1c75e` — Correct a pending payment that is already attached to a PI (#360)
-- Commits on this branch: 911
+- Commit: `c6502016` — Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
+- Commits on this branch: 912
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 336 (first `20260530_create_positions.sql`, latest `20270323000000_finance_payment_proof_admin_attach.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 715   Enums: 0
-- Test files: 610   Next.js 16.2.6, React 19.2.4
+- Test files: 611   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 - `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
 - `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
 - `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
@@ -38,7 +39,6 @@
 - `40270642` 2026-10-18 Meetings: every write RPC requires Meetings module entry (#310)
 - `27b3bcbe` 2026-10-18 Docs: record backup decisions (Supabase daily backups, no PITR, daily schedule) (#339)
 - `eb76e55f` 2026-10-18 Backups: include the storage mirror in the second copy (#338)
-- `144e2948` 2026-10-18 Backups: report tables the service role cannot read (#337)
 
 ## Pages by top-level area
 

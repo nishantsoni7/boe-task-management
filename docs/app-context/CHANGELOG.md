@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-19 — Console "preloaded but not used" warning: other modules are warmed on intent, not on load (PR open) · no migration
+- Root cause: the Modules launcher prefetched every module route in an effect on load, and Quick Actions prefetched /exhibition-leads/add and /finance/expenses/new. A prefetched route brings its stylesheet, which the browser preloads; the current page never applies it, so Chrome logged "was preloaded using link preload but not used within a few seconds" for Control Center, Inventory and Exhibition Leads CSS, while the burst of requests competed with the page's own data.
+- Fix: Module cards (not in edit mode) and Quick Action buttons now call router.prefetch on pointer-enter, focus and touch-start only. Same-module warm-ups (Dashboard -> /tasks/my, /notifications, /modules) are unchanged.
+- Guard: src/app/modules/intentPrefetch.test.ts. Not verified in a browser against production; the owner should check the console after deploy.
+
 ## 2026-10-19 — Payment proof drop zone: click, drag-and-drop, paste a screenshot; admin can attach on Edit (PR open) · migration 20270323000000 → UNAPPLIED (apply BEFORE merging)
 - One control, `ProofDropZone` (`finance/components/ProofDropZone.tsx`), replaces the small "📎 Attach" button on Send Payment Request, Record Payment and the PI "Add payment" dialog, and is NEW on Edit Payment Request (which never had an upload). Click to choose, drop a file, or press Ctrl+V anywhere in the dialog to paste a screenshot (a paste with no file is left to the text box). Shows a thumbnail/PDF icon with size, Replace and Remove. Pasted `image.png` is renamed `payment-proof-<date>-<time>.png`.
 - Other image formats: `lib/finance/proofIntake.ts` redraws BMP/AVIF/TIFF etc. as JPEG in the browser (white background), or refuses in plain words if the browser cannot read it; SVG is never accepted. The bucket's allowed types (JPEG, PNG, WEBP, GIF, PDF) and 10 MB limit are unchanged.
