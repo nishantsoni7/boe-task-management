@@ -1833,7 +1833,7 @@ describe('the drafts list carries the review queue', () => {
     // gone with the workflow (20261007000000). The review queue still has no
     // entry of its own: it is a SECTION of PI Drafts, so a reviewer finds it
     // where the records already are.
-    assert.deepEqual(items, ['Dashboard', 'PI Drafts', 'Confirmed Orders'],
+    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'PI Drafts'],
       'three destinations, and the review queue is not a fourth')
   })
 })
