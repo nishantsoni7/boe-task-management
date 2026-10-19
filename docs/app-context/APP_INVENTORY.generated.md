@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e1272ff1` — Order Detail and Internal order details: Notion-style layout
-- Commits on this branch: 898
+- Commit: `5c57b6dc` — Merge remote-tracking branch 'origin/main' into claude/ecstatic-bouman-71cd10
+- Commits on this branch: 900
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `e1272ff1` 2026-10-19 Order Detail and Internal order details: Notion-style layout
+- `5c57b6dc` 2026-10-19 Merge remote-tracking branch 'origin/main' into claude/ecstatic-bouman-71cd10
+- `666d98e9` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design
+- `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
 - `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
 - `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
@@ -37,8 +39,6 @@
 - `852e0493` 2026-10-18 Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
 - `5c39ee5a` 2026-10-18 Tests: clear the failing baseline on main (0 failures without a database) (#327)
 - `460846ef` 2026-10-18 Record Payment and Edit Payment: the same quick, clear form as Send Payment Request (#325)
-- `e896ee02` 2026-10-17 Send Payment Request: a form that is quick and clear to fill (#324)
-- `f0b6aebf` 2026-10-17 Custody trail: let an outside person be recorded as Handed By (#323)
 
 ## Pages by top-level area
 

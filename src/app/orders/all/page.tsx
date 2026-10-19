@@ -538,7 +538,7 @@ export default function AllOrdersPage() {
             creation action belongs here — an Order begins as an uploaded PI and
             is confirmed at approval. */}
         <div className="fin-viewbar">
-          <div className="fin-tools" role="search" aria-label="Filter Confirmed Orders">
+          <div className="fin-tools fin-tools--wrap" role="search" aria-label="Filter Confirmed Orders">
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
