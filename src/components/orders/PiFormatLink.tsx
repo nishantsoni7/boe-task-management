@@ -25,10 +25,14 @@ export function PiFormatButton() {
 }
 
 /** The left-navigation entry. Never "active": it is a file, not a page. */
-export function PiFormatNavLink({ onNavigate }: { onNavigate?: () => void }) {
+export function PiFormatNavLink({ onNavigate, quiet = false }: {
+  onNavigate?: () => void
+  /** The sidebar's Resources block: smaller and muted, so it never reads as a destination. */
+  quiet?: boolean
+}) {
   return (
     <a
-      className="boe-nav-item"
+      className={quiet ? 'boe-nav-item boe-nav-item--quiet' : 'boe-nav-item'}
       href={PI_FORMAT_ACTION.href}
       download={PI_FORMAT_FILENAME}
       title={PI_FORMAT_ACTION.title}
@@ -36,7 +40,7 @@ export function PiFormatNavLink({ onNavigate }: { onNavigate?: () => void }) {
       style={{ fontWeight: 400, marginBottom: '2px', textDecoration: 'none' }}
     >
       <span aria-hidden="true" style={{ color: '#686D6C', display: 'flex', alignItems: 'center' }}>
-        <Download size={15} strokeWidth={1.8} />
+        <Download size={quiet ? 14 : 15} strokeWidth={1.8} />
       </span>
       {PI_FORMAT_ACTION.label}
     </a>

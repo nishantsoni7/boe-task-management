@@ -173,9 +173,15 @@ export type AdminReviewModalProps = {
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onActioned: () => void
+  /**
+   * Present only where this viewer may correct the request (its submitter or an
+   * admin, while unverified). Teams record a wrong amount or date; the verifier
+   * fixes it from here, then decides.
+   */
+  onEdit?: (r: PaymentRequest) => void
 }
 
-export function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminReviewModalProps) {
+export function AdminReviewModal({ request: r, supabase, onClose, onActioned, onEdit }: AdminReviewModalProps) {
   const [action,    setAction]    = useState<AdminAction | null>(null)
   const [adminNote, setAdminNote] = useState('')
   const [saving,    setSaving]    = useState(false)
@@ -322,7 +328,20 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned }: 
   // verification screen; the client came down from that band to lead here.
   const left = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <SectionHeader>Payment Details</SectionHeader>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <SectionHeader>Payment Details</SectionHeader>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(r)}
+            disabled={saving}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '4px 12px', fontSize: '12px' }}
+          >
+            Edit payment
+          </button>
+        )}
+      </div>
 
       {/* NEVER BLANK. A Suspense payment has no customer to name, and
           customerDisplayName is the one place that decides what that reads as

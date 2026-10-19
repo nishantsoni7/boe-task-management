@@ -100,7 +100,8 @@ describe('no Order Request navigation remains', () => {
     assert.equal(nav.includes('Order Requests'), false)
     assert.deepEqual(
       [...nav.matchAll(/label: '([^']+)'/g)].map(m => m[1]),
-      ['Dashboard', 'PI Drafts', 'Confirmed Orders'],
+      // The owner's order since 2026-10-19.
+      ['Dashboard', 'Confirmed Orders', 'PI Drafts'],
     )
   })
 

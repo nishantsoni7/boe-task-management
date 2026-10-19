@@ -32,6 +32,7 @@ separately records money BOE **pays out** (small expenses, personal-payment reim
 
 | Capability | State | Evidence |
 | --- | --- | --- |
+| Correct a wrong pending payment from the review modal (Edit payment) and from a PI Draft's payments dialog (Edit beside Approve/Reject, admin) | **Shipped** (PR open, no migration) | `paymentRequestsAdminReview.tsx` `onEdit`, `components/orders/PiPaymentEditDialog.tsx`, `edit_payment_request` |
 | Payment Requests (send, edit, reapply, clarify, reject, verify) | **Shipped** | `/finance`, `submit_payment_request`, `approve/reject/request_finance_payment_clarification` |
 | Confirmed Payments list with allocation status filter, Allocated Against column, details modal | **Shipped** (#141/#142/#166/#171) | `/finance/received`, `ReceivedPaymentsView.tsx` |
 | Payments to Verify page | **Route exists** (`/finance/payments-to-verify`, `surface="to_verify"`) but **no sidebar entry** — verification is reachable from Payment Requests | `FinanceLayout.tsx` |
