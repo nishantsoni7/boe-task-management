@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `7bd03807` — Finance lists: Notion-style redesign (Concept A) with summary cards
+- Commit: `e1272ff1` — Order Detail and Internal order details: Notion-style layout
 - Commits on this branch: 898
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `7bd03807` 2026-10-18 Finance lists: Notion-style redesign (Concept A) with summary cards
-- `00102017` 2026-10-18 Finance lists redesign: roomier rows, pill badges, tab bars, empty states
+- `e1272ff1` 2026-10-19 Order Detail and Internal order details: Notion-style layout
+- `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
 - `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)

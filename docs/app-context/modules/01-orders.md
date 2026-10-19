@@ -64,7 +64,7 @@ Dispatch itself is just a status change by an admin (`ready_for_dispatch` -> `di
 | `/orders/drafts/[submissionId]/edit-pi` | Edit PI for a draft |
 | `/orders/import` | Upload PI workbook (`orders.create`) |
 | `/orders/all` | Confirmed Orders list (URL-state: `useListUrlState`; Finance list design since 2026-10: status cards are the filter, chips for Assignee / Order date / Source / Sort, `.fin-table`, parts from `src/app/finance/components/FinanceListParts.tsx`) |
-| `/orders/[id]` | Confirmed Order workspace (header, health rail, payment position, products, PI sections, handoff/review modals, documents, approvals, history, delete modal) |
+| `/orders/[id]` | Confirmed Order workspace (header, health rail, payment position, products, PI sections, handoff/review modals, documents, approvals, history, delete modal). Layout since the 2026-10 Notion pass: header → property summary → attention → Documents with a right rail (Fabric & Finish, Notes, then Payment in `.order-docs-pay`) → Products (full width) → record column (change requests, activity) beside the Commercial breakdown. Styles: the "ORDER DETAIL — NOTION PASS" block at the end of globals.css overrides the original rules by cascade order — keep it last |
 | `/orders/[id]/edit-pi` | Propose an in-app PI edit revision on a Confirmed Order |
 | `/orders/notifications` | Order notifications |
 | `/orders/requests`, `/orders/requests/[id]` | **Retired** notice only |
