@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
 import { amountInputProblem, groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import { ProofDropZone } from '@/app/finance/components/ProofDropZone'
 import {
   FieldProblem,
   FormDialog,
@@ -224,6 +225,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
 }) {
   const [form, setForm] = useState<PiPaymentFormState>({ ...EMPTY_PI_PAYMENT_FORM, paymentDate: todayIso })
   const [proof, setProof] = useState<File | null>(null)
+  const [proofError, setProofError] = useState<string | null>(null)
   const [touched, setTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [extrasOpen, setExtrasOpen] = useState(false)
@@ -331,10 +333,12 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
             </div>
             <div>
               <div style={LABEL}>Payment proof</div>
-              <input
-                className="boe-input" style={{ width: '100%' }} type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-                onChange={e => setProof(e.target.files?.[0] ?? null)}
+              <ProofDropZone
+                file={proof}
+                error={proofError}
+                onFile={setProof}
+                onError={setProofError}
+                disabled={busy}
               />
             </div>
           </div>
