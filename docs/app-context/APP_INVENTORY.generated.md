@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a793691b` — Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
-- Commits on this branch: 900
+- Commit: `c6b8a7d7` — Order Detail: Documents card shows PI-sent files; solid warning colours
+- Commits on this branch: 901
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `c6b8a7d7` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours
 - `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
 - `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
 - `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
@@ -38,7 +39,6 @@
 - `e2e76290` 2026-10-18 CI gate, live-DB workflow, opt-in branch-scope guards, safe worktree removal, dead modal removed (#328)
 - `852e0493` 2026-10-18 Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
 - `5c39ee5a` 2026-10-18 Tests: clear the failing baseline on main (0 failures without a database) (#327)
-- `460846ef` 2026-10-18 Record Payment and Edit Payment: the same quick, clear form as Send Payment Request (#325)
 
 ## Pages by top-level area
 
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 21 test
-- `src/lib/orders` — 65 source, 117 test
+- `src/lib/orders` — 66 source, 117 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

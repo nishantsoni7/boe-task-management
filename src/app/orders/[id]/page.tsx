@@ -104,6 +104,8 @@ import {
   type OrderPiHandoff,
   type OrderPiRow,
 } from '@/lib/orders/orderPiHandoff'
+import { PI_COMMISSION_COLUMNS, withCommission } from '@/lib/orders/piInternalDetails'
+import { orderInternalDetailRows, type OrderInternalDetailRow } from '@/lib/orders/orderInternalDetailsView'
 import {
   ORDER_FILES_BUCKET,
   PI_DRAFT_IMAGE_URL_TTL_SECONDS,
@@ -748,6 +750,8 @@ export default function OrderDetailPage() {
   // an Order with no source PI never leaves it, and the screen is then exactly
   // what it has always been. See src/lib/orders/orderPiHandoff.ts.
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
+  // The PI's Internal order details, as rows for the Documents card.
+  const [piInternalRows, setPiInternalRows] = useState<OrderInternalDetailRow[]>([])
   // The approved PI's grand total as a NUMBER, to tell an amended Order's own
   // value apart from it in the Commercial breakdown (walkthrough O-1).
   const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
@@ -989,6 +993,7 @@ export default function OrderDetailPage() {
     // back. A refresh the reader asked for, showing that it is re-reading, is
     // worth more than a branch that can leave another Order's pictures up.
     setPiImages(noPiImages({ kind: 'loading' }))
+    setPiInternalRows([])
 
     if (!submissionId) {
       setPiHandoff({ kind: 'none' })
@@ -1005,7 +1010,7 @@ export default function OrderDetailPage() {
       return
     }
 
-    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes, handoffsRes] = await Promise.all([
+    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes, handoffsRes, commissionRes, commissionReadable] = await Promise.all([
       supabase
         .from('order_submissions')
         .select(ORDER_PI_HANDOFF_COLUMNS)
@@ -1040,6 +1045,17 @@ export default function OrderDetailPage() {
       // so the card and the PI history cannot describe different sets, and so
       // the page waits no more times than it did.
       handoffsQuery(),
+      // THE MIDDLEMAN COMMISSION, for Internal order details in the Documents
+      // card (owner, 2026-10-19). Its own reader-only table (20270122000000
+      // §1b), with the reader rule asked alongside — the same two reads the PI
+      // page makes. No row is also what an unanswered PI returns, so a failure
+      // of either reads as "Restricted", never as an answer. Same wave: no wait added.
+      supabase
+        .from('order_submission_middleman_commissions')
+        .select(PI_COMMISSION_COLUMNS)
+        .eq('submission_id', submissionId)
+        .maybeSingle(),
+      supabase.rpc('can_read_order_submission_commission', { p_submission_id: submissionId }),
     ])
 
     // THE HISTORY, whatever the handoff's own outcome: a viewer who may open
@@ -1159,6 +1175,11 @@ export default function OrderDetailPage() {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
     }))
+    setPiInternalRows(orderInternalDetailRows(withCommission(
+      row,
+      commissionRes.error ? null : (commissionRes.data as unknown as Parameters<typeof withCommission>[1]),
+      !commissionRes.error && !commissionReadable.error && commissionReadable.data === true,
+    )))
     setHandoffReady(true)
   }
 
@@ -2608,10 +2629,14 @@ export default function OrderDetailPage() {
     ? {
         label: operationsView.status === 'awaiting' ? 'Waiting for Operations' : operationsView.statusLabel,
         tone: operationsView.tone,
+        // While Operations has it, the row lists the reviewer as a property
+        // beside the dates; the pill already says "Waiting for Operations" (owner,
+        // 2026-10-19). Unassigned or inactive says why, in the same place.
+        reviewer: operationsView.status === 'awaiting'
+          ? (operationsView.unassigned ? operationsView.reviewerLine : (operationsView.reviewerName ?? operationsView.reviewerLine))
+          : null,
         line: operationsView.status === 'awaiting'
-          // The pill already says "Waiting for Operations" and the row shows the
-          // Approved date, so the line names only who reviews it (owner, 2026-10-19).
-          ? operationsView.reviewerLine
+          ? null
           // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
           // Activity at the foot of the page (clarification_reason, required by
           // decide_order_operations_handoff).
@@ -3087,6 +3112,7 @@ export default function OrderDetailPage() {
               />
             ) : undefined}
             mainPiOperations={mainPiOperations}
+            internalDetails={piInternalRows}
             supporting={docSupporting}
             changes={docChanges}
             onReviewChange={s => setDocReview(s)}

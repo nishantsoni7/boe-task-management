@@ -50,10 +50,10 @@ describe('the attention strip: one issue is a title and a reason; several stay a
     assert.ok(hold[0].tone === 'amber')
     assert.match(html, /order-attention-icon/)
     assert.doesNotMatch(html, /order-attention-item--red/)
-    // The LAST rule wins: a solid palette tint, so the strip never melts into
-    // the warm page background (owner, 2026-10-19).
+    // The LAST rule wins: a white card with an amber edge and border, so the
+    // strip never melts into the warm page background (owner, 2026-10-19).
     const last = css.slice(css.lastIndexOf('.order-attention {'))
-    assert.match(last, /^\.order-attention \{[^}]*background: var\(--boe-waiting-bg\);[^}]*border-color: var\(--boe-warning-border\);/)
+    assert.match(last, /^\.order-attention \{[^}]*background: #FFFFFF;[^}]*border: 1px solid var\(--boe-warning-border\);[^}]*box-shadow: inset 4px 0 0 #C48A1A;/)
   })
 
   test('the permitted action stays on the right, and an unavailable one is simply not drawn', () => {

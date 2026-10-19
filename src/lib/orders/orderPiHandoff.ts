@@ -107,6 +107,9 @@ export const ORDER_PI_HANDOFF_COLUMNS = [
   'commercial_terms_note', 'fabric_responsibility',
   // The declaration, and the workbook the whole thing was agreed on.
   'billing_percentage',
+  // The rest of Internal order details, listed in the Documents card
+  // (owner, 2026-10-19). Internal: never printed on the client PDF.
+  'billing_terms', 'payment_terms',
   'source_workbook_name', 'source_workbook_path',
 ].join(', ')
 
@@ -133,6 +136,8 @@ export type OrderPiRow = PersistedHeaderSource & PersistedCommercialSource & {
   ship_to_gst?: string | null
   due_date: string | null
   billing_percentage?: number | string | null
+  billing_terms?: string | null
+  payment_terms?: string | null
   source_workbook_name: string | null
   /**
    * The private storage key of the uploaded workbook — never rendered, and
