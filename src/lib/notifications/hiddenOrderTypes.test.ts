@@ -10,7 +10,6 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { ORDER_NOTIFICATION_TYPES } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 import type { Notification } from '@/lib/types'
@@ -29,21 +28,10 @@ describe('the once-hidden Orders notifications', () => {
     for (const t of NOW_LISTED) assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), t)
   })
 
-  test('the types 20270321000000 adds are listed and open the right record', () => {
-    // The migration that adds them to the enum must be applied before this
-    // ships: an unknown value in the type.in() filter fails the whole read.
-    const ADDED = ['pi_correction_requested', 'pi_correction_resolved', 'pi_correction_rejected',
-      'pi_review_requested', 'pi_review_decided', 'order_change_requested', 'order_change_decided', 'order_update_approval']
-    const migration = readFileSync('supabase/migrations/20270321000000_order_submission_notification_types.sql', 'utf8')
-    for (const t of ADDED) {
-      assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), t)
-      assert.ok(migration.includes(`add value if not exists '${t}'`), `${t} is added to the enum`)
-      assert.equal(getNotificationMeta(note(t)).category, 'order', t)
+  test('the correction events stay OUT until the enum has them — an unknown value fails the whole read', () => {
+    for (const t of ['pi_correction_requested', 'pi_correction_resolved', 'pi_correction_rejected']) {
+      assert.equal((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), false, t)
     }
-    assert.equal(getNotificationMeta(note('pi_review_requested', 'sub1')).href, '/orders/drafts/sub1')
-    assert.equal(getNotificationMeta(note('pi_correction_requested', 'sub1')).href, '/orders/drafts/sub1')
-    assert.equal(getNotificationMeta(note('order_change_requested', 'ord1')).href, '/orders/ord1')
-    assert.equal(getNotificationMeta(note('order_update_approval', 'ord1')).href, '/orders/ord1')
   })
 
   test('each is filed under Orders and opens the record it is about', () => {
