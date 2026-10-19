@@ -184,6 +184,7 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
+import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
 import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   describeReservation,
@@ -451,6 +452,8 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
+  // The payment whose Edit form is open (the payments dialog is hidden meanwhile).
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   // Which rows Payment details opens on: every one, or the rows behind one of
   // the status card's figures. The dialog can switch views itself once open.
   const [paymentFilter, setPaymentFilter] = useState<PiPaymentFilter>('all')
@@ -3057,6 +3060,24 @@ function PiDraftDetailPageInner() {
              decision control at all. The database decides again either way. */
           onDecide={canApprovePayments ? decidePendingPayment : null}
           ownPaymentIds={decisionOwnPaymentIds}
+          /* Edit is drawn for an administrator, beside Approve and Reject, on a
+             payment still with Finance. It opens Finance's own Edit form, so the
+             database (edit_payment_request) is the one that decides. */
+          onEdit={canAdminAmend ? (paymentId => { setPaymentDialog(null); setEditingPaymentId(paymentId) }) : null}
+        />
+      )}
+
+      {editingPaymentId !== null && (
+        <PiPaymentEditDialog
+          supabase={supabase}
+          paymentId={editingPaymentId}
+          isAdmin={canAdminAmend}
+          onClose={() => { setEditingPaymentId(null); setPaymentDialog('details') }}
+          onSaved={() => {
+            setEditingPaymentId(null)
+            setPaymentDialog('details')
+            void loadPayments()
+          }}
         />
       )}
 

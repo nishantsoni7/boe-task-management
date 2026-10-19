@@ -324,6 +324,12 @@ export type PiPaymentRowView = {
    * refuses it — and says why instead.
    */
   ownPending: boolean
+  /**
+   * The viewer may correct this payment before it is decided: still with Finance
+   * and the page resolved them as someone who can (an administrator). The
+   * database decides again in edit_payment_request.
+   */
+  canEdit: boolean
 }
 
 /** Shown on a pending row its own verifier recorded, in place of Approve / Reject. */
@@ -332,7 +338,7 @@ export const OWN_PAYMENT_DECISION_NOTE =
 
 export function describePiPaymentRow(
   row: PiPaymentSummaryRow,
-  opts: { canVerify: boolean; ownPayment?: boolean },
+  opts: { canVerify: boolean; ownPayment?: boolean; canEdit?: boolean },
 ): PiPaymentRowView {
   const reversed = row.allocation_status === 'reversed'
   const amount = displayMoney(row.allocated_amount)
@@ -359,6 +365,7 @@ export function describePiPaymentRow(
     canOpenProof: row.proof_count > 0 && row.can_view_proof,
     canDecide: !reversed && !opts.ownPayment && canVerifyPayment(row.status, opts.canVerify),
     ownPending: !reversed && Boolean(opts.ownPayment) && canVerifyPayment(row.status, opts.canVerify),
+    canEdit: !reversed && Boolean(opts.canEdit) && isAwaitingVerification(row.status),
   }
 }
 

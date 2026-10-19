@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e1c2c567` — Notifications: show the Orders notices that were written but listed nowhere
-- Commits on this branch: 906
+- Commit: `03a5bdc6` — Orders notifications from the database (step 2)
+- Commits on this branch: 907
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 334 (first `20260530_create_positions.sql`, latest `20270321000001_order_submission_notifications_complete.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 714   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `03a5bdc6` 2026-10-19 Orders notifications from the database (step 2)
 - `e1c2c567` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere
 - `45f3b1f3` 2026-10-19 Orders: sample choice on PI and Order; Confirmed Orders without Status (#354)
 - `e233340c` 2026-10-19 Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
@@ -38,7 +39,6 @@
 - `f5e70b51` 2026-10-18 Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
 - `468fad89` 2026-10-18 Live-DB drift warning, two more view splits, testing policy (#334)
 - `84a387dd` 2026-10-18 Live-DB tests: reference seed and the exact setup that makes all 206 pass (#333)
-- `d236c3dc` 2026-10-18 Docs: how to run the live-database suites; mark the 2026-10-14 baseline resolved (#332)
 
 ## Pages by top-level area
 
