@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `60ed1b0d` — Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
-- Commits on this branch: 902
+- Commit: `35f8e813` — Confirmed Orders list: Value is the Subtotal
+- Commits on this branch: 904
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
-- Test files: 604   Next.js 16.2.6, React 19.2.4
+- Test files: 605   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `35f8e813` 2026-10-19 Confirmed Orders list: Value is the Subtotal
+- `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
 - `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
 - `67523b65` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours (#350)
 - `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
@@ -37,8 +39,6 @@
 - `d236c3dc` 2026-10-18 Docs: how to run the live-database suites; mark the 2026-10-14 baseline resolved (#332)
 - `b3a7eb92` 2026-10-18 Received Payments: split the data model and helpers out of the 3,800-line view (#331)
 - `bf6880a0` 2026-10-18 Docs and backups: app-context system, master instruction sheet, backup tooling (#329)
-- `e2e76290` 2026-10-18 CI gate, live-DB workflow, opt-in branch-scope guards, safe worktree removal, dead modal removed (#328)
-- `852e0493` 2026-10-18 Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
 
 ## Pages by top-level area
 
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 21 test
-- `src/lib/orders` — 66 source, 117 test
+- `src/lib/orders` — 67 source, 118 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

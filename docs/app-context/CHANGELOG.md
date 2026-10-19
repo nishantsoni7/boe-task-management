@@ -4,7 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-19 — Order Detail: Edit PI in the header, Main PI beside Product pictures (PR open)
+## 2026-10-19 — Confirmed Orders list: Product Value is the Subtotal; new columns (PR #353)
+- Columns now: Project code (with Sample and commission symbols), Client, Product Value, Status, Factory Status (Aligned for Production / Not Aligned), Sales Person (renamed from Assigned to), Confirmed, Due. Requested by removed. Phone cards show the same facts. The markers come from the same source-PI embed (`advance_exception_reason_code`, nested `order_submission_middleman_commissions`) — still one query.
+- `/orders/all` Value (table, phone cards, Value sort) now shows the Subtotal — products minus discount — instead of the Order's Grand Total (`total_value`). Read from the source PI's `subtotal_after_discount` in the same query (embed), used while the PI's grand total still equals the Order's value; otherwise the Order's product value. Order 0524: ₹15,64,090 → ₹12,53,000. No new query, no SQL. New test `orderListValue.test.ts`.
+
+## 2026-10-19 — Order Detail: Edit PI in the header, Main PI beside Product pictures · #352 (fdde269f)
 - Edit PI moved from the Main PI row to the page header (same handler, gate and blocked state). Operations reviewer and File rows removed from the Main PI (owner: not required; an unassigned reviewer is still said). Main PI and Product pictures share one row: Main PI left (grows), pictures right (content width), stacked below 760px card width. Tests updated deliberately: `orderDocumentSubmissions.render`. Migrations: none.
 
 ## 2026-10-19 — Order Detail Documents card cleanup + warnings off the page (#350 merged as 67523b65 with the first two bullets; the rest in the follow-up PR)

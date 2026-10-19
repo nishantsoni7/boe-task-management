@@ -27,6 +27,14 @@ import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
+import { FlaskConical, HandCoins } from 'lucide-react'
+import {
+  COMMISSION_ICON_LABEL,
+  SAMPLE_ORDER_ICON_LABEL,
+  factoryStatus,
+  orderListFlags,
+  orderListSubtotal,
+} from '@/lib/orders/orderListValue'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +49,14 @@ type Order = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  /** The Subtotal (products minus discount) — what the Value column shows. See orderListValue.ts. */
+  subtotal: number | null
+  /** 'aligned' once Operations accepted the PI for production (Factory Status). */
+  production_alignment: string | null
+  /** The PI went with the "Sample order" reason (an icon by the Project code). */
+  sample: boolean
+  /** The PI has a middleman commission this reader may see (an icon by the Project code). */
+  commission: boolean
   status: string
   created_at: string
   lead_source: string | null
@@ -192,6 +208,35 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`fin-pill fin-pill--${meta.tone}`}>{meta.label}</span>
 }
 
+/** Factory Status: aligned for production by Operations (green), or not yet (amber). */
+function FactoryBadge({ alignment }: { alignment: string | null }) {
+  const f = factoryStatus(alignment)
+  return <span className={`fin-pill fin-pill--${f.aligned ? 'full' : 'zero'}`}>{f.label}</span>
+}
+
+/**
+ * THE TWO MARKERS BY THE PROJECT CODE — a symbol only, no text (owner,
+ * 2026-10-19). The name is in the tooltip and the accessible label, so the
+ * meaning never depends on recognising the shape.
+ */
+function ProjectFlags({ sample, commission }: { sample: boolean; commission: boolean }) {
+  if (!sample && !commission) return null
+  return (
+    <span className="orders-list-flags">
+      {sample && (
+        <span className="orders-list-flag orders-list-flag--sample" title={SAMPLE_ORDER_ICON_LABEL} aria-label={SAMPLE_ORDER_ICON_LABEL} role="img">
+          <FlaskConical size={14} strokeWidth={2} aria-hidden="true" />
+        </span>
+      )}
+      {commission && (
+        <span className="orders-list-flag orders-list-flag--commission" title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img">
+          <HandCoins size={14} strokeWidth={2} aria-hidden="true" />
+        </span>
+      )}
+    </span>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AllOrdersPage() {
@@ -277,10 +322,11 @@ export default function AllOrdersPage() {
       .select(`
         id, display_number, client_name,
         requested_by, assigned_to,
-        confirm_date, due_date, total_value, status,
+        confirm_date, due_date, total_value, total_product_value, production_alignment, status,
         created_at, lead_source, source_request_number,
         requested_by_user:users!requested_by(full_name),
-        assigned_to_user:users!assigned_to(full_name)
+        assigned_to_user:users!assigned_to(full_name),
+        source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total, advance_exception_reason_code, commission:order_submission_middleman_commissions(middleman_commission))
       `)
       .order('created_at', { ascending: false })
 
@@ -296,6 +342,11 @@ export default function AllOrdersPage() {
       ...o,
       requested_by_name: o.requested_by_user?.full_name ?? undefined,
       assigned_to_name:  o.assigned_to_user?.full_name  ?? undefined,
+      // THE VALUE COLUMN IS THE SUBTOTAL (owner, 2026-10-19): products minus
+      // discount, never fabric, packing, transport or GST.
+      subtotal: orderListSubtotal(o),
+      ...orderListFlags(o),
+      source_pi: undefined,
       requested_by_user: undefined,
       assigned_to_user:  undefined,
     }))
@@ -458,8 +509,8 @@ export default function AllOrdersPage() {
         case 'oldest':      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         case 'number_desc': return compareNumber(b.display_number, a.display_number)
         case 'number_asc':  return compareNumber(a.display_number, b.display_number)
-        case 'value_desc':  return compareValue(a.total_value, b.total_value, -1)
-        case 'value_asc':   return compareValue(a.total_value, b.total_value, 1)
+        case 'value_desc':  return compareValue(a.subtotal, b.subtotal, -1)
+        case 'value_asc':   return compareValue(a.subtotal, b.subtotal, 1)
         default:            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       }
     })
@@ -679,21 +730,27 @@ export default function AllOrdersPage() {
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
                   <div className="orders-list-card-top">
-                    <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
-                      Order {number}
-                    </Link>
+                    <span className="orders-list-card-code">
+                      <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
+                        {number}
+                      </Link>
+                      <ProjectFlags sample={o.sample} commission={o.commission} />
+                    </span>
                     <StatusBadge status={o.status} />
                   </div>
                   <div className="orders-list-card-client">{o.client_name}</div>
                   <div className="orders-list-card-meta">
+                    <span className="orders-list-card-value">{fmtAmount(o.subtotal)}</span>
+                    <FactoryBadge alignment={o.production_alignment} />
+                  </div>
+                  <div className="orders-list-card-meta">
                     <span style={{ color: overdue ? colors.red : undefined, fontWeight: overdue ? 600 : undefined }}>
                       Due {fmtDate(o.due_date)}{overdue ? ' · overdue' : ''}
                     </span>
-                    <span className="orders-list-card-value">{fmtAmount(o.total_value)}</span>
                   </div>
                   {(o.assigned_to_name || updateLabel) && (
                     <div className="orders-list-card-meta">
-                      <span>{o.assigned_to_name ? `Assigned to ${o.assigned_to_name}` : ''}</span>
+                      <span>{o.assigned_to_name ? `Sales person: ${o.assigned_to_name}` : ''}</span>
                       {updateLabel && (
                         <span className="order-update-badge">
                           <span className="order-update-dot" aria-hidden="true" />
@@ -709,25 +766,28 @@ export default function AllOrdersPage() {
           <div className="orders-list-table fin-table-wrap">
             <table className="fin-table fin-table--orders">
               <colgroup>
-                <col style={{ width: '16%' }} />{/* Order # + update badge */}
-                <col style={{ width: '18%' }} />{/* Client, lead source under it */}
-                <col style={{ width: '12%' }} />{/* Requested by */}
-                <col style={{ width: '12%' }} />{/* Assigned to */}
-                <col style={{ width: '9%' }} />{/* Confirmed */}
-                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
-                <col style={{ width: '10%' }} />{/* Value */}
-                <col style={{ width: '14%' }} />{/* Status */}
+                {/* THE OWNER'S ORDER (2026-10-19): Project code, Client,
+                    Product Value, Status, Factory Status — then Sales person
+                    and the two dates. "Requested by" is gone. */}
+                <col style={{ width: '13%' }} />{/* Project code, its markers + update badge */}
+                <col style={{ width: '19%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '12%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '12%' }} />{/* Status */}
+                <col style={{ width: '15%' }} />{/* Factory Status */}
+                <col style={{ width: '13%' }} />{/* Sales person */}
+                <col style={{ width: '8%' }} />{/* Confirmed */}
+                <col style={{ width: '8%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
-                  <th>Order #</th>
+                  <th>Project code</th>
                   <th>Client</th>
-                  <th>Requested by</th>
-                  <th>Assigned to</th>
+                  <th className="fin-num">Product Value</th>
+                  <th>Status</th>
+                  <th>Factory Status</th>
+                  <th>Sales Person</th>
                   <th>Confirmed</th>
                   <th>Due</th>
-                  <th className="fin-num">Value</th>
-                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -774,6 +834,7 @@ export default function AllOrdersPage() {
                         >
                           {o.display_number}
                         </Link>
+                        <ProjectFlags sample={o.sample} commission={o.commission} />
                         {updateLabel && (
                           <span className="order-update-badge" title={updateLabel}>
                             <span className="order-update-dot" aria-hidden="true" />
@@ -787,18 +848,20 @@ export default function AllOrdersPage() {
                           <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
                         )}
                       </td>
-                      <td><FinancePerson name={o.requested_by_name} /></td>
+                      <td className="fin-num">
+                        <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
+                      </td>
+                      <td>
+                        <StatusBadge status={o.status} />
+                      </td>
+                      <td>
+                        <FactoryBadge alignment={o.production_alignment} />
+                      </td>
                       <td><FinancePerson name={o.assigned_to_name} /></td>
                       <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
                       <td>
                         {fmtDate(o.due_date)}
                         {overdue && <span className="fin-sub fin-sub--alert">Overdue</span>}
-                      </td>
-                      <td className="fin-num">
-                        <span className="fin-amount">{fmtAmount(o.total_value)}</span>
-                      </td>
-                      <td>
-                        <StatusBadge status={o.status} />
                       </td>
                     </tr>
                   )
