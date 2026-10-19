@@ -237,6 +237,7 @@ name is "BOE One" (`metadata.title`); logo files in `public/branding/` (`boe-one
     `supabase db push --linked` silently report "up to date" (unverified, from memory).
 13. `vercel link` pulls `.env.local` (production credentials). Never give test suites `.env.local`: the only configured
     project is production and live-DB suites write fixtures.
+14. Cross-module `router.prefetch` runs on INTENT only (pointer-enter / focus / touch-start on Module cards and Quick Actions), never in a load effect: a prefetched route brings its CSS, which the browser preloads and then reports as "preloaded but not used". Guard: `src/app/modules/intentPrefetch.test.ts`.
 
 ## 10. Tests that guard it
 
