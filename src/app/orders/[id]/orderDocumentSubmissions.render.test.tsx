@@ -290,14 +290,24 @@ describe('who is offered what', () => {
     assert.equal(changesOf(card([corrected, rejected])).includes('unsigned'), false)
   })
 
-  test('documents sent with the PI are labelled as such, and have no decision of their own', () => {
-    const initial = sub({ stage: 'initial', pi_submission_id: 'pi', status: 'awaiting_operations', operations_reviewer: 'ops', admin_decided_at: 't', includes_design_files: true, includes_client_po: false, design_mode: 'add',
-      files: [{ id: 'f', category: 'design_files', storage_path: 'k', file_name: 'drawing.pdf', mime_type: 'application/pdf', size_bytes: 10 }] })
-    const c = changesOf(card([initial], viewer({ viewerId: 'ops' })))
-    assert.ok(c.includes('Design Files sent with the PI'))
-    assert.ok(c.includes("with PI V1's operations review"))
-    assert.equal(c.includes('Would add'), false)
-    assert.equal(c.includes('Review change'), false, 'the handoff decides it')
+  test('documents sent with the PI are ON FILE at once — not a "document change" (owner, 2026-10-19)', () => {
+    const initial = sub({ stage: 'initial', pi_submission_id: 'pi', status: 'awaiting_operations', operations_reviewer: 'ops', admin_decided_at: 't', includes_design_files: true, includes_client_po: true, design_mode: 'add',
+      files: [
+        { id: 'f', category: 'design_files', storage_path: 'k', file_name: 'drawing.pdf', mime_type: 'application/pdf', size_bytes: 10 },
+        { id: 'g', category: 'client_po', storage_path: 'k2', file_name: 'Vitazzio PO.pdf', mime_type: 'application/pdf', size_bytes: 10 },
+      ] })
+    for (const v of [viewer(), viewer({ viewerId: 'ops' }), viewer({ viewerId: 'admin', isAdmin: true })]) {
+      const html = card([initial], v)
+      assert.equal(html.includes('order-doc-changes'), false, 'no changes panel for the starting documents')
+      const rows = rowsOf(html)
+      assert.ok(rows.includes('drawing.pdf') && rows.includes('Vitazzio PO.pdf'), 'each file in its own row')
+      assert.equal(/No design files|No client PO/.test(rows), false, 'never "none" beside files that were sent')
+    }
+    // A rejected initial set (PI returned) is not drawn as a change either.
+    assert.equal(card([sub({ stage: 'initial', status: 'rejected_operations', operations_reason: 'x' })], viewer({ viewerId: 'admin', isAdmin: true })).includes('order-doc-changes'), false)
+    // An accepted amendment still wins over the starting set.
+    const replaced = sub({ id: 'a', status: 'accepted', admin_decided_at: 't', operations_decided_at: '2026-09-22T00:00:00Z' })
+    assert.ok(rowsOf(card([initial, replaced])).includes('PO-771.pdf'))
   })
 })
 
