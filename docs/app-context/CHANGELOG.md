@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-19 — Test/lint hygiene: offline test env + restore-rehearsal lint
+- `briaProductShot.test.ts` "a missing reference costs nothing at all" failed whenever `NEXT_PUBLIC_SUPABASE_URL` was set (the documented offline env), because `loadStudioReference`'s storage fallback hit the stubbed `fetch`. The test now unsets the Supabase URL/key for its own duration (restored after), so it passes with or without the env and still asserts zero fetches. No product code changed.
+- `scripts/backup/restore-rehearsal.mjs`: removed the unused counter `n` (duplicated `report.tables`); `npm run lint` back to 0 warnings. Migrations: none.
+
 ## 2026-10-19 — Order Detail + Internal order details: Notion pass (PR open)
 - `/orders/[id]`: page centred and capped at 1440px; title in sentence case (28px) with a calmer status pill; the summary is a quiet property panel (grey group captions, muted labels, hairline rows). Documents get a right rail holding Fabric & Finish (stacked) and Notes (Notes moved into `OrderDocumentsRow`). Payment moved into that same rail, below Fabric & Finish and Notes (owner, 2026-10-19: it used the empty space there), wrapped in `.order-docs-pay`; the lower workspace is the record (change requests, activity) beside the Commercial breakdown (no longer sticky). One card family: white, #ECE7E0 hairline, 12px corners. Visual only — same queries, rules and controls; CSS is one later "ORDER DETAIL — NOTION PASS" block that overrides by cascade order.
 - Internal order details (PI Draft, before conversion): every form row fills the 12-column grid — dates 3+3 with Fabric responsibility 6; Salesperson, Middleman commission, Billing % at 4 each; Payment terms 8 + Lead source 4; the commission follow-up on 6/6 and 4/8. Quieter inputs/labels and neutral selected options ("PI FORMS — NOTION PASS" CSS block).

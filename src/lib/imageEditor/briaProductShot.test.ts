@@ -149,7 +149,16 @@ describe('cost', () => {
     if (!result.ok) assert.equal(result.reason, 'timeout')
   })
 
-  test('a missing reference costs nothing at all', async () => {
+  test('a missing reference costs nothing at all', async (t) => {
+    // No local file AND no storage. With NEXT_PUBLIC_SUPABASE_URL set (the
+    // offline test env sets it), the loader's storage fallback would call the
+    // stubbed fetch and be counted here, so storage is switched off for this
+    // test: every call left is one that could reach fal.
+    for (const name of ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+      const saved = process.env[name]
+      delete process.env[name]
+      t.after(() => { if (saved === undefined) delete process.env[name]; else process.env[name] = saved })
+    }
     const { calls } = stubFetch(ok)
     const result = await generateProductShot({
       photograph: PHOTO, mimeType: 'image/jpeg', apiKey: KEY,
