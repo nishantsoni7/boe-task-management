@@ -64,12 +64,11 @@ describe('the page reads in one order, with no second summary', () => {
 
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
-    // REVISED (Notion pass, 2026-10): Payment moved into the right rail of the
-    // lower workspace, above the Commercial breakdown, so in source order it now
-    // follows the left column's Activity.
+    // REVISED (owner, 2026-10-19): Payment sits in the rail beside Documents,
+    // below Fabric & Finish and Notes, so it comes before the products.
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'documents', 'products',
-      'activity', 'payment',
+      'header', 'summary', 'attention', 'documents', 'payment', 'products',
+      'activity',
     ])
   })
 
@@ -412,15 +411,18 @@ describe('no Order fact is stated twice', () => {
     assert.equal(read(CSS).includes('.order-dates {'), false, 'and so is its styling')
   })
 
-  test('payment is stated in ONE place, below the products', () => {
+  test('payment is stated in ONE place, in the rail beside Documents', () => {
     // It used to be stated twice: the Advance Received card carried the verified
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
-    assert.ok(body.indexOf('className="order-products"') < body.indexOf('PAYMENT_SECTION_TITLE'))
+    // REVISED (owner, 2026-10-19): inside the Documents row's rail.
+    const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
+    assert.ok(row.includes('className="order-docs-pay"') && row.includes('PAYMENT_SECTION_TITLE'))
     // ONE line is allowed to name the advance above the products: the attention
     // strip's figure-free "Production blocked: advance below 40% — see Payment"
     // (20270116000000). Its figures are in the Payment section.
-    const above = body.slice(0, body.indexOf('className="order-products"'))
+    // Nothing BEFORE the Documents row (which now holds Payment) names a figure.
+    const above = body.slice(0, body.indexOf('<OrderDocumentsRow>'))
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
       // …and the same words as the reason Accept for production is disabled.
       .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
@@ -519,24 +521,22 @@ describe('no Order fact is stated twice', () => {
     const main = lower.indexOf('order-lower-main')
     const aside = lower.indexOf('order-lower-aside')
     assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
-    // REVISED (Notion pass, 2026-10): the record (Activity) on the left; the
-    // money (Payment, then the Commercial working) in the right rail.
+    // REVISED (owner, 2026-10-19): the record (Activity) on the left; the
+    // Commercial working on the right. Payment moved up beside Documents.
     const left = lower.slice(main, aside)
     const right = lower.slice(aside)
     assert.ok(left.includes('<OrderActivityList'), 'Activity belongs in the left column')
-    assert.ok(!left.includes('PAYMENT_SECTION_TITLE'), 'Payment is not in the left column')
-    assert.ok(right.indexOf('PAYMENT_SECTION_TITLE') > 0, 'Payment is in the money rail')
-    assert.ok(right.indexOf('PAYMENT_SECTION_TITLE') < right.indexOf('<OrderCommercialBreakdown'),
-      'above the Commercial breakdown')
+    assert.ok(right.includes('<OrderCommercialBreakdown'), 'the Commercial working is on the right')
+    assert.ok(!lower.includes('PAYMENT_SECTION_TITLE'), 'Payment is no longer in the lower workspace')
   })
 })
 
 // ══ 4. The payment surface ══════════════════════════════════════════════════
 
 describe('the payment section states a position and opens its rows', () => {
-  // REVISED (Notion pass): the Payment card now ends where the Commercial
-  // breakdown begins, in the right rail.
-  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('<OrderCommercialBreakdown'))
+  // REVISED (owner, 2026-10-19): the Payment card ends where the Documents row
+  // ends, in the rail beside Documents.
+  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('</OrderDocumentsRow>'))
 
   test('the inline PAYMENT RECORDS table is gone, with its explanatory prose', () => {
     assert.equal(/Payment records/i.test(body), false, 'the block is still drawn')
@@ -733,10 +733,9 @@ describe('the business rules this pass must not touch', () => {
     assert.equal((body.match(/ADD_PAYMENT_ACTION_LABEL/g) ?? []).length, 1)
     assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
     // Between the payment section's title and the section that follows it.
-    // REVISED (Notion pass): the section after Payment is now the Commercial
-    // breakdown in the same rail.
+    // REVISED (owner, 2026-10-19): Payment closes the Documents row's rail.
     const payment = body.indexOf('PAYMENT_SECTION_TITLE')
-    const after = body.indexOf('<OrderCommercialBreakdown')
+    const after = body.indexOf('</OrderDocumentsRow>')
     const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
     assert.ok(payment > 0 && after > payment)
     assert.ok(control > payment && control < after,
@@ -753,11 +752,9 @@ describe('the business rules this pass must not touch', () => {
     // above; this holds that the payment section still draws the same one
     // component from the same position, with the control added beside it.
     const figures = body.slice(body.indexOf('<PaymentSummaryFigures'))
-    assert.ok(figures.startsWith(`<PaymentSummaryFigures
-              finance={finance}
-              loaded={recordsReady}
-              onOpenList={setPaymentList}
-            />`), 'the component is handed the position, the load flag and a door — nothing else')
+    // Whitespace-insensitive since the card moved into the rail (2026-10-19).
+    assert.ok(/^<PaymentSummaryFigures\s+finance=\{finance\}\s+loaded=\{recordsReady\}\s+onOpenList=\{setPaymentList\}\s+\/>/.test(figures),
+      'the component is handed the position, the load flag and a door — nothing else')
     assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'))
   })
 

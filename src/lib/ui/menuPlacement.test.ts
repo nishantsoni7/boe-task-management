@@ -1459,7 +1459,11 @@ describe('the page has one hierarchy: header action, summary, then the list with
     // The bare rule, not `.fin-board > .fin-viewbar`, which comes first.
     const viewbar = css.slice(css.indexOf('\n.fin-viewbar {'))
     assert.ok(viewbar.slice(0, viewbar.indexOf('}')).includes('flex-wrap: wrap'), 'the view bar wraps')
-    assert.ok(rule('.fin-tools').includes('flex-wrap: wrap'))
+    // REVISED (owner, 2026-10-19): search and the Paid date chip stay on ONE
+    // line on desktop; the tools wrap only on a phone.
+    assert.ok(rule('.fin-tools').includes('flex-wrap: nowrap'), 'one line on desktop')
+    assert.ok(css.includes('  .fin-tools { margin-left: 0; width: 100%; flex-wrap: wrap; }'), 'wraps on a phone')
+    assert.ok(rule('.fin-chip-panel').includes('left: 0; right: auto'), 'the date panel opens to the right, never under the sidebar')
     assert.ok(rule('.boe-list-search').includes('max-width: 340px'),
       'the search box takes the slack up to a readable width, not the whole row')
   })

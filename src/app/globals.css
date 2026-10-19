@@ -9997,11 +9997,13 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 }
 .fin-tab:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: -4px !important; border-radius: 6px; }
 .fin-tab-count { font-size: 12px; font-weight: 500; color: #8F9392; font-variant-numeric: tabular-nums; }
-.fin-tools { margin-left: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; min-width: 0; }
-.fin-tools .boe-list-search { height: 32px; flex: 0 1 260px; }
+/* ONE LINE: the search, then the Paid date chip beside it (owner, 2026-10-19).
+   The tools take the whole bar, so the chip never drops to a second line. */
+.fin-tools { margin-left: 0; display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 8px 0; min-width: 0; flex: 1 1 auto; }
+.fin-tools .boe-list-search { height: 32px; flex: 0 1 340px; }
 .fin-count { font-size: 12px; color: #8F9392; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) {
-  .fin-tools { margin-left: 0; width: 100%; }
+  .fin-tools { margin-left: 0; width: 100%; flex-wrap: wrap; }
   .fin-tools .boe-list-search { flex: 1 1 100%; max-width: none; }
 }
 
@@ -10016,7 +10018,8 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 .fin-chip > summary:hover { background: #FAF8F5; }
 .fin-chip.is-set > summary { border-style: solid; border-color: #303536; color: #303536; background: #F3F0EB; }
 .fin-chip-panel {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+  /* Opens to the RIGHT of the chip, into the page, never left under the sidebar. */
+  position: absolute; left: 0; right: auto; top: calc(100% + 6px); z-index: 30;
   background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 10px;
   box-shadow: var(--boe-shadow-float, 0 8px 24px rgba(0,0,0,0.12));
   padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 240px;
@@ -10151,15 +10154,18 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
    Documents take the wide column; Fabric & Finish and Notes stack in the rail
    beside it, where two short statuses and a paragraph belong. */
 .order-docs-row {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  grid-template-areas: 'docs ff' 'docs notes' 'docs .';
-  grid-template-rows: auto auto 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  /* The rail: Fabric & Finish, Notes, then Payment (owner, 2026-10-19). */
+  grid-template-areas: 'docs ff' 'docs notes' 'docs pay' 'docs .';
+  grid-template-rows: auto auto auto 1fr;
   gap: 16px;
 }
 .order-docs-row > .order-docs { grid-area: docs; }
 .order-docs-row > .order-ff { grid-area: ff; }
 .order-docs-row > .order-notes { grid-area: notes; }
-.order-docs-row > :not(.order-docs):not(.order-ff):not(.order-notes) { grid-column: 1 / -1; }
+.order-docs-row > .order-docs-pay { grid-area: pay; min-width: 0; }
+.order-docs-row > :not(.order-docs):not(.order-ff):not(.order-notes):not(.order-docs-pay) { grid-column: 1 / -1; }
+.order-docs-pay > div[style] { border-radius: 12px !important; border-color: #ECE7E0 !important; }
 
 /* Fabric & Finish as a rail card: title, one status per line, the action. */
 .order-docs-row > .order-ff { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; }
@@ -10189,7 +10195,7 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 @media (max-width: 1100px) {
   .order-docs-row {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'ff' 'notes' 'docs';
+    grid-template-areas: 'ff' 'pay' 'notes' 'docs';
     grid-template-rows: auto;
   }
   .order-lower { grid-template-columns: minmax(0, 1fr); }
