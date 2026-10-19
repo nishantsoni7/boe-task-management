@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `fdde269f` — Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
-- Commits on this branch: 903
+- Commit: `35f8e813` — Confirmed Orders list: Value is the Subtotal
+- Commits on this branch: 904
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `35f8e813` 2026-10-19 Confirmed Orders list: Value is the Subtotal
 - `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
 - `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
 - `67523b65` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours (#350)
@@ -38,7 +39,6 @@
 - `d236c3dc` 2026-10-18 Docs: how to run the live-database suites; mark the 2026-10-14 baseline resolved (#332)
 - `b3a7eb92` 2026-10-18 Received Payments: split the data model and helpers out of the 3,800-line view (#331)
 - `bf6880a0` 2026-10-18 Docs and backups: app-context system, master instruction sheet, backup tooling (#329)
-- `e2e76290` 2026-10-18 CI gate, live-DB workflow, opt-in branch-scope guards, safe worktree removal, dead modal removed (#328)
 
 ## Pages by top-level area
 

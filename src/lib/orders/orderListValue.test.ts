@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ORDER_LIST_SOURCE_PI_EMBED, orderListSubtotal } from './orderListValue'
+import { ORDER_LIST_SOURCE_PI_EMBED, factoryStatus, orderListFlags, orderListSubtotal } from './orderListValue'
 
 describe('the Value column is the Subtotal', () => {
   test('Order 0524: the PI subtotal, not the Grand Total', () => {
@@ -55,5 +55,33 @@ describe('the Value column is the Subtotal', () => {
     assert.equal((page.match(/fmtAmount\(o\.total_value\)/g) ?? []).length, 0, 'the Grand Total is never drawn as Value')
     assert.equal((page.match(/fmtAmount\(o\.subtotal\)/g) ?? []).length, 2, 'table and phone card')
     assert.ok(page.includes('compareValue(a.subtotal, b.subtotal, -1)') && page.includes('compareValue(a.subtotal, b.subtotal, 1)'))
+  })
+})
+
+describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
+  test('Sample and commission come from the source PI; a hidden commission is no icon', () => {
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'sample_order', commission: { middleman_commission: 'yes' } } }), { sample: true, commission: true })
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'against_client_po', commission: { middleman_commission: 'no' } } }), { sample: false, commission: false })
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: null, commission: null } }), { sample: false, commission: false }, 'RLS gave no commission row')
+    assert.deepEqual(orderListFlags({ source_pi: null }), { sample: false, commission: false })
+    assert.deepEqual(orderListFlags({ source_pi: [{ subtotal_after_discount: 1, grand_total: 1, commission: [{ middleman_commission: 'Yes' }] }] }), { sample: false, commission: true })
+  })
+
+  test('Factory Status: Aligned for Production once Operations accepted, else Not Aligned', () => {
+    assert.deepEqual(factoryStatus('aligned'), { aligned: true, label: 'Aligned for Production' })
+    assert.deepEqual(factoryStatus('not_aligned'), { aligned: false, label: 'Not Aligned' })
+    assert.deepEqual(factoryStatus(null), { aligned: false, label: 'Not Aligned' })
+  })
+
+  test('the table: Project code, Client, Product Value, Status, Factory Status, Sales Person, Confirmed, Due — no Requested by', () => {
+    const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
+    const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'))
+    const cols = [...head.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
+    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Status', 'Factory Status', 'Sales Person', 'Confirmed', 'Due'])
+    assert.equal(page.includes('requested_by_name} />'), false, 'no Requested by cell')
+    assert.ok(page.includes('production_alignment'))
+    // Symbols only, named by tooltip and accessible label.
+    assert.ok(page.includes('title={SAMPLE_ORDER_ICON_LABEL} aria-label={SAMPLE_ORDER_ICON_LABEL} role="img"'))
+    assert.ok(page.includes('title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img"'))
   })
 })

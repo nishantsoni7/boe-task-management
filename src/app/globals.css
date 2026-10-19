@@ -10389,3 +10389,20 @@ textarea.pi-form-input { height: auto; }
   /* Stacked, the icon would sit alone above the title. */
   .order-docs-main > .order-doc-pictures .order-doc-pictures-icon { display: none; }
 }
+
+/* ── Confirmed Orders: markers beside the Project code (owner, 2026-10-19) ──
+   Sample order and middleman commission, as a symbol only (the name is the
+   tooltip and the accessible label). Neutral chips: they are facts about the
+   Order, not statuses, so they never borrow a status colour. */
+.orders-list-flags { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.orders-list-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #F1EEE9;
+  color: #4C5352;
+}
+.orders-list-card-code { display: inline-flex; align-items: center; min-width: 0; }
