@@ -639,8 +639,13 @@ describe('what the forms cost to open and to submit', () => {
     const src = code(read('src/app/finance/paymentIntents.ts'))
     assert.ok(src.includes('.limit(1)'), 'one intent, for one payment')
     const queries = [...src.matchAll(/\.from\('/g)]
-    assert.ok(queries.length <= 3,
-      'the intent, and at most one lookup for the record it names')
+    // 20270322000000: a payment recorded from a PI carries ALLOCATIONS, not an
+    // intent, so loadPaymentAllocation reads them (limit 2: one, or 'split') and
+    // at most one lookup for the record they name. Still one payment, still a
+    // fixed cost: two functions, three reads each at most.
+    assert.ok(queries.length <= 5,
+      'the intent or the allocation, and at most one lookup for the record it names')
+    assert.ok(src.includes('.limit(2)'), 'the allocation read is bounded: one, or split')
     // And it is called from a modal, never from a list row.
     const page = code(read(REQUEST_FORM))
     assert.equal(/\.map\([\s\S]{0,200}loadPaymentIntent/.test(page), false,

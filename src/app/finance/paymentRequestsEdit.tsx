@@ -15,7 +15,7 @@ import { ProofReferenceField, ProofReferenceSection } from './components/ProofRe
 import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type PaymentDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
 import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
-import { loadPaymentIntent } from './paymentIntents'
+import { loadPaymentAllocation, loadPaymentIntent, type StoredAllocation } from './paymentIntents'
 import { APPROVED_RACE_MESSAGE, type PaymentRequest } from './paymentRequestsModel'
 import { ErrorBanner } from './paymentRequestsAtoms'
 
@@ -55,6 +55,12 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
 
   // What the form OPENED with, so "has the destination changed?" compares
   // against the request rather than against a default.
+  // A payment recorded from a PI carries an ALLOCATION, not an intent. Its
+  // destination is then LOCKED (20270322000000): moving the money is Correct
+  // Allocation's job. 'split' = several allocations, which cannot be corrected
+  // here; null = an ordinary request whose destination is its intent.
+  const [allocation, setAllocation] = useState<StoredAllocation | null>(null)
+
   const loadedDestination = useRef<PaymentEntryDestination | null>(null)
   const loadedTargetId    = useRef<string | undefined>(undefined)
 
@@ -62,7 +68,24 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     let active = true
     ;(async () => {
       const found = await loadPaymentIntent(supabase, r.id)
+      const attached = found ? null : await loadPaymentAllocation(supabase, r.id)
       if (!active) return
+      if (attached) {
+        setAllocation(attached)
+        if (attached.kind === 'attached') {
+          loadedDestination.current = attached.targetType
+          loadedTargetId.current    = attached.targetId
+          setEntry({
+            destination: attached.targetType,
+            target: {
+              id: attached.targetId,
+              reference: attached.reference ?? 'Not visible to you',
+              clientName: customerDisplayName(r.client_name),
+            },
+          })
+          return
+        }
+      }
       loadedDestination.current = found ? found.targetType : 'suspense'
       loadedTargetId.current    = found ? found.targetId : undefined
       setEntry(found
@@ -124,9 +147,10 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // Nothing may be saved before the destination has been read back: a Save that
   // landed while `entry` was still null would write Suspense over a targeted
   // request that had simply not loaded yet.
+  const splitBlocked = allocation?.kind === 'split'
   const canSubmit = entry !== null && isPaymentEntryComplete(entry)
     && isValidAmount(form.amount) && !!form.paymentDate
-    && isPaymentMode(paymentMode) && !custodyError
+    && isPaymentMode(paymentMode) && !custodyError && !splitBlocked
 
   // ── Not losing what was typed ──
   const isDirty = () =>
@@ -333,6 +357,30 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
             fontSize: '13px', color: colors.muted,
           }}>
             Reading what this payment is for…
+          </div>
+        ) : allocation?.kind === 'split' ? (
+          <div role="alert" style={{
+            padding: '11px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            fontSize: '13px', color: colors.secondary, lineHeight: 1.5,
+          }}>
+            This payment is split across more than one PI or Order, so it cannot be corrected
+            here. Ask Finance to correct its allocations first.
+          </div>
+        ) : allocation?.kind === 'attached' && entry.target ? (
+          <div style={{
+            padding: '11px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            fontSize: '13px', color: colors.secondary, lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 600, color: colors.primary }}>
+              {entry.destination === 'pi_draft' ? 'PI Draft' : 'Order'} {entry.target.reference} · {entry.target.clientName}
+            </div>
+            This payment is already attached here, so the destination cannot be changed in this form.
+            To move it, ask Finance to correct the allocation.
+            {allocation.allocatedAmount === Number(r.amount) && (
+              <> The amount attached will follow the amount you save.</>
+            )}
           </div>
         ) : (
           <PaymentEntryFields

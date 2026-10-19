@@ -5,17 +5,19 @@
 
 ## Snapshot
 
-- Commit: `03a5bdc6` — Orders notifications from the database (step 2)
-- Commits on this branch: 907
+- Commit: `b8c15e6e` — Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
+- Commits on this branch: 909
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
-- Migrations: 334 (first `20260530_create_positions.sql`, latest `20270321000001_order_submission_notifications_complete.sql`)
+- Migrations: 335 (first `20260530_create_positions.sql`, latest `20270322000000_finance_payment_edit_reallocates.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 714   Enums: 0
-- Test files: 607   Next.js 16.2.6, React 19.2.4
+- Test files: 608   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `03a5bdc6` 2026-10-19 Orders notifications from the database (step 2)
-- `e1c2c567` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere
+- `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
+- `7f17db52` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere (#356)
+- `6b3ae524` 2026-10-19 Orders sidebar: Dashboard, Confirmed Orders, PI Drafts; PI format under Resources (#355)
+- `95aefe7a` 2026-10-19 Edit a wrong pending payment from both verification screens (#357)
 - `45f3b1f3` 2026-10-19 Orders: sample choice on PI and Order; Confirmed Orders without Status (#354)
 - `e233340c` 2026-10-19 Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
 - `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
@@ -37,8 +39,6 @@
 - `144e2948` 2026-10-18 Backups: report tables the service role cannot read (#337)
 - `2e4f61ad` 2026-10-18 Tests: run the payment forms in a real DOM instead of reading their source (#336)
 - `f5e70b51` 2026-10-18 Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
-- `468fad89` 2026-10-18 Live-DB drift warning, two more view splits, testing policy (#334)
-- `84a387dd` 2026-10-18 Live-DB tests: reference seed and the exact setup that makes all 206 pass (#333)
 
 ## Pages by top-level area
 
@@ -348,7 +348,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270222000000_attendance_request_live_uniqueness.sql`
 - `20270223000000_customer_review_custom_edit_delete.sql`
 - `20270224000000_customer_review_custom_duplicate_detection.sql`
 - `20270225000000_customer_review_reporting_and_leaderboard.sql`
@@ -378,6 +377,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270320000000_order_submission_sample_type.sql`
 - `20270321000000_order_submission_notification_types.sql`
 - `20270321000001_order_submission_notifications_complete.sql`
+- `20270322000000_finance_payment_edit_reallocates.sql`
 
 ## All SQL function names
 
