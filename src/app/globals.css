@@ -10105,3 +10105,39 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 .boe-row-icon--delete:hover, .boe-row-icon--delete:focus-visible { background: #FBE9EC; color: #B42332; }
 @media (max-width: 900px) { .fin-stats[style] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
 .boe-row-icon--delete { color: #B42332; }
+
+/* ── ORDERS LISTS on the Finance list (2026-10) ──
+   Confirmed Orders and PI Drafts reuse every FINANCE LISTS class above; these
+   are the few pieces only they need. */
+
+/* A labelled group inside one board (PI Drafts: "Submitted for Review" above
+   the working list), so one search covers both. */
+.fin-group {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px;
+  background: #FAF8F5; border-bottom: 1px solid #ECE7E0;
+  font-size: 12px; font-weight: 600; color: #303536;
+}
+.fin-group-count { font-weight: 500; color: #8F9392; font-variant-numeric: tabular-nums; }
+.fin-board .fin-table-wrap + .fin-group,
+.fin-board .fin-group-body + .fin-group { border-top: 1px solid #ECE7E0; }
+.fin-group:first-child { border-radius: 12px 12px 0 0; }
+
+/* A wide table scrolls inside its board instead of crushing its columns. */
+.fin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fin-table--orders { min-width: 880px; }
+.fin-table--drafts { min-width: 920px; }
+
+/* An Order with unread updates: a tint and a left edge, as before. */
+.fin-table tbody tr.has-update td { background: #F2F6FB; }
+.fin-table tbody tr.has-update:hover td { background: #EAF0F8; }
+.fin-table tbody tr.has-update td:first-child { box-shadow: inset 3px 0 0 #335A86; }
+.fin-table .order-update-badge { margin-left: 8px; }
+
+.fin-sub--alert { color: #B42332; font-weight: 500; }
+.fin-ordno { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Review PI: the one row action that is a decision, drawn in the review blue. */
+.boe-row-icon--review { color: #335A86; border-color: rgba(51,90,134,0.35); }
+.boe-row-icon--review:hover, .boe-row-icon--review:focus-visible { background: #EAF0F8; color: #335A86; border-color: #335A86; }
+.fin-chip-panel select { height: 32px; }
+.fin-table .order-update-badge { font-size: 11px; letter-spacing: 0.02em; padding: 1px 7px; }

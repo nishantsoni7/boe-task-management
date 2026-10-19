@@ -6,11 +6,16 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
-import { legibleOn } from '@/components/ui/StatusTabs'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import {
+  FilterChip,
+  FinanceEmpty,
+  FinancePerson,
+  FinanceStatusCards,
+  type FinanceTabTone,
+} from '@/app/finance/components/FinanceListParts'
 import {
   ORDER_UNREAD_TYPES,
   unreadUpdateCounts,
@@ -50,52 +55,30 @@ type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
-  on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
-  dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
-  cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
+// The status colours of the Finance lists (owner, 2026-10): Running blue, On
+// Hold amber, Ready for Dispatch green, Dispatched grey (finished), Cancelled
+// red. The card, the pill and the dot all read from this one map.
+const STATUS_META: Record<string, { label: string; tone: FinanceTabTone }> = {
+  running:            { label: 'Running',            tone: 'partial' },
+  on_hold:            { label: 'On Hold',            tone: 'zero' },
+  ready_for_dispatch: { label: 'Ready for Dispatch', tone: 'full' },
+  dispatched:         { label: 'Dispatched',         tone: 'neutral' },
+  cancelled:          { label: 'Cancelled',          tone: 'over' },
 }
 
 // 'requested' is gone (20260702000000): an Order exists only after its Order
 // Request was reviewed and converted, so every Confirmed Order starts at
 // 'running' and no pre-approval state remains to filter by. The database CHECK
 // no longer permits the value, so this list is the complete status domain, not
-// a subset of it.
-const STATUS_TABS: { key: StatusFilter; label: string; Icon: LucideIcon }[] = [
-  { key: 'all',               label: 'Total Order List',  Icon: Layers },
-  { key: 'running',           label: 'Running',           Icon: Activity },
-  { key: 'on_hold',           label: 'On Hold',           Icon: PauseCircle },
-  { key: 'ready_for_dispatch',label: 'Ready to Dispatch', Icon: PackageCheck },
-  { key: 'cancelled',         label: 'Cancelled',         Icon: CircleX },
-  { key: 'dispatched',        label: 'Dispatched',        Icon: Truck },
+// a subset of it. The status cards ARE the filter (no tab strip since 2026-10).
+const STATUS_CARDS: { key: StatusFilter; label: string; tone: FinanceTabTone }[] = [
+  { key: 'all',                label: 'All orders',        tone: 'neutral' },
+  { key: 'running',            label: 'Running',           tone: 'partial' },
+  { key: 'on_hold',            label: 'On Hold',           tone: 'zero' },
+  { key: 'ready_for_dispatch', label: 'Ready to Dispatch', tone: 'full' },
+  { key: 'dispatched',         label: 'Dispatched',        tone: 'neutral' },
+  { key: 'cancelled',          label: 'Cancelled',         tone: 'over' },
 ]
-
-// Each tab borrows the hue its rows already wear in the Status column, so a
-// status reads identically in the navigation strip and in the table. `tint`
-// backs the active tab, `badge`/`badgeActive` back the count. Only 'all' has no
-// row equivalent; it takes the BOE red brand accent.
-type TabAccent = { color: string; tint: string; badge: string; badgeActive: string }
-
-const badgeAccent = (key: string): TabAccent => ({
-  color:       STATUS_META[key].color,
-  tint:        STATUS_META[key].bg,
-  badge:       STATUS_META[key].bg,
-  badgeActive: STATUS_META[key].border,
-})
-
-const TAB_ACCENT: Record<StatusFilter, TabAccent> = {
-  all: {
-    color: '#B9472E', tint: 'rgba(185,71,46,0.055)',
-    badge: 'rgba(185,71,46,0.09)', badgeActive: 'rgba(185,71,46,0.17)',
-  },
-  running:            badgeAccent('running'),
-  on_hold:            badgeAccent('on_hold'),
-  ready_for_dispatch: badgeAccent('ready_for_dispatch'),
-  cancelled:          badgeAccent('cancelled'),
-  dispatched:         badgeAccent('dispatched'),
-}
 
 // Mirrors the lead_source CHECK on public.orders (20260655) and the label map on
 // the Order detail page. Kept page-local like every other label map in Orders.
@@ -115,14 +98,6 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: '3m',         label: 'Last 3 months' },
   { key: 'this_year',  label: 'This year' },
 ]
-
-// Compact listing control. `.boe-input` is width:100% and 8px/13px for form use;
-// the toolbar overrides it to size-to-content at a shorter height so search plus
-// every dropdown fits on one desktop row.
-const COMPACT_CONTROL: React.CSSProperties = {
-  width: 'auto', minWidth: '104px', maxWidth: '150px',
-  padding: '6px 8px', fontSize: '12px', flexShrink: 0, cursor: 'pointer',
-}
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'newest',      label: 'Newest first' },
@@ -213,17 +188,8 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
-      background: meta.bg, color: meta.color,
-      border: `1px solid ${meta.border}`,
-      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
-    }}>
-      {meta.label}
-    </span>
-  )
+  const meta = STATUS_META[status] ?? { label: status, tone: 'neutral' as const }
+  return <span className={`fin-pill fin-pill--${meta.tone}`}>{meta.label}</span>
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -555,158 +521,114 @@ export default function AllOrdersPage() {
         </div>
       )}
 
-      {/* ── Toolbar: search + filters + sort ──
-          Form controls only. Status navigation lives on the table card below so
-          the two never read as the same kind of control. Confirmed Orders is a
-          review surface: no creation action belongs here — an Order begins as
-          an uploaded PI and is confirmed at approval. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
-        marginBottom: '10px',
-      }}>
-        <input
-          className="boe-input"
-          type="search"
-          aria-label="Search Confirmed Orders"
-          placeholder="Search order no., request no., client or person…"
-          value={searchInput}
-          onChange={e => setSearchInput(e.target.value)}
-          onBlur={flushSearch}
-          style={{ flex: 1, minWidth: '180px', maxWidth: '320px', padding: '6px 10px', fontSize: '12px' }}
-        />
-        <select
-          className="boe-input"
-          aria-label="Filter by assignee"
-          value={assignee}
-          onChange={e => setAssignee(e.target.value)}
-          style={COMPACT_CONTROL}
-        >
-          <option value="all">All assignees</option>
-          {assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-        <select
-          className="boe-input"
-          aria-label="Filter by order date"
-          value={dateFilter}
-          onChange={e => setDateFilter(e.target.value as DateFilter)}
-          style={COMPACT_CONTROL}
-        >
-          {DATE_FILTERS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
-        </select>
-        {sourceOptions.length > 0 && (
-          <select
-            className="boe-input"
-            aria-label="Filter by lead source"
-            value={source}
-            onChange={e => setSource(e.target.value)}
-            style={COMPACT_CONTROL}
-          >
-            <option value="all">All sources</option>
-            {sourceOptions.map(s => <option key={s} value={s}>{LEAD_SOURCE_LABEL[s] ?? s}</option>)}
-          </select>
-        )}
-        <select
-          className="boe-input"
-          aria-label="Sort orders"
-          value={sortKey}
-          onChange={e => setSortKey(e.target.value as SortKey)}
-          style={COMPACT_CONTROL}
-        >
-          {SORT_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </select>
-        {filtersActive && (
-          <button
-            onClick={clearFilters}
-            style={{
-              padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-              cursor: 'pointer', border: `1px solid ${colors.border}`,
-              background: 'transparent', color: colors.muted,
-              whiteSpace: 'nowrap', flexShrink: 0,
-            }}
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
+      {/* ── The status cards ARE the filter (Finance lists, 2026-10) ──
+          Each card counts what it would show under the view bar's filters, so
+          a number never contradicts the list once the card is pressed. */}
+      <FinanceStatusCards
+        ariaLabel="Order status"
+        noun="order"
+        active={statusTab}
+        onSelect={setStatusTab}
+        cards={STATUS_CARDS.map(c => ({ ...c, count: listLoading && orders.length === 0 ? null : tabCounts[c.key] }))}
+      />
 
-      {/* ── Table, with the status strip as its own header ── */}
-      <div style={{
-        background: colors.base,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '8px',
-        overflow: 'hidden',
-      }}>
-        {/* Status navigation. Icon + status hue + count badge make each state
-            scannable without reading the label, while the flat background and
-            underline keep it visually distinct from the boxed toolbar controls.
-            The gap scales with the viewport: generous on desktop, tight enough
-            on mobile that the strip still scrolls as one line. */}
-        <div style={{
-          display: 'flex', alignItems: 'stretch', gap: '12px',
-          borderBottom: `1px solid ${colors.border}`, padding: '0 14px 0 6px',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'stretch', gap: 'clamp(10px, 1.9vw, 24px)',
-            flex: 1, minWidth: 0, overflowX: 'auto',
-          }}>
-            {STATUS_TABS.map(({ key, label, Icon }) => {
-              const active = statusTab === key
-              const accent = TAB_ACCENT[key]
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setStatusTab(key)}
-                  aria-pressed={active}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '5px',
-                    padding: '8px 8px 7px', border: 'none',
-                    background: active ? accent.tint : 'transparent',
-                    borderRadius: '6px 6px 0 0',
-                    borderBottom: `2px solid ${active ? accent.color : 'transparent'}`,
-                    fontSize: '12px', fontWeight: active ? 700 : 500,
-                    color: active ? accent.color : colors.primary,
-                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                    transition: 'background 0.12s, color 0.12s',
-                  }}
+      <div className="fin-board">
+        {/* ── The view bar: search, then one chip per filter ──
+            Form controls only. Confirmed Orders is a review surface: no
+            creation action belongs here — an Order begins as an uploaded PI and
+            is confirmed at approval. */}
+        <div className="fin-viewbar">
+          <div className="fin-tools" role="search" aria-label="Filter Confirmed Orders">
+            <label className="boe-list-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                aria-label="Search Confirmed Orders"
+                placeholder="Order no., client or person…"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onBlur={flushSearch}
+              />
+              {searchInput && (
+                <button type="button" onClick={() => setSearchInput('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+              )}
+            </label>
+            <FilterChip
+              icon="person"
+              label={assigneeOptions.find(a => a.id === assignee)?.name ?? 'Assignee'}
+              isSet={assignee !== 'all'}
+            >
+              <select
+                className="boe-input"
+                aria-label="Filter by assignee"
+                value={assignee}
+                onChange={e => setAssignee(e.target.value)}
+              >
+                <option value="all">All assignees</option>
+                {assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </FilterChip>
+            <FilterChip
+              label={dateFilter === 'all' ? 'Order date' : DATE_FILTERS.find(d => d.key === dateFilter)?.label ?? 'Order date'}
+              isSet={dateFilter !== 'all'}
+            >
+              <select
+                className="boe-input"
+                aria-label="Filter by order date"
+                value={dateFilter}
+                onChange={e => setDateFilter(e.target.value as DateFilter)}
+              >
+                {DATE_FILTERS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+              </select>
+            </FilterChip>
+            {sourceOptions.length > 0 && (
+              <FilterChip
+                icon="tag"
+                label={source === 'all' ? 'Source' : LEAD_SOURCE_LABEL[source] ?? source}
+                isSet={source !== 'all'}
+              >
+                <select
+                  className="boe-input"
+                  aria-label="Filter by lead source"
+                  value={source}
+                  onChange={e => setSource(e.target.value)}
                 >
-                  <Icon
-                    size={14}
-                    style={{ color: accent.color, opacity: active ? 1 : 0.55, flexShrink: 0 }}
-                    aria-hidden
-                  />
-                  {label}
-                  <span style={{
-                    minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
-                    background: active ? accent.badgeActive : accent.badge,
-                    color: legibleOn(accent.color, active ? accent.badgeActive : accent.badge), fontSize: '12px', fontWeight: 700,
-                    lineHeight: '15px', textAlign: 'center',
-                  }}>
-                    {tabCounts[key]}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          <div aria-live="polite" style={{
-            display: 'flex', alignItems: 'center', flexShrink: 0,
-            fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
-          }}>
-            {listLoading
-              ? 'Loading…'
-              : filtersActive
-                ? `${visible.length} of ${orders.length} visible`
-                : `${visible.length} order${visible.length !== 1 ? 's' : ''}`}
+                  <option value="all">All sources</option>
+                  {sourceOptions.map(s => <option key={s} value={s}>{LEAD_SOURCE_LABEL[s] ?? s}</option>)}
+                </select>
+              </FilterChip>
+            )}
+            <FilterChip
+              icon="sort"
+              label={SORT_OPTIONS.find(s => s.key === sortKey)?.label ?? 'Sort'}
+              isSet={sortKey !== 'newest'}
+            >
+              <select
+                className="boe-input"
+                aria-label="Sort orders"
+                value={sortKey}
+                onChange={e => setSortKey(e.target.value as SortKey)}
+              >
+                {SORT_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </FilterChip>
+            {filtersActive && (
+              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                Clear filters
+              </button>
+            )}
           </div>
         </div>
 
         {/* A REFRESH KEEPS THE ROWS. The table used to be swapped for
             "Loading…" on every re-read, which threw the reader back to the
-            top; the count above says a read is in flight. */}
+            top; the rows stay on screen while a read is in flight. */}
         {loadError && (
           <div role="alert" style={{
             display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-            margin: '12px 14px 0', padding: '9px 12px', borderRadius: '8px',
+            padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
             background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
           }}>
             <span style={{ flex: 1, minWidth: 0 }}>{loadError}</span>
@@ -716,28 +638,32 @@ export default function AllOrdersPage() {
           </div>
         )}
         {listLoading && orders.length === 0 ? (
-          <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
+          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : loadError && orders.length === 0 ? (
           // Nothing was read, so nothing is claimed — the banner above says why.
           null
         ) : visible.length === 0 ? (
-          <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-            {filtersActive ? (
-              <>
-                No orders match the current filters.
-                <button
-                  onClick={clearFilters}
-                  style={{
-                    display: 'block', margin: '10px auto 0', padding: '5px 12px',
-                    borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                    border: `1px solid ${colors.border}`, background: 'transparent', color: colors.secondary,
-                  }}
-                >
+          /* TWO DIFFERENT EMPTIES: "no Orders" is a statement about the
+             business; "nothing matches" is about the filters, and offers the
+             way out. */
+          filtersActive ? (
+            <FinanceEmpty
+              icon="search"
+              title={search.trim() ? `No results for “${search.trim()}”.` : 'No orders match these filters.'}
+              body="Try an order number, a client or a person, or clear the filters."
+              action={
+                <button type="button" onClick={clearFilters} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
                   Clear filters
                 </button>
-              </>
-            ) : 'No orders found.'}
-          </div>
+              }
+            />
+          ) : (
+            <FinanceEmpty
+              icon="box"
+              title="No Confirmed Orders yet."
+              body="An Order appears here when its PI is approved and confirmed."
+            />
+          )
         ) : (
           <>
           {/* PHONE: one card per Order instead of an eight-column table that
@@ -780,18 +706,28 @@ export default function AllOrdersPage() {
               )
             })}
           </ul>
-          <div className="orders-list-table" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <div className="orders-list-table fin-table-wrap">
+            <table className="fin-table fin-table--orders">
+              <colgroup>
+                <col style={{ width: '16%' }} />{/* Order # + update badge */}
+                <col style={{ width: '18%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '12%' }} />{/* Requested by */}
+                <col style={{ width: '12%' }} />{/* Assigned to */}
+                <col style={{ width: '9%' }} />{/* Confirmed */}
+                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '10%' }} />{/* Value */}
+                <col style={{ width: '14%' }} />{/* Status */}
+              </colgroup>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {['Order #', 'Client', 'Requested By', 'Assigned To', 'Confirm Date', 'Due Date', 'Value', 'Status'].map(h => (
-                    <th key={h} style={{
-                      padding: '8px 16px', textAlign: 'left',
-                      fontSize: '12px', fontWeight: 600, color: colors.muted,
-                      textTransform: 'uppercase', letterSpacing: '0.05em',
-                      whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
+                <tr>
+                  <th>Order #</th>
+                  <th>Client</th>
+                  <th>Requested by</th>
+                  <th>Assigned to</th>
+                  <th>Confirmed</th>
+                  <th>Due</th>
+                  <th className="fin-num">Value</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -806,19 +742,12 @@ export default function AllOrdersPage() {
                     <tr
                       key={o.id}
                       onClick={() => router.push(orderHref(o.id))}
-                      style={{
-                        borderBottom: `1px solid ${colors.border}`,
-                        cursor: 'pointer', transition: 'background 0.1s',
-                        /* A TINT AND A LEFT EDGE, NOT A FLASH. The row has to
-                           be hard to miss in a list of forty and impossible to
-                           find irritating in a list somebody reads all day, so
-                           the animation is on the small dot in the badge and
-                           nowhere else. */
-                        ...(updateLabel ? {
-                          background: colors.brandTint,
-                          boxShadow: `inset 3px 0 0 ${colors.brand}`,
-                        } : null),
-                      }}
+                      /* A TINT AND A LEFT EDGE, NOT A FLASH. The row has to be
+                         hard to miss in a list of forty and impossible to find
+                         irritating in a list somebody reads all day, so the
+                         animation is on the small dot in the badge and nowhere
+                         else. */
+                      className={updateLabel ? 'has-update' : undefined}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
                          about to be opened, and prefetching the Order detail
                          route on it means the code for that screen is already
@@ -828,17 +757,9 @@ export default function AllOrdersPage() {
                          session, so this can neither leak a row nor show a
                          stale one. Next de-duplicates repeated prefetches, so
                          moving down a list of forty costs forty cache hits. */
-                      onMouseEnter={e => {
-                        router.prefetch(`/orders/${o.id}`)
-                        ;(e.currentTarget as HTMLTableRowElement).style.background =
-                          updateLabel ? colors.blueTint : colors.raised
-                      }}
-                      onMouseLeave={e => {
-                        (e.currentTarget as HTMLTableRowElement).style.background =
-                          updateLabel ? colors.brandTint : 'transparent'
-                      }}
+                      onMouseEnter={() => router.prefetch(`/orders/${o.id}`)}
                     >
-                      <td style={{ padding: '11px 16px', fontWeight: updateLabel ? 800 : 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                      <td className="fin-ordno" style={{ fontWeight: updateLabel ? 800 : undefined }}>
                         {/* The row is clickable for a pointer; THIS is the
                             real link — reachable by Tab, opens in a new tab,
                             shows its address. prefetch={false}: the row's
@@ -854,32 +775,29 @@ export default function AllOrdersPage() {
                           {o.display_number}
                         </Link>
                         {updateLabel && (
-                          <span className="order-update-badge">
+                          <span className="order-update-badge" title={updateLabel}>
                             <span className="order-update-dot" aria-hidden="true" />
                             {updateLabel}
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {o.client_name}
+                      <td title={o.client_name}>
+                        <span className="fin-primary-text">{o.client_name}</span>
+                        {o.lead_source && (
+                          <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
+                        )}
                       </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {o.requested_by_name ?? '—'}
-                      </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {o.assigned_to_name ?? '—'}
-                      </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {fmtDate(o.confirm_date)}
-                      </td>
-                      <td style={{ padding: '11px 16px', whiteSpace: 'nowrap', color: overdue ? colors.red : colors.secondary, fontWeight: overdue ? 600 : 400 }}>
+                      <td><FinancePerson name={o.requested_by_name} /></td>
+                      <td><FinancePerson name={o.assigned_to_name} /></td>
+                      <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
+                      <td>
                         {fmtDate(o.due_date)}
-                        {overdue && <span style={{ marginLeft: '4px', fontSize: '12px' }}>overdue</span>}
+                        {overdue && <span className="fin-sub fin-sub--alert">Overdue</span>}
                       </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {fmtAmount(o.total_value)}
+                      <td className="fin-num">
+                        <span className="fin-amount">{fmtAmount(o.total_value)}</span>
                       </td>
-                      <td style={{ padding: '11px 16px' }}>
+                      <td>
                         <StatusBadge status={o.status} />
                       </td>
                     </tr>
