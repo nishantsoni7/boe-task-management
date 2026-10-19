@@ -398,7 +398,9 @@ describe('the queues and the Control Center', () => {
 describe('the Order page', () => {
   test('reads the handoffs beside the versions, in the same group, through one named query', () => {
     const loader = PAGE.slice(PAGE.indexOf('const loadPiHandoff'), PAGE.indexOf('const reloadActivity'))
-    assert.match(loader, /handoffsQuery\(\),\s*\]\)/, 'in the Promise.all, not after it')
+    // In the Promise.all, not after it (the commission reads follow it in the same group).
+    const group = loader.slice(loader.indexOf('await Promise.all(['), loader.indexOf('])', loader.indexOf('handoffsQuery(),')) + 2)
+    assert.match(group, /handoffsQuery\(\),/, 'in the Promise.all, not after it')
     assert.equal((PAGE.match(/\.from\('order_operations_handoffs'\)/g) ?? []).length, 1, 'one query, named once')
     assert.equal((PAGE.match(/handoffsQuery\(\)/g) ?? []).length, 2, 'the load and the narrow refresh')
     assert.match(loader, /setHandoffs\(\[\]\)/, 'the no-source branch leaves a named empty state')

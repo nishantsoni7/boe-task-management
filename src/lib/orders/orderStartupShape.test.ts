@@ -370,7 +370,11 @@ describe('no Order screen waits more than it must', () => {
       //   column in the row's select, so that a database without the computed
       //   column yet fails THAT read alone: the Order still opens and its
       //   percentage says "Total before GST not available".
-      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 41,
+      // DETAIL 41 -> 43 (owner, 2026-10-19): Internal order details in the
+      // Documents card read the middleman commission and ask
+      // can_read_order_submission_commission — the same two reads the PI page
+      // makes — inside loadPiHandoff's EXISTING Promise.all, so no wait is added.
+      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 43,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
