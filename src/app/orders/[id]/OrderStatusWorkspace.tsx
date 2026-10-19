@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Lock, Pencil, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Lock, Upload, X } from 'lucide-react'
 import {
   ORDER_INTERNAL_DETAILS_NOTE,
   ORDER_INTERNAL_DETAILS_TITLE,
@@ -29,9 +29,7 @@ import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_DOWNLOAD_LABEL,
-  MAIN_PI_FILE_LABEL,
   MAIN_PI_ORIGINAL_EXCEL_LABEL,
-  MAIN_PI_REVIEWER_LABEL,
   MAIN_PI_UPLOADED_LABEL,
   MAIN_PI_VIEW_LABEL,
   PI_HISTORY_CURRENT_BADGE,
@@ -53,7 +51,7 @@ import {
   revisionStage,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
-import { PI_EDITED_VERSION_WORKBOOK_NOTE, PI_VERSION_PDF_VIEW_LABEL } from '@/lib/orders/piVersionPdf'
+import { PI_VERSION_PDF_VIEW_LABEL } from '@/lib/orders/piVersionPdf'
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
   CANNOT_ACCEPT_LABEL,
@@ -274,8 +272,6 @@ export function OrderDocumentsPanel({
     label: string
     tone: StatusTone
     line: string | null
-    /** Who reviews it while Operations has it (a name, or why nobody can). */
-    reviewer?: string | null
   } | null
   /** The Main PI row's ⋯ menu (Download PI, PI history). Absent: Download is a quiet button. */
   mainPiMenu?: React.ReactNode
@@ -315,15 +311,14 @@ export function OrderDocumentsPanel({
    */
   onOpenPdf?: (versionId: string, download: boolean) => void
   /**
-   * THE PI'S VERSIONS AND EDIT PI (20270115000000), on the Main PI row: a
-   * "PI history" link that opens the versions popup, and — for somebody the
-   * page resolved as allowed to propose — Edit PI. Absent: neither is drawn
-   * (an Order with no source PI, or one still loading).
+   * THE PI'S VERSIONS (20270115000000), on the Main PI row: a "PI history"
+   * link that opens the versions popup, and the outcome of the last proposal.
+   * Edit PI is in the page header (owner, 2026-10-19), not here. Absent:
+   * nothing is drawn (an Order with no source PI, or one still loading).
    */
   piVersions?: {
     count: number
     onOpen: () => void
-    edit: { onEdit: () => void; blockedNote: string | null } | null
     notice: string | null
   }
 }) {
@@ -334,29 +329,9 @@ export function OrderDocumentsPanel({
       {PI_VERSIONS_HISTORY_LABEL}{piVersions.count > 0 ? ` (${piVersions.count})` : ''}
     </button>
   ) : null
-  // EDIT PI sits with the Main PI's other actions: it opens the full-page
-  // editor, and an edit becomes a pending version. The page decides whether it
-  // is offered (the same gate the old header and history-popup buttons used);
-  // while a revision is waiting for a decision it is shown disabled, with the
-  // reason beside it, so an unavailable action never looks available.
-  const editPi = piVersions?.edit ? (
-    <button
-      type="button"
-      className="boe-btn boe-btn-ghost order-doc-action"
-      onClick={piVersions.edit.onEdit}
-      disabled={!!piVersions.edit.blockedNote}
-      title={piVersions.edit.blockedNote ?? undefined}
-    >
-      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
-      {EDIT_PI_ACTION_LABEL}
-    </button>
-  ) : null
-  const piVersionNotes = (piVersions?.notice || piVersions?.edit?.blockedNote) ? (
-    <>
-      {piVersions?.edit?.blockedNote && <p className="order-doc-note">{piVersions.edit.blockedNote}</p>}
-      {piVersions?.notice && <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>}
-    </>
-  ) : null
+  const piVersionNotes = piVersions?.notice
+    ? <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>
+    : null
   const picturesBlock = pictures ? <ProductPicturesBlock {...pictures} /> : null
   const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
     ? { proposal: mainPi.proposal, stage: revisionStage(mainPi.proposal, revisionApproverInactive) }
@@ -537,9 +512,11 @@ export function OrderDocumentsPanel({
         ) : (
           /* THE MAIN PI, LAID OUT LIKE A NOTION RECORD (owner, 2026-10-19):
              the title and its one status, with the quiet links on the right;
-             then a property list (muted label, value) for the dates and the
-             reviewer; then the actions in one line underneath — one primary,
-             the rest secondary — instead of everything competing in one row. */
+             then the two dates as properties (muted label, value); then the
+             actions in one line underneath — one primary, the rest secondary.
+             The reviewer and the file name are not repeated here (owner), and
+             Edit PI is in the page header. The product pictures sit BESIDE
+             this column, not under it (.order-docs-main is the row). */
           <section className="order-doc-section order-doc-section--primary order-pi" aria-label={DOC_MAIN_PI_TITLE}>
             <div className="order-pi-head">
               <p className="order-doc-row-head">
@@ -551,7 +528,7 @@ export function OrderDocumentsPanel({
                 {mainPiMenu}
               </div>
             </div>
-            <dl className="order-pi-props">
+            <dl className="order-pi-props order-pi-props--dates">
               <div className="order-pi-prop">
                 <dt>{MAIN_PI_UPLOADED_LABEL}</dt>
                 <dd>{mainPi.uploadedAt}</dd>
@@ -563,20 +540,6 @@ export function OrderDocumentsPanel({
                   <dd>{mainPi.approvedAt}</dd>
                 </div>
               )}
-              {mainPiOperations?.reviewer && (
-                <div className="order-pi-prop">
-                  <dt>{MAIN_PI_REVIEWER_LABEL}</dt>
-                  <dd>{mainPiOperations.reviewer}</dd>
-                </div>
-              )}
-              <div className="order-pi-prop">
-                <dt>{MAIN_PI_FILE_LABEL}</dt>
-                <dd className="order-pi-prop-file">
-                  {mainPi.version.editedInApp
-                    ? PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)
-                    : (mainPi.fileName ?? mainPi.reference)}
-                </dd>
-              </div>
             </dl>
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
@@ -609,7 +572,6 @@ export function OrderDocumentsPanel({
                   {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
                 </button>
               )}
-              {editPi}
             </div>
           </section>
         )}
@@ -705,8 +667,6 @@ function SupportingBody({ row, onOpen, onDownload }: {
   return <FileLinks files={row.files} onOpen={onOpen} onDownload={onDownload} />
 }
 
-/** The same words as PiEditor's EDIT_PI_LABEL (not imported: PiEditor sits above this file). */
-const EDIT_PI_ACTION_LABEL = 'Edit PI'
 
 const fileCountLabel = (n: number) => `${n} file${n === 1 ? '' : 's'}`
 

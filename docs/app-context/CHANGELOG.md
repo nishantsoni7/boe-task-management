@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-19 — Order Detail: Edit PI in the header, Main PI beside Product pictures (PR open)
+- Edit PI moved from the Main PI row to the page header (same handler, gate and blocked state). Operations reviewer and File rows removed from the Main PI (owner: not required; an unassigned reviewer is still said). Main PI and Product pictures share one row: Main PI left (grows), pictures right (content width), stacked below 760px card width. Tests updated deliberately: `orderDocumentSubmissions.render`. Migrations: none.
+
 ## 2026-10-19 — Order Detail Documents card cleanup + warnings off the page (#350 merged as 67523b65 with the first two bullets; the rest in the follow-up PR)
 - Files sent with the PI now show in the Design Files and Client PO rows as soon as the Order exists (they were hidden until Operations accepted PI V1, so the rows said "No design files" / "No client PO" beside files that had been sent). `sentWithPiOnFile` in `lib/orders/orderDocumentSubmissions.ts`; an accepted amendment still wins.
 - The "Document changes" panel no longer lists the files sent with the PI (they are not a change); it is for amendments and PI revisions only. The Main PI row's line under "Waiting for Operations" now names only the reviewer (the pill and the Approved date already said the rest).

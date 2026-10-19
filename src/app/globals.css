@@ -10361,3 +10361,31 @@ textarea.pi-form-input { height: auto; }
 @media (max-width: 560px) {
   .order-docs-internal { padding: 14px 14px 16px; }
 }
+
+/* ── Main PI | Product pictures in ONE ROW (owner, 2026-10-19) ──
+   The Main PI (title, dates, actions) takes the left column and grows; the
+   product pictures take the right column at the width their content needs,
+   stacked (title and count, then View / Download all). Below the width both
+   need, the pictures fall back under the Main PI as before. The dates use a
+   narrow label column: only "Uploaded" and "Approved" are left. */
+.order-pi-props--dates .order-pi-prop { grid-template-columns: 76px minmax(0, 1fr); }
+@container (min-width: 760px) {
+  .order-docs-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+  .order-docs-main > .order-doc-pictures {
+    flex-direction: column;
+    align-items: flex-start;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 16px 20px 16px 0;
+    padding: 14px 16px;
+    min-width: 220px;
+    max-width: 320px;
+  }
+  .order-docs-main > .order-doc-pictures .order-doc-pictures-main { flex: 0 0 auto; }
+  /* Stacked, the icon would sit alone above the title. */
+  .order-docs-main > .order-doc-pictures .order-doc-pictures-icon { display: none; }
+}

@@ -36,8 +36,6 @@ export const MAIN_PI_HISTORY_LABEL = 'View history'
 
 export const MAIN_PI_UPLOADED_LABEL = 'Uploaded'
 export const MAIN_PI_APPROVED_LABEL = 'Approved'
-export const MAIN_PI_REVIEWER_LABEL = 'Operations reviewer'
-export const MAIN_PI_FILE_LABEL = 'File'
 
 /**
  * WHAT AN ORDER WITH NO APPROVED PI SAYS.

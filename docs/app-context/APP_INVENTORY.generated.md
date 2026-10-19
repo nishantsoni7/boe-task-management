@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c6b8a7d7` — Order Detail: Documents card shows PI-sent files; solid warning colours
-- Commits on this branch: 901
+- Commit: `60ed1b0d` — Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
+- Commits on this branch: 902
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 702   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `c6b8a7d7` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours
+- `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
+- `67523b65` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours (#350)
 - `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
 - `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
 - `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
@@ -38,7 +39,6 @@
 - `bf6880a0` 2026-10-18 Docs and backups: app-context system, master instruction sheet, backup tooling (#329)
 - `e2e76290` 2026-10-18 CI gate, live-DB workflow, opt-in branch-scope guards, safe worktree removal, dead modal removed (#328)
 - `852e0493` 2026-10-18 Payment forms: Edit Received Payment, Allocate Funds, Allocate Payment, Correct Allocation and Add PI payment on the shared frame (#326)
-- `5c39ee5a` 2026-10-18 Tests: clear the failing baseline on main (0 failures without a database) (#327)
 
 ## Pages by top-level area
 
