@@ -1090,6 +1090,9 @@ describe('the applied migrations are frozen', () => {
       '20270319000000_meetings_rpcs_require_module_entry.sql',
       // Sample choice on PI and Order (owner, 2026-10-19).
       '20270320000000_order_submission_sample_type.sql',
+      // Orders notifications from the database (owner audit, 2026-10-19).
+      '20270321000000_order_submission_notification_types.sql',
+      '20270321000001_order_submission_notifications_complete.sql',
     ])
   })
 
@@ -1431,6 +1434,9 @@ describe('the applied migrations are frozen', () => {
       '20270319000000_meetings_rpcs_require_module_entry.sql',
       // Sample choice on PI and Order (owner, 2026-10-19).
       '20270320000000_order_submission_sample_type.sql',
+      // Orders notifications from the database (owner audit, 2026-10-19).
+      '20270321000000_order_submission_notification_types.sql',
+      '20270321000001_order_submission_notifications_complete.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

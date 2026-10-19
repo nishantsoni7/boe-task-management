@@ -182,6 +182,11 @@ describe('a designation level grants nothing', () => {
     const dir = join(ROOT, 'supabase/migrations')
     const offenders = readdirSync(dir)
       .filter(f => f.endsWith('.sql') && !f.startsWith('20261106000000'))
+      // 20270321000001 reads it ONLY to choose who RECEIVES an Order notice —
+      // the "Super Admin" recipient category the owner configures in
+      // order_notification_recipients, exactly as /api/orders/[id]/notify
+      // already does in TypeScript. It grants nothing and gates nothing.
+      .filter(f => f !== '20270321000001_order_submission_notifications_complete.sql')
       .filter(f => /designation_level/.test(readFileSync(join(dir, f), 'utf8')))
     assert.deepEqual(offenders, [], 'only the migration that creates the column may mention it')
   })

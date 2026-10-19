@@ -372,6 +372,12 @@ describe('the read side excludes system types too', () => {
     // what an approver decided: an AFTER trigger on inventory_bookings — not on notifications — in the transaction of
     // the person's own action, writing the two Inventory types only. Nothing is scheduled.
     const INVENTORY_BOOKINGS = '20270314000100_inventory_booking_notifications.sql'
+    // Orders notifications from the database (owner audit, 2026-10-19): AFTER
+    // triggers on Orders tables — never on notifications — write Orders-type
+    // rows inside a PERSON's own action (a status change, an amendment, a
+    // payment decision, a PI sent or decided...), through ONE helper insert.
+    // Nothing scheduled, no system type.
+    const ORDERS_NOTIFICATIONS = '20270321000001_order_submission_notifications_complete.sql'
     assertNamedSuccessors(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -389,7 +395,17 @@ describe('the read side excludes system types too', () => {
       ADVANCE_ON_BASE,
       REVIEW_ADMIN_REJECT,
       INVENTORY_BOOKINGS,
+      ORDERS_NOTIFICATIONS,
     ])
+    {
+      const sql = read(join(dir, ORDERS_NOTIFICATIONS))
+      assert.equal((sql.match(/insert\s+into\s+public\.notifications/gi) ?? []).length, 1, `${ORDERS_NOTIFICATIONS}: one write, in order_notify_users`)
+      assert.equal(/create\s+(or\s+replace\s+)?(constraint\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications\b/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${ORDERS_NOTIFICATIONS}: nothing is scheduled`)
+      const types = [...new Set([...(sql.match(/'(\w+)'(?=[,)]|\s*then|;)/g) ?? [])].map(s => s.replace(/'/g, '')))]
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${ORDERS_NOTIFICATIONS} must not write ${t}`)
+      assert.ok(types.length > 0)
+    }
     {
       const sql = read(join(dir, ADVANCE_ON_BASE))
       const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
@@ -520,7 +536,7 @@ describe('the read side excludes system types too', () => {
       assert.deepEqual([...new Set(types)].sort(), ['inventory_booking_decided', 'inventory_booking_requested'])
       for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${INVENTORY_BOOKINGS} must not write ${t}`)
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)
