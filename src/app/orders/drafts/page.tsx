@@ -35,13 +35,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { FileText, Inbox, Trash2, Upload } from 'lucide-react'
+import { ClipboardCheck, Eye, Trash2, Upload } from 'lucide-react'
 import { PiFormatButton } from '@/components/orders/PiFormatLink'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import { PiCard } from '@/components/orders/piPreview'
 import { PiDeleteConfirmModal } from '@/components/orders/piReviewModals'
+import {
+  FinanceEmpty,
+  FinancePerson,
+  FinanceStatusCards,
+  type FinanceTabTone,
+} from '@/app/finance/components/FinanceListParts'
+import { enumParam, textParam } from '@/lib/listState'
+import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -55,6 +62,7 @@ import {
   PI_DRAFTS_SUBTITLE,
   PI_DRAFT_LIST_COLUMNS,
   PI_DRAFT_LIST_STATUSES,
+  PI_DRAFT_STATUS_LABEL,
   PI_REVIEW_EMPTY_TEXT,
   GRAND_TOTAL_UNAVAILABLE_NOTE,
   describeDraftListEntry,
@@ -88,26 +96,48 @@ const MOBILE_BREAKPOINT = 1100
 /** Newest first, and capped: a drafts list is a working set, not an archive. */
 const LIST_LIMIT = 200
 
-const TONE_STYLE: Record<PiDraftStatusTone, { bg: string; color: string; border: string }> = {
-  neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
-  blue:    { bg: colors.blueTint,  color: '#335A86',        border: 'rgba(51,90,134,0.3)' },
-  amber:   { bg: colors.amberTint, color: '#805B0D',        border: 'rgba(196,138,26,0.3)' },
-  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(180,35,50,0.3)' },
-  green:   { bg: colors.greenTint, color: '#276247',        border: 'rgba(39,98,71,0.25)' },
+/** A draft's tone, drawn in the Finance lists' colours (2026-10). */
+const TONE: Record<PiDraftStatusTone, FinanceTabTone> = {
+  neutral: 'neutral',
+  blue:    'partial',
+  amber:   'zero',
+  red:     'over',
+  green:   'full',
 }
 
 function StatusPill({ label, tone }: { label: string; tone: PiDraftStatusTone }) {
-  const style = TONE_STYLE[tone]
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 8px', borderRadius: '6px',
-      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
-      background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    }}>
-      {label}
-    </span>
-  )
+  return <span className={`fin-pill fin-pill--${TONE[tone]}`}>{label}</span>
+}
+
+type DraftStatusFilter = 'all' | 'draft' | 'submitted' | 'needs_changes' | 'rejected'
+
+/**
+ * THE STATUS CARDS ARE THE FILTER (owner, 2026-10), as on the Finance lists.
+ * One card per status this list can hold (PI_DRAFT_LIST_STATUSES) plus All.
+ */
+const STATUS_CARDS: { key: DraftStatusFilter; label: string; tone: FinanceTabTone }[] = [
+  { key: 'all',           label: 'All drafts',                             tone: 'neutral' },
+  { key: 'draft',         label: PI_DRAFT_STATUS_LABEL.draft,         tone: 'neutral' },
+  { key: 'submitted',     label: PI_DRAFT_STATUS_LABEL.submitted,     tone: 'partial' },
+  { key: 'needs_changes', label: PI_DRAFT_STATUS_LABEL.needs_changes, tone: 'zero' },
+  { key: 'rejected',      label: PI_DRAFT_STATUS_LABEL.rejected,      tone: 'over' },
+]
+
+/**
+ * The status card and the search live in the URL (src/lib/listState.ts), so
+ * Back from a draft returns to the same view. Both narrow the rows ALREADY
+ * READ: neither is a query, and neither decides who may see what — RLS did.
+ */
+const DRAFTS_LIST_PARAMS = {
+  status: enumParam<DraftStatusFilter>(['all', 'draft', 'submitted', 'needs_changes', 'rejected'], 'all'),
+  q:      textParam(),
+}
+
+/** Does this row answer the search? Client, PI reference and the people on it. */
+function matchesSearch(entry: PiDraftListEntry, q: string): boolean {
+  if (!q) return true
+  return [entry.client, entry.reference, entry.numberLine, entry.authoredBy, entry.uploader, entry.submitter]
+    .some(value => (value ?? '').toLowerCase().includes(q))
 }
 
 export default function PiDraftsPage() {
@@ -165,6 +195,19 @@ export default function PiDraftsPage() {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  // The status card and the search, both in the URL (see DRAFTS_LIST_PARAMS).
+  // The box shows what is being typed and commits after the shared pause.
+  const { state: listState, setState: setListState, resetState: resetListState } =
+    useListUrlState(DRAFTS_LIST_PARAMS)
+  const statusFilter = listState.status
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(listState.q, next => setListState({ q: next }))
+  const search = listState.q.trim().toLowerCase()
+  const narrowed = statusFilter !== 'all' || search !== ''
+  const clearView = () => {
+    setSearchInput('')
+    resetListState()
+  }
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
@@ -398,17 +441,42 @@ export default function PiDraftsPage() {
 
     return (
       <button
-        className="boe-btn boe-btn-ghost"
-        onClick={() => { setDeleteFailure(null); setPendingDelete(entry) }}
+        type="button"
+        className="boe-row-icon boe-row-icon--delete"
+        onClick={e => { e.stopPropagation(); setDeleteFailure(null); setPendingDelete(entry) }}
         disabled={deleting}
         aria-label={`${DELETE_PI_ARIA_LABEL} — ${entry.client}`}
         title={DELETE_PI_ARIA_LABEL}
-        style={{ color: colors.red, padding: '6px 9px' }}
       >
-        <Trash2 size={13} strokeWidth={2} />
+        <Trash2 size={15} aria-hidden="true" />
       </button>
     )
   }
+
+  /**
+   * The row's icons, in fixed 28px slots as on the Finance lists: Open Draft
+   * (or Review PI, in the review blue), then Delete. A missing Delete leaves an
+   * empty slot so the open icon never moves between rows.
+   */
+  const rowActions = (entry: PiDraftListEntry, actionLabel: string) => (
+    <div className="boe-row-actions boe-row-actions--slots" style={{ gap: '4px', justifyContent: 'flex-end' }}>
+      <Link
+        href={entry.href}
+        prefetch={false}
+        className={`boe-row-icon${actionLabel === REVIEW_ACTION_LABEL ? ' boe-row-icon--review' : ''}`}
+        aria-label={`${actionLabel} — ${entry.client}`}
+        title={actionLabel}
+        onClick={e => e.stopPropagation()}
+        onMouseEnter={() => prefetchDraft(entry)}
+        onFocus={() => prefetchDraft(entry)}
+      >
+        {actionLabel === REVIEW_ACTION_LABEL
+          ? <ClipboardCheck size={15} aria-hidden="true" />
+          : <Eye size={15} aria-hidden="true" />}
+      </Link>
+      {deleteAction(entry) ?? <span className="boe-row-icon-slot" aria-hidden="true" />}
+    </div>
+  )
   /** One destination, named once, so the header and the empty state cannot
    *  drift apart or grow a second hand-built path. */
   const goToImport = () => router.push('/orders/import')
@@ -416,44 +484,34 @@ export default function PiDraftsPage() {
   if (entries === null && !failed) return <OrdersRouteFallback />
 
   const emptyState = (
-    <PiCard>
-      <div style={{
-        padding: '40px 24px',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
-        textAlign: 'center',
-      }}>
-        <FileText size={22} strokeWidth={1.8} color={colors.muted} />
-        <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
-          {PI_DRAFTS_EMPTY_TEXT}
-        </div>
-        <div style={{ fontSize: '12px', color: colors.secondary, maxWidth: '440px', lineHeight: 1.5 }}>
-          {/* This used to end "Nothing is submitted for approval at this stage",
-              which stopped being true the day submission shipped. */}
-          {PI_DRAFTS_EMPTY_NOTE}
-        </div>
-        {/* The action belongs HERE, in the empty state, because this is the one
-            moment the page has nothing else to offer — a person arriving with no
-            records should not have to find the header button to begin.
+    <div className="fin-board">
+      <FinanceEmpty
+        icon="file"
+        title={PI_DRAFTS_EMPTY_TEXT}
+        /* This used to end "Nothing is submitted for approval at this stage",
+           which stopped being true the day submission shipped. */
+        body={PI_DRAFTS_EMPTY_NOTE}
+        /* The action belongs HERE, in the empty state, because this is the one
+           moment the page has nothing else to offer — a person arriving with no
+           records should not have to find the header button to begin.
 
-            It is deliberately NOT rendered when the list has rows: the header
-            already carries it, and two identical primary buttons stacked on a
-            phone is the repetition this avoids. */}
-        {canCreate && (
-          <div style={{ marginTop: '4px' }}>
-            <button className="boe-btn boe-btn-primary" onClick={goToImport}>
-              <Upload size={13} strokeWidth={2} />
-              {UPLOAD_PI_BUTTON_LABEL}
-            </button>
-          </div>
+           It is deliberately NOT rendered when the list has rows: the header
+           already carries it, and two identical primary buttons stacked on a
+           phone is the repetition this avoids. */
+        action={canCreate && (
+          <button className="boe-btn boe-btn-primary" onClick={goToImport}>
+            <Upload size={13} strokeWidth={2} />
+            {UPLOAD_PI_BUTTON_LABEL}
+          </button>
         )}
-      </div>
-    </PiCard>
+      />
+    </div>
   )
 
   const failureState = (
-    <PiCard style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
+    <div className="fin-board" role="alert" style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
           These drafts could not be loaded
         </div>
         <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
@@ -467,7 +525,7 @@ export default function PiDraftsPage() {
           </button>
         </div>
       </div>
-    </PiCard>
+    </div>
   )
 
   /**
@@ -486,180 +544,160 @@ export default function PiDraftsPage() {
    * The review queue and the working list are the SAME rows in the same shape,
    * so they are one table rendered twice rather than two tables to keep in step.
    * What differs is the submission columns, which only matter to a reviewer, and
-   * the wording on the button.
+   * the action icon.
    */
   const listTable = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
-    <PiCard>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Client', 'Salesperson', 'Uploaded by', 'Product value', 'Grand total', 'Status',
-                ...(showSubmission ? ['Submitted'] : []), ''].map((h, i) => (
-                <th key={h || 'action'} style={{
-                  padding: '8px 14px',
-                  // The two money columns, and only those, are right-aligned so
-                  // the figures line up digit for digit against each other.
-                  textAlign: i === 3 || i === 4 ? 'right' : 'left',
-                  fontSize: '12px', fontWeight: 600, color: colors.muted,
-                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                  whiteSpace: 'nowrap',
-                }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(entry => (
-              <tr key={entry.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                <td style={{ padding: '10px 14px', fontWeight: 600, color: colors.primary, minWidth: '160px' }}>
-                  {entry.client}
-                  {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270114000000): a
-                      reserved number only where an older draft genuinely holds one,
-                      otherwise the plain statement that none is allotted yet. */}
-                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px', fontWeight: 400, whiteSpace: 'nowrap' }}>
-                    {entry.reference} · {entry.numberLine}
-                  </div>
-                </td>
-                {/* The workbook's own author, with the date the document
-                    carries. Two facts about the PI, not about this system. */}
-                <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
-                  <div>{entry.authoredBy}</div>
-                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                    {entry.authoredOn}
-                  </div>
-                </td>
-                {/* The app user who put it here, and when. */}
-                <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
-                  <div>{entry.uploader}</div>
-                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                    {entry.uploadedAt}
-                  </div>
-                </td>
-                {/* THE GOODS, THEN THE BILL. Two figures rather than one,
-                    because the gap between them — fabric, packing, transport,
-                    GST — is itself something a reader judges, and a
-                    row showing only one leaves them guessing which it is. */}
-                <td style={{ padding: '10px 14px', textAlign: 'right', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                  {entry.productValue}
-                </td>
-                <td
-                  style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap',
-                    color: entry.grandTotalMissing ? colors.red : colors.primary }}
-                  title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
-                >
-                  {entry.grandTotal}
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
-                </td>
-                {showSubmission && (
-                  <>
-                    {/* WHO SUBMITTED IT, AND WHEN — one stacked cell, the same
-                        shape as Salesperson and Uploaded by beside it. As two
-                        columns they were what pushed the table past its card. */}
-                    <td style={{ padding: '10px 14px', color: colors.secondary, fontSize: '12px', minWidth: '110px' }}>
-                      <div>{entry.submitter}</div>
-                      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                        {entry.submittedAt}
-                      </div>
-                    </td>
-                  </>
-                )}
-                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                  {/* Open Draft stays the ordinary action and keeps its place.
-                      Delete sits beside it, compact and last, so the destructive
-                      control is never the one a hurried click lands on. */}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <Link href={entry.href} prefetch={false} className="boe-btn boe-btn-ghost" onMouseEnter={() => prefetchDraft(entry)} onFocus={() => prefetchDraft(entry)}>
-                      {actionLabel}
-                    </Link>
-                    {deleteAction(entry)}
-                  </div>
-                </td>
-              </tr>
+    <div className="fin-table-wrap">
+      <table className="fin-table fin-table--drafts">
+        <colgroup>
+          <col style={{ width: showSubmission ? '19%' : '25%' }} />{/* Client, reference under it */}
+          <col style={{ width: '13%' }} />{/* Salesperson (the workbook's) */}
+          <col style={{ width: '14%' }} />{/* Uploaded by (the app user) */}
+          <col style={{ width: '12%' }} />{/* Product value */}
+          <col style={{ width: '12%' }} />{/* Grand total */}
+          <col style={{ width: showSubmission ? '16%' : '15%' }} />{/* Status */}
+          {showSubmission && <col style={{ width: '12%' }} />}{/* Submitted */}
+          <col style={{ width: '76px' }} />{/* Actions: two 28px slots */}
+        </colgroup>
+        <thead>
+          <tr>
+            {['Client', 'Salesperson', 'Uploaded by', 'Product value', 'Grand total', 'Status',
+              ...(showSubmission ? ['Submitted'] : []), 'Actions'].map((h, i, all) => (
+              // The two money columns and the actions are right-aligned, so the
+              // figures line up digit for digit against each other.
+              <th key={h} className={i === 3 || i === 4 || i === all.length - 1 ? 'fin-num' : undefined}>{h}</th>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </PiCard>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(entry => (
+            <tr
+              key={entry.id}
+              onClick={() => router.push(entry.href)}
+              onMouseEnter={() => prefetchDraft(entry)}
+            >
+              <td title={entry.client}>
+                <span className="fin-primary-text">{entry.client}</span>
+                {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270114000000): a
+                    reserved number only where an older draft genuinely holds one,
+                    otherwise the plain statement that none is allotted yet. */}
+                <span className="fin-sub">{entry.reference} · {entry.numberLine}</span>
+              </td>
+              {/* The workbook's own author, with the date the document
+                  carries. Two facts about the PI, not about this system. */}
+              <td>
+                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.authoredBy}</span>
+                <span className="fin-sub">{entry.authoredOn}</span>
+              </td>
+              {/* The app user who put it here, and when. */}
+              <td>
+                <FinancePerson name={entry.uploader === '—' ? null : entry.uploader} />
+                <span className="fin-sub">{entry.uploadedAt}</span>
+              </td>
+              {/* THE GOODS, THEN THE BILL. Two figures rather than one,
+                  because the gap between them — fabric, packing, transport,
+                  GST — is itself something a reader judges, and a
+                  row showing only one leaves them guessing which it is. */}
+              <td className="fin-num fin-muted">{entry.productValue}</td>
+              <td className="fin-num" title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}>
+                <span className="fin-amount" style={{ color: entry.grandTotalMissing ? colors.red : undefined }}>
+                  {entry.grandTotal}
+                </span>
+              </td>
+              <td>
+                <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
+              </td>
+              {showSubmission && (
+                /* WHO SUBMITTED IT, AND WHEN — one stacked cell, the same
+                   shape as Salesperson and Uploaded by beside it. */
+                <td>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.submitter}</span>
+                  <span className="fin-sub">{entry.submittedAt}</span>
+                </td>
+              )}
+              <td>
+                {/* Open sits first and keeps its place; Delete is last, so
+                    the destructive control is never the one a hurried click
+                    lands on. */}
+                {rowActions(entry, actionLabel)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 
   const listCards = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
-    <PiCard>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {rows.map((entry, i) => (
-          <div
-            key={entry.id}
-            style={{
-              padding: '14px 16px',
-              borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-              display: 'flex', flexDirection: 'column', gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
-                  {entry.client}
-                </div>
-                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-                  {entry.reference} · {entry.numberLine}
-                </div>
-                {/* The workbook's own author, under the client. The narrow
-                    layout has no room for a column each, so the two people
-                    become two labelled lines below rather than a guessing game
-                    between two bare names. */}
-                <div style={{
-                  fontSize: '12px', color: colors.muted, marginTop: '2px',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {entry.authoredOn}
-                </div>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {rows.map((entry, i) => (
+        <div
+          key={entry.id}
+          style={{
+            padding: '14px 16px',
+            borderTop: i === 0 ? 'none' : '1px solid #ECE7E0',
+            display: 'flex', flexDirection: 'column', gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
+                {entry.client}
               </div>
-              <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
-              <span style={{ color: colors.secondary }}>
-                <span style={{ color: colors.muted }}>Salesperson </span>{entry.authoredBy}
-              </span>
-              <span style={{ color: colors.secondary }}>
-                <span style={{ color: colors.muted }}>Uploaded by </span>{entry.uploader}
-              </span>
-            </div>
-
-            {/* Both figures stacked, the bill emphasised beneath the goods —
-                the narrow layout has no columns to align them in. */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
-                <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
+              <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+                {entry.reference} · {entry.numberLine}
               </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontSize: '12px', color: colors.muted }}>Grand total</span>
-                <span
-                  style={{ fontSize: '14px', fontWeight: 700, color: entry.grandTotalMissing ? colors.red : colors.primary }}
-                  title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
-                >{entry.grandTotal}</span>
+              {/* The workbook's own date, under the client. The narrow
+                  layout has no room for a column each, so the two people
+                  become two labelled lines below rather than a guessing game
+                  between two bare names. */}
+              <div style={{
+                fontSize: '12px', color: colors.muted, marginTop: '2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {entry.authoredOn}
               </div>
             </div>
+            <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
+          </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '12px', color: colors.muted }}>
-                {showSubmission
-                  ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
-                  : entry.uploadedAt}
-              </span>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Link href={entry.href} prefetch={false} className="boe-btn boe-btn-ghost" onMouseEnter={() => prefetchDraft(entry)} onFocus={() => prefetchDraft(entry)}>
-                  {actionLabel}
-                </Link>
-                {deleteAction(entry)}
-              </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
+            <span style={{ color: colors.secondary }}>
+              <span style={{ color: colors.muted }}>Salesperson </span>{entry.authoredBy}
+            </span>
+            <span style={{ color: colors.secondary }}>
+              <span style={{ color: colors.muted }}>Uploaded by </span>{entry.uploader}
+            </span>
+          </div>
+
+          {/* Both figures stacked, the bill emphasised beneath the goods —
+              the narrow layout has no columns to align them in. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
+              <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: colors.muted }}>Grand total</span>
+              <span
+                className="fin-amount"
+                style={{ color: entry.grandTotalMissing ? colors.red : colors.primary }}
+                title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
+              >{entry.grandTotal}</span>
             </div>
           </div>
-        ))}
-      </div>
-    </PiCard>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
+              {showSubmission
+                ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
+                : entry.uploadedAt}
+            </span>
+            {rowActions(entry, actionLabel)}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 
   const renderList = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) =>
@@ -668,47 +706,83 @@ export default function PiDraftsPage() {
   // Which rows go where. RLS already decided what is in `entries` at all; this
   // decides only where each row is printed, and for a viewer without review
   // authority it changes nothing — `review` is empty and `working` is the list
-  // exactly as it was.
-  const { review, working } = splitDraftsForReview(entries ?? [], canReview)
+  // exactly as it was. The status card and the search then narrow each part.
+  const split = splitDraftsForReview(entries ?? [], canReview)
+  const inView = (entry: PiDraftListEntry) =>
+    (statusFilter === 'all' || entry.status === statusFilter) && matchesSearch(entry, search)
+  const review = split.review.filter(inView)
+  const working = split.working.filter(inView)
 
-  const reviewSection = canReview && (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 2px' }}>
-        <Inbox size={15} strokeWidth={1.9} color="#335A86" />
-        <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-          {REVIEW_QUEUE_TITLE}
-        </span>
-        <span style={{
-          fontSize: '12px', fontWeight: 700, color: '#335A86',
-          background: colors.brandTint, border: '1px solid rgba(51,90,134,0.3)',
-          borderRadius: '999px', padding: '1px 8px',
-        }}>
-          {review.length}
-        </span>
+  // What each card would show under the current search: a number never
+  // contradicts the list once its card is pressed.
+  const searched = (entries ?? []).filter(entry => matchesSearch(entry, search))
+  const cardCounts: Record<DraftStatusFilter, number> = {
+    all: searched.length, draft: 0, submitted: 0, needs_changes: 0, rejected: 0,
+  }
+  for (const entry of searched) {
+    if (entry.status in cardCounts) cardCounts[entry.status as DraftStatusFilter] += 1
+  }
+
+  // The queue group is drawn whenever the view can hold submitted rows, so a
+  // reviewer is told plainly that nothing is waiting rather than shown nothing.
+  const showQueue = canReview && (statusFilter === 'all' || statusFilter === 'submitted')
+  const nothingInView = review.length === 0 && working.length === 0
+
+  const viewBar = (
+    <div className="fin-viewbar">
+      <div className="fin-tools" role="search" aria-label="Filter PI drafts">
+        <label className="boe-list-search">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="search"
+            aria-label="Search PI drafts"
+            placeholder="Client, PI reference or person…"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onBlur={flushSearch}
+          />
+          {searchInput && (
+            <button type="button" onClick={() => setSearchInput('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+          )}
+        </label>
+        {narrowed && (
+          <button type="button" onClick={clearView} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '12px' }}>
+            Clear filters
+          </button>
+        )}
       </div>
-      {review.length === 0 ? (
-        <PiCard>
-          <div style={{ padding: '18px 20px', fontSize: '12px', color: colors.secondary }}>
-            {PI_REVIEW_EMPTY_TEXT}
-          </div>
-        </PiCard>
-      ) : renderList(review, REVIEW_ACTION_LABEL, true)}
     </div>
   )
 
+  const reviewSection = canReview && (showQueue && (!nothingInView || !narrowed) && (
+    <>
+      <div className="fin-group">
+        {REVIEW_QUEUE_TITLE}
+        <span className="fin-group-count">{review.length}</span>
+      </div>
+      {review.length === 0 ? (
+        <div className="fin-group-body" style={{ padding: '16px 14px', fontSize: '12px', color: colors.secondary }}>
+          {PI_REVIEW_EMPTY_TEXT}
+        </div>
+      ) : renderList(review, REVIEW_ACTION_LABEL, true)}
+    </>
+  ))
+
   const workingSection = working.length > 0 && (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {/* The heading appears only when there is a queue above it to tell this
-          list apart from. On an employee's page there is one list and it needs
-          no label — the page title is already "PI Drafts". */}
-      {canReview && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 2px 0' }}>
-          <FileText size={15} strokeWidth={1.9} color={colors.tertiary} />
-          <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>PI Drafts</span>
+    <>
+      {/* The group label appears only when there is a queue above it to tell
+          this list apart from. On an employee's page there is one list and it
+          needs no label — the page title is already "PI Drafts". */}
+      {showQueue && (
+        <div className="fin-group">
+          PI Drafts
+          <span className="fin-group-count">{working.length}</span>
         </div>
       )}
       {renderList(working, 'Open Draft', false)}
-    </div>
+    </>
   )
 
   return (
@@ -736,7 +810,7 @@ export default function PiDraftsPage() {
         </>
       )}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: '24px' }}>
         {/* Concise, dismissible, and gone the moment anything else happens. A
             deletion that worked needs one line, not a panel. */}
         {deleted && (
@@ -744,7 +818,7 @@ export default function PiDraftsPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
             fontSize: '12px', color: colors.primary, lineHeight: 1.5,
             background: colors.greenTint, border: '1px solid rgba(39,98,71,0.25)',
-            borderRadius: '6px', padding: '9px 12px',
+            borderRadius: '8px', padding: '9px 12px', marginBottom: '16px',
           }} role="status">
             <span>{deleted}</span>
             <button
@@ -764,8 +838,33 @@ export default function PiDraftsPage() {
           emptyState
         ) : (
           <>
-            {reviewSection}
-            {workingSection}
+            {/* ── The status cards ARE the filter (Finance lists, 2026-10) ── */}
+            <FinanceStatusCards
+              ariaLabel="PI draft status"
+              noun="draft"
+              active={statusFilter}
+              onSelect={key => setListState({ status: key })}
+              cards={STATUS_CARDS.map(c => ({ ...c, count: cardCounts[c.key] }))}
+            />
+            <div className="fin-board">
+              {viewBar}
+              {reviewSection}
+              {workingSection}
+              {nothingInView && narrowed && (
+                /* A filter that matches nothing is not "no drafts": it says so
+                   and offers the way out. */
+                <FinanceEmpty
+                  icon="search"
+                  title={search ? `No results for “${listState.q.trim()}”.` : 'No PI drafts with this status.'}
+                  body="Try a client, a PI reference or a person, or clear the filters."
+                  action={
+                    <button type="button" onClick={clearView} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
+                      Clear filters
+                    </button>
+                  }
+                />
+              )}
+            </div>
           </>
         ))}
       </div>
