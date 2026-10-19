@@ -106,7 +106,6 @@ import {
   SUBMISSION_OUTCOME_UNKNOWN,
   isAmbiguousFailure,
 } from '@/lib/finance/submissionAttempt'
-import { validateProofFile } from '@/lib/paymentProof'
 import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
 import {
@@ -120,6 +119,7 @@ import {
   ProofReferenceField,
   ProofReferenceSection,
 } from '@/app/finance/components/ProofReferenceSection'
+import { ProofDropZone } from '@/app/finance/components/ProofDropZone'
 import {
   KindBadge,
   loadTargetPosition,
@@ -216,7 +216,6 @@ export function RecordSplitPaymentModal({
     requestNumber: string; allocationCount: number; paymentRequestId: string
   } | null>(null)
   const [retryingProof, setRetryingProof] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
   const [rows, setRows] = useState<SplitAllocationRow[]>(() => {
@@ -681,55 +680,23 @@ export function RecordSplitPaymentModal({
         onToggle={() => setProofOpen(o => !o)}
       >
         <ProofReferenceSection>
-        <ProofReferenceField
-          label="Payment reference"
-          htmlFor="rsp-reference"
-          hint={attachError
-            ? <span style={{ fontSize: '12px', color: colors.red }}>{attachError}</span>
-            : attachFile
-              ? <span style={{ fontSize: '12px', color: colors.muted }}>
-                  Attached: {attachFile.name} — proof is optional and stored privately.
-                </span>
-              : undefined}
-        >
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              id="rsp-reference" className="boe-input" value={reference}
-              onChange={e => { setReference(e.target.value); setError(null) }}
-              placeholder="UTR, cheque number…"
-              style={{ flex: 1, minWidth: 0 }}
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf"
-              style={{ display: 'none' }}
-              onChange={e => {
-                const f = e.target.files?.[0] ?? null
-                if (!f) { setAttachFile(null); setAttachError(null); return }
-                const vErr = validateProofFile(f)
-                if (vErr) {
-                  setAttachFile(null)
-                  setAttachError(vErr)
-                  if (fileInputRef.current) fileInputRef.current.value = ''
-                  return
-                }
-                setAttachError(null)
-                setAttachFile(f)
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={saving}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '6px 10px', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
-            >
-              {attachFile
-                ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '')
-                : '📎 Attach'}
-            </button>
-          </div>
+        <ProofReferenceField label="Payment proof (screenshot or PDF)">
+          <ProofDropZone
+            file={attachFile}
+            error={attachError}
+            onFile={setAttachFile}
+            onError={setAttachError}
+            disabled={saving}
+          />
+        </ProofReferenceField>
+
+        <ProofReferenceField label="Payment reference" htmlFor="rsp-reference">
+          <input
+            id="rsp-reference" className="boe-input" value={reference}
+            onChange={e => { setReference(e.target.value); setError(null) }}
+            placeholder="UTR, cheque number…"
+            style={{ width: '100%' }}
+          />
         </ProofReferenceField>
 
         <ProofReferenceField label="Notes / remarks (optional)" htmlFor="rsp-remarks">

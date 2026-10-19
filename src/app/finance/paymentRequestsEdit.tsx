@@ -12,6 +12,9 @@ import { CustodyTrailFields } from './components/CustodyTrailFields'
 import { FormDialog, FormStep, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from './components/PaymentFormParts'
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
 import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
+import { ProofDropZone } from './components/ProofDropZone'
+import { attachPaymentProof } from '@/lib/finance/paymentProof'
+import { compressImageFile } from '@/lib/attachment-utils'
 import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type PaymentDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
 import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
@@ -130,6 +133,15 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // page's jurisdiction, so retrying the save can only fail the same way.
   const [stale, setStale] = useState(false)
 
+  // A proof added in this correction. It is uploaded AFTER the correction is
+  // saved: a payment sent back for clarification only becomes pending (the one
+  // state a proof may be attached in) when the correction lands. A failed upload
+  // never undoes the saved correction; `recorded` makes the next press retry only
+  // the proof, so nothing is saved twice.
+  const [attachFile,  setAttachFile]  = useState<File | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [recorded, setRecorded] = useState(false)
+
   const set = (key: keyof typeof form) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
@@ -160,10 +172,11 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     form.salesNote.trim() !== (r.sales_note ?? '').trim() ||
     paymentMode !== r.payment_mode ||
     custody.length > 0 ||
+    attachFile !== null ||
     (entry !== null && (entry.destination !== loadedDestination.current
       || entry.target?.id !== loadedTargetId.current))
 
-  const guard = useDiscardGuard({ isDirty, onClose: stale ? onSaved : onClose, disabled: saving })
+  const guard = useDiscardGuard({ isDirty, onClose: stale || recorded ? onSaved : onClose, disabled: saving })
 
   // The SAME search the submission form and Allocate Funds use, narrowed to the
   // one kind the chosen destination admits.
@@ -199,7 +212,32 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // SAVE IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing and
   // takes the person to it. Only a form still reading what the payment is for
   // waits — saving then would write Suspense over a request that had not loaded.
+  // Uploads the proof added here. Null on success (or when there is none).
+  const uploadProof = async (): Promise<string | null> => {
+    if (!attachFile) return null
+    const { data: { user } } = await supabase.auth.getUser()
+    return attachPaymentProof(supabase, {
+      paymentRequestId: r.id,
+      file: attachFile,
+      userId: user?.id ?? null,
+      prepare: compressImageFile,
+    })
+  }
+
+  const retryProof = async () => {
+    if (saving || submitting.current) return
+    submitting.current = true
+    setSaving(true)
+    setError(null)
+    const proofErr = await uploadProof()
+    submitting.current = false
+    setSaving(false)
+    if (proofErr) { setError(`The correction is saved, but the proof did not upload: ${proofErr}`); return }
+    onSaved()
+  }
+
   const reviewAndSave = () => {
+    if (recorded) { void retryProof(); return }
     if (saving || submitting.current || entry === null) return
     if (!canSubmit) {
       setShowProblems(true)
@@ -244,8 +282,8 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
       p_custody_events:  custodyEvents,
     })
 
-    setSaving(false)
     if (rpcError || !data) {
+      setSaving(false)
       submitting.current = false
       // An approval that won the race is not a retryable failure: the request
       // has left this page's jurisdiction, so the form collapses to a single
@@ -273,6 +311,15 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
       })
     }
 
+    const proofErr = await uploadProof()
+    submitting.current = false
+    setSaving(false)
+    if (proofErr) {
+      setRecorded(true)
+      setProofOpen(true)
+      setError(`Your correction is saved, but the proof did not upload: ${proofErr} Press the button again to retry the proof — nothing will be saved twice.`)
+      return
+    }
     onSaved()
   }
 
@@ -336,9 +383,11 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
             className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
           <button onClick={reviewAndSave} disabled={saving || entry === null}
             className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
-            {!isAdmin && r.status === 'rejected'
-              ? (saving ? 'Reapplying…' : 'Save & Reapply')
-              : (saving ? 'Saving…' : 'Save Changes')}
+            {recorded
+              ? (saving ? 'Uploading…' : 'Retry proof upload')
+              : !isAdmin && r.status === 'rejected'
+                ? (saving ? 'Reapplying…' : 'Save & Reapply')
+                : (saving ? 'Saving…' : 'Save Changes')}
           </button>
         </>
       )}
@@ -439,11 +488,21 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
           typed lives in this form's state, so closing never loses it. */}
       <OptionalDisclosure
         title="Add proof or notes"
-        hint={(form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
+        hint={attachFile ? 'Proof attached' : (form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
         open={proofOpen}
         onToggle={() => setProofOpen(o => !o)}
       >
         <ProofReferenceSection>
+        <ProofReferenceField label="Payment proof (screenshot or PDF)">
+          <ProofDropZone
+            file={attachFile}
+            error={attachError}
+            onFile={setAttachFile}
+            onError={setAttachError}
+            disabled={saving}
+            note="A file added here is kept with any proof already on this payment."
+          />
+        </ProofReferenceField>
         <ProofReferenceField label="Payment reference">
           <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
             placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"

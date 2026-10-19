@@ -18,6 +18,7 @@ import { PaymentModeHint } from './components/PaymentModeHint'
 import { FieldProblem, FormStep, OptionalDisclosure, PaymentModePicker, QuickDateField } from './components/PaymentFormParts'
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
 import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
+import { ProofDropZone } from './components/ProofDropZone'
 import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { SubmissionAttempt, SUBMISSION_OUTCOME_UNKNOWN, isAmbiguousFailure } from '@/lib/finance/submissionAttempt'
 import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
@@ -112,7 +113,6 @@ export function NewPaymentConfirmationModal({
   // Optional payment-proof attachment (uploaded to the private payment-proofs bucket)
   const [attachFile,  setAttachFile]  = useState<File | null>(null)
   const [attachError, setAttachError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const set = (key: keyof typeof EMPTY_FORM) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -463,52 +463,24 @@ export function NewPaymentConfirmationModal({
             onToggle={() => setProofOpen(o => !o)}
           >
             <ProofReferenceSection>
-              <ProofReferenceField
-                label="Payment reference"
-                hint={attachError
-                  ? <span style={{ fontSize: '12px', color: colors.red }}>{attachError}</span>
-                  : attachFile
-                    ? <span style={{ fontSize: '12px', color: colors.muted }}>
-                        Attached: {attachFile.name} — proof is optional and stored privately.
-                      </span>
-                    : undefined}
-              >
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    className="boe-input"
-                    value={form.proofNote}
-                    onChange={set('proofNote')}
-                    placeholder="UTR, cheque no., or short proof note (optional)"
-                    style={{ flex: 1, minWidth: 0 }}
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,.pdf"
-                    style={{ display: 'none' }}
-                    onChange={e => {
-                      const f = e.target.files?.[0] ?? null
-                      if (!f) { setAttachFile(null); setAttachError(null); return }
-                      const vErr = validateProofFile(f)
-                      if (vErr) {
-                        setAttachFile(null)
-                        setAttachError(vErr)
-                        if (fileInputRef.current) fileInputRef.current.value = ''
-                        return
-                      }
-                      setAttachError(null)
-                      setAttachFile(f)
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '6px 10px', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
-                  </button>
-                </div>
+              <ProofReferenceField label="Payment proof (screenshot or PDF)">
+                <ProofDropZone
+                  file={attachFile}
+                  error={attachError}
+                  onFile={setAttachFile}
+                  onError={setAttachError}
+                  disabled={saving}
+                />
+              </ProofReferenceField>
+
+              <ProofReferenceField label="Payment reference">
+                <input
+                  className="boe-input"
+                  value={form.proofNote}
+                  onChange={set('proofNote')}
+                  placeholder="UTR, cheque no., or short proof note (optional)"
+                  style={{ width: '100%' }}
+                />
               </ProofReferenceField>
 
               <ProofReferenceField label="Notes / remarks (optional)">

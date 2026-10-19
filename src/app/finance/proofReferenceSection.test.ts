@@ -106,19 +106,18 @@ describe('all three entry forms group the same three things', () => {
   }
 
   test('every form offers the proof upload inside that section', () => {
-    for (const [name, source] of forms.filter(([n]) => n !== 'Edit Payment Request')) {
+    for (const [name, source] of forms) {
       const src = source()
       const from = src.indexOf('<ProofReferenceSection>')
       const to   = src.indexOf('</ProofReferenceSection>')
       assert.ok(from > -1 && to > from, `${name}: the section could not be located`)
-      assert.ok(src.slice(from, to).includes('fileInputRef'),
+      assert.ok(src.slice(from, to).includes('<ProofDropZone'),
         `${name} must offer the attachment inside the grouped section`)
     }
-    // The correction form has never attached a proof — the attachment is written
-    // once, with the payment, and correcting a request does not re-upload it.
-    // payment_proof_attachments rows key on the payment id, which an edit never
-    // changes, so an edited request keeps exactly the proof it had.
-    assert.equal(editModal().includes('fileInputRef'), false)
+    // The correction form attaches a proof too (the submitter, and an admin since
+    // 20270323000000). It ADDS a file: rows are keyed on the payment id, which an
+    // edit never changes, so the proof already on record is kept, never replaced.
+    assert.ok(editModal().includes('<ProofDropZone'))
   })
 })
 
