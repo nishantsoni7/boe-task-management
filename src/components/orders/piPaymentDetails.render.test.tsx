@@ -21,6 +21,7 @@ import { colors } from '@/lib/tokens'
 
 import {
   APPROVE_PAYMENT_LABEL,
+  EDIT_PAYMENT_LABEL,
   PAYMENT_BAR_COLORS,
   PAYMENT_DETAILS_TITLE,
   PAYMENT_FILTER_TITLE,
@@ -575,5 +576,47 @@ describe('deciding one row', () => {
     assert.ok(source.includes('closeOnBackdropClick={armed === null}'),
       'a typed reason is not discarded by a stray click on the backdrop')
     assert.ok(/const close = useCallback\(\(\) => \{\s*if \(busyRef\.current\) return/.test(source))
+  })
+})
+
+// ── Correcting a payment before it is decided ─────────────────────────────────
+//
+// Teams record the wrong amount or date. An administrator fixes it from this
+// dialog, beside Approve and Reject, through Finance's own Edit form.
+
+describe('Edit is offered beside Approve and Reject, to whoever the page allows', () => {
+  const edit = () => {}
+
+  test('nobody is offered Edit unless the page passes a handler', () => {
+    assert.ok(!buttonLabels(modal({ canVerify: true, onDecide: decide })).includes(EDIT_PAYMENT_LABEL))
+    assert.ok(!buttonLabels(modal({ canVerify: true, onDecide: decide, onEdit: null })).includes(EDIT_PAYMENT_LABEL))
+  })
+
+  test('it is drawn on each payment still with Finance, and on no other', () => {
+    const labels = buttonLabels(modal({ canVerify: true, onDecide: decide, onEdit: edit }))
+    // pending and needs-clarification, both active; not verified, rejected or reversed
+    assert.equal(labels.filter(l => l === EDIT_PAYMENT_LABEL).length, 2)
+    const editable = ROWS.map(r => describePiPaymentRow(r, { canVerify: false, canEdit: true }))
+      .filter(v => v.canEdit).map(v => v.requestNumber)
+    assert.deepEqual(editable, ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102'])
+  })
+
+  test('it does not depend on being able to verify, and survives the own-payment rule', () => {
+    assert.equal(buttonLabels(modal({ canVerify: false, onDecide: null, onEdit: edit }))
+      .filter(l => l === EDIT_PAYMENT_LABEL).length, 2)
+    const view = describePiPaymentRow(ROWS[0], { canVerify: true, ownPayment: true, canEdit: true })
+    assert.equal(view.canDecide, false)
+    assert.equal(view.canEdit, true)
+  })
+
+  test('the page opens Finance’s own form and refreshes the payments after saving', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('<PiPaymentEditDialog'))
+    assert.ok(/onSaved=\{\(\) => \{[\s\S]{0,200}void loadPayments\(\)/.test(page))
+    const dialog = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentEditDialog.tsx'), 'utf8')
+    assert.ok(dialog.includes("from '@/app/finance/paymentRequestsEdit'"))
+    for (const forbidden of ['.insert(', '.update(', '.delete(', '.upsert(', '.rpc(']) {
+      assert.ok(!dialog.includes(forbidden), `${forbidden}: the write belongs to edit_payment_request, through the Edit form`)
+    }
   })
 })
