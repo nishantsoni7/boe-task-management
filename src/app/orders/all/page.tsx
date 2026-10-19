@@ -30,11 +30,11 @@ import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordR
 import { FlaskConical, HandCoins } from 'lucide-react'
 import {
   COMMISSION_ICON_LABEL,
-  SAMPLE_ORDER_ICON_LABEL,
   factoryStatus,
   orderListFlags,
   orderListSubtotal,
 } from '@/lib/orders/orderListValue'
+import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ type Order = {
   /** 'aligned' once Operations accepted the PI for production (Factory Status). */
   production_alignment: string | null
   /** The PI went with the "Sample order" reason (an icon by the Project code). */
-  sample: boolean
+  sample: SampleType | null
   /** The PI has a middleman commission this reader may see (an icon by the Project code). */
   commission: boolean
   status: string
@@ -73,14 +73,8 @@ type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc'
 
 // The status colours of the Finance lists (owner, 2026-10): Running blue, On
 // Hold amber, Ready for Dispatch green, Dispatched grey (finished), Cancelled
-// red. The card, the pill and the dot all read from this one map.
-const STATUS_META: Record<string, { label: string; tone: FinanceTabTone }> = {
-  running:            { label: 'Running',            tone: 'partial' },
-  on_hold:            { label: 'On Hold',            tone: 'zero' },
-  ready_for_dispatch: { label: 'Ready for Dispatch', tone: 'full' },
-  dispatched:         { label: 'Dispatched',         tone: 'neutral' },
-  cancelled:          { label: 'Cancelled',          tone: 'over' },
-}
+// red — on the status cards below. The table has no Status column since
+// 2026-10-19 (owner: every Order in this list reads Running).
 
 // 'requested' is gone (20260702000000): an Order exists only after its Order
 // Request was reviewed and converted, so every Confirmed Order starts at
@@ -201,13 +195,6 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
   return (a - b) * dir
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, tone: 'neutral' as const }
-  return <span className={`fin-pill fin-pill--${meta.tone}`}>{meta.label}</span>
-}
-
 /** Factory Status: aligned for production by Operations (green), or not yet (amber). */
 function FactoryBadge({ alignment }: { alignment: string | null }) {
   const f = factoryStatus(alignment)
@@ -219,12 +206,12 @@ function FactoryBadge({ alignment }: { alignment: string | null }) {
  * 2026-10-19). The name is in the tooltip and the accessible label, so the
  * meaning never depends on recognising the shape.
  */
-function ProjectFlags({ sample, commission }: { sample: boolean; commission: boolean }) {
+function ProjectFlags({ sample, commission }: { sample: SampleType | null; commission: boolean }) {
   if (!sample && !commission) return null
   return (
     <span className="orders-list-flags">
       {sample && (
-        <span className="orders-list-flag orders-list-flag--sample" title={SAMPLE_ORDER_ICON_LABEL} aria-label={SAMPLE_ORDER_ICON_LABEL} role="img">
+        <span className={`orders-list-flag orders-list-flag--${sample}`} title={SAMPLE_TYPE_LABEL[sample]} aria-label={SAMPLE_TYPE_LABEL[sample]} role="img">
           <FlaskConical size={14} strokeWidth={2} aria-hidden="true" />
         </span>
       )}
@@ -322,11 +309,11 @@ export default function AllOrdersPage() {
       .select(`
         id, display_number, client_name,
         requested_by, assigned_to,
-        confirm_date, due_date, total_value, total_product_value, production_alignment, status,
+        confirm_date, due_date, total_value, total_product_value, production_alignment, sample_type, sample_type_set_at, status,
         created_at, lead_source, source_request_number,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
-        source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total, advance_exception_reason_code, commission:order_submission_middleman_commissions(middleman_commission))
+        source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total, advance_exception_reason_code, sample_type, commission:order_submission_middleman_commissions(middleman_commission))
       `)
       .order('created_at', { ascending: false })
 
@@ -730,13 +717,10 @@ export default function AllOrdersPage() {
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
                   <div className="orders-list-card-top">
-                    <span className="orders-list-card-code">
-                      <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
-                        {number}
-                      </Link>
-                      <ProjectFlags sample={o.sample} commission={o.commission} />
-                    </span>
-                    <StatusBadge status={o.status} />
+                    <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
+                      {number}
+                    </Link>
+                    <ProjectFlags sample={o.sample} commission={o.commission} />
                   </div>
                   <div className="orders-list-card-client">{o.client_name}</div>
                   <div className="orders-list-card-meta">
@@ -767,23 +751,24 @@ export default function AllOrdersPage() {
             <table className="fin-table fin-table--orders">
               <colgroup>
                 {/* THE OWNER'S ORDER (2026-10-19): Project code, Client,
-                    Product Value, Status, Factory Status — then Sales person
-                    and the two dates. "Requested by" is gone. */}
-                <col style={{ width: '13%' }} />{/* Project code, its markers + update badge */}
-                <col style={{ width: '19%' }} />{/* Client, lead source under it */}
-                <col style={{ width: '12%' }} />{/* Product Value (the Subtotal) */}
-                <col style={{ width: '12%' }} />{/* Status */}
-                <col style={{ width: '15%' }} />{/* Factory Status */}
+                    Product Value, Factory Status — then Sales person and the
+                    two dates. "Requested by" and "Status" are gone (every
+                    Order here reads Running; the status cards still filter).
+                    Every column is LEFT-aligned; only the markers sit at the
+                    right edge of the Project code cell. */}
+                <col style={{ width: '16%' }} />{/* Project code + update badge | markers */}
+                <col style={{ width: '22%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '13%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '16%' }} />{/* Factory Status */}
                 <col style={{ width: '13%' }} />{/* Sales person */}
-                <col style={{ width: '8%' }} />{/* Confirmed */}
-                <col style={{ width: '8%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '10%' }} />{/* Confirmed */}
+                <col style={{ width: '10%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
                   <th>Project code</th>
                   <th>Client</th>
-                  <th className="fin-num">Product Value</th>
-                  <th>Status</th>
+                  <th>Product Value</th>
                   <th>Factory Status</th>
                   <th>Sales Person</th>
                   <th>Confirmed</th>
@@ -819,7 +804,7 @@ export default function AllOrdersPage() {
                          moving down a list of forty costs forty cache hits. */
                       onMouseEnter={() => router.prefetch(`/orders/${o.id}`)}
                     >
-                      <td className="fin-ordno" style={{ fontWeight: updateLabel ? 800 : undefined }}>
+                      <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateLabel ? 800 : undefined }}>
                         {/* The row is clickable for a pointer; THIS is the
                             real link — reachable by Tab, opens in a new tab,
                             shows its address. prefetch={false}: the row's
@@ -834,13 +819,13 @@ export default function AllOrdersPage() {
                         >
                           {o.display_number}
                         </Link>
-                        <ProjectFlags sample={o.sample} commission={o.commission} />
                         {updateLabel && (
                           <span className="order-update-badge" title={updateLabel}>
                             <span className="order-update-dot" aria-hidden="true" />
                             {updateLabel}
                           </span>
                         )}
+                        <ProjectFlags sample={o.sample} commission={o.commission} />
                       </td>
                       <td title={o.client_name}>
                         <span className="fin-primary-text">{o.client_name}</span>
@@ -848,11 +833,8 @@ export default function AllOrdersPage() {
                           <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
                         )}
                       </td>
-                      <td className="fin-num">
-                        <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
-                      </td>
                       <td>
-                        <StatusBadge status={o.status} />
+                        <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
                       </td>
                       <td>
                         <FactoryBadge alignment={o.production_alignment} />

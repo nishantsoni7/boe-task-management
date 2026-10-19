@@ -10405,4 +10405,22 @@ textarea.pi-form-input { height: auto; }
   background: #F1EEE9;
   color: #4C5352;
 }
-.orders-list-card-code { display: inline-flex; align-items: center; min-width: 0; }
+/* The markers sit at the RIGHT EDGE of the Project code cell (owner,
+   2026-10-19): the code (and any update badge) on the left, the symbols pushed
+   right with margin-left: auto. A flex wrapper inside the cell, never on the
+   <td> itself, so the table keeps its column widths. */
+.orders-code-cell .orders-list-flags,
+.orders-list-card-top .orders-list-flags { margin-left: auto; }
+.orders-code-cell > .orders-row-link,
+.orders-code-cell > .order-update-badge { vertical-align: middle; }
+.orders-code-cell { white-space: nowrap; }
+.orders-code-cell .orders-list-flags { float: right; }
+
+/* ── The sample choice (20270320000000): PI draft and Order ── */
+.pi-sample-type { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ECE7E0; min-width: 0; }
+.pi-sample-type-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #303536; }
+.pi-sample-type-select { max-width: 320px; }
+.pi-sample-type-value { margin: 0; font-size: 14px; color: #303536; }
+.pi-sample-type-hint { font-size: 12px; color: #686D6C; }
+.order-sample-select { height: 34px; max-width: 280px; font-size: 13.5px; }
+.order-pi-prop--sample dd { display: flex; flex-direction: column; gap: 4px; }

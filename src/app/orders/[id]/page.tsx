@@ -107,6 +107,13 @@ import {
 import { PI_COMMISSION_COLUMNS, withCommission } from '@/lib/orders/piInternalDetails'
 import { orderInternalDetailRows, type OrderInternalDetailRow } from '@/lib/orders/orderInternalDetailsView'
 import {
+  ORDER_SAMPLE_TYPE_RPC,
+  describeSampleTypeFailure,
+  effectiveSampleType,
+  readSampleType,
+  type SampleType,
+} from '@/lib/orders/sampleType'
+import {
   ORDER_FILES_BUCKET,
   PI_DRAFT_IMAGE_URL_TTL_SECONDS,
   PI_DRAFT_ITEM_COLUMNS,
@@ -302,6 +309,10 @@ type Order = {
   // 20260923000000. Read here only so the handoff can tell a declared
   // percentage from an undeclared one without a second read of the PI.
   billing_percentage?: number | string | null
+  // The Order's own sample choice (20270320000000); meaningful only once
+  // sample_type_set_at is set — until then the source PI's applies.
+  sample_type?: string | null
+  sample_type_set_at?: string | null
   // Production alignment (20261119000000). 'not_aligned' on every Order at
   // creation; moved only by set_order_production_alignment().
   production_alignment?: string | null
@@ -752,6 +763,10 @@ export default function OrderDetailPage() {
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
   // The PI's Internal order details, as rows for the Documents card.
   const [piInternalRows, setPiInternalRows] = useState<OrderInternalDetailRow[]>([])
+  // What the source PI says about sampling, for the Order's effective choice.
+  const [piSample, setPiSample] = useState<{ sampleType: string | null; reason: string | null } | null>(null)
+  const [sampleSaving, setSampleSaving] = useState(false)
+  const [sampleError, setSampleError] = useState<string | null>(null)
   // The approved PI's grand total as a NUMBER, to tell an amended Order's own
   // value apart from it in the Commercial breakdown (walkthrough O-1).
   const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
@@ -994,6 +1009,7 @@ export default function OrderDetailPage() {
     // worth more than a branch that can leave another Order's pictures up.
     setPiImages(noPiImages({ kind: 'loading' }))
     setPiInternalRows([])
+    setPiSample(null)
 
     if (!submissionId) {
       setPiHandoff({ kind: 'none' })
@@ -1180,6 +1196,7 @@ export default function OrderDetailPage() {
       commissionRes.error ? null : (commissionRes.data as unknown as Parameters<typeof withCommission>[1]),
       !commissionRes.error && !commissionReadable.error && commissionReadable.data === true,
     )))
+    setPiSample({ sampleType: row.sample_type ?? null, reason: row.advance_exception_reason_code ?? null })
     setHandoffReady(true)
   }
 
@@ -1252,7 +1269,7 @@ export default function OrderDetailPage() {
         confirm_date, due_date, total_value, total_product_value,
         lead_source, status, notes, created_at, updated_at,
         source_order_request_id, source_request_number, is_test_data,
-        source_order_submission_id, billing_percentage,
+        source_order_submission_id, billing_percentage, sample_type, sample_type_set_at,
         production_alignment, production_aligned_by, production_aligned_at, production_alignment_note,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
@@ -2666,6 +2683,27 @@ export default function OrderDetailPage() {
     viewingAs: !!viewAsUserId,
   })
 
+  // THE SAMPLE CHOICE ON THE ORDER (20270320000000): the Order's own once made,
+  // else the PI's. Changed by the same people as Fabric & Finish (the RPC
+  // re-derives it with can_record_order_approval), never on a cancelled Order.
+  const sampleType = effectiveSampleType({
+    orderSampleType: order.sample_type,
+    orderSampleTypeSetAt: order.sample_type_set_at,
+    piSampleType: piSample?.sampleType,
+    piAdvanceReasonCode: piSample?.reason,
+  })
+  const changeSampleType = async (next: SampleType | null) => {
+    if (sampleSaving) return
+    setSampleSaving(true)
+    setSampleError(null)
+    const { data, error } = await supabase.rpc(ORDER_SAMPLE_TYPE_RPC, { p_order_id: order.id, p_sample_type: next })
+    setSampleSaving(false)
+    if (error) { setSampleError(describeSampleTypeFailure(error)); return }
+    const saved = readSampleType((data as { sample_type?: unknown } | null)?.sample_type ?? next)
+    setOrder(o => o ? { ...o, sample_type: saved, sample_type_set_at: new Date().toISOString() } : o)
+    reloadActivity()
+  }
+
   /**
    * MAY THIS READER RECORD A PAYMENT AGAINST THIS ORDER?
    *
@@ -3123,6 +3161,13 @@ export default function OrderDetailPage() {
             ) : undefined}
             mainPiOperations={mainPiOperations}
             internalDetails={piInternalRows}
+            sample={{
+              value: sampleType,
+              canEdit: mayRecordApproval && order.status !== 'cancelled',
+              saving: sampleSaving,
+              failure: sampleError,
+              onChange: next => { void changeSampleType(next) },
+            }}
             supporting={docSupporting}
             changes={docChanges}
             onReviewChange={s => setDocReview(s)}

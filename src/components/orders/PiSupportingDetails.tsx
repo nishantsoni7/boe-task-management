@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { PiHighlightRemark } from './PiHighlightRemark'
+import { PiSampleType } from './PiSampleType'
 import { PiDraftAttachments, PiSentColumns, useSentWithPi, type SupportingState } from './PiSupportingDocuments'
 
 export const SUPPORTING_DETAILS_TITLE = 'Supporting details'
@@ -60,6 +61,14 @@ export function PiSupportingDetails({
             onSaved={() => { void onSaved() }}
             onRead={onHighlightRead}
             bare
+          />
+          {/* The sample choice (20270320000000): same editor rule as the highlight. */}
+          <PiSampleType
+            supabase={supabase}
+            submissionId={submissionId}
+            canEdit={canEditHighlight && !locked}
+            rowVersion={rowVersion}
+            onSaved={() => { void onSaved() }}
           />
         </div>
         {locked

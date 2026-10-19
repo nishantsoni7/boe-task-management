@@ -110,6 +110,9 @@ export const ORDER_PI_HANDOFF_COLUMNS = [
   // The rest of Internal order details, listed in the Documents card
   // (owner, 2026-10-19). Internal: never printed on the client PDF.
   'billing_terms', 'payment_terms',
+  // The sample choice made on the PI (20270320000000), and the legacy
+  // "Sample order" advance reason it falls back to.
+  'sample_type', 'advance_exception_reason_code',
   'source_workbook_name', 'source_workbook_path',
 ].join(', ')
 
@@ -137,6 +140,8 @@ export type OrderPiRow = PersistedHeaderSource & PersistedCommercialSource & {
   due_date: string | null
   billing_percentage?: number | string | null
   billing_terms?: string | null
+  sample_type?: string | null
+  advance_exception_reason_code?: string | null
   payment_terms?: string | null
   source_workbook_name: string | null
   /**
