@@ -20,6 +20,8 @@
 // No source PI (an Order from before PIs) — the same product value. Nothing
 // known at all — null, drawn as a dash and sorted last.
 
+import { effectiveSampleType, type SampleType } from './sampleType'
+
 export type SourcePiFigures = {
   subtotal_after_discount: number | string | null
   grand_total: number | string | null
@@ -53,9 +55,9 @@ export function orderListSubtotal(o: OrderListValueInput): number | null {
 // ── THE OTHER LIST FACTS (owner, 2026-10-19) ─────────────────────────────────
 //
 // Two icons beside the Project code, both read from the same source-PI embed:
-//   Sample      the PI was sent below the standard advance with the reason
-//               "Sample order" (order_submissions.advance_exception_reason_code
-//               = 'sample_order', 20270114000000).
+//   Sample      sampling needed / sample order only — the Order's own choice,
+//               else the PI's, else the legacy "Sample order" advance reason
+//               (effectiveSampleType in sampleType.ts, 20270320000000).
 //   Commission  the PI answered "Yes" to the middleman commission. That row is
 //               in its own reader-only table (20270122000000 §1b): a reader RLS
 //               does not admit gets no row, so no icon — never a false "No".
@@ -64,27 +66,38 @@ export function orderListSubtotal(o: OrderListValueInput): number | null {
 
 /** Named, so the list's select and its tests name the same columns. */
 export const ORDER_LIST_SOURCE_PI_EMBED =
-  'source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total, advance_exception_reason_code, commission:order_submission_middleman_commissions(middleman_commission))'
+  'source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total, advance_exception_reason_code, sample_type, commission:order_submission_middleman_commissions(middleman_commission))'
 
 type CommissionEmbed = { middleman_commission: string | null } | null
 
-export type OrderListFlagsInput = {
-  source_pi: (SourcePiFigures & { advance_exception_reason_code?: string | null; commission?: CommissionEmbed | CommissionEmbed[] }) | null | undefined
-    | (SourcePiFigures & { advance_exception_reason_code?: string | null; commission?: CommissionEmbed | CommissionEmbed[] })[]
+type SourcePiFlags = SourcePiFigures & {
+  advance_exception_reason_code?: string | null
+  sample_type?: string | null
+  commission?: CommissionEmbed | CommissionEmbed[]
 }
 
-export function orderListFlags(o: OrderListFlagsInput): { sample: boolean; commission: boolean } {
+export type OrderListFlagsInput = {
+  sample_type?: string | null
+  sample_type_set_at?: string | null
+  source_pi: SourcePiFlags | null | undefined | SourcePiFlags[]
+}
+
+export function orderListFlags(o: OrderListFlagsInput): { sample: SampleType | null; commission: boolean } {
   const pi = Array.isArray(o.source_pi) ? (o.source_pi[0] ?? null) : (o.source_pi ?? null)
   const c = Array.isArray(pi?.commission) ? (pi?.commission[0] ?? null) : (pi?.commission ?? null)
   return {
-    sample: pi?.advance_exception_reason_code === 'sample_order',
+    sample: effectiveSampleType({
+      orderSampleType: o.sample_type,
+      orderSampleTypeSetAt: o.sample_type_set_at,
+      piSampleType: pi?.sample_type,
+      piAdvanceReasonCode: pi?.advance_exception_reason_code,
+    }),
     commission: String(c?.middleman_commission ?? '').trim().toLowerCase() === 'yes',
   }
 }
 
 export const FACTORY_ALIGNED_LABEL = 'Aligned for Production'
 export const FACTORY_NOT_ALIGNED_LABEL = 'Not Aligned'
-export const SAMPLE_ORDER_ICON_LABEL = 'Sample order'
 export const COMMISSION_ICON_LABEL = 'Middleman commission'
 
 export function factoryStatus(productionAlignment: string | null | undefined): { aligned: boolean; label: string } {

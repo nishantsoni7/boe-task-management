@@ -1088,6 +1088,8 @@ describe('the applied migrations are frozen', () => {
       '20270317000000_order_submission_admin_order_deletion.sql',
       '20270318000000_custody_handed_by_outside_name.sql',
       '20270319000000_meetings_rpcs_require_module_entry.sql',
+      // Sample choice on PI and Order (owner, 2026-10-19).
+      '20270320000000_order_submission_sample_type.sql',
     ])
   })
 
@@ -1427,6 +1429,8 @@ describe('the applied migrations are frozen', () => {
       '20270317000000_order_submission_admin_order_deletion.sql',
       '20270318000000_custody_handed_by_outside_name.sql',
       '20270319000000_meetings_rpcs_require_module_entry.sql',
+      // Sample choice on PI and Order (owner, 2026-10-19).
+      '20270320000000_order_submission_sample_type.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

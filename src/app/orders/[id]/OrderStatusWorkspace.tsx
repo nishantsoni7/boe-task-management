@@ -18,6 +18,15 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Lock, Upload, X } from 'lucide-react'
 import {
+  SAMPLE_FIELD_LABEL,
+  SAMPLE_NONE_LABEL,
+  SAMPLE_TYPES,
+  SAMPLE_TYPE_LABEL,
+  SAMPLE_TYPE_OPTION_LABEL,
+  readSampleType,
+  type SampleType,
+} from '@/lib/orders/sampleType'
+import {
   ORDER_INTERNAL_DETAILS_NOTE,
   ORDER_INTERNAL_DETAILS_TITLE,
   type OrderInternalDetailRow,
@@ -244,8 +253,16 @@ export function OrderDocumentsPanel({
   mainPiOperations, mainPiMenu, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf, piVersions, pictures, onDownloadFile, internalDetails = [],
+  onOpenPdf, piVersions, pictures, onDownloadFile, internalDetails = [], sample,
 }: {
+  /** The sample choice (20270320000000): shown in Internal order details, editable when allowed. */
+  sample?: {
+    value: SampleType | null
+    canEdit: boolean
+    saving: boolean
+    failure: string | null
+    onChange: (next: SampleType | null) => void
+  }
   /** The PI's Internal order details (fabric, commission, billing, payment terms). Empty: not drawn. */
   internalDetails?: readonly OrderInternalDetailRow[]
   /** The approved PI's product pictures: count, view and one-file download. */
@@ -623,7 +640,7 @@ export function OrderDocumentsPanel({
         {/* ── INTERNAL ORDER DETAILS: what Sales filled on the PI, as a
             property list. The dates, salesperson and lead source are in the
             Order's summary already, so they are not repeated here. ── */}
-        {internalDetails.length > 0 && (
+        {(internalDetails.length > 0 || sample) && (
           <section className="order-docs-internal" aria-label={ORDER_INTERNAL_DETAILS_TITLE}>
             <p className="order-doc-row-head">
               <span className="order-doc-row-title">{ORDER_INTERNAL_DETAILS_TITLE}</span>
@@ -639,6 +656,28 @@ export function OrderDocumentsPanel({
                   <dd className={d.muted ? 'order-pi-prop--muted' : undefined}>{d.value}</dd>
                 </div>
               ))}
+              {sample && (
+                <div className="order-pi-prop order-pi-prop--sample">
+                  <dt>{SAMPLE_FIELD_LABEL}</dt>
+                  <dd className={!sample.value && !sample.canEdit ? 'order-pi-prop--muted' : undefined}>
+                    {sample.canEdit ? (
+                      <>
+                        <select
+                          className="pi-form-input order-sample-select"
+                          aria-label={SAMPLE_FIELD_LABEL}
+                          value={sample.value ?? ''}
+                          disabled={sample.saving}
+                          onChange={e => sample.onChange(readSampleType(e.target.value))}
+                        >
+                          <option value="">{SAMPLE_NONE_LABEL}</option>
+                          {SAMPLE_TYPES.map(t => <option key={t} value={t}>{SAMPLE_TYPE_OPTION_LABEL[t]}</option>)}
+                        </select>
+                        {sample.failure && <span className="order-doc-unavailable" role="alert">{sample.failure}</span>}
+                      </>
+                    ) : (sample.value ? SAMPLE_TYPE_LABEL[sample.value] : SAMPLE_NONE_LABEL)}
+                  </dd>
+                </div>
+              )}
             </dl>
           </section>
         )}

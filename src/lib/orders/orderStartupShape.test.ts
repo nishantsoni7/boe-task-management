@@ -374,7 +374,9 @@ describe('no Order screen waits more than it must', () => {
       // Documents card read the middleman commission and ask
       // can_read_order_submission_commission — the same two reads the PI page
       // makes — inside loadPiHandoff's EXISTING Promise.all, so no wait is added.
-      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 43,
+      // DETAIL 43 -> 44 (20270320000000): set_order_sample_type, the Order's
+      // sample choice, a SAVE on a change — never on the startup path.
+      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 44,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

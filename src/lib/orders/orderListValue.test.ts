@@ -60,11 +60,11 @@ describe('the Value column is the Subtotal', () => {
 
 describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
   test('Sample and commission come from the source PI; a hidden commission is no icon', () => {
-    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'sample_order', commission: { middleman_commission: 'yes' } } }), { sample: true, commission: true })
-    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'against_client_po', commission: { middleman_commission: 'no' } } }), { sample: false, commission: false })
-    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: null, commission: null } }), { sample: false, commission: false }, 'RLS gave no commission row')
-    assert.deepEqual(orderListFlags({ source_pi: null }), { sample: false, commission: false })
-    assert.deepEqual(orderListFlags({ source_pi: [{ subtotal_after_discount: 1, grand_total: 1, commission: [{ middleman_commission: 'Yes' }] }] }), { sample: false, commission: true })
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'sample_order', commission: { middleman_commission: 'yes' } } }), { sample: 'sample_order', commission: true }, 'legacy: the advance reason')
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: 'against_client_po', commission: { middleman_commission: 'no' } } }), { sample: null, commission: false })
+    assert.deepEqual(orderListFlags({ source_pi: { subtotal_after_discount: 1, grand_total: 1, advance_exception_reason_code: null, commission: null } }), { sample: null, commission: false }, 'RLS gave no commission row')
+    assert.deepEqual(orderListFlags({ source_pi: null }), { sample: null, commission: false })
+    assert.deepEqual(orderListFlags({ source_pi: [{ subtotal_after_discount: 1, grand_total: 1, commission: [{ middleman_commission: 'Yes' }] }] }), { sample: null, commission: true })
   })
 
   test('Factory Status: Aligned for Production once Operations accepted, else Not Aligned', () => {
@@ -73,15 +73,30 @@ describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
     assert.deepEqual(factoryStatus(null), { aligned: false, label: 'Not Aligned' })
   })
 
-  test('the table: Project code, Client, Product Value, Status, Factory Status, Sales Person, Confirmed, Due — no Requested by', () => {
+  test('the table: Project code, Client, Product Value, Factory Status, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
     const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
     const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'))
     const cols = [...head.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
-    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Status', 'Factory Status', 'Sales Person', 'Confirmed', 'Due'])
+    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Factory Status', 'Sales Person', 'Confirmed', 'Due'])
     assert.equal(page.includes('requested_by_name} />'), false, 'no Requested by cell')
     assert.ok(page.includes('production_alignment'))
     // Symbols only, named by tooltip and accessible label.
-    assert.ok(page.includes('title={SAMPLE_ORDER_ICON_LABEL} aria-label={SAMPLE_ORDER_ICON_LABEL} role="img"'))
+    assert.ok(page.includes('title={SAMPLE_TYPE_LABEL[sample]} aria-label={SAMPLE_TYPE_LABEL[sample]} role="img"'))
+    assert.equal(page.includes('<StatusBadge'), false, 'no Status pill in the table or the cards')
+    // Every column left-aligned; the markers at the right edge of the code cell.
+    assert.equal(/<th className="fin-num">/.test(page), false)
+    assert.ok(page.includes('className="fin-ordno orders-code-cell"'))
+    assert.ok(page.includes('sample_type, sample_type_set_at'), "the Order's own sample choice is read")
     assert.ok(page.includes('title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img"'))
+  })
+})
+
+describe('the sample choice (20270320000000)', () => {
+  test("the Order's own choice wins once made — even 'not a sample'; else the PI's; else the legacy reason", () => {
+    const pi = { subtotal_after_discount: 1, grand_total: 1, sample_type: 'sampling_needed', advance_exception_reason_code: 'sample_order' }
+    assert.equal(orderListFlags({ source_pi: pi }).sample, 'sampling_needed', 'the PI choice beats the legacy reason')
+    assert.equal(orderListFlags({ sample_type: 'sample_order', sample_type_set_at: '2026-10-19T00:00:00Z', source_pi: pi }).sample, 'sample_order')
+    assert.equal(orderListFlags({ sample_type: null, sample_type_set_at: '2026-10-19T00:00:00Z', source_pi: pi }).sample, null, 'cleared on the Order')
+    assert.equal(orderListFlags({ sample_type: 'sample_order', sample_type_set_at: null, source_pi: { ...pi, sample_type: null, advance_exception_reason_code: null } }).sample, null, 'an Order value without a set_at is not a choice')
   })
 })
