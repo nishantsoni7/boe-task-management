@@ -27,6 +27,7 @@ import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
+import { orderListSubtotal } from '@/lib/orders/orderListValue'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ type Order = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  /** The Subtotal (products minus discount) — what the Value column shows. See orderListValue.ts. */
+  subtotal: number | null
   status: string
   created_at: string
   lead_source: string | null
@@ -277,10 +280,11 @@ export default function AllOrdersPage() {
       .select(`
         id, display_number, client_name,
         requested_by, assigned_to,
-        confirm_date, due_date, total_value, status,
+        confirm_date, due_date, total_value, total_product_value, status,
         created_at, lead_source, source_request_number,
         requested_by_user:users!requested_by(full_name),
-        assigned_to_user:users!assigned_to(full_name)
+        assigned_to_user:users!assigned_to(full_name),
+        source_pi:order_submissions!source_order_submission_id(subtotal_after_discount, grand_total)
       `)
       .order('created_at', { ascending: false })
 
@@ -296,6 +300,10 @@ export default function AllOrdersPage() {
       ...o,
       requested_by_name: o.requested_by_user?.full_name ?? undefined,
       assigned_to_name:  o.assigned_to_user?.full_name  ?? undefined,
+      // THE VALUE COLUMN IS THE SUBTOTAL (owner, 2026-10-19): products minus
+      // discount, never fabric, packing, transport or GST.
+      subtotal: orderListSubtotal(o),
+      source_pi: undefined,
       requested_by_user: undefined,
       assigned_to_user:  undefined,
     }))
@@ -458,8 +466,8 @@ export default function AllOrdersPage() {
         case 'oldest':      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         case 'number_desc': return compareNumber(b.display_number, a.display_number)
         case 'number_asc':  return compareNumber(a.display_number, b.display_number)
-        case 'value_desc':  return compareValue(a.total_value, b.total_value, -1)
-        case 'value_asc':   return compareValue(a.total_value, b.total_value, 1)
+        case 'value_desc':  return compareValue(a.subtotal, b.subtotal, -1)
+        case 'value_asc':   return compareValue(a.subtotal, b.subtotal, 1)
         default:            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       }
     })
@@ -689,7 +697,7 @@ export default function AllOrdersPage() {
                     <span style={{ color: overdue ? colors.red : undefined, fontWeight: overdue ? 600 : undefined }}>
                       Due {fmtDate(o.due_date)}{overdue ? ' · overdue' : ''}
                     </span>
-                    <span className="orders-list-card-value">{fmtAmount(o.total_value)}</span>
+                    <span className="orders-list-card-value">{fmtAmount(o.subtotal)}</span>
                   </div>
                   {(o.assigned_to_name || updateLabel) && (
                     <div className="orders-list-card-meta">
@@ -795,7 +803,7 @@ export default function AllOrdersPage() {
                         {overdue && <span className="fin-sub fin-sub--alert">Overdue</span>}
                       </td>
                       <td className="fin-num">
-                        <span className="fin-amount">{fmtAmount(o.total_value)}</span>
+                        <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
                       </td>
                       <td>
                         <StatusBadge status={o.status} />
