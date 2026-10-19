@@ -2609,7 +2609,9 @@ export default function OrderDetailPage() {
         label: operationsView.status === 'awaiting' ? 'Waiting for Operations' : operationsView.statusLabel,
         tone: operationsView.tone,
         line: operationsView.status === 'awaiting'
-          ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
+          // The pill already says "Waiting for Operations" and the row shows the
+          // Approved date, so the line names only who reviews it (owner, 2026-10-19).
+          ? operationsView.reviewerLine
           // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
           // Activity at the foot of the page (clarification_reason, required by
           // decide_order_operations_handoff).

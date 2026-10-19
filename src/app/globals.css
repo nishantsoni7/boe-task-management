@@ -10278,3 +10278,31 @@ textarea.pi-form-input { height: auto; }
 @container (max-width: 880px) {
   .pi-od-cell:nth-child(n + 3) { border-top-color: #ECE7E0; }
 }
+
+/* ── Warnings and notices on solid palette tints (owner, 2026-10-19) ──
+   The see-through amber and blue tints (rgba … 0.07–0.10) sat on the warm page
+   background and white cards at almost the same lightness, so a warning read
+   as part of the page. Each notice now uses its status pair from
+   BOE_VISUAL_IDENTITY: Waiting #805B0D on #FAF0DA, Blocked on #FBE9EC,
+   Working on #EAF0F8, each with its solid border token. */
+.order-attention {
+  background: var(--boe-waiting-bg);
+  border-color: var(--boe-warning-border);
+  box-shadow: inset 3px 0 0 #C48A1A;
+}
+.order-attention-icon { color: var(--boe-waiting-fg); }
+.order-doc-changes {
+  background: var(--boe-waiting-bg);
+  border-color: var(--boe-warning-border);
+}
+.order-doc-change + .order-doc-change { border-top-color: var(--boe-warning-border); }
+.order-pay-notice {
+  background: var(--boe-working-bg);
+  border-color: var(--boe-info-border);
+  color: #3F4A55;
+}
+.order-approval-changed { background: var(--boe-waiting-bg); }
+.order-custom {
+  background: var(--boe-blocked-bg);
+  border-left-color: var(--boe-error-border);
+}

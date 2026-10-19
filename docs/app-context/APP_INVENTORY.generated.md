@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `5c57b6dc` — Merge remote-tracking branch 'origin/main' into claude/ecstatic-bouman-71cd10
+- Commit: `a793691b` — Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
 - Commits on this branch: 900
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 331 (first `20260530_create_positions.sql`, latest `20270319000000_meetings_rpcs_require_module_entry.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `5c57b6dc` 2026-10-19 Merge remote-tracking branch 'origin/main' into claude/ecstatic-bouman-71cd10
-- `666d98e9` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design
+- `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
+- `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
 - `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
 - `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
 - `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)

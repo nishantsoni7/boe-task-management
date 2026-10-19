@@ -381,9 +381,32 @@ export type SupportingRowView =
   | { kind: 'files'; files: PersistedDocumentFile[]; acceptedAt: string | null }
 
 /**
- * THE ACCEPTED ROW FOR ONE CATEGORY, from accepted submissions only.
+ * THE FILES SENT WITH THE PI, once its Order exists (owner, 2026-10-19).
  *
- * An absent file says "No … on file" and never implies one was accepted. The
+ * The Order exists only because an approver approved the PI, and these files
+ * were approved with it. They are not a change to the Order — they are its
+ * starting documents, so the Design Files and Client PO rows show them at once.
+ * Operations' acceptance of PI V1 is already stated on the Main PI row; saying
+ * it again here was repetition, and "No design files" beside files the reader
+ * had just sent was wrong.
+ */
+export function sentWithPiOnFile(
+  rows: readonly PersistedDocumentSubmission[],
+  category: DocumentCategory,
+): PersistedDocumentFile[] {
+  const initial = rows
+    .filter(r => r.stage === 'initial' && r.status === 'awaiting_operations')
+    .filter(r => (category === 'design_files' ? r.includes_design_files : r.includes_client_po))
+    .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))[0]
+  return initial ? filesOf(initial, category) : []
+}
+
+/**
+ * THE ON-FILE ROW FOR ONE CATEGORY: the accepted files or, before Operations
+ * has accepted PI V1, the files sent with the PI (sentWithPiOnFile). A change
+ * proposed on the Order (an amendment) is never drawn here until accepted.
+ *
+ * An absent file says "No …" and never implies one was accepted. The
  * acknowledged absence from the PI's submission is a quiet note under it, and
  * only while nothing newer is under review for that category.
  */
@@ -396,6 +419,8 @@ export function supportingRow(
   if (api.state === 'unavailable') return { kind: 'unavailable' }
   const accepted = currentAcceptedFiles(api.rows, category)
   if (accepted.files.length > 0) return { kind: 'files', files: accepted.files, acceptedAt: accepted.acceptedAt }
+  const sent = sentWithPiOnFile(api.rows, category)
+  if (sent.length > 0) return { kind: 'files', files: sent, acceptedAt: null }
   return {
     kind: 'none',
     message: category === 'design_files' ? NO_DESIGN_FILES_ON_FILE : NO_CLIENT_PO_ON_FILE,
@@ -443,9 +468,13 @@ export function documentChanges(
   nameOf: (id: string | null) => string | null,
   formatWhen: (iso: string | null) => string,
 ): DocumentChangeView[] {
-  const open = rows.filter(r => r.status === 'pending_admin' || r.status === 'awaiting_operations')
+  // DOCUMENTS SENT WITH THE PI ARE NOT A CHANGE (owner, 2026-10-19): they are
+  // the Order's starting documents, drawn in the on-file rows, and the PI's own
+  // approval and Operations review decide them — so they get no entry here.
+  const changeRows = rows.filter(r => r.stage !== 'initial')
+  const open = changeRows.filter(r => r.status === 'pending_admin' || r.status === 'awaiting_operations')
   const covered = new Set(open.flatMap(categoriesOf))
-  const rejected = uncorrectedRejections(rows)
+  const rejected = uncorrectedRejections(changeRows)
     .filter(r => r.submitted_by === viewer.viewerId || viewer.isAdmin)
     .filter(r => !categoriesOf(r).some(c => covered.has(c)))
     .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))

@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-19 — Order Detail Documents card cleanup + solid warning colours (PR open)
+- Files sent with the PI now show in the Design Files and Client PO rows as soon as the Order exists (they were hidden until Operations accepted PI V1, so the rows said "No design files" / "No client PO" beside files that had been sent). `sentWithPiOnFile` in `lib/orders/orderDocumentSubmissions.ts`; an accepted amendment still wins.
+- The "Document changes" panel no longer lists the files sent with the PI (they are not a change); it is for amendments and PI revisions only. The Main PI row's line under "Waiting for Operations" now names only the reviewer (the pill and the Approved date already said the rest).
+- Warnings and notices on the Order page use solid palette status colours instead of see-through tints that blended into the page: attention strip and document changes Waiting `#FAF0DA` / `#E6D2A0`, payment notice Working `#EAF0F8` / `#C3D3E6`, customisation note Blocked `#FBE9EC`. Tests updated deliberately: `orderDocumentSubmissions.render`, `orderDetailPolish.render`. Migrations: none.
+
 ## 2026-10-19 — Test/lint hygiene: offline test env + restore-rehearsal lint
 - `briaProductShot.test.ts` "a missing reference costs nothing at all" failed whenever `NEXT_PUBLIC_SUPABASE_URL` was set (the documented offline env), because `loadStudioReference`'s storage fallback hit the stubbed `fetch`. The test now unsets the Supabase URL/key for its own duration (restored after), so it passes with or without the env and still asserts zero fetches. No product code changed.
 - `scripts/backup/restore-rehearsal.mjs`: removed the unused counter `n` (duplicated `report.tables`); `npm run lint` back to 0 warnings. Migrations: none.
