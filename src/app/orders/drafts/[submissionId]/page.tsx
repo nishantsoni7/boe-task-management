@@ -230,7 +230,7 @@ import {
   describeAdvanceActions,
 } from '@/lib/orders/advanceRequirement'
 import { asPaymentPosition, readExceptionReason } from '@/lib/orders/paymentGate'
-import { notifyFinance, notifyPiSubmission } from '@/lib/notify'
+import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
   describeReviewDecision,
@@ -1140,13 +1140,6 @@ function PiDraftDetailPageInner() {
       const completion = await completePaymentEntry(supabase, paymentId)
       attempt.settle()
       setPaymentNotice(completion.verified ? PAYMENT_RECORDED_AND_VERIFIED_BODY : PI_PAYMENT_RECORDED_BODY)
-      // TELL THE VERIFIERS (owner audit, 2026-10-19): a payment recorded here
-      // used to reach nobody until someone opened Finance. The same notice the
-      // Finance form sends. The record RPC returns only the id, so the route
-      // reads the number itself — this screen touches no Finance table.
-      if (!completion.verified && paymentId) {
-        void notifyFinance({ event: 'finance_submitted', requestNumber: '', entityId: paymentId })
-      }
       // ONLY the payment section is refreshed. The submission, its items, its
       // images and its signed workbook URL are untouched.
       await loadPayments()

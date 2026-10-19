@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b8c15e6e` — Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
-- Commits on this branch: 909
+- Commit: `a300fcc6` — Correct a pending payment that is already attached to a PI
+- Commits on this branch: 910
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 335 (first `20260530_create_positions.sql`, latest `20270322000000_finance_payment_edit_reallocates.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 714   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a300fcc6` 2026-10-19 Correct a pending payment that is already attached to a PI
 - `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
 - `7f17db52` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere (#356)
 - `6b3ae524` 2026-10-19 Orders sidebar: Dashboard, Confirmed Orders, PI Drafts; PI format under Resources (#355)
@@ -38,7 +39,6 @@
 - `eb76e55f` 2026-10-18 Backups: include the storage mirror in the second copy (#338)
 - `144e2948` 2026-10-18 Backups: report tables the service role cannot read (#337)
 - `2e4f61ad` 2026-10-18 Tests: run the payment forms in a real DOM instead of reading their source (#336)
-- `f5e70b51` 2026-10-18 Finish the big-screen splits: ReceivedPaymentsView 3,850 -> 1,468 lines, finance/page 3,796 -> 946 (#335)
 
 ## Pages by top-level area
 
