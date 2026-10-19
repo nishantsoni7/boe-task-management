@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-19 — Test/lint hygiene: offline test env + restore-rehearsal lint
+- `briaProductShot.test.ts` "a missing reference costs nothing at all" failed whenever `NEXT_PUBLIC_SUPABASE_URL` was set (the documented offline env), because `loadStudioReference`'s storage fallback hit the stubbed `fetch`. The test now unsets the Supabase URL/key for its own duration (restored after), so it passes with or without the env and still asserts zero fetches. No product code changed.
+- `scripts/backup/restore-rehearsal.mjs`: removed the unused counter `n` (duplicated `report.tables`); `npm run lint` back to 0 warnings. Migrations: none.
+
 ## 2026-10-19 — Orders lists on the Finance list design (Confirmed Orders, PI Drafts) · PR #348 (open)
 - `/orders/all`: the status tab strip became six status cards that are the filter (`FinanceStatusCards`); the four dropdowns became chips in the view bar (Assignee, Order date, Source, Sort; `FilterChip` gained an `icon`); the "N of M visible" count is gone. Table is `.fin-table` (initials for people, lead source under the client, "Overdue" under the due date, right-aligned Value). Status colours (owner-approved): Running blue, On Hold amber, Ready for Dispatch green (was blue), Dispatched grey (was green), Cancelled red. Phone cards and every URL parameter unchanged.
 - `/orders/drafts`: new status cards (All, Draft, Submitted for Review, Needs Changes, Rejected) and a search box (client, PI reference, salesperson, uploader, submitter), both in the URL (`?status=`, `?q=`) and both narrowing the rows already read — no new query. The review queue is a labelled group inside the same board. Open Draft / Review PI / Delete are 28px icons. Phone cards below 1100px unchanged.

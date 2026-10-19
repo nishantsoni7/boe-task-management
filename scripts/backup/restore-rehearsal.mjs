@@ -65,7 +65,6 @@ try {
   }
   log(`throwaway database ready (snapshot ${snap}, ${Object.keys(defs).length} relations in the schema snapshot)`)
 
-  let n = 0
   for (const t of Object.keys(manifest.tables).sort()) {
     const info = manifest.tables[t]
     if (info.unreadable) { report.problems.push(`${t}: not in the export (service role cannot read it) — covered only by Supabase platform backups`); continue }
@@ -105,7 +104,7 @@ try {
       const got = Number(out[i + 1])
       if (Math.abs(want - got) > Math.max(1e-6, Math.abs(want) * 1e-9)) report.problems.push(`${t}.${c}: sum is ${got}, the backup file says ${want}`)
     })
-    report.tables++; report.rows += rows.length; n++
+    report.tables++; report.rows += rows.length
     fs.rmSync(plainGz)
   }
   log(`loaded ${report.tables} tables, ${report.rows} rows`)
