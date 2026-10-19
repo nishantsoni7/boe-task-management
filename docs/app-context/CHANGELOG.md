@@ -4,7 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-19 — Orders sidebar order; Download PI Format in a Resources block (PR open)
+## 2026-10-19 — Orders notifications that were written but shown nowhere (PR open)
+- Owner audit: `pi_exception_*`, `pi_revision_*` and `order_document_review_*` rows were inserted (database or `/api/orders/submissions/notify`) but no category listed them, so they reached no feed, badge or "mark all read". They are now in `ORDER_NOTIFICATION_TYPES`; `notificationMeta` files them under Orders (PI exception and revision open the PI; Design Files / Client PO open the Order at #documents). `pi_correction_*` deliberately NOT added: those values are not in the enum yet and an unknown value in a `type.in.(...)` filter fails the whole read — they come with the notifications migration. New test `hiddenOrderTypes.test.ts`. No SQL.
+
+## 2026-10-19 — Orders sidebar order; Download PI Format in a Resources block · #355 (6b3ae524)
 - Orders sidebar: Dashboard, Confirmed Orders, PI Drafts, Notifications. Download PI Format left the destinations list for a small, muted "Resources" block above the account (it saves a file; it is not a page). Tests updated deliberately: `piFormatEntryPoints`, `orderRequestRetirement` (nav order). No SQL.
 
 ## 2026-10-19 — Correct a wrong pending payment from the two verification screens (PR open) · no migration

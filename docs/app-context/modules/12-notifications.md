@@ -113,7 +113,7 @@ Feed selection (`src/lib/notifications.ts`, one function `getNotificationCategor
 
 ## 9. Known traps / gotchas / unfixed defects
 
-1. **(code-verified, runtime unverified) Some written types are not in any feed list.** `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and
+1. **FIXED 2026-10-19 (code only): these types are now in `ORDER_NOTIFICATION_TYPES` and filed under Orders by `getNotificationMeta` (test `hiddenOrderTypes.test.ts`). Original note:** Some written types are not in any feed list. `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and
    `order_document_review_requested/decided` are written (by `/api/orders/submissions/notify` and by `20270112000000` triggers) and described by `getNotificationMeta`, but
    `ORDER_NOTIFICATION_TYPES` does not contain them, and the Orders feed is a strict `type.in.(...)`. Such rows would not appear in `/orders/notifications` nor in its unread badge. Check with
    `select type,count(*),count(*) filter (where not is_read) from notifications group by 1;`. Fix = add them to `ORDER_NOTIFICATION_TYPES` (code only) and update the tests that assert the list.
