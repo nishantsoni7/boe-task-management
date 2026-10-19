@@ -72,6 +72,70 @@ export function intentReferenceLabel(intent: StoredIntent | null): string | null
 }
 
 /**
+ * What a payment recorded from a PI Draft (or split across records) carries
+ * instead of an intent: ACTIVE ALLOCATIONS, written at entry.
+ *
+ * Without reading these, a form saw "no intent" and drew the payment as a
+ * Suspense Entry, which it is not. Since 20270322000000 edit_payment_request
+ * corrects such a payment with its destination locked.
+ *
+ * 'attached' = exactly one active allocation (correctable). 'split' = several
+ * (refused by the database by name). null = none.
+ */
+export type StoredAllocation =
+  | {
+      kind: 'attached'
+      targetType: Extract<PaymentDestination, 'pi_draft' | 'confirmed_order'>
+      targetId: string
+      allocatedAmount: number
+      reference: string | null
+    }
+  | { kind: 'split' }
+
+export async function loadPaymentAllocation(
+  supabase: ReturnType<typeof createClient>,
+  paymentRequestId: string,
+): Promise<StoredAllocation | null> {
+  const { data } = await supabase
+    .from('finance_payment_allocations')
+    .select('order_submission_id, order_id, allocated_amount')
+    .eq('payment_request_id', paymentRequestId)
+    .eq('status', 'active')
+    .limit(2)
+
+  const rows = (data ?? []) as {
+    order_submission_id: string | null
+    order_id: string | null
+    allocated_amount: number | string
+  }[]
+  if (rows.length === 0) return null
+  if (rows.length > 1) return { kind: 'split' }
+
+  const row = rows[0]
+  const targetType = row.order_submission_id ? 'pi_draft' : 'confirmed_order'
+  let reference: string | null = null
+  if (targetType === 'confirmed_order' && row.order_id) {
+    const { data: o } = await supabase.rpc('finance_order_lookup', { p_ids: [row.order_id] })
+    reference = ((o as { display_number?: string }[] | null) ?? [])[0]?.display_number ?? null
+  } else if (row.order_submission_id) {
+    const { data: s } = await supabase
+      .from('order_submissions')
+      .select('source_order_number, source_workbook_name')
+      .eq('id', row.order_submission_id)
+      .maybeSingle()
+    const pi = s as { source_order_number?: string | null; source_workbook_name?: string | null } | null
+    reference = pi ? (pi.source_order_number || pi.source_workbook_name || null) : null
+  }
+  return {
+    kind: 'attached',
+    targetType,
+    targetId: (targetType === 'pi_draft' ? row.order_submission_id : row.order_id) ?? '',
+    allocatedAmount: Number(row.allocated_amount),
+    reference,
+  }
+}
+
+/**
  * The one intent a payment request carries, or null when it carries none.
  *
  * TWO ROUND TRIPS AT MOST, on one payment, when a modal opens: the intent, then

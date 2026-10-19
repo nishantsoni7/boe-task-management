@@ -302,6 +302,25 @@ export function paymentEntryErrorMessage(message: string | null | undefined): st
   if (m.includes('PAYMENT_TARGET_NO_CLIENT')) {
     return 'That record has no customer on file. Correct it before recording a payment against it — the customer is read from the record, not typed here.'
   }
+  // Correcting a payment that is already attached to a PI or Order (20270322000000).
+  if (m.includes('PAYMENT_EDIT_SPLIT_ALLOCATED')) {
+    return 'This payment is split across more than one PI or Order, so it cannot be corrected here. Ask Finance to correct its allocations first.'
+  }
+  if (m.includes('PAYMENT_EDIT_DESTINATION_LOCKED')) {
+    return 'This payment is already attached to its PI or Order. To move it, ask Finance to correct the allocation.'
+  }
+  if (m.includes('PAYMENT_BELOW_ALLOCATED')) {
+    return 'That amount is lower than what is already attached to a PI or Order. Raise the amount, or ask Finance to correct the allocation first.'
+  }
+  if (m.includes('PAYMENT_EDIT_NOT_PERMITTED')) {
+    return 'Only the person who recorded this payment, or an administrator, can correct it.'
+  }
+  if (m.includes('ALLOCATION_TARGET_CONVERTED')) {
+    return 'That PI has been approved and is now an Order, so its payment cannot be corrected here. Ask Finance.'
+  }
+  if (m.includes('ALLOCATION_TARGET_NOT_ACTIVE') || m.includes('ALLOCATION_TARGET_NOT_AVAILABLE') || m.includes('ALLOCATION_TARGET_CLAIMED')) {
+    return 'The PI or Order this payment is attached to can no longer take it, so nothing was changed. Ask Finance.'
+  }
   if (m.includes('PAYMENT_AMOUNT_INVALID')) {
     return 'Enter a positive amount in rupees and paise.'
   }

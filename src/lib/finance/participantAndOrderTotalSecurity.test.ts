@@ -1093,6 +1093,7 @@ describe('the applied migrations are frozen', () => {
       // Orders notifications from the database (owner audit, 2026-10-19).
       '20270321000000_order_submission_notification_types.sql',
       '20270321000001_order_submission_notifications_complete.sql',
+      '20270322000000_finance_payment_edit_reallocates.sql',
     ])
   })
 
@@ -1437,6 +1438,7 @@ describe('the applied migrations are frozen', () => {
       // Orders notifications from the database (owner audit, 2026-10-19).
       '20270321000000_order_submission_notification_types.sql',
       '20270321000001_order_submission_notifications_complete.sql',
+      '20270322000000_finance_payment_edit_reallocates.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

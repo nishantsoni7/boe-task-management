@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The edit-versus-approval race, with TWO REAL SESSIONS.
 #
-#   supabase/tests/run_payment_entry_edit_race.sh <psql-host-or-socket-dir> [--with-114]
+#   supabase/tests/run_payment_entry_edit_race.sh <psql-host-or-socket-dir> [--with-114|--with-20270322]
 #
 # TWO SCHEMAS, ONE RACE. Without an argument it builds through 20261013000000 and
 # proves the race against the functions THAT migration installed. With --with-114
@@ -39,6 +39,16 @@ if [ "${2:-}" = "--with-114" ]; then
   )
   MODE=hdfc
   DB=boe_payment_edit_race_114
+elif [ "${2:-}" = "--with-20270322" ]; then
+  # edit_payment_request restated again (it now locks the PI before the payment
+  # when the payment is allocated): the SAME race, against the body that ships.
+  EXTRA=(
+    "$REPO/supabase/tests/_payment_custody_and_modes_extra_schema.sql"
+    "$REPO/supabase/migrations/20261014000000_payment_destination_display_modes_and_custody.sql"
+    "$REPO/supabase/migrations/20270322000000_finance_payment_edit_reallocates.sql"
+  )
+  MODE=hdfc
+  DB=boe_payment_edit_race_20270322
 fi
 Q=(psql -h "$HOST" -U postgres -v ON_ERROR_STOP=1 -q)
 
@@ -48,6 +58,7 @@ trap '"${Q[@]}" -d postgres -c "drop database if exists '"$DB"'" >/dev/null 2>&1
 
 SCHEMA_LABEL=20261013000000
 [ ${#EXTRA[@]} -gt 0 ] && SCHEMA_LABEL=20261014000000
+[ "${2:-}" = "--with-20270322" ] && SCHEMA_LABEL=20270322000000
 echo "== building the schema through $SCHEMA_LABEL"
 for f in \
   "$REPO/supabase/tests/_order_finance_reset_shaped_schema.sql" \
