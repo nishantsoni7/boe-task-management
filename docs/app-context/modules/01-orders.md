@@ -59,11 +59,11 @@ Dispatch itself is just a status change by an admin (`ready_for_dispatch` -> `di
 | Route | Purpose |
 | --- | --- |
 | `/orders` | Dashboard: intervention sections (alignment, advance, due date, fabric/finish, "panic mode"), revenue (admin / `orders.view_all` only), Factory Focus, queue cards (PI Drafts, operations review). Salespersons who are eligible assignees (not admin, not operations) get the personal dashboard (`salesperson_orders_dashboard`) |
-| `/orders/drafts` | PI Drafts list |
+| `/orders/drafts` | PI Drafts list (Finance list design since 2026-10: status cards + search in the URL, `?status=`/`?q=`, narrowing rows already read; review queue is a group in the same board; icon row actions) |
 | `/orders/drafts/[submissionId]` | PI Draft detail: overview, payment status card, payment details dialog with verify (needs `finance.approve`), internal details, advance exception, review actions, deletion |
 | `/orders/drafts/[submissionId]/edit-pi` | Edit PI for a draft |
 | `/orders/import` | Upload PI workbook (`orders.create`) |
-| `/orders/all` | Confirmed Orders list (URL-state: `useListUrlState`) |
+| `/orders/all` | Confirmed Orders list (URL-state: `useListUrlState`; Finance list design since 2026-10: status cards are the filter, chips for Assignee / Order date / Source / Sort, `.fin-table`, parts from `src/app/finance/components/FinanceListParts.tsx`) |
 | `/orders/[id]` | Confirmed Order workspace (header, health rail, payment position, products, PI sections, handoff/review modals, documents, approvals, history, delete modal). Layout since the 2026-10 Notion pass: header → property summary → attention → Documents with a right rail (Fabric & Finish, Notes, then Payment in `.order-docs-pay`) → Products (full width) → record column (change requests, activity) beside the Commercial breakdown. Styles: the "ORDER DETAIL — NOTION PASS" block at the end of globals.css overrides the original rules by cascade order — keep it last |
 | `/orders/[id]/edit-pi` | Propose an in-app PI edit revision on a Confirmed Order |
 | `/orders/notifications` | Order notifications |
