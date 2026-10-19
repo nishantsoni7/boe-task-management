@@ -36,12 +36,6 @@ const DOCUMENT_REVIEW_TYPE_SET: ReadonlySet<string> = new Set([
   'order_document_review_requested',
   'order_document_review_decided',
 ])
-/** Written by the database (20270321000001); entity_id is the Order, opened itself. */
-const ORDER_RECORD_TYPE_SET: ReadonlySet<string> = new Set([
-  'order_change_requested',
-  'order_change_decided',
-  'order_update_approval',
-])
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
@@ -143,15 +137,6 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // must decide; blue for the decision, which reports what was decided.
   order_document_review_requested: { label: 'Documents to review', color: colors.amber, bg: colors.amberTint },
   order_document_review_decided:   { label: 'Documents decided',   color: colors.blue,  bg: colors.blueTint  },
-  // 20270321000001: amber where somebody must act, blue where it reports.
-  pi_review_requested:     { label: 'Needs approval',  color: colors.amber, bg: colors.amberTint },
-  pi_review_decided:       { label: 'PI decided',      color: colors.blue,  bg: colors.blueTint  },
-  pi_correction_requested: { label: 'Correction asked', color: colors.amber, bg: colors.amberTint },
-  pi_correction_resolved:  { label: 'Corrected',       color: colors.green, bg: colors.greenTint },
-  pi_correction_rejected:  { label: 'Not corrected',   color: colors.red,   bg: colors.redTint   },
-  order_change_requested:  { label: 'Change requested', color: colors.amber, bg: colors.amberTint },
-  order_change_decided:    { label: 'Change decided',  color: colors.blue,  bg: colors.blueTint  },
-  order_update_approval:   { label: 'Fabric & Finish', color: colors.blue,  bg: colors.blueTint  },
   // Assets & Access
   asset_request_submitted:      { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
   asset_edit_request_submitted: { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
@@ -380,8 +365,7 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   // submission id (/api/orders/submissions/notify), and the PI page leads on to
   // its Order. Until 2026-10-19 these fell through to "other" and were never
   // listed in any feed.
-  if (type.startsWith('pi_exception') || type.startsWith('pi_revision')
-      || type.startsWith('pi_review') || type.startsWith('pi_correction')) {
+  if (type.startsWith('pi_exception') || type.startsWith('pi_revision')) {
     return {
       category: 'order',
       heading: 'Orders',
@@ -409,7 +393,7 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
           ? `/orders/${n.entity_id}#${OPERATIONS_REVIEW_ANCHOR}`
           : DOCUMENT_REVIEW_TYPE_SET.has(type)
             ? `/orders/${n.entity_id}#documents`
-          : type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type) || ORDER_RECORD_TYPE_SET.has(type)
+          : type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type)
             ? `/orders/${n.entity_id}`
             : `/orders/requests/${n.entity_id}?from=all`)
       : (DOCUMENT_REVIEW_TYPE_SET.has(type) ? '/orders/all' : '/orders/requests')

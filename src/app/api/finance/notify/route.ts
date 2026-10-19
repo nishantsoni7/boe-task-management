@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { event, requestNumber: givenNumber, entityId, clientName, creatorId, orderNumber, statusLabel } =
+  const { event, requestNumber, entityId, clientName, creatorId, orderNumber, statusLabel } =
     await req.json() as {
       event: FinanceNotifyEvent
       requestNumber: string
@@ -46,20 +46,6 @@ export async function POST(req: NextRequest) {
       orderNumber?: string | null
       statusLabel?: string | null
     }
-
-  // A screen that holds only the payment's id (the PI page records through
-  // an RPC that returns no number) may send entityId alone: the number is read
-  // here, under THE CALLER'S OWN session, so a payment they cannot see names
-  // nothing (owner audit, 2026-10-19).
-  let requestNumber = givenNumber
-  if (!requestNumber && entityId) {
-    const { data: paid } = await authClient
-      .from('finance_payment_requests')
-      .select('request_number')
-      .eq('id', entityId)
-      .maybeSingle()
-    requestNumber = (paid as { request_number?: string | null } | null)?.request_number ?? ''
-  }
 
   if (!event || !requestNumber) {
     return NextResponse.json({ error: 'event and requestNumber are required' }, { status: 400 })
