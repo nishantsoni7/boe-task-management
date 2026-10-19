@@ -10279,21 +10279,25 @@ textarea.pi-form-input { height: auto; }
   .pi-od-cell:nth-child(n + 3) { border-top-color: #ECE7E0; }
 }
 
-/* ── Warnings and notices on solid palette tints (owner, 2026-10-19) ──
-   The see-through amber and blue tints (rgba … 0.07–0.10) sat on the warm page
-   background and white cards at almost the same lightness, so a warning read
-   as part of the page. Each notice now uses its status pair from
-   BOE_VISUAL_IDENTITY: Waiting #805B0D on #FAF0DA, Blocked on #FBE9EC,
-   Working on #EAF0F8, each with its solid border token. */
+/* ── Warnings and notices that stand off the page (owner, 2026-10-19) ──
+   The see-through amber tints (rgba … 0.07–0.10), and even the solid Waiting
+   tint #FAF0DA, sat too close to the warm canvas (#F7F5F1): a warning read as
+   a patch of the background. A warning is now a WHITE card, like every other
+   card, marked by a 4px amber edge, a hairline amber border (the Waiting pair
+   from BOE_VISUAL_IDENTITY) and an amber icon. Smaller notices inside a white
+   card keep their solid status tint: Working #EAF0F8, Blocked #FBE9EC. */
 .order-attention {
-  background: var(--boe-waiting-bg);
-  border-color: var(--boe-warning-border);
-  box-shadow: inset 3px 0 0 #C48A1A;
+  background: #FFFFFF;
+  border: 1px solid var(--boe-warning-border);
+  box-shadow: inset 4px 0 0 #C48A1A;
+  padding-left: 20px;
 }
 .order-attention-icon { color: var(--boe-waiting-fg); }
 .order-doc-changes {
-  background: var(--boe-waiting-bg);
+  background: #FFFFFF;
   border-color: var(--boe-warning-border);
+  box-shadow: inset 4px 0 0 #C48A1A;
+  padding-left: 16px;
 }
 .order-doc-change + .order-doc-change { border-top-color: var(--boe-warning-border); }
 .order-pay-notice {
@@ -10305,4 +10309,55 @@ textarea.pi-form-input { height: auto; }
 .order-custom {
   background: var(--boe-blocked-bg);
   border-left-color: var(--boe-error-border);
+}
+
+/* ── The Main PI as a Notion record (owner, 2026-10-19) ──
+   Title + status with the quiet links on the right; a property list (muted
+   label, value; two columns once the card is wide); the actions underneath,
+   one primary. Three classes so it beats the older container-query grids. */
+.order-docs-main .order-doc-section.order-pi {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+.order-pi-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+.order-pi-links { display: flex; align-items: center; gap: 10px; }
+.order-pi-links .order-docs-link.order-doc-pi-history { margin-left: 0; }
+.order-pi-props { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 32px; min-width: 0; }
+.order-pi-prop {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid #F3F0EB;
+  min-width: 0;
+}
+.order-pi-prop dt { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-pi-prop dd { margin: 0; font-size: 14px; color: #303536; min-width: 0; overflow-wrap: anywhere; }
+.order-pi-prop-file { color: #4C5352; }
+.order-pi-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 2px; }
+@container (min-width: 760px) {
+  .order-pi-props { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .order-docs-main .order-doc-section.order-pi { padding: 14px 14px 16px; }
+  .order-pi-prop { grid-template-columns: 120px minmax(0, 1fr); }
+  .order-pi-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+}
+
+/* Internal order details: the same property list, full width under the
+   supporting documents, two columns once the card is wide. */
+.order-docs-internal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 18px;
+  border-top: 1px solid #F1EEE9;
+  min-width: 0;
+}
+.order-pi-prop--muted { color: #8F9392 !important; }
+@media (max-width: 560px) {
+  .order-docs-internal { padding: 14px 14px 16px; }
 }

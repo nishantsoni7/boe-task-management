@@ -218,10 +218,12 @@ export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion,
 export function OrderHighlightRemarkBanner({ remark }: { remark: string | null }) {
   if (!remark) return null
   return (
+    // A WHITE CARD WITH AN AMBER EDGE (owner, 2026-10-19): the amber tint sat
+    // too close to the warm page canvas and the note read as background.
     <section className="order-highlight" aria-label={ORDER_HIGHLIGHT_LABEL} style={{
       display: 'flex', gap: '12px', alignItems: 'flex-start',
-      border: `1px solid ${colors.amber}`, background: colors.amberTint,
-      borderRadius: '8px', padding: '12px 16px', minWidth: 0,
+      border: '1px solid #E6D2A0', background: '#FFFFFF', boxShadow: 'inset 4px 0 0 #C48A1A',
+      borderRadius: '12px', padding: '12px 16px 12px 20px', minWidth: 0,
     }}>
       <Star size={16} color={colors.amber} aria-hidden style={{ flexShrink: 0, marginTop: '2px' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>

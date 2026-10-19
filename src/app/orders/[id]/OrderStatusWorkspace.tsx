@@ -16,7 +16,12 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Pencil, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Lock, Pencil, Upload, X } from 'lucide-react'
+import {
+  ORDER_INTERNAL_DETAILS_NOTE,
+  ORDER_INTERNAL_DETAILS_TITLE,
+  type OrderInternalDetailRow,
+} from '@/lib/orders/orderInternalDetailsView'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -24,7 +29,9 @@ import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_DOWNLOAD_LABEL,
+  MAIN_PI_FILE_LABEL,
   MAIN_PI_ORIGINAL_EXCEL_LABEL,
+  MAIN_PI_REVIEWER_LABEL,
   MAIN_PI_UPLOADED_LABEL,
   MAIN_PI_VIEW_LABEL,
   PI_HISTORY_CURRENT_BADGE,
@@ -239,8 +246,10 @@ export function OrderDocumentsPanel({
   mainPiOperations, mainPiMenu, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf, piVersions, pictures, onDownloadFile,
+  onOpenPdf, piVersions, pictures, onDownloadFile, internalDetails = [],
 }: {
+  /** The PI's Internal order details (fabric, commission, billing, payment terms). Empty: not drawn. */
+  internalDetails?: readonly OrderInternalDetailRow[]
   /** The approved PI's product pictures: count, view and one-file download. */
   pictures?: ProductPicturesBlockProps
   /** Saves a Design Files / Client PO file under its own name. */
@@ -261,7 +270,13 @@ export function OrderDocumentsPanel({
   onHistory: () => void
   downloading: boolean
   /** Where the version in force stands with Operations, in words. */
-  mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
+  mainPiOperations?: {
+    label: string
+    tone: StatusTone
+    line: string | null
+    /** Who reviews it while Operations has it (a name, or why nobody can). */
+    reviewer?: string | null
+  } | null
   /** The Main PI row's ⋯ menu (Download PI, PI history). Absent: Download is a quiet button. */
   mainPiMenu?: React.ReactNode
   /** The single "Update documents" control, or nothing for a reader who may not submit. */
@@ -520,57 +535,83 @@ export function OrderDocumentsPanel({
             {piVersionNotes}
           </DocRow>
         ) : (
-          <DocRow
-            title={`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}
-            primary
-            status={piStatus}
-            meta={<DocMeta items={[
-              { label: MAIN_PI_UPLOADED_LABEL, value: mainPi.uploadedAt },
-              // Absent rather than guessed: see MainPiCard.approvedAt.
-              ...(mainPi.approvedAt ? [{ label: MAIN_PI_APPROVED_LABEL, value: mainPi.approvedAt }] : []),
-            ]} />}
-            actions={
-              <>
-                {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
-                    own details — for a workbook version and an edited one alike. */}
-                {onOpenPdf && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
-                    onClick={() => onOpenPdf(mainPi.version.id, false)}
-                    title="Generated from this version's details"
-                  >
-                    <FileText size={13} strokeWidth={2} aria-hidden="true" />
-                    {PI_VERSION_PDF_VIEW_LABEL(mainPi.version.versionNumber)}
-                  </button>
-                )}
-                {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
-                    version, byte for byte, under its own name. An edited
-                    version has none of its own, and never borrows V1's. */}
-                {!mainPi.version.editedInApp && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
-                    onClick={() => onDownload(mainPi.version)}
-                    disabled={!mainPi.hasFile || downloading}
-                    title={mainPi.fileName ?? mainPi.reference}
-                  >
-                    <Download size={13} strokeWidth={2} aria-hidden="true" />
-                    {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
-                  </button>
-                )}
-                {editPi}
+          /* THE MAIN PI, LAID OUT LIKE A NOTION RECORD (owner, 2026-10-19):
+             the title and its one status, with the quiet links on the right;
+             then a property list (muted label, value) for the dates and the
+             reviewer; then the actions in one line underneath — one primary,
+             the rest secondary — instead of everything competing in one row. */
+          <section className="order-doc-section order-doc-section--primary order-pi" aria-label={DOC_MAIN_PI_TITLE}>
+            <div className="order-pi-head">
+              <p className="order-doc-row-head">
+                <span className="order-doc-row-title">{`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}</span>
+                {piStatus}
+              </p>
+              <div className="order-pi-links">
                 {piHistoryLink}
                 {mainPiMenu}
-              </>
-            }
-          >
-            {mainPi.version.editedInApp
-              ? <p className="order-doc-note order-doc-row-file">{PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}</p>
-              : mainPi.fileName && <p className="order-doc-note order-doc-row-file">{mainPi.fileName}</p>}
+              </div>
+            </div>
+            <dl className="order-pi-props">
+              <div className="order-pi-prop">
+                <dt>{MAIN_PI_UPLOADED_LABEL}</dt>
+                <dd>{mainPi.uploadedAt}</dd>
+              </div>
+              {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
+              {mainPi.approvedAt && (
+                <div className="order-pi-prop">
+                  <dt>{MAIN_PI_APPROVED_LABEL}</dt>
+                  <dd>{mainPi.approvedAt}</dd>
+                </div>
+              )}
+              {mainPiOperations?.reviewer && (
+                <div className="order-pi-prop">
+                  <dt>{MAIN_PI_REVIEWER_LABEL}</dt>
+                  <dd>{mainPiOperations.reviewer}</dd>
+                </div>
+              )}
+              <div className="order-pi-prop">
+                <dt>{MAIN_PI_FILE_LABEL}</dt>
+                <dd className="order-pi-prop-file">
+                  {mainPi.version.editedInApp
+                    ? PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)
+                    : (mainPi.fileName ?? mainPi.reference)}
+                </dd>
+              </div>
+            </dl>
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
-          </DocRow>
+            <div className="order-pi-actions">
+              {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
+                  own details — for a workbook version and an edited one alike. */}
+              {onOpenPdf && (
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
+                  onClick={() => onOpenPdf(mainPi.version.id, false)}
+                  title="Generated from this version's details"
+                >
+                  <FileText size={13} strokeWidth={2} aria-hidden="true" />
+                  {PI_VERSION_PDF_VIEW_LABEL(mainPi.version.versionNumber)}
+                </button>
+              )}
+              {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
+                  version, byte for byte, under its own name. An edited
+                  version has none of its own, and never borrows V1's. */}
+              {!mainPi.version.editedInApp && (
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-secondary order-doc-action"
+                  onClick={() => onDownload(mainPi.version)}
+                  disabled={!mainPi.hasFile || downloading}
+                  title={mainPi.fileName ?? mainPi.reference}
+                >
+                  <Download size={13} strokeWidth={2} aria-hidden="true" />
+                  {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
+                </button>
+              )}
+              {editPi}
+            </div>
+          </section>
         )}
         {picturesBlock}
         </div>
@@ -616,6 +657,29 @@ export function OrderDocumentsPanel({
           </DocRow>
         )}
         </div>
+
+        {/* ── INTERNAL ORDER DETAILS: what Sales filled on the PI, as a
+            property list. The dates, salesperson and lead source are in the
+            Order's summary already, so they are not repeated here. ── */}
+        {internalDetails.length > 0 && (
+          <section className="order-docs-internal" aria-label={ORDER_INTERNAL_DETAILS_TITLE}>
+            <p className="order-doc-row-head">
+              <span className="order-doc-row-title">{ORDER_INTERNAL_DETAILS_TITLE}</span>
+              <span className="pi-detail-internal-tag">
+                <Lock size={10} strokeWidth={2.2} aria-hidden="true" />
+                {ORDER_INTERNAL_DETAILS_NOTE}
+              </span>
+            </p>
+            <dl className="order-pi-props">
+              {internalDetails.map(d => (
+                <div key={d.key} className="order-pi-prop">
+                  <dt>{d.label}</dt>
+                  <dd className={d.muted ? 'order-pi-prop--muted' : undefined}>{d.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
       </div>
       {fileError &&<p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
     </section>

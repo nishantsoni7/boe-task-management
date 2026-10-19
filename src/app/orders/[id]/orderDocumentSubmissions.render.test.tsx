@@ -18,6 +18,7 @@ import { SubmissionHistoryList, uploadAvailability } from './OrderDocumentSubmis
 import { designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { mainPiCard } from '@/lib/orders/orderMainPi'
 import { describePiVersionHistory, type PersistedPiVersion } from '@/lib/orders/orderPiVersions'
+import { orderInternalDetailRows } from '@/lib/orders/orderInternalDetailsView'
 import {
   documentChanges,
   supportingRow,
@@ -308,6 +309,57 @@ describe('who is offered what', () => {
     // An accepted amendment still wins over the starting set.
     const replaced = sub({ id: 'a', status: 'accepted', admin_decided_at: 't', operations_decided_at: '2026-09-22T00:00:00Z' })
     assert.ok(rowsOf(card([initial, replaced])).includes('PO-771.pdf'))
+  })
+})
+
+describe('the Main PI as a property list, and Internal order details (owner, 2026-10-19)', () => {
+  const panel = (extra: Partial<React.ComponentProps<typeof OrderDocumentsPanel>>) => renderToStaticMarkup(
+    <OrderDocumentsPanel
+      mainPi={mainPiCard(describePiVersionHistory([V1], NAMES, when))}
+      onDownload={noop} onHistory={noop} downloading={false} onOpenPdf={noop}
+      {...extra}
+    />,
+  )
+
+  test('dates, reviewer and file are label/value properties; one primary action', () => {
+    const html = panel({ mainPiOperations: { label: 'Waiting for Operations', tone: 'amber', line: null, reviewer: 'Ravi' } })
+    const t = text(html)
+    assert.ok(t.includes('Main PI · V1 Waiting for Operations'))
+    assert.ok(t.includes('Operations reviewer Ravi'))
+    assert.ok(t.includes('File PI-771.xlsx'))
+    assert.equal((html.match(/class="order-pi-prop"/g) ?? []).length, 4)
+    assert.equal((html.match(/boe-btn-primary/g) ?? []).length, 1, 'only View PI is primary')
+    assert.match(html, /boe-btn boe-btn-secondary order-doc-action"[^>]*>[\s\S]*?Download original Excel/)
+    assert.equal(/has not accepted it yet/.test(t), false, 'no repeated sentence')
+  })
+
+  test('Internal order details lists every value Sales filled, with commission kept restricted', () => {
+    const rows = orderInternalDetailRows({
+      fabric_responsibility: 'boe', billing_percentage: '65', billing_terms: null, payment_terms: '50% advance',
+      middleman_commission: 'yes', middleman_recipient: 'Ramesh', middleman_commission_basis: 'amount',
+      middleman_commission_amount: '50000', commission_restricted: false,
+    })
+    const t = text(panel({ internalDetails: rows }))
+    assert.ok(t.includes('Internal order details BOE only'))
+    for (const label of ['Fabric responsibility', 'Middleman commission', 'Billing percentage', 'Billing terms', 'Payment terms']) {
+      assert.ok(t.includes(label), label)
+    }
+    assert.ok(t.includes('Yes — Ramesh, ₹50,000.00'))
+    assert.ok(t.includes('65%') && t.includes('50% advance') && t.includes('Billing terms Not given'))
+
+    const restricted = orderInternalDetailRows({ middleman_commission: 'yes', commission_restricted: true })
+    const r = restricted.find(x => x.key === 'middleman_commission')
+    assert.ok(r?.value.startsWith('Restricted') && r.muted, 'never a value, never a false "No"')
+    assert.equal(text(panel({})).includes('Internal order details'), false, 'not drawn without rows')
+  })
+
+  test('the page reads the commission in the existing load group, through the reader rule', () => {
+    const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+    const loader = page.slice(page.indexOf('const loadPiHandoff'), page.indexOf('const reloadActivity'))
+    const group = loader.slice(loader.indexOf('await Promise.all(['), loader.indexOf('])', loader.indexOf('handoffsQuery(),')))
+    assert.ok(group.includes(".from('order_submission_middleman_commissions')"))
+    assert.ok(group.includes("supabase.rpc('can_read_order_submission_commission', { p_submission_id: submissionId })"))
+    assert.ok(loader.includes('commissionReadable.data === true'), 'fails closed')
   })
 })
 
