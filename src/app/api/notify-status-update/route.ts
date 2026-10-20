@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
   const isStatusNotice = !(typeof claimedAction === 'string' && (claimedAction === 'comment_added' || claimedAction === 'acknowledged'))
   // Not announced by rule (a quotation, a delegated task's completion): there is no notice to write, so no event is needed to
   // say so. Answered before the event is demanded, exactly as before.
-  if (isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction)) {
+  if (isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction, notifyUserId)) {
     return NextResponse.json({ success: true, skipped: true })
   }
   const eventNamed = activityLogId !== undefined && activityLogId !== null && activityLogId !== ''
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
   // as one. A quotation request writes no notification, and a delegated task's
   // "completed" is its creator's approval arriving by this generic road. See
   // src/lib/notifications/taskNotificationPolicy.ts.
-  if (!shouldNotifyTaskStatusEvent(task, action)) {
+  if (!shouldNotifyTaskStatusEvent(task, action, notifyUserId)) {
     return NextResponse.json({ success: true, skipped: true })
   }
 

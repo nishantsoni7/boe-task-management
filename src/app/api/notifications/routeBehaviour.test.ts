@@ -184,8 +184,9 @@ function evaluate(table: TableName, params: URLSearchParams) {
     }
   }
 
-  const or = params.get('or')
-  if (or) {
+  // Every `or` parameter is a condition of its own and they are ANDed, as PostgREST does (verified against
+  // PostgREST 12: the Task feed's category filter and the quotation-notice filter are two of them).
+  for (const or of params.getAll('or')) {
     const conditions = splitTopLevel(unwrap(or))
     candidates = candidates.filter(c => conditions.some(cond => {
       const dot = cond.indexOf('.')
@@ -457,6 +458,73 @@ describe('filtering and counts — the Task feed', () => {
     assert.deepEqual(listIds(body), ['finance-row'])
     const financeRead = calls.find(c => c.table === 'notifications' && c.method === 'GET')
     assert.equal(financeRead?.params.get('select')?.includes('tasks!inner'), false)
+  })
+})
+
+describe('quotation completion and cancellation notices', () => {
+  // A quotation request is silent EXCEPT for how it ends: its completion and its cancellation tell the creator.
+  // Everything else about a quotation stays out of the feed.
+  function quotationNotices() {
+    db.notifications.push(
+      note('quote-done', { task_id: QUOTE, created_at: at(40), title: 'Uri Two completed task' }),
+      note('quote-cancelled', { task_id: QUOTE, created_at: at(41), title: 'Ada Admin cancelled a task' }),
+      note('quote-comment', { task_id: QUOTE, created_at: at(42), title: 'Uri Two added a comment' }),
+      note('quote-moved', { task_id: QUOTE, created_at: at(43), title: 'Uri Two moved task to Waiting' }),
+    )
+  }
+  const QUOTE_HIDDEN = ['quote-comment', 'quote-moved']
+
+  test('the two ending notices are in the feed, merged newest first; other quotation rows stay hidden', async () => {
+    quotationNotices()
+    const { status, body } = await send(GET, U1, '/api/notifications?category=task&limit=50')
+    assert.equal(status, 200)
+    assert.deepEqual(listIds(body), ['quote-cancelled', 'quote-done', ...U1_VISIBLE])
+    assert.equal(body.hasMore, false)
+    for (const row of body.notifications as Row[]) assert.equal('tasks' in row, false)
+  })
+
+  test('the unread badge counts them, and only them, of the quotation rows', async () => {
+    quotationNotices()
+    const { body } = await send(GET, U1, '/api/notifications?count=1&category=task')
+    assert.deepEqual(body, { unreadCount: 3 })
+  })
+
+  test('paging draws from both sets: the newest rows win wherever they come from', async () => {
+    quotationNotices()
+    db.notifications.push(note('newest-ordinary', { created_at: at(50) }))
+    const three = await send(GET, U1, '/api/notifications?category=task&limit=3')
+    assert.deepEqual(listIds(three.body), ['newest-ordinary', 'quote-cancelled', 'quote-done'])
+    assert.equal(three.body.hasMore, true)
+    const one = await send(GET, U1, '/api/notifications?category=task&limit=1')
+    assert.deepEqual(listIds(one.body), ['newest-ordinary'])
+    assert.equal(one.body.hasMore, true)
+  })
+
+  test('a quotation notice is not counted twice, nor shown to somebody else', async () => {
+    quotationNotices()
+    const u2 = await send(GET, U2, '/api/notifications?category=task&limit=50')
+    assert.deepEqual(listIds(u2.body), ['someone-else'])
+    const ids = listIds((await send(GET, U1, '/api/notifications?category=task&limit=50')).body) as string[]
+    assert.equal(new Set(ids).size, ids.length)
+  })
+
+  test('Delete all removes the two notices with the visible rows and keeps the hidden quotation history', async () => {
+    quotationNotices()
+    const { status, body } = await send(DELETE, U1, '/api/notifications?category=task', { method: 'DELETE' })
+    assert.equal(status, 200)
+    assert.equal(body.deletedCount, 5)
+    assert.equal(body.unreadAffected, 3)
+    assert.deepEqual(rowIds(U1), [...HIDDEN, ...QUOTE_HIDDEN, 'finance-row'].sort())
+  })
+
+  test('Mark all read flips the two notices and leaves the hidden quotation rows unread', async () => {
+    quotationNotices()
+    const { status, body } = await send(MARK_READ, U1, '/api/notifications/mark-read', { method: 'POST', body: { all: true, category: 'task' } })
+    assert.equal(status, 200)
+    assert.equal(body.updatedCount, 3)
+    const unread = unreadIds(U1)
+    assert.equal(unread.includes('quote-done') || unread.includes('quote-cancelled'), false)
+    for (const id of QUOTE_HIDDEN) assert.ok(unread.includes(id), id)
   })
 })
 

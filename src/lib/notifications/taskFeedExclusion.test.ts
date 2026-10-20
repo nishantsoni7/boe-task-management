@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  APPROVAL_NOTIFICATION_TITLE_PATTERN, MUTATION_ID_CHUNK_SIZE, NEW_TASK_NOTIFICATION_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, MUTATION_ID_CHUNK_SIZE, QUOTATION_NOTICE_TITLE_FILTER, NEW_TASK_NOTIFICATION_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
   VISIBLE_ID_PAGE_SIZE, chunkIds, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from './taskNotificationPolicy'
 import { getNotificationCategoryFilter, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
@@ -68,6 +68,24 @@ describe('selectVisibleTaskNotificationIds — the set a bulk mutation may touch
     assert.equal(NEW_TASK_NOTIFICATION_TYPE, 'task_assigned')
   })
 
+  test('a second read collects the quotation completion/cancel notices, and only those', async () => {
+    const { client, queries } = recordingClient([ids(2, 'a'), ids(2, 'q')])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await selectVisibleTaskNotificationIds(client as any, { userId: USER })
+    assert.deepEqual(res, { ids: ['a0', 'a1', 'q0', 'q1'], error: null })
+    assert.equal(queries.length, 2)
+    const second = queries[1]
+    assert.ok(second.some(c => c[0] === 'eq' && c[1] === TASK_FEED_TASK_TYPE_COLUMN && c[2] === 'quotation_request'))
+    assert.ok(second.some(c => c[0] === 'or' && c[1] === QUOTATION_NOTICE_TITLE_FILTER))
+    assert.equal(second.some(c => c[0] === 'neq' && c[1] === TASK_FEED_TASK_TYPE_COLUMN), false)
+    // …still inside the same caller, category, system-type, approval and new-task bounds.
+    assert.ok(second.some(c => c[0] === 'eq' && c[1] === 'user_id' && c[2] === USER))
+    assert.ok(second.some(c => c[0] === 'or' && c[1] === getNotificationCategoryFilter('task')))
+    assert.ok(second.some(c => c[0] === 'not' && c[1] === 'type' && c[2] === 'in' && c[3] === SYSTEM_TYPE_EXCLUSION))
+    assert.ok(second.some(c => c[0] === 'not' && c[1] === 'title' && c[2] === 'like' && c[3] === APPROVAL_NOTIFICATION_TITLE_PATTERN))
+    assert.ok(second.some(c => c[0] === 'neq' && c[1] === 'type' && c[2] === NEW_TASK_NOTIFICATION_TYPE))
+  })
+
   test('narrows to unread and to one task when asked, on top of the predicate', async () => {
     const { client, queries } = recordingClient([ids(1)])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,7 +101,8 @@ describe('selectVisibleTaskNotificationIds — the set a bulk mutation may touch
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await selectVisibleTaskNotificationIds(client as any, { userId: USER })
     assert.equal(res.ids.length, VISIBLE_ID_PAGE_SIZE + 2)
-    assert.equal(queries.length, 2)
+    // Two pages of ordinary rows, then the one (empty) read of quotation notices.
+    assert.equal(queries.length, 3)
     assert.deepEqual(queries[1].find(c => c[0] === 'range'), ['range', VISIBLE_ID_PAGE_SIZE, 2 * VISIBLE_ID_PAGE_SIZE - 1])
   })
 
@@ -121,8 +140,11 @@ describe('every Task feed read applies the exclusion before paging or counting',
       'new-task rows are hidden from the badge and the list alike')
     const count = route.indexOf('let countQuery')
     const list = route.indexOf('let listQuery')
-    assert.ok(count > 0 && route.indexOf('.neq(TASK_FEED_TASK_TYPE_COLUMN', count) < route.indexOf('unreadCount: count ?? 0'))
+    assert.ok(count > 0 && route.indexOf('.neq(TASK_FEED_TASK_TYPE_COLUMN', count) < route.indexOf('unreadCount: (count ?? 0)'))
     assert.ok(list > count && route.indexOf('.neq(TASK_FEED_TASK_TYPE_COLUMN', list) < route.indexOf('.limit(limit + 1)'))
+    // The quotation completion/cancel notices are the second query of each read: count and list.
+    assert.equal(route.match(/\.eq\(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE\)/g)?.length, 2)
+    assert.equal(route.match(/\.or\(QUOTATION_NOTICE_TITLE_FILTER\)/g)?.length, 2)
     // Only the Task feed joins a task; other modules' rows carry no task_id.
     assert.match(route, /select\(isTaskFeed \? `id, \$\{TASK_FEED_TASK_EMBED\}` : 'id', \{ count: 'exact', head: true \}\)/)
     assert.match(route, /const rows = isTaskFeed \? stripTaskFeedEmbed\(fetched\) : fetched/)

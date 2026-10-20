@@ -77,11 +77,11 @@ Feed selection (`src/lib/notifications.ts`, one function `getNotificationCategor
 - Every category also applies `.not('type','in', SYSTEM_TYPE_EXCLUSION)` = `escalation, overdue, stale_flag, morning_digest, evening_digest`. `asset_warranty_expiring` is scheduled but
   actionable and is deliberately kept (`ACTIONABLE_SCHEDULED_NOTIFICATION_TYPES`). Every writer goes through `insertUserNotifications(client, rows, {actorId})`
   (`src/lib/notificationWrites.ts`): drops system-type rows (`partitionSystemNotifications`), drops rows addressed to the actor (self-suppression), treats event-unique violation as success.
-- Task feed silence rules (September 2026, `src/lib/notifications/taskNotificationPolicy.ts`; enforced at write AND read): (a) quotation requests are silent entirely (by `tasks.task_type`, joined via
-  `tasks!inner(task_type)`); (b) creator APPROVAL is silent (title suffix `approved and completed task` plus `transition_task_review` stopped inserting it in `20261212000000`);
+- Task feed silence rules (September 2026, `src/lib/notifications/taskNotificationPolicy.ts`; enforced at write AND read): (a) quotation requests are silent EXCEPT how they end (Oct 2026): the assignee completing one notifies its CREATOR, and an admin cancelling one notifies the creator (never the assignee; the creator cancelling their own request tells nobody). Quotations are identified by `tasks.task_type`, joined via
+  `tasks!inner(task_type)`; (b) creator APPROVAL is silent (title suffix `approved and completed task` plus `transition_task_review` stopped inserting it in `20261212000000`);
   submitting still notifies the creator, returning/reopening still notifies the assignee; (c) a NEW task never notifies the assignee (`shouldNotifyTaskAssignment` returns false;
-  read side hides `type='task_assigned'`). `shouldNotifyTaskStatusEvent`: false for quotations and for a `completed` event on a delegated task. Old rows stay in the table, hidden; they can neither fill a
-  page nor hold a badge up because the exclusion is applied BEFORE paging/counting.
+  read side hides `type='task_assigned'`). `shouldNotifyTaskStatusEvent(task, action, recipientId)`: for a quotation true only for `completed` addressed to `created_by`; false for a `completed` event on a delegated task; `cancellationRecipient()` picks who `/api/cancel-task` tells (assignee, or creator for a quotation). Old rows stay in the table, hidden; they can neither fill a
+  page nor hold a badge up because the exclusion is applied BEFORE paging/counting. READ SIDE OF THE QUOTATION EXCEPTION: PostgREST cannot OR a task column with a notification column (its parser rejects an embedded column inside a top-level `or`; verified on PostgREST 12), so the Task feed is TWO plain queries - ordinary tasks (as before) and quotation rows whose title matches `QUOTATION_NOTICE_TITLE_FILTER` (`*completed task`, `Task completed`, `*cancelled a task`, `Task cancelled`) - counted together, merged newest-first (`mergeNewestFirst`, each side `LIMIT n+1`) and unioned for Mark all read / Delete all. Titles are pinned to the two writers by `taskNotificationPolicy.test.ts`. Old quotation completion notices written before Sept 2026 can reappear (owner accepted). Two `or` params in one query are ANDed (verified).
 - Paging: `NOTIFICATION_PAGE_SIZE = 50`, `NOTIFICATION_MAX_ROWS = 200` (each "Load older" adds 50); the list requests `limit+1` rows to compute `hasMore`; ordering `created_at desc, id desc` (id tiebreak because batch inserts share a timestamp).
   Mutations are chunked: `MUTATION_ID_CHUNK_SIZE = 200`, `MUTATION_CONCURRENCY = 4`, `VISIBLE_ID_PAGE_SIZE = 1000` (PostgREST cap), `delete-selected` capped at `MAX_IDS = 200`.
 - Dedupe windows: finance and orders notify routes skip a row identical for the same recipient within 2 minutes; `/api/orders/submissions/notify` the same (2 min on entity+type); task/status events by the unique index.
@@ -105,7 +105,7 @@ Feed selection (`src/lib/notifications.ts`, one function `getNotificationCategor
 
 - One shared table with type-prefix lists for modules and a structural `task_id` rule for tasks (task meaning lives in the title because all task activity shares enum type `task_acknowledged`).
 - System-generated rows (cron observations nobody can act on) are suppressed at write and read; actionable scheduled reminders stay.
-- Quotation requests, approvals, and new-task assignment are silent by owner decision (Sept 2026).
+- Quotation requests, approvals, and new-task assignment are silent by owner decision (Sept 2026); Oct 2026: a quotation's completion and admin cancellation tell its creator (sales) only.
 - Finance/Orders notifications reuse the shared table (not a dedicated one); Sample Tracking keeps its own system.
 - Counts persist locally so a badge is never blank after a hard refresh; no notification content ever reaches localStorage.
 - View As: a preview may read but never mutate the previewed employee's inbox.

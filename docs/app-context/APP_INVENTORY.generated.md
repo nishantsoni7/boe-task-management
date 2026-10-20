@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `5d9412b0` — Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
-- Commits on this branch: 919
+- Commit: `a3148a5c` — ERP sheet: bold grey header and wrapped cells
+- Commits on this branch: 922
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 338 (first `20260530_create_positions.sql`, latest `20270325000000_order_pendencies.sql`)
 - Tables ever created: 154 (dropped at some point: 7)   SQL functions: 720   Enums: 0
-- Test files: 613   Next.js 16.2.6, React 19.2.4
+- Test files: 614   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a3148a5c` 2026-10-20 ERP sheet: bold grey header and wrapped cells
+- `22c24734` 2026-10-20 Order page: ERP line-items download, pictures named by product code
+- `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
 - `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 - `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
 - `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
@@ -36,9 +39,6 @@
 - `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
 - `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
 - `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
-- `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
-- `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
-- `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 
 ## Pages by top-level area
 
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 69 source, 119 test
+- `src/lib/orders` — 71 source, 120 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

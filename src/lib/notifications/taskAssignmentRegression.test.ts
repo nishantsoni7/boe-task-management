@@ -242,7 +242,8 @@ describe('8. a self-task notifies nobody', () => {
   test('this is the rule every other task path already applies', () => {
     // Named at the source so "notify the actor" cannot come back on one path.
     assert.ok(read('src/app/api/notify-status-update/route.ts').includes('notifyUserId === user.id'))
-    assert.ok(read('src/app/api/cancel-task/route.ts').includes("task.assigned_to !== user.id"))
+    // cancellationRecipient() never returns the actor (pinned in taskNotificationPolicy.test.ts).
+    assert.ok(read('src/app/api/cancel-task/route.ts').includes('cancellationRecipient(task, user.id)'))
     assert.ok(read('src/app/api/restore-task/route.ts').includes('recipient !== user.id'))
     assert.ok(read('supabase/migrations/20260833000000_task_creator_approval.sql')
       .includes('v_recipient <> v_uid'))
@@ -374,8 +375,9 @@ describe('16. list, count and both mutations share one canonical Task rule', () 
     const mark = read('src/app/api/notifications/mark-read/route.ts')
     // GET count, GET list, DELETE — the same call, three times in one file.
     assert.equal((list.match(/getNotificationCategoryFilter\(categoryResult\.category\)/g) ?? []).length, 2)
-    assert.equal((list.match(/\.or\(activityFilter\)/g) ?? []).length, 3)
-    assert.equal((list.match(/SYSTEM_TYPE_EXCLUSION/g) ?? []).length, 4)
+    // …plus the two quotation completion/cancel queries (count and list).
+    assert.equal((list.match(/\.or\(activityFilter\)/g) ?? []).length, 5)
+    assert.equal((list.match(/SYSTEM_TYPE_EXCLUSION/g) ?? []).length, 6)
     assert.ok(mark.includes('.or(getNotificationCategoryFilter(categoryResult.category)).not(\'type\', \'in\', SYSTEM_TYPE_EXCLUSION)'))
   })
 

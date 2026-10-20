@@ -1,6 +1,7 @@
 /**
- * Quotation requests and approvals are not announced; submit, return, reopen
- * and every other task event still are — at the point a row would be CREATED.
+ * Quotation requests are silent except for how they end (completion, and
+ * cancellation by an admin, tell the creator), and approvals are not announced;
+ * submit, return, reopen and every other task event still are — at the point a row would be CREATED.
  * (Hiding rows written before the rule: taskFeedExclusion.test.ts.)
  *
  * Behaviour is tested on the pure predicates and on the assignment operation
@@ -16,7 +17,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, isQuotationTask, shouldNotifyTaskStatusEvent,
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_NOTICE_TITLE_FILTER, QUOTATION_TASK_TYPE, cancellationRecipient, isQuotationTask,
+  mergeNewestFirst, shouldNotifyTaskStatusEvent,
   shouldNotifyTaskAssignment,
 } from './taskNotificationPolicy'
 import { TASK_REVIEW_NOTIFICATION_SUFFIXES } from '@/lib/tasks/reviewTransitions'
@@ -54,10 +56,20 @@ const selfTask  = { task_type: 'general', created_by: CREATOR, assigned_to: CREA
 const quotation = { task_type: 'quotation_request', created_by: CREATOR, assigned_to: ASSIGNEE }
 
 describe('shouldNotifyTaskStatusEvent', () => {
-  test('a quotation writes nothing, for any event', () => {
-    for (const action of ['comment_added', 'completed', 'working', 'waiting', 'acknowledged', 'cancelled']) {
-      assert.equal(shouldNotifyTaskStatusEvent(quotation, action), false, action)
+  test('a quotation announces its completion to its creator, and nothing else to anybody', () => {
+    for (const action of ['comment_added', 'working', 'waiting', 'blocked', 'started', 'pending', 'acknowledged', 'cancelled']) {
+      for (const to of [CREATOR, ASSIGNEE, undefined]) {
+        assert.equal(shouldNotifyTaskStatusEvent(quotation, action, to), false, `${action} -> ${to}`)
+      }
     }
+    assert.equal(shouldNotifyTaskStatusEvent(quotation, 'completed', CREATOR), true)
+  })
+
+  test('a quotation completion is never announced to the assignee, a stranger or nobody', () => {
+    for (const to of [ASSIGNEE, STRANGER, null, undefined]) {
+      assert.equal(shouldNotifyTaskStatusEvent(quotation, 'completed', to), false, String(to))
+    }
+    assert.equal(shouldNotifyTaskStatusEvent({ ...quotation, created_by: null }, 'completed', null), false)
   })
 
   test('a delegated task "completed" is the approval by another road — not announced', () => {
@@ -97,6 +109,73 @@ describe('APPROVAL_NOTIFICATION_TITLE_PATTERN', () => {
     ]) {
       assert.equal(like(APPROVAL_NOTIFICATION_TITLE_PATTERN, title), false, title)
     }
+  })
+})
+
+// ── 3b. Who a cancellation tells, and what the feed lets a quotation leave behind ──
+
+describe('cancellationRecipient', () => {
+  test('an ordinary task tells its assignee', () => {
+    assert.equal(cancellationRecipient(delegated, CREATOR), ASSIGNEE)
+  })
+
+  test('a quotation tells its creator, never its assignee', () => {
+    assert.equal(cancellationRecipient(quotation, STRANGER), CREATOR)   // an admin cancelling
+    assert.notEqual(cancellationRecipient(quotation, STRANGER), ASSIGNEE)
+  })
+
+  test('nobody is told about their own action, or when there is nobody to tell', () => {
+    assert.equal(cancellationRecipient(quotation, CREATOR), null)       // the creator cancelling their own request
+    assert.equal(cancellationRecipient(delegated, ASSIGNEE), null)
+    assert.equal(cancellationRecipient({ task_type: 'quotation_request', created_by: null, assigned_to: ASSIGNEE }, STRANGER), null)
+    assert.equal(cancellationRecipient({ task_type: 'general', created_by: CREATOR, assigned_to: null }, CREATOR), null)
+  })
+})
+
+describe('QUOTATION_NOTICE_TITLE_FILTER', () => {
+  const matches = (title: string) => QUOTATION_NOTICE_TITLE_FILTER.split(',').some(cond => {
+    const [column, op, ...rest] = cond.split('.')
+    assert.equal(column, 'title')
+    const value = rest.join('.')
+    return op === 'like' ? like(value, title) : title === value
+  })
+
+  test('admits exactly the titles the two writers compose for a completion and a cancellation', () => {
+    for (const title of ['Priya completed task', 'Task completed', 'Ada Admin cancelled a task', 'Task cancelled']) {
+      assert.equal(matches(title), true, title)
+    }
+  })
+
+  test('admits nothing else a quotation could have left behind', () => {
+    for (const title of [
+      'New quotation request', 'Priya added a comment', 'New comment on task', 'Priya moved task to Waiting',
+      'Priya acknowledged task', 'Task status updated', 'Task reopened', 'Nishant reopened a task',
+    ]) {
+      assert.equal(matches(title), false, title)
+    }
+  })
+
+  test('is pinned to the writers: the same sentences are composed by the two routes', () => {
+    assert.match(read('src/app/api/notify-status-update/route.ts'), /return actor \? `\$\{actor\} completed task` : 'Task completed'/)
+    assert.match(read('src/app/api/cancel-task/route.ts'), /const title = actor \? `\$\{actor\} cancelled a task` : 'Task cancelled'/)
+  })
+})
+
+describe('mergeNewestFirst', () => {
+  const row = (id: string, minute: number) => ({ id, created_at: `2026-10-20T10:${String(minute).padStart(2, '0')}:00.000Z` })
+
+  test('keeps the newest n of both lists, newest first', () => {
+    const merged = mergeNewestFirst([row('a', 9), row('b', 5), row('c', 1)], [row('x', 8), row('y', 2)], 4)
+    assert.deepEqual(merged.map(r => r.id), ['a', 'x', 'b', 'y'])
+  })
+
+  test('breaks a tie on id, descending, like the route ORDER BY', () => {
+    assert.deepEqual(mergeNewestFirst([row('a', 5)], [row('b', 5)], 2).map(r => r.id), ['b', 'a'])
+  })
+
+  test('an empty side changes nothing', () => {
+    assert.deepEqual(mergeNewestFirst([row('a', 1)], [], 5).map(r => r.id), ['a'])
+    assert.deepEqual(mergeNewestFirst([], [], 5), [])
   })
 })
 
@@ -177,17 +256,25 @@ describe('every Task Management writer consults the rule', () => {
     const src = read('src/app/api/notify-status-update/route.ts')
     assert.match(src, /select\('created_by, assigned_to, title, task_type'\)/)
     const recipientCheck = src.indexOf("'Invalid recipient'")
-    const rule = src.indexOf('shouldNotifyTaskStatusEvent(task, action)')
+    const rule = src.indexOf('shouldNotifyTaskStatusEvent(task, action, notifyUserId)')
     const insert = src.indexOf('insertUserNotifications(supabase')
     assert.ok(recipientCheck > 0 && rule > recipientCheck && insert > rule)
   })
 
-  test('/api/restore-task and /api/cancel-task skip a quotation request, by task_type', () => {
-    for (const p of ['src/app/api/restore-task/route.ts', 'src/app/api/cancel-task/route.ts']) {
-      const src = read(p)
-      assert.match(src, /select\('id, title, status, assigned_to, created_by, task_type'\)/, p)
-      assert.match(src, /!isQuotationTask\(task\)\) \{/, p)
-    }
+  test('/api/restore-task skips a quotation request, by task_type', () => {
+    const src = read('src/app/api/restore-task/route.ts')
+    assert.match(src, /select\('id, title, status, assigned_to, created_by, task_type'\)/)
+    assert.match(src, /!isQuotationTask\(task\)\) \{/)
+  })
+
+  test('/api/cancel-task tells a quotation\'s creator, and asks the rule who to tell', () => {
+    const src = read('src/app/api/cancel-task/route.ts')
+    assert.match(src, /select\('id, title, status, assigned_to, created_by, task_type'\)/)
+    const who = src.indexOf('cancellationRecipient(task, user.id)')
+    const insert = src.indexOf('insertUserNotifications(supabase')
+    assert.ok(who > 0 && insert > who)
+    assert.match(src, /user_id:\s+recipientId,/)
+    assert.equal(src.includes('user_id:      task.assigned_to'), false, 'the assignee is no longer written to directly')
   })
 
   test('the assignment writer reads task_type and skips after authorization', () => {

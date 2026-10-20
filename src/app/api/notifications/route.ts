@@ -9,6 +9,7 @@ import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pa
 import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import {
   APPROVAL_NOTIFICATION_TITLE_PATTERN, NEW_TASK_NOTIFICATION_TYPE, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  QUOTATION_NOTICE_TITLE_FILTER, mergeNewestFirst,
   mutateInChunks, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from '@/lib/notifications/taskNotificationPolicy'
 
@@ -131,13 +132,28 @@ export async function GET(req: NextRequest) {
         .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
         .neq('type', NEW_TASK_NOTIFICATION_TYPE)
     }
-    const [refused, { count, error }] = await Promise.all([refusal(), countQuery])
+    // The quotation completion/cancel notices, counted beside the ordinary rows
+    // (a row is in exactly one set). Task feed only.
+    const quotationCount = isTaskFeed
+      ? supabase
+        .from('notifications')
+        .select(`id, ${TASK_FEED_TASK_EMBED}`, { count: 'exact', head: true })
+        .eq('user_id', subjectId)
+        .eq('is_read', false)
+        .or(activityFilter)
+        .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+        .eq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+        .or(QUOTATION_NOTICE_TITLE_FILTER)
+      : Promise.resolve({ count: 0, error: null })
+    const [refused, { count, error }, { count: quotationNotices, error: quotationError }] =
+      await Promise.all([refusal(), countQuery, quotationCount])
     if (refused) return refused
-    if (error) {
-      console.error('[notifications] count failed:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error || quotationError) {
+      const failure = error ?? quotationError
+      console.error('[notifications] count failed:', failure)
+      return NextResponse.json({ error: failure?.message }, { status: 500 })
     }
-    return NextResponse.json({ unreadCount: count ?? 0 })
+    return NextResponse.json({ unreadCount: (count ?? 0) + (quotationNotices ?? 0) })
   }
 
   // BOUNDED, ALWAYS. `?limit=` lets the page ask for a further block when the
@@ -163,17 +179,36 @@ export async function GET(req: NextRequest) {
       .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
       .neq('type', NEW_TASK_NOTIFICATION_TYPE)
   }
-  const [refused, { data, error }] = await Promise.all([refusal(), listQuery
-    .order('created_at', { ascending: false })
-    // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
-    // (every admin notified of one objection, the warranty sweep) writes many
-    // rows on the same transaction timestamp. Ordering by it alone leaves ties
-    // in whatever order the plan happens to produce, so two requests for
-    // overlapping windows can disagree about which side of the LIMIT a tied row
-    // falls on, and "Load older" could come back missing a row it had already
-    // shown. `id` is the primary key, so this makes the sort total.
-    .order('id', { ascending: false })
-    .limit(limit + 1)])
+  // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
+  // (every admin notified of one objection, the warranty sweep) writes many
+  // rows on the same transaction timestamp. Ordering by it alone leaves ties
+  // in whatever order the plan happens to produce, so two requests for
+  // overlapping windows can disagree about which side of the LIMIT a tied row
+  // falls on, and "Load older" could come back missing a row it had already
+  // shown. `id` is the primary key, so this makes the sort total.
+  const newestFirst = <Q extends { order: (c: string, o: { ascending: boolean }) => Q; limit: (n: number) => Q }>(q: Q) =>
+    q.order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1)
+
+  // The quotation completion/cancel notices are a second plain query, merged
+  // below: "hide quotation rows unless they are one of these" cannot be one
+  // PostgREST filter. See QUOTATION_NOTICE_TITLE_FILTER.
+  const quotationList = isTaskFeed
+    ? newestFirst(supabase
+      .from('notifications')
+      .select(`${columns}, ${TASK_FEED_TASK_EMBED}`)
+      .eq('user_id', subjectId)
+      .or(activityFilter)
+      .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+      .eq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+      .or(QUOTATION_NOTICE_TITLE_FILTER))
+    : Promise.resolve({ data: [] as unknown[], error: null })
+  const [refused, { data: ordinaryData, error: ordinaryError }, { data: quotationData, error: quotationError }] =
+    await Promise.all([refusal(), newestFirst(listQuery), quotationList])
+  const error = ordinaryError ?? quotationError
+  const data = quotationData && (quotationData as unknown[]).length > 0
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? mergeNewestFirst((ordinaryData ?? []) as any[], quotationData as any[], limit + 1)
+    : ordinaryData
 
   // Before enrichment, before the response: a refused caller gets nothing else.
   if (refused) return refused
