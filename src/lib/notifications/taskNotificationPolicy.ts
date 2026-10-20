@@ -3,12 +3,16 @@
 // Two business rules (September 2026, docs/BOE Master Context/05_Business_Rules.md
 // → NOTIFICATION RULES):
 //
-//   QUOTATION REQUESTS ARE SILENT. A quotation request is a task whose
-//   `task_type` is 'quotation_request' — the column, never its title. Nothing
-//   that happens to one writes a notification: not its creation, a comment, its
-//   completion, reopening or cancellation. The quotation's own screens (the
-//   register, its sidebar count, its activity history) are how it is followed,
-//   and all of those are untouched.
+//   QUOTATION REQUESTS ARE SILENT, EXCEPT FOR HOW THEY END. A quotation request
+//   is a task whose `task_type` is 'quotation_request' — the column, never its
+//   title. Nothing that happens to one writes a notification: not its creation,
+//   a comment, a status move or reopening. The quotation's own screens (the
+//   register, its sidebar count, its activity history) are how it is followed.
+//   TWO ENDINGS tell the person who raised it (October 2026), and ONLY them:
+//     · the assignee COMPLETES it → the creator is told it is done;
+//     · somebody other than the creator (an admin) CANCELS it → the creator is told.
+//   The creator cancelling their own request tells nobody, and the assignee is
+//   never told about a cancellation.
 //
 //   APPROVAL IS SILENT. When a creator approves submitted work the task is
 //   simply complete; nobody is notified. Submitting for approval still notifies
@@ -72,11 +76,23 @@ export function shouldNotifyTaskAssignment(_task: TaskFacts): boolean {
  * A self task completing has nobody else to tell and is skipped by the
  * self-notify rule already; a quotation is silent for the reason above.
  */
-export function shouldNotifyTaskStatusEvent(task: TaskFacts, action: unknown): boolean {
-  if (isQuotationTask(task)) return false
+export function shouldNotifyTaskStatusEvent(task: TaskFacts, action: unknown, recipientId?: string | null): boolean {
+  // A quotation announces one event — its completion — to one person, the one who raised it.
+  if (isQuotationTask(task)) return action === 'completed' && !!task.created_by && recipientId === task.created_by
   const delegated = !!task.created_by && !!task.assigned_to && task.created_by !== task.assigned_to
   if (action === 'completed' && delegated) return false
   return true
+}
+
+/**
+ * Who a cancellation of this task is announced to, or null for nobody.
+ * An ordinary task tells its assignee; a quotation request tells its CREATOR
+ * (the sales person who asked for it) and nobody else. The actor is never told
+ * about their own action.
+ */
+export function cancellationRecipient(task: TaskFacts, actorId: string): string | null {
+  const recipient = isQuotationTask(task) ? task.created_by : task.assigned_to
+  return recipient && recipient !== actorId ? recipient : null
 }
 
 // ─── Read side ────────────────────────────────────────────────────────────────
@@ -109,6 +125,38 @@ export const APPROVAL_NOTIFICATION_TITLE_PATTERN = `*${TASK_REVIEW_NOTIFICATION_
  * it is what hides the rows written before the new-task rule.
  */
 export const NEW_TASK_NOTIFICATION_TYPE = TASK_ASSIGNMENT_NOTIFICATION_TYPE
+
+/**
+ * The two notices a quotation request IS allowed to leave behind, by title, as
+ * one PostgREST `or` value: "<name> completed task" / "Task completed"
+ * (/api/notify-status-update) and "<name> cancelled a task" / "Task cancelled"
+ * (/api/cancel-task). Quotation rows written before the silent rule carry other
+ * titles and stay hidden; an old completion notice may reappear, by decision.
+ *
+ * WHY A SECOND QUERY RATHER THAN ONE. "Hide quotation rows unless they are one of
+ * these" is an OR across two tables (the task's type, the notification's title),
+ * which PostgREST cannot express (its parser refuses an embedded column inside a
+ * top-level `or`). The feed is therefore two plain queries — ordinary tasks, and
+ * quotation completion/cancel notices — whose results are added (counts) or
+ * merged newest-first (lists, ids). A row is in exactly one of them.
+ */
+export const QUOTATION_NOTICE_TITLE_FILTER =
+  'title.like.*completed task,title.eq.Task completed,title.like.*cancelled a task,title.eq.Task cancelled'
+
+type FeedRow = { id: string; created_at: string }
+
+/**
+ * The newest `n` rows of two newest-first lists, merged. Each list must already
+ * be its own newest `n` (a LIMIT n query), which is all the merged top `n` can
+ * draw from. Ties on time break on id, descending, as the route's ORDER BY does.
+ */
+export function mergeNewestFirst<T extends FeedRow>(a: readonly T[], b: readonly T[], n: number): T[] {
+  const order = (x: T, y: T) => {
+    const dt = Date.parse(y.created_at) - Date.parse(x.created_at)
+    return dt !== 0 ? dt : (x.id < y.id ? 1 : x.id > y.id ? -1 : 0)
+  }
+  return [...a, ...b].sort(order).slice(0, n)
+}
 
 /** Drop the embed used for filtering before rows leave the server. */
 export function stripTaskFeedEmbed<T>(rows: readonly T[]): T[] {
@@ -216,26 +264,33 @@ export async function selectVisibleTaskNotificationIds(
   opts: { userId: string; unreadOnly?: boolean; taskId?: string | null; entityId?: string | null },
 ): Promise<{ ids: string[]; error: { message: string } | null }> {
   const ids: string[] = []
-  for (let from = 0; ; from += VISIBLE_ID_PAGE_SIZE) {
-    let query = client
-      .from('notifications')
-      .select(`id, ${TASK_FEED_TASK_EMBED}`)
-      .eq('user_id', opts.userId)
-      .or(getNotificationCategoryFilter('task'))
-      .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
-      .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
-      .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
-      .neq('type', NEW_TASK_NOTIFICATION_TYPE)
-    if (opts.unreadOnly) query = query.eq('is_read', false)
-    if (opts.taskId) query = query.eq('task_id', opts.taskId)
-    if (opts.entityId) query = query.eq('entity_id', opts.entityId)
+  // Ordinary tasks first, then the quotation completion/cancel notices — the
+  // same two sets the list and the count are made of.
+  for (const quotationNotices of [false, true]) {
+    for (let from = 0; ; from += VISIBLE_ID_PAGE_SIZE) {
+      let query = client
+        .from('notifications')
+        .select(`id, ${TASK_FEED_TASK_EMBED}`)
+        .eq('user_id', opts.userId)
+        .or(getNotificationCategoryFilter('task'))
+        .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+        .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+        .neq('type', NEW_TASK_NOTIFICATION_TYPE)
+      query = quotationNotices
+        ? query.eq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE).or(QUOTATION_NOTICE_TITLE_FILTER)
+        : query.neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+      if (opts.unreadOnly) query = query.eq('is_read', false)
+      if (opts.taskId) query = query.eq('task_id', opts.taskId)
+      if (opts.entityId) query = query.eq('entity_id', opts.entityId)
 
-    const { data, error } = await query
-      .order('id', { ascending: true })
-      .range(from, from + VISIBLE_ID_PAGE_SIZE - 1)
-    if (error) return { ids: [], error }
-    const page = (data ?? []) as { id: string }[]
-    for (const row of page) ids.push(row.id)
-    if (page.length < VISIBLE_ID_PAGE_SIZE) return { ids, error: null }
+      const { data, error } = await query
+        .order('id', { ascending: true })
+        .range(from, from + VISIBLE_ID_PAGE_SIZE - 1)
+      if (error) return { ids: [], error }
+      const page = (data ?? []) as { id: string }[]
+      for (const row of page) ids.push(row.id)
+      if (page.length < VISIBLE_ID_PAGE_SIZE) break
+    }
   }
+  return { ids, error: null }
 }

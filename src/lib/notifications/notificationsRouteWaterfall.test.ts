@@ -28,8 +28,8 @@ const GET = route.slice(route.indexOf('export async function GET'), route.indexO
 
 test('the subject check starts once and runs beside the count and the list', () => {
   assert.equal(GET.match(/resolveViewAsSubject\(/g)?.length, 1)
-  assert.match(GET, /await Promise\.all\(\[refusal\(\), countQuery\]\)/)
-  assert.match(GET, /await Promise\.all\(\[refusal\(\), listQuery/)
+  assert.match(GET, /await Promise\.all\(\[refusal\(\), countQuery, quotationCount\]\)/)
+  assert.match(GET, /await Promise\.all\(\[refusal\(\), newestFirst\(listQuery\), quotationList\]\)/)
 })
 
 test('without a named employee the read is scoped to the caller', () => {
@@ -46,7 +46,7 @@ test('a preview waits for the decision before anything is read', () => {
 
 test('a refusal wins before enrichment and before either response', () => {
   const countRefusal = GET.indexOf('if (refused) return refused')
-  assert.ok(countRefusal > 0 && countRefusal < GET.indexOf('unreadCount: count ?? 0'))
+  assert.ok(countRefusal > 0 && countRefusal < GET.indexOf('unreadCount: (count ?? 0)'))
   const listRefusal = GET.indexOf('if (refused) return refused', GET.indexOf('let listQuery'))
   assert.ok(listRefusal > 0 && listRefusal < GET.indexOf('enrichNotificationPage(supabase'))
   // The decision must name the subject the query was scoped to.

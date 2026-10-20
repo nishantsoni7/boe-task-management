@@ -103,7 +103,7 @@ Statuses and transitions:
   `completed_at` set inside the RPC) or **Return** (requires a reason, <= 1000 chars `RETURN_REASON_MAX_LENGTH`, -> `working`, resubmittable). The database refuses any other
   route to completed/pending_approval for these tasks from a client session.
 - Self task (created_by = assigned_to): no acknowledgement; assignee can Mark Complete directly.
-- Quotation request: no acknowledgement, no creator approval, silent (no notifications for any event).
+- Quotation request: no acknowledgement, no creator approval, silent EXCEPT its two endings (Oct 2026): when the assignee marks it complete, or an admin cancels it, the CREATOR (the sales person who raised it) gets one notification; nobody else, no other event (module 12).
 - Waiting needs `team_member` (user must exist) or `external` (text). Blocker/waiting fields clear when the state that explained them ends.
 - Tabs on My Tasks (`myTaskTabs.ts`): Today/Overdue/Future Actionable, Waiting/Blocked, Awaiting Approval, Action Required, All, Important, Unacknowledged, In Progress,
   Overdue, Needs Update, Non-Completion, Completed. "Actionable workload" excludes closed (completed/cancelled) AND `pending_approval`.
@@ -149,7 +149,7 @@ CompletedHistory,CopyAssignModal,MyTaskViewTabs,TaskAttachmentGallery,TaskCreati
 - Three-migration rollout with deploy in the middle (833 RPC -> frontend -> 834 enforcement) so both old and new frontends work in the overlap.
 - No new notification enum values for review events: they reuse `task_acknowledged`; presentation is in the title/activity link.
 - Approval is silent; submit still notifies the creator, return/reopen still notifies the assignee; a new task is silent (acknowledgement section already shows it); quotation
-  requests are fully silent (Sept 2026 owner rules; `taskNotificationPolicy.ts`).
+  requests are silent except that completion (and an admin's cancellation) tells their creator (Sept 2026 owner rules, amended Oct 2026; `taskNotificationPolicy.ts`).
 - Task Management holds task work only; Performance, Settings, Super Admin moved out of its sidebar.
 - `change_task_status` and `acknowledge_task` exist because browser-side UPDATE + INSERT were two non-transactional calls (a changed task could have no history row).
 - Measure performance on production with disposable "[perf test]" tasks (those tasks remain in production, unverified, from memory).

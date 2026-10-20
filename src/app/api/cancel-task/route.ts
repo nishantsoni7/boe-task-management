@@ -2,7 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
-import { isQuotationTask } from '@/lib/notifications/taskNotificationPolicy'
+import { cancellationRecipient } from '@/lib/notifications/taskNotificationPolicy'
 
 export async function POST(req: NextRequest) {
   const authClient = await createClient()
@@ -83,13 +83,15 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  // Notify assignee (if different from the actor). A quotation request writes
-  // no notification — see src/lib/notifications/taskNotificationPolicy.ts.
-  if (task.assigned_to && task.assigned_to !== user.id && !isQuotationTask(task)) {
+  // Notify the assignee (if different from the actor). A quotation request tells
+  // its CREATOR instead — the sales person who raised it, when an admin cancels —
+  // and never its assignee. See src/lib/notifications/taskNotificationPolicy.ts.
+  const recipientId = cancellationRecipient(task, user.id)
+  if (recipientId) {
     const actor = typeof actorName === 'string' && actorName.trim() ? actorName.trim() : null
     const title = actor ? `${actor} cancelled a task` : 'Task cancelled'
     await insertUserNotifications(supabase, {
-      user_id:      task.assigned_to,
+      user_id:      recipientId,
       task_id:      taskId,
       type:         'task_acknowledged',
       title,

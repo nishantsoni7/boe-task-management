@@ -133,7 +133,7 @@ describe('the acknowledgment event', () => {
 
   test('the route still writes it, after the policy, through the shared funnel', () => {
     const src = read('src/app/api/notify-status-update/route.ts')
-    const rule = src.indexOf('shouldNotifyTaskStatusEvent(task, action)')
+    const rule = src.indexOf('shouldNotifyTaskStatusEvent(task, action, notifyUserId)')
     const insert = src.indexOf('insertUserNotifications(supabase')
     assert.ok(rule > 0 && insert > rule)
     assert.ok(src.includes("type:         'task_acknowledged'"))

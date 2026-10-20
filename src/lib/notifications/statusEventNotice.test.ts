@@ -111,10 +111,10 @@ describe('the route applies it — source contract (the route builds Supabase cl
     assert.ok(ROUTE.includes('deriveNoticeFromEvent('))
     assert.ok(ROUTE.includes('{ action: claimedAction, recipientId: notifyUserId }'), 'what the request claims is checked against the event')
     assert.ok(ROUTE.includes('const action: string | undefined = derived?.ok ? derived.action : claimedAction'), 'the action used from here on is the event\'s')
-    assert.ok(/composeTitle\(action,/.test(ROUTE) && /shouldNotifyTaskStatusEvent\(task, action\)/.test(ROUTE))
+    assert.ok(/composeTitle\(action,/.test(ROUTE) && /shouldNotifyTaskStatusEvent\(task, action, notifyUserId\)/.test(ROUTE))
     assert.ok(ROUTE.includes('if (!derived.ok) {') && ROUTE.includes('status: 422'))
     assert.ok(ROUTE.indexOf('deriveNoticeFromEvent(') > ROUTE.indexOf("'Invalid recipient'"), 'after both party checks')
-    assert.ok(ROUTE.indexOf('deriveNoticeFromEvent(') < ROUTE.indexOf('shouldNotifyTaskStatusEvent(task, action)'), 'before the policy and the write')
+    assert.ok(ROUTE.indexOf('deriveNoticeFromEvent(') < ROUTE.indexOf('shouldNotifyTaskStatusEvent(task, action, notifyUserId)'), 'before the policy and the write')
   })
 
   test('a STATUS notice ALWAYS requires a valid event — there is no path to an unlinked status notice, recovery or not', () => {
@@ -138,7 +138,7 @@ describe('the route applies it — source contract (the route builds Supabase cl
   })
 
   test('a notice the rules say is not announced (a quotation, a delegated completion) is skipped BEFORE an event is demanded', () => {
-    const skip = ROUTE.indexOf('isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction)')
+    const skip = ROUTE.indexOf('isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction, notifyUserId)')
     assert.ok(skip > 0 && skip < ROUTE.indexOf('if (isStatusNotice) {'))
   })
 
