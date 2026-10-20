@@ -60,7 +60,7 @@ describe('Add payment — an unfinished form', () => {
     ui.click(ui.button('Record payment'))
     ui.type(ui.one<HTMLInputElement>('input[inputmode="decimal"]'), '2500')
     assert.doesNotMatch(ui.text(), /Enter the amount received\./)
-    ui.click(ui.button('HDFC'))
+    ui.click(ui.button('HDFC PRI'))
     assert.doesNotMatch(ui.text(), /Choose how the payment was made\./)
   })
 })
@@ -86,7 +86,7 @@ describe('Add payment — a finished form', () => {
     const { ui, sent } = current
     const amount = ui.one<HTMLInputElement>('input[inputmode="decimal"]')
     ui.type(amount, '100')
-    ui.click(ui.button('HDFC'))
+    ui.click(ui.button('HDFC PRI'))
     ui.click(ui.button('Record payment'))
     await ui.settle()
     assert.match(ui.text(), /The payment could not be recorded\./)

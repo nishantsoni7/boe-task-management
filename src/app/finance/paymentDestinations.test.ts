@@ -79,7 +79,8 @@ describe('a stored value that names no account', () => {
     // A row recorded through a door that never asked for an account — every
     // payment written since 20261013000000 — carries a NULL received_in. It
     // reads as its MODE, which since 20261014000000 is the account name itself.
-    assert.equal(paymentDestinationLabel('hdfc', null), 'HDFC')
+    assert.equal(paymentDestinationLabel('hdfc', null), 'HDFC PRI')
+    assert.equal(paymentDestinationLabel('hdfc_sec', null), 'HDFC SEC')
     assert.equal(paymentDestinationLabel('pnb', null), 'PNB')
     assert.equal(paymentDestinationLabel('paytm', null), 'Paytm')
     assert.equal(paymentDestinationLabel('canara', null), 'Canara')

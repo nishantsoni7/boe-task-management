@@ -311,13 +311,13 @@ describe('only amount, date and mode are mandatory', () => {
     assert.ok(validatePiPaymentForm(form({ paymentDate: 'not-a-date' }), TODAY).paymentDate)
   })
 
-  test('the mode list is exactly the four a new entry may use', () => {
+  test('the mode list is exactly the five a new entry may use', () => {
     // ORDER MANAGEMENT AND FINANCE ASK THIS QUESTION ONCE. A PI payment
     // recorded from the Orders module is the same kind of entry as one recorded
     // in Finance, so it offers the same four accounts and refuses the same five
     // retired values — which record_pi_submission_payment decides again
     // server-side (20261014000000 §7).
-    assert.deepEqual(PI_PAYMENT_MODES.map(m => m.value), ['hdfc', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(PI_PAYMENT_MODES.map(m => m.value), ['hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
     for (const m of PI_PAYMENT_MODES) {
       assert.equal(isPiPaymentFormValid(form({ paymentMode: m.value }), TODAY), true, m.value)
     }
@@ -328,7 +328,8 @@ describe('only amount, date and mode are mandatory', () => {
     assert.equal(isPiPaymentFormValid(form({ paymentMode: 'crypto' }), TODAY), false)
     // A stored retired value still READS as the words it always read as.
     assert.equal(paymentModeLabel('bank_transfer'), 'Bank Transfer')
-    assert.equal(paymentModeLabel('hdfc'), 'HDFC')
+    assert.equal(paymentModeLabel('hdfc'), 'HDFC PRI')
+    assert.equal(paymentModeLabel('hdfc_sec'), 'HDFC SEC')
     assert.equal(paymentModeLabel('unknown_mode'), 'unknown_mode')
   })
 })

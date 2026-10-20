@@ -161,9 +161,9 @@ describe('the destination vocabulary', () => {
 // ── 2. One payment-mode source ────────────────────────────────────────────────
 
 describe('the payment-mode vocabulary', () => {
-  test('exactly the four a new entry may use, and none of the five retired', () => {
-    assert.deepEqual([...PAYMENT_MODE_VALUES], ['hdfc', 'pnb', 'paytm', 'canara'])
-    assert.deepEqual(PAYMENT_MODES.map(m => m.label), ['HDFC', 'PNB', 'Paytm', 'Canara'])
+  test('exactly the five a new entry may use, and none of the five retired', () => {
+    assert.deepEqual([...PAYMENT_MODE_VALUES], ['hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(PAYMENT_MODES.map(m => m.label), ['HDFC PRI', 'HDFC SEC', 'PNB', 'Paytm', 'Canara'])
     for (const retired of LEGACY_PAYMENT_MODE_VALUES) {
       assert.equal(isPaymentMode(retired), false,
         `${retired} is a historical value and must never be offered for a new entry`)
@@ -220,18 +220,20 @@ describe('the payment-mode vocabulary', () => {
     // "historical rows remain readable" means at the point of display.
     assert.equal(paymentModeLabel('bank_transfer'), 'Bank Transfer')
     assert.equal(paymentModeLabel('cheque'), 'Cheque')
-    assert.equal(paymentModeLabel('hdfc'), 'HDFC')
+    assert.equal(paymentModeLabel('hdfc'), 'HDFC PRI')
+    assert.equal(paymentModeLabel('hdfc_sec'), 'HDFC SEC')
     assert.equal(paymentModeLabel(''), '—')
     assert.equal(paymentModeLabel(null), '—')
   })
 
-  test('a picker offers the four, plus the row\'s own retired value and nothing else', () => {
-    assert.deepEqual(paymentModeOptionsFor(null).map(o => o.value), ['hdfc', 'pnb', 'paytm', 'canara'])
-    assert.deepEqual(paymentModeOptionsFor('hdfc').map(o => o.value), ['hdfc', 'pnb', 'paytm', 'canara'])
+  test('a picker offers the five, plus the row\'s own retired value and nothing else', () => {
+    assert.deepEqual(paymentModeOptionsFor(null).map(o => o.value), ['hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(paymentModeOptionsFor('hdfc').map(o => o.value), ['hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(paymentModeOptionsFor('hdfc_sec').map(o => o.value), ['hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
     // A historical row keeps its own value as an option, marked retired, so
     // correcting some other field cannot silently move it onto HDFC.
     const legacy = paymentModeOptionsFor('bank_transfer')
-    assert.deepEqual(legacy.map(o => o.value), ['bank_transfer', 'hdfc', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(legacy.map(o => o.value), ['bank_transfer', 'hdfc', 'hdfc_sec', 'pnb', 'paytm', 'canara'])
     assert.equal(legacy[0].label, 'Bank Transfer')
     assert.equal(legacy[0].retired, true)
   })
@@ -712,8 +714,8 @@ describe('what a refused submission tells the person', () => {
     ['PAYMENT_TARGET_NO_CLIENT: …',    /no customer on file/],
     ['PAYMENT_AMOUNT_INVALID: …',      /positive amount/],
     ['PAYMENT_DATE_REQUIRED: …',       /date the payment was received/],
-    ['PAYMENT_MODE_INVALID: …',        /HDFC, PNB, Paytm or Canara/],
-    ['PAYMENT_MODE_RETIRED: …',        /HDFC, PNB, Paytm or Canara/],
+    ['PAYMENT_MODE_INVALID: …',        /HDFC PRI, HDFC SEC, PNB, Paytm or Canara/],
+    ['PAYMENT_MODE_RETIRED: …',        /HDFC PRI, HDFC SEC, PNB, Paytm or Canara/],
     ['CUSTODY_MODE_NOT_APPLICABLE: …', /only for PNB and Paytm/],
     ['CUSTODY_EVENT_HANDOVER_INCOMPLETE: …', /handed the money over/],
     ['CUSTODY_EVENT_COLLECTOR_REQUIRED: …',  /who collected the money/],
@@ -1064,7 +1066,15 @@ describe('what each payment mode is, in plain words', () => {
 
   test('stored values and labels are unchanged', () => {
     assert.deepEqual(PAYMENT_MODES.map(m => [m.value, m.label]),
-      [['hdfc', 'HDFC'], ['pnb', 'PNB'], ['paytm', 'Paytm'], ['canara', 'Canara']])
+      [['hdfc', 'HDFC PRI'], ['hdfc_sec', 'HDFC SEC'], ['pnb', 'PNB'], ['paytm', 'Paytm'], ['canara', 'Canara']])
+    assert.match(PAYMENT_MODE_HELPER.hdfc_sec, /secondary/)
+    assert.match(PAYMENT_MODE_HELPER.hdfc, /primary/)
+  })
+
+  test('HDFC SEC is a current mode, a bank account, and carries no custody trail', () => {
+    assert.equal(isPaymentMode('hdfc_sec'), true)
+    assert.equal(modeRequiresCustodyTrail('hdfc_sec'), false)
+    assert.equal(modeRequiresCustodyTrail('hdfc'), false)
   })
 
   test('no internal term appears in the helper text', () => {

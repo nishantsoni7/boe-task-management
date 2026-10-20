@@ -167,7 +167,7 @@ describe('Edit Received Payment', () => {
     const { ui } = openEdit()
     assert.match(ui.text(), /Edit Received Payment/)
     assert.equal(ui.one<HTMLInputElement>('input[inputmode="decimal"]').value, '5,000', 'grouped when not focused')
-    assert.equal(ui.one('[role="radio"][aria-checked="true"]').textContent, 'HDFC')
+    assert.equal(ui.one('[role="radio"][aria-checked="true"]').textContent, 'HDFC PRI')
     assert.equal(ui.all<HTMLInputElement>('input[readonly]').length >= 1, true, 'the customer cannot be typed over')
   })
 

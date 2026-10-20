@@ -152,7 +152,7 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
 
   test('every row keeps its Payment ID, amount, client, date, mode, status pill and icon actions', () => {
     const r = rowOf(desktop, '0002')
-    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Hotel ABC', '10 Sept 2026', 'HDFC', 'Fully Allocated',
+    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Hotel ABC', '10 Sept 2026', 'HDFC PRI', 'Fully Allocated',
       'aria-label="View details for P-AA-0002"', 'aria-label="Edit P-AA-0002"']) {
       assert.ok(r.includes(text), text)
     }

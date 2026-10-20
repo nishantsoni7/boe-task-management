@@ -101,7 +101,7 @@ describe('PaymentDetailsFields — amount, date, mode', () => {
 
   test('one tap picks the mode; exactly one is selected', () => {
     const ui = fields()
-    assert.equal(ui.all('[role="radio"]').length, 4)
+    assert.equal(ui.all('[role="radio"]').length, 5)
     ui.click(ui.button('PNB'))
     const checked = ui.all('[role="radio"][aria-checked="true"]')
     assert.equal(checked.length, 1)
@@ -113,10 +113,10 @@ describe('PaymentDetailsFields — amount, date, mode', () => {
   test('a payment recorded under a retired legacy mode keeps it as an option, marked, so editing something else does not move it', () => {
     const ui = fields('upi')
     const radios = ui.all('[role="radio"]')
-    assert.equal(radios.length, 5, 'the four current modes plus the row\'s own')
+    assert.equal(radios.length, 6, 'the five current modes plus the row\'s own')
     const selected = ui.one('[role="radio"][aria-checked="true"]')
     assert.equal(selected.textContent, paymentModeLabel('upi'), 'the mode the row already has is the selected one, under its own label')
-    assert.equal(radios[0], selected, 'listed first, before the four current modes')
+    assert.equal(radios[0], selected, 'listed first, before the five current modes')
   })
 
   test('Today and Yesterday are one tap each and fill the date in the reader\'s own calendar', () => {

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c6502016` — Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
-- Commits on this branch: 912
+- Commit: `168eb6b6` — Warm other modules on intent, not on load (fixes the console preload warning)
+- Commits on this branch: 913
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
-- Migrations: 336 (first `20260530_create_positions.sql`, latest `20270323000000_finance_payment_proof_admin_attach.sql`)
+- Migrations: 337 (first `20260530_create_positions.sql`, latest `20270324000000_payment_mode_hdfc_secondary.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 715   Enums: 0
-- Test files: 611   Next.js 16.2.6, React 19.2.4
+- Test files: 612   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
 - `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 - `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
 - `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
@@ -38,7 +39,6 @@
 - `b77318dd` 2026-10-18 Docs: Meetings module-entry fix shipped and applied (#340)
 - `40270642` 2026-10-18 Meetings: every write RPC requires Meetings module entry (#310)
 - `27b3bcbe` 2026-10-18 Docs: record backup decisions (Supabase daily backups, no PITR, daily schedule) (#339)
-- `eb76e55f` 2026-10-18 Backups: include the storage mirror in the second copy (#338)
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 40 source, 49 test
+- `src/lib/finance` — 40 source, 50 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 17 test
@@ -348,7 +348,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270224000000_customer_review_custom_duplicate_detection.sql`
 - `20270225000000_customer_review_reporting_and_leaderboard.sql`
 - `20270226000000_payment_request_owner_soft_delete.sql`
 - `20270227000000_order_submission_advance_on_total_before_gst.sql`
@@ -378,6 +377,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270321000001_order_submission_notifications_complete.sql`
 - `20270322000000_finance_payment_edit_reallocates.sql`
 - `20270323000000_finance_payment_proof_admin_attach.sql`
+- `20270324000000_payment_mode_hdfc_secondary.sql`
 
 ## All SQL function names
 
