@@ -53,10 +53,10 @@ describe('a REPLACED version prints what was in force, with its own codes', () =
     assert.deepEqual(src.items.map(i => i.product_name), ['Chair', 'Stool'])
     assert.equal(src.submission.client_name, 'Meridian')
   })
-  test('the codes it held then — the removed stool keeps BE002 on V1\'s PDF', () => {
+  test('the codes it held then — the removed stool keeps BE0002 on V1\'s PDF', () => {
     if (!src.ok) return
-    assert.equal(src.productCodes.get(A), '524-BE001')
-    assert.equal(src.productCodes.get(B), '524-BE002')
+    assert.equal(src.productCodes.get(A), '524-BE0001')
+    assert.equal(src.productCodes.get(B), '524-BE0002')
   })
   test('only pictures inside this PI\'s own folder are read', () => {
     if (!src.ok) return
@@ -82,14 +82,14 @@ describe('an EDITED version never borrows V1\'s workbook', () => {
           terms: { fabric_responsibility: 'boe' },
         },
       },
-      submissionId: SUB, orderDisplayNumber: '0524', liveCodes: new Map([[C, '524-BE004']]),
+      submissionId: SUB, orderDisplayNumber: '0524', liveCodes: new Map([[C, '524-BE0004']]),
     })
     assert.ok(src.ok)
     if (!src.ok) return
     assert.equal(src.submission.source_workbook_name, null)
     assert.equal(src.submission.source_workbook_path, null)
     assert.equal(src.submission.fabric_responsibility, 'boe')
-    assert.equal(src.productCodes.get(C), '524-BE004')
+    assert.equal(src.productCodes.get(C), '524-BE0004')
     assert.equal(src.pictureByItem.get(C), pic(C))
   })
 })
@@ -174,8 +174,8 @@ describe('the route asks as the reader, and renders from rows', () => {
 describe('a product code is never clipped (found in the walkthrough)', () => {
   test('a row without a photo is tall enough for a two-line code', async () => {
     const { measureRowHeight } = await import('./confirmedPdf')
-    const row = { code: '5-BE004', hasImage: false, name: 'Bar stool', dimensions: '', material: '', customization: '' }
+    const row = { code: '5-BE0004', hasImage: false, name: 'Bar stool', dimensions: '', material: '', customization: '' }
     const oneLine = measureRowHeight({ ...row, code: 'B001' } as never, 9)
-    assert.ok(measureRowHeight(row as never, 9) > oneLine, '"5-BE004" wraps to two lines, and the row makes room')
+    assert.ok(measureRowHeight(row as never, 9) > oneLine, '"5-BE0004" wraps to two lines, and the row makes room')
   })
 })

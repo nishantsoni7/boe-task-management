@@ -46,6 +46,7 @@ import {
   type SubmitStage,
 } from '@/lib/orders/piCompletion'
 import { useScrollLock } from '@/hooks/useScrollLock'
+import { PENDENCIES_TITLE, PENDENCY_MAX_LENGTH, addPendencyDraft } from '@/lib/orders/orderPendencies'
 import { PiSubmissionDetailsReview } from '@/components/orders/PiInternalDetails'
 import { formatIsoDay as fmtDay } from '@/lib/orders/piInternalDetails'
 import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsAbsent, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
@@ -1280,6 +1281,52 @@ const APPROVE_DIALOG_COPY: Record<ApproveDialogMode, {
   },
 }
 
+/** The convert dialog's "Pending from client" list: type, press Enter or Add. */
+function PendenciesInput({ items, disabled, onChange }: {
+  items: readonly string[]
+  disabled: boolean
+  onChange: (next: string[]) => void
+}) {
+  const [text, setText] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+  const commit = () => {
+    const next = addPendencyDraft(items, text)
+    setProblem(next.problem)
+    if (!next.problem) { onChange(next.list); setText('') }
+  }
+  return (
+    <div data-testid="pi-approve-pendencies" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <span className="boe-input-label">{PENDENCIES_TITLE} (optional)</span>
+      {items.length > 0 && (
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {items.map(item => (
+            <li key={item} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', fontSize: '13px', color: colors.primary }}>
+              <span style={{ overflowWrap: 'anywhere' }}>{item}</span>
+              <button type="button" disabled={disabled} aria-label={`Remove ${item}`}
+                onClick={() => onChange(items.filter(i => i !== item))}
+                style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.brand, cursor: disabled ? 'default' : 'pointer', flexShrink: 0 }}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input className="boe-input" style={{ flex: 1, minWidth: 0 }} value={text} disabled={disabled}
+          maxLength={PENDENCY_MAX_LENGTH} aria-label="Add a pendency"
+          placeholder="e.g. Fabric swatch from client, finish confirmation"
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }} />
+        <button type="button" className="boe-btn boe-btn-ghost" disabled={disabled || text.trim() === ''} onClick={commit}>Add</button>
+      </div>
+      {problem && <span role="alert" style={{ fontSize: '12px', color: '#A12438' }}>{problem}</span>}
+      <span style={{ fontSize: '12px', color: colors.muted }}>
+        Reminders of what the client still has to send. They show on the Order under Fabric &amp; Finish until cleared.
+      </span>
+    </div>
+  )
+}
+
 export function PiApproveOrderModal({
   client,
   rows,
@@ -1295,8 +1342,13 @@ export function PiApproveOrderModal({
   provided,
   workbookSalesperson,
   detailsReview,
+  pendencies,
+  onPendenciesChange,
 }: {
   client: string
+  /** What is still pending from the client; owned by the page. Optional. */
+  pendencies?: readonly string[]
+  onPendenciesChange?: (next: string[]) => void
   /** buildApprovalSummary's rows. This component chooses no wording of its own. */
   rows: readonly ApprovalSummaryRow[]
   saving: boolean
@@ -1544,6 +1596,18 @@ export function PiApproveOrderModal({
               </label>
               )}
             </div>
+          )}
+
+          {/* ── Pending from client ──
+              Any number of free-text reminders for what the client still owes
+              (fabric, finish, ...). Saved on the new Order by
+              add_order_pendencies() right after it exists; optional. */}
+          {asksForOrderFields && onPendenciesChange && (
+            <PendenciesInput
+              items={pendencies ?? []}
+              disabled={saving}
+              onChange={onPendenciesChange}
+            />
           )}
 
           {/* ── What Sales entered about billing, fabric and commission ──

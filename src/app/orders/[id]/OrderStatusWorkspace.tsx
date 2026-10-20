@@ -81,6 +81,7 @@ import {
   type ClientPoDocument,
   type DesignFilesDocument,
 } from '@/lib/orders/orderDocumentsPanel'
+import OrderPendencies from './OrderPendencies'
 import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
@@ -769,9 +770,11 @@ function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, messa
  * assigned salesperson, an admin or a manager, and never under View As — and
  * record_order_approval_event() re-derives every bit of that under a row lock.
  */
-export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence }: {
+export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence, pendencies }: {
   standing: ApprovalStanding
   canUpdate: boolean
+  /** The Order's "Pending from client" list; omitted = not drawn. */
+  pendencies?: { orderId: string; canManage: boolean }
   onUpdate: () => void
   onViewEvidence: (path: string) => void
   /** Which proof is being signed, if any. */
@@ -835,6 +838,7 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
           </div>
         ))}
       </dl>
+      {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} />}
       <div className="order-ff-end">
         {canUpdate ? (
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>
