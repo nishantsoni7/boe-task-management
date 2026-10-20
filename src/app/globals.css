@@ -4320,7 +4320,7 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 .order-products-table {
   table-layout: fixed;
 }
-.order-products-table col:nth-child(1) { width: 88px; }   /* 524-BE001 */
+.order-products-table col:nth-child(1) { width: 108px; }  /* 524-BE0001 */
 .order-products-table col:nth-child(2) { width: 108px; }  /* the 84px photograph */
 .order-products-table col:nth-child(3) { width: 15%; }    /* product */
 .order-products-table col:nth-child(4) { width: 52px; }   /* qty */
@@ -10440,3 +10440,123 @@ textarea.pi-form-input { height: auto; }
 }
 .boe-nav-item.boe-nav-item--quiet { font-size: 13px; color: #686D6C; padding-top: 6px; padding-bottom: 6px; }
 .boe-nav-item.boe-nav-item--quiet:hover { color: #303536; }
+
+/* ── ORDER DETAIL — COMMERCIAL GRID + PENDENCIES (owner, 2026-10-20) ──
+   The Commercial breakdown reads like a spreadsheet: every row is a bordered
+   cell pair (label | amount) with a subtle rule between rows and columns, and
+   alternate rows carry a barely-there tint so a label is never lost from its
+   figure. The figure column stays fixed-width, so the right edge is still the
+   straight line the section is read down. Appended last so it wins by cascade
+   over the older .order-breakdown-* rules above. */
+.order-breakdown-lines {
+  border: 1px solid #E4DED7;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+.order-breakdown-lines > .order-breakdown-line {
+  grid-template-columns: minmax(0, 1fr) 132px;
+  column-gap: 0;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid #EDE8E1;
+  border-radius: 0;
+}
+.order-breakdown-lines > .order-breakdown-line:first-child { border-top: 0; }
+.order-breakdown-lines > .order-breakdown-line:nth-child(even) { background: #FAF8F5; }
+.order-breakdown-lines > .order-breakdown-line > .order-breakdown-label {
+  padding: 6px 10px;
+  border-right: 1px solid #EDE8E1;
+}
+.order-breakdown-lines > .order-breakdown-line > .order-breakdown-value {
+  padding: 6px 10px;
+}
+.order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final {
+  background: rgba(51, 90, 134, 0.07);
+  border-top-color: #D5DEE8;
+}
+.order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-label,
+.order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-value {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+/* "Fabric provided by BOE / client will send fabric": a sub-label, not a row
+   label, so it is smaller, italic and sits in a quiet tag of its own. */
+.order-breakdown-note {
+  display: block;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #EEF2F7;
+  color: #335A86;
+  font-size: 10.5px;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* Pending from client — inside the Fabric & Finish card. */
+.order-ff-pend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #F3F0EB;
+}
+.order-ff-pend-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303536;
+}
+.order-ff-pend-count {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #FBE9EC;
+  color: #A12438;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.order-ff-pend-empty { margin: 0; font-size: 12.5px; color: #8F9392; }
+.order-ff-pend-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.order-ff-pend-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: #303536;
+}
+.order-ff-pend-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #C0392B;
+  transform: translateY(-1px);
+}
+.order-ff-pend-label { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.order-ff-pend-actions { display: inline-flex; gap: 10px; flex: none; }
+.order-ff-pend-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #335A86;
+  cursor: pointer;
+}
+.order-ff-pend-btn--quiet { color: #8F9392; font-weight: 500; }
+.order-ff-pend-btn:disabled { cursor: default; opacity: 0.55; }
+.order-ff-pend-list--cleared .order-ff-pend-label { color: #8F9392; text-decoration: line-through; }
+.order-ff-pend-add { display: flex; gap: 8px; }
+.order-ff-pend-input { flex: 1; min-width: 0; }
+.order-ff-pend-problem { margin: 0; font-size: 12px; color: #A12438; }

@@ -12,6 +12,7 @@
 
 import { useState } from 'react'
 import { colors } from '@/lib/tokens'
+import { normalizeBoeItemCode } from '@/lib/orders/orderProductCodes'
 
 export type PiLineReviewLine = { id: string; seq: string | null; name: string | null; qty: string | number | null; why: string }
 export type PiLineReviewCandidate = { id: string; seq: string | null; name: string | null; code: string | null }
@@ -39,7 +40,7 @@ export async function requestPiRevisionApproval(versionId: string, lineMap?: Rec
 }
 
 const label = (c: PiLineReviewCandidate) =>
-  [c.code, c.seq, c.name].filter(Boolean).join(' · ') || 'Unnamed product'
+  [normalizeBoeItemCode(c.code), c.seq, c.name].filter(Boolean).join(' · ') || 'Unnamed product'
 
 export function PiLineReview({ versionNumber, review, busy, failure = null, onConfirm, onCancel }: {
   versionNumber: number

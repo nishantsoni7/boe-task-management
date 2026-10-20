@@ -181,6 +181,7 @@ import {
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
+import { saveNewOrderPendencies } from '@/lib/orders/orderPendencies'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
@@ -571,6 +572,10 @@ function PiDraftDetailPageInner() {
     salesperson: null, confirmDate: null, dueDate: null, leadSource: null,
   })
   const [confirmationField, setConfirmationField] = useState<OrderConfirmationField | null>(null)
+  /** "Pending from client" entered in the convert dialog; saved on the new Order. */
+  const [pendencyDrafts, setPendencyDrafts] = useState<string[]>([])
+  /** Said when the Order was created but its pendencies could not be saved. */
+  const [pendencyFailure, setPendencyFailure] = useState<string | null>(null)
   /** Who may be named as the salesperson. Read once, with the record. */
   const [salespeople, setSalespeople] = useState<{ id: string; name: string }[]>([])
   // The salesperson and lead source Sales chose on this PI (20270211000000).
@@ -1623,11 +1628,22 @@ function PiDraftDetailPageInner() {
         const named = describeConfirmationFailure(error)
         if (named) setConfirmationField(named.field)
       } else {
-        setApproval(readApprovalOutcome(data))
+        const outcome = readApprovalOutcome(data)
+        setApproval(outcome)
+        // The Order exists; its pendencies are a separate, optional write. A
+        // failure here never undoes the Order — it is said, and the same list
+        // can be added from the Order page.
+        if (outcome && pendencyDrafts.length > 0) {
+          const saved = await saveNewOrderPendencies(supabase, outcome.orderId, pendencyDrafts)
+          setPendencyFailure(!saved
+            ? 'The Order was created, but its pendencies could not be saved. Add them from the Order page under Fabric & Finish.'
+            : null)
+          setPendencyDrafts([])
+        }
       }
       return { error }
     }, error => describeConfirmationFailure(error)?.message ?? null)
-  }, [runAction, supabase, submissionId, confirmation])
+  }, [runAction, supabase, submissionId, confirmation, pendencyDrafts])
 
   /**
    * The PI decision ON ITS OWN (20261119000000).
@@ -2520,6 +2536,11 @@ function PiDraftDetailPageInner() {
 
         {/* ── 1b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
+        {pendencyFailure && (
+          <p role="alert" style={{ margin: 0, padding: '10px 14px', borderRadius: '8px', border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#A12438', fontSize: '13px' }}>
+            {pendencyFailure}
+          </p>
+        )}
 
         {/* ── 2. Payment status beside what the PI is worth ──
             ~60/40 on a wide column, stacked when narrow, payment first. Each
@@ -3190,6 +3211,8 @@ function PiDraftDetailPageInner() {
           confirmation={confirmation}
           onConfirmationChange={next => { setConfirmationField(null); setConfirmation(next) }}
           confirmationField={confirmationField}
+          pendencies={pendencyDrafts}
+          onPendenciesChange={setPendencyDrafts}
         />
       )}
 

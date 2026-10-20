@@ -3101,6 +3101,10 @@ export default function OrderDetailPage() {
             onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
             onViewEvidence={path => { void viewEvidence(path) }}
             busyEvidence={proofBusy}
+            pendencies={{
+              orderId: order.id,
+              canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
+            }}
           />
           {/* ── Notes ──
               OPERATIONAL CONTENT, and the one thing on Record Information that

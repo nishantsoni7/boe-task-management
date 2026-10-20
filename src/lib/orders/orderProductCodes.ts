@@ -18,12 +18,25 @@ export function formatOrderOperationalNumber(displayNumber: string | null | unde
   return stripped === '' ? null : stripped
 }
 
-/** 1 → 'BE001'. */
+/** Digits in a BOE item code (owner, 2026-10-20; was 3). Display only:
+ *  order_product_codes stores the integer boe_sequence. */
+export const BOE_ITEM_CODE_DIGITS = 4
+
+/** 1 → 'BE0001'. */
 export function formatBoeItemCode(boeSequence: number): string {
-  return `BE${String(boeSequence).padStart(3, '0')}`
+  return `BE${String(boeSequence).padStart(BOE_ITEM_CODE_DIGITS, '0')}`
 }
 
-/** ('0524', 1) → '524-BE001'. Null when the Order has no display number yet —
+/** Re-pads a code SQL built in the old 3-digit shape ('BE001' → 'BE0001'). A few
+ *  database functions still return that label inside jsonb (PI revision line
+ *  matching); anything that is not a BE code passes through unchanged. */
+export function normalizeBoeItemCode(code: string | null | undefined): string | null {
+  if (code === null || code === undefined) return null
+  const m = /^BE([0-9]+)$/.exec(code.trim())
+  return m ? formatBoeItemCode(Number(m[1])) : code
+}
+
+/** ('0524', 1) → '524-BE0001'. Null when the Order has no display number yet —
  *  which never happens for a Confirmed Order, only guards a caller that asks
  *  before one exists. */
 export function formatOrderProductCode(
