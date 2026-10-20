@@ -10560,3 +10560,67 @@ textarea.pi-form-input { height: auto; }
 .order-ff-pend-add { display: flex; gap: 8px; }
 .order-ff-pend-input { flex: 1; min-width: 0; }
 .order-ff-pend-problem { margin: 0; font-size: 12px; color: #A12438; }
+
+/* ── DOCUMENTS CARD: COMPACT DOWNLOAD TOOLBAR (owner, 2026-10-20) ──
+   Appended last on purpose: it overrides the earlier Main PI | pictures grid.
+   The Main PI is a title, a status and a Details popup (the two dates); one
+   Download row — Excel and ERP coloured, the pictures ZIP next, the PDF last
+   and quiet; the product pictures a slim row under it. */
+.order-docs-main { display: block; }
+.order-docs .order-dl { display: flex; flex-direction: column; gap: 6px; }
+.order-docs .order-dl-label { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #8F9392; }
+.order-docs .order-dl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.order-docs .order-dl-spacer { flex: 1 1 0; }
+.order-docs .order-dl-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; min-height: 28px; padding: 0 10px;
+  font-size: 12px; border-radius: 6px;
+}
+.order-docs .order-dl-btn--key { background: #EAF1FB; color: #1F4E8C; border-color: #C3D3E6; }
+.order-docs .order-dl-btn--key:hover:not(:disabled) { background: #DCE8F7; }
+.order-docs .order-dl-btn--quiet { background: transparent; border-color: transparent; color: #686D6C; }
+.order-docs .order-dl-btn--quiet:hover { background: #F1EEE9; color: #303536; }
+@media (max-width: 560px) {
+  .order-docs .order-dl-btn { height: 36px; min-height: 36px; }
+  .order-docs .order-dl-spacer { display: none; }
+}
+
+.order-docs-main > .order-doc-pictures {
+  flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 12px;
+  margin: 0; padding: 10px 20px; min-width: 0; max-width: none;
+  border: 0; border-top: 1px solid #F1EEE9; border-radius: 0; background: transparent;
+}
+.order-docs-main > .order-doc-pictures .order-doc-pictures-icon { display: none; }
+.order-docs-main > .order-doc-pictures .order-doc-pictures-main {
+  flex: 1 1 auto; display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px;
+}
+.order-docs-main > .order-doc-pictures .order-doc-pictures-title { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-docs-main > .order-doc-pictures .order-doc-pictures-line { margin: 0; font-size: 13px; color: #303536; }
+.order-docs-main > .order-doc-pictures .order-doc-pictures-line--warn { color: #B42332; }
+.order-docs-main > .order-doc-pictures .order-doc-note { flex-basis: 100%; margin: 0; }
+
+.order-pi-details { position: relative; display: inline-block; }
+.order-pi-details-trigger {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center;
+  padding: 2px 6px; border-radius: 6px; font-size: 12px; color: #686D6C;
+}
+.order-pi-details-trigger::-webkit-details-marker { display: none; }
+.order-pi-details-trigger::after {
+  content: ''; width: 5px; height: 5px; margin: -2px 0 0 6px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+}
+.order-pi-details-trigger:hover, .order-pi-details[open] > .order-pi-details-trigger { background: #F1EEE9; color: #303536; }
+.order-pi-details-pop {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; margin: 0; min-width: 230px;
+  background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 10px; padding: 8px 14px;
+  box-shadow: 0 8px 24px rgba(48, 53, 54, 0.12);
+}
+.order-pi-details-pop > div { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: 12.5px; }
+.order-pi-details-pop dt { color: #686D6C; }
+.order-pi-details-pop dd { margin: 0; color: #303536; text-align: right; }
+
+.order-docs-absence { grid-column: 1 / -1; margin: 0; padding: 0 20px 14px; font-size: 12px; color: #8F9392; }
+.order-docs-main > .order-doc-pictures .order-doc-pictures-actions { margin-left: auto; }
+.order-docs-side .order-doc-section { padding: 18px 20px 16px; gap: 8px; }
+.order-docs-side .order-doc-section .order-doc-row-title { margin-bottom: 2px; }
+.order-docs-absence { padding: 0 20px 18px; }

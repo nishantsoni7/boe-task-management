@@ -60,7 +60,6 @@ import {
   revisionStage,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
-import { PI_VERSION_PDF_VIEW_LABEL } from '@/lib/orders/piVersionPdf'
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
   CANNOT_ACCEPT_LABEL,
@@ -195,6 +194,53 @@ function DocMeta({ items }: { items: readonly { label: string; value: string }[]
  * thing a reader does with it. The same three columns for all three rows, so the
  * card is scanned rather than read; on a narrow screen they stack.
  */
+const DL_GROUP_LABEL = 'Download'
+const DL_EXCEL_LABEL = 'Excel'
+const DL_ERP_LABEL = 'ERP'
+const DL_PDF_LABEL = 'PDF'
+
+/**
+ * THE MAIN PI'S TWO DATES, one click away (owner, 2026-10-20). A native
+ * <details> so the dates are in the markup (and the tests) without script;
+ * the effect only closes it on an outside click or Escape.
+ */
+function PiDetails({ uploadedAt, approvedAt }: { uploadedAt: string; approvedAt: string | null }) {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const close = (e: Event) => {
+      const el = ref.current
+      if (!el || !el.open) return
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !el.contains(e.target as Node)) el.open = false
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', close)
+    }
+  }, [])
+  return (
+    <details className="order-pi-details" ref={ref}>
+      <summary className="order-pi-details-trigger">Details</summary>
+      <dl className="order-pi-details-pop">
+        <div><dt>{MAIN_PI_UPLOADED_LABEL}</dt><dd>{uploadedAt}</dd></div>
+        {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
+        {approvedAt && <div><dt>{MAIN_PI_APPROVED_LABEL}</dt><dd>{approvedAt}</dd></div>}
+      </dl>
+    </details>
+  )
+}
+
+/**
+ * The two absence confirmations ("Not provided — X confirmed sending the PI
+ * without design files on D" / "...without a client PO on D") say the same
+ * thing twice. When they differ only in the category, say it once.
+ */
+export function mergeAbsenceNotes(a: string, b: string): string | null {
+  const one = (t: string) => t.replace(/without (?:a client PO|design files)/, 'without these')
+  return one(a) === one(b) ? one(a) : null
+}
+
 function DocRow({ title, status, children, meta, actions, primary = false }: {
   title: string
   /** The Main PI: the first and most prominent row. */
@@ -251,7 +297,7 @@ export function OrderDocumentsPanel({
   mainPi, clientPo,
   onDownload, onHistory,
   downloading,
-  mainPiOperations, mainPiMenu, updateMenu,
+  mainPiOperations, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
   onOpenPdf, piVersions, pictures, onDownloadFile, internalDetails = [], sample,
@@ -291,7 +337,7 @@ export function OrderDocumentsPanel({
     tone: StatusTone
     line: string | null
   } | null
-  /** The Main PI row's ⋯ menu (Download PI, PI history). Absent: Download is a quiet button. */
+  /** Retired (2026-10-20): the PDF is in the Download toolbar. Still accepted so older callers type-check. */
   mainPiMenu?: React.ReactNode
   /** The single "Update documents" control, or nothing for a reader who may not submit. */
   updateMenu?: React.ReactNode
@@ -361,6 +407,11 @@ export function OrderDocumentsPanel({
   )
   const needsYou = piNeedsYou || changes.some(c => c.action !== null)
   const hasChanges = !!piChange || changes.length > 0
+  const absenceNotes = supporting
+    ? [supporting.design, supporting.clientPo].flatMap(r => (r.kind === 'none' && r.note ? [r.note] : []))
+    : []
+  const mergedAbsence = absenceNotes.length === 2 ? mergeAbsenceNotes(absenceNotes[0], absenceNotes[1]) : null
+  const zipCount = pictures && pictures.state.kind === 'ready' ? pictures.state.available : 0
 
   // THE ONE STATUS ON THE MAIN PI ROW. Accepted by Operations (or an Order with
   // no handoff at all) is simply Current; anything short of that says so.
@@ -537,59 +588,76 @@ export function OrderDocumentsPanel({
              this column, not under it (.order-docs-main is the row). */
           <section className="order-doc-section order-doc-section--primary order-pi" aria-label={DOC_MAIN_PI_TITLE}>
             <div className="order-pi-head">
-              <p className="order-doc-row-head">
+              <div className="order-doc-row-head">
                 <span className="order-doc-row-title">{`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}</span>
                 {piStatus}
-              </p>
-              <div className="order-pi-links">
-                {piHistoryLink}
-                {mainPiMenu}
+                <PiDetails uploadedAt={mainPi.uploadedAt} approvedAt={mainPi.approvedAt} />
               </div>
+              <div className="order-pi-links">{piHistoryLink}</div>
             </div>
-            <dl className="order-pi-props order-pi-props--dates">
-              <div className="order-pi-prop">
-                <dt>{MAIN_PI_UPLOADED_LABEL}</dt>
-                <dd>{mainPi.uploadedAt}</dd>
-              </div>
-              {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
-              {mainPi.approvedAt && (
-                <div className="order-pi-prop">
-                  <dt>{MAIN_PI_APPROVED_LABEL}</dt>
-                  <dd>{mainPi.approvedAt}</dd>
-                </div>
-              )}
-            </dl>
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
-            <div className="order-pi-actions">
-              {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
-                  own details — for a workbook version and an edited one alike. */}
-              {onOpenPdf && (
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
-                  onClick={() => onOpenPdf(mainPi.version.id, false)}
-                  title="Generated from this version's details"
-                >
-                  <FileText size={13} strokeWidth={2} aria-hidden="true" />
-                  {PI_VERSION_PDF_VIEW_LABEL(mainPi.version.versionNumber)}
-                </button>
-              )}
-              {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
-                  version, byte for byte, under its own name. An edited
-                  version has none of its own, and never borrows V1's. */}
-              {!mainPi.version.editedInApp && (
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-secondary order-doc-action"
-                  onClick={() => onDownload(mainPi.version)}
-                  disabled={!mainPi.hasFile || downloading}
-                  title={mainPi.fileName ?? mainPi.reference}
-                >
-                  <Download size={13} strokeWidth={2} aria-hidden="true" />
-                  {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
-                </button>
-              )}
+            {/* DOWNLOADS, IN THE ORDER PEOPLE USE THEM (owner, 2026-10-20):
+                the original Excel and the ERP sheet are the two that matter, so
+                they carry the colour; the pictures ZIP is next; the PDF, which
+                is rarely wanted, is last and quiet. */}
+            <div className="order-dl" role="group" aria-label={DL_GROUP_LABEL}>
+              <span className="order-dl-label">{DL_GROUP_LABEL}</span>
+              <div className="order-dl-row">
+                {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
+                    version, byte for byte, under its own name. An edited
+                    version has none of its own, and never borrows V1's. */}
+                {!mainPi.version.editedInApp && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
+                    onClick={() => onDownload(mainPi.version)}
+                    disabled={!mainPi.hasFile || downloading}
+                    title={`${MAIN_PI_ORIGINAL_EXCEL_LABEL}: ${mainPi.fileName ?? mainPi.reference}`}
+                  >
+                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                    {downloading ? 'Preparing…' : DL_EXCEL_LABEL}
+                  </button>
+                )}
+                {pictures?.onDownloadErp && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
+                    onClick={pictures.onDownloadErp}
+                    disabled={pictures.erpBusy}
+                    title="Line-items sheet for the production ERP"
+                  >
+                    <Download size={13} strokeWidth={2} aria-hidden="true" />
+                    {pictures.erpBusy ? 'Preparing…' : DL_ERP_LABEL}
+                  </button>
+                )}
+                {zipCount > 0 && pictures && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-secondary order-dl-btn"
+                    onClick={pictures.onDownloadAll}
+                    disabled={pictures.downloading}
+                    title="All product pictures, named by product code"
+                  >
+                    <ImageIcon size={13} strokeWidth={2} aria-hidden="true" />
+                    {pictures.downloading ? 'Preparing ZIP…' : `Pictures (${zipCount}) · ZIP`}
+                  </button>
+                )}
+                <span className="order-dl-spacer" />
+                {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
+                    own details — for a workbook version and an edited one alike. */}
+                {onOpenPdf && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-dl-btn order-dl-btn--quiet"
+                    onClick={() => onOpenPdf(mainPi.version.id, true)}
+                    title="Generated from this version's details"
+                  >
+                    <FileText size={13} strokeWidth={2} aria-hidden="true" />
+                    {DL_PDF_LABEL}
+                  </button>
+                )}
+              </div>
             </div>
           </section>
         )}
@@ -608,7 +676,7 @@ export function OrderDocumentsPanel({
             meta={supporting.design.kind === 'files' && supporting.design.acceptedAt
               ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.design.acceptedAt) }]} /> : undefined}
           >
-            <SupportingBody row={supporting.design} onOpen={open} onDownload={onDownloadFile} />
+            <SupportingBody row={supporting.design} onOpen={open} onDownload={onDownloadFile} hideNote={!!mergedAbsence} />
           </DocRow>
         ) : (
           <DocRow title={DOC_DESIGN_FILES_TITLE}>
@@ -625,7 +693,7 @@ export function OrderDocumentsPanel({
             meta={supporting.clientPo.kind === 'files' && supporting.clientPo.acceptedAt
               ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.clientPo.acceptedAt) }]} /> : undefined}
           >
-            <SupportingBody row={supporting.clientPo} onOpen={open} onDownload={onDownloadFile} />
+            <SupportingBody row={supporting.clientPo} onOpen={open} onDownload={onDownloadFile} hideNote={!!mergedAbsence} />
           </DocRow>
         ) : (
           <DocRow title={DOC_CLIENT_PO_TITLE}>
@@ -636,6 +704,7 @@ export function OrderDocumentsPanel({
             )}
           </DocRow>
         )}
+        {mergedAbsence && <p className="order-doc-note order-docs-absence">{mergedAbsence}</p>}
         </div>
 
         {/* ── INTERNAL ORDER DETAILS: what Sales filled on the PI, as a
@@ -689,7 +758,8 @@ export function OrderDocumentsPanel({
 }
 
 /** What is on file for one supporting category — accepted files only. */
-function SupportingBody({ row, onOpen, onDownload }: {
+function SupportingBody({ row, onOpen, onDownload, hideNote = false }: {
+  hideNote?: boolean
   row: SupportingRowView
   onOpen: (f: PersistedDocumentFile) => void
   onDownload?: (f: PersistedDocumentFile) => void
@@ -700,7 +770,7 @@ function SupportingBody({ row, onOpen, onDownload }: {
     return (
       <>
         <p className="order-doc-empty">{row.message}</p>
-        {row.note && <p className="order-doc-note">{row.note}</p>}
+        {row.note && !hideNote && <p className="order-doc-note">{row.note}</p>}
       </>
     )
   }
@@ -730,7 +800,7 @@ export type ProductPicturesBlockProps = {
  * the pictures this reader can actually retrieve, and is not offered when
  * there are none.
  */
-function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, onDownloadErp, erpBusy, message }: ProductPicturesBlockProps) {
+function ProductPicturesBlock({ state, onView, message }: ProductPicturesBlockProps) {
   const usable = state.kind === 'ready'
   return (
     <div className="order-doc-pictures" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
@@ -742,25 +812,11 @@ function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, onDow
         </p>
         {message && <p className="order-doc-note" role="status">{message}</p>}
       </div>
-      {(usable || onDownloadErp) && (
+      {usable && (
         <div className="order-doc-pictures-actions">
-          {usable && (
-            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onView} aria-haspopup="dialog">
-              View
-            </button>
-          )}
-          {usable && (
-            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadAll} disabled={downloading}>
-              <Download size={13} strokeWidth={2} aria-hidden="true" />
-              {downloading ? 'Preparing ZIP…' : 'Download all (ZIP)'}
-            </button>
-          )}
-          {onDownloadErp && (
-            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadErp} disabled={erpBusy}>
-              <Download size={13} strokeWidth={2} aria-hidden="true" />
-              {erpBusy ? 'Preparing ERP sheet…' : 'ERP'}
-            </button>
-          )}
+          <button type="button" className="boe-btn boe-btn-secondary order-dl-btn" onClick={onView} aria-haspopup="dialog">
+            View
+          </button>
         </div>
       )}
     </div>

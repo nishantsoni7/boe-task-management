@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — Documents card redesign: compact Download toolbar (PR open) · no migration
+- **Owner-approved "Version A".** Main PI row = title + status + a **Details** popup (Uploaded / Approved dates, a native `<details>` closed on outside click or Esc) + PI history. Under it one **Download** row of small buttons: **Excel** and **ERP** (blue-tinted, the two people use), **Pictures (N) · ZIP**, then a quiet **PDF** last. The old "View PI V1 (PDF)" primary button, the ⋯ PDF menu and the dates block are gone. Product pictures are one slim row (count + View). Design Files and Client PO side by side; their two "Not provided — X confirmed sending the PI without …" notes are shown once when they differ only in the category (`mergeAbsenceNotes`).
+- Code: `OrderStatusWorkspace.tsx` (`PiDetails`, toolbar, `ProductPicturesBlock` now View-only), `page.tsx` (no `mainPiMenu`), a closing "DOCUMENTS CARD: COMPACT DOWNLOAD TOOLBAR" block in `globals.css` (keep it last; it overrides the earlier Main PI | pictures grid). The PDF button now downloads (`onOpenPdf(id, true)`).
+- Picture viewer captions on the Order page now show the Order Product Code (`537-BE0001 · Outdoor Chair`) instead of the PI sequence (`B001`); a line with no code keeps the sequence. More room around Design Files / Client PO.
+- Tests updated to the new wording (`orderStatusWorkspace.render`, `orderDocumentSubmissions.render`) plus a `mergeAbsenceNotes` test. Run with a glob, not the `[id]` path (`src/app/orders/*/…`).
+
 ## 2026-10-20 — Quotation completed / cancelled now tells the sales person who raised it (PR not yet opened) · no migration
 - **Owner rule (amends the Sept 2026 "quotations are silent" rule):** when the assignee marks a quotation request complete, its creator is notified ("<name> completed task"); when an admin cancels one, its creator is notified ("<name> cancelled a task"). Only the creator; never the assignee; the creator cancelling their own request tells nobody; comments, status moves, reopening stay silent.
 - Write side: `shouldNotifyTaskStatusEvent(task, action, recipientId)` (quotation: `completed` to `created_by` only) used by `/api/notify-status-update`; `cancellationRecipient()` used by `/api/cancel-task`. No client change (Mark Complete already announces through `sendStatusNotice`).
