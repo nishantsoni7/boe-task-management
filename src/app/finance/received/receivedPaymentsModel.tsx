@@ -177,7 +177,7 @@ export const SEARCH_DEBOUNCE_MS = 250
 
 
 export const RECEIVED_IN_LABEL: Record<string, string> = {
-  company_account: 'HDFC',
+  company_account: 'HDFC PRI',
   cash_in_hand:    'Paytm',
   savings_account: 'Canara',
   other:           'PNB',
@@ -287,7 +287,7 @@ export const RECEIVED_IN_OPTIONS = [
   // and the form must show that truthfully instead of defaulting to the first
   // real one. Choosing a real option is how Finance supplies it later.
   { label: 'Not stated', value: '' },
-  { label: 'HDFC',   value: 'company_account' },
+  { label: 'HDFC PRI', value: 'company_account' },
   { label: 'PNB',    value: 'other' },
   { label: 'Paytm',  value: 'cash_in_hand' },
   { label: 'Canara', value: 'savings_account' },

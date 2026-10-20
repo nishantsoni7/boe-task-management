@@ -86,7 +86,7 @@ export const SUSPENSE_NOTICE =
 // FOUR VALUES FOR A NEW ENTRY, AND THE DATABASE DECIDES THE SAME FOUR. Since
 // 20261014000000 §1 the domain a new payment may use is:
 //
-//   hdfc | pnb | paytm | canara
+//   hdfc | hdfc_sec | pnb | paytm | canara
 //
 // These are the four BOE accounts money actually arrives into. What each one
 // MEANS internally is recorded in the database's own column comment
@@ -115,7 +115,8 @@ export const SUSPENSE_NOTICE =
 // read from here. They agreed by accident once; this is what makes them agree.
 
 export const PAYMENT_MODES = [
-  { value: 'hdfc',   label: 'HDFC' },
+  { value: 'hdfc',     label: 'HDFC PRI' },
+  { value: 'hdfc_sec', label: 'HDFC SEC' },
   { value: 'pnb',    label: 'PNB' },
   { value: 'paytm',  label: 'Paytm' },
   { value: 'canara', label: 'Canara' },
@@ -137,7 +138,8 @@ export type PaymentMode = typeof PAYMENT_MODES[number]['value']
  * The database column comment's internal terms are not repeated here.
  */
 export const PAYMENT_MODE_HELPER: Record<PaymentMode, string> = {
-  hdfc:   'Company bank account — current account.',
+  hdfc:     'Company bank account — primary HDFC current account.',
+  hdfc_sec: 'Company bank account — secondary HDFC current account.',
   canara: 'Company bank account — savings account.',
   paytm:  'Internal cash collection — cash collected by BOE itself.',
   pnb:    'External cash route — cash collected through an outside source and handed over to BOE.',
@@ -331,7 +333,7 @@ export function paymentEntryErrorMessage(message: string | null | undefined): st
     return 'Enter the date the payment was received.'
   }
   if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {
-    return 'Choose HDFC, PNB, Paytm or Canara.'
+    return 'Choose HDFC PRI, HDFC SEC, PNB, Paytm or Canara.'
   }
   // The custody trail's own refusals, each naming the rule that refused rather
   // than collapsing into one "please check the form".

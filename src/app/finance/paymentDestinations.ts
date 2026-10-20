@@ -61,7 +61,7 @@ export type BoeAccount = {
 export const BOE_ACCOUNTS: readonly BoeAccount[] = [
   {
     key: 'hdfc',
-    label: 'HDFC',
+    label: 'HDFC PRI',
     helper: 'Company current account',
     capture: 'none',
     iconKey: 'landmark',

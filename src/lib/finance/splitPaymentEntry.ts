@@ -412,7 +412,7 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
   if (m.includes('PAYMENT_DATE_FUTURE'))     return 'A payment date cannot be in the future.'
   if (m.includes('PAYMENT_DATE_REQUIRED'))   return 'A payment date is required.'
   if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {
-    return 'Choose HDFC, PNB, Paytm or Canara.'
+    return 'Choose HDFC PRI, HDFC SEC, PNB, Paytm or Canara.'
   }
 
   // ── The custody trail's own refusals ──

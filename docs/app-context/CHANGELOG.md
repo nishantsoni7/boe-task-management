@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — Two HDFC accounts: HDFC PRI and HDFC SEC (PR open) · migration 20270324000000 → UNAPPLIED (apply BEFORE merging)
+- BOE holds two HDFC accounts but a payment could only say "HDFC". Payment modes are now `hdfc` (shown **HDFC PRI**, primary) and new `hdfc_sec` (shown **HDFC SEC**, secondary). No row is rewritten: every existing `hdfc` payment reads as HDFC PRI; correcting one that really went to the secondary is an ordinary payment edit.
+- `20270324000000_payment_mode_hdfc_secondary.sql`: widens the `payment_mode` CHECK and `payment_mode_is_current()` (the one list every entry door asks — the entry/edit RPCs are NOT redefined) and restates only the enforce-trigger's refusal sentence. Additive, so the old code keeps working once it is applied. Custody rule unchanged (HDFC SEC has no custody trail).
+- Code: `PAYMENT_MODES` / helper lines / error sentences in `lib/finance/paymentEntry.ts` and `splitPaymentEntry.ts` (every Payment Request, Record Payment, Edit and PI payment picker reads that list); legacy `(bank_transfer, company_account)` pair and `RECEIVED_IN_*` labels now read "HDFC PRI". Expenses are untouched on purpose: they have their own seven outgoing routes and no HDFC value (pinned by `expenseForm.render.test.tsx`).
+- Proof: migration + its executed self-assertions run against the linked DB inside BEGIN…ROLLBACK (constraint restored after); tests updated and `paymentModeHdfcSecondaryMigration.test.ts` added; migration added to both ledger lists in `participantAndOrderTotalSecurity.test.ts`.
+
 ## 2026-10-19 — Console "preloaded but not used" warning: other modules are warmed on intent, not on load (PR open) · no migration
 - Root cause: the Modules launcher prefetched every module route in an effect on load, and Quick Actions prefetched /exhibition-leads/add and /finance/expenses/new. A prefetched route brings its stylesheet, which the browser preloads; the current page never applies it, so Chrome logged "was preloaded using link preload but not used within a few seconds" for Control Center, Inventory and Exhibition Leads CSS, while the burst of requests competed with the page's own data.
 - Fix: Module cards (not in edit mode) and Quick Action buttons now call router.prefetch on pointer-enter, focus and touch-start only. Same-module warm-ups (Dashboard -> /tasks/my, /notifications, /modules) are unchanged.
