@@ -7,8 +7,25 @@ import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { paymentModeLabel, customerDisplayName } from '@/lib/finance/paymentEntry'
-import { FormDialog, FormStep, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
-import { PaymentRequest, RECEIVED_IN_OPTIONS, friendlyDbErrorMessage, Field, ErrorBanner } from './receivedPaymentsModel'
+import { FormDialog, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
+import { PaymentRequest, friendlyDbErrorMessage, ErrorBanner } from './receivedPaymentsModel'
+
+// Quiet, Notion-like type: labels small and muted, values larger and darker.
+const LABEL_STYLE: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: colors.muted }
+const HELP_STYLE: React.CSSProperties = { fontSize: '12px', color: colors.muted, lineHeight: 1.5 }
+const SECTION_STYLE: React.CSSProperties = {
+  margin: 0, paddingBottom: '6px', borderBottom: `1px solid ${colors.border}`,
+  fontSize: '12px', fontWeight: 600, color: colors.secondary, letterSpacing: '0.04em', textTransform: 'uppercase',
+}
+
+function QuietField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <span style={LABEL_STYLE}>{label}</span>
+      {children}
+    </label>
+  )
+}
 
 // ── Edit Payment modal ────────────────────────────────────────────────────────
 
@@ -27,7 +44,6 @@ export function EditPaymentModal({
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: r.payment_mode,
-    receivedIn:  r.received_in ?? '',
     proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
@@ -82,10 +98,11 @@ export function EditPaymentModal({
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: form.paymentMode,
-        // '' is the not-stated sentinel and is stored as NULL. A payment
-        // recorded against a PI arrives with no account, and correcting some
-        // other field here must not invent one.
-        received_in:  form.receivedIn === '' ? null : form.receivedIn,
+        // received_in IS NOT IN THIS PAYLOAD EITHER. Payment mode already names
+        // the account the money came into (HDFC PRI, HDFC SEC, PNB, Paytm,
+        // Canara), so asking twice only invited the two to disagree. The column
+        // is nullable and nothing reads it as a rule, so the stored value is
+        // left exactly as it was.
         proof_note:   form.proofNote.trim() || null,
         ...(isLinkageStatus ? {} : { order_number: form.orderNumber.trim() || null }),
         sales_note:   form.salesNote.trim()   || null,
@@ -125,20 +142,26 @@ export function EditPaymentModal({
         </>
       }
     >
-      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <Field label="Customer">
-          <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
-            style={{ width: '100%' }} />
-          <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+      <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <section aria-label="Customer" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={LABEL_STYLE}>Customer</div>
+          <div style={{
+            padding: '10px 12px', borderRadius: '8px', background: colors.raised,
+            border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: 600, color: colors.primary,
+          }}>
+            {customerDisplayName(r.client_name)}
+          </div>
+          <span style={HELP_STYLE}>
             Read from the records this payment is allocated to. Allocate or
             reverse an allocation to change it.
           </span>
-        </Field>
+        </section>
 
-        <FormStep number={1} title="Payment">
+        <section aria-label="Payment" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h3 style={SECTION_STYLE}>Payment</h3>
           {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION, so correcting
               some other field on a 2026 payment does not silently move it onto
-              one of the four. The picker draws paymentModeOptionsFor, which adds
+              one of the five. The picker draws paymentModeOptionsFor, which adds
               it, marked retired, only for a row that already carries one.
               finance_payment_requests_enforce_current_payment_mode allows exactly
               that: an UPDATE that leaves the mode alone. */}
@@ -153,13 +176,9 @@ export function EditPaymentModal({
             amountProblem={amountProblem}
             dateProblem={dateProblem}
             modeHintId="edit-received-mode-hint"
+            quiet
           />
-          <Field label="Received In" required>
-            <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
-              {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-        </FormStep>
+        </section>
 
         <OptionalDisclosure
           title="Add proof or notes"
@@ -167,29 +186,29 @@ export function EditPaymentModal({
           open={proofOpen}
           onToggle={() => setProofOpen(o => !o)}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <Field label="Payment Proof / Reference Note">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <QuietField label="Payment proof or reference note">
               <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-                placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
+                placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
                 rows={2} style={{ width: '100%', resize: 'vertical' }} />
-            </Field>
-            <Field label="Sales Note (optional)">
+            </QuietField>
+            <QuietField label="Sales note">
               <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
                 placeholder="Any additional context"
                 rows={2} style={{ width: '100%', resize: 'vertical' }} />
-            </Field>
+            </QuietField>
           </div>
         </OptionalDisclosure>
 
         {isLinkageStatus ? (
-          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={HELP_STYLE}>
             Funds are attached with Allocate Funds, not here.
           </div>
         ) : (
-          <Field label="Order Number">
+          <QuietField label="Order number">
             <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
               placeholder="Order number" style={{ width: '100%' }} />
-          </Field>
+          </QuietField>
         )}
 
         {error && <ErrorBanner message={error} />}

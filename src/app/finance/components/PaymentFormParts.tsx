@@ -321,9 +321,11 @@ export function scrollToFirstProblem(container: HTMLElement | null) {
 
 // ── Amount, date and mode: the same three on every payment form ──────────────
 
-function DetailLabel({ text, required, htmlFor }: { text: string; required?: boolean; htmlFor?: string }) {
+function DetailLabel({ text, required, htmlFor, quiet }: { text: string; required?: boolean; htmlFor?: string; quiet?: boolean }) {
   return (
-    <label htmlFor={htmlFor} style={{
+    <label htmlFor={htmlFor} style={quiet ? {
+      fontSize: '12px', fontWeight: 500, color: colors.muted,
+    } : {
       fontSize: '12px', fontWeight: 600, color: colors.muted,
       textTransform: 'uppercase', letterSpacing: '0.05em',
     }}>
@@ -334,7 +336,7 @@ function DetailLabel({ text, required, htmlFor }: { text: string; required?: boo
 
 export function PaymentDetailsFields({
   amount, onAmount, date, onDate, mode, onMode, disabled,
-  amountProblem, dateProblem, amountLabel = 'Amount', modeHintId,
+  amountProblem, dateProblem, amountLabel = 'Amount', modeHintId, quiet,
 }: {
   amount: string
   onAmount: (next: string) => void
@@ -347,24 +349,26 @@ export function PaymentDetailsFields({
   dateProblem?: string | null
   amountLabel?: string
   modeHintId?: string
+  /** Small sentence-case labels instead of bold capitals. Opt-in; other forms keep theirs. */
+  quiet?: boolean
 }) {
   const hintId = modeHintId ?? 'payment-mode-hint'
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <DetailLabel text={amountLabel} required />
+          <DetailLabel text={amountLabel} required quiet={quiet} />
           <AmountInput prefix="₹" value={amount} onChange={onAmount} />
           <FieldProblem message={amountProblem ?? null} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <DetailLabel text="Payment Date" required />
+          <DetailLabel text={quiet ? 'Payment date' : 'Payment Date'} required quiet={quiet} />
           <QuickDateField value={date} onChange={onDate} disabled={disabled} invalid={!!dateProblem} />
           <FieldProblem message={dateProblem ?? null} />
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <DetailLabel text="Payment Mode" required />
+        <DetailLabel text={quiet ? 'Payment mode' : 'Payment Mode'} required quiet={quiet} />
         <PaymentModePicker value={mode} onChange={onMode} disabled={disabled} describedBy={hintId} />
         <PaymentModeHint mode={mode} id={hintId} />
       </div>

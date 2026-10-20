@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — Edit Received Payment: "Received in" removed, quiet Notion-style form (PR open) · no migration
+- **Owner request.** Finance > Confirmed Payments > Edit Received Payment no longer asks "Received in": Payment mode (HDFC PRI / HDFC SEC / PNB / Paytm / Canara) already names the account. `finance_payment_requests.received_in` is nullable and unwritten by every other path since 20261013, so the edit no longer sends it — the stored value is left untouched (no derivation, no migration). The other payment forms already had no such field.
+- Redesign: customer shown as a plain value (not a disabled input), a "Payment" section, small sentence-case muted labels over larger darker values, calmer spacing. `PaymentDetailsFields` gained an opt-in `quiet` prop (other forms keep their bold capital labels). `RECEIVED_IN_OPTIONS` in `receivedPaymentsModel.tsx` is now unused.
+- Tests: `paymentForms.dom.test.tsx` (no select, `received_in` absent from the payload, customer is text).
+
 ## 2026-10-20 — Documents card redesign: compact Download toolbar (PR open) · no migration
 - **Owner-approved "Version A".** Main PI row = title + status + a **Details** popup (Uploaded / Approved dates, a native `<details>` closed on outside click or Esc) + PI history. Under it one **Download** row of small buttons: **Excel** and **ERP** (blue-tinted, the two people use), **Pictures (N) · ZIP**, then a quiet **PDF** last. The old "View PI V1 (PDF)" primary button, the ⋯ PDF menu and the dates block are gone. Product pictures are one slim row (count + View). Design Files and Client PO side by side; their two "Not provided — X confirmed sending the PI without …" notes are shown once when they differ only in the category (`mergeAbsenceNotes`).
 - Code: `OrderStatusWorkspace.tsx` (`PiDetails`, toolbar, `ProductPicturesBlock` now View-only), `page.tsx` (no `mainPiMenu`), a closing "DOCUMENTS CARD: COMPACT DOWNLOAD TOOLBAR" block in `globals.css` (keep it last; it overrides the earlier Main PI | pictures grid). The PDF button now downloads (`onOpenPdf(id, true)`).
