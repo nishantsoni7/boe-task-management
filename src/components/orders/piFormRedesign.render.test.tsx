@@ -138,11 +138,11 @@ describe('Internal order details', () => {
     assert.equal(span("id={orderDetailsInputId('lead_source')} label="), '4')
   })
 
-  test('stars only where Submit needs it: dates, fabric, commission — not salesperson or lead source', () => {
+  test('stars only where Submit needs it: dates, lead source, fabric, commission — not salesperson', () => {
     const salesperson = src.slice(src.indexOf('id={orderDetailsInputId(\'salesperson_id\')} label='), src.indexOf('<select id={orderDetailsInputId(\'salesperson_id\')}'))
     assert.ok(!salesperson.includes('required'))
     const lead = src.slice(src.indexOf('id={orderDetailsInputId(\'lead_source\')} label='), src.indexOf('<select id={orderDetailsInputId(\'lead_source\')}'))
-    assert.ok(!lead.includes('required'))
+    assert.ok(lead.includes('required'))
   })
 
   test('no billing terms field, no per-field pill', () => {
