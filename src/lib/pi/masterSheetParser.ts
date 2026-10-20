@@ -70,6 +70,7 @@ import { harvestProductImages, resolveDrawingPart, type PiImageHarvest } from '.
 import {
   locateLayout,
   PRODUCT_COLUMN_NAMES,
+  columnHeadingMatches,
   TEMPLATE_FOOTER_LABEL_COL,
   TEMPLATE_GRAND_TOTAL_ROW,
   type PiLayout,
@@ -592,7 +593,7 @@ function archiveError(reason: PiArchiveFailure): PiError {
  * list is kept so the preview can show where each name was read.
  */
 function checkFingerprint(sheet: PiSheet, layout: PiLayout): PiTemplateCellCheck[] {
-  return PRODUCT_COLUMN_NAMES.map(({ key, label }) => {
+  return PRODUCT_COLUMN_NAMES.map(({ key, label, aliases }) => {
     const cell = cellRef(layout.cols[key], layout.headerRow)
     const expected = label
     const found = textOf(sheet.cells.get(cell))
@@ -602,7 +603,7 @@ function checkFingerprint(sheet: PiSheet, layout: PiLayout): PiTemplateCellCheck
       found,
       // Whitespace-collapsed and case-folded, so a header split across two lines
       // or typed with a double space still matches. Nothing else is forgiven.
-      ok: found !== null && normalizeLabel(found) === normalizeLabel(expected),
+      ok: found !== null && columnHeadingMatches(normalizeLabel(found), expected, aliases),
     }
   })
 }

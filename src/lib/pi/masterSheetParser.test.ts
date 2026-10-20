@@ -635,6 +635,37 @@ describe('template fingerprint', () => {
     assert.equal(result.ok, true)
   })
 
+  test('the shorter "Dimension in inches" heading is accepted, in the same column', async () => {
+    const wb = buildPiWorkbook({
+      headerOverrides: { D31: 'Dimension in inches' },
+      products: inventProducts(2),
+      anchors: anchorsFor(2),
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    assert.equal(result.data.template.fingerprint.every(f => f.ok), true)
+    assert.equal(result.data.template.fingerprint.find(f => f.cell === 'D31')?.expected, 'Dimension in inches & Shape',
+      'the canonical name is still what is reported')
+    assert.equal(result.data.products.length, 2)
+  })
+
+  test('only the listed alias is forgiven: other dimension headings still block', async () => {
+    for (const heading of ['Dimensions', 'Dimension in cm', 'Size']) {
+      const wb = buildPiWorkbook({ headerOverrides: { D31: heading }, products: inventProducts(1), anchors: anchorsFor(1) })
+      const result = await parseBoePiWorkbook(wb)
+      assert.equal(result.ok, false, heading)
+    }
+  })
+
+  test('both headings on one row are still ambiguous and refused', async () => {
+    const wb = buildPiWorkbook({
+      headerOverrides: { D31: 'Dimension in inches', F31: 'Dimension in inches & Shape' },
+      products: inventProducts(1),
+      anchors: anchorsFor(1),
+    })
+    const result = await parseBoePiWorkbook(wb)
+    assert.equal(result.ok, false)
+  })
+
   test('a renamed column header BLOCKS the parse rather than remapping', async () => {
     const wb = buildPiWorkbook({
       headerOverrides: { G31: 'Fabric' },

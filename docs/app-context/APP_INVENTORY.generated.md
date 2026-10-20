@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `779a0c71` — Merge remote-tracking branch 'origin/main' into order-pendencies-code-format
-- Commits on this branch: 922
+- Commit: `5d9412b0` — Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
+- Commits on this branch: 919
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 338 (first `20260530_create_positions.sql`, latest `20270325000000_order_pendencies.sql`)
 - Tables ever created: 154 (dropped at some point: 7)   SQL functions: 720   Enums: 0
@@ -14,11 +14,8 @@
 
 ## Latest 25 commits
 
-- `779a0c71` 2026-10-20 Merge remote-tracking branch 'origin/main' into order-pendencies-code-format
-- `b2ba75ee` 2026-10-20 Fabric responsibility tag sits under the Fabric label
+- `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 - `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
-- `f09a03fe` 2026-10-20 Changelog: record the scratch-database replay of 20270325000000
-- `cfbdd3cc` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 - `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 - `57ea63c9` 2026-10-20 Approval dialog: preselect the salesperson the PI workbook names
 - `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
@@ -39,6 +36,9 @@
 - `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
 - `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
 - `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
+- `037dec72` 2026-10-19 Finance lists: Notion-style redesign with summary cards (#346)
+- `b0eefcac` 2026-10-18 Finance lists: Payment ID chip, single search focus ring (#345)
+- `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 
 ## Pages by top-level area
 

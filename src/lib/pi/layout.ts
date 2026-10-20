@@ -56,11 +56,14 @@ export type ProductColumnKey =
   | 'material' | 'costPerPiece' | 'lineTotal' | 'itemSequence' | 'customization'
 
 /** The nine named columns (the item sequence column has no heading; see below). */
-export const PRODUCT_COLUMN_NAMES: readonly { key: Exclude<ProductColumnKey, 'itemSequence'>; label: string; templateCol: number }[] = [
+/** `aliases` are other headings accepted for the same column (matched like the label:
+ *  whitespace-collapsed, case-folded). The label stays the canonical name in messages. */
+export const PRODUCT_COLUMN_NAMES: readonly { key: Exclude<ProductColumnKey, 'itemSequence'>; label: string; templateCol: number; aliases?: readonly string[] }[] = [
   { key: 'code',          label: 'Code',                        templateCol: 0 },
   { key: 'name',          label: 'Name',                        templateCol: 1 },
   { key: 'quantity',      label: 'Quantity',                    templateCol: 2 },
-  { key: 'dimensions',    label: 'Dimension in inches & Shape', templateCol: 3 },
+  // Sheets built from an older/shortened template carry "Dimension in inches" (owner, 2026-10-20).
+  { key: 'dimensions',    label: 'Dimension in inches & Shape', templateCol: 3, aliases: ['Dimension in inches'] },
   { key: 'image',         label: 'Representative Image',        templateCol: 4 },
   { key: 'material',      label: 'Material',                    templateCol: 6 },
   { key: 'costPerPiece',  label: 'Cost per piece (INR)',        templateCol: 7 },
@@ -222,8 +225,8 @@ export function locateProductColumns(sheet: PiSheet):
       const text = textOf(cell)
       if (text === null) continue
       const norm = normalizeLabel(text)
-      for (const { key, label } of PRODUCT_COLUMN_NAMES) {
-        if (norm === normalizeLabel(label)) {
+      for (const { key, label, aliases } of PRODUCT_COLUMN_NAMES) {
+        if (columnHeadingMatches(norm, label, aliases)) {
           found.set(key, [...(found.get(key) ?? []), cell.col])
         }
       }
@@ -548,4 +551,9 @@ export function locateLayout(sheet: PiSheet):
       movedColumns,
     },
   }
+}
+
+/** True when an already-normalised heading is the column's label or one of its aliases. */
+export function columnHeadingMatches(normalised: string, label: string, aliases?: readonly string[]): boolean {
+  return normalised === normalizeLabel(label) || (aliases ?? []).some(a => normalised === normalizeLabel(a))
 }
