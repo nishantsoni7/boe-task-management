@@ -168,7 +168,14 @@ describe('Edit Received Payment', () => {
     assert.match(ui.text(), /Edit Received Payment/)
     assert.equal(ui.one<HTMLInputElement>('input[inputmode="decimal"]').value, '5,000', 'grouped when not focused')
     assert.equal(ui.one('[role="radio"][aria-checked="true"]').textContent, 'HDFC PRI')
-    assert.equal(ui.all<HTMLInputElement>('input[readonly]').length >= 1, true, 'the customer cannot be typed over')
+    assert.match(ui.text(), /Cafe Verde/)
+    assert.equal(ui.all<HTMLInputElement>('input').some(i => i.value === 'Cafe Verde'), false, 'the customer is text, not a field, so it cannot be typed over')
+  })
+
+  test('there is no Received In control: payment mode already names the account', () => {
+    const { ui } = openEdit()
+    assert.doesNotMatch(ui.text(), /Received in/i)
+    assert.equal(ui.all('select').length, 0)
   })
 
   test('clearing the amount and pressing Save names the problem and writes nothing', () => {
@@ -194,6 +201,7 @@ describe('Edit Received Payment', () => {
     assert.equal(payload.payment_date, '2026-10-01')
     assert.equal('client_name' in payload, false, 'the customer is never in the payload')
     assert.equal('order_number' in payload, false, 'and neither is the Order Number of a linked payment')
+    assert.equal('received_in' in payload, false, 'payment mode names the account, so received_in is left as stored')
     assert.equal(saved(), 1)
   })
 
@@ -208,9 +216,9 @@ describe('Edit Received Payment', () => {
 
   test('proof and notes are closed until wanted; the backdrop is inert; Escape closes', () => {
     const { ui, closed } = openEdit()
-    assert.doesNotMatch(ui.text(), /Sales Note/)
+    assert.doesNotMatch(ui.text(), /Sales note/)
     ui.click(ui.button(/Add proof or notes/))
-    assert.match(ui.text(), /Sales Note/)
+    assert.match(ui.text(), /Sales note/)
     ui.click(ui.one('[role="dialog"]').previousElementSibling as Element)
     assert.equal(closed(), 0)
     ui.press('Escape')
