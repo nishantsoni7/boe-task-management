@@ -229,7 +229,8 @@ describe('list, count, mark-all-read and delete-all share one scope', () => {
     // One `activityFilter`, used by both branches of GET — so the badge can
     // never count rows the list does not show.
     assert.ok(listRoute.includes('const activityFilter = getNotificationCategoryFilter(categoryResult.category)'))
-    assert.equal((listRoute.match(/\.or\(activityFilter\)/g) ?? []).length, 3,
+    // count, list and delete-all, plus the quotation completion/cancel query beside the count and beside the list.
+    assert.equal((listRoute.match(/\.or\(activityFilter\)/g) ?? []).length, 5,
       'count, list and delete-all must each scope by the resolved filter')
   })
 

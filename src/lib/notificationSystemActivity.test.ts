@@ -254,7 +254,7 @@ describe('the read side excludes system types too', () => {
     // clear) or wider (touching rows the feed never showed).
     assert.equal((list.match(/getNotificationCategoryFilter\(categoryResult\.category\)/g) ?? []).length, 2)
     assert.ok(mark.includes('getNotificationCategoryFilter(categoryResult.category)'))
-    assert.equal((list.match(/SYSTEM_TYPE_EXCLUSION\)/g) ?? []).length, 3)
+    assert.equal((list.match(/SYSTEM_TYPE_EXCLUSION\)/g) ?? []).length, 5)   // + the two quotation-notice queries
     assert.ok(mark.includes('SYSTEM_TYPE_EXCLUSION)'))
   })
 
@@ -550,7 +550,7 @@ describe('the read side excludes system types too', () => {
     const list = read('src/app/api/notifications/route.ts')
     const mark = read('src/app/api/notifications/mark-read/route.ts')
     // Three in the list route: the ?count=1 badge path, the list path, and DELETE.
-    assert.equal((list.match(/\.not\('type', 'in', SYSTEM_TYPE_EXCLUSION\)/g) ?? []).length, 3,
+    assert.equal((list.match(/\.not\('type', 'in', SYSTEM_TYPE_EXCLUSION\)/g) ?? []).length, 5,
       'count, list and delete-all must each exclude system rows')
     assert.ok(mark.includes(".not('type', 'in', SYSTEM_TYPE_EXCLUSION)"),
       'mark-all-read must not flip rows the feed never shows')
