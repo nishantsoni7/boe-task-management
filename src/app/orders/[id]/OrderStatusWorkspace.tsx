@@ -717,6 +717,9 @@ export type ProductPicturesBlockProps = {
   /** Builds and saves the ZIP of every available picture. */
   onDownloadAll: () => void
   downloading: boolean
+  /** Builds and saves the ERP line-items workbook (production team upload). Omitted when there is nothing to export. */
+  onDownloadErp?: () => void
+  erpBusy?: boolean
   /** The outcome of the last download, said once. */
   message: string | null
 }
@@ -727,7 +730,7 @@ export type ProductPicturesBlockProps = {
  * the pictures this reader can actually retrieve, and is not offered when
  * there are none.
  */
-function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, message }: ProductPicturesBlockProps) {
+function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, onDownloadErp, erpBusy, message }: ProductPicturesBlockProps) {
   const usable = state.kind === 'ready'
   return (
     <div className="order-doc-pictures" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
@@ -739,15 +742,25 @@ function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, messa
         </p>
         {message && <p className="order-doc-note" role="status">{message}</p>}
       </div>
-      {usable && (
+      {(usable || onDownloadErp) && (
         <div className="order-doc-pictures-actions">
-          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onView} aria-haspopup="dialog">
-            View
-          </button>
-          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadAll} disabled={downloading}>
-            <Download size={13} strokeWidth={2} aria-hidden="true" />
-            {downloading ? 'Preparing ZIP…' : 'Download all (ZIP)'}
-          </button>
+          {usable && (
+            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onView} aria-haspopup="dialog">
+              View
+            </button>
+          )}
+          {usable && (
+            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadAll} disabled={downloading}>
+              <Download size={13} strokeWidth={2} aria-hidden="true" />
+              {downloading ? 'Preparing ZIP…' : 'Download all (ZIP)'}
+            </button>
+          )}
+          {onDownloadErp && (
+            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadErp} disabled={erpBusy}>
+              <Download size={13} strokeWidth={2} aria-hidden="true" />
+              {erpBusy ? 'Preparing ERP sheet…' : 'ERP'}
+            </button>
+          )}
         </div>
       )}
     </div>

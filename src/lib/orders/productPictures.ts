@@ -70,13 +70,43 @@ function extensionOf(url: string): string {
   return m ? `.${m[1].toLowerCase()}` : '.jpg'
 }
 
+/** 0 → 'A', 1 → 'B', 25 → 'Z', 26 → 'AA'. */
+export function pictureLetter(index: number): string {
+  let n = index
+  let out = ''
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return out
+}
+
 /**
- * One archive entry per available picture, named so it sorts with its product:
- * "B001 Lounge chair - representative.png", "B001 Lounge chair - customization 2.jpg".
+ * One archive entry per available picture.
+ *
+ * With `codeByRow` (the Order Product Code of each worksheet row, e.g.
+ * "524-BE0001") a picture is named by its product's code (owner, 2026-10-20):
+ * "524-BE0001.jpg" when the product has one picture, "524-BE0001A.jpg",
+ * "524-BE0001B.jpg" … when it has several (representative first, then the
+ * customization pictures in order). A row with no code keeps the descriptive
+ * name: "B001 Lounge chair - representative.png", "... - customization 2.jpg".
  */
-export function productPictureZipEntries(items: readonly PiViewerItem[]): { name: string; url: string }[] {
+export function productPictureZipEntries(
+  items: readonly PiViewerItem[],
+  codeByRow?: ReadonlyMap<number, string>,
+): { name: string; url: string }[] {
+  const perRow = new Map<number, number>()
+  for (const item of items) perRow.set(item.row, (perRow.get(item.row) ?? 0) + 1)
+  const seenInRow = new Map<number, number>()
   const counters = new Map<string, number>()
   const raw = items.map(item => {
+    const index = seenInRow.get(item.row) ?? 0
+    seenInRow.set(item.row, index + 1)
+    const code = codeByRow?.get(item.row)
+    if (code) {
+      const suffix = (perRow.get(item.row) ?? 1) > 1 ? pictureLetter(index) : ''
+      return { name: `${code}${suffix}${extensionOf(item.url)}`, url: item.url }
+    }
     const product = [item.sequence, item.name].map(s => (s ?? '').trim()).filter(Boolean).join(' ') || `Row ${item.row}`
     const roleKey = `${item.row}:${item.role}`
     const n = (counters.get(roleKey) ?? 0) + 1
