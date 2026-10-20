@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — Lead source is now required to submit a PI (PR open) · no migration
+- Owner rule: Sales must choose the lead source before submitting, so management is no longer asked for it at approval (the workbook has no lead source to preselect from). Salesperson stays optional at Submit (the approval dialog preselects the workbook's exact match, PR #364).
+- `ORDER_DETAILS_FIELDS.lead_source` need is now `submission`; `orderDetailsSubmissionGaps` names "Lead source" (blank or not one of the five); the Internal details field carries the red star; `buildPiCompletion` no longer lists it under "needed later".
+- Enforcement is client-side (checklist + disabled Submit), like the other internal-detail gaps' display; the database authority for lead source remains `approve_order_submission`. PIs already submitted without one are unaffected and are asked once at approval. A PI returned for changes must have one before it is resubmitted.
+- Tests: `salesOrderDetails.test.tsx`, `piCompletion.test.ts`, `piFormRedesign.render.test.tsx` updated.
+
 ## 2026-10-20 — Approval dialog preselects the salesperson the PI workbook names (PR open) · no migration
 - Complaint: Create Confirmed Order asked for the BOE salesperson although the PI page showed "Salesperson named in PI workbook: <name>". Cause: that line is the workbook's typed author name; a PI Sales submitted without choosing a salesperson has `salesperson_id` NULL (and `lead_source` NULL), so the dialog opened empty. Dates were already prefilled and shown "From the PI".
 - Change: when Sales saved nobody, the dialog preselects the BOE user whose name EXACTLY matches the workbook name (case/spacing ignored, whole name, exactly ONE active user: `matchWorkbookSalesperson` in `lib/orders/orderConfirmation.ts`). Shown as "From the PI workbook" with a Change link; no match, a partial name or two people with the same name still select nobody and show the name as a hint. Reverses the earlier "never match by name" rule on purpose (owner request); never the viewer or submitter; the database still validates the id.

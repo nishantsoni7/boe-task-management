@@ -92,7 +92,7 @@ export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'order_confirmation_date', label: SUBMISSION_DATE_LABEL.order_confirmation_date, need: 'submission' },
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
   { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson named in the PI workbook.' },
-  { key: 'lead_source',             label: 'Lead source',                                 need: 'approval' },
+  { key: 'lead_source',             label: 'Lead source',                                 need: 'submission' },
   { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `How much of the order should be billed, from ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },
   { key: 'payment_terms',           label: 'Payment terms',                               need: 'optional', hint: 'How the payments are agreed to fall due. Optional at every advance level; saved as it is, and sent unchanged with the PI.' },
@@ -330,9 +330,11 @@ export function orderDetailsSaveFailureText(result: Extract<OrderDetailsSaveResu
 export type OrderDetailsGap = { key: OrderDetailsFieldKey; label: string }
 
 /**
- * What this section still needs before the PI can be SUBMITTED — the database's
- * own gates, and nothing more. The salesperson and lead source are not here:
- * they are needed to create the Order, not to submit the PI.
+ * What this section still needs before the PI can be SUBMITTED: the database's
+ * own gates, plus the LEAD SOURCE, which Sales must now choose (the owner's rule,
+ * 2026-10-20; enforced here and in the checklist, the database gate being
+ * approve_order_submission). The salesperson is not here: the workbook names
+ * one, and the approval dialog preselects the exact match.
  */
 export function orderDetailsSubmissionGaps(row: OrderDetailsRow): OrderDetailsGap[] {
   const gaps: OrderDetailsGap[] = []
@@ -341,6 +343,7 @@ export function orderDetailsSubmissionGaps(row: OrderDetailsRow): OrderDetailsGa
   if (!confirm) gaps.push({ key: 'order_confirmation_date', label: SUBMISSION_DATE_LABEL.order_confirmation_date })
   if (!due) gaps.push({ key: 'due_date', label: SUBMISSION_DATE_LABEL.due_date })
   else if (confirm && due < confirm) gaps.push({ key: 'due_date', label: `${SUBMISSION_DATE_LABEL.due_date} on or after the confirmation date` })
+  if (!isOrderLeadSource(text(row.lead_source).trim())) gaps.push({ key: 'lead_source', label: 'Lead source' })
   if (!isFabricResponsibility(row.fabric_responsibility)) gaps.push({ key: 'fabric_responsibility', label: FABRIC_RESPONSIBILITY_LABEL })
   const middleman = middlemanAnswerMissing(row)
   if (middleman) {

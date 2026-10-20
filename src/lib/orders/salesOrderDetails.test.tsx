@@ -47,7 +47,7 @@ describe('every field says how much it is needed — and nothing optional became
     const need = Object.fromEntries(ORDER_DETAILS_FIELDS.map(f => [f.key, f.need]))
     assert.deepEqual(need, {
       order_confirmation_date: 'submission', due_date: 'submission',
-      salesperson_id: 'approval', lead_source: 'approval',
+      salesperson_id: 'approval', lead_source: 'submission',
       billing_percentage: 'optional', billing_terms: 'optional', payment_terms: 'optional',
       fabric_responsibility: 'submission',
       middleman_commission: 'submission', middleman_structure: 'conditional',
@@ -55,9 +55,19 @@ describe('every field says how much it is needed — and nothing optional became
   })
 
   test('a draft missing ONLY optional or approval-time details is ready to submit', () => {
-    const row = { ...COMPLETE, salesperson_id: null, lead_source: null, billing_percentage: null, billing_terms: null }
+    const row = { ...COMPLETE, salesperson_id: null, billing_percentage: null, billing_terms: null }
     assert.deepEqual(orderDetailsSubmissionGaps(row), [])
     assert.equal(withOrderDetailsRequirements(READY, row), READY)
+  })
+
+  test('a draft with no LEAD SOURCE cannot be submitted, and says so', () => {
+    for (const lead_source of [null, '', '  ', 'tv']) {
+      const row = { ...COMPLETE, lead_source }
+      assert.deepEqual(orderDetailsSubmissionGaps(row), [{ key: 'lead_source', label: 'Lead source' }])
+      const r = withOrderDetailsRequirements(READY, row)
+      assert.equal(r.ready, false)
+      assert.ok(r.missing.some(m => m.key === 'order_details:lead_source'))
+    }
   })
 })
 
@@ -66,10 +76,10 @@ describe('the readiness checklist points each gap at its field in the section', 
     const r = withOrderDetailsRequirements(READY, { status: 'draft' })
     assert.equal(r.ready, false)
     assert.deepEqual(r.missing.map(m => [orderDetailsFieldOf(m.key), m.section]), [
-      ['order_confirmation_date', 'internal'], ['due_date', 'internal'],
+      ['order_confirmation_date', 'internal'], ['due_date', 'internal'], ['lead_source', 'internal'],
       ['fabric_responsibility', 'internal'], ['middleman_commission', 'internal'],
     ])
-    assert.ok(r.summary?.startsWith('Before this PI can be submitted, 4 things are needed'))
+    assert.ok(r.summary?.startsWith('Before this PI can be submitted, 5 things are needed'))
   })
 
   test('the shared fabric requirement is RE-POINTED, never listed twice', () => {
@@ -266,9 +276,9 @@ describe('the section states what Sales has provided', () => {
     // Billing percentage lives here, once; billing terms are not offered anywhere on this page.
     assert.equal((html.match(/Billing percentage/g) ?? []).length, 1)
     assert.ok(!html.includes('Billing terms'))
-    // No per-field pill: a red star marks only what Submit for approval needs (dates, fabric, commission).
+    // No per-field pill: a red star marks only what Submit for approval needs (dates, lead source, fabric, commission).
     assert.doesNotMatch(html, /data-need=|Needed to submit|Required for submission/)
-    assert.equal((html.match(/pi-form-req/g) ?? []).length, 4)
+    assert.equal((html.match(/pi-form-req/g) ?? []).length, 5)
     assert.match(html, />\s*Edit details</)
   })
 

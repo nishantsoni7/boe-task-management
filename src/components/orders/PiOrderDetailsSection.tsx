@@ -420,7 +420,7 @@ export function PiOrderDetailsSection({
                 onChange={e => set('payment_terms', e.target.value)} />
             </FormField>
 
-            <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} span={4} error={field('lead_source')}>
+            <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} required span={4} error={field('lead_source')}>
               <select id={orderDetailsInputId('lead_source')} className="pi-form-input" value={form.lead_source}
                 disabled={saving || !salesDetailsAvailable}
                 aria-invalid={field('lead_source') ? true : undefined}

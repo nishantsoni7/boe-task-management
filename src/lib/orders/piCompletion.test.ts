@@ -38,7 +38,7 @@ const COMPLETE_ROW = {
 const COMPLETE_DETAILS: OrderDetailsRow = {
   status: 'draft', middleman_commission: 'no',
   order_confirmation_date: '2026-09-20', due_date: '2026-11-20',
-  fabric_responsibility: 'boe', salesperson_id: null, lead_source: null, billing_percentage: null, billing_terms: null,
+  fabric_responsibility: 'boe', salesperson_id: null, lead_source: 'website', billing_percentage: null, billing_terms: null,
 }
 const LINES = [{ item_sequence: 1, product_name: 'Sofa', hasRepresentativeImage: true }]
 
@@ -132,13 +132,16 @@ describe('what is required for submission — each one a gate the database alrea
 describe('what is required only LATER — never a submission blocker', () => {
   const approval = migration('20261201000000_order_submission_confirmation_required_fields.sql')
 
-  test('the salesperson and lead source are needed to create the Order (approve_order_submission), not to submit', () => {
+  test('the salesperson is needed to create the Order (approve_order_submission), not to submit; the lead source IS needed to submit', () => {
     assert.ok(approval.includes('ORDER_CONFIRMATION_SALESPERSON_REQUIRED') && approval.includes('ORDER_CONFIRMATION_LEAD_SOURCE_REQUIRED'))
     const c = completion()
-    assert.deepEqual(c.laterMissing.map(i => i.key), ['salesperson_id', 'lead_source'])
+    assert.deepEqual(c.laterMissing.map(i => i.key), ['salesperson_id'])
     assert.ok(c.laterMissing.every(i => i.need === 'later'))
-    assert.equal(c.readyToSubmit, true, 'so they do not hold the Submit control')
-    assert.ok(!c.requiredMissing.some(i => i.field === 'salesperson_id' || i.field === 'lead_source'))
+    assert.ok(!c.requiredMissing.some(i => i.field === 'salesperson_id'))
+    assert.equal(c.readyToSubmit, true, 'with the lead source chosen, the salesperson alone does not hold Submit')
+    const none = completion({ details: { lead_source: null } })
+    assert.ok(none.requiredMissing.some(i => i.field === 'lead_source'), 'no lead source holds the Submit control')
+    assert.equal(none.readyToSubmit, false)
   })
 
   test('once chosen they leave the list', () => {
@@ -153,7 +156,7 @@ describe('what is required only LATER — never a submission blocker', () => {
   test('they are listed in the "proceed without these?" step, in their own group, apart from the optional ones', () => {
     const c = completion()
     assert.ok(!c.optionalMissing.some(i => i.key === 'salesperson_id' || i.key === 'lead_source'), 'not mislabelled Optional')
-    assert.deepEqual(c.laterMissing.map(i => i.label), ['BOE salesperson assigned to Order', 'Lead source'])
+    assert.deepEqual(c.laterMissing.map(i => i.label), ['BOE salesperson assigned to Order'])
     assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
   })
 
@@ -163,7 +166,7 @@ describe('what is required only LATER — never a submission blocker', () => {
       highlight: { available: true, remark: 'x' },
     })
     assert.deepEqual(c.optionalMissing, [])
-    assert.equal(c.laterMissing.length, 2)
+    assert.equal(c.laterMissing.length, 1)
     assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
   })
 })

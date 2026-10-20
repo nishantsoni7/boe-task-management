@@ -18,9 +18,10 @@
 //                            commercial terms, the two order dates and the
 //                            middleman answer — and the workbook and product
 //                            lines, which only a re-import can fix.
-//   required later           the salesperson and lead source, which
-//                            approve_order_submission asks for when the Order is
-//                            created (ORDER_DETAILS_FIELDS, need 'approval').
+//   required later           the salesperson, which approve_order_submission
+//                            asks for when the Order is created (the approval
+//                            dialog preselects the workbook's exact match).
+//                            The lead source is required for submission.
 //   optional                 billing percentage, payment terms, Client PO,
 //                            Design Files and the order highlight.
 //
@@ -95,9 +96,6 @@ export function buildPiCompletion(input: {
   if (input.salesDetailsAvailable) {
     if (blank(input.details.salesperson_id)) {
       laterMissing.push({ key: 'salesperson_id', label: ORDER_DETAILS_FIELD.salesperson_id.label, need: 'later', where: 'internal', field: 'salesperson_id' })
-    }
-    if (blank(input.details.lead_source)) {
-      laterMissing.push({ key: 'lead_source', label: ORDER_DETAILS_FIELD.lead_source.label, need: 'later', where: 'internal', field: 'lead_source' })
     }
   }
 
