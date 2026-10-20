@@ -31,6 +31,7 @@ import {
 import {
   ORDER_CONFIRMATION_LABEL,
   ORDER_CONFIRMATION_MESSAGE,
+  matchWorkbookSalesperson,
   salespersonSelectorNote,
   validateOrderConfirmation,
   workbookSalespersonHint,
@@ -97,7 +98,7 @@ const approveModal = (over: {
   confirmation?: OrderConfirmationDraft
   salespeople?: readonly { id: string; name: string }[]
   confirmationField?: OrderConfirmationField | null
-  provided?: { salesperson: { id: string; name: string } | null; leadSource: string | null; confirmDate: string | null; dueDate: string | null }
+  provided?: { salesperson: { id: string; name: string } | null; salespersonFromWorkbook?: boolean; leadSource: string | null; confirmDate: string | null; dueDate: string | null }
   workbookSalesperson?: string | null
 } = {}): string =>
   renderToStaticMarkup(
@@ -343,30 +344,38 @@ describe('the salesperson is the one saved on the PI, or chosen by management', 
     assert.ok(!text(html).includes('Somebody Else'), 'nor the workbook hint')
   })
 
-  test('2 · a LEGACY PI whose workbook name EXACTLY matches one person: nobody is selected', () => {
-    // "Dhruv Mehta" is exactly, uniquely in the list — the case the old
-    // name-matching preselected. It is now a hint, and management must choose.
+  test('2 · a LEGACY PI whose workbook name EXACTLY matches one person: that person is preselected, editable', () => {
     assert.equal(SALESPEOPLE.filter(p => p.name === 'Dhruv Mehta').length, 1)
-    const html = approveModal({ provided: { salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, workbookSalesperson: workbookSalespersonHint('  Dhruv   Mehta ') })
-    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '', 'the selector opens unselected')
-    assert.ok(text(html).includes('This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.'))
-    assert.ok(text(html).includes('The workbook names “Dhruv Mehta” — a hint only.'))
-    for (const person of SALESPEOPLE) assert.ok(html.includes(`value="${person.id}"`), `${person.name} is choosable`)
-    // And Create Confirmed Order is refused until someone is chosen.
-    const check = validateOrderConfirmation(complete(null))
-    assert.equal(check.ok, false)
-    assert.equal(check.ok === false && check.field, 'salesperson')
-    assert.equal(check.ok === false && check.message, ORDER_CONFIRMATION_MESSAGE.salesperson)
+    const match = matchWorkbookSalesperson('  dhruv   MEHTA ', SALESPEOPLE)
+    assert.deepEqual(match, { id: 'u-dhruv', name: 'Dhruv Mehta' })
+    const html = approveModal({
+      provided: { salesperson: match, salespersonFromWorkbook: true, leadSource: null, confirmDate: null, dueDate: null },
+      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
+      workbookSalesperson: workbookSalespersonHint('Dhruv Mehta'),
+    })
+    assert.ok(html.includes('data-review="salesperson"'), 'shown as a review value')
+    assert.ok(text(html).includes('Dhruv Mehta') && text(html).includes('From the PI workbook'))
+    assert.ok(html.includes('Change'), 'with a Change control')
   })
 
-  test('3 · the page selects only the saved id — never a name match, the viewer or the submitter', () => {
+  test('2b · no match, a partial name and two people with one name all select nobody', () => {
+    assert.equal(matchWorkbookSalesperson('Somebody Else', SALESPEOPLE), null)
+    assert.equal(matchWorkbookSalesperson('Dhruv', SALESPEOPLE), null)
+    assert.equal(matchWorkbookSalesperson('—', SALESPEOPLE), null)
+    assert.equal(matchWorkbookSalesperson(null, SALESPEOPLE), null)
+    assert.equal(matchWorkbookSalesperson('Priya Rao', [...SALESPEOPLE, { id: 'u-priya2', name: 'priya  rao' }]), null)
+    const html = approveModal({ provided: { salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, workbookSalesperson: 'Somebody Else' })
+    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '', 'the selector opens unselected')
+    assert.ok(text(html).includes('The workbook names “Somebody Else” — a hint only.'))
+    const check = validateOrderConfirmation(complete(null))
+    assert.equal(check.ok === false && check.field, 'salesperson')
+  })
+
+  test('3 · the page selects the saved id, else the one exact workbook match — never the viewer or the submitter', () => {
     const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
-    assert.ok(page.includes('salesperson: salesDetails.salesperson_id ?? null,'))
-    assert.ok(page.includes('workbookSalesperson={workbookSalespersonHint(documentAuthor)}'), 'the name reaches the dialog only as a hint')
-    assert.ok(!page.includes('resolveSavedSalesperson'), 'the name matcher is gone')
-    assert.ok(!/salesperson:\s*(viewerId|profile|submitter)/.test(page))
-    const lib = readFileSync('src/lib/orders/orderConfirmation.ts', 'utf8')
-    assert.ok(!/export function resolveSavedSalesperson/.test(lib))
+    assert.ok(page.includes('salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,'))
+    assert.ok(page.includes('workbookSalesperson={workbookSalespersonHint(documentAuthor)}'))
+    assert.ok(!/salesperson: *(viewerId|profile|submitter)/.test(page))
   })
 
   test('4 · the hint is the workbook\u2019s name, tidied, and nothing for a blank or a dash', () => {

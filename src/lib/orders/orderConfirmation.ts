@@ -124,12 +124,12 @@ export function isCalendarDate(value: string | null | undefined): value is strin
 // (order_submissions.salesperson_id), and the Create Confirmed Order dialog
 // offers that saved id. A PI saved before then has none.
 //
-// A LEGACY PI GETS NO AUTOMATIC CHOICE. Its only trace of a salesperson is
-// source_created_by — the NAME the workbook prints. Matching that name against
-// the user list used to preselect a person; it no longer does, even for an
-// exact, unique match, because a workbook name is typed text and the wrong name
-// on an Order is worse than one more click. The name is shown as a hint and
-// management chooses the person; validateOrderConfirmation refuses until then.
+// A LEGACY PI HAS NO SAVED ID. Its only trace of a salesperson is
+// source_created_by — the NAME the workbook prints. The dialog preselects a
+// person from it ONLY when the name matches exactly ONE BOE user (see
+// matchWorkbookSalesperson); an unmatched or ambiguous name is shown as a hint
+// and management chooses. Either way the selector stays editable and the
+// database re-checks the id it is given.
 
 /**
  * THE NAME THE WORKBOOK PRINTS as its author (source_created_by), for a PI that
@@ -143,6 +143,21 @@ export function workbookSalespersonHint(savedName: string | null | undefined): s
 }
 
 /**
+ * THE ONE BOE USER THE WORKBOOK NAME POINTS AT, or null. Case and spacing are
+ * ignored; the whole name must match, and it must match exactly one person — two
+ * people with the same name, or a partial name, select nobody.
+ */
+export function matchWorkbookSalesperson(
+  workbookName: string | null | undefined,
+  people: readonly { id: string; name: string }[],
+): { id: string; name: string } | null {
+  const wanted = workbookSalespersonHint(workbookName)?.toLowerCase()
+  if (!wanted) return null
+  const hits = people.filter(p => p.name.trim().split(/[ \t]+/).join(' ').toLowerCase() === wanted)
+  return hits.length === 1 ? hits[0] : null
+}
+
+/**
  * The line under the Salesperson selector in the Create Confirmed Order dialog.
  * A PI with a saved salesperson says whom Sales saved; a legacy PI says nobody
  * is selected and, when the workbook prints a name, offers it as a hint only.
@@ -152,7 +167,10 @@ export function salespersonSelectorNote(input: {
   savedName: string | null
   /** workbookSalespersonHint(source_created_by). */
   workbookName: string | null
+  /** The person preselected from the workbook name (matchWorkbookSalesperson), if any. */
+  suggestedName?: string | null
 }): string {
+  if (input.suggestedName) return `Preselected from the PI workbook, which names ${input.suggestedName}. Choose someone else only if that is wrong.`
   if (input.savedName) return `Sales saved ${input.savedName} on this PI. Choose someone else only if that is wrong.`
   const base = 'This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.'
   return input.workbookName ? `${base} The workbook names “${input.workbookName}” — a hint only.` : base

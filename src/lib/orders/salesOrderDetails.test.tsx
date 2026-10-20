@@ -332,7 +332,7 @@ describe('approval reviews what Sales provided instead of asking again', () => {
   })
 
   test('the page prefills from the PI, never from the approver', () => {
-    assert.ok(PAGE.includes('salesperson: salesDetails.salesperson_id ?? null,'), 'the saved id, or nobody — never a name match')
+    assert.ok(PAGE.includes('salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,'), 'the saved id, else the one exact workbook-name match')
     assert.ok(PAGE.includes('leadSource: salesDetails.lead_source ?? prev.leadSource,'))
     assert.ok(!/salesperson:\s*viewerId/.test(PAGE) && !/salesperson:\s*profile/.test(PAGE))
   })
