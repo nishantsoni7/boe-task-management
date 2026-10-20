@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — ERP line-items download + product-code picture names (PR not yet opened) · no migration
+- **ERP button (owner):** the Product pictures block on the Confirmed Order's Documents card has an **ERP** download button. It saves `<order no> ERP line items.xlsx`, built in the browser (`lib/orders/erpLineItems.ts`, `xlsx` imported on demand) with the production team's exact 23-column header (`line_items_template.xlsx`, sheet `Sheet 1 - line_items_template`). Filled: Item Name (= Name), Description, Quantity, Unit Price (= Cost per piece). Inventory Code is blank on purpose. Size, material and customization are ONE cell in Description (`Dimensions: …`, `Material: …`, `Customization: …`, each on its own line in the cell, empty parts omitted). Inventory Code, Item Type, the dimension columns, remarks, approvals and PO-allowed columns are left empty on purpose.
+- **Picture names (owner):** "Download all (ZIP)" now names each picture by its product's Order Product Code: `524-BE0001.jpg` for a single picture; `524-BE0001A`, `B`, `C` … when a product has several (representative first). A row with no code keeps the old descriptive name.
+- Proof: `erpLineItems.test.ts` (new), `productPictures.test.ts` (2 new); tsc and eslint clean.
+
 ## 2026-10-20 — PI upload accepts the shorter "Dimension in inches" heading (PR open) · no migration
 - Complaint: every PI upload was refused with `TEMPLATE_FINGERPRINT_MISMATCH` ("D31 holds "Dimension in inches""). Nothing in the app had changed: the parser has required "Dimension in inches & Shape" since 2026-08-16; the sheets Sales were now building carried the shorter heading (a different/edited template copy).
 - Fix: `PRODUCT_COLUMN_NAMES` entries take optional `aliases`; the dimensions column accepts "Dimension in inches" as well as the canonical label (same whitespace/case folding; `columnHeadingMatches` in `lib/pi/layout.ts`, used by the locator and the fingerprint check). The canonical name is still what messages and the preview report. Any other dimension heading is still refused; both headings on one row are still ambiguous and refused.

@@ -12,6 +12,7 @@ import { unzipSync } from 'fflate'
 import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   buildProductPicturesZip,
+  pictureLetter,
   productPictureZipEntries,
   productPicturesLine,
   productPicturesState,
@@ -55,6 +56,26 @@ describe('the ZIP', () => {
       'B001 Lounge chair - customization 2.webp',
       'B002 Table - representative.jpeg',
     ])
+  })
+
+  test('named by the product code: bare for one picture, A B C for several', () => {
+    const codes = new Map([[32, '524-BE0001'], [33, '524-BE0002']])
+    const entries = productPictureZipEntries([
+      item({ key: 'a' }),
+      item({ key: 'b', role: 'customization', url: 'https://x.test/c/0-1.jpg?t' }),
+      item({ key: 'c', role: 'customization', url: 'https://x.test/c/1-2.webp?t' }),
+      item({ key: 'd', row: 33, sequence: 'B002', name: 'Table', url: 'https://x.test/d.jpeg?t' }),
+      item({ key: 'e', row: 34, sequence: 'B003', name: 'Stool', url: 'https://x.test/e.png?t' }),
+    ], codes)
+    assert.deepEqual(entries.map(e => e.name), [
+      '524-BE0001A.png', '524-BE0001B.jpg', '524-BE0001C.webp', '524-BE0002.jpeg',
+      // no code for row 34: the descriptive name is kept
+      'B003 Stool - representative.png',
+    ])
+  })
+
+  test('letters run past Z', () => {
+    assert.deepEqual([0, 1, 25, 26, 27].map(pictureLetter), ['A', 'B', 'Z', 'AA', 'AB'])
   })
 
   test('only pictures that downloaded go in; none downloaded means no archive', async () => {

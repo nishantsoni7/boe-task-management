@@ -262,6 +262,7 @@ import {
   productPicturesState,
   productPicturesZipName,
 } from '@/lib/orders/productPictures'
+import { buildErpLineItemsWorkbook, erpLineItemsFileName } from '@/lib/orders/erpLineItems'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1986,7 +1987,10 @@ export default function OrderDetailPage() {
   const [picturesZipMessage, setPicturesZipMessage] = useState<string | null>(null)
   const downloadAllPictures = async () => {
     if (picturesZipBusy) return
-    const entries = productPictureZipEntries(piImages.viewerItems)
+    const entries = productPictureZipEntries(
+      piImages.viewerItems,
+      new Map(piProducts.flatMap(p => (p.orderProductCode ? [[p.row, p.orderProductCode] as const] : []))),
+    )
     if (entries.length === 0) return
     setPicturesZipBusy(true)
     setPicturesZipMessage(null)
@@ -2013,6 +2017,29 @@ export default function OrderDetailPage() {
         : null)
     } finally {
       setPicturesZipBusy(false)
+    }
+  }
+
+  // THE ERP LINE-ITEMS SHEET (owner, 2026-10-20): the production team uploads
+  // this exact workbook into their ERP. Built in the browser from the products
+  // already on the page; size, material and customization share one Description.
+  const [erpBusy, setErpBusy] = useState(false)
+  const downloadErpSheet = async () => {
+    if (erpBusy || piProducts.length === 0) return
+    setErpBusy(true)
+    try {
+      const bytes = await buildErpLineItemsWorkbook(piProducts)
+      const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = erpLineItemsFileName(order?.display_number ?? null, order?.client_name ?? null)
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 10_000)
+    } finally {
+      setErpBusy(false)
     }
   }
 
@@ -3136,6 +3163,8 @@ export default function OrderDetailPage() {
               }),
               onView: () => setDesignOpen(true),
               onDownloadAll: () => { void downloadAllPictures() },
+              onDownloadErp: piProducts.length > 0 ? () => { void downloadErpSheet() } : undefined,
+              erpBusy,
               downloading: picturesZipBusy,
               message: picturesZipMessage,
             }}
