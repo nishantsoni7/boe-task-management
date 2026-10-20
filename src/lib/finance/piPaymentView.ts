@@ -78,6 +78,20 @@ export function isAwaitingVerification(status: string | null | undefined): boole
   return status === 'pending_approval' || status === 'needs_clarification'
 }
 
+/** Verified money: Finance's two approved statuses. */
+export function isConfirmedPayment(status: string | null | undefined): boolean {
+  return status === 'approved_unlinked' || status === 'approved_linked'
+}
+
+/**
+ * A payment an administrator may correct from a payments popup: still with
+ * Finance (edit_payment_request) or already confirmed (Finance's own confirmed
+ * edit). A rejected payment is neither; there is nothing live to correct.
+ */
+export function isCorrectablePayment(status: string | null | undefined): boolean {
+  return isAwaitingVerification(status) || isConfirmedPayment(status)
+}
+
 // ── The summary the card shows ────────────────────────────────────────────────
 //
 // A direct projection of the RPC's result. Every figure arrives as a string
@@ -365,7 +379,7 @@ export function describePiPaymentRow(
     canOpenProof: row.proof_count > 0 && row.can_view_proof,
     canDecide: !reversed && !opts.ownPayment && canVerifyPayment(row.status, opts.canVerify),
     ownPending: !reversed && Boolean(opts.ownPayment) && canVerifyPayment(row.status, opts.canVerify),
-    canEdit: !reversed && Boolean(opts.canEdit) && isAwaitingVerification(row.status),
+    canEdit: !reversed && Boolean(opts.canEdit) && isCorrectablePayment(row.status),
   }
 }
 

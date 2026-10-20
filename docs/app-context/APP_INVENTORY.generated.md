@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `45738704` — Edit Received Payment: drop Received In, quiet Notion-style form
+- Commit: `d295858d` — Admin can edit any payment (awaiting or confirmed) inside the PI Draft and Order payments popups
 - Commits on this branch: 926
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 338 (first `20260530_create_positions.sql`, latest `20270325000000_order_pendencies.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `45738704` 2026-10-20 Edit Received Payment: drop Received In, quiet Notion-style form
+- `d295858d` 2026-10-20 Admin can edit any payment (awaiting or confirmed) inside the PI Draft and Order payments popups
 - `54be241f` 2026-10-20 Documents card: compact Download toolbar, Details popup for the PI dates
 - `10bbaf19` 2026-10-20 Update two more source-pin tests for the quotation notice queries
 - `d229e74e` 2026-10-20 Quotation completed or cancelled now notifies the sales person who raised it

@@ -1,18 +1,24 @@
 'use client'
 
-// Opens Finance's own Edit Payment form from a PI Draft's payments dialog.
+// Opens Finance's own Edit Payment form from a payments popup (PI Draft page
+// and Order page).
 //
-// THE FORM IS NOT COPIED. A correction to a pending payment (amount, date,
-// account, reference, destination) is one piece of behaviour that already has a
-// form and a protected database door, edit_payment_request, which refuses a
-// verified payment and anyone who is neither the submitter nor an admin. This
-// file only reads the one row that form needs and hands it over, so the PI page
-// performs no table write of its own.
+// THE FORMS ARE NOT COPIED. A payment still with Finance is corrected through
+// the form and protected database door Finance already has, edit_payment_request,
+// which refuses a verified payment and anyone who is neither the submitter nor
+// an admin. A CONFIRMED payment is corrected through Finance's own confirmed
+// payment form (received/receivedPaymentsEdit), whose guards (verified and
+// allocation rules) are the database's. This file only reads the one row, picks
+// the form by the payment's status and hands it over, so the page performs no
+// table write of its own. A refusal is shown by the form itself.
 
 import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { EditPaymentModal } from '@/app/finance/paymentRequestsEdit'
 import type { PaymentRequest } from '@/app/finance/paymentRequestsModel'
+import { EditPaymentModal as EditConfirmedPaymentModal } from '@/app/finance/received/receivedPaymentsEdit'
+import type { PaymentRequest as ConfirmedPaymentRequest } from '@/app/finance/received/receivedPaymentsModel'
+import { isAwaitingVerification, isConfirmedPayment } from '@/lib/finance/piPaymentView'
 
 type Props = {
   supabase: ReturnType<typeof createClient>
@@ -56,7 +62,26 @@ export function PiPaymentEditDialog({ supabase, paymentId, isAdmin, onClose, onS
     if (failed) onClose()
   }, [failed, onClose])
 
-  if (!request) return null
+  const awaiting = request !== null && isAwaitingVerification(request.status)
+  const confirmed = request !== null && isConfirmedPayment(request.status)
+  const correctable = awaiting || confirmed
+
+  // A rejected or otherwise uncorrectable payment is closed again, not edited.
+  useEffect(() => {
+    if (request && !correctable) onClose()
+  }, [request, correctable, onClose])
+
+  if (!request || !correctable) return null
+  if (confirmed) {
+    return (
+      <EditConfirmedPaymentModal
+        request={request as unknown as ConfirmedPaymentRequest}
+        supabase={supabase}
+        onClose={onClose}
+        onSaved={onSaved}
+      />
+    )
+  }
   return (
     <EditPaymentModal
       request={request}

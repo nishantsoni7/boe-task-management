@@ -20,9 +20,9 @@ import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
-import { PAYMENT_BAR_COLORS_SUBDUED, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
+import { EDIT_PAYMENT_LABEL, PAYMENT_BAR_COLORS_SUBDUED, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
-import { piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import { isCorrectablePayment, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
 import {
   PAYMENT_DETAIL_BACK,
   PAYMENT_DETAIL_SPLIT_NOTE,
@@ -505,7 +505,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
  */
 export function OrderPaymentListDialog({
   kind, rows, formatDate, formatDateTime,
-  canViewDetails, openId, detail, onOpen, onBack, onClose,
+  canViewDetails, openId, detail, onOpen, onBack, onClose, onEdit,
 }: {
   kind: OrderPaymentListKind
   rows: readonly OrderPaymentListRow[]
@@ -526,6 +526,12 @@ export function OrderPaymentListDialog({
   onOpen: (paymentId: string) => void
   onBack: () => void
   onClose: () => void
+  /**
+   * An administrator's correction of one payment, from the list. Null for
+   * everybody else, and then no row draws the control. It opens Finance's own
+   * edit form; the database decides again.
+   */
+  onEdit?: ((paymentId: string) => void) | null
 }) {
   // BOTH CONDITIONS, NOT EITHER. An openId without the capability draws the
   // list, so a state left over from anything cannot become a detail view.
@@ -700,6 +706,15 @@ export function OrderPaymentListDialog({
                     onClick={() => onOpen(row.id)}
                   >
                     {PAYMENT_DETAIL_VIEW}
+                  </button>
+                )}
+                {onEdit && isCorrectablePayment(row.status) && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-pay-list-link"
+                    onClick={() => onEdit(row.id)}
+                  >
+                    {EDIT_PAYMENT_LABEL}
                   </button>
                 )}
               </li>

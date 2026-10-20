@@ -475,7 +475,8 @@ describe('a payment status is called the same thing on the Order and on the PI',
   test('the Order screen takes its labels from the PI card\'s own map', () => {
     assert.ok(rows.includes('piPaymentStatusLabel(row.status)'),
       'the label comes from the shared map, not a second one on this screen')
-    assert.ok(rows.includes("import { piPaymentStatusLabel } from '@/lib/finance/piPaymentView'"))
+    assert.ok(rows.includes("piPaymentStatusLabel } from '@/lib/finance/piPaymentView'"),
+      'and it is imported from the shared map')
   })
 
   test('the three labels that disagreed are gone', () => {
