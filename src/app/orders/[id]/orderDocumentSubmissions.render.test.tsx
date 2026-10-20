@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ProductPicturesState } from '@/lib/orders/productPictures'
-import { OrderDocumentsPanel } from './OrderStatusWorkspace'
+import { OrderDocumentsPanel, mergeAbsenceNotes } from './OrderStatusWorkspace'
 import { SubmissionHistoryList, uploadAvailability } from './OrderDocumentSubmissions'
 import { designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { mainPiCard } from '@/lib/orders/orderMainPi'
@@ -142,9 +142,9 @@ describe('the Documents card', () => {
     assert.ok(t.includes('Uploaded 2026-09-01') && t.includes('Approved 2026-09-02'))
     // Each action says what it opens (20270116000000): the PI itself is the
     // PDF generated from V1's details; the .xlsx is the file Sales uploaded.
-    assert.ok(t.includes('View PI V1 (PDF)'))
+    assert.ok(t.includes('PDF'))
     // THE ORIGINAL EXCEL: the workbook Sales uploaded, downloaded as a file.
-    assert.ok(t.includes('Download original Excel'))
+    assert.ok(t.includes('Excel'))
     // ONE vocabulary: the current file is never labelled three ways at once.
     assert.equal(/Accepted for production|Approved by Admin/.test(t), false)
   })
@@ -178,7 +178,7 @@ describe('the Documents card', () => {
     const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
     const side = text(html.slice(html.indexOf('class="order-docs-side"')))
     assert.ok(main.includes('Product pictures') && main.includes('2 pictures'))
-    assert.ok(main.includes('View') && main.includes('Download all (ZIP)'))
+    assert.ok(main.includes('View') && main.includes('Pictures (2) · ZIP'))
     assert.equal(/picture/i.test(side), false, 'Design Files holds production references only')
   })
 
@@ -186,8 +186,8 @@ describe('the Documents card', () => {
     const html = card([accepted], viewer(), { pictures: { kind: 'missing', recorded: 16 } })
     const t = rowsOf(html)
     assert.ok(t.includes('16 pictures recorded, but the files are no longer in storage.'))
-    assert.equal(t.includes('Download all (ZIP)'), false, 'no download that would produce an empty archive')
-    assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('Download all'), false)
+    assert.equal(t.includes('· ZIP'), false, 'no download that would produce an empty archive')
+    assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('· ZIP'), false)
   })
 
   test('one Update documents control, supplied by the page; none for a reader who may not submit', () => {
@@ -321,11 +321,12 @@ describe('the Main PI as a property list, and Internal order details (owner, 202
     assert.ok(t.includes('Main PI · V1 Waiting for Operations'))
     assert.ok(t.includes('Uploaded 2026-09-01') && t.includes('Approved 2026-09-02'))
     assert.equal(/Operations reviewer|File PI-771/.test(t), false, 'owner: not required')
-    assert.equal((html.match(/class="order-pi-prop"/g) ?? []).length, 2)
+    // The two dates now live in the Details popup (a native <details>).
+    assert.equal((html.match(/<dt>/g) ?? []).length, 2)
     // Main PI on the left, product pictures on the right, in one row once the card is wide.
     assert.match(css, /@container \(min-width: 760px\) \{\n  \.order-docs-main \{\n    display: grid;\n    grid-template-columns: minmax\(0, 1fr\) auto;/)
-    assert.equal((html.match(/boe-btn-primary/g) ?? []).length, 1, 'only View PI is primary')
-    assert.match(html, /boe-btn boe-btn-secondary order-doc-action"[^>]*>[\s\S]*?Download original Excel/)
+    assert.equal((html.match(/boe-btn-primary/g) ?? []).length, 0, 'no filled primary: the colour is on Excel and ERP')
+    assert.ok(html.includes('order-dl-btn--key') && html.includes('Excel'))
     assert.equal(/has not accepted it yet/.test(t), false, 'no repeated sentence')
   })
 
@@ -385,5 +386,16 @@ describe('the upload dialog names the files it will send', () => {
     assert.ok(src.includes('<ChosenFiles files={design} />'))
     assert.ok(src.includes('<ChosenFiles files={po} />'))
     assert.match(css, /.order-docsub-chosen {/)
+  })
+})
+
+describe('the two absence confirmations are said once (owner, 2026-10-20)', () => {
+  const a = 'Not provided — Asha confirmed sending the PI without design files on 1 Sep 2026.'
+  const b = 'Not provided — Asha confirmed sending the PI without a client PO on 1 Sep 2026.'
+  test('identical but for the category: merged', () => {
+    assert.equal(mergeAbsenceNotes(a, b), 'Not provided — Asha confirmed sending the PI without these on 1 Sep 2026.')
+  })
+  test('different people or dates: not merged', () => {
+    assert.equal(mergeAbsenceNotes(a, b.replace('1 Sep', '2 Sep')), null)
   })
 })

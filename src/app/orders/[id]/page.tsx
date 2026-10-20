@@ -169,7 +169,7 @@ import {
 } from '@/lib/orders/orderDocumentSubmissions'
 import { MAIN_PI_LOADING, mainPiCard, piVersionTimeline, type MainPiCard } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument } from '@/lib/orders/orderDocumentsPanel'
+import { clientPoDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
 import { advanceAttentionLabel, advanceAttentionParts, advanceHoldCovered, advanceRealignLabel, advanceRealignParts, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
@@ -1176,7 +1176,12 @@ export default function OrderDetailPage() {
       unresolved: urls.unresolved,
       // The same helper both PI screens use, so a picture is labelled and
       // ordered identically wherever it is opened.
-      viewerItems: buildImageViewerItems(products, urls),
+      // Captioned by the Order Product Code (owner, 2026-10-20), e.g. 537-BE0001,
+      // falling back to the PI's own sequence for a line that has no code.
+      viewerItems: buildImageViewerItems(
+        products.map(p => ({ ...p, itemSequence: p.orderProductCode ?? p.itemSequence })),
+        urls,
+      ),
       // A READ THAT ERRORED IS NOT AN ORDER WITH NO PICTURES. PostgREST
       // answers a refused or failed select with an error and an empty `data`,
       // so counting the rows without looking at `error` first would turn every
@@ -3169,14 +3174,6 @@ export default function OrderDetailPage() {
               message: picturesZipMessage,
             }}
             onDownloadFile={downloadDocFile}
-            mainPiMenu={mainPi.kind === 'ready' ? (
-              <MoreActionsMenu<'pdf'>
-                ariaLabel="More PI actions"
-                triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
-                items={[{ key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` }]}
-                onSelect={() => openVersionPdf(mainPi.version.id, true)}
-              />
-            ) : undefined}
             /* PI HISTORY (20270115000000), on the Main PI row; the versions
                popup is PiVersionHistory's, below. Edit PI is in the header. */
             piVersions={piVersionsSource ? {

@@ -148,12 +148,13 @@ describe('the Main PI card', () => {
     const html = card()
     // The workbook Sales uploaded is DOWNLOADED as the file it is — a browser
     // cannot "view" an .xlsx, so the old View / icon-only Download pair is one button.
-    assert.ok(text(html).includes(MAIN_PI_ORIGINAL_EXCEL_LABEL))
+    // Since 2026-10-20 the button reads "Excel"; the full name is its tooltip.
+    assert.ok(text(html).includes('Excel') && html.includes(MAIN_PI_ORIGINAL_EXCEL_LABEL))
     assert.equal(text(html).includes(DOC_VIEW_PI_LABEL), false)
     assert.ok(text(docs()).includes(DOCUMENTS_HISTORY_LABEL))
   })
 
-  test('a supplied ⋯ menu replaces the Download button on the row', () => {
+  test('the Main PI ⋯ menu is retired: the PDF is in the Download toolbar (owner, 2026-10-20)', () => {
     const html = renderToStaticMarkup(
       <OrderDocumentsPanel
         mainPi={mainPiCard(history([row()]))}
@@ -163,8 +164,7 @@ describe('the Main PI card', () => {
         mainPiMenu={<button type="button" aria-label="More PI actions">⋯</button>}
       />,
     )
-    assert.ok(html.includes('aria-label="More PI actions"'))
-    assert.equal(html.includes('aria-label="Download"'), false)
+    assert.equal(html.includes('More PI actions'), false)
   })
 
   test('NO STORAGE PATH OR URL REACHES THE MARKUP', () => {
@@ -177,7 +177,7 @@ describe('the Main PI card', () => {
     const html = card([row({ workbook_path: null })])
     // The one file action is disabled; nothing else is.
     assert.equal((html.match(/disabled/g) ?? []).length, 1)
-    assert.match(html, /disabled=""[^>]*>[\s\S]*?Download original Excel/)
+    assert.match(html, /disabled=""[^>]*Download original Excel/)
   })
 
   test('while a file is being signed, both file actions say so and are held', () => {
@@ -336,9 +336,9 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.ok(state({ kind: 'ready', available: 12, unavailable: 4 }).includes('12 of 16 pictures available'))
     // Only a usable set offers View and the ZIP.
     for (const p of [{ kind: 'loading' }, { kind: 'unreadable' }, { kind: 'none' }, { kind: 'missing', recorded: 3 }] as ProductPicturesState[]) {
-      assert.equal(state(p).includes('Download all (ZIP)'), false, p.kind)
+      assert.equal(state(p).includes('· ZIP'), false, p.kind)
     }
-    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Download all (ZIP)'))
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Pictures (2) · ZIP'))
     // Only the problems are drawn as problems.
     assert.ok(docs({ pictures: { kind: 'missing', recorded: 3 } }).includes('order-doc-pictures-line--warn'))
     assert.equal(docs({ pictures: { kind: 'none' } }).includes('order-doc-pictures-line--warn'), false)
