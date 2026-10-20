@@ -17,7 +17,7 @@ import { PaymentCustodyTrail, usePaymentDestination } from './components/Payment
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { paymentAgainstDisplay } from '@/lib/finance/paymentDestination'
 import { fmtDate, fmtDateTime, fmtAmount, orderNoCell, friendlyDbErrorMessage, type PaymentRequest, type AdminAction } from './paymentRequestsModel'
-import { Field, ErrorBanner, SectionHeader, MetaItem, StatusBadge } from './paymentRequestsAtoms'
+import { Field, ErrorBanner, StatusBadge } from './paymentRequestsAtoms'
 
 // ── Admin Review presentation primitives ─────────────────────────────────────
 // The review modal is an approval workspace, not a detail view: an admin reads
@@ -59,13 +59,16 @@ export function FigureCell({ label, value, lead, strong, hint }: {
   hint?: React.ReactNode
 }) {
   return (
-    <div style={{ background: colors.raised, padding: '11px 14px', minWidth: 0 }}>
-      <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div style={{ background: colors.raised, padding: '12px 16px 13px', minWidth: 0 }}>
+      {/* The label is small, regular and muted; the value is larger and dark.
+          They differ in size, weight AND colour so neither can be mistaken
+          for the other. */}
+      <div style={{ fontSize: '12.5px', fontWeight: 500, color: colors.muted, lineHeight: 1.3 }}>
         {label}
       </div>
       <div style={{
-        marginTop: lead ? '3px' : '4px',
-        fontSize: lead ? '26px' : strong ? '19px' : '15px',
+        marginTop: lead ? '4px' : '5px',
+        fontSize: lead ? '28px' : strong ? '20px' : '16px',
         fontWeight: lead || strong ? 700 : 600,
         color: colors.primary,
         lineHeight: lead ? 1.1 : strong ? 1.25 : 1.35,
@@ -95,19 +98,38 @@ export const REVIEW_DECISIONS: {
   { key: 'reject',              label: 'Reject',                hint: 'Decline this payment request',         color: colors.red,   tint: colors.redTint,   Icon: CircleX },
 ]
 
-// One decision as a full-width choice row rather than a chip in a wrapping bar.
-// Three chips labelled "Verify Payment" / "Needs Clarification" /
-// "Reject" cannot sit on one line in a side column, so they wrapped into an
-// uneven cluster that read as three unrelated buttons. Stacked rows give each
-// outcome equal width, room for a one-line consequence, and a selected state
-// that is obvious at a glance.
-//
-// Keyboard: these carry real radio semantics, so the group is one tab stop and
-// the arrow keys move between the three (roving tabIndex driven by the parent).
+// One property in a Notion-style list: the label sits left in small muted
+// type, the value right in larger dark type. On a phone the label column
+// narrows but the pair stays on one line.
+export function PropertyRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'minmax(86px, 118px) minmax(0, 1fr)', columnGap: '12px',
+      alignItems: 'baseline', padding: '9px 0', borderTop: `1px solid ${colors.border}`,
+    }}>
+      <span style={{ fontSize: '13px', fontWeight: 500, color: colors.muted, lineHeight: 1.4 }}>{label}</span>
+      <span style={{
+        fontSize: '14.5px', fontWeight: 500, color: muted ? colors.muted : colors.primary,
+        wordBreak: 'break-word', lineHeight: 1.45,
+      }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+// A quiet section title: small, sentence case. Distinct from any value.
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary, lineHeight: 1.3 }}>{children}</div>
+}
+
+// One decision as a selectable list item. Radio semantics: the group is one tab
+// stop and the arrow keys move between the three (roving tabIndex driven by the
+// parent). The selected item is marked by outline colour, tint, a filled radio
+// dot and a bolder label — never by colour alone.
 export function DecisionRow({
   decision: d,
   selected,
-  first,
   tabIndex,
   innerRef,
   onSelect,
@@ -115,7 +137,6 @@ export function DecisionRow({
 }: {
   decision: (typeof REVIEW_DECISIONS)[number]
   selected: boolean
-  first: boolean
   tabIndex: number
   innerRef: (el: HTMLButtonElement | null) => void
   onSelect: () => void
@@ -135,33 +156,39 @@ export function DecisionRow({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%', textAlign: 'left',
-        padding: '10px 12px', cursor: 'pointer',
-        border: 'none', borderTop: first ? 'none' : `1px solid ${colors.border}`,
+        display: 'flex', alignItems: 'center', gap: '12px', width: '100%', textAlign: 'left',
+        padding: '10px 12px', cursor: 'pointer', borderRadius: '8px',
+        border: `1px solid ${selected ? d.color : 'transparent'}`,
         background: selected ? d.tint : hover ? colors.raised : 'transparent',
-        // The selected row is marked on its leading edge as well as by tint, so
-        // the choice survives for anyone who cannot separate the three tints.
-        boxShadow: selected ? `inset 3px 0 0 ${d.color}` : 'none',
-        transition: 'background 0.16s ease',
+        transition: 'background 0.16s ease, border-color 0.16s ease',
       }}
     >
       <Icon
-        size={15}
-        strokeWidth={2.2}
+        size={17}
+        strokeWidth={2}
         aria-hidden="true"
-        style={{ flexShrink: 0, marginTop: '1px', color: selected ? d.color : colors.muted }}
+        style={{ flexShrink: 0, color: selected ? d.color : colors.muted }}
       />
-      <span style={{ minWidth: 0 }}>
+      <span style={{ minWidth: 0, flex: 1 }}>
         <span style={{
-          display: 'block', fontSize: '13px', fontWeight: 600, lineHeight: 1.35,
+          display: 'block', fontSize: '14px', fontWeight: selected ? 600 : 500, lineHeight: 1.35,
           color: selected ? d.color : colors.primary,
         }}>
           {d.label}
         </span>
-        <span style={{ display: 'block', fontSize: '12px', color: colors.tertiary, marginTop: '2px', lineHeight: 1.4 }}>
+        <span style={{ display: 'block', fontSize: '12.5px', color: colors.muted, marginTop: '1px', lineHeight: 1.4 }}>
           {d.hint}
         </span>
       </span>
+      <span
+        aria-hidden="true"
+        style={{
+          width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box',
+          border: `1.5px solid ${selected ? d.color : colors.borderMed}`,
+          background: selected ? d.color : 'transparent',
+          boxShadow: selected ? `inset 0 0 0 3px ${d.tint}` : 'none',
+        }}
+      />
     </button>
   )
 }
@@ -329,7 +356,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
   const left = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-        <SectionHeader>Payment Details</SectionHeader>
+        <GroupLabel>Payment details</GroupLabel>
         {onEdit && (
           <button
             type="button"
@@ -346,7 +373,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
       {/* NEVER BLANK. A Suspense payment has no customer to name, and
           customerDisplayName is the one place that decides what that reads as
           — never an empty cell, a 'null' or an 'undefined'. */}
-      <MetaItem label="Client" value={customerDisplayName(r.client_name)} />
+      <PropertyRow label="Client" value={customerDisplayName(r.client_name)} />
 
       {/* WHAT APPROVING THIS WILL ATTACH THE MONEY TO — the one thing an
           approver is deciding about. Before the decision it is the pending
@@ -354,7 +381,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
           and this field is then reading that instead. Same shared helper the
           table and the requester's own popup read, so the three cannot
           disagree. */}
-      <MetaItem label="Against" value={paymentAgainstDisplay(destination)}
+      <PropertyRow label="Against" value={paymentAgainstDisplay(destination)}
                 muted={!destination || destination.kind === 'suspense'} />
 
       {/* PROOF, REFERENCE AND NOTE — each drawn only when it exists.
@@ -369,17 +396,17 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
         supabase={supabase}
         paymentRequestId={r.id}
         inline
-        heading={<SectionHeader>Payment Proof</SectionHeader>}
+        heading={<GroupLabel>Payment proof</GroupLabel>}
       />
-      {r.proof_note && <MetaItem label="Reference" value={r.proof_note} />}
-      {r.sales_note && <MetaItem label="Note" value={r.sales_note} />}
+      {r.proof_note && <PropertyRow label="Reference" value={r.proof_note} />}
+      {r.sales_note && <PropertyRow label="Note" value={r.sales_note} />}
 
       {/* WHO RAISED IT — kept, and kept secondary. It used to sit directly under
           the Payment ID in the header, which gave the person who typed the entry
           more prominence than the account the money came through. Finance cares
           about the money first; the submitter matters for accountability and for
           knowing who a clarification goes back to. */}
-      <MetaItem
+      <PropertyRow
         label="Submitted by"
         value={r.submitted_by_name
           ? `${r.submitted_by_name} · ${fmtDate(r.created_at)}`
@@ -409,25 +436,18 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
 
   const right = (
     <>
-      {/* ── Decision — the one thing this modal exists to capture, so it is the
-             only bordered card in this column and the only element carrying a
-             tint. Business logic (approve RPC, status update for
-             clarification/rejection, notifications) is untouched: this is the
-             same three-way choice and the same admin note as before. ── */}
-      <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: '8px', overflow: 'hidden' }}>
-        <div style={{
-          padding: '9px 12px', background: colors.raised, borderBottom: `1px solid ${colors.border}`,
-          fontSize: '12px', fontWeight: 700, color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.06em',
-        }}>
-          Decision
-        </div>
+      {/* ── Decision — the one thing this modal exists to capture. A quiet list of
+             three selectable items; only the chosen one carries colour. Business
+             logic (approve RPC, send-back / reject doors, notifications) is
+             untouched: this is the same three-way choice and the same admin note. ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <GroupLabel>Decision</GroupLabel>
 
-        <div role="radiogroup" aria-label="Review decision">
+        <div role="radiogroup" aria-label="Review decision" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {REVIEW_DECISIONS.map((d, i) => (
             <DecisionRow
               key={d.key}
               decision={d}
-              first={i === 0}
               selected={action === d.key}
               tabIndex={action ? (action === d.key ? 0 : -1) : (i === 0 ? 0 : -1)}
               innerRef={el => { decisionRefs.current[i] = el }}
@@ -438,10 +458,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
         </div>
 
         {action && (
-          <div style={{
-            borderTop: `1px solid ${colors.border}`, padding: '12px',
-            display: 'flex', flexDirection: 'column', gap: '10px',
-          }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
             {action === 'approve' && (() => {
               // WHAT APPROVAL WILL ACTUALLY DO, read from the pending intent
               // rather than from payment_target_type — which reads 'unallocated'
@@ -454,7 +471,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
                   padding: '9px 11px', borderRadius: '8px',
                   background: goesSomewhere ? '#E8F2EC' : '#FAF0DA',
                   border: `1px solid ${goesSomewhere ? '#BCD8C8' : '#E6D2A0'}`,
-                  fontSize: '12px', color: goesSomewhere ? '#276247' : '#805B0D',
+                  fontSize: '12.5px', color: goesSomewhere ? '#276247' : '#805B0D',
                   lineHeight: 1.5,
                 }}>
                   {linksToOrder
@@ -480,13 +497,22 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
           </div>
         )}
       </div>
-
-      {/* Activity — history, so it is rendered bare on the dialog surface. It
-          keeps its own heading, query, ordering and event text; dropping the
-          card around it is what stops it reading as a second panel of equal
-          rank to the decision above. */}
-      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
     </>
+  )
+
+  // Activity — history, drawn full width below both columns so the two columns
+  // stay balanced and, on a phone, the decision comes before the long timeline.
+  // It keeps its own query, ordering and event text.
+  const bottom = (
+    <PaymentRequestActivity
+      supabase={supabase}
+      paymentRequestId={r.id}
+      heading={
+        <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: '14px' }}>
+          <GroupLabel>Activity</GroupLabel>
+        </div>
+      }
+    />
   )
 
   // ── Commit bar ──────────────────────────────────────────────────────────────
@@ -514,14 +540,14 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
         <div style={{ fontSize: '12px', color: action ? colors.tertiary : colors.muted, minWidth: 0, lineHeight: 1.45 }}>
           {footerNote}
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '10px', flex: '1 1 auto', justifyContent: 'flex-end' }}>
           {/* boe-btn-ghost has no disabled treatment of its own, so the
               in-flight state is stated inline rather than left looking live. */}
           <button
             onClick={onClose}
             disabled={saving}
             className="boe-btn boe-btn-ghost"
-            style={{ padding: '7px 16px', fontSize: '13px', opacity: saving ? 0.55 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+            style={{ padding: '9px 18px', fontSize: '13px', flex: '0 1 auto', opacity: saving ? 0.55 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
           >
             Cancel
           </button>
@@ -529,7 +555,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
             onClick={handleConfirm}
             disabled={confirmDisabled}
             style={{
-              padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none',
+              padding: '9px 22px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none', flex: '0 1 auto',
               // The commit button wears the chosen outcome's colour, so approve
               // and reject are never one identical click apart.
               background: confirmDisabled ? colors.float : (selected?.color ?? colors.amber),
@@ -554,6 +580,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
       top={top}
       left={left}
       right={right}
+      bottom={bottom}
       footer={footer}
       // This modal holds unsaved input (the admin note) — BOE form-modal
       // dismissal rule: a backdrop click never discards it. Escape and × still
