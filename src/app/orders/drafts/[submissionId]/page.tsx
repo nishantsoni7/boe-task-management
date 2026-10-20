@@ -175,6 +175,7 @@ import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   describeConfirmationFailure,
+  matchWorkbookSalesperson,
   validateOrderConfirmation,
   workbookSalespersonHint,
   type OrderConfirmationDraft,
@@ -1742,6 +1743,8 @@ function PiDraftDetailPageInner() {
   const workbookName = submission.source_workbook_name?.trim() || null
   /** Whoever the PI document itself named. Absent on plenty of real workbooks. */
   const documentAuthor = submission.source_created_by?.trim() || null
+  // The one BOE user the workbook's author name points at, when Sales saved nobody.
+  const workbookSalespersonMatch = salesDetails.salesperson_id ? null : matchWorkbookSalesperson(documentAuthor, salespeople)
 
   // The shared builder still decides every LABEL and every formatted VALUE —
   // the dates, the em dash for an absent cell, and the rule that the workbook's
@@ -2392,7 +2395,7 @@ function PiDraftDetailPageInner() {
           // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
           // there is one — never the approver. A PI from before that has
           // none, and nobody is selected for it.
-          salesperson: salesDetails.salesperson_id ?? null,
+          salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,
           leadSource: salesDetails.lead_source ?? prev.leadSource,
           confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
           dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
@@ -3167,7 +3170,8 @@ function PiDraftDetailPageInner() {
           provided={{
             salesperson: salesDetails.salesperson_id
               ? { id: salesDetails.salesperson_id, name: salespersonName(salesDetails.salesperson_id, salespeople) ?? 'Saved salesperson (not in the list)' }
-              : null,
+              : workbookSalespersonMatch,
+            salespersonFromWorkbook: !!workbookSalespersonMatch,
             leadSource: salesDetails.lead_source,
             confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? null,
             dueDate: submission.due_date?.slice(0, 10) ?? null,

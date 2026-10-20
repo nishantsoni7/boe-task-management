@@ -1323,6 +1323,8 @@ export function PiApproveOrderModal({
    */
   provided?: {
     salesperson: { id: string; name: string } | null
+    /** True when the salesperson was matched from the workbook's name, not saved by Sales. */
+    salespersonFromWorkbook?: boolean
     leadSource: string | null
     confirmDate: string | null
     dueDate: string | null
@@ -1397,7 +1399,7 @@ export function PiApproveOrderModal({
       <span className="boe-input-label">{ORDER_CONFIRMATION_LABEL[field]}</span>
       <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
         <strong style={{ fontSize: '13.5px', color: colors.primary, overflowWrap: 'anywhere' }}>{reviewText[field]}</strong>
-        <span style={{ fontSize: '12px', color: colors.muted }}>From the PI</span>
+        <span style={{ fontSize: '12px', color: colors.muted }}>{field === 'salesperson' && provided?.salespersonFromWorkbook ? 'From the PI workbook' : 'From the PI'}</span>
         <button type="button" disabled={saving}
           onClick={() => setChanging(current => new Set(current).add(field))}
           aria-label={`Change ${ORDER_CONFIRMATION_LABEL[field].toLowerCase()}`}
@@ -1481,7 +1483,11 @@ export function PiApproveOrderModal({
                   ))}
                 </select>
                 <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '12px', color: colors.muted }}>
-                  {salespersonSelectorNote({ savedName: provided?.salesperson?.name ?? null, workbookName: workbookSalesperson ?? null })}
+                  {salespersonSelectorNote({
+                    savedName: provided?.salespersonFromWorkbook ? null : provided?.salesperson?.name ?? null,
+                    workbookName: workbookSalesperson ?? null,
+                    suggestedName: provided?.salespersonFromWorkbook ? provided.salesperson?.name ?? null : null,
+                  })}
                 </span>
               </label>
               )}

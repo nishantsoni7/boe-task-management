@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `168eb6b6` — Warm other modules on intent, not on load (fixes the console preload warning)
-- Commits on this branch: 913
+- Commit: `af938908` — Record that migration 20270324000000 is applied to production
+- Commits on this branch: 915
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 337 (first `20260530_create_positions.sql`, latest `20270324000000_payment_mode_hdfc_secondary.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 715   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
+- `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
 - `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
 - `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 - `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
@@ -37,8 +39,6 @@
 - `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
 - `c3ecf2c9` 2026-10-18 Backup mirror: use our token (stop checkout persisting its own) (#341)
 - `b77318dd` 2026-10-18 Docs: Meetings module-entry fix shipped and applied (#340)
-- `40270642` 2026-10-18 Meetings: every write RPC requires Meetings module entry (#310)
-- `27b3bcbe` 2026-10-18 Docs: record backup decisions (Supabase daily backups, no PITR, daily schedule) (#339)
 
 ## Pages by top-level area
 

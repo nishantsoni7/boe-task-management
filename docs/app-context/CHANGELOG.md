@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-20 — Approval dialog preselects the salesperson the PI workbook names (PR open) · no migration
+- Complaint: Create Confirmed Order asked for the BOE salesperson although the PI page showed "Salesperson named in PI workbook: <name>". Cause: that line is the workbook's typed author name; a PI Sales submitted without choosing a salesperson has `salesperson_id` NULL (and `lead_source` NULL), so the dialog opened empty. Dates were already prefilled and shown "From the PI".
+- Change: when Sales saved nobody, the dialog preselects the BOE user whose name EXACTLY matches the workbook name (case/spacing ignored, whole name, exactly ONE active user: `matchWorkbookSalesperson` in `lib/orders/orderConfirmation.ts`). Shown as "From the PI workbook" with a Change link; no match, a partial name or two people with the same name still select nobody and show the name as a hint. Reverses the earlier "never match by name" rule on purpose (owner request); never the viewer or submitter; the database still validates the id.
+- NOT changed: lead source has no source on a PI Sales left blank, so it is still asked at approval. Salesperson and lead source remain optional at Submit (`piCompletion.ts` "later" list) — making them required at Submit is a separate decision.
+- Tests: `piApprovalModals.render.test.tsx` (2, 2b, 3) and `salesOrderDetails.test.tsx` updated.
+
 ## 2026-10-20 — Two HDFC accounts: HDFC PRI and HDFC SEC (PR open) · migration 20270324000000 → APPLIED to production 2026-10-20 (applied alone; the two 20270321 migrations were left unapplied)
 - BOE holds two HDFC accounts but a payment could only say "HDFC". Payment modes are now `hdfc` (shown **HDFC PRI**, primary) and new `hdfc_sec` (shown **HDFC SEC**, secondary). No row is rewritten: every existing `hdfc` payment reads as HDFC PRI; correcting one that really went to the secondary is an ordinary payment edit.
 - `20270324000000_payment_mode_hdfc_secondary.sql`: widens the `payment_mode` CHECK and `payment_mode_is_current()` (the one list every entry door asks — the entry/edit RPCs are NOT redefined) and restates only the enforce-trigger's refusal sentence. Additive, so the old code keeps working once it is applied. Custody rule unchanged (HDFC SEC has no custody trail).
