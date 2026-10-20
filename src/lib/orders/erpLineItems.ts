@@ -8,6 +8,7 @@
 // stay empty on purpose.
 
 import { safeFileName } from '@/lib/tasks/taskGallery'
+import { styleErpWorkbook } from './erpWorkbookStyles'
 
 export const ERP_LINE_ITEMS_HEADERS = [
   'Item Type', 'Inventory Code', 'Item Name', 'Description', 'Quantity', 'Unit Price',
@@ -72,5 +73,5 @@ export async function buildErpLineItemsWorkbook(products: readonly ErpProduct[])
   sheet['!cols'] = ERP_LINE_ITEMS_HEADERS.map((h, i) => ({ wch: i === 3 ? 60 : Math.max(12, h.length + 2) }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, sheet, ERP_LINE_ITEMS_SHEET_NAME)
-  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer)
+  return styleErpWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer))
 }
