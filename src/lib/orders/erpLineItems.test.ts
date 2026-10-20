@@ -8,6 +8,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
+import { strFromU8, unzipSync } from 'fflate'
 import {
   ERP_LINE_ITEMS_HEADERS,
   buildErpLineItemsWorkbook,
@@ -55,6 +56,18 @@ describe('ERP line items', () => {
     assert.deepEqual(rows[0], [...ERP_LINE_ITEMS_HEADERS])
     assert.ok(!rows[1][1])
     assert.equal(rows[1][2], 'Lounge chair')
+  })
+
+  test('the header is bold on grey and the cells wrap, so Description shows its lines', async () => {
+    const files = unzipSync(await buildErpLineItemsWorkbook([product]))
+    const styles = strFromU8(files['xl/styles.xml'])
+    assert.ok(styles.includes('<b/>'))
+    assert.match(styles, /FFDBDBDB/)
+    assert.match(styles, /wrapText="1"/)
+    const sheet = strFromU8(files['xl/worksheets/sheet1.xml'])
+    assert.match(sheet, /<c r="A1"[^>]* s="1"/)
+    assert.match(sheet, /<c r="W1"[^>]* s="1"/)
+    assert.match(sheet, /<c r="D2"[^>]* s="2"/)
   })
 
   test('file name', () => {
