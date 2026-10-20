@@ -138,11 +138,11 @@ describe('optional evidence takes space only when it exists', () => {
   })
 
   test('each of the three is guarded on its own value', () => {
-    assert.ok(code.includes('{r.proof_note && <MetaItem label="Reference"'))
-    assert.ok(code.includes('{r.sales_note && <MetaItem label="Note"'))
+    assert.ok(code.includes('{r.proof_note && <PropertyRow label="Reference"'))
+    assert.ok(code.includes('{r.sales_note && <PropertyRow label="Note"'))
     // The proof heading travels into the component that knows whether there is
     // a proof — the host cannot know without repeating the query.
-    assert.ok(/heading=\{<SectionHeader>Payment Proof<\/SectionHeader>\}/.test(code))
+    assert.ok(/heading=\{<GroupLabel>Payment proof<\/GroupLabel>\}/.test(code))
   })
 
   test('all three stored columns still have somewhere to appear', () => {
@@ -167,11 +167,34 @@ describe('the submitter is kept, and kept secondary', () => {
 })
 
 describe('the decision keeps its prominence, and its wiring', () => {
-  test('Decision and Activity are both in the right-hand column, in that order', () => {
-    const right = code.slice(code.indexOf('const right = ('))
-    const decision = right.indexOf('Decision')
-    const activity = right.indexOf('<PaymentRequestActivity')
-    assert.ok(decision > -1 && activity > decision, 'Activity sits below the Decision')
+  test('Decision is in the right-hand column and Activity runs full width below both', () => {
+    const right = code.slice(code.indexOf('const right = ('), code.indexOf('const bottom = ('))
+    assert.ok(right.includes('<GroupLabel>Decision</GroupLabel>'))
+    assert.ok(!right.includes('<PaymentRequestActivity'), 'Activity is not crowding the decision column')
+    assert.ok(code.indexOf('const bottom = (') > code.indexOf('const right = ('))
+    assert.ok(code.includes('bottom={bottom}'), 'so a phone reads details, decision, then history')
+  })
+
+  test('the decisions are a radio list with a visible selected state', () => {
+    assert.ok(code.includes('role="radiogroup"'))
+    assert.ok(source.includes('role="radio"') && source.includes('aria-checked={selected}'))
+    assert.ok(source.includes("selected ? d.color : 'transparent'"), 'selected outline')
+  })
+
+  test('labels and values are told apart: a property list for Client, Against, Submitted by', () => {
+    const row = source.slice(source.indexOf('function PropertyRow('), source.indexOf('function GroupLabel('))
+    assert.ok(row.includes("gridTemplateColumns: 'minmax(86px, 118px) minmax(0, 1fr)'"), 'label left, value right')
+    assert.ok(!row.includes('textTransform'), 'labels are not capitalised like the values around them')
+    for (const l of ['Client', 'Against', 'Submitted by']) {
+      assert.ok(new RegExp('<PropertyRow\\s+label="' + l + '"').test(code), l + ' is a property row')
+    }
+  })
+
+  test('the payment mode names the right HDFC account', async () => {
+    const { paymentDestinationLabel } = await import('./paymentDestinations')
+    assert.equal(paymentDestinationLabel('hdfc', null), 'HDFC PRI')
+    assert.equal(paymentDestinationLabel('hdfc_sec', null), 'HDFC SEC')
+    assert.equal(paymentDestinationLabel('bank_transfer', 'company_account'), 'HDFC PRI')
   })
 
   test('the three decisions and the note rules are exactly as they were', () => {
