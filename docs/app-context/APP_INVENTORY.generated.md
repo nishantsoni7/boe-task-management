@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `54be241f` — Documents card: compact Download toolbar, Details popup for the PI dates
-- Commits on this branch: 925
+- Commit: `45738704` — Edit Received Payment: drop Received In, quiet Notion-style form
+- Commits on this branch: 926
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 338 (first `20260530_create_positions.sql`, latest `20270325000000_order_pendencies.sql`)
 - Tables ever created: 154 (dropped at some point: 7)   SQL functions: 720   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `45738704` 2026-10-20 Edit Received Payment: drop Received In, quiet Notion-style form
 - `54be241f` 2026-10-20 Documents card: compact Download toolbar, Details popup for the PI dates
 - `10bbaf19` 2026-10-20 Update two more source-pin tests for the quotation notice queries
 - `d229e74e` 2026-10-20 Quotation completed or cancelled now notifies the sales person who raised it
@@ -38,7 +39,6 @@
 - `e233340c` 2026-10-19 Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
 - `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
 - `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
-- `67523b65` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours (#350)
 
 ## Pages by top-level area
 
