@@ -29,6 +29,7 @@ import {
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
+import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
 import {
   PAYMENT_DETAIL_COLUMNS,
   createPaymentDetailGate,
@@ -794,6 +795,8 @@ export default function OrderDetailPage() {
   const [paymentList, setPaymentList] = useState<OrderPaymentListKind | null>(null)
   /** Which payment inside that list is showing its detail, or null for the list. */
   const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null)
+  /** The payment an administrator is correcting from the list, or null. */
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   /** That payment's Finance record: asked for on the press, never at load. */
   const [paymentDetail, setPaymentDetail] = useState<OrderPaymentDetailState | null>(null)
   /**
@@ -3632,6 +3635,23 @@ export default function OrderDetailPage() {
           onClose={() => {
             setPaymentList(null)
             forgetPaymentDetail()
+          }}
+          /* An administrator may correct any payment in the list, awaiting or
+             verified. It opens Finance's own edit form; the database decides. */
+          onEdit={actingAsAdmin ? (paymentId => { setEditingPaymentId(paymentId) }) : null}
+        />
+      )}
+
+      {editingPaymentId !== null && (
+        <PiPaymentEditDialog
+          supabase={supabase}
+          paymentId={editingPaymentId}
+          isAdmin={actingAsAdmin}
+          onClose={() => setEditingPaymentId(null)}
+          onSaved={() => {
+            setEditingPaymentId(null)
+            /* Re-read the Order so the corrected values show in the list. */
+            void loadOrder()
           }}
         />
       )}

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a3148a5c` — ERP sheet: bold grey header and wrapped cells
-- Commits on this branch: 922
+- Commit: `54be241f` — Documents card: compact Download toolbar, Details popup for the PI dates
+- Commits on this branch: 925
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 338 (first `20260530_create_positions.sql`, latest `20270325000000_order_pendencies.sql`)
 - Tables ever created: 154 (dropped at some point: 7)   SQL functions: 720   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `54be241f` 2026-10-20 Documents card: compact Download toolbar, Details popup for the PI dates
+- `10bbaf19` 2026-10-20 Update two more source-pin tests for the quotation notice queries
+- `d229e74e` 2026-10-20 Quotation completed or cancelled now notifies the sales person who raised it
 - `a3148a5c` 2026-10-20 ERP sheet: bold grey header and wrapped cells
 - `22c24734` 2026-10-20 Order page: ERP line-items download, pictures named by product code
 - `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
@@ -36,9 +39,6 @@
 - `fdde269f` 2026-10-19 Order Detail: Edit PI in the header, Main PI beside Product pictures (#352)
 - `60ed1b0d` 2026-10-19 Order Detail: Notion-style Main PI, Internal order details, warnings off the page (#351)
 - `67523b65` 2026-10-19 Order Detail: Documents card shows PI-sent files; solid warning colours (#350)
-- `a793691b` 2026-10-19 Tests/lint: offline-env-safe Bria test, drop unused rehearsal counter (#349)
-- `8cba2b56` 2026-10-19 Orders lists: Confirmed Orders and PI Drafts on the Finance list design (#348)
-- `8d54df78` 2026-10-19 Order Detail + Internal order details: Notion-style layout (#347)
 
 ## Pages by top-level area
 

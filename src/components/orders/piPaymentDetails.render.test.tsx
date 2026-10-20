@@ -592,18 +592,19 @@ describe('Edit is offered beside Approve and Reject, to whoever the page allows'
     assert.ok(!buttonLabels(modal({ canVerify: true, onDecide: decide, onEdit: null })).includes(EDIT_PAYMENT_LABEL))
   })
 
-  test('it is drawn on each payment still with Finance, and on no other', () => {
+  test('it is drawn on each live payment, awaiting or confirmed, and on no other', () => {
     const labels = buttonLabels(modal({ canVerify: true, onDecide: decide, onEdit: edit }))
-    // pending and needs-clarification, both active; not verified, rejected or reversed
-    assert.equal(labels.filter(l => l === EDIT_PAYMENT_LABEL).length, 2)
+    // pending, needs-clarification, and the two confirmed rows with an active
+    // allocation; not rejected or reversed
+    assert.equal(labels.filter(l => l === EDIT_PAYMENT_LABEL).length, 4)
     const editable = ROWS.map(r => describePiPaymentRow(r, { canVerify: false, canEdit: true }))
       .filter(v => v.canEdit).map(v => v.requestNumber)
-    assert.deepEqual(editable, ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102'])
+    assert.deepEqual(editable, ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102', 'PAY-REQ-2026-0103', 'PAY-REQ-2026-0106'])
   })
 
   test('it does not depend on being able to verify, and survives the own-payment rule', () => {
     assert.equal(buttonLabels(modal({ canVerify: false, onDecide: null, onEdit: edit }))
-      .filter(l => l === EDIT_PAYMENT_LABEL).length, 2)
+      .filter(l => l === EDIT_PAYMENT_LABEL).length, 4)
     const view = describePiPaymentRow(ROWS[0], { canVerify: true, ownPayment: true, canEdit: true })
     assert.equal(view.canDecide, false)
     assert.equal(view.canEdit, true)
@@ -618,5 +619,22 @@ describe('Edit is offered beside Approve and Reject, to whoever the page allows'
     for (const forbidden of ['.insert(', '.update(', '.delete(', '.upsert(', '.rpc(']) {
       assert.ok(!dialog.includes(forbidden), `${forbidden}: the write belongs to edit_payment_request, through the Edit form`)
     }
+  })
+
+  test('a confirmed payment opens Finance’s own confirmed-payment form, not a copy', () => {
+    const dialog = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentEditDialog.tsx'), 'utf8')
+    assert.ok(dialog.includes("from '@/app/finance/received/receivedPaymentsEdit'"))
+    assert.ok(dialog.includes('isConfirmedPayment(request.status)'))
+    assert.ok(!dialog.includes('<form'), 'no form of its own')
+  })
+
+  test('the Order page offers Edit to an administrator on every correctable row and re-reads after saving', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+    const workspace = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderWorkspace.tsx'), 'utf8')
+    assert.ok(page.includes('onEdit={actingAsAdmin ?'), 'admin only')
+    assert.ok(page.includes('<PiPaymentEditDialog'))
+    const afterSaved = page.slice(page.indexOf('<PiPaymentEditDialog'))
+    assert.ok(afterSaved.slice(0, 700).includes('void loadOrder()'), 'the list is re-read after a save')
+    assert.ok(workspace.includes('onEdit && isCorrectablePayment(row.status)'))
   })
 })
