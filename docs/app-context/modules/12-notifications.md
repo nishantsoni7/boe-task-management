@@ -111,13 +111,17 @@ Feed selection (`src/lib/notifications.ts`, one function `getNotificationCategor
 - View As: a preview may read but never mutate the previewed employee's inbox.
 - Notification failure must never roll back the business action (suppressed rows are no-ops; routes report their own failure).
 
+## 8b. Orders notices written by the database (20270321000001)
+
+Triggers on `order_activity_log`, `order_approval_events`, `order_change_requests`, `order_submissions` (deferred constraint trigger), `orders` (insert from a PI) and `order_operations_handoffs` insert notifications in the same transaction as the activity, through `order_notify_users` (never the actor, never inactive/deleted, no same type+record+person within 2 minutes) and `order_update_recipient_ids` (the configured recipients). The browser routes (`/api/orders/[id]/notify`, `/api/orders/submissions/notify`, `/api/finance/notify`) still exist; the 2-minute rule on both sides keeps them from doubling. Payment-submitted notices stay browser-sent (a database trigger at insert time would fire before a self-verified payment completes).
+
 ## 9. Known traps / gotchas / unfixed defects
 
 1. **FIXED 2026-10-19 (code only): these types are now in `ORDER_NOTIFICATION_TYPES` and filed under Orders by `getNotificationMeta` (test `hiddenOrderTypes.test.ts`). Original note:** Some written types are not in any feed list. `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and
    `order_document_review_requested/decided` are written (by `/api/orders/submissions/notify` and by `20270112000000` triggers) and described by `getNotificationMeta`, but
    `ORDER_NOTIFICATION_TYPES` does not contain them, and the Orders feed is a strict `type.in.(...)`. Such rows would not appear in `/orders/notifications` nor in its unread badge. Check with
    `select type,count(*),count(*) filter (where not is_read) from notifications group by 1;`. Fix = add them to `ORDER_NOTIFICATION_TYPES` (code only) and update the tests that assert the list.
-2. **(code-verified, runtime unverified) `pi_correction_requested/resolved/rejected` are inserted as `type` by `/api/orders/submissions/notify` but NO migration adds them to `notification_type`.** The
+2. **FIXED by 20270321000000 (enum values added). Original note:** `pi_correction_requested/resolved/rejected` are inserted as `type` by `/api/orders/submissions/notify` but NO migration adds them to `notification_type`.** The
    insert would fail with an enum error unless the values were added outside migrations; the client helper `notifyPiSubmission` only returns a boolean.
 3. The test titled "Orders selects exactly its own six types" now compares against the constant (12 entries); the title is stale.
 4. Memory said the Task feed is title-whitelisted; the code now selects `task_id IS NOT NULL` and relies on `SYSTEM_TYPE_EXCLUSION` as the ONLY thing keeping cron rows out. Never drop that chain

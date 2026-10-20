@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `57ea63c9` — Approval dialog: preselect the salesperson the PI workbook names
-- Commits on this branch: 916
+- Commit: `50b61be4` — Require the lead source when a PI is submitted
+- Commits on this branch: 917
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
 - Migrations: 337 (first `20260530_create_positions.sql`, latest `20270324000000_payment_mode_hdfc_secondary.sql`)
 - Tables ever created: 153 (dropped at some point: 7)   SQL functions: 715   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 - `57ea63c9` 2026-10-20 Approval dialog: preselect the salesperson the PI workbook names
 - `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
 - `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
@@ -38,7 +39,6 @@
 - `d9e5ee83` 2026-10-18 Restore rehearsal: repeatable local check of the database export (#344)
 - `77abc36a` 2026-10-18 Owner reminder system: schedule, pop-up, session rule (#343)
 - `206e7497` 2026-10-18 Docs: private mirror repo is live; token renewal date (#342)
-- `c3ecf2c9` 2026-10-18 Backup mirror: use our token (stop checkout persisting its own) (#341)
 
 ## Pages by top-level area
 
