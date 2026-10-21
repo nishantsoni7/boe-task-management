@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `9d500e20` — Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
-- Commits on this branch: 933
+- Commit: `f6cf04e5` — Orders dashboard: at-a-glance cards and an action board (#381)
+- Commits on this branch: 934
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
-- Migrations: 341 (first `20260530_create_positions.sql`, latest `20270328000000_orders_dashboard_overview.sql`)
+- Migrations: 342 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
 - Test files: 618   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
 - `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
@@ -38,7 +39,6 @@
 - `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 - `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
 - `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
-- `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
 
 ## Pages by top-level area
 
@@ -350,7 +350,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270301000000_notifications_event_idempotency.sql`
 - `20270302000000_task_change_status_rpc.sql`
 - `20270303000000_task_acknowledge_rpc.sql`
 - `20270304000000_customer_review_admin_reject_and_delete.sql`
@@ -380,6 +379,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270326000000_meetings_admin_delete.sql`
 - `20270327000000_pi_drafts_list_advance_percent.sql`
 - `20270328000000_orders_dashboard_overview.sql`
+- `20270328000300_orders_finance_real_data_not_test.sql`
 
 ## All SQL function names
 
