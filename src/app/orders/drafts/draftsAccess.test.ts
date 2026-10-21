@@ -352,7 +352,11 @@ describe('the detail page renders only what it fetched', () => {
   })
 
   test('the list stays entirely read-only', () => {
-    assert.ok(!read(LIST_PAGE).includes('.rpc('),
+    // The one database function the list calls is the STABLE batch reader of
+    // the advance percentage (20270327000000); every decision is still taken on
+    // the record itself.
+    const calls = [...read(LIST_PAGE).matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(calls, ['pi_submissions_advance_percent'],
       'a list is a list; every decision is taken on the record itself')
   })
 
@@ -699,32 +703,47 @@ describe('the drafts list', () => {
     assert.equal(draftStatusLabel(null), '—')
   })
 
-  test('a row carries the client, both people, the product value and the state', () => {
-    const entry = describeDraftListEntry(submission(), formatInr, { uploader: 'Priya Nair' })
+  test('a row carries the client, the author, the app dates, the advance, the product value and the state', () => {
+    const entry = describeDraftListEntry(
+      submission({ order_confirmation_date: '2026-10-05', due_date: '2026-12-01' }), formatInr, 42.5)
     assert.equal(entry.client, 'Meridian Hotels')
     assert.equal(entry.authoredBy, 'Ravi', 'the workbook’s own author')
     assert.ok(entry.authoredOn.includes('2026'), 'and the date the document carries')
-    assert.equal(entry.uploader, 'Priya Nair', 'the app user who uploaded it')
-    assert.ok(entry.uploadedAt.includes('2026'), 'and when they did')
+    assert.equal(entry.confirmedOn, '5 Oct 2026', 'the app’s confirmation date')
+    assert.equal(entry.dueOn, '1 Dec 2026', 'and its due date')
+    assert.equal(entry.advancePercent, '42.5%', 'and how much of the advance has arrived')
     assert.equal(entry.productValue, '₹2,50,000', 'the goods after the discount, before costs and GST')
     assert.equal(entry.grandTotal, '₹2,95,000', 'and what the client is billed')
     assert.equal(entry.statusLabel, 'Draft')
     assert.equal(entry.href, '/orders/drafts/11111111-1111-4111-8111-111111111111')
   })
 
-  test('the two people are read from DIFFERENT places and never substituted', () => {
-    // A PI is written by one person and uploaded by another as a matter of
-    // routine. source_created_by is a name typed into the workbook by somebody
-    // who may have no login at all; the uploader is an app user. Neither may
-    // stand in for the other when it is missing.
-    const entry = describeDraftListEntry(
-      submission({ source_created_by: null }), formatInr, { uploader: 'Priya Nair' })
-    assert.equal(entry.authoredBy, '—', 'a blank author is a dash, not the uploader')
-    assert.equal(entry.uploader, 'Priya Nair')
+  test('a missing date or advance figure is a dash, never a zero or an invented value', () => {
+    const blank = describeDraftListEntry(
+      submission({ order_confirmation_date: null, due_date: null, source_created_by: null }), formatInr)
+    assert.equal(blank.confirmedOn, '—')
+    assert.equal(blank.dueOn, '—')
+    assert.equal(blank.advancePercent, '—', 'no figure from the database is not 0%')
+    assert.equal(blank.authoredBy, '—', 'a blank author is a dash')
+    assert.equal(describeDraftListEntry(submission(), formatInr, 0).advancePercent, '0%',
+      'a real zero is still shown as one')
+    assert.equal(describeDraftListEntry(submission(), formatInr, '40.00').advancePercent, '40%',
+      'numeric arrives as a string and trims to a whole percentage')
+  })
 
-    const unresolved = describeDraftListEntry(submission(), formatInr)
-    assert.equal(unresolved.uploader, '—', 'an unresolved name is a dash, never a uuid')
-    assert.equal(unresolved.authoredBy, 'Ravi', 'and it does not disturb the workbook’s author')
+  test('the list reads the two app dates and the batch advance percentage', () => {
+    const listColumns = /PI_DRAFT_LIST_COLUMNS = \[([\s\S]*?)\]\.join/.exec(read(DRAFTS_VIEW))?.[1] ?? ''
+    assert.ok(listColumns.includes("'order_confirmation_date'") && listColumns.includes("'due_date'"))
+    const page = read(LIST_PAGE)
+    assert.equal((page.match(/pi_submissions_advance_percent/g) ?? []).length, 1,
+      'one batch call, never one per row')
+    assert.ok(page.includes("p_submission_ids: rows.map(r => r.id)"))
+    for (const h of ['Confirmed date', 'Due date', 'Advance % received']) {
+      assert.ok(page.includes(`'${h}'`), `${h} is a column`)
+    }
+    for (const gone of ["'Uploaded by'", "'Submitted'"]) {
+      assert.ok(!page.includes(gone), `${gone} is no longer a column`)
+    }
   })
 
   test('the list no longer reads the file name, the count or the last write', () => {
@@ -1789,7 +1808,7 @@ describe('the drafts list carries the review queue', () => {
 
   test('the split is the shared helper’s, and only a reviewer gets one', () => {
     assert.ok(source.includes('splitDraftsForReview(entries ?? [], canReview)'))
-    assert.ok(source.includes('reviewerRef.current = caps.canApproveOrderSubmission'))
+    assert.ok(source.includes('setCanReview(caps.canApproveOrderSubmission)'))
     assert.ok(source.includes('const reviewSection = canReview && ('))
   })
 
@@ -1801,27 +1820,17 @@ describe('the drafts list carries the review queue', () => {
       'and no second, narrower server filter for the queue')
   })
 
-  test('a queue row says who submitted it and when', () => {
-    assert.ok(source.includes('{entry.submittedAt}'))
-    assert.ok(source.includes('{entry.submitter}'))
-    assert.ok(source.includes('renderList(review, REVIEW_ACTION_LABEL, true)'),
-      'and its action is Review PI, from the shared constant')
-    assert.ok(source.includes("renderList(working, 'Open Draft', false)"),
+  test('the queue and the working list are the same table, with their own action', () => {
+    assert.ok(source.includes('renderList(review, REVIEW_ACTION_LABEL)'),
+      'the queue’s action is Review PI, from the shared constant')
+    assert.ok(source.includes("renderList(working, 'Open Draft')"),
       'while the working list keeps the wording it had')
   })
 
-  test('both people are resolved in ONE read, and a submitter only for a reviewer', () => {
-    // Every row names its uploader now, so a name read happens for an employee's
-    // own list too — resolving exactly one id, their own. The SUBMITTER is still
-    // read only by somebody who has a queue, because only that queue states it.
-    assert.equal((source.match(/\.from\('users'\)\s*\n\s*\.select\('id, full_name'\)/g) ?? []).length, 1,
-      'one batched lookup, never one query per row')
-    assert.ok(source.includes('rows.map(r => r.created_by).filter'),
-      'the uploader is resolved for every row')
-    assert.ok(source.includes('reviewerRef.current'),
-      'and the submitter only where there is a queue')
-    assert.ok(source.includes("names.get(row.created_by) ?? null"),
-      'an unresolved name falls through to a dash rather than an id')
+  test('no name lookup is made: the people columns are gone', () => {
+    assert.ok(!/\.from\('users'\)\s*\n\s*\.select\('id, full_name'\)/.test(source),
+      'Uploaded by and Submitted went, so the list resolves no names')
+    assert.ok(!source.includes('reviewerRef'))
   })
 
   test('no navigation entry or dashboard was added for the review queue', () => {
