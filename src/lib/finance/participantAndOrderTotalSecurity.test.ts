@@ -1099,6 +1099,8 @@ describe('the applied migrations are frozen', () => {
       '20270325000000_order_pendencies.sql',
       '20270326000000_meetings_admin_delete.sql',
       '20270327000000_pi_drafts_list_advance_percent.sql',
+      '20270328000000_order_submission_returned_rejected_dashboard.sql',
+      '20270328000100_order_submission_review_notify_salesperson.sql',
     ])
   })
 
@@ -1449,6 +1451,8 @@ describe('the applied migrations are frozen', () => {
       '20270325000000_order_pendencies.sql',
       '20270326000000_meetings_admin_delete.sql',
       '20270327000000_pi_drafts_list_advance_percent.sql',
+      '20270328000000_order_submission_returned_rejected_dashboard.sql',
+      '20270328000100_order_submission_review_notify_salesperson.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
