@@ -41,10 +41,18 @@ import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
+import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
+import {
+  OPS_ERROR_BODY,
+  OPS_ERROR_HEADING,
+  parseOperationsRead,
+  type OperationsRead,
+} from '@/lib/orders/operationsDashboard'
 import {
   SP_ERROR_BODY,
   SP_ERROR_HEADING,
   SP_RETRY_LABEL,
+  isDashboardFunctionMissing,
   resolvePersonalRead,
   type SalespersonDashboard,
 } from '@/lib/orders/salespersonDashboard'
@@ -64,6 +72,14 @@ type PersonalState =
   | { kind: 'other' }
   | { kind: 'ready'; data: SalespersonDashboard }
 
+// The Operations team's own read (20270401000000). `absent` = the function is not on this
+// database yet, so the dashboard below is the one they always had.
+type OperationsState =
+  | { kind: 'loading' }
+  | { kind: 'absent' }
+  | { kind: 'error' }
+  | { kind: 'ready'; read: OperationsRead }
+
 export default function OrdersDashboardPage() {
   const [pageLoading, setPageLoading] = useState(true)
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
@@ -74,6 +90,7 @@ export default function OrdersDashboardPage() {
   const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [summary,     setSummary]     = useState<SummaryState>({ kind: 'loading' })
   const [personal,    setPersonal]    = useState<PersonalState>({ kind: 'loading' })
+  const [operations,  setOperations]  = useState<OperationsState>({ kind: 'loading' })
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
   // The owner's "Select an order" control opens the Factory Focus form.
   const [focusFormOpen, setFocusFormOpen] = useState(false)
@@ -109,6 +126,7 @@ export default function OrdersDashboardPage() {
     const [
       personalRes,
       summaryRes,
+      operationsRes,
       { count: draftCount },
       opsMineRes,
       opsUnassignedRes,
@@ -119,6 +137,10 @@ export default function OrdersDashboardPage() {
       supabase.rpc('salesperson_orders_dashboard'),
 
       supabase.rpc('orders_dashboard_summary'),
+
+      // THE OPERATIONS READ (20270401000000): changes waiting for this reader's answer, the answers
+      // already given, and Orders / Dispatches by month. One round trip, beside the summary.
+      supabase.rpc('operations_orders_dashboard'),
 
       // PI Drafts, in exactly the statuses /orders/drafts lists — the same
       // constant, so the link and the page it opens can never describe
@@ -142,6 +164,13 @@ export default function OrdersDashboardPage() {
     // A FAILED READ IS AN ERROR, NEVER ZEROS. Only "this function is not on this database yet" leaves
     // the existing dashboard in place; every other failure is shown.
     setPersonal(resolvePersonalRead(personalRes))
+
+    if (operationsRes.error) {
+      setOperations(isDashboardFunctionMissing(operationsRes.error) ? { kind: 'absent' } : { kind: 'error' })
+    } else {
+      const parsedOps = parseOperationsRead(operationsRes.data)
+      setOperations(parsedOps.ok ? { kind: 'ready', read: parsedOps.read } : { kind: 'error' })
+    }
 
     if (summaryRes.error) {
       setSummary({ kind: 'error' })
@@ -206,6 +235,8 @@ export default function OrdersDashboardPage() {
 
   const ready = summary.kind === 'ready' ? summary.summary : null
   const personalView = personal.kind === 'ready' || personal.kind === 'error'
+  // The Operations team gets its own dashboard once the database offers it.
+  const operationsView = !personalView && profile?.team === 'operations' && operations.kind !== 'absent'
 
   return (
     <OrdersLayout
@@ -236,7 +267,7 @@ export default function OrdersDashboardPage() {
           }
           {/* ── FACTORY FOCUS, FOR THE OWNER ── opens the selection form. The database
               refuses anybody else, so this is only a courtesy. */}
-          {!personalView && ready?.viewer.canManageFocus && !viewAsUserId ? (
+          {!personalView && !operationsView && ready?.viewer.canManageFocus && !viewAsUserId ? (
             <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setFocusFormOpen(true)}>
               {FOCUS_ADD_LABEL}
             </button>
@@ -259,8 +290,36 @@ export default function OrdersDashboardPage() {
             </div>
           )}
         </div>
+      ) : operationsView ? (
+        // ── THE OPERATIONS TEAM'S DASHBOARD ── changes to answer, what is not aligned, orders and dispatches.
+        summary.kind === 'ready' && operations.kind === 'ready' ? (
+          <OperationsDashboardView
+            summary={summary.summary}
+            read={operations.read}
+            supabase={supabase}
+            onAnswered={reload}
+            readOnlyReason={viewAsUserId ? 'View As is read-only' : null}
+          />
+        ) : summary.kind === 'loading' || operations.kind === 'loading' ? (
+          <div aria-busy="true" aria-label={DASHBOARD_LOADING_LABEL}>
+            <ModulePageSkeleton variant="orders-dashboard" label={DASHBOARD_LOADING_LABEL} />
+          </div>
+        ) : (
+          <div className="od-error" role="alert">
+            <h2 className="od-error-title">{OPS_ERROR_HEADING}</h2>
+            <p>{OPS_ERROR_BODY}</p>
+            <button type="button" className="boe-btn boe-btn-primary" onClick={reload}>
+              {DASHBOARD_RETRY_LABEL}
+            </button>
+          </div>
+        )
       ) : (
       <div className="od-stack">
+        {/* ── WHAT OPERATIONS ANSWERED ── on the approver's dashboard, advice on changes to orders in
+            production. Draws nothing when there are none or the read is not available. */}
+        {operations.kind === 'ready' && operations.read.viewer.isApprover ? (
+          <OperationsResponses responses={operations.read.responses} />
+        ) : null}
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
             stepping in. Revenue only when the read returned it: the database sends it to a reader
             who sees every Order. */}

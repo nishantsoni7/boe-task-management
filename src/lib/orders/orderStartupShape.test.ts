@@ -376,7 +376,10 @@ describe('no Order screen waits more than it must', () => {
       // makes — inside loadPiHandoff's EXISTING Promise.all, so no wait is added.
       // DETAIL 43 -> 44 (20270320000000): set_order_sample_type, the Order's
       // sample choice, a SAVE on a change — never on the startup path.
-      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 44,
+      // DASHBOARD 8 -> 9 (20270401000000): operations_orders_dashboard, the Operations team's changes to answer and
+      // Orders / Dispatches, read in the page's EXISTING Promise.all beside orders_dashboard_summary — one more read,
+      // no more waits (the wait test above still requires exactly one).
+      [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 4, [DETAIL]: 44,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
