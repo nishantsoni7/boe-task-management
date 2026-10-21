@@ -19,6 +19,7 @@ import { MeetingHistoryModal } from '@/components/meetings/MeetingHistoryModal'
 import { MeetingActivityModal } from '@/components/meetings/MeetingActivityModal'
 import { MeetingImportModal } from '@/components/meetings/MeetingImportModal'
 import { CompleteMeetingModal, ReopenMeetingModal } from '@/components/meetings/CompleteMeetingModal'
+import { DeleteMeetingModal } from '@/components/meetings/DeleteMeetingModal'
 import {
   AddItemModal, AddOrderModal, CarryForwardOrdersModal, OrderUpdateModal, RemoveOrderModal,
 } from '@/components/meetings/MeetingOrderModals'
@@ -91,6 +92,7 @@ type ModalState =
   | { kind: 'import' }
   | { kind: 'complete' }
   | { kind: 'reopen' }
+  | { kind: 'delete-meeting' }
   // The order-discussion workflow (20261213000000).
   | { kind: 'new-issue' }
   | { kind: 'resolve-issue'; row: DiscussionRow }
@@ -641,6 +643,18 @@ export function MeetingWorkScreen() {
               <RotateCcw size={13} strokeWidth={2} /> Reopen
             </button>
           )}
+          {profile?.role === 'admin' && (
+            <button
+              onClick={() => setModal({ kind: 'delete-meeting' })}
+              className="boe-btn boe-btn-ghost"
+              style={{
+                padding: '7px 12px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '5px',
+                color: '#B42332', borderColor: 'rgba(180,35,50,0.45)',
+              }}
+            >
+              <Trash2 size={13} strokeWidth={2} /> Delete
+            </button>
+          )}
         </div>
       }
     >
@@ -1013,6 +1027,14 @@ export function MeetingWorkScreen() {
           meetingId={meeting.id}
           onClose={() => setModal({ kind: 'none' })}
           onReopened={() => afterWrite('Meeting reopened')}
+        />
+      )}
+      {modal.kind === 'delete-meeting' && (
+        <DeleteMeetingModal
+          supabase={supabase}
+          meeting={meeting}
+          onClose={() => setModal({ kind: 'none' })}
+          onDeleted={() => router.push(meeting.status === 'completed' ? '/meetings/completed' : '/meetings')}
         />
       )}
       {modal.kind === 'new-issue' && (
