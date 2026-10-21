@@ -104,6 +104,7 @@ Statuses and transitions:
   route to completed/pending_approval for these tasks from a client session.
 - Self task (created_by = assigned_to): no acknowledgement; assignee can Mark Complete directly.
 - Quotation request: no acknowledgement, no creator approval, silent EXCEPT its two endings (Oct 2026): when the assignee marks it complete, or an admin cancels it, the CREATOR (the sales person who raised it) gets one notification; nobody else, no other event (module 12).
+- **Quotation Details page (Oct 2026, `/tasks/[id]` for a live quotation task; cancelled ones keep the old layout).** Rendered by `QuotationDetailView` instead of the task layout: status strip (Requested / Waiting or Sent / priority), left card "What sales asked for" (lead name, tap-to-call phone, requester, requirement note, sales' files), right card with two tabs - **Your quotation** (attach the quote file(s) + optional note, **Send Quotation to <sales person>**, disabled until at least one file is attached and none failed) and **Message sales**; after sending a "Quotation sent" card (files, note, date, revision count) with **Reopen for revision**; the activity card is titled **Timeline** and is shared with the task layout. Sending = `saveComment()` (now returns boolean) with `sendingQuotationRef` set, which tags the update row `task_activity_log.new_val = 'quotation_sent'` (`QUOTATION_SENT_MARKER`, no migration) and skips its own comment notice, THEN `applyStatusChange('completed')` (completion notifies the creator as before). Sales' request files are the task-level attachments (`activity_log_id` null); the quote files hang off the tagged update. Old quotations completed before this have no tagged update: the card says so. Pure rules in `src/lib/tasks/quotationSend.ts`.
 - Waiting needs `team_member` (user must exist) or `external` (text). Blocker/waiting fields clear when the state that explained them ends.
 - Tabs on My Tasks (`myTaskTabs.ts`): Today/Overdue/Future Actionable, Waiting/Blocked, Awaiting Approval, Action Required, All, Important, Unacknowledged, In Progress,
   Overdue, Needs Update, Non-Completion, Completed. "Actionable workload" excludes closed (completed/cancelled) AND `pending_approval`.
@@ -137,9 +138,9 @@ Statuses and transitions:
 ## 7. Key components & lib files
 
 `src/lib/tasks/*` (taskDetailAccess, reviewTransitions, statusChange, acknowledgeTask, taskCreateFlow, taskCreateActions, taskReporting, myTaskTabs, taskReturnPath,
-assignmentNotification(.writer.server), attachmentStorage, commentAttachments, activityHeadings, addToMeetingAccess, taskGallery, taskDetailLoad, healthCheckMigrationAudit),
+assignmentNotification(.writer.server), attachmentStorage, commentAttachments, activityHeadings, addToMeetingAccess, taskGallery, taskDetailLoad, healthCheckMigrationAudit, quotationSend),
 `src/hooks/queries/{useMyTasks,useAssignedByMe,useCompletedTasks,useTaskReports,useTopTasks,useQuotationRequests}.ts`, `src/components/tasks/{AddToMeetingModal,
-CompletedHistory,CopyAssignModal,MyTaskViewTabs,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
+CompletedHistory,CopyAssignModal,MyTaskViewTabs,QuotationDetailView,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
 (shell for the Task Management pages - 22 per memory; header Self/Delegate actions), `src/components/notifications/*`, `src/app/tasks/[id]/page.tsx` (3411 lines), `src/app/tasks/my/page.tsx`
 (1985), `src/app/dashboard/page.tsx` (1883). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
 
@@ -176,7 +177,7 @@ CompletedHistory,CopyAssignModal,MyTaskViewTabs,TaskAttachmentGallery,TaskCreati
 
 ## 10. Tests that guard it
 
-Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransitions,taskReturnPath,activityHeadings,statusChange,acknowledgeTask,taskGallery,attachmentStorage,commentAttachments}.test.ts`.
+Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransitions,taskReturnPath,activityHeadings,statusChange,acknowledgeTask,taskGallery,attachmentStorage,commentAttachments,quotationSend}.test.ts`.
 Source-contract/shape: `taskNavigationPerformance.test.ts`, `taskCreationPerformance.test.ts`, `taskDetailOpenFromDrawer.test.ts`, `myTasksLoadState.test.ts`, `myTasksRuntimeShape.test.ts`,
 `myTasksQuickAction.test.ts`, `dashboardViewAsReadOnly.test.ts`, `taskCreateFlow.test.ts`, `taskCreateActions.test.ts`, `assignmentWriteAuthority.test.ts`, `assignmentServerBoundary.test.ts`,
 `topTasksApproval.test.ts`, `changeTaskStatusMigration.test.ts`, `changeTaskStatusNotificationCompat.test.ts`, `acknowledgeCallers.test.ts`, `healthCheckMigrationAudit.test.ts`,

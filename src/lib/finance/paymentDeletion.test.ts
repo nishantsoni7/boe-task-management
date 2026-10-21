@@ -141,14 +141,14 @@ describe('who the database lets delete a payment, and therefore who is offered i
     assert.equal(canDeletePayment({ status: 'pending_approval' }, { isAdmin: true }), true)
   })
 
-  // REVISED AGAIN (20261218000000, owner decision 2026-09-18): a VERIFIED
-  // payment is permanent history. An admin may delete one only when it is
-  // TEST data; a real one is corrected, never deleted.
-  test('an administrator may delete a Confirmed Payment only when it is test data', () => {
-    assert.equal(canDeletePayment({ status: 'approved_unlinked' }, { isAdmin: true }), false)
-    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: false }, { isAdmin: true }), false)
+  // 20261218000000 made a verified payment permanent unless test data;
+  // 20270331000000 (owner decision 2026-10-21) lifts that for an admin, so a
+  // Confirmed Payment entered by mistake can be deleted.
+  test('an administrator may delete a Confirmed Payment, test data or not', () => {
+    assert.equal(canDeletePayment({ status: 'approved_unlinked' }, { isAdmin: true }), true)
+    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: false }, { isAdmin: true }), true)
     assert.equal(canDeletePayment({ status: 'approved_unlinked', is_test_data: true }, { isAdmin: true }), true)
-    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: true }, { isAdmin: true }), true)
+    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: true }, { isAdmin: false }), false)
   })
 
   /**
@@ -166,9 +166,10 @@ describe('who the database lets delete a payment, and therefore who is offered i
     }
   })
 
-  test('an admin may delete a payment of every status the database admits (a verified one only as test data)', () => {
+  test('an admin may delete a payment of every status the database admits', () => {
     for (const status of DELETABLE_PAYMENT_STATUSES) {
       assert.equal(canDeletePayment({ status, is_test_data: true }, { isAdmin: true }), true, status)
+      assert.equal(canDeletePayment({ status, is_test_data: false }, { isAdmin: true }), true, status)
     }
   })
 

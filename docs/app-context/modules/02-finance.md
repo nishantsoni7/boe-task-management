@@ -40,7 +40,8 @@ separately records money BOE **pays out** (small expenses, personal-payment reim
 | PI payment entry from the PI Draft | **Shipped** (20260919) | `record_pi_submission_payment` |
 | Allocation model: allocate, split atomically, reverse (correction Phase 1) | **Shipped** (20260918, 20261011, 20261012, 20261215, 20261216) | `allocate_payment_to_target[s]`, `reverse_payment_allocation` |
 | Payment IDs `P-AA-0001`, admin deletion by durable claim | **Shipped** (20261011) | |
-| Verified payments are permanent (test data excepted) | **Shipped** (20261218) | |
+| Verified payments are permanent (test data excepted) — **superseded 2026-10-21 by 20270331000000** | Shipped (20261218), lifted for admins | |
+| Admin deletes a Confirmed Payment entered by mistake (reason + typed Payment ID; allocations released, proofs swept, claim row kept as tombstone; refused while actively linked to a bank line; undone bank-link notes cleared) | **Shipped in code** (PR #391 open); migration 20270331000000 APPLIED 2026-10-21 (needed 20270329000000) | `adminDeleteConfirmedPayment.test.ts`, `run_admin_delete_confirmed_payment_suite.sh`, `PAYMENT_DELETION_BANK_LINKED` |
 | Idempotent payment doors, rupees-and-paise CHECK, unsaved-draft discard | **Shipped** (20261219, PR #172 is merged) | `submissionAttempt.ts` |
 | Review modal through RPCs (reject / clarify), OR-overlap RLS fix | **Shipped** (20261211 + #173 = in 20261211/`request_finance_payment_clarification`) | grep shows only RPC calls in the review modal |
 | Order/Finance write guards run as owner (proof attach works) | **Shipped in code** (20270117); apply-state **(unverified)** | |
@@ -173,7 +174,7 @@ Admin role: all twelve capabilities true. Others: entry = `view`; every capabili
 | Edit a Confirmed Payment | `finance.manage` (and post-approval guard) |
 | Allocate | `finance.allocate` (+ visibility of the target); mixed-customer sets need explicit confirmation |
 | Reverse an allocation | `finance.allocate_correct` (admin bypass) |
-| Delete a payment permanently | active admin only; verified ⇒ test data only; claim protocol |
+| Delete a payment permanently | active admin only, any status (verified included since 20270331000000); claim protocol; refused while actively linked to a bank statement line |
 | Attach proof | submitter while `pending_approval` (storage policy); an ACTIVE role admin on any unverified payment (`pending_approval`, `needs_clarification`, `rejected`, not deleted) via `admin_may_attach_payment_proof` (20270323000000, UNAPPLIED) — a verified payment takes no new proof from anybody |
 | Open a proof | recorder, role admin, `finance.approve`, `finance.view_all` (each with entry) — participants cannot |
 | Bank Statements | `finance.reconcile` (admin bypass) for every read and write — `assert_bank_reconcile_door()` in each RPC, RLS select on the four tables; the page and the sidebar entry are drawing rules only |
@@ -195,7 +196,7 @@ Shared `notifications` table with type-prefixed visibility (`finance_%`), resolv
 1. **Recorded** — Payment Request form (destination `pi_draft` / `confirmed_order` / `suspense`, account, date, amount, optional proof/reference) or Record Payment (split across several destinations in ONE transaction: every row or none). Status `pending_approval`. A request naming a PI/Order stores an **intent**, never an allocation (unverified money must not count toward totals or the 40% gate).
 2. **Decision** by a verifier: Verify (`approved_*`, intents converted to active allocations), Needs Clarification (note to submitter), or Reject (reason mandatory). The submitter edits and re-submits; a rejected request may be Reapplied.
 3. **Confirmed** — appears in Confirmed Payments; remaining money is allocated with Allocate Funds (many targets, atomic) or Allocate Payment; wrong allocation fixed by Correct Allocation (reverse whole allocation with reason, then allocate again).
-4. **Permanent** once verified (test data excepted): no delete, no un-verify. Wrong verified money is meant to be handled by Void/Refund/Correction later — not built.
+4. **Verified is permanent except for an admin deleting a mistake** (20270331000000, owner 2026-10-21): no un-verify; an active admin may erase a verified payment through the claim protocol (the 20261218 test-data-only rule is lifted). Money that really arrived and was returned is still meant for Void/Refund/Correction — not built.
 - Duplicate protection: `p_idempotency_key uuid` (actor-scoped advisory lock + stored result + payload fingerprint); same key with different payload ⇒ `PAYMENT_IDEMPOTENCY_KEY_REUSED`; NULL key still accepted (old clients) but is authorised identically. Browser side: `src/lib/finance/submissionAttempt.ts` (sessionStorage key + hash + time), "Retry proof upload".
 - Payment Phase history/rules: `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §9a–§19 and `PAYMENT_PHASE_PROGRESS.md`.
 
@@ -212,7 +213,7 @@ Shared `notifications` table with type-prefixed visibility (`finance_%`), resolv
 - The five legacy collection/handover columns are frozen history; `legacyCustodyEvents` projects them into the same shape.
 
 ### 6.6 Deletion
-- Verified ⇒ permanent unless `is_test_data`. Unverified/non-test: admin only through the claim protocol (reason + typed Payment ID, proof manifest sweep). Owner may soft-delete their own never-approved request (20270226): history, allocations (reversed), proofs and ids kept; `human_payment_id`/`request_number` never reused. When a PI is deleted, reversed allocations of such soft-deleted never-approved payments are erased with it (20270315); anything else still blocks (`ALLOCATION_PERMANENT`).
+- Any status: active admin only, through the claim protocol (reason + typed Payment ID, proof manifest sweep, allocations released with the row, claim row kept as the tombstone). Since 20270331000000 this includes a verified payment (was: test data only, 20261218). A payment with an ACTIVE `bank_line_payment_links` row is refused (`PAYMENT_DELETION_BANK_LINKED`, in begin AND finalize); links already undone are deleted with it (their NO ACTION FK would otherwise block). Orders that already counted the money are not re-checked against the advance rule. Owner may soft-delete their own never-approved request (20270226): history, allocations (reversed), proofs and ids kept; `human_payment_id`/`request_number` never reused. When a PI is deleted, reversed allocations of such soft-deleted never-approved payments are erased with it (20270315); anything else still blocks (`ALLOCATION_PERMANENT`).
 - `docs/releases/payment-request-owner-soft-delete-release.md` is the rollout record.
 
 ### 6.7 Expenses
@@ -251,7 +252,7 @@ Only verified allocations count toward 40% of **Total before GST** (see 01-order
 - **One payment, many destinations**; unallocated balance derived, never stored; reversal never deletes.
 - **Three entry destinations only** (PI Draft, Confirmed Order, Suspense); no customer name typed by a human (derived server-side); no payer-name field (owner 2026-09-18: not wanted); no "Sample Order" type.
 - **Five BOE accounts as payment modes** (HDFC PRI, HDFC SEC, PNB, Paytm, Canara — BOE holds two HDFC accounts, 20270324) with custody trail for the two cash routes (PNB external, Paytm internal) — an event log replaced five single-event columns because it could not hold a second hand-off or the time of day.
-- **Verified payments are permanent** (owner 2026-09-18 go-live; test data excepted); wrong ones to be Void / full Refund / partial Refund / Customer credit / Correction by admin or a named partner via permission; one person is enough; bounce not needed; refund records date, amount, mode, reason and reduces the Order's paid and product values; customer credit = money stays unallocated, labelled with the customer name. **Not built.**
+- **Verified payments are permanent** (owner 2026-09-18 go-live; test data excepted) — **since 2026-10-21 an admin may erase one entered by mistake (20270331000000)**; wrong ones to be Void / full Refund / partial Refund / Customer credit / Correction by admin or a named partner via permission; one person is enough; bounce not needed; refund records date, amount, mode, reason and reduces the Order's paid and product values; customer credit = money stays unallocated, labelled with the customer name. **Not built.**
 - **Admins have equal authority** (owner 2026-09-26): a payment an authorised admin records is saved AND verified in one action; other admin informed only; who holds the authority is a Control Center grant (`verify_own_payment`), never code.
 - **Staged payments**: optional per Order, no fixed pattern, **no reminders** (not built).
 - **Sales-facing deletion**: salesperson may remove their own never-approved request (soft); verified is untouchable; admin hard deletion by claim only.
