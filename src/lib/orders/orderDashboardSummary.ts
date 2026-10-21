@@ -88,6 +88,39 @@ export type DashboardGaps = {
   noConfirmDate: number
 }
 
+/** An open Order on the schedule lists (delayed, due soon, aligned). */
+export type ScheduleRow = DashboardOrderRef & {
+  salesperson: string | null
+  dueDate: string | null
+  /** Product value, excl. GST; null when none is on record. */
+  value: number | null
+  /** Delayed rows only. */
+  daysLate: number | null
+  /** Due-soon rows only. */
+  daysLeft: number | null
+  aligned: boolean
+}
+
+export type OverviewFigure = { orders: number; value: number }
+
+/**
+ * The at-a-glance read (20270328000000): where every open Order stands against its
+ * due date, its alignment and its payments. `null` when the database predates it.
+ */
+export type DashboardOverview = {
+  running: OverviewFigure
+  aligned: OverviewFigure
+  delayed: OverviewFigure & { maxDaysLate: number }
+  dueSoon: OverviewFigure
+  noDueDate: number
+  paymentsAwaiting: { orders: number; amount: number }
+  /** Orders short of the 40% advance, and the total they are short by. */
+  advanceShort: { orders: number; amount: number }
+  delayedList: ScheduleRow[]
+  dueSoonList: ScheduleRow[]
+  alignedList: ScheduleRow[]
+}
+
 export type RevenuePeriod = { from: string; to: string; amount: number; orders: number }
 export type DashboardRevenue = {
   currentMonth: RevenuePeriod
@@ -148,6 +181,8 @@ export type DashboardSummary = {
   advance: AdvanceRow[]
   fabricFinish: FabricFinishRow[]
   fabricUnrecorded: UnrecordedRow[]
+  /** Null while the database has not been given 20270328000000. */
+  overview: DashboardOverview | null
   gaps: DashboardGaps
   /** Null when the caller does not see every Order. */
   revenue: DashboardRevenue | null
@@ -217,6 +252,44 @@ const WAITING: readonly WaitingOn[] = ['reviewer', 'administrator', 'approver', 
 const period = (v: unknown, what: string): RevenuePeriod => {
   const o = obj(v, what)
   return { from: date(o.from, what), to: date(o.to, what), amount: num(o.amount, what), orders: num(o.orders, what) }
+}
+
+const figure = (v: unknown, what: string): OverviewFigure => {
+  const o = obj(v, what)
+  return { orders: num(o.orders, what), value: num(o.value, what) }
+}
+
+const scheduleRows = (v: unknown, what: string): ScheduleRow[] =>
+  arr(v ?? [], what).map(x => {
+    const o = obj(x, what)
+    return {
+      ...ref(o),
+      salesperson: optStr(o.salesperson),
+      dueDate: o.due_date === null || o.due_date === undefined ? null : date(o.due_date, 'due_date'),
+      value: o.value === null || o.value === undefined ? null : num(o.value, 'value'),
+      daysLate: o.days_late === null || o.days_late === undefined ? null : num(o.days_late, 'days_late'),
+      daysLeft: o.days_left === null || o.days_left === undefined ? null : num(o.days_left, 'days_left'),
+      aligned: o.aligned === true,
+    }
+  })
+
+const parseOverview = (raw: unknown): DashboardOverview => {
+  const o = obj(raw, 'overview')
+  const delayed = obj(o.delayed, 'delayed')
+  const pay = obj(o.payments_awaiting_verification, 'payments awaiting verification')
+  const short = obj(o.advance_short, 'advance short')
+  return {
+    running: figure(o.running, 'running'),
+    aligned: figure(o.aligned, 'aligned'),
+    delayed: { ...figure(delayed, 'delayed'), maxDaysLate: num(delayed.max_days_late, 'max_days_late') },
+    dueSoon: figure(o.due_soon, 'due soon'),
+    noDueDate: num(o.no_due_date, 'no_due_date'),
+    paymentsAwaiting: { orders: num(pay.orders, 'payments orders'), amount: num(pay.amount, 'payments amount') },
+    advanceShort: { orders: num(short.orders, 'short orders'), amount: num(short.amount, 'short amount') },
+    delayedList: scheduleRows(o.delayed_list, 'delayed list'),
+    dueSoonList: scheduleRows(o.due_soon_list, 'due soon list'),
+    alignedList: scheduleRows(o.aligned_list, 'aligned list'),
+  }
 }
 
 /** Turns the RPC's answer into the page's model, or says why it cannot. */
@@ -291,6 +364,7 @@ export function parseDashboardSummary(raw: unknown): ParsedSummary {
           daysSinceConfirmation: num(o.days_since_confirmation, 'days_since_confirmation'), notRecorded,
         }
       }),
+      overview: root.overview === null || root.overview === undefined ? null : parseOverview(root.overview),
       gaps: {
         openOrders: num(gaps.open_orders, 'open_orders'),
         advanceValueUnknown: num(gaps.advance_value_unknown, 'advance_value_unknown'),
@@ -543,6 +617,98 @@ export function formatRange(from: string, to: string): string {
   }
   return `${formatDate(from)} – ${formatDate(to)}`
 }
+
+// ── The at-a-glance cards and the action board ───────────────────────────────
+
+export type OverviewTone = 'neutral' | 'good' | 'attention' | 'danger'
+export type BoardKey = 'delayed' | 'payments' | 'fabric' | 'not_aligned' | 'due_soon' | 'aligned'
+
+export type OverviewCard = {
+  key: string
+  label: string
+  /** The headline count. */
+  count: number
+  /** One short line under it: a rupee value, or what the count means. */
+  sub: string
+  /** A second, smaller line; empty when there is nothing more to say. */
+  detail: string
+  tone: OverviewTone
+  /** The board tab this card opens. */
+  board: BoardKey | null
+}
+
+/** Rupee value shown on a card; "no value on record" is never drawn as ₹0. */
+const valueLine = (n: number, what: string) => (n > 0 ? `${formatRupees(n)} ${what}` : what)
+
+/**
+ * The cards, in the order a person asks the questions: what is running, what is ready,
+ * what is late, what is waiting on money, what is waiting on fabric or finish, what is
+ * coming due. Tones are a function of the count only: a zero is never drawn as a problem.
+ */
+export function overviewCards(summary: DashboardSummary): OverviewCard[] {
+  const ov = summary.overview
+  if (!ov) return []
+  const lateDetail = ov.delayed.orders > 0 ? `Longest: ${plural(ov.delayed.maxDaysLate, 'day')} late` : 'Nothing past its due date'
+  return [
+    {
+      key: 'running', label: 'Running orders', count: ov.running.orders,
+      sub: valueLine(ov.running.value, 'product value'),
+      detail: ov.noDueDate > 0 ? `${plural(ov.noDueDate, 'order')} with no due date` : '',
+      tone: 'neutral', board: null,
+    },
+    {
+      key: 'aligned', label: 'Ready for production', count: ov.aligned.orders,
+      sub: valueLine(ov.aligned.value, 'aligned for manufacturing'),
+      detail: summary.notAligned.length > 0 ? `${summary.notAligned.length} still not aligned` : 'Every running order is aligned',
+      tone: 'good', board: 'aligned',
+    },
+    {
+      key: 'delayed', label: 'Delayed', count: ov.delayed.orders,
+      sub: valueLine(ov.delayed.value, 'past due date'),
+      detail: lateDetail,
+      tone: ov.delayed.orders > 0 ? 'danger' : 'neutral', board: 'delayed',
+    },
+    {
+      key: 'payments', label: 'Payments pending', count: summary.advance.length,
+      sub: summary.advance.length > 0 ? `${formatRupees(ov.advanceShort.amount)} short of the 40% advance` : 'Advance below 40%',
+      detail: ov.paymentsAwaiting.orders > 0
+        ? `${formatRupees(ov.paymentsAwaiting.amount)} awaiting verification on ${plural(ov.paymentsAwaiting.orders, 'order')}`
+        : 'No payment waiting for verification',
+      tone: summary.advance.length > 0 ? 'attention' : 'neutral', board: 'payments',
+    },
+    {
+      key: 'fabric', label: 'Fabric or finish pending', count: summary.fabricFinish.length,
+      sub: 'More than 15 days since confirmation',
+      detail: summary.fabricUnrecorded.length > 0 ? `${plural(summary.fabricUnrecorded.length, 'older order')} with no record` : '',
+      tone: summary.fabricFinish.length > 0 ? 'attention' : 'neutral', board: 'fabric',
+    },
+    {
+      key: 'due_soon', label: 'Due in 7 days', count: ov.dueSoon.orders,
+      sub: valueLine(ov.dueSoon.value, 'coming due'),
+      detail: '',
+      tone: ov.dueSoon.orders > 0 ? 'attention' : 'neutral', board: 'due_soon',
+    },
+  ]
+}
+
+export const BOARD_COPY: Record<BoardKey, { label: string; empty: string }> = {
+  delayed: { label: 'Delayed', empty: 'No running order is past its due date.' },
+  payments: { label: 'Payments pending', empty: 'Every running order has its 40% advance verified.' },
+  fabric: { label: 'Fabric / finish', empty: 'No fabric or finish approval is overdue.' },
+  not_aligned: { label: 'Not aligned', empty: 'Every running order is aligned for manufacturing.' },
+  due_soon: { label: 'Due in 7 days', empty: 'Nothing is due in the next 7 days.' },
+  aligned: { label: 'Ready for production', empty: 'No order is aligned for manufacturing yet.' },
+}
+
+/** `3 days late`, `due today`, `due in 2 days`, or the plain date when there is no countdown. */
+export function dueLine(r: ScheduleRow): string {
+  if (r.daysLate !== null && r.daysLate > 0) return `${plural(r.daysLate, 'day')} late`
+  if (r.daysLeft !== null) return r.daysLeft === 0 ? 'Due today' : `Due in ${plural(r.daysLeft, 'day')}`
+  return r.dueDate ? `Due ${formatDate(r.dueDate)}` : 'No due date'
+}
+
+export const OVERVIEW_EMPTY_NOTE =
+  'No running orders yet. An order appears here once its PI is approved; PI Drafts awaiting approval are counted separately below.'
 
 // ── Revenue words ─────────────────────────────────────────────────────────────
 
