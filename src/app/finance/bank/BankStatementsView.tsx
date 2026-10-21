@@ -30,8 +30,9 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { BANK_ACCOUNT_LABEL, type BankAccountKey } from '@/lib/finance/bankStatement'
+import { BANK_ACCOUNT_LABEL, DEBIT_KIND_LABEL, type BankAccountKey, type DebitKind } from '@/lib/finance/bankStatement'
 import { payerFromNarration } from '@/lib/finance/bankMatching'
+import { payeeFromDebitNarration } from '@/lib/finance/bankStatement'
 import { toPaise } from '@/lib/finance/bankMoney'
 import type { UserProfile } from '@/lib/types'
 import { FinanceEmpty, FinanceStatusCards, FilterChip } from '@/app/finance/components/FinanceListParts'
@@ -42,22 +43,28 @@ import {
   analyseLine,
   formatBankDate,
   linkedTotal,
+  loadCandidateExpenses,
   loadCandidatePayments,
   loadMonthLines,
   loadStoredRange,
   monthLabel,
   monthOf,
   monthsBetween,
+  rpcMessage,
+  statusLabelFor,
+  type BankExpense,
   type BankLine,
   type BankPayment,
   type LineWithSuggestions,
 } from './bankStatementsModel'
 import { BankLineModal } from './bankLineModal'
+import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { BankUploadModal } from './bankUploadModal'
 
 const PAGE_SIZE = 50
 
 type CardKey = 'all' | 'unlinked' | 'suggested' | 'linked' | 'old_order' | 'not_customer'
+type OutCardKey = 'all' | 'unexplained' | 'suggested' | 'linked' | 'not_expense'
 type Tab = 'in' | 'payments' | 'out'
 
 export function BankStatementsView() {
@@ -77,10 +84,13 @@ export function BankStatementsView() {
   const [month, setMonth] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('in')
   const [card, setCard] = useState<CardKey>('all')
+  const [outCard, setOutCard] = useState<OutCardKey>('all')
+  const [confirmingAll, setConfirmingAll] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
   const [search, setSearch] = useState('')
   // The page number is keyed by the filters it was chosen under: change any of
   // them and the page is 0 again, with no reset in an effect.
-  const pageKey = `${account}|${month}|${tab}|${card}|${search}`
+  const pageKey = `${account}|${month}|${tab}|${card}|${outCard}|${search}`
   const [pageState, setPageState] = useState({ key: pageKey, page: 0 })
   const page = pageState.key === pageKey ? pageState.page : 0
   const setPage = (p: number) => setPageState({ key: pageKey, page: p })
@@ -89,10 +99,11 @@ export function BankStatementsView() {
   // "the data on screen answers a different question", so a reload after a write
   // replaces it in place instead of flashing the list away.
   const dataKey = `${account}|${month}`
-  const [data, setData] = useState<{ key: string; lines: BankLine[]; payments: BankPayment[]; error: string | null } | null>(null)
+  const [data, setData] = useState<{ key: string; lines: BankLine[]; payments: BankPayment[]; expenses: BankExpense[]; error: string | null } | null>(null)
   const loading = month !== null && data?.key !== dataKey
   const lines = useMemo(() => (data?.key === dataKey ? data.lines : []), [data, dataKey])
   const payments = useMemo(() => (data?.key === dataKey ? data.payments : []), [data, dataKey])
+  const expenses = useMemo(() => (data?.key === dataKey ? data.expenses : []), [data, dataKey])
   const loadError = data?.key === dataKey ? data.error : null
 
   const [opened, setOpened] = useState<string | null>(null)
@@ -148,11 +159,15 @@ export function BankStatementsView() {
     const key = `${account}|${month}`
     try {
       const ls = await loadMonthLines(supabase, account, month)
-      const linked = [...new Set(ls.flatMap(l => activeLinks(l).map(k => k.payment_id)))]
-      const ps = await loadCandidatePayments(supabase, month, linked)
-      setData({ key, lines: ls, payments: ps, error: null })
+      const linked = [...new Set(ls.filter(l => l.deposit > 0).flatMap(l => activeLinks(l).map(k => k.payment_id ?? '')))].filter(Boolean)
+      const linkedExpenses = [...new Set(ls.filter(l => l.withdrawal > 0).flatMap(l => activeLinks(l).map(k => k.expense_id ?? '')))].filter(Boolean)
+      const [ps, es] = await Promise.all([
+        loadCandidatePayments(supabase, month, linked),
+        loadCandidateExpenses(supabase, month, linkedExpenses),
+      ])
+      setData({ key, lines: ls, payments: ps, expenses: es, error: null })
     } catch (e) {
-      setData({ key, lines: [], payments: [], error: e instanceof Error ? e.message : 'This month could not be loaded.' })
+      setData({ key, lines: [], payments: [], expenses: [], error: e instanceof Error ? e.message : 'This month could not be loaded.' })
     }
   }, [supabase, account, month])
 
@@ -209,9 +224,39 @@ export function BankStatementsView() {
     })
   }, [analysed, card, q, qDigits])
 
+  const analysedOut = useMemo<LineWithSuggestions[]>(() => debits.map(l => analyseLine(l, payments, expenses)), [debits, payments, expenses])
+  const outCounts = useMemo(() => {
+    const c = { all: analysedOut.length, unexplained: 0, suggested: 0, linked: 0, not_expense: 0 }
+    let unexplainedPaise = 0
+    for (const a of analysedOut) {
+      if (a.status === 'unlinked' || a.status === 'partly') {
+        c.unexplained++
+        unexplainedPaise += toPaise(a.line.withdrawal) - toPaise(linkedTotal(a.line))
+        if (a.expenseSuggestions.length > 0 || a.debitKind) c.suggested++
+      } else if (a.status === 'linked') c.linked++
+      else if (a.status === 'not_expense') c.not_expense++
+    }
+    return { ...c, unexplainedMoney: unexplainedPaise / 100 }
+  }, [analysedOut])
   const shownOut = useMemo(
-    () => debits.filter(l => !q || l.narration.toLowerCase().includes(q) || (qDigits !== '' && String(l.withdrawal).includes(qDigits))),
-    [debits, q, qDigits],
+    () => analysedOut.filter(a => {
+      const open = a.status === 'unlinked' || a.status === 'partly'
+      if (outCard === 'unexplained' && !open) return false
+      if (outCard === 'suggested' && !(open && (a.expenseSuggestions.length > 0 || a.debitKind))) return false
+      if (outCard === 'linked' && a.status !== 'linked') return false
+      if (outCard === 'not_expense' && a.status !== 'not_expense') return false
+      if (!q) return true
+      return a.line.narration.toLowerCase().includes(q) || (a.line.debit_payee ?? '').toLowerCase().includes(q) ||
+        (qDigits !== '' && String(a.line.withdrawal).includes(qDigits))
+    }),
+    [analysedOut, outCard, q, qDigits],
+  )
+  // THE SUGGESTIONS THE OWNER CAN CONFIRM IN ONE GO: unexplained debits shown
+  // right now that look like a kind of non-expense AND match no recorded
+  // expense (a debit that might be a recorded expense is for a person to look at).
+  const bulkItems = useMemo(
+    () => shownOut.filter(a => a.status === 'unlinked' && a.debitKind && a.expenseSuggestions.length === 0),
+    [shownOut],
   )
   const shownPayments = useMemo(
     () => notInBank.filter(p => !q || (p.client_name ?? '').toLowerCase().includes(q) || (p.human_payment_id ?? '').toLowerCase().includes(q) || (qDigits !== '' && String(p.amount).includes(qDigits))),
@@ -222,9 +267,24 @@ export function BankStatementsView() {
     if (!opened) return null
     const hit = analysed.find(a => a.line.id === opened)
     if (hit) return hit
-    const out = debits.find(l => l.id === opened)
-    return out ? analyseLine(out, payments) : null
-  }, [opened, analysed, debits, payments])
+    return analysedOut.find(a => a.line.id === opened) ?? null
+  }, [opened, analysed, analysedOut])
+
+  const confirmAll = async () => {
+    setMarkingAll(true)
+    const items = bulkItems.map(a => ({ line_id: a.line.id, kind: a.debitKind!.kind, payee: a.debitKind!.payee ?? '' }))
+    let marked = 0
+    let failure: string | null = null
+    for (let i = 0; i < items.length && !failure; i += 400) {
+      const { data: n, error } = await supabase.rpc('classify_bank_debits', { p_items: items.slice(i, i + 400) })
+      if (error) failure = rpcMessage(error, 'The debits could not be marked.')
+      else marked += Number(n) || 0
+    }
+    setMarkingAll(false)
+    setConfirmingAll(false)
+    show(failure ? `${failure}${marked ? ` (${marked} were marked first)` : ''}` : `${marked} debits marked as not an expense`, failure ? 'error' : 'success')
+    void loadMonth()
+  }
 
   const months = range ? monthsBetween(monthOf(range.first), monthOf(range.last)) : []
 
@@ -294,6 +354,21 @@ export function BankStatementsView() {
 
       {range && !loadError && (
         <>
+          {tab === 'out' ? (
+            <FinanceStatusCards
+              ariaLabel="Money out, by status"
+              noun="debit"
+              active={outCard}
+              onSelect={k => setOutCard(k)}
+              cards={[
+                { key: 'all', label: 'All debits', count: loading ? null : outCounts.all },
+                { key: 'unexplained', label: 'Unexplained', tone: 'zero', count: loading ? null : outCounts.unexplained },
+                { key: 'suggested', label: 'Has a suggestion', tone: 'partial', count: loading ? null : outCounts.suggested },
+                { key: 'linked', label: 'Linked to expense', tone: 'full', count: loading ? null : outCounts.linked },
+                { key: 'not_expense', label: 'Not an expense', tone: 'neutral', count: loading ? null : outCounts.not_expense },
+              ]}
+            />
+          ) : (
           <FinanceStatusCards
             ariaLabel="Money in, by status"
             noun="credit"
@@ -308,7 +383,16 @@ export function BankStatementsView() {
               { key: 'not_customer', label: 'Not customer money', tone: 'neutral', count: loading ? null : counts.not_customer },
             ]}
           />
-          {!loading && counts.unlinked > 0 && (
+          )}
+          {tab === 'out' && !loading && outCounts.unexplained > 0 && (
+            <p className="bank-unlinked-note">
+              <strong>{formatMoney(outCounts.unexplainedMoney)}</strong> left {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} without an expense or a reason attached.
+              {bulkItems.length > 0 && (
+                <> <button className="bank-link-button" onClick={() => setConfirmingAll(true)}>Confirm {bulkItems.length} suggested {bulkItems.length === 1 ? 'reason' : 'reasons'}</button></>
+              )}
+            </p>
+          )}
+          {tab !== 'out' && !loading && counts.unlinked > 0 && (
             <p className="bank-unlinked-note">
               <strong>{formatMoney(money)}</strong> reached {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} without a payment, an old order or a reason attached.
             </p>
@@ -389,15 +473,20 @@ export function BankStatementsView() {
                       <th style={{ width: 104 }}>Date</th>
                       <th>Paid to</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
-                      <th className="fin-num" style={{ width: 160 }}>Balance after</th>
+                      <th style={{ width: 170 }}>Status</th>
+                      <th style={{ width: 240 }}>Explained as / suggestion</th>
                     </tr></thead>
                     <tbody>
-                      {shownOut.slice(pageStart, pageStart + PAGE_SIZE).map(l => (
-                        <tr key={l.id} onClick={() => setOpened(l.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setOpened(l.id) }}>
-                          <td>{formatBankDate(l.line_date)}</td>
-                          <td><span className="fin-primary-text">{l.narration}</span></td>
-                          <td className="fin-num"><span className="fin-amount">{formatMoney(l.withdrawal)}</span></td>
-                          <td className="fin-num fin-muted">{formatMoney(l.balance)}</td>
+                      {shownOut.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
+                        <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
+                          <td>{formatBankDate(a.line.line_date)}</td>
+                          <td>
+                            <span className="fin-primary-text">{a.line.debit_payee ?? payeeFromDebitNarration(a.line.narration) ?? a.line.narration}</span>
+                            <span className="fin-sub">{a.line.narration}</span>
+                          </td>
+                          <td className="fin-num"><span className="fin-amount">{formatMoney(a.line.withdrawal)}</span></td>
+                          <td><span className={`fin-pill fin-pill--${STATUS_TONE[a.status]}`}>{statusLabelFor(a.line, a.status)}</span></td>
+                          <td><DebitCell a={a} expenses={expenses} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -445,6 +534,7 @@ export function BankStatementsView() {
           supabase={supabase}
           item={openedItem}
           payments={payments}
+          expenses={expenses}
           onClose={() => setOpened(null)}
           onChanged={(message, close) => {
             show(message)
@@ -452,6 +542,25 @@ export function BankStatementsView() {
             void loadMonth()
           }}
         />
+      )}
+
+      {confirmingAll && (
+        <FinanceModal title="Confirm suggested reasons" onClose={() => { if (!markingAll) setConfirmingAll(false) }} width="520px" closeOnBackdropClick={!markingAll}>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            Mark these {bulkItems.length} debits as <strong>not an expense</strong>, each with the reason shown. Every one can be opened and changed afterwards.
+          </p>
+          <ul className="bank-checks">
+            {(Object.keys(DEBIT_KIND_LABEL) as DebitKind[])
+              .map(k => ({ k, n: bulkItems.filter(a => a.debitKind!.kind === k).length }))
+              .filter(x => x.n > 0)
+              .map(x => <li key={x.k}><strong>{x.n}</strong> {DEBIT_KIND_LABEL[x.k].toLowerCase()}</li>)}
+          </ul>
+          <p className="fin-muted" style={{ margin: 0, fontSize: 12 }}>Debits that might be a recorded expense are left out, for you to look at one by one.</p>
+          <div className="bank-actions">
+            <button className="boe-btn boe-btn-ghost" disabled={markingAll} onClick={() => setConfirmingAll(false)}>Cancel</button>
+            <button className="boe-btn boe-btn-primary" disabled={markingAll} onClick={confirmAll}>{markingAll ? 'Marking…' : `Mark ${bulkItems.length} debits`}</button>
+          </div>
+        </FinanceModal>
       )}
 
       {uploading && (
@@ -474,11 +583,45 @@ export function BankStatementsView() {
   )
 }
 
+function DebitCell({ a, expenses }: { a: LineWithSuggestions; expenses: BankExpense[] }) {
+  const byId = new Map(expenses.map(e => [e.id, e]))
+  const links = activeLinks(a.line)
+  if (links.length > 0) {
+    const first = links[0].expense_id ? byId.get(links[0].expense_id) : undefined
+    return (
+      <>
+        <span className="fin-primary-text">{first?.paid_to ?? 'Expense'}{links.length > 1 ? ` +${links.length - 1}` : ''}</span>
+        <span className="fin-sub">{first ? formatBankDate(first.expense_date) : ''}</span>
+      </>
+    )
+  }
+  if (a.status === 'not_expense') {
+    return (
+      <>
+        <span className="fin-primary-text">{a.line.debit_kind ? DEBIT_KIND_LABEL[a.line.debit_kind] : ''}</span>
+        <span className="fin-sub">{a.line.debit_payee ?? a.line.note ?? ''}</span>
+      </>
+    )
+  }
+  if (a.expenseSuggestions.length > 0) {
+    const s = a.expenseSuggestions[0]
+    const e = byId.get(s.expenseId)
+    return (
+      <>
+        <span className="fin-primary-text">{e?.paid_to ?? 'Expense'}</span>
+        <span className="fin-sub">{s.confidence === 'strong' ? 'Strong match' : s.confidence === 'likely' ? 'Likely match' : 'Possible match'} · expense</span>
+      </>
+    )
+  }
+  if (a.debitKind) return <span className="fin-muted">Looks like: {DEBIT_KIND_LABEL[a.debitKind.kind].toLowerCase()}</span>
+  return <span className="fin-muted">No suggestion</span>
+}
+
 function LinkedCell({ a, payments }: { a: LineWithSuggestions; payments: BankPayment[] }) {
   const byId = new Map(payments.map(p => [p.id, p]))
   const links = activeLinks(a.line)
   if (links.length > 0) {
-    const first = byId.get(links[0].payment_id)
+    const first = byId.get(links[0].payment_id ?? '')
     return (
       <>
         <span className="fin-primary-text">{first?.client_name ?? 'Suspense payment'}{links.length > 1 ? ` +${links.length - 1}` : ''}</span>

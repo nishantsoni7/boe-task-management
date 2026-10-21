@@ -10869,3 +10869,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .bank-summary { grid-template-columns: 1fr; }
   .bank-suggest-head, .bank-row { flex-wrap: wrap; }
 }
+/* Bank Statements, money out: the inline "Confirm N suggested reasons" action. */
+.bank-link-button { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit; font-weight: 600; color: #335A86; text-decoration: underline; cursor: pointer; }
+.bank-link-button:hover { color: #274566; }
+.bank-link-button:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; border-radius: 3px; }
