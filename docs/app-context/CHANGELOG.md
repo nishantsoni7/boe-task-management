@@ -24,11 +24,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - Supersedes the 2026-09 removal of the Overdue card (#154): the owner asked for delayed orders again. `orderDashboardSummary.test.ts` now pins "no overdue" only on the original read and the three attention lists; new `orderDashboardOverview.test.ts` pins the overview.
 - Not verified on screen in a signed-in session.
 
-## 2026-10-21 — Salesperson dashboard + notification: PIs sent back for changes / rejected (PR open) · migrations 20270328000100 + 20270328000200 (UNAPPLIED)
+## 2026-10-21 — Salesperson dashboard + notification: PIs sent back for changes / rejected (PR #383, merged 6be85e43) · migrations 20270328000100 + 20270328000200 (APPLIED to production 2026-10-21 with `db push --include-all`, because 20270328000300 from main was already applied)
 - **Owner request.** When a reviewer presses Needs Changes or Reject on a PI, the salesperson must be told and see it on the Orders dashboard, with how many PIs are still pending.
 - **Notification (20270328000100):** `order_submission_review_notify()` (20270321000001) already wrote `pi_review_decided` to submitted_by/created_by with the reviewer's note; it now also reaches `salesperson_id`. App: the badge follows the title, amber "Changes requested" / red "Rejected" (`notificationMeta.ts`).
 - **Dashboard (20270328000200):** `salesperson_orders_dashboard()` restated with `returned` (every needs_changes PI, no age limit) and `rejected` (last 7 days), each with note, reviewer name and age; owners = salesperson_id OR created_by OR submitted_by. "Pending approval" is unchanged (status submitted, salesperson_id only). UI: "Needs your attention" block on top, plus two cards (Sent Back for Changes, Rejected). Parser treats a payload without the lists as none, so code is safe before the migration.
-- Rollout: apply both migrations (20270321000001 must already be applied), then merge. Rollback: re-apply the 20270321000001 function body and the 20270228000000 function (and keep 20270328000000 orders_dashboard_overview intact).
+- Rollout (done): both migrations applied, then merged; live function bodies verified afterwards. Rollback: re-apply the 20270321000001 function body and the 20270228000000 function (and keep 20270328000000 orders_dashboard_overview intact).
 - Tests: new `salespersonDashboardReturned.test.tsx`; `salespersonDashboard.test.tsx` card count 3 → 5. SQL not executed against a database (no Docker rehearsal yet). Not verified on screen.
 
 ## 2026-10-21 — Order page summary: "Total product value" row replaced by a Shipping and billing details link; due-date rule no longer overlaps its label (PR open) · no migration
