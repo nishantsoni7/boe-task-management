@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270328000000  SALESPERSON DASHBOARD — PIs SENT BACK FOR CHANGES / REJECTED
+-- 20270328000200  SALESPERSON DASHBOARD — PIs SENT BACK FOR CHANGES / REJECTED
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- salesperson_orders_dashboard() (20270228000000) counted only PIs awaiting
@@ -286,7 +286,7 @@ $$;
 revoke execute on function public.salesperson_orders_dashboard() from public, anon;
 grant  execute on function public.salesperson_orders_dashboard() to authenticated;
 comment on function public.salesperson_orders_dashboard() is
-  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Also lists PIs sent back for changes and PIs rejected in the last 7 days. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller (orders.view_all does not widen it); { applicable: false } for admins, operations and non-assignees. Read-only, no row cap. 20270328000000.';
+  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Also lists PIs sent back for changes and PIs rejected in the last 7 days. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller (orders.view_all does not widen it); { applicable: false } for admins, operations and non-assignees. Read-only, no row cap. 20270328000200.';
 
 do $$
 begin

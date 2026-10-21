@@ -28,7 +28,7 @@ export type SpPendingRow = {
   canOpen: boolean
 }
 
-/** A PI the reviewer sent back for changes, or rejected (20270328000000). */
+/** A PI the reviewer sent back for changes, or rejected (20270328000200). */
 export type SpReviewedRow = {
   submissionId: string
   reference: string
@@ -178,7 +178,7 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
         canOpen: o.can_open === true,
       }
     })
-    // A payload from a database that predates 20270328000000 has neither list: that is "none", never an error.
+    // A payload from a database that predates 20270328000200 has neither list: that is "none", never an error.
     const reviewed = (v: unknown, what: string): SpReviewedRow[] => arr(v ?? [], what).map((x): SpReviewedRow => {
       const o = obj(x, what + ' row')
       return {

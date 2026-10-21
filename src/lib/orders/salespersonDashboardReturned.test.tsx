@@ -1,4 +1,4 @@
-// PIs SENT BACK FOR CHANGES / REJECTED on the salesperson's dashboard (20270328000000),
+// PIs SENT BACK FOR CHANGES / REJECTED on the salesperson's dashboard (20270328000200),
 // and the notification badge that tells the two apart.
 //
 // The database half (the lists, the 7-day rejected window, ownership) is executed SQL and
@@ -117,7 +117,7 @@ describe('the notification badge', () => {
 describe('the migrations', () => {
   const dir = join(process.cwd(), 'supabase', 'migrations')
   const notify = readFileSync(join(dir, '20270328000100_order_submission_review_notify_salesperson.sql'), 'utf8')
-  const dash = readFileSync(join(dir, '20270328000000_order_submission_returned_rejected_dashboard.sql'), 'utf8')
+  const dash = readFileSync(join(dir, '20270328000200_order_submission_returned_rejected_dashboard.sql'), 'utf8')
 
   test('the notice also reaches the salesperson named on the PI', () => {
     assert.match(notify, /array\[new\.submitted_by, new\.created_by, new\.salesperson_id\]/)

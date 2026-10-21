@@ -29,8 +29,10 @@ import {
   FOCUS_ADD_LABEL,
   SCOPED_VIEW_NOTE,
   parseDashboardSummary,
+  type BoardKey,
   type DashboardSummary,
 } from '@/lib/orders/orderDashboardSummary'
+import { ActionBoard, OverviewCards, firstBoardWithRows } from '@/components/orders/dashboard/OverviewSection'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
 import { DocumentActionQueue } from '@/components/orders/DocumentActionQueue'
 import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/dashboard/FactoryFocusSection'
@@ -75,6 +77,8 @@ export default function OrdersDashboardPage() {
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
   // The owner's "Select an order" control opens the Factory Focus form.
   const [focusFormOpen, setFocusFormOpen] = useState(false)
+  // The board's open tab; null until somebody picks one, when it is the first with rows.
+  const [boardTab, setBoardTab] = useState<BoardKey | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -260,8 +264,18 @@ export default function OrdersDashboardPage() {
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
             stepping in. Revenue only when the read returned it: the database sends it to a reader
             who sees every Order. */}
-        {ready ? <RevenueSection revenue={ready.revenue} /> : null}
-        {ready ? <StatusStrip summary={ready} /> : null}
+        {ready?.overview ? (
+          // ── THE AT-A-GLANCE CARDS ── lead the page once the database offers the overview.
+          <OverviewCards
+            summary={ready}
+            onOpen={key => {
+              setBoardTab(key)
+              document.getElementById('od-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+          />
+        ) : null}
+        {ready && !ready.overview ? <RevenueSection revenue={ready.revenue} /> : null}
+        {ready && !ready.overview ? <StatusStrip summary={ready} /> : null}
         {ready && !ready.viewer.seesAllOrders ? <p className="od-note">{SCOPED_VIEW_NOTE}</p> : null}
 
         {summary.kind === 'ready' ? (
@@ -295,12 +309,26 @@ export default function OrdersDashboardPage() {
             </button>
           </div>
         ) : (
-          <>
-            {/* Each list draws only when it has rows; the strip above carries the zeros. */}
-            <AlignmentSection summary={summary.summary} />
-            <AdvanceSection summary={summary.summary} />
-            <FabricFinishSection summary={summary.summary} />
-          </>
+          summary.summary.overview ? (
+            <>
+              {/* ── THE ACTION BOARD ── one list at a time, then revenue. */}
+              <div id="od-board">
+                <ActionBoard
+                  summary={summary.summary}
+                  active={boardTab ?? firstBoardWithRows(summary.summary)}
+                  onSelect={setBoardTab}
+                />
+              </div>
+              <RevenueSection revenue={summary.summary.revenue} />
+            </>
+          ) : (
+            <>
+              {/* Each list draws only when it has rows; the strip above carries the zeros. */}
+              <AlignmentSection summary={summary.summary} />
+              <AdvanceSection summary={summary.summary} />
+              <FabricFinishSection summary={summary.summary} />
+            </>
+          )
         )}
 
         {/* ── Needs your action: Design Files and Client PO submissions

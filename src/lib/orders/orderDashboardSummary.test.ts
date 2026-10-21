@@ -182,12 +182,14 @@ describe('this phase has three lists, and no overdue list', () => {
     assert.equal(GROUP_COPY.not_aligned.label, 'Not aligned for manufacturing')
   })
 
-  test('overdue is gone from the read, the page and the words', () => {
+  // 2026-10-21: the owner asked for DELAYED orders on the dashboard, which supersedes the
+  // earlier removal of the Overdue card (#154). The old read, the three attention lists and
+  // Factory Focus still carry no overdue list; the delayed card and tab are the overview's
+  // (20270328000000), pinned in orderDashboardOverview.test.ts.
+  test('overdue is gone from the original read and the three attention lists', () => {
     for (const file of [
-      'src/lib/orders/orderDashboardSummary.ts',
       'src/components/orders/dashboard/AttentionSections.tsx',
       'src/components/orders/dashboard/FactoryFocusSection.tsx',
-      'src/app/orders/page.tsx',
     ]) {
       const src = read(file)
       assert.equal(/overdue|days_overdue|no_due_date|Past due/i.test(src), false, `${file} still mentions overdue`)
