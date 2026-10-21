@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell, Receipt } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell, Receipt, Landmark } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -17,6 +17,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { activeFinanceNav, type FinanceNavKey } from '@/lib/navigation/moduleNav'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
 
 /**
@@ -43,6 +44,12 @@ export const RECEIVED_PAYMENTS_PATH = '/finance/received'
  */
 export const EXPENSES_PATH = '/finance/expenses'
 export const ADD_EXPENSE_PATH = '/finance/expenses/new'
+
+/**
+ * Bank statements and reconciliation. Drawn only for a holder of the protected
+ * finance.reconcile (admins included); the route and the database ask again.
+ */
+export const BANK_STATEMENTS_PATH = '/finance/bank'
 
 /** The one count the sidebar draws. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
@@ -74,7 +81,8 @@ export function FinanceLayout({
   // session-scoped context already holds the same row (it is the one the module
   // switch reads), so the account block at the foot of the sidebar is drawn
   // from the first frame instead of appearing when the page lands. Display only.
-  const { profile: sessionProfile } = usePermissionContext()
+  const { profile: sessionProfile, role: sessionRole, permissionsByModule } = usePermissionContext()
+  const canReconcileBank = deriveFinanceCapabilities(sessionRole, permissionsByModule.get('finance') ?? []).canReconcileBank
   const { triggerRefresh } = useRefresh()
   const queryClient = useQueryClient()
 
@@ -170,6 +178,11 @@ export function FinanceLayout({
     // No badge: an expense log has no queue and nothing waiting on anybody, so a
     // number beside it would count rows rather than report work.
     { label: 'Expenses',           path: EXPENSES_PATH,           icon: <Receipt size={15} strokeWidth={1.8} />,    key: 'expenses' },
+    // Money in the bank against money recorded. A drawing rule only: no badge,
+    // and the entry is absent (not disabled) for anybody without finance.reconcile.
+    ...(canReconcileBank
+      ? [{ label: 'Bank Statements', path: BANK_STATEMENTS_PATH, icon: <Landmark size={15} strokeWidth={1.8} />, key: 'bank' as const }]
+      : []),
   ]
   const activeKey = activeFinanceNav(pathname)
 

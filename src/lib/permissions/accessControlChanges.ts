@@ -185,6 +185,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
   verify_own_payment:        'Record and verify own payments in one step',
+  reconcile:                 'Upload bank statements and match them to payments',
 }
 
 /** `view_all` means something different in Orders, Finance and Performance. */
