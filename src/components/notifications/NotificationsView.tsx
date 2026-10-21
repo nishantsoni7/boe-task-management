@@ -8,7 +8,7 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
-import { taskDetailHref, withTaskReturnTo } from '@/lib/tasks/taskReturnPath'
+import { withTaskReturnTo } from '@/lib/tasks/taskReturnPath'
 import { colors, font } from '@/lib/tokens'
 import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -179,20 +179,13 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady, userId])
 
-  // Prefetch task detail pages for notifications in view
-  // Each href once per arrival: `notifications` changes identity on every
-  // refetch and optimistic update, and several rows share one task.
-  const warmedHrefs = useRef(new Set<string>())
-  useEffect(() => {
-    if (notifications.length === 0) return
-    notifications.slice(0, 12).forEach(n => {
-      if (!n.task_id) return
-      const href = taskDetailHref(n.task_id, pathname)
-      if (warmedHrefs.current.has(href)) return
-      warmedHrefs.current.add(href)
-      router.prefetch(href)
-    })
-  }, [notifications]) // eslint-disable-line react-hooks/exhaustive-deps
+  // NO LOAD-TIME PREFETCH OF TASK PAGES. This used to warm the first twelve
+  // tasks in an effect; each warm-up brings the Task page's stylesheet, which
+  // Chrome preloads and this page never applies ("preloaded but not used"), and
+  // the burst of requests competed with the list itself. A task is now warmed
+  // on intent (pointer over / focus / touch) by its title link in
+  // NotificationTaskGroup. Guard: notificationsIntentPrefetch.test.ts.
+  const warmTask = useCallback((href: string) => { router.prefetch(href) }, [router])
 
   // Rows with a DELETE still in flight are hidden immediately and stay hidden
   // even if a concurrent refetch puts them back in the cache — the server has
@@ -512,6 +505,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                 onDeleteGroup={handleDeleteGroup}
                 onDeleteOne={handleDeleteSingle}
                 onRowClick={handleRowClick}
+                onWarmTask={warmTask}
               />
             ) : (
               <div key={item.key} className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px', marginBottom: '8px' }}>

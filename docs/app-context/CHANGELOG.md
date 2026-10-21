@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Notifications: task pages warmed on intent only, not on load (PR open) · no migration
+- **Owner report:** Chrome's "preloaded using link preload but not used" for the Task page stylesheet on every Notifications visit, and a slow-feeling open. Cause: `NotificationsView` prefetched the first 12 tasks in an effect and each card title `<Link>` also viewport-prefetched; measured on production 12 RSC requests for 4 tasks (3 per task).
+- **Now:** `prefetch={false}` on the title link; `onWarmTask` (page-owned `router.prefetch`) fires on pointer-enter / focus / touch-start. Tests: new `notificationsIntentPrefetch.test.ts`; `taskReturnPath.test.ts` follows the move.
+- **Not proven:** the 5-6 s hang did not reproduce (about 1 s warm on production); the fix removes the warning's cause and the request burst.
+- Unrelated, found on clean main: `ordersFinanceUsability.test.tsx` "the target link is a real link" fails (reads `ReceivedPaymentsView.tsx`; the handler now lives in `receivedPaymentsTable.tsx`).
+
 ## 2026-10-21 — PI Drafts list trim: Grand total column and the date under Salesperson removed, header "Advance %" (PR open) · no migration
 - **Owner request after seeing the live list.** Removed the **Grand total** column (table and cards; Product value stays — `grandTotal`/`grandTotalMissing` stay on the row model and the select, the PI detail page still states the total), the workbook "Date of creation" printed under the salesperson's name (it is G20 of the PI file, typed by the preparer, not an upload or status date; `authoredOn` stays on the model), and shortened the column header "Advance % received" → **"Advance %"** so it is not truncated. Column widths re-balanced for 8 columns. Tests: `draftsAccess` pins.
 
