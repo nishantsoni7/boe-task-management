@@ -245,7 +245,7 @@ export default function PiDraftsPage() {
 
     // ── Advance % received, for every row in ONE call ──
     //
-    // pi_submissions_advance_percent() (20270326000000) applies the same rule
+    // pi_submissions_advance_percent() (20270327000000) applies the same rule
     // as the PI detail page's payment card and answers only for PIs this
     // caller may view. A failed read, or a PI with no usable Total before GST,
     // leaves the row without a figure and it prints an honest dash — a missing

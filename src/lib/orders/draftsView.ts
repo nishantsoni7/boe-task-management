@@ -544,7 +544,7 @@ export type PiDraftListEntry = {
   /**
    * Advance % received — verified plus awaiting-verification payments as a
    * percentage of Total before GST, as pi_submissions_advance_percent() reports
-   * it (20270326000000). "—" when the database gave no figure: no usable base,
+   * it (20270327000000). "—" when the database gave no figure: no usable base,
    * or the read failed. Never a guessed 0%.
    */
   advancePercent: string

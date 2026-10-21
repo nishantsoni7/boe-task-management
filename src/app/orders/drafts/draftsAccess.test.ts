@@ -353,7 +353,7 @@ describe('the detail page renders only what it fetched', () => {
 
   test('the list stays entirely read-only', () => {
     // The one database function the list calls is the STABLE batch reader of
-    // the advance percentage (20270326000000); every decision is still taken on
+    // the advance percentage (20270327000000); every decision is still taken on
     // the record itself.
     const calls = [...read(LIST_PAGE).matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
     assert.deepEqual(calls, ['pi_submissions_advance_percent'],

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `516acfbe` — Admin can edit any payment inside the PI Draft and Order payments popups (#375)
-- Commits on this branch: 928
+- Commit: `d4ac2918` — PI Drafts list: drop Uploaded by/Submitted, add Confirmed date, Due date, Advance % received
+- Commits on this branch: 929
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 148
-- Migrations: 339 (first `20260530_create_positions.sql`, latest `20270326000000_pi_drafts_list_advance_percent.sql`)
+- Migrations: 339 (first `20260530_create_positions.sql`, latest `20270327000000_pi_drafts_list_advance_percent.sql`)
 - Tables ever created: 154 (dropped at some point: 7)   SQL functions: 721   Enums: 0
 - Test files: 615   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d4ac2918` 2026-10-21 PI Drafts list: drop Uploaded by/Submitted, add Confirmed date, Due date, Advance % received
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
 - `a59f7841` 2026-10-20 Redesign the Payment verification modal (Notion-style hierarchy)
 - `45738704` 2026-10-20 Edit Received Payment: drop Received In, quiet Notion-style form
@@ -38,7 +39,6 @@
 - `6b3ae524` 2026-10-19 Orders sidebar: Dashboard, Confirmed Orders, PI Drafts; PI format under Resources (#355)
 - `95aefe7a` 2026-10-19 Edit a wrong pending payment from both verification screens (#357)
 - `45f3b1f3` 2026-10-19 Orders: sample choice on PI and Order; Confirmed Orders without Status (#354)
-- `e233340c` 2026-10-19 Confirmed Orders list: Product Value is the Subtotal; owner's columns and markers (#353)
 
 ## Pages by top-level area
 
@@ -378,7 +378,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270323000000_finance_payment_proof_admin_attach.sql`
 - `20270324000000_payment_mode_hdfc_secondary.sql`
 - `20270325000000_order_pendencies.sql`
-- `20270326000000_pi_drafts_list_advance_percent.sql`
+- `20270327000000_pi_drafts_list_advance_percent.sql`
 
 ## All SQL function names
 

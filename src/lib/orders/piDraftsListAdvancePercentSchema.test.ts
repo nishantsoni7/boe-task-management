@@ -1,5 +1,5 @@
 /**
- * THE PI DRAFTS LIST'S BATCH ADVANCE PERCENTAGE (20270326000000), read as text.
+ * THE PI DRAFTS LIST'S BATCH ADVANCE PERCENTAGE (20270327000000), read as text.
  *
  * Holds the migration to its promises without a database:
  *   * it is read-only and changes no table, column or policy;
@@ -23,7 +23,7 @@ import { join } from 'node:path'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const MIGRATION = read('supabase/migrations/20270326000000_pi_drafts_list_advance_percent.sql')
+const MIGRATION = read('supabase/migrations/20270327000000_pi_drafts_list_advance_percent.sql')
 const SQL = stripSql(MIGRATION)
 const SUMMARY = stripSql(read('supabase/migrations/20270227000000_order_submission_advance_on_total_before_gst.sql'))
 
