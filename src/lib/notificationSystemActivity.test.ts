@@ -378,6 +378,9 @@ describe('the read side excludes system types too', () => {
     // payment decision, a PI sent or decided...), through ONE helper insert.
     // Nothing scheduled, no system type.
     const ORDERS_NOTIFICATIONS = '20270321000001_order_submission_notifications_complete.sql'
+    // 20270401000000: the Operations dashboard. Re-emits the revision handoff trigger (no alignment reset) and the
+    // handoff decision notice, and its answer RPC tells the approver and the salesperson, through the same helper.
+    const OPERATIONS_DASHBOARD = '20270401000000_operations_dashboard.sql'
     assertNamedSuccessors(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -396,7 +399,16 @@ describe('the read side excludes system types too', () => {
       REVIEW_ADMIN_REJECT,
       INVENTORY_BOOKINGS,
       ORDERS_NOTIFICATIONS,
+      OPERATIONS_DASHBOARD,
     ])
+    {
+      const sql = read(join(dir, OPERATIONS_DASHBOARD))
+      assert.equal(/creates+(ors+replaces+)?(constraints+)?trigger/i.test(sql), false, `${OPERATIONS_DASHBOARD}: it replaces functions only and installs no trigger`)
+      assert.equal(/cron.schedule|pg_net|http_post/i.test(sql), false, `${OPERATIONS_DASHBOARD}: nothing is scheduled`)
+      assert.ok(sql.includes('public.assert_order_submission_actor()'), `${OPERATIONS_DASHBOARD}: the answer acts as a signed-in person`)
+      assert.ok(sql.includes('public.order_notify_users('), `${OPERATIONS_DASHBOARD}: the answer notice goes through the one helper`)
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${OPERATIONS_DASHBOARD} must not write ${t}`)
+    }
     {
       const sql = read(join(dir, ORDERS_NOTIFICATIONS))
       assert.equal((sql.match(/insert\s+into\s+public\.notifications/gi) ?? []).length, 1, `${ORDERS_NOTIFICATIONS}: one write, in order_notify_users`)
@@ -536,7 +548,7 @@ describe('the read side excludes system types too', () => {
       assert.deepEqual([...new Set(types)].sort(), ['inventory_booking_decided', 'inventory_booking_requested'])
       for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${INVENTORY_BOOKINGS} must not write ${t}`)
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS && name !== OPERATIONS_DASHBOARD)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)
