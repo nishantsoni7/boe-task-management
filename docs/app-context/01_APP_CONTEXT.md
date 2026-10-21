@@ -56,7 +56,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 12 | Notifications | Shipped | `modules/12-notifications.md` | enum caveat; per-module categories |
 | 13 | Performance (personal vs team) | Shipped | `modules/13-performance.md` | `view` / `view_team` / `view_all` |
 | 14 | Review Workflow / Customer Reviews | Shipped | `modules/14-review-workflow.md` | Soft-deleted rows still match status predicates — always `deleted_at is null` |
-| 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass FIXED by `20270319000000` (applied 2026-10-18) |
+| 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass FIXED by `20270319000000` (applied 2026-10-18); admin permanent delete `20270326000000` (UNAPPLIED until merge) |
 | 16 | Assets & Access | Shipped | `modules/16-assets-access.md` | `accept_employee_asset` overloads must not declare DEFAULT |
 | 17 | Inventory | Shipped | `modules/17-inventory.md` | public bucket — no price/customer data in paths |
 | 18 | Exhibition Leads | Shipped | `modules/18-exhibition-leads.md` | Anthropic scan; never force `tool_choice` |
