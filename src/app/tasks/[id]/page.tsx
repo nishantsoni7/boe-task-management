@@ -43,7 +43,7 @@ import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import { ASSIGNED_BY_ME_KEY } from '@/hooks/queries/useAssignedByMe'
 import { hasInAppHistory } from '@/lib/navigation/appHistory'
 import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
-import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef, SIGNED_URL_TTL_SECONDS } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
 import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, postAcknowledgedNotice } from '@/lib/tasks/acknowledgeTask'
@@ -240,6 +240,10 @@ export default function TaskDetailPage() {
   // Signed on open and held only while the modal is up. Null while signing, and
   // null forever if the caller is not allowed the object — Postgres decides.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  // A second signature of the same object that carries the original filename, so
+  // a download keeps its real name. Kept apart from previewUrl because that one
+  // feeds <img>/<iframe>, and a filename-bearing URL downloads instead of rendering.
+  const [previewDownloadUrl, setPreviewDownloadUrl] = useState<string | null>(null)
 
   // Copy & Assign (admin-only). The modal owns its field state; the page owns the submit.
   const [copyModalOpen,  setCopyModalOpen]  = useState(false)
@@ -297,6 +301,7 @@ export default function TaskDetailPage() {
   // PREVIOUS attachment's URL for a frame while the new one is being signed.
   const openPreview = useCallback((path: string, fileName?: string) => {
     setPreviewUrl(null)
+    setPreviewDownloadUrl(null)
     setPreviewAttachment({ path, fileName })
   }, [])
 
@@ -310,6 +315,11 @@ export default function TaskDetailPage() {
     signAttachmentUrl(supabase, previewAttachment.path)
       .then(url => { if (active) setPreviewUrl(url) })
       .catch(() => { if (active) setPreviewUrl(null) })
+    if (previewAttachment.fileName) {
+      signAttachmentUrl(supabase, previewAttachment.path, SIGNED_URL_TTL_SECONDS, previewAttachment.fileName)
+        .then(url => { if (active) setPreviewDownloadUrl(url) })
+        .catch(() => { if (active) setPreviewDownloadUrl(null) })
+    }
     return () => { active = false }
   }, [previewAttachment, supabase])
 
@@ -3219,6 +3229,8 @@ export default function TaskDetailPage() {
       {previewAttachment && previewUrl && (
         <AttachmentPreviewModal
           url={previewUrl}
+          downloadUrl={previewDownloadUrl}
+          getDownloadUrl={() => signAttachmentUrl(supabase, previewAttachment.path, SIGNED_URL_TTL_SECONDS, previewAttachment.fileName)}
           fileName={previewAttachment.fileName}
           onClose={() => setPreviewAttachment(null)}
         />

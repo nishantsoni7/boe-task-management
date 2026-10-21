@@ -26,10 +26,19 @@ const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
 interface Props {
   url:      string
   fileName?: string
+  /**
+   * The same object signed with its original filename, so storage answers with
+   * Content-Disposition: attachment and the browser saves it under that name.
+   * Used for Open in Tab on files that are not shown inline; the preview itself
+   * always renders from `url`, because this one downloads instead of displaying.
+   */
+  downloadUrl?: string | null
+  /** A fresh filename-bearing URL, asked for at click time because signed links expire. */
+  getDownloadUrl?: () => Promise<string | null>
   onClose:  () => void
 }
 
-export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
+export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownloadUrl, onClose }: Props) {
   // Type is read from the DISPLAY NAME when the caller supplies one, falling
   // back to the URL exactly as before. Task attachments are stored at a path
   // that ends in the real extension, so both sources agree there and nothing
@@ -49,6 +58,41 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
 
   const [sheetState, setSheetState] = useState<SheetState>({ status: 'loading' })
   const [activeSheet, setActiveSheet] = useState<string | null>(null)
+
+  // Preferred path: hand the browser a signed URL that carries the filename and
+  // let storage's Content-Disposition do the save. Nothing is read into memory,
+  // so a large workbook full of images downloads like any other file. The old
+  // fetch -> blob -> revokeObjectURL() sequence revoked the blob in the same tick
+  // as the click, which can cancel a large download without raising anything.
+  // Without a signed filename URL it falls back to a blob download that checks
+  // the response and keeps the blob alive long enough to be saved.
+  const handleDownload = async () => {
+    const fresh = getDownloadUrl ? await getDownloadUrl().catch(() => null) : null
+    const href  = fresh ?? downloadUrl
+    if (href) {
+      const a = document.createElement('a')
+      a.href = href
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      return
+    }
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Failed to fetch file')
+      const blobUrl = URL.createObjectURL(await res.blob())
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch {
+      window.open(url, '_blank')
+    }
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -168,20 +212,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
           {/* Actions */}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
             <button
-              onClick={async () => {
-                try {
-                  const res = await fetch(url)
-                  const blob = await res.blob()
-                  const blobUrl = URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = blobUrl
-                  a.download = name
-                  a.click()
-                  URL.revokeObjectURL(blobUrl)
-                } catch {
-                  window.open(url, '_blank')
-                }
-              }}
+              onClick={handleDownload}
               style={{
                 fontSize: '12px', fontWeight: 500,
                 color: colors.brandInk, textDecoration: 'none',
@@ -194,7 +225,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               ⬇ Download
             </button>
             <a
-              href={url}
+              href={isImage || isPdf ? url : (downloadUrl ?? url)}
               target="_blank"
               rel="noopener noreferrer"
               style={{

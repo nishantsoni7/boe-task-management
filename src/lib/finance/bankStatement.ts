@@ -209,3 +209,51 @@ export function suggestNonCustomerKind(narration: string): { kind: NonCustomerKi
   if (/INTEREST (PAID|CREDIT)|INT\.? ?PD|CREDIT INTEREST/.test(n)) return { kind: 'interest', reason: 'Interest credit' }
   return null
 }
+// ── What a debit is, from its narration ─────────────────────────────────────
+//
+// Most debits on the statements are NOT expenses recorded in the app: supplier
+// NEFT/RTGS payments, tax and GST, loan EMIs, transfers to the company's own
+// other account, bank charges. A suggestion only — the owner confirms (one at a
+// time, or all the shown suggestions at once after seeing them).
+
+export type DebitKind = 'supplier_payment' | 'salary' | 'tax' | 'loan_emi' | 'own_transfer' | 'bank_charges' | 'other'
+
+export const DEBIT_KIND_LABEL: Record<DebitKind, string> = {
+  supplier_payment: 'Supplier payment',
+  salary: 'Salary',
+  tax: 'Tax / GST',
+  loan_emi: 'Loan EMI',
+  own_transfer: 'Own account transfer',
+  bank_charges: 'Bank charges / interest',
+  other: 'Other, not an expense',
+}
+
+/** Who the money went to, as far as the narration says. Display only. */
+export function payeeFromDebitNarration(narration: string): string | null {
+  const n = narration.trim()
+  const tidy = (s: string) => s.replace(/\s+/g, ' ').trim()
+  let m = /^(?:NEFT|RTGS) DR-[A-Z0-9]+-(.+?)-NETBANK/i.exec(n) ?? /^(?:NEFT|RTGS) DR-[A-Z0-9]+-([^-]+)/i.exec(n)
+  if (m) return tidy(m[1])
+  m = /^IMPS-\d+-(.+?)-[A-Z]{3,5}-X/i.exec(n)
+  if (m) return tidy(m[1])
+  m = /^IB FUNDS TRANSFER DR-\d+-(.+)$/i.exec(n)
+  if (m) return tidy(m[1])
+  m = /^UPI-(.+?)-[^-]*@/i.exec(n)
+  if (m) return tidy(m[1])
+  m = /^\d+-TPT-.*?-([^-]+)$/i.exec(n)
+  if (m) return tidy(m[1])
+  return null
+}
+
+export function suggestDebitKind(narration: string): { kind: DebitKind; reason: string; payee: string | null } | null {
+  const n = narration.toUpperCase().trim()
+  if (/^IB FUNDS TRANSFER DR/.test(n)) return { kind: 'own_transfer', reason: 'Transfer to another HDFC account', payee: payeeFromDebitNarration(narration) }
+  if (/^CBDT\/|^GST\/BANK|\b(CGST|SGST|IGST)\b/.test(n)) return { kind: 'tax', reason: 'Tax or GST payment', payee: null }
+  if (/^EMI\b/.test(n)) return { kind: 'loan_emi', reason: 'Loan EMI', payee: null }
+  if (/^INTEREST DEBITED|^DC INTL POS TXN|CHARGES|^ANNUAL FEE|MIN(IMUM)? BAL/.test(n)) return { kind: 'bank_charges', reason: 'Bank charge or interest', payee: null }
+  if (/^(NEFT|RTGS) DR-|^IMPS-\d+-|^\d+-TPT-/.test(n)) {
+    const payee = payeeFromDebitNarration(narration)
+    return { kind: 'supplier_payment', reason: payee ? `Bank transfer to ${payee}` : 'Bank transfer', payee }
+  }
+  return null
+}
