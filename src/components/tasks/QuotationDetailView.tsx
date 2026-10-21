@@ -181,6 +181,7 @@ export function QuotationDetailView(p: Props) {
         <div className="boe-task-right-col" style={{ minWidth: 0 }}>
 
           {done && (
+            <>
             <div className="boe-card" style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '12px', borderLeft: `3px solid ${colors.green}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <p style={{ ...LABEL, color: colors.green }}>Quotation sent</p>
@@ -196,12 +197,6 @@ export function QuotationDetailView(p: Props) {
                   {p.sent.note && (
                     <MultilineText style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: colors.primary }}>{p.sent.note}</MultilineText>
                   )}
-                  <TaskAttachmentGallery
-                    entries={p.sent.files}
-                    taskTitle={`${task.title} - quotation`}
-                    supabase={p.supabase}
-                    onOpenFile={p.onOpenFile}
-                  />
                 </>
               ) : (
                 <p style={{ margin: 0, fontSize: '12.5px', color: colors.muted }}>
@@ -224,6 +219,15 @@ export function QuotationDetailView(p: Props) {
                 </button>
               )}
             </div>
+            {p.sent && p.sent.files.length > 0 && (
+              <TaskAttachmentGallery
+                entries={p.sent.files}
+                taskTitle={`${task.title} - quotation`}
+                supabase={p.supabase}
+                onOpenFile={p.onOpenFile}
+              />
+            )}
+            </>
           )}
 
           {(p.canSend && !done) || p.canMessage ? (
