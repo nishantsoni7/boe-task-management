@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Send Payment Request form: quiet, Notion-style layout (PR open) · no migration
+- **Owner request.** The form looked messy: bold large type, repeated headings, a grey box inside the proof section, a footer that repeated the account and destination.
+- **Presentation only.** Quiet small sentence-case labels, no numbered circles, medium (not bold) weights, wider padding. Proof section: no nested heading or panel; fields are Proof, Reference, Notes for Finance. Footer now says the amount and that Finance verifies it, not the account again. Opt-in `quiet` props on FormStep, Field, ProofReferenceSection/Field; ProofDropZone copy shortened and other payment forms inherit its calmer weight and wording. Same submit logic, same columns.
+- **Proof.** tsc, eslint, finance tests green. proofReferenceSection.test.ts now matches `<ProofReferenceSection quiet>`. Not yet seen on screen.
+
 ## 2026-10-21 — Finance: an admin can delete a Confirmed Payment entered by mistake (PR open) · migration 20270331000000 (APPLIED 2026-10-21)
 - **Owner request.** A way to delete confirmed payments entered by mistake. Decisions: erase completely, admins only, release allocations. Lifts the 2026-09-18 "verified is permanent" rule (20261218) for admins.
 - **Migration 20270331000000** re-emits four functions with bodies extracted by script: `finance_payment_deletable_by` and the delete guard lose the test-data condition; `begin_/finalize_finance_payment_deletion` gain `PAYMENT_DELETION_BANK_LINKED` (an active bank link refuses; finalize re-checks and deletes already-undone link notes). Requires 20270329000000. Reason + typed Payment ID, proof sweep, allocation release and the tombstone claim row are unchanged.
