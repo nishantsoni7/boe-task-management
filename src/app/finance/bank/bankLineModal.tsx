@@ -16,20 +16,24 @@ import { payerFromNarration, type PaymentSuggestion } from '@/lib/finance/bankMa
 import { toPaise } from '@/lib/finance/bankMoney'
 import {
   PAYMENT_STATUS_LABEL,
-  STATUS_LABEL,
   STATUS_TONE,
   activeLinks,
   formatBankDate,
   linkedTotal,
   rpcMessage,
+  statusLabelFor,
+  type BankExpense,
   type BankPayment,
   type LineWithSuggestions,
 } from './bankStatementsModel'
+import { BankDebitPanel } from './bankDebitPanel'
 
 type Props = {
   supabase: SupabaseClient
   item: LineWithSuggestions
   payments: BankPayment[]
+  /** Recorded expenses a debit may be (money out). */
+  expenses: BankExpense[]
   onClose: () => void
   /** Reload the page's data after a write; the modal closes itself when told to. */
   onChanged: (message: string, close?: boolean) => void
@@ -37,7 +41,7 @@ type Props = {
 
 const CONFIDENCE_LABEL = { strong: 'Strong match', likely: 'Likely match', possible: 'Possible match' } as const
 
-export function BankLineModal({ supabase, item, payments, onClose, onChanged }: Props) {
+export function BankLineModal({ supabase, item, payments, expenses, onClose, onChanged }: Props) {
   const { line, status, suggestions, nonCustomer } = item
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -107,7 +111,7 @@ export function BankLineModal({ supabase, item, payments, onClose, onChanged }: 
             {formatBankDate(line.line_date)} · {BANK_ACCOUNT_LABEL[line.account]}
           </div>
         </div>
-        {isCredit && <span className={`fin-pill fin-pill--${STATUS_TONE[status]}`}>{STATUS_LABEL[status]}</span>}
+        <span className={`fin-pill fin-pill--${STATUS_TONE[status]}`}>{statusLabelFor(line, status)}</span>
       </div>
 
       <div className="bank-narration">
@@ -118,18 +122,14 @@ export function BankLineModal({ supabase, item, payments, onClose, onChanged }: 
 
       {error && <div role="alert" className="bank-error">{error}</div>}
 
-      {!isCredit && (
-        <p className="fin-muted" style={{ fontSize: 13, margin: 0 }}>
-          Money out is kept so the balances add up. Matching it to expenses is not part of this screen yet.
-        </p>
-      )}
+      {!isCredit && <BankDebitPanel supabase={supabase} item={item} expenses={expenses} onChanged={onChanged} />}
 
       {/* ── linked ── */}
-      {links.length > 0 && (
+      {isCredit && links.length > 0 && (
         <section className="bank-section">
           <h3>Linked to</h3>
           {links.map(l => {
-            const p = paymentById.get(l.payment_id)
+            const p = paymentById.get(l.payment_id ?? '')
             return (
               <div key={l.id} className="bank-row">
                 <div style={{ minWidth: 0 }}>

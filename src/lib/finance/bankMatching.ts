@@ -179,3 +179,77 @@ export function payerFromNarration(narration: string): string | null {
 function tidy(s: string): string {
   return s.replace(/\s+/g, ' ').trim()
 }
+// ── Money out: which recorded expense is this debit? ────────────────────────
+
+export type MatchDebit = {
+  id: string
+  line_date: string
+  narration: string
+  /** Rupees of the debit not yet linked to an expense. */
+  remaining: number
+}
+
+export type MatchExpense = {
+  id: string
+  expense_date: string
+  paid_to: string
+  /** Rupees of the expense not yet linked to a bank debit. */
+  remaining: number
+  payment_mode: string
+  paid_from: 'company' | 'personal' | null
+  remark: string | null
+}
+
+export type ExpenseSuggestion = {
+  expenseId: string
+  score: number
+  confidence: MatchConfidence
+  amountExact: boolean
+  reasons: string[]
+  warnings: string[]
+}
+
+const COMPANY_BANK_MODES = new Set(['bank_transfer', 'upi', 'cheque', 'debit_card', 'credit_card'])
+
+/**
+ * Ranked expenses for a bank debit. A suggestion only; a person presses Link.
+ * An amount that is not equal (or part of a larger debit) is never suggested:
+ * a debit is money that left, and it is the same paisa or it is another thing.
+ */
+export function suggestExpensesForDebit(debit: MatchDebit, expenses: MatchExpense[], max = 5): ExpenseSuggestion[] {
+  const out: ExpenseSuggestion[] = []
+  for (const e of expenses) {
+    if (e.remaining <= 0) continue
+    const reasons: string[] = []
+    const warnings: string[] = []
+    let score = 0
+
+    const amountExact = samePaise(e.remaining, debit.remaining)
+    if (amountExact) { score += 50; reasons.push('Exact amount') }
+    else if (e.remaining < debit.remaining) { score += 8; reasons.push('Could be part of this debit') }
+    else continue
+
+    const overlap = nameOverlap(e.paid_to, debit.narration)
+    if (overlap >= 0.99) { score += 25; reasons.push('Name matches ' + e.paid_to) }
+    else if (overlap >= 0.5) { score += 12; reasons.push('Name partly matches ' + e.paid_to) }
+
+    const d = daysBetween(debit.line_date, e.expense_date)
+    const ad = Math.abs(d)
+    if (ad === 0) { score += 15; reasons.push('Same day') }
+    else if (ad <= 3) { score += 12; reasons.push(`${ad} day${ad === 1 ? '' : 's'} ${d > 0 ? 'after' : 'before'} the expense date`) }
+    else if (ad <= 7) { score += 7; reasons.push(`${ad} days ${d > 0 ? 'after' : 'before'} the expense date`) }
+    else if (ad <= 21) { score += 2; warnings.push(`Recorded ${ad} days ${d > 0 ? 'before' : 'after'} the bank date`) }
+    else { score -= 10; warnings.push(`Dates are ${ad} days apart`) }
+
+    if (COMPANY_BANK_MODES.has(e.payment_mode)) score += 5
+    else warnings.push(`Recorded as paid by ${e.payment_mode.replace('_', ' ')}`)
+    if (e.paid_from === 'personal') { score -= 15; warnings.push('Recorded as paid personally, not from the company') }
+
+    if (score < 40) continue
+    const strong = amountExact && overlap >= 0.99
+    const likely = amountExact && (ad <= 7 || overlap >= 0.5) || score >= 75
+    out.push({ expenseId: e.id, score, confidence: strong ? 'strong' : likely ? 'likely' : 'possible', amountExact, reasons, warnings })
+  }
+  out.sort((a, b) => b.score - a.score)
+  return out.slice(0, max)
+}

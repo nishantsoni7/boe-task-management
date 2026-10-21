@@ -27,10 +27,11 @@ describe('Bank Statements never decides a payment', () => {
     }
   })
 
-  test('the only writes are the six bank RPCs; no direct table write', () => {
+  test('the only writes are the bank RPCs; no direct table write', () => {
     const allowed = new Set([
       'import_bank_statement', 'link_bank_line_to_payment', 'unlink_bank_line_payment',
       'classify_bank_line', 'clear_bank_line_classification',
+      'link_bank_debit_to_expense', 'unlink_bank_debit_expense', 'classify_bank_debits',
     ])
     for (const f of bankFiles) {
       const src = read(f)
