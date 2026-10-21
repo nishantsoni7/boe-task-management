@@ -209,15 +209,17 @@ describe('the words', () => {
 // ── What is drawn ─────────────────────────────────────────────────────────────
 
 describe('the page body: three cards and four panels, in order', () => {
-  test('exactly three summary cards, in order, with the stated figures and labels', () => {
+  test('five summary cards, in order, with the stated figures and labels (the last two count PIs sent back / rejected, never pending)', () => {
     const out = html(parsed(payload()))
     const cards = [...out.matchAll(/<section class="spd-card"[^>]*><h2[^>]*>([^<]+)<\/h2><p class="spd-card-value">([^<]*)<\/p><p class="spd-card-sub">([^<]*)<\/p>/g)]
-    assert.deepEqual(cards.map(c => c[1]), ['Total Orders', 'Current Month Revenue', 'Orders Pending Approval'])
+    assert.deepEqual(cards.map(c => c[1]), ['Total Orders', 'Current Month Revenue', 'Orders Pending Approval', 'Sent Back for Changes', 'Rejected'])
     assert.equal(cards[0][2], '42')
     assert.equal(cards[0][3], 'All-time confirmed orders')
     assert.equal(cards[1][2], '₹12,34,567.50')
     assert.match(cards[1][3], /^October 2026/)
     assert.equal(cards[2][2], '2')
+    assert.equal(cards[3][2], '0')
+    assert.equal(cards[4][2], '0')
   })
 
   test('four panels with the stated titles, each carrying its full count', () => {
@@ -229,7 +231,7 @@ describe('the page body: three cards and four panels, in order', () => {
       ['advance', 'Advance Below 40%', '2'],
       ['ready', 'Ready for Dispatch', '2'],
     ])
-    assert.equal(out.match(/<section class="spd-card"/g)?.length, 3)
+    assert.equal(out.match(/<section class="spd-card"/g)?.length, 5)
     assert.equal(out.match(/<section class="spd-panel"/g)?.length, 4)
   })
 

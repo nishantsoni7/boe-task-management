@@ -5,18 +5,21 @@
 
 ## Snapshot
 
-- Commit: `12cd9aa2` — Merge origin/main into feat/pi-breakdown-redesign
-- Commits on this branch: 936
+- Commit: `b40f30cd` — Merge origin/main into feat/pi-returned-rejected-visibility
+- Commits on this branch: 939
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
-- Migrations: 342 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
+- Migrations: 344 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
-- Test files: 618   Next.js 16.2.6, React 19.2.4
+- Test files: 619   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `12cd9aa2` 2026-10-21 Merge origin/main into feat/pi-breakdown-redesign
+- `b40f30cd` 2026-10-21 Merge origin/main into feat/pi-returned-rejected-visibility
+- `01ae5d86` 2026-10-21 Orders/Finance: re-label real records stamped as test data (#384)
+- `ec97eb22` 2026-10-21 Merge origin/main into feat/pi-returned-rejected-visibility
 - `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
-- `59598617` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line
+- `4603c926` 2026-10-21 Tests: record migrations 20270328000000 and 20270328000100 in the pinned migration lists
+- `2e2b4d25` 2026-10-21 Orders: salesperson sees PIs sent back or rejected, on the dashboard and in notifications
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
 - `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
@@ -36,9 +39,6 @@
 - `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 - `57ea63c9` 2026-10-20 Approval dialog: preselect the salesperson the PI workbook names
 - `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
-- `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
-- `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
-- `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 
 ## Pages by top-level area
 
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 71 source, 122 test
+- `src/lib/orders` — 71 source, 123 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
@@ -350,8 +350,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270302000000_task_change_status_rpc.sql`
-- `20270303000000_task_acknowledge_rpc.sql`
 - `20270304000000_customer_review_admin_reject_and_delete.sql`
 - `20270305000000_exhibition_leads.sql`
 - `20270306000000_exhibition_management.sql`
@@ -379,6 +377,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270326000000_meetings_admin_delete.sql`
 - `20270327000000_pi_drafts_list_advance_percent.sql`
 - `20270328000000_orders_dashboard_overview.sql`
+- `20270328000100_order_submission_review_notify_salesperson.sql`
+- `20270328000200_order_submission_returned_rejected_dashboard.sql`
 - `20270328000300_orders_finance_real_data_not_test.sql`
 
 ## All SQL function names

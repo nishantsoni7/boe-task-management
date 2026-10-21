@@ -28,6 +28,20 @@ export type SpPendingRow = {
   canOpen: boolean
 }
 
+/** A PI the reviewer sent back for changes, or rejected (20270328000200). */
+export type SpReviewedRow = {
+  submissionId: string
+  reference: string
+  clientName: string
+  /** The reviewer's note or reason; null when none is on record. */
+  note: string | null
+  /** Who decided it; null when the person is no longer on record. */
+  byName: string | null
+  /** Seconds since the decision. */
+  sinceSeconds: number
+  canOpen: boolean
+}
+
 export type SpAdvanceRow = {
   orderId: string
   displayNumber: string
@@ -83,6 +97,12 @@ export type SalespersonDashboard = {
   revenue: { amount: number; orders: number; noProductValue: number; beforeDiscount: number }
   pendingTotal: number
   pending: SpPendingRow[]
+  /** PIs sent back for changes: waiting on the salesperson, no age limit. */
+  returnedTotal: number
+  returned: SpReviewedRow[]
+  /** PIs rejected in the last 7 days. */
+  rejectedTotal: number
+  rejected: SpReviewedRow[]
   advance: SpAdvanceRow[]
   /** Open orders with no usable value: no percentage exists, so they are not listed. */
   advanceUnchecked: SpUncheckedRow[]
@@ -158,6 +178,21 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
         canOpen: o.can_open === true,
       }
     })
+    // A payload from a database that predates 20270328000200 has neither list: that is "none", never an error.
+    const reviewed = (v: unknown, what: string): SpReviewedRow[] => arr(v ?? [], what).map((x): SpReviewedRow => {
+      const o = obj(x, what + ' row')
+      return {
+        submissionId: str(o.submission_id, 'submission_id'),
+        reference: typeof o.reference === 'string' && o.reference !== '' ? o.reference : 'PI',
+        clientName: clientOf(o.client_name),
+        note: typeof o.note === 'string' && o.note.trim() !== '' ? o.note.trim() : null,
+        byName: typeof o.by_name === 'string' && o.by_name !== '' ? o.by_name : null,
+        sinceSeconds: Math.max(0, num(o.waiting_seconds ?? 0, 'waiting_seconds')),
+        canOpen: o.can_open === true,
+      }
+    })
+    const returned = reviewed(root.returned, 'returned')
+    const rejected = reviewed(root.rejected, 'rejected')
     const dashboard: SalespersonDashboard = {
       monthFrom: dateOnly(root.month_from, 'month_from'),
       totalOrders: count(root.total_orders, 'total_orders'),
@@ -169,6 +204,10 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
       },
       pendingTotal: count(root.pending_total, 'pending_total'),
       pending,
+      returnedTotal: count(root.returned_total ?? returned.length, 'returned_total'),
+      returned,
+      rejectedTotal: count(root.rejected_total ?? rejected.length, 'rejected_total'),
+      rejected,
       advance: arr(root.advance, 'advance').map((x): SpAdvanceRow => {
         const o = obj(x, 'advance row')
         return {
@@ -231,6 +270,9 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
     // The card and the panel are one number.
     if (dashboard.pendingTotal !== dashboard.pending.length) throw new Bad('pending total does not match its list')
 
+    if (dashboard.returnedTotal !== returned.length) throw new Bad('returned total does not match its list')
+    if (dashboard.rejectedTotal !== rejected.length) throw new Bad('rejected total does not match its list')
+
     return { ok: true, applicable: true, dashboard }
   } catch (e) {
     return {
@@ -288,6 +330,17 @@ export const SP_CARD_PENDING = 'Orders Pending Approval'
 export const SP_CARD_PENDING_SUB = 'Submitted, awaiting approval'
 export const SP_REVENUE_BASIS = 'Product value after discount, excl. GST'
 
+export const SP_CARD_RETURNED = 'Sent Back for Changes'
+export const SP_CARD_RETURNED_SUB = 'Edit and resubmit'
+export const SP_CARD_REJECTED = 'Rejected'
+export const SP_CARD_REJECTED_SUB = 'Last 7 days'
+export const SP_ATTENTION_TITLE = 'Needs your attention'
+export const SP_RETURNED_STATUS = 'Changes requested'
+export const SP_REJECTED_STATUS = 'Rejected'
+export const SP_RETURNED_HINT = 'Open the PI, make the changes asked for and submit it again.'
+export const SP_REJECTED_HINT = 'Rejected PIs stay here for 7 days.'
+export const SP_NO_NOTE = 'No note was left.'
+
 export const SP_PANEL_PENDING = 'Orders Pending Approval'
 export const SP_PANEL_ADVANCE = 'Advance Below 40%'
 export const SP_PANEL_FABRIC = 'Fabric / Finish Pending Approval'
@@ -335,6 +388,15 @@ export function pendingWaitText(seconds: number): string {
   if (days >= 1) return `Pending ${plural(days, 'day')}`
   const hours = Math.floor(s / 3600)
   return hours >= 1 ? `Pending ${hours} h` : 'Pending <1 h'
+}
+
+/** `Sent back 3 days ago`, `Sent back 5 h ago`, `Sent back just now`; `verb` is `Sent back` or `Rejected`. */
+export function decidedAgoText(verb: string, seconds: number, byName: string | null): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const days = Math.floor(s / 86400)
+  const hours = Math.floor(s / 3600)
+  const when = days >= 1 ? `${plural(days, 'day')} ago` : hours >= 1 ? `${hours} h ago` : 'just now'
+  return `${verb}${byName ? ` by ${byName}` : ''} ${when}`
 }
 
 /** `Fabric`, `Finish` or `Fabric + Finish`. */

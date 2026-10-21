@@ -382,11 +382,20 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   // listed in any feed.
   if (type.startsWith('pi_exception') || type.startsWith('pi_revision')
       || type.startsWith('pi_review') || type.startsWith('pi_correction')) {
+    // ONE TYPE, TWO OUTCOMES: pi_review_decided covers "sent back" and "rejected"
+    // (order_submission_review_notify writes both under it). The salesperson must
+    // see at a glance which, so the badge follows the title the trigger wrote.
+    let badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
+    if (type === 'pi_review_decided') {
+      const title = n.title ?? ''
+      if (/^Changes were requested/i.test(title)) badge = { label: 'Changes requested', color: colors.amber, bg: colors.amberTint }
+      else if (/was rejected/i.test(title)) badge = { label: 'Rejected', color: colors.red, bg: colors.redTint }
+    }
     return {
       category: 'order',
       heading: 'Orders',
       headingIsActor: false,
-      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      badge,
       href: n.entity_id ? `/orders/drafts/${n.entity_id}` : '/orders/drafts',
       actionLabel: 'View PI',
     }
