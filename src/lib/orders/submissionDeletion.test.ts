@@ -330,7 +330,7 @@ describe('the list can answer the ownership question it is asked', () => {
 
   test('Open Draft keeps its place and its wording', () => {
     const page = read('src/app/orders/drafts/page.tsx')
-    assert.ok(page.includes("renderList(working, 'Open Draft', false)"))
+    assert.ok(page.includes("renderList(working, 'Open Draft')"))
   })
 
   test('the destructive control is hidden, not disabled, when it does not apply', () => {

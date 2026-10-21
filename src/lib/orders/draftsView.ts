@@ -45,7 +45,7 @@ import {
   type PersistedFinanceVerification,
   type PersistedPiDecision,
 } from './finalApproval'
-import { PI_INTERNAL_DETAIL_COLUMNS, type PiInternalDetailsRow } from './piInternalDetails'
+import { PI_INTERNAL_DETAIL_COLUMNS, formatIsoDay, type PiInternalDetailsRow } from './piInternalDetails'
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -366,11 +366,17 @@ export const PI_DRAFT_LIST_COLUMNS = [
   // any app user. A PI is usually written by one person and uploaded by another,
   // and a list that names only the uploader cannot answer "whose order is this?"
   'source_created_by', 'creation_date',
-  // WHEN IT WAS UPLOADED. created_at is what the list SHOWS — the record's own
-  // beginning. updated_at is read only because the query is ordered by it, so a
-  // draft corrected five minutes ago still surfaces above one untouched since
-  // Monday; it is no longer a column anybody reads off the screen.
+  // updated_at is read only because the query is ordered by it, so a draft
+  // corrected five minutes ago still surfaces above one untouched since Monday;
+  // it is not a column anybody reads off the screen. created_at is no longer
+  // shown either (the Uploaded by column went, 2026-10-21) and stays only
+  // because it is cheap and the row type carries it.
   'created_at', 'updated_at',
+  // THE TWO APP DATES Sales confirms in Internal details (see
+  // piInternalDetails.ts) — the list's "Confirmed date" and "Due date". Both are
+  // plain columns of order_submissions, so no migration reads them; each is
+  // null until somebody has entered it.
+  'order_confirmation_date', 'due_date',
   // Who filed it and when it reached review. The list needs both because the
   // review section states them on every row, and because the queue is ordered
   // by the submission time rather than by when the row was last written.
@@ -531,15 +537,17 @@ export type PiDraftListEntry = {
   authoredBy: string
   /** The date the PI document itself carries, or "—". */
   authoredOn: string
+  /** The app's confirmation date for the order, or "—" until it is entered. */
+  confirmedOn: string
+  /** The app's due date, or "—" until it is entered. */
+  dueOn: string
   /**
-   * The app user who uploaded it, resolved from `users`, or "—".
-   *
-   * An honest dash when the name could not be resolved. A row without a name is
-   * still a row, and printing a uuid would be worse than printing nothing.
+   * Advance % received — verified plus awaiting-verification payments as a
+   * percentage of Total before GST, as pi_submissions_advance_percent() reports
+   * it (20270326000000). "—" when the database gave no figure: no usable base,
+   * or the read failed. Never a guessed 0%.
    */
-  uploader: string
-  /** When it was uploaded, in Indian business time. */
-  uploadedAt: string
+  advancePercent: string
   /** "Product value": the goods after the discount, before other costs and GST —
    *  the stored subtotal_after_discount, never recomputed. "—" when none is stored. */
   productValue: string
@@ -569,9 +577,19 @@ export type PiDraftListEntry = {
   submittedAt: string
   /** The raw stamp, for ordering only. Never rendered. */
   submittedAtIso: string | null
-  /** Who submitted it, resolved from users, or "—" when it has not been
-   *  submitted and there is nobody to name. */
-  submitter: string
+}
+
+/**
+ * "42.65%", "40%", or "—".
+ *
+ * The database already truncated to two places; this only trims a trailing
+ * zero so a round 40 reads "40%". Anything that is not a finite, non-negative
+ * number is a dash rather than a made-up zero.
+ */
+export function formatAdvancePercent(value: unknown): string {
+  const n = toNumber(value)
+  if (n === null || n < 0) return '—'
+  return `${Number(n.toFixed(2))}%`
 }
 
 /**
@@ -662,16 +680,11 @@ export function describeDraftListEntry(
   row: PersistedSubmission,
   formatMoney: (amount: number | null) => string,
   /**
-   * The display names the caller has already batch-fetched, by role on the
-   * record. Both optional, and both render as an honest dash when absent: a name
-   * the caller could not resolve must never be replaced by an id.
+   * The advance percentage the caller read for this row from
+   * pi_submissions_advance_percent(), or nothing. Optional, and a dash when
+   * absent: a figure the database did not return is not 0%.
    */
-  names?: {
-    /** Who uploaded it — the app user behind created_by. */
-    uploader?: string | null
-    /** Who last sent it for review — the app user behind submitted_by. */
-    submitter?: string | null
-  },
+  advancePercent?: number | string | null,
 ): PiDraftListEntry {
   const submittedIso = text(row.submitted_at)
   return {
@@ -684,8 +697,9 @@ export function describeDraftListEntry(
     // never substituted with the uploader when the document left it blank.
     authoredBy: text(row.source_created_by) ?? '—',
     authoredOn: formatDateOnly(row.creation_date),
-    uploader: text(names?.uploader ?? null) ?? '—',
-    uploadedAt: formatSavedAt(row.created_at),
+    confirmedOn: formatIsoDay(row.order_confirmation_date) ?? '—',
+    dueOn: formatIsoDay(row.due_date) ?? '—',
+    advancePercent: formatAdvancePercent(advancePercent),
     productValue: formatMoney(toNumber(row.subtotal_after_discount)),
     grandTotal: toNumber(row.grand_total) === null ? GRAND_TOTAL_UNAVAILABLE : formatMoney(toNumber(row.grand_total)),
     grandTotalMissing: toNumber(row.grand_total) === null,
@@ -696,7 +710,6 @@ export function describeDraftListEntry(
     statusTone: draftStatusTone(row.status),
     submittedAt: submittedIso ? formatSavedAt(submittedIso) : '—',
     submittedAtIso: submittedIso,
-    submitter: text(names?.submitter ?? null) ?? '—',
   }
 }
 

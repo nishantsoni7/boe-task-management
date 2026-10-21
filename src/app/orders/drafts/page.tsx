@@ -43,7 +43,6 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { PiDeleteConfirmModal } from '@/components/orders/piReviewModals'
 import {
   FinanceEmpty,
-  FinancePerson,
   FinanceStatusCards,
   type FinanceTabTone,
 } from '@/app/finance/components/FinanceListParts'
@@ -133,10 +132,10 @@ const DRAFTS_LIST_PARAMS = {
   q:      textParam(),
 }
 
-/** Does this row answer the search? Client, PI reference and the people on it. */
+/** Does this row answer the search? Client, PI reference and the salesperson. */
 function matchesSearch(entry: PiDraftListEntry, q: string): boolean {
   if (!q) return true
-  return [entry.client, entry.reference, entry.numberLine, entry.authoredBy, entry.uploader, entry.submitter]
+  return [entry.client, entry.reference, entry.numberLine, entry.authoredBy]
     .some(value => (value ?? '').toLowerCase().includes(q))
 }
 
@@ -182,17 +181,6 @@ export default function PiDraftsPage() {
    */
   const deletingRef = useRef(false)
 
-  /**
-   * The same answer as `canReview`, in a ref.
-   *
-   * `load` is a stable callback the header's refresh control also calls, and it
-   * runs for the first time in the same tick that resolves the permission — a
-   * state read there would still be the initial `false` and the reviewer's very
-   * first page load would fetch no submitter names. The ref is written before
-   * the first load and read by every one, so both agree.
-   */
-  const reviewerRef = useRef(false)
-
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
@@ -237,8 +225,8 @@ export default function PiDraftsPage() {
   /**
    * Load the list.
    *
-   * TWO READS, BOTH UNDER THE CALLER'S OWN POLICIES. The submissions, then the
-   * display names of the people named on them.
+   * TWO READS, BOTH UNDER THE CALLER'S OWN ACCESS. The submissions, then the
+   * advance percentage of every one of them in a single call.
    *
    * `preloaded` is that first read, already in flight before this runs — the
    * first load hands its answer in rather than issuing a second one. Every
@@ -255,40 +243,24 @@ export default function PiDraftsPage() {
 
     const rows = data as unknown as PersistedSubmission[]
 
-    // ── The people named on these records ──
+    // ── Advance % received, for every row in ONE call ──
     //
-    // TWO ROLES, ONE READ. Every row states who UPLOADED it, and a reviewer's
-    // queue also states who last sent it for review — usually the same person,
-    // and pointedly not always, because an admin may correct somebody else's
-    // draft. Both ids go into one `in` filter rather than one query per role.
-    //
-    // An employee's own list resolves exactly one id: their own. That is not a
-    // wasted query — the column names them, and asking is how it gets a name.
-    //
-    // A failed or partial read leaves the name unresolved and the row renders an
-    // honest dash. A row without a name is still a row, and printing a uuid
-    // instead would be worse than printing nothing.
-    const names = new Map<string, string>()
-    const personIds = [...new Set([
-      ...rows.map(r => r.created_by).filter((id): id is string => Boolean(id)),
-      ...(reviewerRef.current
-        ? rows.filter(r => r.status === 'submitted' && r.submitted_by).map(r => r.submitted_by as string)
-        : []),
-    ])]
-    if (personIds.length > 0) {
-      const { data: people } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .in('id', personIds)
-      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
-        if (person?.id && person.full_name) names.set(person.id, person.full_name)
+    // pi_submissions_advance_percent() (20270326000000) applies the same rule
+    // as the PI detail page's payment card and answers only for PIs this
+    // caller may view. A failed read, or a PI with no usable Total before GST,
+    // leaves the row without a figure and it prints an honest dash — a missing
+    // percentage is not 0%, and it is not a reason to hide the list.
+    const advance = new Map<string, number | string | null>()
+    if (rows.length > 0) {
+      const { data: percents } = await supabase.rpc('pi_submissions_advance_percent', {
+        p_submission_ids: rows.map(r => r.id),
+      })
+      for (const p of (percents ?? []) as { submission_id: string; attached_percent: number | string | null }[]) {
+        if (p?.submission_id) advance.set(p.submission_id, p.attached_percent)
       }
     }
 
-    setEntries(rows.map(row => describeDraftListEntry(row, formatInr, {
-      uploader: row.created_by ? names.get(row.created_by) ?? null : null,
-      submitter: row.submitted_by ? names.get(row.submitted_by) ?? null : null,
-    })))
+    setEntries(rows.map(row => describeDraftListEntry(row, formatInr, advance.get(row.id) ?? null)))
   }, [draftsQuery, supabase])
 
   useEffect(() => {
@@ -306,9 +278,8 @@ export default function PiDraftsPage() {
       //
       // THE DRAFT LIST TRAVELS WITH THEM. It reads no capability — the rows it
       // gets back are RLS's answer — so waiting for the permissions to resolve
-      // bought nothing and cost a whole round trip. Only WHICH NAMES are then
-      // resolved depends on being a reviewer, and that is decided below, after
-      // both have landed.
+      // bought nothing and cost a whole round trip. The advance percentages
+      // depend only on the rows, so that one call follows in load().
       const [{ data: me }, permissions, drafts] = await Promise.all([
         supabase
           .from('users')
@@ -333,9 +304,6 @@ export default function PiDraftsPage() {
         isAdmin: isAdminRole((me as UserProfile | null)?.role),
       })
       setCanCreate(caps.canCreateOrder)
-      // Written before the first load, so that load — which is a stable
-      // callback — sees the answer rather than the initial false.
-      reviewerRef.current = caps.canApproveOrderSubmission
       setCanReview(caps.canApproveOrderSubmission)
       await load(drafts)
     }
@@ -532,40 +500,36 @@ export default function PiDraftsPage() {
    * One table of PI records.
    *
    * WHAT A ROW ANSWERS, in the order somebody asks it: whose order is this,
-   * who wrote the PI, who put it into the system, what is it worth, and where
-   * has it got to. The file name and the product-line count are gone — neither
-   * decided anything, and both crowded out the questions that do.
-   *
-   * CREATED BY AND UPLOADED BY ARE TWO DIFFERENT PEOPLE, often. The first is
-   * read out of the workbook and may be somebody with no login at all; the
-   * second is the app user who uploaded it. Collapsing them into one "owner"
-   * column would answer neither question reliably.
+   * who wrote the PI, when was it confirmed and when is it due, how much of the
+   * advance has come in, what is it worth, and where has it got to. The file
+   * name, the product-line count, Uploaded by and Submitted are gone (the last
+   * two on 2026-10-21) — none decided anything the list is used for.
    *
    * The review queue and the working list are the SAME rows in the same shape,
    * so they are one table rendered twice rather than two tables to keep in step.
-   * What differs is the submission columns, which only matter to a reviewer, and
-   * the action icon.
+   * What differs is only the action icon.
    */
-  const listTable = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
+  const listTable = (rows: PiDraftListEntry[], actionLabel: string) => (
     <div className="fin-table-wrap">
       <table className="fin-table fin-table--drafts">
         <colgroup>
-          <col style={{ width: showSubmission ? '19%' : '25%' }} />{/* Client, reference under it */}
-          <col style={{ width: '13%' }} />{/* Salesperson (the workbook's) */}
-          <col style={{ width: '14%' }} />{/* Uploaded by (the app user) */}
-          <col style={{ width: '12%' }} />{/* Product value */}
-          <col style={{ width: '12%' }} />{/* Grand total */}
-          <col style={{ width: showSubmission ? '16%' : '15%' }} />{/* Status */}
-          {showSubmission && <col style={{ width: '12%' }} />}{/* Submitted */}
+          <col style={{ width: '20%' }} />{/* Client, reference under it */}
+          <col style={{ width: '12%' }} />{/* Salesperson (the workbook's) */}
+          <col style={{ width: '10%' }} />{/* Confirmed date */}
+          <col style={{ width: '10%' }} />{/* Due date */}
+          <col style={{ width: '9%' }} />{/* Advance % received */}
+          <col style={{ width: '11%' }} />{/* Product value */}
+          <col style={{ width: '11%' }} />{/* Grand total */}
+          <col style={{ width: '14%' }} />{/* Status */}
           <col style={{ width: '76px' }} />{/* Actions: two 28px slots */}
         </colgroup>
         <thead>
           <tr>
-            {['Client', 'Salesperson', 'Uploaded by', 'Product value', 'Grand total', 'Status',
-              ...(showSubmission ? ['Submitted'] : []), 'Actions'].map((h, i, all) => (
-              // The two money columns and the actions are right-aligned, so the
-              // figures line up digit for digit against each other.
-              <th key={h} className={i === 3 || i === 4 || i === all.length - 1 ? 'fin-num' : undefined}>{h}</th>
+            {['Client', 'Salesperson', 'Confirmed date', 'Due date', 'Advance % received',
+              'Product value', 'Grand total', 'Status', 'Actions'].map((h, i, all) => (
+              // The advance percentage, the two money columns and the actions
+              // are right-aligned, so the figures line up digit for digit.
+              <th key={h} className={i === 4 || i === 5 || i === 6 || i === all.length - 1 ? 'fin-num' : undefined}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -589,11 +553,13 @@ export default function PiDraftsPage() {
                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.authoredBy}</span>
                 <span className="fin-sub">{entry.authoredOn}</span>
               </td>
-              {/* The app user who put it here, and when. */}
-              <td>
-                <FinancePerson name={entry.uploader === '—' ? null : entry.uploader} />
-                <span className="fin-sub">{entry.uploadedAt}</span>
-              </td>
+              {/* The two dates Sales confirms in Internal details, and how
+                  much of the advance has arrived (verified plus awaiting
+                  verification, of Total before GST). A dash is "not entered"
+                  or "no figure", never zero. */}
+              <td>{entry.confirmedOn}</td>
+              <td>{entry.dueOn}</td>
+              <td className="fin-num">{entry.advancePercent}</td>
               {/* THE GOODS, THEN THE BILL. Two figures rather than one,
                   because the gap between them — fabric, packing, transport,
                   GST — is itself something a reader judges, and a
@@ -607,14 +573,6 @@ export default function PiDraftsPage() {
               <td>
                 <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
               </td>
-              {showSubmission && (
-                /* WHO SUBMITTED IT, AND WHEN — one stacked cell, the same
-                   shape as Salesperson and Uploaded by beside it. */
-                <td>
-                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.submitter}</span>
-                  <span className="fin-sub">{entry.submittedAt}</span>
-                </td>
-              )}
               <td>
                 {/* Open sits first and keeps its place; Delete is last, so
                     the destructive control is never the one a hurried click
@@ -628,7 +586,7 @@ export default function PiDraftsPage() {
     </div>
   )
 
-  const listCards = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
+  const listCards = (rows: PiDraftListEntry[], actionLabel: string) => (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map((entry, i) => (
         <div
@@ -648,9 +606,8 @@ export default function PiDraftsPage() {
                 {entry.reference} · {entry.numberLine}
               </div>
               {/* The workbook's own date, under the client. The narrow
-                  layout has no room for a column each, so the two people
-                  become two labelled lines below rather than a guessing game
-                  between two bare names. */}
+                  layout has no room for a column each, so the facts become
+                  labelled lines below rather than bare values. */}
               <div style={{
                 fontSize: '12px', color: colors.muted, marginTop: '2px',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -666,7 +623,11 @@ export default function PiDraftsPage() {
               <span style={{ color: colors.muted }}>Salesperson </span>{entry.authoredBy}
             </span>
             <span style={{ color: colors.secondary }}>
-              <span style={{ color: colors.muted }}>Uploaded by </span>{entry.uploader}
+              <span style={{ color: colors.muted }}>Confirmed </span>{entry.confirmedOn}
+              <span style={{ color: colors.muted }}> · Due </span>{entry.dueOn}
+            </span>
+            <span style={{ color: colors.secondary }}>
+              <span style={{ color: colors.muted }}>Advance received </span>{entry.advancePercent}
             </span>
           </div>
 
@@ -687,12 +648,7 @@ export default function PiDraftsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-            <span style={{ fontSize: '12px', color: colors.muted }}>
-              {showSubmission
-                ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
-                : entry.uploadedAt}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
             {rowActions(entry, actionLabel)}
           </div>
         </div>
@@ -700,8 +656,8 @@ export default function PiDraftsPage() {
     </div>
   )
 
-  const renderList = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) =>
-    (isMobile ? listCards : listTable)(rows, actionLabel, showSubmission)
+  const renderList = (rows: PiDraftListEntry[], actionLabel: string) =>
+    (isMobile ? listCards : listTable)(rows, actionLabel)
 
   // Which rows go where. RLS already decided what is in `entries` at all; this
   // decides only where each row is printed, and for a viewer without review
@@ -766,7 +722,7 @@ export default function PiDraftsPage() {
         <div className="fin-group-body" style={{ padding: '16px 14px', fontSize: '12px', color: colors.secondary }}>
           {PI_REVIEW_EMPTY_TEXT}
         </div>
-      ) : renderList(review, REVIEW_ACTION_LABEL, true)}
+      ) : renderList(review, REVIEW_ACTION_LABEL)}
     </>
   ))
 
@@ -781,7 +737,7 @@ export default function PiDraftsPage() {
           <span className="fin-group-count">{working.length}</span>
         </div>
       )}
-      {renderList(working, 'Open Draft', false)}
+      {renderList(working, 'Open Draft')}
     </>
   )
 

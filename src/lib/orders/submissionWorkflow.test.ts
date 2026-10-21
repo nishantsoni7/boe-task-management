@@ -399,14 +399,14 @@ describe('the review queue is a section of the drafts list', () => {
     ...over,
   })
 
-  const entry = (over: Partial<PersistedSubmission>, name?: string) =>
-    describeDraftListEntry(row(over), formatInr, { submitter: name })
+  const entry = (over: Partial<PersistedSubmission>) =>
+    describeDraftListEntry(row(over), formatInr)
 
   const entries = [
     entry({ id: 'draft-1', status: 'draft' }),
-    entry({ id: 'old', status: 'submitted', submitted_at: '2026-08-10T09:00:00.000Z' }, 'Ravi Menon'),
+    entry({ id: 'old', status: 'submitted', submitted_at: '2026-08-10T09:00:00.000Z' }),
     entry({ id: 'returned', status: 'needs_changes' }),
-    entry({ id: 'new', status: 'submitted', submitted_at: '2026-08-16T09:00:00.000Z' }, 'Asha Nair'),
+    entry({ id: 'new', status: 'submitted', submitted_at: '2026-08-16T09:00:00.000Z' }),
     entry({ id: 'unstamped', status: 'submitted', submitted_at: null }),
   ]
 
@@ -447,17 +447,10 @@ describe('the review queue is a section of the drafts list', () => {
     assert.deepEqual(split.review.map(e => e.id), ['fresh', 'stale'])
   })
 
-  test('a queue row carries the submitter and the submission time', () => {
+  test('a queue row carries the submission time', () => {
     const [newest] = splitDraftsForReview(entries, true).review
-    assert.equal(newest.submitter, 'Asha Nair')
     assert.equal(newest.submittedAt, formatSavedAt('2026-08-16T09:00:00.000Z'))
     assert.ok(newest.submittedAt.includes('2026'))
-  })
-
-  test('an unresolved submitter is a dash, never an id', () => {
-    const anonymous = entry({ id: 'x', status: 'submitted', submitted_at: '2026-08-16T09:00:00.000Z' })
-    assert.equal(anonymous.submitter, '—')
-    assert.ok(!anonymous.submitter.includes(OWNER))
   })
 
   test('splitting never invents, drops or duplicates a row', () => {

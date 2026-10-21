@@ -464,30 +464,27 @@ describe('no Order screen waits more than it must', () => {
 // ══ 3. The two that legitimately still wait ══════════════════════════════════
 
 describe('where an ordering IS load-bearing, it is kept', () => {
-  test('PI Drafts resolves its NAMES after the permissions — the rows travel with them', () => {
-    // THE LOAD-BEARING PART IS THE NAMES, NOT THE ROWS. Which ids the list
-    // resolves names for depends on whether this viewer is a reviewer, which is
-    // what the permissions answer — so that read must stay downstream of them.
+  test('PI Drafts reads the advance percentages AFTER its rows — the rows travel with the permissions', () => {
+    // THE LOAD-BEARING PART IS THE PERCENTAGES, NOT THE ROWS. The batch read
+    // takes the ids of the rows it was just given, so it must stay downstream of
+    // them (one call for the whole list, never one per row).
     //
-    // The ROWS never depended on it: which submissions come back is RLS's
-    // answer, not a role's. This test used to pin the rows behind the
-    // permissions as a proxy for the names, which cost a whole round trip on
-    // every open of the screen for a dependency that was not there. The query
-    // now travels WITH the profile and the permissions and its answer is handed
-    // to the loader, so nothing is read twice and no name is resolved early.
+    // The ROWS never depended on the permissions: which submissions come back is
+    // RLS's answer, not a role's. The query travels WITH the profile and the
+    // permissions and its answer is handed to the loader, so nothing is read
+    // twice.
     const body = startup(DRAFTS)
-    assert.ok(body.indexOf('getEffectivePermissions') < body.indexOf('reviewerRef.current ='),
-      'the reviewer answer must be written before the loader reads it')
-    assert.ok(body.indexOf('reviewerRef.current =') < body.indexOf('load(drafts)'),
-      'and written before the names are resolved')
+    assert.ok(body.indexOf('getEffectivePermissions') < body.indexOf('load(drafts)'))
 
     const page = read(DRAFTS)
     assert.ok(page.includes('draftsQuery(),'),
       'the rows are issued in the group, not after it')
     assert.equal((page.match(/draftsQuery\(\)/g) ?? []).length, 2,
       'one definition site and one early call: a third would mean a double read')
-    assert.ok(page.indexOf('reviewerRef.current') < page.indexOf("from('users')"),
-      'the names are still chosen by the reviewer answer, not before it')
+    assert.equal((page.match(/rpc\('pi_submissions_advance_percent'/g) ?? []).length, 1,
+      'one batch call for the whole list')
+    assert.ok(page.indexOf('const rows = data as') < page.indexOf("rpc('pi_submissions_advance_percent'"),
+      'the percentages are read for the rows already in hand')
   })
 
   test('the PI detail reads its draft AFTER the permissions, for the same reason', () => {
