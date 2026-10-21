@@ -14,6 +14,8 @@ import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
+import { QuotationDetailView } from '@/components/tasks/QuotationDetailView'
+import { QUOTATION_SENT_MARKER, latestSentQuotation, sentQuotationCount, isQuotationSentEntry, quotationSendGate } from '@/lib/tasks/quotationSend'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
@@ -1008,8 +1010,11 @@ export default function TaskDetailPage() {
     addCommentFiles(pastedFiles)
   }
 
-  const saveComment = async () => {
-    if (!task || commentSavingRef.current) return   // synchronous guard blocks double-submit
+  // True once the update is recorded. The quotation's Send button needs the answer
+  // (it completes the task only after its update, with the quote files, is saved).
+  const sendingQuotationRef = useRef(false)
+  const saveComment = async (): Promise<boolean> => {
+    if (!task || commentSavingRef.current) return false   // synchronous guard blocks double-submit
     const hasNote = !!commentNote.trim()
 
     const preGate = submissionGate(attachmentQueue.items(), hasNote)
@@ -1017,7 +1022,7 @@ export default function TaskDetailPage() {
       // `empty` is a no-op (nothing typed, nothing attached); a failed upload
       // gets an explanation instead of a silent dead click.
       if (preGate.message) setCommentUploadError(preGate.message)
-      return
+      return false
     }
 
     commentSavingRef.current = true
@@ -1042,7 +1047,7 @@ export default function TaskDetailPage() {
       const gate = submissionGate(readyAttachments, hasNote)
       if (!gate.ok) {
         setCommentUploadError(gate.message)   // text + attachments preserved
-        return
+        return false
       }
 
       const now = new Date().toISOString()
@@ -1057,6 +1062,7 @@ export default function TaskDetailPage() {
           action:         'note_added',
           note:           commentNote.trim() || null,
           attachment_url: null, // multi-file goes into task_attachments
+          new_val:        sendingQuotationRef.current ? QUOTATION_SENT_MARKER : null,
         })
         .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url')
         .single()
@@ -1065,7 +1071,7 @@ export default function TaskDetailPage() {
         // Nothing was cleared — keep the typed text and selected files, surface an error.
         console.error('[saveComment] activity log insert failed:', logErr?.message)
         setCommentUploadError('Could not post your update. Please try again.')
-        return
+        return false
       }
       perf.mark('insert-comment')
 
@@ -1138,7 +1144,8 @@ export default function TaskDetailPage() {
       })()
 
       const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-      if (recipient && recipient !== currentUserId) {
+      // A sent quotation is announced by its completion, not twice.
+      if (recipient && recipient !== currentUserId && !sendingQuotationRef.current) {
         void (async () => {
           try {
             const res = await fetch('/api/notify-status-update', {
@@ -1155,11 +1162,13 @@ export default function TaskDetailPage() {
           }
         })()
       }
+      return true
     } catch (err) {
       // Any thrown Supabase/upload/runtime error. Text + files are untouched (cleared only on
       // the success path above), so the user can retry without re-typing.
       console.error('[saveComment] unexpected error:', err)
       setCommentUploadError('Could not post your update. Please try again.')
+      return false
     } finally {
       // Always release Send Update — no failure path leaves it disabled until remount.
       setCommentSaving(false)
@@ -1490,6 +1499,406 @@ export default function TaskDetailPage() {
         },
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
+  // Sending a quotation: the update that carries the quote file(s) and the note to
+  // sales is recorded first, then the task is completed. Nothing completes unless
+  // the update was saved, and a double click cannot send twice (both writers guard).
+  const sendQuotation = async () => {
+    if (!task || commentSavingRef.current || statusUpdatingRef.current) return
+    if (!quotationSendGate(attachmentQueue.items()).ok) return
+    if (!window.confirm(`Send this quotation to ${creatorName ?? 'sales'}? This completes the request and they will be notified.`)) return
+    sendingQuotationRef.current = true
+    setMarkingComplete(true)
+    try {
+      if (!(await saveComment())) return
+      await applyStatusChange('completed', null)
+    } finally {
+      sendingQuotationRef.current = false
+      setMarkingComplete(false)
+    }
+  }
+
+  const activityCard = (
+          <div className="boe-card boe-activity-card" style={{
+            padding: '0', display: 'flex', flexDirection: 'column',
+            background: '#ffffff', border: '1px solid #E4DED7',
+            borderRadius: '8px', boxShadow: 'none',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '12px 16px 11px',
+              borderBottom: '1px solid #E4DED7',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: '15px', fontWeight: 600, color: '#303536', letterSpacing: '-0.01em' }}>
+                {isQuotation ? 'Timeline' : 'Activity'}
+              </span>
+              {displayLog.length > 0 && (
+                <span style={{
+                  fontSize: '12px', fontWeight: 500, color: '#686D6C',
+                  background: '#F1EEE9', border: '1px solid #E4DED7',
+                  padding: '2px 7px', borderRadius: '12px', letterSpacing: '0.02em', lineHeight: 1.4,
+                }}>
+                  {displayLog.length} {displayLog.length === 1 ? 'event' : 'events'}
+                </span>
+              )}
+            </div>
+
+            {activityState !== 'ready' && (
+              <div role={activityState === 'error' ? 'alert' : 'status'} style={{
+                padding: '8px 16px', fontSize: '12px', color: activityState === 'error' ? '#B42332' : colors.muted,
+                borderBottom: '1px solid #E4DED7', display: 'flex', alignItems: 'center', gap: '10px',
+              }}>
+                {activityState === 'error' ? (
+                  <>
+                    <span>The full activity could not be loaded.</span>
+                    <button type="button" className="boe-btn" onClick={retryActivityLoad}>Try again</button>
+                  </>
+                ) : (
+                  <span>Loading activity…</span>
+                )}
+              </div>
+            )}
+
+            {displayLog.length === 0 ? (
+              <div style={{ padding: '20px 16px' }}>
+                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                  No activity yet.
+                </p>
+              </div>
+            ) : (
+              <div className="boe-activity-scroll" style={{ overflowY: 'auto', maxHeight: '520px' }}>
+                {(() => {
+                  // Note edit/delete stays tied to the newest *real* entry; task_copied is a
+                  // system event and must not steal edit/delete eligibility from a user's comment.
+                  const newestEntry = log.find(e => e.action !== 'task_copied') ?? log[0]
+                  const canEditDelete = (entry: LogEntry) =>
+                    entry.action === 'note_added' &&
+                    entry.id === newestEntry?.id &&
+                    entry.actor_id === currentUserId
+
+                  const isFieldChange = (action: string) =>
+                    action === 'title_changed' || action === 'due_date_changed' ||
+                    action === 'deadline_changed' || action === 'priority_changed'
+
+                  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+                  // Every file this entry carries, in both shapes the feed holds: the
+                  // task_attachments rows, plus the ONE legacy attachment_url column an
+                  // older build wrote a single file into. Deduplicated on path, the same
+                  // way the attachment chips below are, so a legacy row that was later
+                  // backfilled into task_attachments is not counted twice.
+                  const filesOf = (entry: LogEntry): ActivityAttachmentInfo[] => {
+                    const rows = entry.attachments ?? []
+                    const files: ActivityAttachmentInfo[] = rows.map(a => ({
+                      fileType: a.file_type,
+                      name:     a.file_name ?? resolveAttachmentPath(a),
+                    }))
+                    const legacy = resolveAttachmentPath(entry)
+                    if (legacy && !rows.some(a => resolveAttachmentPath(a) === legacy)) {
+                      files.push({ fileType: getFileTypeLabel(legacy), name: legacy })
+                    }
+                    return files
+                  }
+
+                  // Complete-sentence heading for each activity entry, split into the actor
+                  // name (styled slightly stronger) and the action text that follows it.
+                  const getHeadingRest = (entry: LogEntry): string => {
+                    const { action, from_status: f, to_status: t } = entry
+
+                    // A "Send Update" writes ONE note_added row whether the person typed
+                    // text, attached files, or both — so the sentence is read off what the
+                    // row holds, not off the action name. Without this an entry carrying
+                    // only a PDF still read "commented", which described nothing.
+                    if (action === 'note_added') {
+                      if (isQuotationSentEntry(entry)) return 'attached the quotation'
+                      const rest = commentHeadingRest(entry.note, filesOf(entry))
+                      if (rest) return rest
+                      // Neither text nor a file: keep the historical wording rather than
+                      // inventing one for a row that says nothing.
+                      return 'commented'
+                    }
+
+                    if (isQuotation) {
+                      if (action === 'created')        return 'submitted the quotation request'
+                      if (action === 'status_changed') {
+                        if (t === 'completed')          return 'marked the quotation completed'
+                        if (f === 'completed')          return 'reopened the quotation'
+                        if (f === 'cancelled')          return 'restored the quotation'
+                        if (t === 'cancelled')          return 'cancelled the quotation'
+                        return 'changed the status'
+                      }
+                      if (action === 'stale_flagged')  return 'flagged the quotation as stale'
+                      if (action === 'escalated')      return 'escalated the quotation'
+                      return formatLogAction(action, f, t).toLowerCase()
+                    }
+
+                    switch (action) {
+                      case 'status_changed':  return f && t && f === t
+                        ? 'posted a progress update'
+                        : 'changed the status'
+                      case 'acknowledged':    return 'acknowledged the task'
+                      case 'due_date_changed':
+                      case 'deadline_changed': return 'changed the due date'
+                      case 'priority_changed': return 'changed the priority'
+                      case 'title_changed':   return 'changed the title'
+                      case 'created':         return isSelfTask
+                        ? 'created the task'
+                        : `assigned the task to ${assigneeName}`
+                      case 'delegated':       return 'delegated the task'
+                      case 'escalated':       return 'escalated the task'
+                      case 'stale_flagged':   return 'flagged the task as stale'
+                      case 'task_copied':     return entry.note ?? 'copied this task'
+                      default:                return action.replace(/_/g, ' ')
+                    }
+                  }
+
+                  return displayLog.map((entry, i) => {
+                    const dotColor =
+                      entry.action === 'acknowledged'     ? colors.green
+                      : entry.action === 'status_changed' && entry.to_status
+                        ? (STATUS_COLORS[entry.to_status] ?? '#CFC8BF')
+                      : '#CFC8BF'
+                    const isComment   = entry.action === 'note_added'
+                    const isEditing   = editingActivityId === entry.id
+                    const isDeleting  = deletingActivityId === entry.id
+                    const showActions = canEditDelete(entry)
+                    const isDate      = entry.action === 'due_date_changed' || entry.action === 'deadline_changed'
+                    const isStatus    = entry.action === 'status_changed' &&
+                      !!entry.from_status && !!entry.to_status && entry.from_status !== entry.to_status
+                    const showDiff    = isFieldChange(entry.action) || isStatus
+
+                    const oldDisplay = isDate
+                      ? (entry.old_val ? formatFullDate(entry.old_val) : 'No date')
+                      : isStatus
+                        ? capitalize(entry.from_status ?? '—')
+                        : (entry.old_val ?? '—')
+                    const newDisplay = isDate
+                      ? (entry.new_val ? formatFullDate(entry.new_val) : 'Cleared')
+                      : isStatus
+                        ? capitalize(entry.to_status ?? '—')
+                        : (entry.new_val ?? '—')
+
+                    return (
+                      <div
+                        key={entry.id}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '12px',
+                          padding: '16px 20px',
+                          borderBottom: i < displayLog.length - 1 ? '1px solid #E4DED7' : 'none',
+                        }}
+                      >
+                        {/* Dot */}
+                        <div style={{ paddingTop: '5px', flexShrink: 0 }}>
+                          <div style={{
+                            width: '8px', height: '8px', borderRadius: '9999px',
+                            background: dotColor,
+                          }} />
+                        </div>
+
+                        {/* Main content */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Heading row: activity sentence (left) + timestamp (top-right) */}
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                            gap: '8px', flexWrap: 'wrap',
+                          }}>
+                            <p style={{
+                              margin: 0, fontSize: '12.5px', fontWeight: 500,
+                              lineHeight: 1.4, flex: '1 1 auto', minWidth: '140px',
+                            }}>
+                              {/* Self-created tasks follow the BOE "Self" convention (as in "Assigned By: Self")
+                                  — never surface the creator's own name when creator and assignee are the same. */}
+                              {entry.action === 'created' && isSelfTask && !isQuotation ? (
+                                <>
+                                  <span style={{ fontWeight: 400, color: colors.secondary }}>Task created by </span>
+                                  <span style={{ fontWeight: 500, color: '#303536' }}>Self</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontWeight: 500, color: '#303536' }}>{entry.actor_name ?? 'Someone'}</span>
+                                  <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
+                                </>
+                              )}
+                            </p>
+                            <span style={{
+                              fontSize: '12px', fontWeight: 400, color: '#686D6C',
+                              lineHeight: 1.4, whiteSpace: 'nowrap', flexShrink: 0, paddingTop: '1px',
+                            }}>
+                              {formatActivityTimestamp(entry.created_at)}
+                            </span>
+                          </div>
+
+                          {isEditing ? (
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <textarea
+                                value={editActivityNote}
+                                onChange={e => setEditActivityNote(e.target.value)}
+                                className="boe-input"
+                                style={{ resize: 'none', height: '64px', width: '100%', boxSizing: 'border-box', fontSize: '12px', lineHeight: 1.5 }}
+                              />
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  onClick={saveActivityEdit}
+                                  disabled={savingActivityEdit}
+                                  style={{
+                                    padding: '4px 12px', borderRadius: '6px',
+                                    border: `1.5px solid ${colors.brand}`,
+                                    background: colors.brand, color: '#ffffff',
+                                    fontSize: '12px', fontWeight: 600,
+                                    cursor: savingActivityEdit ? 'not-allowed' : 'pointer',
+                                    fontFamily: font.body, opacity: savingActivityEdit ? 0.6 : 1,
+                                  }}
+                                >
+                                  {savingActivityEdit ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingActivityId(null)}
+                                  disabled={savingActivityEdit}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: '6px',
+                                    border: `1.5px solid ${colors.border}`,
+                                    background: 'transparent', color: colors.tertiary,
+                                    fontSize: '12px', fontWeight: 500,
+                                    cursor: 'pointer', fontFamily: font.body,
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {/* Diff pills: old → new */}
+                              {showDiff && (
+                                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    fontSize: '12.5px', fontWeight: 400, color: '#686D6C',
+                                    background: '#F7F5F1', border: '1px solid #E4DED7',
+                                    padding: '1.5px 7px', borderRadius: '6px',
+                                    textDecoration: 'line-through',
+                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }} title={oldDisplay}>
+                                    {oldDisplay}
+                                  </span>
+                                  <span style={{ fontSize: '12.5px', fontWeight: 400, color: '#686D6C', flexShrink: 0 }}>→</span>
+                                  <span style={{
+                                    fontSize: '12.5px', fontWeight: 500, color: '#303536',
+                                    background: '#FBFAF8', border: '1px solid #E4DED7',
+                                    padding: '1.5px 7px', borderRadius: '6px',
+                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }} title={newDisplay}>
+                                    {newDisplay}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Note text — comments read conversationally, system notes stay compact.
+                                  task_copied carries its text in the heading, so skip it here.
+
+                                  CAPPED, NOT CUT. A long update used to take the whole feed and
+                                  push every other event off screen. ExpandableText clamps it to
+                                  ACTIVITY_TEXT_CLAMP_LINES and offers "Read more…" only when the
+                                  rendered box actually overflowed — nothing is removed from the
+                                  DOM, so expanding is instant and find-in-page still works. */}
+                              {entry.note && entry.action !== 'task_copied' && (
+                                <ExpandableText style={{
+                                  margin: isComment ? '6px 0 0' : '8px 0 0',
+                                  color: isComment ? '#4C5352' : '#686D6C',
+                                  fontSize: isComment ? '12.5px' : '11.5px',
+                                  fontWeight: 400,
+                                  lineHeight: isComment ? 1.55 : 1.5,
+                                }}>
+                                  {entry.note}
+                                </ExpandableText>
+                              )}
+                            </>
+                          )}
+
+                          {/* Attachments */}
+                          {resolveAttachmentPath(entry) && !(entry.attachments ?? []).some((a: TaskAttachment) => resolveAttachmentPath(a) === resolveAttachmentPath(entry)) && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => { const p = resolveAttachmentPath(entry); if (p) openPreview(p) }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                }}
+                              >
+                                📎 View Attachment
+                              </button>
+                              <span style={{
+                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
+                                textTransform: 'uppercase', color: colors.muted,
+                                background: colors.float, border: `1px solid ${colors.border}`,
+                                padding: '1px 6px', borderRadius: '12px',
+                              }}>
+                                {getFileTypeLabel(resolveAttachmentPath(entry) ?? '')}
+                              </span>
+                            </div>
+                          )}
+                          {(entry.attachments ?? []).map((att: TaskAttachment) => (
+                            <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                }}
+                              >
+                                📎 {att.file_name ?? 'Attachment'}
+                              </button>
+                              <span style={{
+                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
+                                textTransform: 'uppercase', color: colors.muted,
+                                background: colors.float, border: `1px solid ${colors.border}`,
+                                padding: '1px 6px', borderRadius: '12px',
+                              }}>
+                                {att.file_type ?? getFileTypeLabel(att.url)}
+                              </span>
+                            </div>
+                          ))}
+
+                          {/* Edit / Delete — own newest comment only */}
+                          {showActions && !isEditing && (
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '7px' }}>
+                              <button
+                                onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
+                                className="boe-activity-action"
+                                style={{
+                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteActivity(entry.id)}
+                                disabled={isDeleting}
+                                className="boe-activity-action boe-activity-action-danger"
+                                style={{
+                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
+                                  background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
+                                  opacity: isDeleting ? 0.5 : 1,
+                                }}
+                              >
+                                {isDeleting ? '…' : 'Delete'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+            )}
+          </div>
+  )
+
   return (
     <DashboardLayout
       profile={profile}
@@ -1560,6 +1969,34 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {isQuotation && task.status !== 'cancelled' ? (
+        <QuotationDetailView
+          task={task}
+          creatorName={creatorName}
+          canSend={mayMarkComplete}
+          canReopen={task.status === 'completed' && (isCreator || isAssignee)}
+          canMessage={mayPostUpdate}
+          requestFiles={galleryEntries}
+          sent={latestSentQuotation(log)}
+          sentCount={sentQuotationCount(log)}
+          completedAt={quotationCompletedAt}
+          supabase={supabase}
+          onOpenFile={openPreview}
+          composer={{
+            note: commentNote, setNote: setCommentNote,
+            attachments: commentAttachments, dropActive: commentDropActive,
+            onDragOver: handleCommentDragOver, onDragEnter: handleCommentDragEnter,
+            onDragLeave: handleCommentDragLeave, onDrop: handleCommentDrop, onPaste: handleCommentPaste,
+            addFiles: addCommentFiles, removeFile: removeCommentAttachment, retryFile: retryCommentAttachment,
+            error: commentUploadError, saving: commentSaving || markingComplete, waitingUploads: commentWaitingUploads,
+          }}
+          onSend={sendQuotation}
+          onPostMessage={() => { void saveComment() }}
+          onReopen={handleReopen}
+          reopening={reopening}
+          timeline={activityCard}
+        />
+      ) : (
       <div className="boe-task-2col">
 
         {/* ══ LEFT COLUMN ══════════════════════════════════════════════════ */}
@@ -2549,389 +2986,12 @@ export default function TaskDetailPage() {
             </div>
           )}
 
-          {/* Activity */}
-          <div className="boe-card boe-activity-card" style={{
-            padding: '0', display: 'flex', flexDirection: 'column',
-            background: '#ffffff', border: '1px solid #E4DED7',
-            borderRadius: '8px', boxShadow: 'none',
-          }}>
-            {/* Header */}
-            <div style={{
-              padding: '12px 16px 11px',
-              borderBottom: '1px solid #E4DED7',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: '#303536', letterSpacing: '-0.01em' }}>
-                {isQuotation ? 'Quotation History' : 'Activity'}
-              </span>
-              {displayLog.length > 0 && (
-                <span style={{
-                  fontSize: '12px', fontWeight: 500, color: '#686D6C',
-                  background: '#F1EEE9', border: '1px solid #E4DED7',
-                  padding: '2px 7px', borderRadius: '12px', letterSpacing: '0.02em', lineHeight: 1.4,
-                }}>
-                  {displayLog.length} {displayLog.length === 1 ? 'event' : 'events'}
-                </span>
-              )}
-            </div>
-
-            {activityState !== 'ready' && (
-              <div role={activityState === 'error' ? 'alert' : 'status'} style={{
-                padding: '8px 16px', fontSize: '12px', color: activityState === 'error' ? '#B42332' : colors.muted,
-                borderBottom: '1px solid #E4DED7', display: 'flex', alignItems: 'center', gap: '10px',
-              }}>
-                {activityState === 'error' ? (
-                  <>
-                    <span>The full activity could not be loaded.</span>
-                    <button type="button" className="boe-btn" onClick={retryActivityLoad}>Try again</button>
-                  </>
-                ) : (
-                  <span>Loading activity…</span>
-                )}
-              </div>
-            )}
-
-            {displayLog.length === 0 ? (
-              <div style={{ padding: '20px 16px' }}>
-                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                  No activity yet.
-                </p>
-              </div>
-            ) : (
-              <div className="boe-activity-scroll" style={{ overflowY: 'auto', maxHeight: '520px' }}>
-                {(() => {
-                  // Note edit/delete stays tied to the newest *real* entry; task_copied is a
-                  // system event and must not steal edit/delete eligibility from a user's comment.
-                  const newestEntry = log.find(e => e.action !== 'task_copied') ?? log[0]
-                  const canEditDelete = (entry: LogEntry) =>
-                    entry.action === 'note_added' &&
-                    entry.id === newestEntry?.id &&
-                    entry.actor_id === currentUserId
-
-                  const isFieldChange = (action: string) =>
-                    action === 'title_changed' || action === 'due_date_changed' ||
-                    action === 'deadline_changed' || action === 'priority_changed'
-
-                  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-
-                  // Every file this entry carries, in both shapes the feed holds: the
-                  // task_attachments rows, plus the ONE legacy attachment_url column an
-                  // older build wrote a single file into. Deduplicated on path, the same
-                  // way the attachment chips below are, so a legacy row that was later
-                  // backfilled into task_attachments is not counted twice.
-                  const filesOf = (entry: LogEntry): ActivityAttachmentInfo[] => {
-                    const rows = entry.attachments ?? []
-                    const files: ActivityAttachmentInfo[] = rows.map(a => ({
-                      fileType: a.file_type,
-                      name:     a.file_name ?? resolveAttachmentPath(a),
-                    }))
-                    const legacy = resolveAttachmentPath(entry)
-                    if (legacy && !rows.some(a => resolveAttachmentPath(a) === legacy)) {
-                      files.push({ fileType: getFileTypeLabel(legacy), name: legacy })
-                    }
-                    return files
-                  }
-
-                  // Complete-sentence heading for each activity entry, split into the actor
-                  // name (styled slightly stronger) and the action text that follows it.
-                  const getHeadingRest = (entry: LogEntry): string => {
-                    const { action, from_status: f, to_status: t } = entry
-
-                    // A "Send Update" writes ONE note_added row whether the person typed
-                    // text, attached files, or both — so the sentence is read off what the
-                    // row holds, not off the action name. Without this an entry carrying
-                    // only a PDF still read "commented", which described nothing.
-                    if (action === 'note_added') {
-                      const rest = commentHeadingRest(entry.note, filesOf(entry))
-                      if (rest) return rest
-                      // Neither text nor a file: keep the historical wording rather than
-                      // inventing one for a row that says nothing.
-                      return 'commented'
-                    }
-
-                    if (isQuotation) {
-                      if (action === 'created')        return 'submitted the quotation request'
-                      if (action === 'status_changed') {
-                        if (t === 'completed')          return 'marked the quotation completed'
-                        if (f === 'completed')          return 'reopened the quotation'
-                        if (f === 'cancelled')          return 'restored the quotation'
-                        if (t === 'cancelled')          return 'cancelled the quotation'
-                        return 'changed the status'
-                      }
-                      if (action === 'stale_flagged')  return 'flagged the quotation as stale'
-                      if (action === 'escalated')      return 'escalated the quotation'
-                      return formatLogAction(action, f, t).toLowerCase()
-                    }
-
-                    switch (action) {
-                      case 'status_changed':  return f && t && f === t
-                        ? 'posted a progress update'
-                        : 'changed the status'
-                      case 'acknowledged':    return 'acknowledged the task'
-                      case 'due_date_changed':
-                      case 'deadline_changed': return 'changed the due date'
-                      case 'priority_changed': return 'changed the priority'
-                      case 'title_changed':   return 'changed the title'
-                      case 'created':         return isSelfTask
-                        ? 'created the task'
-                        : `assigned the task to ${assigneeName}`
-                      case 'delegated':       return 'delegated the task'
-                      case 'escalated':       return 'escalated the task'
-                      case 'stale_flagged':   return 'flagged the task as stale'
-                      case 'task_copied':     return entry.note ?? 'copied this task'
-                      default:                return action.replace(/_/g, ' ')
-                    }
-                  }
-
-                  return displayLog.map((entry, i) => {
-                    const dotColor =
-                      entry.action === 'acknowledged'     ? colors.green
-                      : entry.action === 'status_changed' && entry.to_status
-                        ? (STATUS_COLORS[entry.to_status] ?? '#CFC8BF')
-                      : '#CFC8BF'
-                    const isComment   = entry.action === 'note_added'
-                    const isEditing   = editingActivityId === entry.id
-                    const isDeleting  = deletingActivityId === entry.id
-                    const showActions = canEditDelete(entry)
-                    const isDate      = entry.action === 'due_date_changed' || entry.action === 'deadline_changed'
-                    const isStatus    = entry.action === 'status_changed' &&
-                      !!entry.from_status && !!entry.to_status && entry.from_status !== entry.to_status
-                    const showDiff    = isFieldChange(entry.action) || isStatus
-
-                    const oldDisplay = isDate
-                      ? (entry.old_val ? formatFullDate(entry.old_val) : 'No date')
-                      : isStatus
-                        ? capitalize(entry.from_status ?? '—')
-                        : (entry.old_val ?? '—')
-                    const newDisplay = isDate
-                      ? (entry.new_val ? formatFullDate(entry.new_val) : 'Cleared')
-                      : isStatus
-                        ? capitalize(entry.to_status ?? '—')
-                        : (entry.new_val ?? '—')
-
-                    return (
-                      <div
-                        key={entry.id}
-                        style={{
-                          display: 'flex', alignItems: 'flex-start', gap: '12px',
-                          padding: '16px 20px',
-                          borderBottom: i < displayLog.length - 1 ? '1px solid #E4DED7' : 'none',
-                        }}
-                      >
-                        {/* Dot */}
-                        <div style={{ paddingTop: '5px', flexShrink: 0 }}>
-                          <div style={{
-                            width: '8px', height: '8px', borderRadius: '9999px',
-                            background: dotColor,
-                          }} />
-                        </div>
-
-                        {/* Main content */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {/* Heading row: activity sentence (left) + timestamp (top-right) */}
-                          <div style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                            gap: '8px', flexWrap: 'wrap',
-                          }}>
-                            <p style={{
-                              margin: 0, fontSize: '12.5px', fontWeight: 500,
-                              lineHeight: 1.4, flex: '1 1 auto', minWidth: '140px',
-                            }}>
-                              {/* Self-created tasks follow the BOE "Self" convention (as in "Assigned By: Self")
-                                  — never surface the creator's own name when creator and assignee are the same. */}
-                              {entry.action === 'created' && isSelfTask && !isQuotation ? (
-                                <>
-                                  <span style={{ fontWeight: 400, color: colors.secondary }}>Task created by </span>
-                                  <span style={{ fontWeight: 500, color: '#303536' }}>Self</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span style={{ fontWeight: 500, color: '#303536' }}>{entry.actor_name ?? 'Someone'}</span>
-                                  <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
-                                </>
-                              )}
-                            </p>
-                            <span style={{
-                              fontSize: '12px', fontWeight: 400, color: '#686D6C',
-                              lineHeight: 1.4, whiteSpace: 'nowrap', flexShrink: 0, paddingTop: '1px',
-                            }}>
-                              {formatActivityTimestamp(entry.created_at)}
-                            </span>
-                          </div>
-
-                          {isEditing ? (
-                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <textarea
-                                value={editActivityNote}
-                                onChange={e => setEditActivityNote(e.target.value)}
-                                className="boe-input"
-                                style={{ resize: 'none', height: '64px', width: '100%', boxSizing: 'border-box', fontSize: '12px', lineHeight: 1.5 }}
-                              />
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
-                                  onClick={saveActivityEdit}
-                                  disabled={savingActivityEdit}
-                                  style={{
-                                    padding: '4px 12px', borderRadius: '6px',
-                                    border: `1.5px solid ${colors.brand}`,
-                                    background: colors.brand, color: '#ffffff',
-                                    fontSize: '12px', fontWeight: 600,
-                                    cursor: savingActivityEdit ? 'not-allowed' : 'pointer',
-                                    fontFamily: font.body, opacity: savingActivityEdit ? 0.6 : 1,
-                                  }}
-                                >
-                                  {savingActivityEdit ? 'Saving…' : 'Save'}
-                                </button>
-                                <button
-                                  onClick={() => setEditingActivityId(null)}
-                                  disabled={savingActivityEdit}
-                                  style={{
-                                    padding: '4px 10px', borderRadius: '6px',
-                                    border: `1.5px solid ${colors.border}`,
-                                    background: 'transparent', color: colors.tertiary,
-                                    fontSize: '12px', fontWeight: 500,
-                                    cursor: 'pointer', fontFamily: font.body,
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              {/* Diff pills: old → new */}
-                              {showDiff && (
-                                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{
-                                    fontSize: '12.5px', fontWeight: 400, color: '#686D6C',
-                                    background: '#F7F5F1', border: '1px solid #E4DED7',
-                                    padding: '1.5px 7px', borderRadius: '6px',
-                                    textDecoration: 'line-through',
-                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                  }} title={oldDisplay}>
-                                    {oldDisplay}
-                                  </span>
-                                  <span style={{ fontSize: '12.5px', fontWeight: 400, color: '#686D6C', flexShrink: 0 }}>→</span>
-                                  <span style={{
-                                    fontSize: '12.5px', fontWeight: 500, color: '#303536',
-                                    background: '#FBFAF8', border: '1px solid #E4DED7',
-                                    padding: '1.5px 7px', borderRadius: '6px',
-                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                  }} title={newDisplay}>
-                                    {newDisplay}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Note text — comments read conversationally, system notes stay compact.
-                                  task_copied carries its text in the heading, so skip it here.
-
-                                  CAPPED, NOT CUT. A long update used to take the whole feed and
-                                  push every other event off screen. ExpandableText clamps it to
-                                  ACTIVITY_TEXT_CLAMP_LINES and offers "Read more…" only when the
-                                  rendered box actually overflowed — nothing is removed from the
-                                  DOM, so expanding is instant and find-in-page still works. */}
-                              {entry.note && entry.action !== 'task_copied' && (
-                                <ExpandableText style={{
-                                  margin: isComment ? '6px 0 0' : '8px 0 0',
-                                  color: isComment ? '#4C5352' : '#686D6C',
-                                  fontSize: isComment ? '12.5px' : '11.5px',
-                                  fontWeight: 400,
-                                  lineHeight: isComment ? 1.55 : 1.5,
-                                }}>
-                                  {entry.note}
-                                </ExpandableText>
-                              )}
-                            </>
-                          )}
-
-                          {/* Attachments */}
-                          {resolveAttachmentPath(entry) && !(entry.attachments ?? []).some((a: TaskAttachment) => resolveAttachmentPath(a) === resolveAttachmentPath(entry)) && (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => { const p = resolveAttachmentPath(entry); if (p) openPreview(p) }}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
-                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                                }}
-                              >
-                                📎 View Attachment
-                              </button>
-                              <span style={{
-                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
-                                textTransform: 'uppercase', color: colors.muted,
-                                background: colors.float, border: `1px solid ${colors.border}`,
-                                padding: '1px 6px', borderRadius: '12px',
-                              }}>
-                                {getFileTypeLabel(resolveAttachmentPath(entry) ?? '')}
-                              </span>
-                            </div>
-                          )}
-                          {(entry.attachments ?? []).map((att: TaskAttachment) => (
-                            <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '12px', fontWeight: 500, color: colors.brandInk,
-                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                                }}
-                              >
-                                📎 {att.file_name ?? 'Attachment'}
-                              </button>
-                              <span style={{
-                                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
-                                textTransform: 'uppercase', color: colors.muted,
-                                background: colors.float, border: `1px solid ${colors.border}`,
-                                padding: '1px 6px', borderRadius: '12px',
-                              }}>
-                                {att.file_type ?? getFileTypeLabel(att.url)}
-                              </span>
-                            </div>
-                          ))}
-
-                          {/* Edit / Delete — own newest comment only */}
-                          {showActions && !isEditing && (
-                            <div style={{ display: 'flex', gap: '12px', marginTop: '7px' }}>
-                              <button
-                                onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
-                                className="boe-activity-action"
-                                style={{
-                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => deleteActivity(entry.id)}
-                                disabled={isDeleting}
-                                className="boe-activity-action boe-activity-action-danger"
-                                style={{
-                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
-                                  background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
-                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
-                                  opacity: isDeleting ? 0.5 : 1,
-                                }}
-                              >
-                                {isDeleting ? '…' : 'Delete'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })
-                })()}
-              </div>
-            )}
-          </div>
+          {activityCard}
 
         </div>{/* end right column */}
 
       </div>
+      )}
 
       {/* ── Return to Working Modal ─────────────────────────────────────── */}
       {/* Same shell and same proportions as Change Status below — one field,

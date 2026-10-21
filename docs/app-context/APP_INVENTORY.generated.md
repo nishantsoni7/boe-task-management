@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c499afab` — Finance: Bank Statements money out - link debits to expenses or mark not an expense
-- Commits on this branch: 942
+- Commit: `4f47dae9` — Finance: an admin can delete a Confirmed Payment entered by mistake
+- Commits on this branch: 943
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 347 (first `20260530_create_positions.sql`, latest `20270331000000_finance_admin_may_delete_confirmed_payment.sql`)
 - Tables ever created: 160 (dropped at some point: 7)   SQL functions: 733   Enums: 0
-- Test files: 624   Next.js 16.2.6, React 19.2.4
+- Test files: 625   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `4f47dae9` 2026-10-21 Finance: an admin can delete a Confirmed Payment entered by mistake
 - `c499afab` 2026-10-21 Finance: Bank Statements money out - link debits to expenses or mark not an expense
 - `0efeca34` 2026-10-21 Task attachment preview: Download works again and keeps the original filename
 - `680bbd12` 2026-10-21 Bank Statements: recognise the account from what is recorded
@@ -38,7 +39,6 @@
 - `22c24734` 2026-10-20 Order page: ERP line-items download, pictures named by product code
 - `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
 - `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
-- `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
 
 ## Pages by top-level area
 
@@ -149,7 +149,7 @@
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 18 source, 33 test
+- `src/lib/tasks` — 19 source, 34 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
