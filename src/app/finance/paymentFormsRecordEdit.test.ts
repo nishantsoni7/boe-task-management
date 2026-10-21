@@ -23,7 +23,10 @@ const RECORD = 'src/app/finance/received/RecordSplitPaymentModal.tsx'
 function editSource(): string {
   const src = read('src/app/finance/page.tsx')
   const from = src.indexOf('function EditPaymentModal(')
-  const to = src.indexOf('// ── Admin Review presentation primitives')
+  // Up to the next top-level function (the review window that used to follow the
+  // correction form no longer exists).
+  const next = from < 0 ? -1 : src.slice(from + 1).search(/\n(?:export )?function [A-Za-z]/)
+  const to = next < 0 ? -1 : from + 1 + next
   assert.ok(from > 0 && to > from)
   return src.slice(from, to)
 }

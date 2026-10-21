@@ -3,6 +3,8 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import { useRef, useState } from 'react'
+import { CircleCheck, CircleX, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
+import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
@@ -13,10 +15,25 @@ import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import { PaymentCustodyTrail, PaymentDestinationSummary, usePaymentDestination } from './components/PaymentDestinationBlock'
+import { PaymentModeHint } from './components/PaymentModeHint'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { paymentAgainstDisplay } from '@/lib/finance/paymentDestination'
-import { STATUS_META, fmtDate, fmtDateTime, fmtAmount, orderNoCell, friendlyDbErrorMessage, isApproved, APPROVED_LOCK_NOTE, canManageRequest, type PaymentRequest } from './paymentRequestsModel'
+import { STATUS_META, fmtDate, fmtDateTime, fmtAmount, orderNoCell, friendlyDbErrorMessage, isApproved, APPROVED_LOCK_NOTE, canManageRequest, type AdminAction, type PaymentRequest } from './paymentRequestsModel'
 import { ErrorBanner, SectionHeader, MetaItem, PaymentDestinationLine, StatusBadge, STATUS_CORRECTION_OPTIONS } from './paymentRequestsAtoms'
+
+// ── THE ONE PAYMENT POPUP ───────────────────────────────────────────────────
+//
+// Clicking anywhere on a Payment Requests row opens THIS, for every reader and
+// every status. It used to be two popups: this one (from the View icon) and a
+// separate review window (from the row) that held the decision. The decision now
+// lives here, as a Decision section, so nothing a verifier could do in the old
+// window needs a second popup.
+
+const DECISIONS: { key: AdminAction; label: string; hint: string; Icon: LucideIcon; tint: string; color: string }[] = [
+  { key: 'approve',             label: 'Verify Payment',      hint: 'Confirm Finance has checked this payment', Icon: CircleCheck,            color: colors.green, tint: colors.greenTint },
+  { key: 'needs_clarification', label: 'Needs Clarification', hint: 'Send back with a question',                Icon: MessageCircleQuestion, color: colors.blue,  tint: colors.blueTint },
+  { key: 'reject',              label: 'Reject',              hint: 'Decline this payment request',             Icon: CircleX,               color: colors.red,   tint: colors.redTint },
+]
 
 // ── Details modal (read-only for creators; includes status correction for admin) ──
 
@@ -32,6 +49,7 @@ export function DetailsModal({
   onCorrected,
   onEdit,
   onDelete,
+  bankPanel,
 }: {
   request: PaymentRequest
   onClose: () => void
@@ -70,6 +88,12 @@ export function DetailsModal({
   onCorrected?: () => void
   onEdit?: (r: PaymentRequest) => void
   onDelete?: (r: PaymentRequest) => void
+  /**
+   * The bank-statement panel (BankMatchPanel), passed ready-made and ONLY for a
+   * holder of finance.reconcile. This modal does not know what it contains and
+   * decides nothing with it.
+   */
+  bankPanel?: React.ReactNode
 }) {
   // Order-linkage states are out of this control's jurisdiction entirely —
   // neither entering nor leaving approved_unlinked/approved_linked may happen
@@ -102,62 +126,85 @@ export function DetailsModal({
   // their own payments — the database refuses that decision, so it is not offered.
   const canVerify = canVerifyPayment(r.status, mayApprovePayments)
     && !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)
-  const [verifyArmed, setVerifyArmed] = useState(false)
-  const [verifyNote,  setVerifyNote]  = useState('')
-  const [verifying,   setVerifying]   = useState(false)
-  const [verifyError, setVerifyError] = useState<string | null>(null)
-  // Verification is not idempotent from the caller's side — a second click
-  // would race the first — so the guard is a ref set BEFORE the await, not a
-  // state update that only lands on the next render.
-  const verifyingRef = useRef(false)
+  const [decisionAction, setDecisionAction] = useState<AdminAction | null>(null)
+  const [decisionNote,   setDecisionNote]   = useState('')
+  const [deciding,       setDeciding]       = useState(false)
+  const [decisionError,  setDecisionError]  = useState<string | null>(null)
+  // A decision is not idempotent from the caller's side — a second click would
+  // race the first — so the guard is a ref set BEFORE the await, not a state
+  // update that only lands on the next render.
+  const decidingRef = useRef(false)
+  const decisionNoteRequired = decisionAction === 'needs_clarification' || decisionAction === 'reject'
+  const canConfirmDecision = decisionAction !== null && (!decisionNoteRequired || decisionNote.trim() !== '')
 
-  const handleVerify = async () => {
-    if (!canVerify || !supabase || !onCorrected) return
-    if (verifyingRef.current) return
-    verifyingRef.current = true
-    setVerifying(true)
-    setVerifyError(null)
+  const handleDecide = async () => {
+    if (!canVerify || !supabase || !onCorrected || !decisionAction || !canConfirmDecision) return
+    if (decidingRef.current) return
+    decidingRef.current = true
+    setDeciding(true)
+    setDecisionError(null)
 
-    // THE EXISTING BACKEND, UNCHANGED. approve_finance_payment_request
-    // (20260690000000, re-gated onto finance.approve by 20260901000000) already
-    // handles every route: a new_order payment — which is what a PI-recorded
-    // payment is — lands in approved_unlinked with order_id left null, and an
-    // existing_order payment links straight to the order it already carries.
-    // Its PI allocation is not touched by any of that: the allocation names the
-    // payment, and the payment's id does not change.
-    const { error: rpcError } = await supabase.rpc('approve_finance_payment_request', {
-      p_request_id: r.id,
-      p_admin_note: verifyNote.trim() || null,
-    })
-
-    if (rpcError) {
-      verifyingRef.current = false
-      setVerifying(false)
-      setVerifyError(friendlyDbErrorMessage(rpcError))
+    if (decisionAction === 'approve') {
+      // THE EXISTING BACKEND, UNCHANGED. approve_finance_payment_request
+      // (20260690000000, re-gated onto finance.approve by 20260901000000) already
+      // handles every route: a new_order payment — which is what a PI-recorded
+      // payment is — lands in approved_unlinked with order_id left null, and an
+      // existing_order payment links straight to the order it already carries.
+      const { error: rpcError } = await supabase.rpc('approve_finance_payment_request', {
+        p_request_id: r.id,
+        p_admin_note: decisionNote.trim() || null,
+      })
+      if (rpcError) {
+        decidingRef.current = false
+        setDeciding(false)
+        setDecisionError(friendlyDbErrorMessage(rpcError))
+        return
+      }
+      void notifyFinance(
+        r.payment_against === 'new_order'
+          ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
+          : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
+      )
+      // AND THE PEOPLE ON THE ORDER, when the money landed on one: a verified
+      // payment is the event that unblocks their next step. The route reads the
+      // payment_verified row the database's own echo trigger just wrote, so the
+      // figure in the sentence is the ALLOCATED amount, not one computed here.
+      if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
+      // The ref is deliberately NOT reset: the modal is going away, and leaving
+      // it armed makes a late second click a no-op rather than a second call.
+      onCorrected()
       return
     }
 
-    void notifyFinance(
-      r.payment_against === 'new_order'
-        ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
-        : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
-    )
-
-    // AND THE PEOPLE ON THE ORDER, when the money landed on one. Finance's own
-    // notification above goes to the person who RAISED the request; this one
-    // goes to whoever is carrying the Order the payment was verified against,
-    // for whom a verified payment is the event that unblocks the next step.
-    //
-    // The route reads the payment_verified row the database's own
-    // finance_payment_requests_echo_decision trigger just wrote onto that
-    // Order, so the figure in the sentence is the ALLOCATED amount the
-    // database recorded — not one this modal computed.
-    if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
-
-    // Closes this modal and reloads the list, so the row, the tab counts and the
-    // status chip all reflect the new state. The ref is deliberately NOT reset:
-    // the modal is going away, and leaving it armed makes a late second click
-    // a no-op rather than a second call.
+    // THROUGH THE DOORS, NOT A TABLE WRITE (PR #172): request_finance_payment_
+    // clarification and reject_finance_payment_request lock the row, re-check the
+    // verifier, act only while it is pending, and say when somebody else decided
+    // first.
+    const outcome = await sendBackOrReject(supabase, { requestId: r.id, action: decisionAction, note: decisionNote })
+    if (outcome.kind === 'refused') {
+      decidingRef.current = false
+      setDeciding(false)
+      setDecisionError(outcome.message)
+      return
+    }
+    // STALE IS NOT SUCCESS: nothing changed, so nobody is told it did.
+    if (outcome.kind === 'stale') {
+      decidingRef.current = false
+      setDeciding(false)
+      setDecisionError(REVIEW_STALE_MESSAGE)
+      return
+    }
+    void notifyFinance({
+      event: decisionAction === 'needs_clarification' ? 'finance_clarification' : 'finance_rejected',
+      requestNumber: r.request_number,
+      entityId: r.id,
+      creatorId: r.submitted_by,
+      clientName: r.client_name,
+    })
+    // A REJECTION MOVES THE ORDER'S MONEY TOO: the people carrying that Order
+    // have to deal with the shortfall. Clarification is not announced: nothing
+    // has been decided yet.
+    if (decisionAction !== 'needs_clarification' && r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
     onCorrected()
   }
 
@@ -257,6 +304,10 @@ export function DetailsModal({
               the grid from ending on a lone empty cell. */}
           <div style={{ gridColumn: '1 / -1' }}>
             <PaymentDestinationLine payment_mode={r.payment_mode} received_in={r.received_in} />
+            {/* What the account IS, in a line ("Company bank account — primary HDFC
+                current account"): the verification window had it, and a verifier
+                matching a payment to a statement reads it. */}
+            <PaymentModeHint mode={r.payment_mode} />
           </div>
         </div>
       </div>
@@ -329,6 +380,10 @@ export function DetailsModal({
           </div>
         </div>
       </div>
+
+      {/* G. BANK STATEMENT — only for a holder of finance.reconcile (the page
+          decides). Information for the verifier; linking never verifies. */}
+      {bankPanel}
     </>
   )
 
@@ -342,91 +397,107 @@ export function DetailsModal({
         </div>
       )}
 
-      {/* E2. Verify Payment — the decision, and the one this modal was missing.
-          
-          WHY IT IS HERE AND NOT IN THE CORRECTION DROPDOWN BELOW: moving a row
-          into approved_unlinked/approved_linked requires the RPC's row locking,
-          eligibility checks and order_id/order_number bookkeeping, which is
-          exactly why 20260692000000 removed both approved statuses from
-          STATUS_CORRECTION_OPTIONS. A protected server action gets its own
-          primary button; it never becomes an option in a status <select>.
-          
-          Needs Clarification and Rejected stay where they are, as separate
-          decisions in the correction panel below. */}
+      {/* E2. DECISION — verify, send back, or reject. One section, three outcomes,
+          each through its own protected door (see handleDecide). Drawn only for
+          somebody holding finance.approve, on a pending payment they did not
+          record themselves (unless they may decide their own). A DRAWING rule:
+          every call re-derives the actor, the permission and the row's status
+          under a row lock. Moving a row into the approved statuses is never an
+          option in a status <select>: a protected action gets its own door. */}
       {canVerify && supabase && onCorrected && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          <div>
-            <SectionHeader>Verification</SectionHeader>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-              Confirm that Finance has checked this payment. It will be verified
-              as received{r.payment_against === 'new_order'
-                ? ' and held until an order is linked.'
-                : ` against ${r.order_number ?? 'the linked order'}.`}
-            </div>
+          <SectionHeader>Decision</SectionHeader>
+          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {DECISIONS.map(d => {
+              const on = decisionAction === d.key
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => { setDecisionAction(d.key); setDecisionError(null) }}
+                  disabled={deciding}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', width: '100%',
+                    padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                    border: `1px solid ${on ? d.color : colors.border}`, background: on ? d.tint : '#FFFFFF',
+                  }}
+                >
+                  <d.Icon size={18} color={d.color} aria-hidden="true" />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: colors.primary }}>{d.label}</span>
+                    <span style={{ display: 'block', fontSize: '12px', color: colors.muted }}>{d.hint}</span>
+                  </span>
+                  <span aria-hidden="true" style={{
+                    width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                    border: `2px solid ${on ? d.color : colors.border}`, background: on ? d.color : 'transparent',
+                    boxShadow: on ? 'inset 0 0 0 3px #FFFFFF' : 'none',
+                  }} />
+                </button>
+              )
+            })}
           </div>
 
-          {!verifyArmed ? (
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => { setVerifyArmed(true); setVerifyError(null) }}
-                className="boe-btn boe-btn-primary"
-                style={{ padding: '7px 16px', fontSize: '13px' }}
-              >
-                Verify Payment
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* The concise confirmation step the review flow already uses, so
-                  a single stray click cannot record money as received. */}
-              <div style={{
-                fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-                background: colors.greenTint, border: '1px solid rgba(39,98,71,0.2)',
-                borderRadius: '8px', padding: '10px 12px',
-              }}>
-                Verify {fmtAmount(r.amount)} from {customerDisplayName(r.client_name)}? This
-                confirms the money was checked and cannot be undone from this page.
-              </div>
-              <textarea
-                className="boe-input"
-                aria-label="Verification note"
-                value={verifyNote}
-                onChange={e => setVerifyNote(e.target.value)}
-                placeholder="Note for the salesperson (optional)"
-                rows={2}
-                style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
-              />
-              {verifyError && <ErrorBanner message={verifyError} />}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => { setVerifyArmed(false); setVerifyNote(''); setVerifyError(null) }}
-                  disabled={verifying}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '7px 16px', fontSize: '13px' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleVerify}
-                  disabled={verifying}
-                  className="boe-btn boe-btn-primary"
-                  style={{ padding: '7px 16px', fontSize: '13px' }}
-                >
-                  {verifying ? 'Verifying…' : 'Confirm Verification'}
-                </button>
-              </div>
+          {decisionAction === 'approve' && (
+            <div style={{
+              fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+              background: colors.greenTint, border: '1px solid rgba(39,98,71,0.2)',
+              borderRadius: '8px', padding: '10px 12px',
+            }}>
+              Verify {fmtAmount(r.amount)} from {customerDisplayName(r.client_name)}? It will be verified as received
+              {r.payment_against === 'new_order'
+                ? ' and held until an order is linked.'
+                : ` against ${r.order_number ?? 'the linked order'}.`} This cannot be undone from this page.
             </div>
           )}
+          {decisionAction && (
+            <textarea
+              className="boe-input"
+              aria-label={decisionAction === 'approve' ? 'Verification note' : decisionAction === 'reject' ? 'Rejection reason' : 'Clarification note'}
+              value={decisionNote}
+              onChange={e => setDecisionNote(e.target.value)}
+              placeholder={
+                decisionAction === 'approve' ? 'Note for the salesperson (optional)'
+                : decisionAction === 'reject' ? 'Rejection reason (required)'
+                : 'What do you need to know? (required)'
+              }
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+            />
+          )}
+          {decisionError && <ErrorBanner message={decisionError} />}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {!decisionAction && <span style={{ fontSize: '12px', color: colors.muted, marginRight: 'auto' }}>Select a decision to continue.</span>}
+            {decisionAction && (
+              <button
+                onClick={() => { setDecisionAction(null); setDecisionNote(''); setDecisionError(null) }}
+                disabled={deciding}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '7px 16px', fontSize: '13px' }}
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={handleDecide}
+              disabled={!canConfirmDecision || deciding}
+              className="boe-btn boe-btn-primary"
+              style={{ padding: '7px 16px', fontSize: '13px' }}
+            >
+              {deciding ? (decisionAction === 'approve' ? 'Verifying…' : 'Saving…') : 'Confirm'}
+            </button>
+          </div>
         </div>
       )}
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
           Verify Payment and Allocate Funds. */}
-      {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
+      {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && !canVerify && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',

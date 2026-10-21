@@ -3,7 +3,7 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import React from 'react'
-import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { colors } from '@/lib/tokens'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
@@ -61,7 +61,6 @@ export function PaymentsTable({
   cutoff,
   highlightId,
   onRowClick,
-  onView,
   onEdit,
   onDelete,
   againstHref = () => null,
@@ -118,8 +117,13 @@ export function PaymentsTable({
   userId: string
   cutoff: number
   highlightId?: string | null
+  /**
+   * Opens the ONE payment popup. Anywhere on the row does it (there is no
+   * separate View icon): the row is a button for the keyboard too (Enter or
+   * Space), and the controls inside it — the Edit/Delete icons, the Against link,
+   * the Payment ID copy — act on their own and never open it.
+   */
   onRowClick: (r: PaymentRequest) => void
-  onView: (r: PaymentRequest) => void
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
@@ -293,8 +297,9 @@ export function PaymentsTable({
                 </div>
               </td>
             )
-            // ICONS IN FIXED SLOTS (redesign 2026-10): View, Edit (or Reapply
-            // for a salesperson's rejected request), Delete. An action the
+            // ICONS IN FIXED SLOTS (redesign 2026-10): Edit (or Reapply for a
+            // salesperson's rejected request), Delete. There is no View icon: the
+            // whole row opens the payment. An action the
             // reader may not take leaves its slot empty, so each icon keeps its
             // place down the column. Every icon has a tooltip and a name.
             const actionButtons = (
@@ -303,15 +308,6 @@ export function PaymentsTable({
                 style={{ gap: '4px', justifyContent: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={() => onView(r)}
-                  className="boe-row-icon boe-row-icon--view"
-                  aria-label={`View payment request ${r.human_payment_id}`}
-                  title="View"
-                >
-                  <Eye size={15} aria-hidden="true" />
-                </button>
                 {showEdit ? (
                   <button
                     type="button"
@@ -371,6 +367,15 @@ export function PaymentsTable({
                 key={r.id}
                 id={`payment-row-${r.id}`}
                 onClick={() => onRowClick(r)}
+                tabIndex={0}
+                role="button"
+                aria-label={`Open payment ${r.human_payment_id}`}
+                onKeyDown={e => {
+                  // Only when the row itself has the focus: Enter on a link or an icon
+                  // inside it is that control's own.
+                  if (e.target !== e.currentTarget) return
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(r) }
+                }}
                 // Status colour now lives in the pill (and its dot), not in a
                 // coloured left edge; hover and highlight are .fin-table's.
                 data-accent={accentColor}

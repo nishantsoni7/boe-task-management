@@ -45,7 +45,7 @@ const REQUEST_TAB_TONE: Record<FilterTab, FinanceTabTone | undefined> = {
   archive: 'neutral',
   all: undefined,
 }
-import { REQUEST_STAGE_STATUSES, isOwnPaymentDecision } from './paymentRouting'
+import { REQUEST_STAGE_STATUSES } from './paymentRouting'
 import {
   COUNTED_TABS,
   archiveCutoffIso,
@@ -65,7 +65,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
-import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, canManageRequest, type PaymentRequest } from './paymentRequestsModel'
+import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, type PaymentRequest } from './paymentRequestsModel'
 // Re-exported: other modules import the type from the page.
 export type { PaymentRequest } from './paymentRequestsModel'
 // @split: src/app/finance/paymentRequestsModel.tsx private=AdminAction,STATUS_META,ARCHIVE_TAB_ACCENT,FILTER_TABS,EMPTY_MESSAGES,fmtDate,fmtDateTime,fmtAmount,orderNoCell,friendlyDbErrorMessage,SEARCH_DEBOUNCE_MS,isApproved,APPROVED_RACE_MESSAGE,APPROVED_LOCK_NOTE,canManageRequest,isStaleClarification
@@ -81,10 +81,8 @@ import { NewPaymentConfirmationModal } from './paymentRequestsNew'
 import { EditPaymentModal } from './paymentRequestsEdit'
 // @split: src/app/finance/paymentRequestsEdit.tsx private=EditPaymentModalProps,EditPaymentModal
 
-import { AdminReviewModal } from './paymentRequestsAdminReview'
 import { BankMatchPanel } from './bankMarkUi'
 import { loadBankMarks, type BankMark } from '@/lib/finance/bankMarks'
-// @split: src/app/finance/paymentRequestsAdminReview.tsx private=FigureBand,FigureCell,REVIEW_DECISIONS,DecisionRow,AdminReviewModalProps,AdminReviewModal
 
 import { PaymentsTable } from './paymentRequestsTable'
 export { PaymentsTable } from './paymentRequestsTable'
@@ -121,7 +119,6 @@ function FinancePageInner() {
   // the Order Requests details modal). Cleared with the form, so the plain
   // "+ New" button always opens an empty one.
   const [formPrefill, setFormPrefill]     = useState<{ clientName: string; salesNote: string; contextLabel: string } | null>(null)
-  const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
@@ -611,11 +608,9 @@ function FinancePageInner() {
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, caps.canDecideOwnPayment)) {
-          setReviewRequest(match)
-        } else {
-          setDetailRequest(match)
-        }
+        // ONE popup for every reader and status (a verifier's decision is a
+        // section inside it, drawn only for somebody who may decide).
+        setDetailRequest(match)
       }
       // Drop the record param so a refresh or back-navigation can't reopen
       // the modal; keep the tab so the deep link still lands correctly.
@@ -722,13 +717,10 @@ function FinancePageInner() {
   const pages = pageCount(total)
 
   // ── Row click handler ────────────────────────────────────────────────────────
-  const handleRowClick = (r: PaymentRequest) => {
-    if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment)) {
-      setReviewRequest(r)
-    } else {
-      setDetailRequest(r)
-    }
-  }
+  // ANYWHERE ON THE ROW opens the one payment popup — for every reader, every
+  // status. (It used to route a verifier to a separate review window and
+  // everybody else to the details one, with a View icon for the other.)
+  const handleRowClick = (r: PaymentRequest) => setDetailRequest(r)
 
   if (pageLoading) return <FinanceRouteFallback />
 
@@ -840,7 +832,6 @@ function FinancePageInner() {
             cutoff={cutoffMs}
             highlightId={highlightId}
             onRowClick={handleRowClick}
-            onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
             againstHref={againstHref}
             salesView={salesView}
@@ -899,37 +890,6 @@ function FinancePageInner() {
           onSaved={() => { setShowForm(false); setFormPrefill(null); refreshAfterMutation() }}
         />
       )}
-      {reviewRequest && (
-        <AdminReviewModal
-          request={reviewRequest}
-          supabase={supabase}
-          onClose={() => setReviewRequest(null)}
-          bankPanel={bankMarks ? (
-            <BankMatchPanel
-              supabase={supabase}
-              paymentId={reviewRequest.id}
-              mark={bankMarks.get(reviewRequest.id)}
-              onChanged={() => setBankReload(n => n + 1)}
-            />
-          ) : undefined}
-          // Correct the amount, date, account or destination before deciding:
-          // the table's pencil, the same modal and the same edit_payment_request
-          // door, on the same rule (canManageRequest).
-          onEdit={canManageRequest(reviewRequest, isAdmin, userId)
-            ? (r => { setReviewRequest(null); setEditRequest(r) })
-            : undefined}
-          // Approval is the ONE action on this page that creates a received
-          // payment — a new_order approval lands in suspense with no linkage, so
-          // the sidebar's Non-Linked count changes the moment it commits.
-          // Clarify and Reject keep the record at request stage and move no
-          // count, but they share this callback and re-checking is free.
-          onActioned={() => {
-            setReviewRequest(null)
-            refreshAfterMutation()
-            queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
-          }}
-        />
-      )}
       {detailRequest && (
         <DetailsModal
           request={detailRequest}
@@ -940,7 +900,22 @@ function FinancePageInner() {
           mayDecideOwnPayments={caps.canDecideOwnPayment}
           userId={userId}
           supabase={supabase}
-          onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
+          // The bank-statement panel: ONLY for a holder of finance.reconcile.
+          bankPanel={bankMarks ? (
+            <BankMatchPanel
+              supabase={supabase}
+              paymentId={detailRequest.id}
+              mark={bankMarks.get(detailRequest.id)}
+              onChanged={() => setBankReload(n => n + 1)}
+            />
+          ) : undefined}
+          // A decision, a correction or a custody entry closes the popup and reloads
+          // the list; a verification also moves the Confirmed Payments count.
+          onCorrected={() => {
+            setDetailRequest(null)
+            refreshAfterMutation()
+            queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+          }}
           // Details hands off to the same two modals the table uses; only one
           // Finance modal is open at a time, so it closes as they open.
           onEdit={r => { setDetailRequest(null); setEditRequest(r) }}

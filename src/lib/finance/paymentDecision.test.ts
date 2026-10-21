@@ -301,9 +301,10 @@ describe('the helper opens only the two decision RPCs', () => {
   const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
   const helper = read('src/lib/finance/paymentDecision.ts')
   const code = helper.replace(/\/\/.*$/gm, '')
-  const finance = read('src/app/finance/page.tsx')
-  const reviewModal = finance.slice(finance.indexOf('function AdminReviewModal('),
-    finance.indexOf('// ── Delete confirm modal (admin only)'))
+  // THE POPUP'S DECISION HANDLER (the review window it replaced no longer exists):
+  // from the handler to the start of the admin status-correction code.
+  const popup = read('src/app/finance/paymentRequestsDetails.tsx').replace(/\r\n/g, '\n')
+  const reviewModal = popup.slice(popup.indexOf('const handleDecide = async'), popup.indexOf('const noteRequiredForCorrection'))
 
   test('approval: the same RPC as Finance, with the same two named arguments', () => {
     for (const source of [helper, reviewModal]) {

@@ -95,7 +95,6 @@ function render(rows: PaymentRequest[], opts: {
       cutoff={Date.parse('2026-08-27T00:00:00Z')}
       highlightId={null}
       onRowClick={noop}
-      onView={noop}
       onEdit={noop}
       onDelete={noop}
     />,
@@ -157,7 +156,10 @@ describe('1. the required column order', () => {
     assert.ok(cells[3].length > 0)                            // Paid on
     assert.ok(cells[7].length > 0)                            // Status
     assert.ok(cells[6].endsWith('Anita Rao'))                 // Added by (initials + name)
-    assert.ok(firstRowCellHtml(render([row()]))[8].includes('aria-label="View payment request P-AA-0001"')) // Actions
+    // There is no View icon: the ROW is the way in. The actions cell holds Edit/Delete only.
+    const html = render([row()])
+    assert.ok(html.includes('aria-label="Open payment P-AA-0001"'), 'the row itself is the control')
+    assert.equal(firstRowCellHtml(html)[8].includes('View payment request'), false, 'no View icon')
   })
 })
 
@@ -191,12 +193,12 @@ describe('2. Pending is stated once, in Status', () => {
   })
 
   test('2d. the capability is no longer passed to the table at all', () => {
-    // Approval authority still gates the row-click review router and the modal
-    // it opens. What is gone is a table taking it to tint a cell.
+    // Approval authority still gates the Decision section inside the one payment
+    // popup. What is gone is a table taking it to tint a cell.
     assert.equal(SOURCE.includes('canApprove={caps.canApprovePayment}'), false)
     // ...and never routes someone to review a payment they recorded unless they
     // hold finance.verify_own_payment (Control Center; an admin holds it).
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment))"))
+    assert.ok(SOURCE.includes('&& !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)'))
     assert.ok(SOURCE.includes('mayApprovePayments={caps.canApprovePayment}'))
   })
 })
@@ -377,7 +379,7 @@ describe('6. no new query, and the narrow-width view keeps the column', () => {
 
   test('6d. the actions stay usable — they are still the last cell, unwrapped', () => {
     const cells = firstRowCellHtml(render([row()], { isAdmin: true }))
-    assert.ok(cells[8].includes('aria-label="View payment request'))
+    assert.equal(cells[8].includes('View payment request'), false, 'the row opens the payment; there is no View icon')
     assert.ok(cells[8].includes('aria-label="Delete payment request'), 'an admin still gets Delete')
   })
 })
@@ -473,15 +475,16 @@ describe("7. the salesperson's list", () => {
     assert.match(firstRowCells(sales([r], { destinations }))[2], /PID-00007/)
     const linked = renderToStaticMarkup(
       <PaymentsTable rows={[r]} destinations={destinations} isAdmin={false} userId={USER} salesView
-        cutoff={0} highlightId={null} onRowClick={noop} onView={noop} onEdit={noop} onDelete={noop}
+        cutoff={0} highlightId={null} onRowClick={noop} onEdit={noop} onDelete={noop}
         againstHref={() => '/orders/drafts/b1b2c3d4-0000-4000-8000-0000000000aa'} />)
     assert.match(linked, /<a [^>]*href="\/orders\/drafts\/b1b2c3d4[^"]*"[^>]*>PI Draft PID-00007<\/a>/)
   })
 
-  test("7h. Delete appears for the owner's unapproved rows only, beside View", () => {
+  test("7h. Delete appears for the owner's unapproved rows only", () => {
     for (const status of ['pending_approval', 'needs_clarification', 'rejected']) {
       const cells = firstRowCellHtml(sales([row({ status })]))
-      assert.ok(cells[7].includes('aria-label="View payment request') && cells[7].includes('aria-label="Delete payment request'), `${status}: owner sees Delete`)
+      assert.ok(cells[7].includes('aria-label="Delete payment request'), `${status}: owner sees Delete`)
+      assert.equal(cells[7].includes('View payment request'), false, `${status}: no View icon`)
     }
     // Someone else's row, and an approved row, get no Delete.
     const other = firstRowCellHtml(sales([row({ submitted_by: '99999999-0000-4000-8000-000000000000' })]))
@@ -524,7 +527,7 @@ describe('8. a rejected request keeps its original PI/Order', () => {
     const markup = renderToStaticMarkup(
       <PaymentsTable rows={[rejected]} destinations={destinations} isAdmin={false} userId={USER} salesView
         totals={new Map([[rejected.id, 132500]])}
-        cutoff={0} highlightId={null} onRowClick={noop} onView={noop} onEdit={noop} onDelete={noop}
+        cutoff={0} highlightId={null} onRowClick={noop} onEdit={noop} onDelete={noop}
         againstHref={() => '/orders/drafts/b1b2c3d4-0000-4000-8000-0000000000aa'} />)
     assert.match(markup, /<a [^>]*href="\/orders\/drafts\/b1b2c3d4[^"]*"[^>]*>PI Draft PID-00007 \(cancelled\)<\/a>/)
     const cells = firstRowCells(markup)

@@ -43,7 +43,10 @@ function requestModal(): string {
 function editModal(): string {
   const src = read(REQUEST_PAGE)
   const from = src.indexOf('function EditPaymentModal(')
-  const to   = src.indexOf('function FigureBand(')
+  // Up to the next top-level function (the review window that used to follow it
+  // no longer exists).
+  const next = from < 0 ? -1 : src.slice(from + 1).search(/\n(?:export )?function [A-Za-z]/)
+  const to   = next < 0 ? -1 : from + 1 + next
   assert.ok(from > -1 && to > from, 'the Edit Payment Request modal could not be located')
   return src.slice(from, to)
 }

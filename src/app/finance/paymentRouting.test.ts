@@ -291,12 +291,14 @@ describe('nobody decides a payment they recorded, unless they may verify their o
     const SOURCE = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
     assert.ok(SOURCE.includes('&& !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)'),
       'the details modal Verify Payment control')
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment))"),
-      'the row click into the review dialog')
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, caps.canDecideOwnPayment))"),
-      'a deep link into the review dialog')
-    assert.equal((SOURCE.match(/setReviewRequest\((r|match)\)/g) ?? []).length, 2,
-      'and there is no third way into the review dialog')
+    // THERE IS ONE ENTRY POINT NOW. The row click and a deep link both open the
+    // one payment popup, and the Decision section INSIDE it asks the rule above;
+    // there is no separate review window with routing of its own to keep in step.
+    assert.ok(SOURCE.includes('const handleRowClick = (r: PaymentRequest) => setDetailRequest(r)'),
+      'the row click opens the one popup')
+    assert.ok(!SOURCE.includes('setReviewRequest'), 'and there is no second window to route to')
+    assert.ok(SOURCE.includes('canVerifyPayment(r.status, mayApprovePayments)'),
+      'the Decision section draws from the shared rule')
   })
 })
 
@@ -320,9 +322,10 @@ describe('the details modal actually offers verification', () => {
     // The page reaches one RPC by two doors: the details modal's primary button
     // and the review modal's decision row. They used to be called "Verify
     // Payment" and "Mark Payment Received", which read as two different powers.
+    // (One door since the two payment popups were merged; the label is kept.)
     const labelled = SOURCE.split('Verify Payment').length - 1
-    assert.ok(labelled >= 2,
-      `both the details panel and the review decision must say Verify Payment (found ${labelled})`)
+    assert.ok(labelled >= 1,
+      `the Decision section must say Verify Payment (found ${labelled})`)
 
     for (const retired of ['Mark Payment Received', 'Approve Payment']) {
       assert.ok(!SOURCE.includes(retired), `"${retired}" must not survive anywhere on this page`)
@@ -338,7 +341,7 @@ describe('the details modal actually offers verification', () => {
       'the three decision keys are the workflow and must be untouched')
     assert.ok(SOURCE.includes("{ key: 'approve',"),
       "the verification decision must still dispatch on the 'approve' key")
-    assert.ok(SOURCE.includes("action === 'approve'"),
+    assert.ok(SOURCE.includes("decisionAction === 'approve'"),
       "the approve branch must still be selected by its key, not by its label")
 
     // Statuses, the RPC and the capability are database and permission facts,
@@ -384,11 +387,11 @@ describe('the details modal actually offers verification', () => {
   test('a double click cannot submit verification twice', () => {
     // A ref set BEFORE the await, not a state update that only lands on the next
     // render. Verification is not idempotent from the caller's side.
-    assert.ok(SOURCE.includes('verifyingRef'),
+    assert.ok(SOURCE.includes('decidingRef'),
       'verification must be guarded by a ref, not by state alone')
-    assert.ok(/if \(verifyingRef\.current\) return/.test(SOURCE),
+    assert.ok(/if \(decidingRef\.current\) return/.test(SOURCE),
       'the guard must return early on a second call')
-    assert.ok(SOURCE.includes('disabled={verifying}'),
+    assert.ok(SOURCE.includes('disabled={!canConfirmDecision || deciding}'),
       'the confirm button must be disabled while the call is in flight')
   })
 

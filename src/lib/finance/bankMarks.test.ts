@@ -83,8 +83,8 @@ describe('the marker is information for reconcilers only, and never a decision',
     }
   })
 
-  test('the review window only draws the slot it is handed', () => {
-    const src = read('src/app/finance/paymentRequestsAdminReview.tsx')
+  test('the payment popup only draws the slot it is handed', () => {
+    const src = read('src/app/finance/paymentRequestsDetails.tsx')
     assert.ok(src.includes('{bankPanel}'))
     assert.ok(!src.includes('bank_statement'))
   })
