@@ -10873,3 +10873,13 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .bank-link-button { background: none; border: 0; padding: 0; margin-left: 4px; font: inherit; font-weight: 600; color: #335A86; text-decoration: underline; cursor: pointer; }
 .bank-link-button:hover { color: #274566; }
 .bank-link-button:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; border-radius: 3px; }
+/* Bank marker on Payment Requests and the review window (Finance › Bank Statements). */
+.bank-mark { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 500; line-height: 16px; padding: 0 6px; border-radius: 6px; white-space: nowrap; }
+.bank-mark--ok { background: #E8F2EC; color: #276247; }
+.bank-mark--match { background: #EAF0F8; color: #335A86; }
+.bank-mark--warn { background: #FAF0DA; color: #805B0D; }
+.bank-mark--quiet { background: #EEECE8; color: #686D6C; }
+.bank-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid #ECE7E0; }
+.bank-panel-title { font-size: 13px; font-weight: 600; color: #4C5352; }
+.bank-panel-line { font-size: 14px; color: #303536; }
+.bank-panel-note { margin: 0; font-size: 12px; }
