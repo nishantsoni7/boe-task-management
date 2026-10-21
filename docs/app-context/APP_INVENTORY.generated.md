@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `9d500e20` — Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
-- Commits on this branch: 933
+- Commit: `59598617` — PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line
+- Commits on this branch: 934
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
-- Migrations: 340 (first `20260530_create_positions.sql`, latest `20270327000000_pi_drafts_list_advance_percent.sql`)
+- Migrations: 341 (first `20260530_create_positions.sql`, latest `20270328000000_orders_dashboard_overview.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
-- Test files: 617   Next.js 16.2.6, React 19.2.4
+- Test files: 618   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `59598617` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
 - `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
@@ -38,7 +39,6 @@
 - `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
 - `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
 - `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
-- `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
 
 ## Pages by top-level area
 
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 71 source, 121 test
+- `src/lib/orders` — 71 source, 122 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
@@ -350,7 +350,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270228000000_salesperson_orders_dashboard.sql`
 - `20270301000000_notifications_event_idempotency.sql`
 - `20270302000000_task_change_status_rpc.sql`
 - `20270303000000_task_acknowledge_rpc.sql`
@@ -380,6 +379,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270325000000_order_pendencies.sql`
 - `20270326000000_meetings_admin_delete.sql`
 - `20270327000000_pi_drafts_list_advance_percent.sql`
+- `20270328000000_orders_dashboard_overview.sql`
 
 ## All SQL function names
 
