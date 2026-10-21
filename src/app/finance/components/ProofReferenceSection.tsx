@@ -32,24 +32,39 @@ const FIELD_LABEL: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
+const QUIET_LABEL: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: colors.muted }
+
 /** One labelled control inside the section. No frame of its own. */
-export function ProofReferenceField({ label, htmlFor, children, hint }: {
+export function ProofReferenceField({ label, htmlFor, children, hint, quiet }: {
   label: string
+  /** Small sentence-case label instead of bold capitals. Opt-in. */
+  quiet?: boolean
   htmlFor?: string
   children: React.ReactNode
   hint?: React.ReactNode
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-      <label htmlFor={htmlFor} style={FIELD_LABEL}>{label}</label>
+      <label htmlFor={htmlFor} style={quiet ? QUIET_LABEL : FIELD_LABEL}>{label}</label>
       {children}
       {hint}
     </div>
   )
 }
 
-export function ProofReferenceSection({ children }: { children: React.ReactNode }) {
+export function ProofReferenceSection({ children, quiet }: {
+  children: React.ReactNode
+  /** No frame and no heading of its own: the disclosure above it already names it. */
+  quiet?: boolean
+}) {
   const headingId = useId()
+  if (quiet) {
+    return (
+      <div role="group" aria-label={PROOF_REFERENCE_TITLE} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {children}
+      </div>
+    )
+  }
   return (
     <section
       aria-labelledby={headingId}

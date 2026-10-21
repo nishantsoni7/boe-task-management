@@ -19,7 +19,7 @@ import { FieldProblem, FormStep, OptionalDisclosure, PaymentModePicker, QuickDat
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
 import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
 import { ProofDropZone } from './components/ProofDropZone'
-import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage } from '@/lib/finance/paymentEntry'
 import { SubmissionAttempt, SUBMISSION_OUTCOME_UNKNOWN, isAmbiguousFailure } from '@/lib/finance/submissionAttempt'
 import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
@@ -164,12 +164,11 @@ export function NewPaymentConfirmationModal({
   const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
   const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
 
+  // The footer does not repeat what the form already shows (the account, the
+  // destination): it carries the one thing the form does not say.
   const summary = [
     isValidAmount(form.amount) ? `₹${groupIndianDigits(form.amount)}` : null,
-    paymentModeLabel(form.paymentMode),
-    entry.target
-      ? `${entry.target.reference} · ${entry.target.clientName}`
-      : entry.destination === 'suspense' ? 'Suspense Entry' : null,
+    'Finance verifies it before the money is attached',
   ].filter(Boolean).join(' · ')
 
   // SEND IS NEVER GREYED OUT. An unfinished form names what is missing and takes
@@ -358,16 +357,16 @@ export function NewPaymentConfirmationModal({
 
         {/* ── Header ── */}
         <div style={{
-          padding: '14px 20px 12px', borderBottom: `1px solid ${colors.border}`,
+          padding: '16px 24px 14px', borderBottom: `1px solid ${colors.border}`,
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: colors.primary }}>
               Send Payment Request
             </div>
             {contextLabel && (
               <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-                {contextLabel} · Finance verifies it before the money is attached
+                {contextLabel}
               </div>
             )}
           </div>
@@ -384,14 +383,14 @@ export function NewPaymentConfirmationModal({
 
         {/* ── Scrollable body ── */}
         <div style={{
-          padding: '16px 20px', overflowY: 'auto', flex: 1,
-          display: 'flex', flexDirection: 'column', gap: '20px',
+          padding: '20px 24px', overflowY: 'auto', flex: 1,
+          display: 'flex', flexDirection: 'column', gap: '24px',
         }}>
 
           {/* 1. What the money is for — and, for the two targeted destinations,
               which record. The customer follows from it and is shown read-only;
               there is no field to type one into. */}
-          <FormStep number={1} title="What is this payment for?">
+          <FormStep number={1} quiet title="What is this payment for?">
             <PaymentEntryFields
               state={entry}
               onChange={next => { setEntry(next); setError(null) }}
@@ -404,13 +403,13 @@ export function NewPaymentConfirmationModal({
           </FormStep>
 
           {/* 2. The payment itself. */}
-          <FormStep number={2} title="Payment">
+          <FormStep number={2} quiet title="Payment">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-              <Field label="Amount" required>
+              <Field label="Amount" required quiet>
                 <AmountInput prefix="₹" value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
                 <FieldProblem message={amountProblem} />
               </Field>
-              <Field label="Payment Date" required>
+              <Field label="Payment date" required quiet>
                 <QuickDateField
                   value={form.paymentDate}
                   onChange={v => setForm(prev => ({ ...prev, paymentDate: v }))}
@@ -425,7 +424,7 @@ export function NewPaymentConfirmationModal({
                 receiving-account question: the account picker answered
                 payment_mode and received_in at once, and the mode IS the account
                 now. What each account means internally is not printed. */}
-            <Field label="Payment Mode" required>
+            <Field label="Payment mode" required quiet>
               <PaymentModePicker
                 value={form.paymentMode}
                 onChange={v => setForm(prev => ({ ...prev, paymentMode: v }))}
@@ -439,7 +438,7 @@ export function NewPaymentConfirmationModal({
           {/* 3. WHO CARRIED IT — for PNB and Paytm only, decided by the mode and
               decided again server-side. */}
           {modeRequiresCustodyTrail(form.paymentMode) && (
-            <FormStep number={3} title="Who carried the money" hint="Optional">
+            <FormStep number={3} quiet title="Who carried the money" hint="Optional">
               <CustodyTrailFields
                 supabase={supabase}
                 paymentMode={form.paymentMode}
@@ -462,8 +461,8 @@ export function NewPaymentConfirmationModal({
             open={proofOpen}
             onToggle={() => setProofOpen(o => !o)}
           >
-            <ProofReferenceSection>
-              <ProofReferenceField label="Payment proof (screenshot or PDF)">
+            <ProofReferenceSection quiet>
+              <ProofReferenceField quiet label="Proof">
                 <ProofDropZone
                   file={attachFile}
                   error={attachError}
@@ -473,19 +472,19 @@ export function NewPaymentConfirmationModal({
                 />
               </ProofReferenceField>
 
-              <ProofReferenceField label="Payment reference">
+              <ProofReferenceField quiet label="Reference">
                 <input
                   className="boe-input"
                   value={form.proofNote}
                   onChange={set('proofNote')}
-                  placeholder="UTR, cheque no., or short proof note (optional)"
+                  placeholder="UTR, cheque number or a short note"
                   style={{ width: '100%' }}
                 />
               </ProofReferenceField>
 
-              <ProofReferenceField label="Notes / remarks (optional)">
+              <ProofReferenceField quiet label="Notes for Finance">
                 <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-                  placeholder="Any additional context for admin"
+                  placeholder="Anything Finance should know"
                   rows={2} style={{ width: '100%', resize: 'vertical' }} />
               </ProofReferenceField>
             </ProofReferenceSection>
@@ -497,11 +496,11 @@ export function NewPaymentConfirmationModal({
 
         {/* ── Footer ── */}
         <div style={{
-          padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
+          padding: '12px 24px', borderTop: `1px solid ${colors.border}`,
           display: 'flex', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between',
           flexWrap: 'wrap', flexShrink: 0,
         }}>
-          <div aria-live="polite" style={{ fontSize: '13px', color: colors.secondary, minWidth: 0, wordBreak: 'break-word' }}>
+          <div aria-live="polite" style={{ fontSize: '12px', color: colors.muted, minWidth: 0, wordBreak: 'break-word' }}>
             {summary}
           </div>
           <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>

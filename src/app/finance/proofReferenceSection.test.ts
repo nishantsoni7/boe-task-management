@@ -77,7 +77,7 @@ describe('all three entry forms group the same three things', () => {
   for (const [name, source] of forms) {
     test(`${name} draws exactly one Payment Proof / Reference section`, () => {
       const src = source()
-      assert.equal((src.match(/<ProofReferenceSection>/g) ?? []).length, 1,
+      assert.equal((src.match(/<ProofReferenceSection[ >]/g) ?? []).length, 1,
         `${name} must have one such section, not zero and not two`)
     })
 
@@ -108,7 +108,7 @@ describe('all three entry forms group the same three things', () => {
   test('every form offers the proof upload inside that section', () => {
     for (const [name, source] of forms) {
       const src = source()
-      const from = src.indexOf('<ProofReferenceSection>')
+      const from = src.indexOf('<ProofReferenceSection')
       const to   = src.indexOf('</ProofReferenceSection>')
       assert.ok(from > -1 && to > from, `${name}: the section could not be located`)
       assert.ok(src.slice(from, to).includes('<ProofDropZone'),

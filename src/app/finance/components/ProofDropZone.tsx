@@ -97,7 +97,7 @@ export function ProofDropZone({ file, error, onFile, onError, disabled = false, 
             ? <img src={previewUrl} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: `1px solid ${colors.border}` }} />
             : <FileText size={28} aria-hidden="true" style={{ color: colors.secondary, flexShrink: 0 }} />}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {file.name}
             </div>
             <div style={{ fontSize: '12px', color: colors.muted }}>
@@ -127,19 +127,19 @@ export function ProofDropZone({ file, error, onFile, onError, disabled = false, 
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-            padding: '14px 12px', borderRadius: '8px', textAlign: 'center',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+            padding: '16px 12px', borderRadius: '8px', textAlign: 'center',
             border: `1.5px dashed ${dropActive ? colors.brand : colors.borderMed}`,
             background: dropActive ? colors.brandTint : colors.base,
             cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
           }}
         >
           <ImagePlus size={20} aria-hidden="true" style={{ color: dropActive ? colors.brandInk : colors.secondary }} />
-          <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-            {busy ? 'Reading the file…' : dropActive ? 'Drop to attach' : 'Drop a screenshot or PDF here, click to choose, or press Ctrl+V to paste'}
+          <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary }}>
+            {busy ? 'Reading the file…' : dropActive ? 'Drop to attach' : 'Drop a file, click to choose, or paste with Ctrl+V'}
           </div>
           <div style={{ fontSize: '12px', color: colors.muted }}>
-            JPG, PNG, WEBP, GIF, other images, or PDF · up to 10 MB
+            Image or PDF · up to 10 MB
           </div>
         </div>
       )}
