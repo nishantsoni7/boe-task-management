@@ -26,6 +26,7 @@ import {
   FABRIC_RESPONSIBILITY_OPTIONS,
   FABRIC_RESPONSIBILITY_UNANSWERED,
   commercialTermsNote,
+  commercialTermsPoints,
   fabricResponsibilityLabel,
   fabricResponsibilityNeedsConfirmation,
   fabricResponsibilityStatement,
@@ -640,5 +641,24 @@ describe('every surface calls the salesperson the salesperson', () => {
     // filled from the other.
     assert.equal(context.submittedBy, 'Priya Rao')
     assert.equal(context.salesperson, 'Dhruv')
+  })
+})
+
+describe('commercialTermsPoints', () => {
+  test('breaks a run-together note into its points', () => {
+    assert.deepEqual(
+      commercialTermsPoints('Given prices are ex-factory.\nFabric considered is 650 RS per meter Packing considered Full Body Tile : Caret and BCF Rest of the material : Standard Export Packing (BCF with Dummy Carton for Leg Support)'),
+      [
+        'Given prices are ex-factory.',
+        'Fabric considered is 650 RS per meter',
+        'Packing considered Full Body Tile : Caret and BCF',
+        'Rest of the material : Standard Export Packing (BCF with Dummy Carton for Leg Support)',
+      ],
+    )
+  })
+  test('leaves the standard wording whole and an empty note empty', () => {
+    assert.deepEqual(commercialTermsPoints(BOE_STANDARD_COMMERCIAL_TERMS), [BOE_STANDARD_COMMERCIAL_TERMS])
+    assert.deepEqual(commercialTermsPoints('  \n '), [])
+    assert.deepEqual(commercialTermsPoints(null), [])
   })
 })

@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — PI Draft Commercial breakdown redrawn on the Order page's grid; Commercial terms highlighted, one point per line (PR open) · no migration
+- **Owner request.** `/orders/drafts/[submissionId]` breakdown rows are now bordered label | figure cells with alternate-row tint and a fixed 150px figure column; Grand Total on a tinted band; "Provided by …" is a pill. DOM and the shared row builder are unchanged (CSS appended last in globals.css).
+- **Terms:** a tinted amber block with a left accent bar and a larger heading. New display-only `commercialTermsPoints()` (piTerms.ts) splits the stored note on newlines and before "Fabric considered", "Packing considered", "Packaging considered", "Rest of the material"; the stored text is never changed.
+- Tests: `piTerms.test.ts`, `piDetail.render.test.tsx`. Not yet checked on screen in a signed-in session.
+
 ## 2026-10-21 — Order page summary: "Total product value" row replaced by a Shipping and billing details link; due-date rule no longer overlaps its label (PR open) · no migration
 - **Owner request.** On `/orders/[id]`, "Client and value" lost the **Total product value** row; its place is a link, **Shipping and billing details**, that opens a dialog with the PI's bill-to and ship-to (name + address each, `Not provided` when absent, never merged). Data is the already-loaded `piHandoff.client` (`ClientDetails.billTo/shipTo`) — no new read, no schema. The value is still in the Commercial breakdown and the Orders list; `orderSummaryFields` still builds it (unchanged), `orderSummaryView` just no longer draws it.
 - **Overlap bug:** the overdue Due date row's red inset rule sat on top of its label. Cause: the Notion-pass reset `.order-sum-row { padding: 7px 0 }` (end of globals.css) beat the flagged rows' earlier `padding-left`. Fixed by restating `padding-left: 12px` for `--amber`/`--red` last; a render test pins that it comes after the reset.

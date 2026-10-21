@@ -2102,6 +2102,19 @@ describe('the breakdown states who provides the fabric, beneath the figure', () 
       'the standard sentence is not printed alongside an edit')
   })
 
+  test('a run-together note is drawn one point to a line', () => {
+    const html = card({
+      commercialTerms: 'Given prices are ex-factory.\nFabric considered is 650 RS per meter Packing considered Full Body Tile Rest of the material : Standard Export Packing',
+    })
+    const points = [...html.matchAll(/<li class="pi-detail-breakdown-terms-point">(.*?)<\/li>/g)].map(m => m[1])
+    assert.deepEqual(points, [
+      'Given prices are ex-factory.',
+      'Fabric considered is 650 RS per meter',
+      'Packing considered Full Body Tile',
+      'Rest of the material : Standard Export Packing',
+    ])
+  })
+
   test('a PI with no terms says so rather than leaving a gap', () => {
     assert.ok(text(card({ commercialTerms: null })).includes(COMMERCIAL_TERMS_ABSENT))
   })
