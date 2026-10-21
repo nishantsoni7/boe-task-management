@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `4603c926` — Tests: record migrations 20270328000000 and 20270328000100 in the pinned migration lists
-- Commits on this branch: 935
+- Commit: `ec97eb22` — Merge origin/main into feat/pi-returned-rejected-visibility
+- Commits on this branch: 937
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
-- Migrations: 343 (first `20260530_create_positions.sql`, latest `20270328000200_order_submission_returned_rejected_dashboard.sql`)
+- Migrations: 344 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
 - Test files: 619   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `ec97eb22` 2026-10-21 Merge origin/main into feat/pi-returned-rejected-visibility
+- `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
 - `4603c926` 2026-10-21 Tests: record migrations 20270328000000 and 20270328000100 in the pinned migration lists
 - `2e2b4d25` 2026-10-21 Orders: salesperson sees PIs sent back or rejected, on the dashboard and in notifications
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
@@ -37,8 +39,6 @@
 - `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
 - `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
 - `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
-- `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
-- `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
 
 ## Pages by top-level area
 
@@ -350,7 +350,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270303000000_task_acknowledge_rpc.sql`
 - `20270304000000_customer_review_admin_reject_and_delete.sql`
 - `20270305000000_exhibition_leads.sql`
 - `20270306000000_exhibition_management.sql`
@@ -380,6 +379,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270328000000_orders_dashboard_overview.sql`
 - `20270328000100_order_submission_review_notify_salesperson.sql`
 - `20270328000200_order_submission_returned_rejected_dashboard.sql`
+- `20270328000300_orders_finance_real_data_not_test.sql`
 
 ## All SQL function names
 
