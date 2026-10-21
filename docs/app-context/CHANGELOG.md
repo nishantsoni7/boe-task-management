@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — PI Draft Commercial breakdown redrawn on the Order page's grid; Commercial terms highlighted, one point per line (PR open) · no migration
+- **Owner request.** `/orders/drafts/[submissionId]` breakdown rows are now bordered label | figure cells with alternate-row tint and a fixed 150px figure column; Grand Total on a tinted band; "Provided by …" is a pill. DOM and the shared row builder are unchanged (CSS appended last in globals.css).
+- **Terms:** a tinted amber block with a left accent bar and a larger heading. New display-only `commercialTermsPoints()` (piTerms.ts) splits the stored note on newlines and before "Fabric considered", "Packing considered", "Packaging considered", "Rest of the material"; the stored text is never changed.
+- Tests: `piTerms.test.ts`, `piDetail.render.test.tsx`. Not yet checked on screen in a signed-in session.
+
 ## 2026-10-21 — Real Orders and Finance data re-labelled as real, not test (PR open) · migration 20270328000300 (APPLIED to production 2026-10-21)
 - **Why:** Test Data Cleanup was enabled from 2026-07-21, so every Order and payment created since go-live (2026-10-18) was stamped `is_test_data = true`; the dashboard, revenue and Factory Focus hid them and the cleanup/reset tools would have treated them as deletable. The owner **permanently disabled** the phase in the Control Center on 2026-10-21 11:52 UTC (verified: `permanently_disabled = true`) and stated that all Orders and Finance data is real.
 - **What:** one-off migration clears the flag on exactly 8 `orders`, 18 `finance_payment_requests` and 17 `finance_payment_allocations`. Aborts unless Test Data Cleanup is permanently disabled and those exact counts are flagged. Only user triggers on the three tables are off for the single UPDATE (so no activity rows or `updated_at` churn), then back on; it refuses to start if any is already disabled and checks afterwards that all are enabled and that the immutability trigger still refuses a flip. `order_requests` (retired) untouched.

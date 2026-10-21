@@ -161,3 +161,27 @@ export function commercialTermsNote(value: string | null | undefined): string | 
 export function isStandardCommercialTerms(value: string | null | undefined): boolean {
   return commercialTermsNote(value) === BOE_STANDARD_COMMERCIAL_TERMS
 }
+
+// ── The terms note, one point to a line ───────────────────────────────────────
+
+/** Where a workbook runs separate points together: each of these opens a new one. */
+const TERMS_POINT_OPENERS = /\s+(?=(?:Fabric considered|Packing considered|Packaging considered|Rest of the material)\b)/gi
+
+/**
+ * The stored note as the separate points it states, for display only.
+ *
+ * Lines the author already broke stay broken. A workbook often runs several
+ * points together on one line ("Fabric considered is … Packing considered …
+ * Rest of the material : …"), so a line is also broken before each of those
+ * openers. The stored text is never changed and nothing is rejoined: a note
+ * without a newline or an opener comes back as one point, word for word.
+ */
+export function commercialTermsPoints(value: string | null | undefined): string[] {
+  const note = commercialTermsNote(value)
+  if (note === null) return []
+  return note
+    .split(/\r?\n/)
+    .flatMap(line => line.split(TERMS_POINT_OPENERS))
+    .map(point => point.trim())
+    .filter(point => point !== '')
+}

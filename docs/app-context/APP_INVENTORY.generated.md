@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ec97eb22` — Merge origin/main into feat/pi-returned-rejected-visibility
-- Commits on this branch: 937
+- Commit: `b40f30cd` — Merge origin/main into feat/pi-returned-rejected-visibility
+- Commits on this branch: 939
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
 - Migrations: 344 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `b40f30cd` 2026-10-21 Merge origin/main into feat/pi-returned-rejected-visibility
+- `01ae5d86` 2026-10-21 Orders/Finance: re-label real records stamped as test data (#384)
 - `ec97eb22` 2026-10-21 Merge origin/main into feat/pi-returned-rejected-visibility
 - `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
 - `4603c926` 2026-10-21 Tests: record migrations 20270328000000 and 20270328000100 in the pinned migration lists
@@ -37,8 +39,6 @@
 - `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 - `57ea63c9` 2026-10-20 Approval dialog: preselect the salesperson the PI workbook names
 - `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
-- `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
-- `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
 
 ## Pages by top-level area
 

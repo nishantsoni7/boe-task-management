@@ -61,6 +61,7 @@ import {
   COMMERCIAL_TERMS_ABSENT,
   COMMERCIAL_TERMS_LABEL,
   commercialTermsNote,
+  commercialTermsPoints,
 } from '@/lib/orders/piTerms'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
@@ -862,9 +863,12 @@ export function PiCommercialBreakdown({ view, commercialTerms, onEditTerms }: {
           </div>
           {terms
             ? (
-              <MultilineText className="pi-detail-breakdown-terms-body">
-                {terms}
-              </MultilineText>
+              /* One point to a line: a run-together note reads as a list. */
+              <ul className="pi-detail-breakdown-terms-list">
+                {commercialTermsPoints(terms).map((point, i) => (
+                  <li key={i} className="pi-detail-breakdown-terms-point">{point}</li>
+                ))}
+              </ul>
             )
             : (
               <div className="pi-detail-breakdown-terms-absent">{COMMERCIAL_TERMS_ABSENT}</div>
