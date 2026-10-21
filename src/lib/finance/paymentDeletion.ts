@@ -1,6 +1,12 @@
 // Deleting one payment entry — the single implementation, shared by every
 // Finance surface that offers the action.
 //
+// REVISED AGAIN (20270331000000, owner decision 2026-10-21): the 20261218000000
+// rule that a verified payment may be deleted only when it is test data is
+// lifted. An active admin may delete a Confirmed Payment entered by mistake;
+// a payment actively linked to a bank statement line is refused until it is
+// unlinked in Bank Statements (PAYMENT_DELETION_BANK_LINKED).
+//
 // REVISED RULE (20261011000000): deletion is an Admin-only action, for a
 // payment of ANY status — Payment Requests (pending_approval,
 // needs_clarification, rejected) and Confirmed Payments (approved_unlinked,
@@ -81,12 +87,24 @@ export function canDeletePayment(
   actor: { isAdmin: boolean },
 ): boolean {
   if (!isPaymentDeletableStatus(payment.status)) return false
-  // A VERIFIED payment is permanent history unless it is test data
-  // (20261218000000, owner decision 2026-09-18). A wrong verified payment is
-  // corrected, never deleted. Unknown is treated as real: no Delete.
-  if (isConfirmedPaymentStatus(payment.status) && payment.is_test_data !== true) return false
+  // 20270331000000 (owner decision 2026-10-21): an admin may delete a payment
+  // entered by mistake even when it has been verified. 20261218000000's rule —
+  // a verified payment only when it is test data — is lifted, so is_test_data
+  // no longer matters here. A refund or bounce of real money is still a
+  // different, unbuilt feature (Void / Refund).
   return actor.isAdmin
 }
+
+/**
+ * What the dialog says about deleting a Confirmed Payment, on top of the plain
+ * "cannot be undone": it erases a verified payment and leaves nothing of the
+ * payment itself, and an Order that already counted this money is not re-checked
+ * against its advance rule.
+ */
+export const PAYMENT_DELETE_CONFIRMED_WARNING =
+  'This erases a verified payment and its proof files for good. Use it only for an entry made by mistake,'
+  + ' not for money that was really received and later returned. Orders that already counted this'
+  + ' money are not re-checked against their advance rule.'
 
 export const PAYMENT_DELETE_ALLOCATION_WARNING =
   'Any allocations of this payment to an Order or a PI Draft are released with it,'

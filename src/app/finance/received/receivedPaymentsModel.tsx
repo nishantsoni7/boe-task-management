@@ -51,8 +51,8 @@ export type PaymentRequest = {
   handed_over_at: string | null
   collection_handover_note: string | null
   /** Stamped at INSERT while Test Data Cleanup was enabled; immutable. Read
-   *  from the base table with the custody columns. A VERIFIED payment may be
-   *  deleted only when this is true (20261218000000). */
+   *  from the base table with the custody columns. No longer gates Delete:
+   *  an admin may delete a verified payment since 20270331000000. */
   is_test_data?: boolean
   proof_note: string | null
   order_number: string | null

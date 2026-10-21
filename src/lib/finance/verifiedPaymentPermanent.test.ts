@@ -26,11 +26,15 @@ const admin = { isAdmin: true }
 const staff = { isAdmin: false }
 
 describe('who is offered Delete', () => {
-  test('a real verified payment: nobody, not even an admin', () => {
+  // SUPERSEDED BY 20270331000000 (owner decision 2026-10-21): the rule this file
+  // was written for — a real verified payment is permanent — is lifted for an
+  // admin. Staff still never see Delete. See adminDeleteConfirmedPayment.test.ts.
+  test('a real verified payment: an admin only, since 20270331000000', () => {
     for (const status of ['approved_unlinked', 'approved_linked']) {
-      assert.equal(canDeletePayment({ status, is_test_data: false }, admin), false, status)
-      assert.equal(canDeletePayment({ status }, admin), false, `${status}: unknown flag is treated as real`)
-      assert.equal(canDeletePayment({ status, is_test_data: null }, admin), false)
+      assert.equal(canDeletePayment({ status, is_test_data: false }, admin), true, status)
+      assert.equal(canDeletePayment({ status }, admin), true, `${status}: the flag no longer matters`)
+      assert.equal(canDeletePayment({ status, is_test_data: null }, admin), true)
+      assert.equal(canDeletePayment({ status, is_test_data: false }, staff), false, status)
     }
   })
 
