@@ -10624,3 +10624,36 @@ textarea.pi-form-input { height: auto; }
 .order-docs-side .order-doc-section { padding: 18px 20px 16px; gap: 8px; }
 .order-docs-side .order-doc-section .order-doc-row-title { margin-bottom: 2px; }
 .order-docs-absence { padding: 0 20px 18px; }
+
+/* ── ORDER SUMMARY: due-date rule + addresses link (owner, 2026-10-21) ──
+   The NOTION PASS above resets `.order-sum-row { padding: 7px 0 }`, which came
+   later than the amber/red rows' own `padding-left` and cancelled it — so the
+   inset rule was drawn on top of the label ("Due date"). Restated here, last,
+   so the label always clears the rule. */
+.order-sum-row--amber,
+.order-sum-row--red { padding-left: 12px; }
+
+.order-sum-link {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #335A86;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.order-sum-link:hover { color: #264466; }
+.order-sum-link:focus-visible { outline: 2px solid #335A86; outline-offset: 3px; border-radius: 2px; }
+
+.order-addr-block + .order-addr-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid #ECE7E0; }
+.order-addr-head { margin: 0 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8F9392; }
+.order-addr-rows { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.order-addr-row { display: grid; grid-template-columns: 80px minmax(0, 1fr); column-gap: 12px; min-width: 0; }
+.order-addr-row dt { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-addr-row dd { margin: 0; min-width: 0; font-size: 14px; color: #303536; overflow-wrap: anywhere; }
+.order-addr-address { white-space: pre-line; }

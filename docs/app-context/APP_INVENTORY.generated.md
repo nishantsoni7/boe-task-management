@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `740313b0` — PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
-- Commits on this branch: 931
+- Commit: `e8a19029` — Notifications: warm task pages on intent, not on load (#379)
+- Commits on this branch: 932
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
 - Migrations: 340 (first `20260530_create_positions.sql`, latest `20270327000000_pi_drafts_list_advance_percent.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
 - `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
@@ -38,7 +39,6 @@
 - `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
 - `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
 - `7f17db52` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere (#356)
-- `6b3ae524` 2026-10-19 Orders sidebar: Dashboard, Confirmed Orders, PI Drafts; PI format under Resources (#355)
 
 ## Pages by top-level area
 

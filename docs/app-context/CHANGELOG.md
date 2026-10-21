@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Order page summary: "Total product value" row replaced by a Shipping and billing details link; due-date rule no longer overlaps its label (PR open) · no migration
+- **Owner request.** On `/orders/[id]`, "Client and value" lost the **Total product value** row; its place is a link, **Shipping and billing details**, that opens a dialog with the PI's bill-to and ship-to (name + address each, `Not provided` when absent, never merged). Data is the already-loaded `piHandoff.client` (`ClientDetails.billTo/shipTo`) — no new read, no schema. The value is still in the Commercial breakdown and the Orders list; `orderSummaryFields` still builds it (unchanged), `orderSummaryView` just no longer draws it.
+- **Overlap bug:** the overdue Due date row's red inset rule sat on top of its label. Cause: the Notion-pass reset `.order-sum-row { padding: 7px 0 }` (end of globals.css) beat the flagged rows' earlier `padding-left`. Fixed by restating `padding-left: 12px` for `--amber`/`--red` last; a render test pins that it comes after the reset.
+- Tests: `orderWorkspace.render.test.tsx` (link, dialog, no-amount header, CSS order). Not verified on screen in a signed-in session.
+
 ## 2026-10-21 — Notifications: task pages warmed on intent only, not on load (PR open) · no migration
 - **Owner report:** Chrome's "preloaded using link preload but not used" for the Task page stylesheet on every Notifications visit, and a slow-feeling open. Cause: `NotificationsView` prefetched the first 12 tasks in an effect and each card title `<Link>` also viewport-prefetched; measured on production 12 RSC requests for 4 tasks (3 per task).
 - **Now:** `prefetch={false}` on the title link; `onWarmTask` (page-owned `router.prefetch`) fires on pointer-enter / focus / touch-start. Tests: new `notificationsIntentPrefetch.test.ts`; `taskReturnPath.test.ts` follows the move.
