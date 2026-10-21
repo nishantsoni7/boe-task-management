@@ -23,6 +23,9 @@ type ParseResponse = {
   fileName: string
   accountNumber: string
   accountLast4: string
+  /** The account the database already knows this number (or, by elimination, this statement) to be. */
+  detected: BankAccountKey | null
+  detectedHow: 'known' | 'inferred' | null
   statement: {
     periodFrom: string
     periodTo: string
@@ -81,8 +84,8 @@ export function BankUploadModal({ supabase, onClose, onImported }: {
     void read(f, null)
   }
 
-  const account: BankAccountKey | null = parsed?.preview.known_account ?? chosen
-  const needsChoice = parsed !== null && parsed.preview.known_account === null
+  const account: BankAccountKey | null = parsed?.detected ?? chosen
+  const needsChoice = parsed !== null && parsed.detected === null
 
   const choose = (a: BankAccountKey) => {
     setChosen(a)
@@ -142,6 +145,7 @@ export function BankUploadModal({ supabase, onClose, onImported }: {
           <h3>
             {account ? BANK_ACCOUNT_LABEL[account] : 'Which account is this?'}
             <span className="fin-muted" style={{ fontWeight: 400 }}> · account ending {parsed.accountLast4}</span>
+            {parsed.detectedHow === 'inferred' && <span className="fin-muted" style={{ fontWeight: 400 }}> · new number, saved as {account ? BANK_ACCOUNT_LABEL[account] : ''} on import</span>}
           </h3>
 
           {needsChoice && (
