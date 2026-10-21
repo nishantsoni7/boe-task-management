@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `8930ff42` — Rename PI Drafts migration to 20270327000000 (20270326000000 is taken by the meetings admin-delete migration)
+- Commit: `dcbd567b` — PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - Commits on this branch: 930
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
 - Migrations: 340 (first `20260530_create_positions.sql`, latest `20270327000000_pi_drafts_list_advance_percent.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `8930ff42` 2026-10-21 Rename PI Drafts migration to 20270327000000 (20270326000000 is taken by the meetings admin-delete migration)
-- `d4ac2918` 2026-10-21 PI Drafts list: drop Uploaded by/Submitted, add Confirmed date, Due date, Advance % received
+- `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
+- `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
 - `a59f7841` 2026-10-20 Redesign the Payment verification modal (Notion-style hierarchy)
 - `45738704` 2026-10-20 Edit Received Payment: drop Received In, quiet Notion-style form

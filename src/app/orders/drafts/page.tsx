@@ -63,7 +63,6 @@ import {
   PI_DRAFT_LIST_STATUSES,
   PI_DRAFT_STATUS_LABEL,
   PI_REVIEW_EMPTY_TEXT,
-  GRAND_TOTAL_UNAVAILABLE_NOTE,
   describeDraftListEntry,
   type PersistedSubmission,
   type PiDraftListEntry,
@@ -502,8 +501,9 @@ export default function PiDraftsPage() {
    * WHAT A ROW ANSWERS, in the order somebody asks it: whose order is this,
    * who wrote the PI, when was it confirmed and when is it due, how much of the
    * advance has come in, what is it worth, and where has it got to. The file
-   * name, the product-line count, Uploaded by and Submitted are gone (the last
-   * two on 2026-10-21) — none decided anything the list is used for.
+   * name, the product-line count, Uploaded by, Submitted, Grand total and the
+   * workbook date under the salesperson are gone (the last four on
+   * 2026-10-21) — none decided anything the list is used for.
    *
    * The review queue and the working list are the SAME rows in the same shape,
    * so they are one table rendered twice rather than two tables to keep in step.
@@ -513,23 +513,22 @@ export default function PiDraftsPage() {
     <div className="fin-table-wrap">
       <table className="fin-table fin-table--drafts">
         <colgroup>
-          <col style={{ width: '20%' }} />{/* Client, reference under it */}
-          <col style={{ width: '12%' }} />{/* Salesperson (the workbook's) */}
-          <col style={{ width: '10%' }} />{/* Confirmed date */}
-          <col style={{ width: '10%' }} />{/* Due date */}
-          <col style={{ width: '9%' }} />{/* Advance % received */}
-          <col style={{ width: '11%' }} />{/* Product value */}
-          <col style={{ width: '11%' }} />{/* Grand total */}
-          <col style={{ width: '14%' }} />{/* Status */}
+          <col style={{ width: '23%' }} />{/* Client, reference under it */}
+          <col style={{ width: '13%' }} />{/* Salesperson (the workbook's) */}
+          <col style={{ width: '12%' }} />{/* Confirmed date */}
+          <col style={{ width: '12%' }} />{/* Due date */}
+          <col style={{ width: '10%' }} />{/* Advance % */}
+          <col style={{ width: '13%' }} />{/* Product value */}
+          <col style={{ width: '17%' }} />{/* Status */}
           <col style={{ width: '76px' }} />{/* Actions: two 28px slots */}
         </colgroup>
         <thead>
           <tr>
-            {['Client', 'Salesperson', 'Confirmed date', 'Due date', 'Advance % received',
-              'Product value', 'Grand total', 'Status', 'Actions'].map((h, i, all) => (
-              // The advance percentage, the two money columns and the actions
-              // are right-aligned, so the figures line up digit for digit.
-              <th key={h} className={i === 4 || i === 5 || i === 6 || i === all.length - 1 ? 'fin-num' : undefined}>{h}</th>
+            {['Client', 'Salesperson', 'Confirmed date', 'Due date', 'Advance %',
+              'Product value', 'Status', 'Actions'].map((h, i, all) => (
+              // The advance percentage, the money column and the actions are
+              // right-aligned, so the figures line up digit for digit.
+              <th key={h} className={i === 4 || i === 5 || i === all.length - 1 ? 'fin-num' : undefined}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -547,11 +546,12 @@ export default function PiDraftsPage() {
                     otherwise the plain statement that none is allotted yet. */}
                 <span className="fin-sub">{entry.reference} · {entry.numberLine}</span>
               </td>
-              {/* The workbook's own author, with the date the document
-                  carries. Two facts about the PI, not about this system. */}
+              {/* The workbook's own author. The date the document carries
+                  was shown under it until 2026-10-21 and was removed: it is
+                  a typed-in preparation date, not something this system
+                  records, and it was read as an upload or status date. */}
               <td>
                 <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.authoredBy}</span>
-                <span className="fin-sub">{entry.authoredOn}</span>
               </td>
               {/* The two dates Sales confirms in Internal details, and how
                   much of the advance has arrived (verified plus awaiting
@@ -560,16 +560,10 @@ export default function PiDraftsPage() {
               <td>{entry.confirmedOn}</td>
               <td>{entry.dueOn}</td>
               <td className="fin-num">{entry.advancePercent}</td>
-              {/* THE GOODS, THEN THE BILL. Two figures rather than one,
-                  because the gap between them — fabric, packing, transport,
-                  GST — is itself something a reader judges, and a
-                  row showing only one leaves them guessing which it is. */}
+              {/* THE GOODS. The Grand total column was removed from the list
+                  on 2026-10-21 (owner: not needed here); the PI detail page
+                  still states it, and says so when it could not be read. */}
               <td className="fin-num fin-muted">{entry.productValue}</td>
-              <td className="fin-num" title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}>
-                <span className="fin-amount" style={{ color: entry.grandTotalMissing ? colors.red : undefined }}>
-                  {entry.grandTotal}
-                </span>
-              </td>
               <td>
                 <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
               </td>
@@ -605,15 +599,6 @@ export default function PiDraftsPage() {
               <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                 {entry.reference} · {entry.numberLine}
               </div>
-              {/* The workbook's own date, under the client. The narrow
-                  layout has no room for a column each, so the facts become
-                  labelled lines below rather than bare values. */}
-              <div style={{
-                fontSize: '12px', color: colors.muted, marginTop: '2px',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {entry.authoredOn}
-              </div>
             </div>
             <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
           </div>
@@ -631,21 +616,9 @@ export default function PiDraftsPage() {
             </span>
           </div>
 
-          {/* Both figures stacked, the bill emphasised beneath the goods —
-              the narrow layout has no columns to align them in. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontVariantNumeric: 'tabular-nums' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
-              <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '12px', color: colors.muted }}>Grand total</span>
-              <span
-                className="fin-amount"
-                style={{ color: entry.grandTotalMissing ? colors.red : colors.primary }}
-                title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
-              >{entry.grandTotal}</span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
+            <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
