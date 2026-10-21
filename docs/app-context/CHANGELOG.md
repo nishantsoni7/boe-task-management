@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Task attachment preview: Download works again and keeps the original filename (PR open) · no migration
+- **Problem:** in the Task/Quotation attachment pop-up, Download did nothing on a large workbook, and Open in Tab saved it under the generated storage key.
+- **Cause:** Download fetched the file into a blob and revoked the blob URL in the same tick as the click (can cancel a big save silently, response never checked). Open in Tab used the plain signed URL, which carries no filename.
+- **Fix:** `signAttachmentUrl(..., downloadAs)` asks storage for Content-Disposition with the original name. The task page signs a second URL with it; Download asks for a fresh one on click (links live 300 s) and falls back to a checked blob download that revokes after 60 s; Open in Tab uses it for non-image, non-PDF files. The preview still renders from the plain URL. Test: `attachmentDownload.test.ts`. Not yet confirmed on screen in a signed-in session.
+
 ## 2026-10-21 — Finance: Bank Statements — upload HDFC statements, link bank credits to payments (PR open) · migration 20270329000000 (NOT APPLIED)
 - **Owner request.** Upload the company's bank statements (HDFC PRI main account and SEC petty-cash account) at intervals; see which credits are linked to a recorded payment and which are not; get a suggested match for a payment ("maybe the date changed, but this looks like it") without anything being approved automatically; record credits that belong to old orders never put into the app.
 - **What.** New page `/finance/bank` (sidebar "Bank Statements", only for holders of the new protected `finance.reconcile`; admins automatically). Upload drop zone → server-side read (`/api/finance/bank/parse`, writes nothing) → preview with checks (every balance adds up to the paisa, summary totals match, opening balance continues the stored closing balance, N new vs N already stored) → Import. Credits listed with status cards that filter (Unlinked / Has a suggestion / Linked / Old orders / Not customer money); line dialog with ranked suggestions and reasons, search for another payment, Old order form, Not customer money form; tabs for Payments not in the bank and Money out.

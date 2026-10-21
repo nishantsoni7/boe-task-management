@@ -53,7 +53,7 @@ API routes: `/api/tasks/[id]/copy` (POST, admin-only Copy & Assign), `/api/tasks
   used by scoring: created, acknowledged, status_changed, note_added, comment_added, due_date_changed, priority_changed, title_changed, waiting, working, task_copied,
   delegated, escalated). It carries from_status/to_status/old_val/new_val/actor_id/note.
 - `task_attachments` (`20260607`/`20260619`; `storage_path` `20260906`; bucket `task-attachments` made PRIVATE by `20260907000000`; reads via signed URL, TTL 300 s,
-  `SIGNED_URL_TTL_SECONDS`; thumbnails 256 px; per-send total attachment cap 10 MB). `user_top_tasks` (`20260628000100`: user_id, task_id, display_order; unique
+  `SIGNED_URL_TTL_SECONDS`; the preview modal renders from a plain URL and uses a second one signed with the filename (`signAttachmentUrl(..., downloadAs)`) for Download / Open in Tab, because a filename-bearing URL downloads instead of displaying; thumbnails 256 px; per-send total attachment cap 10 MB). `user_top_tasks` (`20260628000100`: user_id, task_id, display_order; unique
   (user_id, task_id); RLS select/insert/delete for owner **and NO UPDATE policy**; ON DELETE CASCADE). `daily_work_logs` (`20260606`; EOD).
 - Functions/triggers:
   - `transition_task_review(p_task_id, p_action, p_note)` (`20260833000000`, later replaced by `20261016000000` (records `activity_log_id`) and `20261212000000`

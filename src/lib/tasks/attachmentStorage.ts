@@ -110,12 +110,17 @@ export async function signAttachmentUrl(
   supabase: SupabaseClient,
   path: string | null | undefined,
   expiresIn: number = SIGNED_URL_TTL_SECONDS,
+  downloadAs?: string,
 ): Promise<string | null> {
   if (!path) return null
+  // `downloadAs` makes storage answer with Content-Disposition: attachment and
+  // that filename, so a browser saves the file under its real name instead of
+  // the generated storage key. Such a URL downloads instead of displaying, so
+  // it is never the one an <img> or <iframe> preview is fed.
   const { data, error } = await supabase
     .storage
     .from(TASK_ATTACHMENTS_BUCKET)
-    .createSignedUrl(path, expiresIn)
+    .createSignedUrl(path, expiresIn, downloadAs ? { download: downloadAs } : undefined)
   if (error || !data?.signedUrl) return null
   return data.signedUrl
 }
