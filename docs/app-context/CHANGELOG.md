@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Salesperson dashboard + notification: PIs sent back for changes / rejected (PR open) · migrations 20270328000000 + 20270328000100 (UNAPPLIED)
+- **Owner request.** When a reviewer presses Needs Changes or Reject on a PI, the salesperson must be told and see it on the Orders dashboard, with how many PIs are still pending.
+- **Notification (20270328000100):** `order_submission_review_notify()` (20270321000001) already wrote `pi_review_decided` to submitted_by/created_by with the reviewer's note; it now also reaches `salesperson_id`. App: the badge follows the title, amber "Changes requested" / red "Rejected" (`notificationMeta.ts`).
+- **Dashboard (20270328000000):** `salesperson_orders_dashboard()` restated with `returned` (every needs_changes PI, no age limit) and `rejected` (last 7 days), each with note, reviewer name and age; owners = salesperson_id OR created_by OR submitted_by. "Pending approval" is unchanged (status submitted, salesperson_id only). UI: "Needs your attention" block on top, plus two cards (Sent Back for Changes, Rejected). Parser treats a payload without the lists as none, so code is safe before the migration.
+- Rollout: apply both migrations (20270321000001 must already be applied), then merge. Rollback: re-apply the 20270321000001 function body and the 20270228000000 function.
+- Tests: new `salespersonDashboardReturned.test.tsx`; `salespersonDashboard.test.tsx` card count 3 → 5. SQL not executed against a database (no Docker rehearsal yet). Not verified on screen.
+
 ## 2026-10-21 — Order page summary: "Total product value" row replaced by a Shipping and billing details link; due-date rule no longer overlaps its label (PR open) · no migration
 - **Owner request.** On `/orders/[id]`, "Client and value" lost the **Total product value** row; its place is a link, **Shipping and billing details**, that opens a dialog with the PI's bill-to and ship-to (name + address each, `Not provided` when absent, never merged). Data is the already-loaded `piHandoff.client` (`ClientDetails.billTo/shipTo`) — no new read, no schema. The value is still in the Commercial breakdown and the Orders list; `orderSummaryFields` still builds it (unchanged), `orderSummaryView` just no longer draws it.
 - **Overlap bug:** the overdue Due date row's red inset rule sat on top of its label. Cause: the Notion-pass reset `.order-sum-row { padding: 7px 0 }` (end of globals.css) beat the flagged rows' earlier `padding-left`. Fixed by restating `padding-left: 12px` for `--amber`/`--red` last; a render test pins that it comes after the reset.
