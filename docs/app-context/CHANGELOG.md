@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Quotation Details redesigned: request on the left, the quotation you send on the right (PR open) · no migration
+- **Owner request.** A quotation is not a task: sales asks, the quotation team answers with a quote. The page no longer reuses the Task Detail layout.
+- **What.** For a live quotation task `/tasks/[id]` renders `QuotationDetailView`: status strip, "What sales asked for" (lead, phone, requester, requirement, sales' files), and a "Send Quotation to <sales person>" card that needs at least one quote file (optional note). Sending records an update tagged `quotation_sent` (in `task_activity_log.new_val`, no schema change) then completes the task; the sales person gets the existing completion notice only. After sending: "Quotation sent" card + "Reopen for revision". "Updates" became "Message sales"; "Quotation History" became "Timeline". Ordinary tasks and cancelled quotations are untouched.
+- **Code.** `saveComment` now returns a boolean; the activity card was hoisted into one `activityCard` constant shared by both layouts. Tests: `quotationSend.test.ts`; 1,609 task/notification/meeting tests green, tsc + eslint clean. Not yet checked on screen in a signed-in session.
+
 ## 2026-10-21 — Task attachment preview: Download works again and keeps the original filename (PR open) · no migration
 - **Problem:** in the Task/Quotation attachment pop-up, Download did nothing on a large workbook, and Open in Tab saved it under the generated storage key.
 - **Cause:** Download fetched the file into a blob and revoked the blob URL in the same tick as the click (can cancel a big save silently, response never checked). Open in Tab used the plain signed URL, which carries no filename.

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `0efeca34` — Task attachment preview: Download works again and keeps the original filename
-- Commits on this branch: 941
+- Commit: `86a9f9cb` — Quotation Details: request on the left, the quotation you send on the right
+- Commits on this branch: 942
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 346 (first `20260530_create_positions.sql`, latest `20270330000000_finance_bank_money_out.sql`)
 - Tables ever created: 160 (dropped at some point: 7)   SQL functions: 733   Enums: 0
-- Test files: 623   Next.js 16.2.6, React 19.2.4
+- Test files: 624   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `86a9f9cb` 2026-10-21 Quotation Details: request on the left, the quotation you send on the right
 - `0efeca34` 2026-10-21 Task attachment preview: Download works again and keeps the original filename
 - `680bbd12` 2026-10-21 Bank Statements: recognise the account from what is recorded
 - `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
@@ -38,7 +39,6 @@
 - `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
 - `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 - `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
-- `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 
 ## Pages by top-level area
 
@@ -149,7 +149,7 @@
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 18 source, 33 test
+- `src/lib/tasks` — 19 source, 34 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
