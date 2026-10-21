@@ -82,6 +82,8 @@ import { EditPaymentModal } from './paymentRequestsEdit'
 // @split: src/app/finance/paymentRequestsEdit.tsx private=EditPaymentModalProps,EditPaymentModal
 
 import { AdminReviewModal } from './paymentRequestsAdminReview'
+import { BankMatchPanel } from './bankMarkUi'
+import { loadBankMarks, type BankMark } from '@/lib/finance/bankMarks'
 // @split: src/app/finance/paymentRequestsAdminReview.tsx private=FigureBand,FigureCell,REVIEW_DECISIONS,DecisionRow,AdminReviewModalProps,AdminReviewModal
 
 import { PaymentsTable } from './paymentRequestsTable'
@@ -672,6 +674,28 @@ function FinancePageInner() {
   }, [destinations, cancelledState])
   const historySettled = !!destinations && cancelledState?.forDestinations === destinations
 
+  // ── Is each payment in the bank? ONLY for a holder of finance.reconcile. ──
+  // The marks are tagged with the rows they were read for, so a slow answer for
+  // a previous page is never drawn against this one. Read-only: nothing here
+  // links, verifies or edits anything. A failed read draws no marker.
+  const [bankState, setBankState] = useState<{ forRows: PaymentRequest[]; marks: Map<string, BankMark> } | null>(null)
+  const bankMarkRows = useMemo(() => (caps.canReconcileBank ? visible : []), [caps.canReconcileBank, visible])
+  const [bankReload, setBankReload] = useState(0)
+  useEffect(() => {
+    if (bankMarkRows.length === 0) return
+    let current = true
+    const startFetch = () => {
+      void loadBankMarks(supabase, bankMarkRows.map(r => ({
+        id: r.id, human_payment_id: r.human_payment_id, client_name: r.client_name, amount: r.amount, remaining: r.amount,
+        payment_date: r.payment_date, payment_mode: r.payment_mode, proof_note: r.proof_note, status: r.status,
+      }))).then(marks => { if (current) setBankState({ forRows: bankMarkRows, marks }) })
+        .catch(() => { if (current) setBankState(null) })
+    }
+    startFetch()
+    return () => { current = false }
+  }, [bankMarkRows, bankReload, supabase])
+  const bankMarks = caps.canReconcileBank && bankState && bankState.forRows === bankMarkRows ? bankState.marks : null
+
   useEffect(() => {
     if (!salesView || !shownDestinations || !historySettled) return
     let current = true
@@ -821,6 +845,7 @@ function FinancePageInner() {
             againstHref={againstHref}
             salesView={salesView}
             totals={totals}
+            bankMarks={bankMarks}
             onDelete={openDelete}
           />
         )}
@@ -879,6 +904,14 @@ function FinancePageInner() {
           request={reviewRequest}
           supabase={supabase}
           onClose={() => setReviewRequest(null)}
+          bankPanel={bankMarks ? (
+            <BankMatchPanel
+              supabase={supabase}
+              paymentId={reviewRequest.id}
+              mark={bankMarks.get(reviewRequest.id)}
+              onChanged={() => setBankReload(n => n + 1)}
+            />
+          ) : undefined}
           // Correct the amount, date, account or destination before deciding:
           // the table's pencil, the same modal and the same edit_payment_request
           // door, on the same rule (canManageRequest).

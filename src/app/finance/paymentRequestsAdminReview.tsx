@@ -206,9 +206,15 @@ export type AdminReviewModalProps = {
    * fixes it from here, then decides.
    */
   onEdit?: (r: PaymentRequest) => void
+  /**
+   * The bank-statement panel (BankMatchPanel), passed ready-made and ONLY for a
+   * holder of finance.reconcile. The modal does not know what it contains and
+   * decides nothing with it.
+   */
+  bankPanel?: React.ReactNode
 }
 
-export function AdminReviewModal({ request: r, supabase, onClose, onActioned, onEdit }: AdminReviewModalProps) {
+export function AdminReviewModal({ request: r, supabase, onClose, onActioned, onEdit, bankPanel }: AdminReviewModalProps) {
   const [action,    setAction]    = useState<AdminAction | null>(null)
   const [adminNote, setAdminNote] = useState('')
   const [saving,    setSaving]    = useState(false)
@@ -400,6 +406,7 @@ export function AdminReviewModal({ request: r, supabase, onClose, onActioned, on
       />
       {r.proof_note && <PropertyRow label="Reference" value={r.proof_note} />}
       {r.sales_note && <PropertyRow label="Note" value={r.sales_note} />}
+      {bankPanel}
 
       {/* WHO RAISED IT — kept, and kept secondary. It used to sit directly under
           the Payment ID in the header, which gave the person who typed the entry

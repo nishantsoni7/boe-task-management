@@ -5,17 +5,18 @@
 
 ## Snapshot
 
-- Commit: `4f47dae9` — Finance: an admin can delete a Confirmed Payment entered by mistake
-- Commits on this branch: 943
+- Commit: `25ea97d0` — Merge remote-tracking branch 'origin/main' into feat/bank-match-marker
+- Commits on this branch: 944
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 347 (first `20260530_create_positions.sql`, latest `20270331000000_finance_admin_may_delete_confirmed_payment.sql`)
 - Tables ever created: 160 (dropped at some point: 7)   SQL functions: 733   Enums: 0
-- Test files: 625   Next.js 16.2.6, React 19.2.4
+- Test files: 626   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `4f47dae9` 2026-10-21 Finance: an admin can delete a Confirmed Payment entered by mistake
+- `25ea97d0` 2026-10-21 Merge remote-tracking branch 'origin/main' into feat/bank-match-marker
 - `c499afab` 2026-10-21 Finance: Bank Statements money out - link debits to expenses or mark not an expense
+- `2ea0502e` 2026-10-21 Finance: bank marker on Payment Requests and in the review window
 - `0efeca34` 2026-10-21 Task attachment preview: Download works again and keeps the original filename
 - `680bbd12` 2026-10-21 Bank Statements: recognise the account from what is recorded
 - `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
@@ -38,7 +39,6 @@
 - `a3148a5c` 2026-10-20 ERP sheet: bold grey header and wrapped cells
 - `22c24734` 2026-10-20 Order page: ERP line-items download, pictures named by product code
 - `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
-- `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 43 source, 53 test
+- `src/lib/finance` — 44 source, 54 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test

@@ -14,6 +14,8 @@ import { fmtDate, fmtAmount, canManageRequest, isStaleClarification, type Paymen
 import { StatusBadge, StaleBadge } from './paymentRequestsAtoms'
 import { PaymentIdChip } from './components/PaymentIdChip'
 import { FinancePerson } from './components/FinanceListParts'
+import { BankMarkChip } from './bankMarkUi'
+import type { BankMark } from '@/lib/finance/bankMarks'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
 //
@@ -65,7 +67,14 @@ export function PaymentsTable({
   againstHref = () => null,
   salesView = false,
   totals = null,
+  bankMarks = null,
 }: {
+  /**
+   * Whether each payment is in the bank, by payment id — ONLY for a holder of
+   * finance.reconcile (the page passes null to everybody else, and the chip draws
+   * nothing). Information for the verifier; never a decision on the payment.
+   */
+  bankMarks?: Map<string, BankMark> | null
   /**
    * THE SALESPERSON'S LIST (not an admin, not a payment approver, not a company-
    * wide Finance viewer): Payment ID, Client, Against, Total Before GST, Payment
@@ -395,6 +404,7 @@ export function PaymentsTable({
                     <td style={TD}>
                       <StatusBadge status={r.status} destination={destination} />
                       {isStaleClarification(r, cutoff) && <StaleBadge />}
+                      {bankMarks && <div><BankMarkChip mark={bankMarks.get(r.id)} /></div>}
                     </td>
                     {actionCell}
                   </>

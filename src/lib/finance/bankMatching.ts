@@ -253,3 +253,24 @@ export function suggestExpensesForDebit(debit: MatchDebit, expenses: MatchExpens
   out.sort((a, b) => b.score - a.score)
   return out.slice(0, max)
 }
+// ── The other direction: which bank credit is this payment? ─────────────────
+
+export type LineSuggestion = PaymentSuggestion & {
+  lineId: string
+}
+
+/**
+ * Ranked bank credits for ONE payment. The same scoring as the page that goes
+ * the other way (suggestPaymentsForLine), asked once per credit, so the two
+ * screens can never disagree about what counts as a match.
+ */
+export function suggestLinesForPayment(payment: MatchPayment, lines: MatchLine[], max = 3): LineSuggestion[] {
+  const out: LineSuggestion[] = []
+  for (const line of lines) {
+    if (line.remaining <= 0) continue
+    const [s] = suggestPaymentsForLine(line, [payment], 1)
+    if (s) out.push({ ...s, lineId: line.id })
+  }
+  out.sort((a, b) => b.score - a.score)
+  return out.slice(0, max)
+}
