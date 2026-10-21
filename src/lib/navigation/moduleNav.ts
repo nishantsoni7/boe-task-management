@@ -19,7 +19,7 @@
 // route's own guard and the database still decide what opens.
 
 export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed'
-export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses'
+export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank'
 
 // The destinations themselves (labels, paths, icons) stay in OrdersLayout and
 // FinanceLayout, where several retirement tests read them; this file only
@@ -60,6 +60,7 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
  *                                            a step of the same section, so the
  *                                            entry is lit when somebody lands on
  *                                            it from a home-screen shortcut)
+ *   /finance/bank                          → bank (Bank Statements)
  *   /finance/notifications                 → null
  */
 export function activeFinanceNav(pathname: string): FinanceNavKey | null {
@@ -68,6 +69,7 @@ export function activeFinanceNav(pathname: string): FinanceNavKey | null {
   if (section === undefined || section === 'payments-to-verify') return 'requests'
   if (section === 'received') return 'confirmed'
   if (section === 'expenses') return 'expenses'
+  if (section === 'bank') return 'bank'
   return null
 }
 
@@ -86,6 +88,7 @@ export function pendingModuleTitle(pathname: string): string {
     // The quick-entry route's own heading, so the shell does not say "Expenses"
     // for a frame and then change to "Add Expense" once the page lands.
     if (section === 'expenses') return id === 'new' ? 'Add Expense' : 'Expenses'
+    if (section === 'bank') return 'Bank Statements'
     if (section === 'notifications') return 'Notifications'
     return 'Finance'
   }

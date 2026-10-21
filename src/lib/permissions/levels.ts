@@ -148,6 +148,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // second pair of eyes on money received; it is granted per person in Control
   // Center or not at all. Registered by 20270120000000.
   'verify_own_payment',
+  // Uploading the company's bank statements and matching bank credits to
+  // payments. The statements show balances and counterparties of the whole
+  // business, so it is granted per person in Control Center or not at all.
+  // Registered by 20270329000000.
+  'reconcile',
   // Aligning a Confirmed Order for production: the Head of Manufacturing's
   // statement that the factory can make it. Protected because it is the gate
   // between a commercial approval and work starting, and a preset must not
@@ -211,6 +216,9 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // Verifying one's own payment is still verifying: approve_finance_payment_request
   // requires finance.approve, so the grant would have nowhere to act without it.
   verify_own_payment: 'approve',
+  // A reconciler matches bank lines against payments, so must be able to read
+  // every payment: finance.view_all.
+  reconcile: 'view_all',
   view_quotations:   'view',
   // Team Performance is inside the Performance module, so it cannot be held by
   // somebody who may not open it.

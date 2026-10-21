@@ -10808,3 +10808,64 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .od-board-what { grid-column: 1 / -1; grid-row: 2; }
   .od-board-panel { padding: 4px 14px 8px; }
 }
+/* ── BANK STATEMENTS (Finance › Bank Statements) ───────────────────────────
+   Same vocabulary as FINANCE LISTS above: the board, the view bar, the table,
+   the status pills. Only what those do not already give is defined here. */
+.bank-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; }
+.bank-accounts { display: inline-flex; padding: 3px; gap: 2px; background: #F3F0EB; border-radius: 10px; }
+.bank-account {
+  height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font: 600 13px var(--boe-font-body); color: #4C5352; white-space: nowrap;
+}
+.bank-account[aria-selected="true"] { background: #FFFFFF; color: #303536; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.bank-account:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: 1px !important; }
+.bank-month { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.bank-month select { height: 32px; padding: 0 8px; }
+.bank-unlinked-note { margin: 10px 2px 14px; font-size: 13px; color: #805B0D; }
+.bank-loading { padding: 40px 16px; text-align: center; color: #686D6C; font-size: 13px; }
+.bank-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px; border-top: 1px solid #ECE7E0; font-size: 13px; }
+.bank-table tbody tr:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: -2px; }
+.bank-table td .fin-sub { max-width: 100%; }
+
+.bank-facts { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bank-amount { font-size: 24px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
+.bank-narration { background: #FAF8F5; border: 1px solid #ECE7E0; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #4C5352; word-break: break-word; }
+.bank-payer { font-weight: 600; color: #303536; margin-bottom: 2px; }
+.bank-error { background: #FBE9EC; color: #A12438; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.bank-section { display: flex; flex-direction: column; gap: 8px; }
+.bank-section > h3 { margin: 0; font-size: 13px; font-weight: 600; color: #303536; }
+.bank-hint { background: #FAF0DA; border-radius: 10px; padding: 12px; }
+.bank-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid #ECE7E0; border-radius: 10px; }
+.bank-row > div { min-width: 0; }
+.bank-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #686D6C; }
+.bank-field input, .bank-field select { height: 36px; }
+.bank-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bank-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #FAF8F5; border: 1px solid #ECE7E0; border-radius: 10px; }
+.bank-suggest { border: 1px solid #ECE7E0; border-left-width: 4px; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.bank-suggest--strong { border-left-color: #276247; background: #F6FAF7; }
+.bank-suggest--likely { border-left-color: #335A86; background: #F6F9FC; }
+.bank-suggest--possible { border-left-color: #B88A1E; background: #FFFDF8; }
+.bank-suggest-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bank-suggest-head > div { min-width: 0; }
+.bank-suggest-why { font-size: 12px; color: #4C5352; }
+.bank-warn { color: #805B0D; margin-top: 2px; }
+
+.bank-drop {
+  border: 1.5px dashed #CFC8BF; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer;
+  background: #FAF8F5; display: flex; flex-direction: column; gap: 4px; transition: background 0.12s, border-color 0.12s;
+}
+.bank-drop:hover, .bank-drop.is-dragging { background: #F3F0EB; border-color: #303536; }
+.bank-drop:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: 2px !important; }
+.bank-drop-title { font-size: 14px; font-weight: 600; color: #303536; word-break: break-word; }
+.bank-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 0; }
+.bank-summary > div { display: flex; flex-direction: column; gap: 2px; }
+.bank-summary dt { font-size: 12px; color: #686D6C; }
+.bank-summary dd { margin: 0; font-size: 13px; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
+.bank-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4C5352; }
+.bank-checks li.ok::before { content: '✓ '; color: #276247; font-weight: 700; }
+.bank-checks li.warn { color: #805B0D; }
+.bank-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 700px) {
+  .bank-summary { grid-template-columns: 1fr; }
+  .bank-suggest-head, .bank-row { flex-wrap: wrap; }
+}

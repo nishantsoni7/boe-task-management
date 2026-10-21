@@ -214,6 +214,10 @@ registerModule({
     // may decide a pending payment they recorded themselves. Needs 'approve'
     // (levels.ts). Protected. Registered by 20270120000000.
     { actionKey: 'verify_own_payment', displayName: 'Verify Own Payments' },
+    // Uploading the bank statements and matching bank credits to payments. The
+    // statements show every balance and counterparty, so it is protected and
+    // needs view_all (levels.ts). Registered by 20270329000000.
+    { actionKey: 'reconcile', displayName: 'Reconcile Bank Statements' },
   ],
 })
 

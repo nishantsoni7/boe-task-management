@@ -108,6 +108,8 @@ export type FinanceCapabilities = {
    * branch, exactly as actor_has_module_permission does in the database.
    */
   canDecideOwnPayment: boolean
+  /** May upload bank statements and link bank credits to payments (protected `reconcile`, 20270329000000). */
+  canReconcileBank: boolean
 }
 
 export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
@@ -123,6 +125,7 @@ export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
   canCorrectPaymentAllocation: false,
   canManageFinance: false,
   canDecideOwnPayment: false,
+  canReconcileBank: false,
 }
 
 export function deriveFinanceCapabilities(
@@ -148,6 +151,7 @@ export function deriveFinanceCapabilities(
       canCorrectPaymentAllocation: true,
       canManageFinance: true,
       canDecideOwnPayment: true,
+      canReconcileBank: true,
     }
   }
 
@@ -179,5 +183,6 @@ export function deriveFinanceCapabilities(
     canCorrectPaymentAllocation: withEntry('allocate_correct'),
     canManageFinance: withEntry('manage'),
     canDecideOwnPayment: withEntry('verify_own_payment'),
+    canReconcileBank: withEntry('reconcile'),
   }
 }
