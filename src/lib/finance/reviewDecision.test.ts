@@ -61,19 +61,21 @@ describe('reject', () => {
   })
 })
 
-describe('the review modal', () => {
-  const page = readFileSync('src/app/finance/page.tsx', 'utf8').replace(/\r\n/g, '\n')
-  const modal = page.slice(page.indexOf('function AdminReviewModal('), page.indexOf('// The decision currently selected, resolved once'))
+describe('the payment popup’s decision handler', () => {
+  // The review window this pinned was merged into the one payment popup; the
+  // decision handler is the same code, under its new names.
+  const popup = readFileSync('src/app/finance/paymentRequestsDetails.tsx', 'utf8').replace(/\r\n/g, '\n')
+  const modal = popup.slice(popup.indexOf('const handleDecide = async'), popup.indexOf('const noteRequiredForCorrection'))
 
   test('writes no table: both decisions go through sendBackOrReject', () => {
-    assert.ok(modal.includes('await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })'))
+    assert.ok(modal.includes('await sendBackOrReject(supabase, { requestId: r.id, action: decisionAction, note: decisionNote })'))
     assert.ok(!modal.includes(".from('finance_payment_requests')"), 'no direct table access in the review')
     assert.ok(!modal.includes('.update('))
   })
 
   test('the creator is told only after a real change', () => {
-    const refused = modal.indexOf("if (outcome.kind === 'refused') { setError(outcome.message); return }")
-    const stale = modal.indexOf("if (outcome.kind === 'stale') { setError(REVIEW_STALE_MESSAGE); return }")
+    const refused = modal.indexOf("if (outcome.kind === 'refused') {")
+    const stale = modal.indexOf("if (outcome.kind === 'stale') {")
     const notify = modal.indexOf('void notifyFinance({', stale)
     assert.ok(refused > -1 && stale > refused && notify > stale, 'both early returns come before the notification')
     assert.equal(REVIEW_STALE_MESSAGE.startsWith('This request is no longer awaiting a decision'), true)

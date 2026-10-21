@@ -158,11 +158,11 @@ describe('4. a clarification or rejection that changed nothing does not report s
   // src/lib/finance/reviewDecision.test.ts and the database suite; this keeps the
   // original promise pinned: a stale decision is an error and notifies nobody.
   const page = code('src/app/finance/page.tsx')
-  const at = page.indexOf('await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })')
+  const at = page.indexOf('await sendBackOrReject(supabase, { requestId: r.id, action: decisionAction, note: decisionNote })')
 
   test('a stale decision is an error, and the creator is notified only after a real change', () => {
     assert.ok(at > -1)
-    const stale = page.indexOf("if (outcome.kind === 'stale') { setError(REVIEW_STALE_MESSAGE); return }", at)
+    const stale = page.indexOf("if (outcome.kind === 'stale') {", at)
     const notify = page.indexOf('void notifyFinance({', at)
     assert.ok(stale > at && notify > stale)
   })

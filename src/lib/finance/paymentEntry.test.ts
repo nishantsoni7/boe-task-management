@@ -96,7 +96,11 @@ function modalSource(file: string): string {
 function editModalSource(): string {
   const src = code(read(REQUEST_FORM))
   const from = src.indexOf('function EditPaymentModal(')
-  const to   = src.indexOf('function FigureBand(')
+  // Up to the next top-level function: the correction form ends where the next
+  // component begins, whichever component that is (the review window that used
+  // to follow it no longer exists).
+  const next = from < 0 ? -1 : src.slice(from + 1).search(/\n(?:export )?function [A-Za-z]/)
+  const to   = next < 0 ? -1 : from + 1 + next
   if (from < 0 || to < 0 || to < from) {
     throw new Error('the Edit Payment Request modal could not be located — has it been renamed?')
   }

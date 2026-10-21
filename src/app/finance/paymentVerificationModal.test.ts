@@ -1,25 +1,25 @@
 /**
- * THE APPROVAL MODAL IS A PAYMENT VERIFICATION SCREEN.
+ * THERE IS ONE PAYMENT POPUP, AND THE DECISION IS A SECTION OF IT.
  *
  * WHAT THIS FILE IS FOR
  * ---------------------
- * An approver opening P-AA-0011 is doing one job: matching a payment against a
- * bank statement and then deciding. The first scan has to answer how much came
- * in, through which account, on what date — and then, as context, what the
- * money is for and who raised it.
+ * Payment Requests used to have two popups: the details window (from the row's
+ * View icon) and a separate review window (from clicking the row, for a
+ * verifier). Somebody who took the obvious route could end up in the one that
+ * could not decide; somebody who clicked the row got a different, differently
+ * designed window. They are now ONE: clicking anywhere on a row opens the
+ * details popup for every reader and every status, and the verifier's decision
+ * (Verify Payment / Needs Clarification / Reject) is a Decision section inside
+ * it, drawn only for somebody who may decide.
  *
- * The dialog used to answer those in the wrong order and more than once. The
- * band across the top read Amount / Client / Payment Date, so the ACCOUNT — the
- * thing being reconciled — was buried two cards down in a "Routing" grid. And
- * the destination was stated three times: a "What this payment is for" card
- * naming PI Draft 417, a "Payment Against" field naming PI Draft 417 again, and
- * an "Order Number" field saying "No Order yet — PI Draft", which is the same
- * fact phrased as an absence.
- *
- * WHAT IS PINNED HERE IS HIERARCHY AND WORDING, NOTHING ELSE. The approval RPC,
- * the three decisions, the note rules and the notifications are asserted to be
- * exactly as they were — a layout pass over a decision surface is precisely
- * where a silently changed outcome would hide.
+ * WHAT IS PINNED HERE
+ *   * there is one popup and one way in (the row), and no View icon;
+ *   * the decision rules and wiring are exactly what the review window had —
+ *     the three decisions, the note rules, the approval RPC, the two doors for
+ *     send-back and reject, the notifications, the double-click guard;
+ *   * the Decision section is drawn only for a verifier and supersedes the admin
+ *     status-correction select (which stays for everybody else who may correct);
+ *   * Edit, Delete, the bank panel slot and the destination read are intact.
  *
  * Run:
  *   npx tsx --test src/app/finance/paymentVerificationModal.test.ts
@@ -30,214 +30,154 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const PAGE = 'src/app/finance/page.tsx'
-const source = readFileSync(join(process.cwd(), PAGE), 'utf8')
+const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
+const page = read('src/app/finance/page.tsx')
+const table = read('src/app/finance/paymentRequestsTable.tsx')
+const details = read('src/app/finance/paymentRequestsDetails.tsx')
 
-/** The review dialog alone — the page holds five other modals. */
-const modal = (() => {
-  const from = source.indexOf('function AdminReviewModal(')
-  const to   = source.indexOf('// ── Delete confirm modal (admin only)')
-  assert.ok(from > -1 && to > from, 'the review modal could not be located')
-  return source.slice(from, to)
-})()
-
-/** Source with comments stripped — assertions about what the CODE draws. */
-const code = modal.split('\n')
-  .filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*') && !l.trim().startsWith('/*'))
+/** Source with comments stripped — assertions about what the CODE does. */
+const stripComments = (s: string) => s.split('\n')
+  .filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*') && !l.trim().startsWith('/*') && !l.trim().startsWith('{/*'))
   .join('\n')
+const code = stripComments(details)
+const pageCode = stripComments(page)
+const tableCode = stripComments(table)
 
-describe('the top strip is a payment verification summary', () => {
-  test('it is Amount, Payment Mode, Payment Date — in that order', () => {
-    const band = code.slice(code.indexOf('<FigureBand>'), code.indexOf('</FigureBand>'))
-    const cells = [...band.matchAll(/<FigureCell label="([^"]+)"/g)].map(m => m[1])
-    assert.deepEqual(cells, ['Amount', 'Payment Mode', 'Payment Date'])
+describe('there is one popup, opened from anywhere on the row', () => {
+  test('the old review window is gone from the page and from the repository', () => {
+    assert.ok(!pageCode.includes('AdminReviewModal'))
+    assert.ok(!pageCode.includes('reviewRequest'))
+    assert.ok(!pageCode.includes('setReviewRequest'))
+    assert.throws(() => readFileSync(join(process.cwd(), 'src/app/finance/paymentRequestsAdminReview.tsx')))
   })
 
-  test('the client is no longer one of them', () => {
-    const band = code.slice(code.indexOf('<FigureBand>'), code.indexOf('</FigureBand>'))
-    assert.ok(!band.includes('label="Client"'),
-      'who the money is from is context, not the figure being reconciled')
+  test('a row click opens the details popup for everybody, whatever the status', () => {
+    assert.ok(pageCode.includes('const handleRowClick = (r: PaymentRequest) => setDetailRequest(r)'))
   })
 
-  test('the amount still leads, and the mode is a step below it — not equal to it', () => {
-    const band = code.slice(code.indexOf('<FigureBand>'), code.indexOf('</FigureBand>'))
-    assert.ok(/label="Amount"[^\n]*\blead\b/.test(band), 'the amount keeps display weight')
-    assert.ok(/label="Payment Mode"[^\n]*\bstrong\b/.test(band), 'the account is set stronger than a plain cell')
-    assert.ok(!/label="Payment Mode"[^\n]*\blead\b/.test(band), 'but it does not compete with the amount')
-    assert.ok(!/label="Payment Date"[^\n]*\b(lead|strong)\b/.test(band), 'the date stays a plain cell')
+  test('a deep link (?request=, a notification) opens the same popup', () => {
+    const block = page.slice(page.indexOf('if (match) {'), page.indexOf('router.replace(`/finance?tab='))
+    assert.ok(block.includes('setDetailRequest(match)'))
+    assert.ok(!block.includes('canApprovePayment'), 'no second route for a verifier')
   })
 
-  test('the mode reads as information, never as a second status badge', () => {
-    // A tinted pill beside the real status badge in the header would read as
-    // state. FigureCell draws every cell on the same surface, with no tint and
-    // no border of its own.
-    const cell = source.slice(source.indexOf('function FigureCell('),
-                              source.indexOf('const REVIEW_DECISIONS'))
-    assert.ok(cell.includes('background: colors.raised'), 'one surface for every cell')
-    assert.ok(!/borderRadius:\s*'999/.test(cell), 'no pill')
-    assert.ok(!/tint/i.test(cell), 'no status tint')
+  test('the table has no View icon and no onView prop; the row itself is the control', () => {
+    assert.ok(!tableCode.includes('onView'))
+    assert.ok(!tableCode.includes('aria-label={`View payment request'))
+    assert.ok(!/\bEye\b/.test(tableCode))
+    assert.ok(table.includes('onClick={() => onRowClick(r)}'))
+    // The keyboard can open it too, but only when the row itself has the focus:
+    // Enter on a link or an icon inside the row is that control's own.
+    assert.ok(table.includes('if (e.target !== e.currentTarget) return'))
+    assert.ok(/e\.key === 'Enter' \|\| e\.key === ' '/.test(table))
   })
 
-  test('the account comes from the shared resolver, so a legacy row still names one', () => {
-    assert.ok(code.includes('paymentDestinationLabel(r.payment_mode, r.received_in)'))
-  })
-})
-
-describe('the destination is one fact, so it is one field', () => {
-  test('it is called Against, and it appears exactly once', () => {
-    assert.equal((code.match(/label="Against"/g) ?? []).length, 1)
-    assert.ok(code.includes('value={paymentAgainstDisplay(destination)}'),
-      'read through the shared helper the table and the requester popup also read')
+  test('the Edit and Delete icons and the Against link do not open the popup', () => {
+    assert.ok(table.includes('onClick={e => e.stopPropagation()}'), 'the action cluster and the link stop the row click')
   })
 
-  test('the three retired ways of saying the same thing are gone', () => {
-    for (const gone of [
-      'PaymentDestinationSummary',   // "What this payment is for" card
-      'label="Payment Against"',     // the Routing grid's copy of it
-      'label="Order Number"',        // "No Order yet — PI Draft"
-    ]) {
-      assert.ok(!code.includes(gone), `${gone} restates the destination a second time`)
-    }
-  })
-
-  test('the Routing card itself is gone', () => {
-    assert.ok(!modal.includes('<SectionHeader>Routing</SectionHeader>'))
-    // Its Payment Mode field moved up into the band rather than being dropped.
-    assert.ok(!code.includes('<PaymentDestinationLine'),
-      'the mode is in the figure band now, not in a grid below it')
-  })
-
-  test('no explanation of where the interface got the value survives', () => {
-    // Implementation language. An approver does not need to be told which table
-    // a field was read from.
-    //
-    // COMMENTS ARE STRIPPED FIRST, deliberately: the code above DOCUMENTS these
-    // sentences as removed, and scanning the raw text would fail on the very
-    // paragraph explaining why they went.
-    for (const sentence of ['From this payment', 'Read from the record itself', 'never typed']) {
-      assert.ok(!code.includes(sentence), `"${sentence}" is plumbing, not information`)
-    }
-  })
-
-  test('the requester-facing detail modal is untouched by this pass', () => {
-    // Deliberate scope: this change is the VERIFICATION screen. The other modal
-    // on this page still carries its own destination card, and is a separate
-    // decision.
-    const details = source.slice(source.indexOf('function DetailsModal('),
-                                 source.indexOf('function NewPaymentConfirmationModal('))
-    assert.ok(details.includes('<PaymentDestinationSummary'),
-      'the requester popup keeps what it had')
+  test('only one payment popup is mounted', () => {
+    assert.equal((pageCode.match(/<DetailsModal/g) ?? []).length, 1)
   })
 })
 
-describe('optional evidence takes space only when it exists', () => {
-  test('no empty-state row is rendered for proof, reference or note', () => {
-    for (const empty of ["'Not attached'", "'Not provided'", "'No notes provided'", 'renderEmpty']) {
-      assert.ok(!code.includes(empty), `${empty} is a row whose content is the absence of content`)
-    }
-  })
-
-  test('each of the three is guarded on its own value', () => {
-    assert.ok(code.includes('{r.proof_note && <PropertyRow label="Reference"'))
-    assert.ok(code.includes('{r.sales_note && <PropertyRow label="Note"'))
-    // The proof heading travels into the component that knows whether there is
-    // a proof — the host cannot know without repeating the query.
-    assert.ok(/heading=\{<GroupLabel>Payment proof<\/GroupLabel>\}/.test(code))
-  })
-
-  test('all three stored columns still have somewhere to appear', () => {
-    assert.ok(code.includes('r.proof_note'), 'the reference')
-    assert.ok(code.includes('r.sales_note'), 'the note')
-    assert.ok(code.includes('<PaymentProofView'), 'the attachment')
-  })
-})
-
-describe('the submitter is kept, and kept secondary', () => {
-  test('it is a field in the details column, not the header line', () => {
-    assert.ok(code.includes('label="Submitted by"'))
-    assert.ok(code.includes('r.submitted_by_name'), 'the name is still shown')
-    assert.ok(!code.includes('`Submitted by ${r.submitted_by_name}'),
-      'the header sentence that gave the submitter top billing is gone')
-  })
-
-  test('the header subtitle now says what the dialog is', () => {
-    assert.ok(code.includes("const subtitleLine = 'Payment verification'"))
-    assert.ok(code.includes('submittedLine={subtitleLine}'))
-  })
-})
-
-describe('the decision keeps its prominence, and its wiring', () => {
-  test('Decision is in the right-hand column and Activity runs full width below both', () => {
-    const right = code.slice(code.indexOf('const right = ('), code.indexOf('const bottom = ('))
-    assert.ok(right.includes('<GroupLabel>Decision</GroupLabel>'))
-    assert.ok(!right.includes('<PaymentRequestActivity'), 'Activity is not crowding the decision column')
-    assert.ok(code.indexOf('const bottom = (') > code.indexOf('const right = ('))
-    assert.ok(code.includes('bottom={bottom}'), 'so a phone reads details, decision, then history')
+describe('the Decision section: three outcomes, the rules the review window had', () => {
+  test('the three decisions, in that order, with their wording', () => {
+    assert.ok(details.includes("{ key: 'approve',             label: 'Verify Payment',"))
+    assert.ok(details.includes("{ key: 'needs_clarification', label: 'Needs Clarification',"))
+    assert.ok(details.includes("{ key: 'reject',              label: 'Reject',"))
+    const order = ['Verify Payment', 'Needs Clarification', "label: 'Reject'"].map(s => details.indexOf(s))
+    assert.deepEqual([...order].sort((a, b) => a - b), order)
   })
 
   test('the decisions are a radio list with a visible selected state', () => {
     assert.ok(code.includes('role="radiogroup"'))
-    assert.ok(source.includes('role="radio"') && source.includes('aria-checked={selected}'))
-    assert.ok(source.includes("selected ? d.color : 'transparent'"), 'selected outline')
+    assert.ok(code.includes('role="radio"') && code.includes('aria-checked={on}'))
   })
 
-  test('labels and values are told apart: a property list for Client, Against, Submitted by', () => {
-    const row = source.slice(source.indexOf('function PropertyRow('), source.indexOf('function GroupLabel('))
-    assert.ok(row.includes("gridTemplateColumns: 'minmax(86px, 118px) minmax(0, 1fr)'"), 'label left, value right')
-    assert.ok(!row.includes('textTransform'), 'labels are not capitalised like the values around them')
-    for (const l of ['Client', 'Against', 'Submitted by']) {
-      assert.ok(new RegExp('<PropertyRow\\s+label="' + l + '"').test(code), l + ' is a property row')
+  test('a note is required to send back or reject, optional to verify', () => {
+    assert.ok(code.includes("const decisionNoteRequired = decisionAction === 'needs_clarification' || decisionAction === 'reject'"))
+    assert.ok(code.includes("(!decisionNoteRequired || decisionNote.trim() !== '')"))
+    assert.ok(code.includes('Rejection reason (required)'))
+    assert.ok(code.includes('Note for the salesperson (optional)'))
+  })
+
+  test('APPROVAL LOGIC IS THE REVIEW WINDOW’S — the RPC, both doors and every notification', () => {
+    assert.ok(code.includes("supabase.rpc('approve_finance_payment_request'"))
+    // PR #172: send-back and rejection go through their doors; a direct status
+    // write is refused in production by the reset guard.
+    assert.ok(code.includes('await sendBackOrReject(supabase, { requestId: r.id, action: decisionAction, note: decisionNote })'))
+    for (const event of ['finance_approved_suspense', 'finance_approved_linked', 'finance_clarification', 'finance_rejected']) {
+      assert.ok(code.includes(event), `${event} must still be sent`)
+    }
+    assert.ok(code.includes('REVIEW_STALE_MESSAGE'), 'a decision that changed nothing is an error, not a success')
+    assert.ok(code.includes("decisionAction !== 'needs_clarification' && r.order_id"), 'a rejection tells the Order; a clarification does not')
+  })
+
+  test('a double click cannot decide twice', () => {
+    assert.ok(code.includes('const decidingRef = useRef(false)'))
+    assert.ok(code.indexOf('decidingRef.current = true') < code.indexOf("supabase.rpc('approve_finance_payment_request'"),
+      'the guard is set BEFORE the await')
+  })
+
+  test('it is drawn only for somebody who may decide, and supersedes the status select', () => {
+    assert.ok(code.includes('{canVerify && supabase && onCorrected && ('))
+    assert.ok(code.includes('canVerifyPayment(r.status, mayApprovePayments)'))
+    assert.ok(code.includes('!isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)'))
+    // Everybody else who may correct keeps the admin status select; a verifier
+    // decides through the Decision section instead of a free-form status.
+    assert.ok(code.includes('mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && !canVerify'))
+  })
+
+  test('no approved status is ever an option in a status <select>', async () => {
+    const { STATUS_CORRECTION_OPTIONS } = await import('./paymentRequestsAtoms')
+    for (const o of STATUS_CORRECTION_OPTIONS) {
+      assert.ok(!['approved_unlinked', 'approved_linked'].includes(o.value))
     }
   })
 
-  test('the payment mode names the right HDFC account', async () => {
+  test('the page reloads the list and the Confirmed Payments count after a decision', () => {
+    const block = page.slice(page.indexOf('<DetailsModal'), page.indexOf('<EditPaymentModal'))
+    assert.ok(block.includes('RECEIVED_PAYMENTS_COUNTS_KEY'))
+    assert.ok(block.includes('refreshAfterMutation()'))
+  })
+})
+
+describe('what the popup keeps', () => {
+  test('the account is named by the shared resolver, so a legacy row still names one', async () => {
     const { paymentDestinationLabel } = await import('./paymentDestinations')
     assert.equal(paymentDestinationLabel('hdfc', null), 'HDFC PRI')
     assert.equal(paymentDestinationLabel('hdfc_sec', null), 'HDFC SEC')
     assert.equal(paymentDestinationLabel('bank_transfer', 'company_account'), 'HDFC PRI')
   })
 
-  test('the three decisions and the note rules are exactly as they were', () => {
-    assert.ok(source.includes("{ key: 'approve',             label: 'Verify Payment',"))
-    assert.ok(source.includes("{ key: 'needs_clarification', label: 'Needs Clarification',"))
-    assert.ok(source.includes("{ key: 'reject',              label: 'Reject',"))
-    assert.ok(code.includes("const noteRequired = action === 'needs_clarification' || action === 'reject'"))
-  })
-
-  test('APPROVAL LOGIC IS UNTOUCHED — the RPC, the status write and both notifications', () => {
-    assert.ok(code.includes("supabase.rpc('approve_finance_payment_request'"))
-    // REVISED (PR #172): the send-back and the rejection go through their doors
-    // (a direct status write is refused in production by the reset guard).
-    assert.ok(code.includes('await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })'))
-    for (const event of [
-      'finance_approved_suspense', 'finance_approved_linked',
-      'finance_clarification', 'finance_rejected',
-    ]) {
-      assert.ok(code.includes(event), `${event} must still be sent`)
-    }
-  })
-
-  test('and this pass added no read and no write of its own', () => {
-    // One destination read, which the modal already had. No new query.
+  test('the destination is read once, and the popup still says what the payment is for', () => {
     assert.equal((code.match(/usePaymentDestination\(/g) ?? []).length, 1)
-    // PR #172: the one table write (the status update) is gone — the decision
-    // goes through request_finance_payment_clarification / reject_finance_payment_request.
-    assert.equal((code.match(/\.from\(/g) ?? []).length, 0, 'no table is written from the review')
-    assert.equal((code.match(/\.rpc\(/g) ?? []).length, 1, 'the single approval RPC, unchanged')
-  })
-})
-
-describe('a wrong payment can be corrected from the review, then decided', () => {
-  const edit = readFileSync(join(process.cwd(), 'src/app/finance/paymentRequestsAdminReview.tsx'), 'utf8')
-
-  test('the review draws Edit payment only when the page passes a handler', () => {
-    assert.ok(edit.includes('onEdit?: (r: PaymentRequest) => void'))
-    assert.ok(/\{onEdit && \(\s*<button/.test(edit))
-    assert.ok(edit.includes('Edit payment'))
+    assert.ok(code.includes('<PaymentDestinationSummary'))
   })
 
-  test('the page hands over only where the table’s own edit rule allows', () => {
-    assert.ok(/onEdit=\{canManageRequest\(reviewRequest, isAdmin, userId\)/.test(source))
-    assert.ok(source.includes('setReviewRequest(null); setEditRequest(r)'))
+  test('Activity, the proof, the reference and the notes are still there', () => {
+    assert.ok(code.includes('<PaymentRequestActivity'))
+    assert.ok(code.includes('<PaymentProofView'))
+    assert.ok(code.includes('r.proof_note'))
+    assert.ok(code.includes('r.sales_note'))
+  })
+
+  test('Edit (or Reapply) and Delete are still in the pinned footer, on the same rules', () => {
+    assert.ok(code.includes('onEdit && canManage'))
+    assert.ok(code.includes('onDelete && canDelete'))
+    assert.ok(code.includes("{!isAdmin && r.status === 'rejected' ? 'Reapply' : 'Edit'}"))
+  })
+
+  test('the page hands over Edit and Delete and closes the popup as they open', () => {
+    assert.ok(pageCode.includes('onEdit={r => { setDetailRequest(null); setEditRequest(r) }}'))
+    assert.ok(pageCode.includes('onDelete={r => { setDetailRequest(null); openDelete(r) }}'))
+  })
+
+  test('the bank-statement panel is a slot the page fills only for finance.reconcile', () => {
+    assert.ok(code.includes('{bankPanel}'))
+    assert.ok(!code.includes('bank_statement') && !code.includes('link_bank_line_to_payment'), 'the popup knows nothing about the bank')
+    assert.ok(pageCode.includes('bankPanel={bankMarks ? ('))
+    assert.ok(pageCode.includes('paymentId={detailRequest.id}'))
   })
 })

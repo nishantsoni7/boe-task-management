@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Payment Requests: one payment popup (PR open) · no migration
+- **Owner request.** Clicking a row opened one popup and the View icon another. Now there is ONE (the View design): click anywhere on the row; the View icon is removed.
+- **What moved in from the old review window:** the Decision section (Verify Payment / Needs Clarification / Reject, note required for the last two, Confirm) for people who may decide; the bank-statement panel (finance.reconcile); the account hint. It replaces the lone Verify button and, for a verifier, the admin status select. Same RPCs, doors, notifications and rules; `paymentRequestsAdminReview.tsx` is deleted.
+- Deep links and notifications open the same popup. Rows are keyboard-reachable (Enter/Space). Tests: `paymentVerificationModal.test.ts` rewritten; ~30 pins in 11 files updated to the merged design (table render, routing, decision, review, entry, proof-reference, launch audit, ui-enforcement). Not yet seen on screen.
+
 ## 2026-10-21 — Finance: an admin can delete a Confirmed Payment entered by mistake (PR open) · migration 20270331000000 (APPLIED 2026-10-21)
 - **Owner request.** A way to delete confirmed payments entered by mistake. Decisions: erase completely, admins only, release allocations. Lifts the 2026-09-18 "verified is permanent" rule (20261218) for admins.
 - **Migration 20270331000000** re-emits four functions with bodies extracted by script: `finance_payment_deletable_by` and the delete guard lose the test-data condition; `begin_/finalize_finance_payment_deletion` gain `PAYMENT_DELETION_BANK_LINKED` (an active bank link refuses; finalize re-checks and deletes already-undone link notes). Requires 20270329000000. Reason + typed Payment ID, proof sweep, allocation release and the tombstone claim row are unchanged.
