@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarClock, CheckCircle2, FileEdit, Layers, Plus } from 'lucide-react'
+import { CalendarClock, CheckCircle2, FileEdit, Layers, Plus, Trash2 } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
 import { Toast, useToast } from '@/components/ui/toast'
@@ -10,6 +10,7 @@ import { colors } from '@/lib/tokens'
 import { MeetingsLayout } from '@/components/layout/MeetingsLayout'
 import { MeetingBadge } from '@/components/meetings/MeetingModal'
 import { MeetingFormModal } from '@/components/meetings/MeetingFormModal'
+import { DeleteMeetingModal } from '@/components/meetings/DeleteMeetingModal'
 import { useMeetings } from '@/hooks/useMeetings'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, optionParam, textParam } from '@/lib/listState'
@@ -80,6 +81,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
   const [listLoading, setListLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Meeting | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   const params = scope === 'active' ? ACTIVE_PARAMS : COMPLETED_PARAMS
@@ -385,6 +387,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
                       textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
+                  {profile?.role === 'admin' && <th aria-label="Delete" style={{ width: '44px' }} />}
                 </tr>
               </thead>
               <tbody>
@@ -423,6 +426,22 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
                           </div>
                         )}
                       </td>
+                      {profile?.role === 'admin' && (
+                        <td style={{ padding: '11px 8px' }}>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${m.title}`}
+                            title="Delete meeting"
+                            onClick={e => { e.stopPropagation(); setDeleteTarget(m) }}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+                              color: '#B42332', display: 'flex',
+                            }}
+                          >
+                            <Trash2 size={14} strokeWidth={2} />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -441,6 +460,19 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
             setCreateOpen(false)
             show('Meeting created')
             router.push(`/meetings/${id}`)
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteMeetingModal
+          supabase={supabase}
+          meeting={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={filesFailed => {
+            setDeleteTarget(null)
+            show(filesFailed > 0 ? 'Meeting deleted (some files could not be removed)' : 'Meeting deleted')
+            refresh()
           }}
         />
       )}
