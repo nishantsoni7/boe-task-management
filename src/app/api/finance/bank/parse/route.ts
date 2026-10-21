@@ -52,9 +52,29 @@ export async function POST(req: NextRequest) {
     return fail(422, 'UNREADABLE', 'That file could not be read as a bank statement.')
   }
 
+  // WHICH ACCOUNT IS THIS? Decided from what the database already knows, so the
+  // owner is never asked a question the data can answer:
+  //   * the number is recorded            -> that account ('known');
+  //   * exactly one account is recorded   -> the statement is the OTHER one
+  //     ('inferred'; it is recorded when the import runs);
+  //   * both are recorded and neither matches -> refused: an unrelated account;
+  //   * nothing recorded yet              -> the page asks once.
+  const { data: bound } = await supabase.from('bank_statement_accounts').select('account, account_number')
+  const recorded = (bound ?? []) as { account: 'hdfc' | 'hdfc_sec'; account_number: string }[]
+  const hit = recorded.find(r => r.account_number === statement.accountNumber)
+  let detected: 'hdfc' | 'hdfc_sec' | null = hit?.account ?? null
+  let detectedHow: 'known' | 'inferred' | null = hit ? 'known' : null
+  if (!detected && recorded.length === 1) {
+    detected = recorded[0].account === 'hdfc' ? 'hdfc_sec' : 'hdfc'
+    detectedHow = 'inferred'
+  }
+  if (!detected && recorded.length >= 2) {
+    return fail(422, 'UNKNOWN_ACCOUNT', `This statement is for an account ending ${statement.accountNumber.slice(-4)}, which is neither HDFC PRI nor HDFC SEC.`)
+  }
+
   const { data: preview, error } = await supabase.rpc('preview_bank_statement', {
     p_account_number: statement.accountNumber,
-    p_account: account,
+    p_account: detected ?? account,
     p_lines: statement.lines,
   })
   if (error) {
@@ -72,6 +92,8 @@ export async function POST(req: NextRequest) {
     fileName: file.name,
     accountNumber,
     accountLast4: accountNumber.slice(-4),
+    detected,
+    detectedHow,
     statement: rest,
     preview,
   })
