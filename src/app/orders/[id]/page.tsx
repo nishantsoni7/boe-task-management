@@ -3082,7 +3082,7 @@ export default function OrderDetailPage() {
             revision rule reads to find the PI's owner, and the activity trail
             still names who did what. Nothing was dropped from a select and
             nothing was dropped from the database. */}
-        <OrderSummaryPanel view={summaryView} />
+        <OrderSummaryPanel view={summaryView} client={piHandoff.kind === 'ready' ? piHandoff.client : null} />
 
         {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it.
             THE OPERATIONS REVIEWER DECIDES HERE (20261229000000): while the

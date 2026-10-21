@@ -504,6 +504,9 @@ export const ORDER_CONTACT_LABEL = 'Contact'
  */
 export const ORDER_CLIENT_LABEL = 'Client'
 
+/** The link that opens the client's billing and shipping details. */
+export const ORDER_ADDRESSES_LINK = 'Shipping and billing details'
+
 /** The production alignment's own row label, above the badge that states it. */
 export const ORDER_PRODUCTION_LABEL = 'Production'
 
@@ -531,7 +534,7 @@ export type OrderFactRow = {
 
 export type OrderSummaryView = {
   client: {
-    /** Client, contact, location, total product value — always all four. */
+    /** Client, contact, location — always all three. */
     rows: OrderFactRow[]
   }
   sales: {
@@ -585,7 +588,6 @@ export function orderSummaryView(input: {
 
   const client = byKey('client')
   const location = byKey('location')
-  const value = byKey('product_value')
   const production = factByKey('production')
 
   const contact = (input.clientContact ?? '').trim()
@@ -614,19 +616,10 @@ export function orderSummaryView(input: {
           key: 'location', label: SUMMARY_FIELD_LABEL.location, value: SUMMARY_NOT_AVAILABLE,
           missing: true, detail: null, tone: 'neutral' as WorkspaceTone,
         },
-        // THE FIGURE, AS A ROW. It had a tinted panel of its own, which made
-        // the group two things — a list and a banner — and cost the panel the
-        // vertical room three groups of plain rows do not need. It is the last
-        // row of the group, carrying a half-step of extra weight and nothing
-        // more. The value itself is untouched: still the approved PI's own
-        // string, still formatted by the builder that has always formatted it.
-        value
-          ? { ...asRow(value), emphasis: true }
-          : {
-              key: 'product_value', label: SUMMARY_FIELD_LABEL.product_value,
-              value: SUMMARY_NOT_AVAILABLE, missing: true, detail: null,
-              tone: 'neutral' as WorkspaceTone, emphasis: true,
-            },
+        // THE TOTAL PRODUCT VALUE IS NOT HERE (owner, 2026-10-21). The group's
+        // last line is now a link to the shipping and billing details dialog
+        // (ORDER_ADDRESSES_LINK, drawn by the panel). The value is still in the
+        // Commercial breakdown and on the Orders list; only this row went.
       ],
     },
     sales: {

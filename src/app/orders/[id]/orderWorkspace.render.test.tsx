@@ -23,6 +23,7 @@ import {
   OrderAttentionBar,
   OrderDetailSkeleton,
   OrderPaymentListDialog,
+  OrderAddressesDialog,
   OrderStatusPill,
   OrderSummaryPanel,
   PaymentSummaryFigures,
@@ -163,23 +164,42 @@ describe('the Order Summary panel: group 1, client and value', () => {
     assert.equal(text(html).includes('Client name'), false)
   })
 
-  test('the total product value is a row too, with slightly more weight', () => {
+  test('the total product value is NOT in the header any more', () => {
     const html = summaryMarkup()
-    assert.ok(text(html).includes('Total product value ₹12,53,000.00'))
-    // THE LARGE INSET PANEL IS GONE. It made one group two kinds of thing and
-    // cost the card the height three groups of plain rows do not need.
-    assert.equal(html.includes('order-sum-amount'), false)
-    assert.ok(html.includes('order-sum-row--strong'), 'it keeps a half-step of weight')
-    assert.equal((html.match(/order-sum-row--strong/g) ?? []).length, 1,
-      'and it is the ONLY row that does')
+    assert.equal(text(html).includes('Total product value'), false)
+    assert.equal(html.includes('order-sum-row--strong'), false)
   })
 
-  test('the four rows are in the agreed order', () => {
+  test('a link to the shipping and billing details closes the group', () => {
+    const html = summaryMarkup()
+    assert.ok(html.includes('<button type="button" class="order-sum-link">Shipping and billing details</button>'))
+    const body = text(html)
+    assert.ok(body.indexOf('Location') < body.indexOf('Shipping and billing details'))
+  })
+
+  test('the dialog states billing and shipping separately, verbatim', () => {
+    const html = renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={{
+      name: 'Acme', city: 'Jaipur', phone: null, phoneText: null,
+      billTo: { name: 'Acme Billing', address: '1 Bill Road, Jaipur' },
+      shipTo: { name: null, address: '9 Dock Lane, Nashik' },
+    }} />)
+    const body = text(html)
+    assert.ok(body.includes('Billing details Name Acme Billing Address 1 Bill Road, Jaipur'))
+    assert.ok(body.includes('Shipping details Name Not provided Address 9 Dock Lane, Nashik'))
+    assert.match(html, /role="dialog"/)
+  })
+
+  test('with no client read the dialog still opens and says Not provided', () => {
+    const body = text(renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={null} />))
+    assert.equal((body.match(/Not provided/g) ?? []).length, 4)
+  })
+
+  test('the rows are in the agreed order', () => {
     const body = text(summaryMarkup())
     const at = (s: string) => body.indexOf(s)
     assert.ok(at('Client Acme') < at('Contact'))
     assert.ok(at('Contact') < at('Location'))
-    assert.ok(at('Location') < at('Total product value'))
+    assert.ok(at('Location') < at('Shipping and billing details'))
   })
 
   test('every row is one label and one value, in that order', () => {
@@ -195,9 +215,9 @@ describe('the Order Summary panel: group 1, client and value', () => {
     assert.match(css.slice(css.indexOf('.order-sum-value {')), /justify-content: flex-end/)
   })
 
-  test('and it is STILL the ONLY amount in the header — payment is its own section', () => {
+  test('the header carries no amount at all — payment is its own section', () => {
     const body = text(summaryMarkup())
-    assert.equal((body.match(/₹/g) ?? []).length, 1)
+    assert.equal((body.match(/₹/g) ?? []).length, 0)
     assert.ok(!/verified|awaiting|balance|order value/i.test(body))
   })
 
@@ -312,6 +332,16 @@ describe('the Order Summary panel: group 3, the dates', () => {
                      'Upload date', '2 Sep 2026, 11:04 am', 'Due date', '30 Oct 2026']) {
       assert.ok(body.includes(s), s)
     }
+  })
+
+  test('the rule never sits on the label: the LAST padding-left rule for a flagged row clears it', () => {
+    // The Notion pass later in globals.css resets .order-sum-row padding to 7px 0
+    // and cancelled the flagged rows' own padding-left, so the inset rule was
+    // drawn over "Due date". The restatement must come AFTER that reset.
+    const reset = css.lastIndexOf('.order-sum-row { padding: 7px 0; }')
+    const fix = css.lastIndexOf('.order-sum-row--red { padding-left: 12px; }')
+    assert.ok(reset > 0 && fix > reset)
+    assert.ok(css.slice(css.lastIndexOf('.order-sum-row--amber,'), fix).includes('.order-sum-row--amber'))
   })
 
   test('an overdue due date says so IN WORDS, not by colour alone', () => {

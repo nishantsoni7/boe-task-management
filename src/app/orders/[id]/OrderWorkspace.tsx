@@ -38,12 +38,14 @@ import {
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
+import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import { OrderModalShell } from './OrderStatusWorkspace'
 import {
   activityToggleLabel,
   activityWindow,
   attentionAriaLabel,
   attentionHeading,
+  ORDER_ADDRESSES_LINK,
   ORDER_PRODUCTION_LABEL,
   SUMMARY_GROUP_TITLE,
   type OrderAttentionItem,
@@ -199,7 +201,54 @@ function SummaryRow({ row }: { row: OrderFactRow }) {
   )
 }
 
-export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
+/**
+ * THE CLIENT'S BILLING AND SHIPPING DETAILS, in a dialog.
+ *
+ * Both parties are printed verbatim and never merged: where an order is BILLED
+ * and where it is SHIPPED are different questions, and a reader checking them
+ * needs both answered, including when the answer is the same. Everything is
+ * ClientDetails' own — the PI's stored bill-to / ship-to columns — and an absent
+ * value says `Not provided` rather than leaving a blank.
+ */
+function AddressBlock({ heading, party }: {
+  heading: string
+  party: { name: string | null; address: string | null }
+}) {
+  return (
+    <section className="order-addr-block" aria-label={heading}>
+      <h3 className="order-addr-head">{heading}</h3>
+      <dl className="order-addr-rows">
+        <div className="order-addr-row">
+          <dt>Name</dt>
+          <dd>{party.name ?? NOT_PROVIDED}</dd>
+        </div>
+        <div className="order-addr-row">
+          <dt>Address</dt>
+          <dd className="order-addr-address">{party.address ?? NOT_PROVIDED}</dd>
+        </div>
+      </dl>
+    </section>
+  )
+}
+
+export function OrderAddressesDialog({ client, onClose }: {
+  client: ClientDetails | null
+  onClose: () => void
+}) {
+  return (
+    <OrderModalShell title={ORDER_ADDRESSES_LINK} onClose={onClose}>
+      <AddressBlock heading="Billing details" party={client?.billTo ?? { name: null, address: null }} />
+      <AddressBlock heading="Shipping details" party={client?.shipTo ?? { name: null, address: null }} />
+    </OrderModalShell>
+  )
+}
+
+export function OrderSummaryPanel({ view, client = null }: {
+  view: OrderSummaryView
+  /** The approved PI's client, or null while it has not been read. */
+  client?: ClientDetails | null
+}) {
+  const [addressesOpen, setAddressesOpen] = useState(false)
   const production = view.sales.production
   const productionTone = STATUS_PILL_TONE[production.tone]
   return (
@@ -217,6 +266,10 @@ export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
           <dl className="order-sum-rows">
             {view.client.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
+          <button type="button" className="order-sum-link" onClick={() => setAddressesOpen(true)}>
+            {ORDER_ADDRESSES_LINK}
+          </button>
+          {addressesOpen && <OrderAddressesDialog client={client} onClose={() => setAddressesOpen(false)} />}
         </section>
 
         {/* ── 2. Sales and production ──
