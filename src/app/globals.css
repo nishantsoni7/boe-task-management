@@ -10658,6 +10658,108 @@ textarea.pi-form-input { height: auto; }
 .order-addr-row dd { margin: 0; min-width: 0; font-size: 14px; color: #303536; overflow-wrap: anywhere; }
 .order-addr-address { white-space: pre-line; }
 
+/* ── PI DRAFT — COMMERCIAL BREAKDOWN, ORDER-PAGE GRID (owner, 2026-10-21) ──
+   The same spreadsheet reading the Order page's breakdown has: bordered
+   label | figure cells, a faint tint on alternate rows, a fixed figure column
+   so the right edge stays straight. Appended last so it wins by cascade over
+   the .pi-detail-breakdown-* rules above, which keep their sizes and colours. */
+.pi-detail-breakdown-rows {
+  margin: 12px 18px 14px;
+  padding: 0;
+  border: 1px solid #E4DED7;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+.pi-detail-breakdown-rows > .pi-detail-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 0;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #EDE8E1;
+}
+.pi-detail-breakdown-rows > .pi-detail-breakdown-row:first-child { border-top: 0; }
+.pi-detail-breakdown-rows > .pi-detail-breakdown-row:nth-child(even) { background: #FAF8F5; }
+.pi-detail-breakdown-rows > .pi-detail-breakdown-row > dt {
+  padding: 7px 10px;
+  border-right: 1px solid #EDE8E1;
+}
+.pi-detail-breakdown-rows > .pi-detail-breakdown-row > dd {
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.pi-detail-breakdown-rows > .pi-detail-breakdown-subtotal { background: #F4F0EA; }
+.pi-detail-breakdown-rows > .pi-detail-breakdown-grand {
+  background: rgba(51, 90, 134, 0.07);
+  border-top-color: #D5DEE8;
+}
+.pi-detail-breakdown-rows > .pi-detail-breakdown-grand > dt,
+.pi-detail-breakdown-rows > .pi-detail-breakdown-grand > dd {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+/* "Provided by BOE": a quiet pill under the label, as on the Order page. */
+.pi-detail-breakdown-rows .pi-detail-breakdown-qualifier {
+  width: fit-content;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #EEF2F7;
+  color: #335A86;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Commercial terms: a block of its own, one point to a line. */
+.pi-detail-breakdown-terms {
+  margin: 0 18px 16px;
+  padding: 0;
+  border: 1px solid #E8D9A8;
+  border-left: 4px solid #C48A1A;
+  border-radius: 6px;
+  background: #FFFBEF;
+}
+.pi-detail-breakdown-terms-head {
+  margin: 0;
+  padding: 9px 14px;
+  border-bottom: 1px solid #F0E4BC;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: #805B0D;
+}
+.pi-detail-breakdown-terms-list {
+  margin: 0;
+  padding: 10px 14px 12px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pi-detail-breakdown-terms-point {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #303536;
+  overflow-wrap: anywhere;
+}
+.pi-detail-breakdown-terms-point::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #C48A1A;
+}
+.pi-detail-breakdown-terms-absent { padding: 10px 14px 12px; }
+
 /* ── Orders dashboard overview: six cards and the action board ── */
 .od-ov-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .od-ov-grid > li { min-width: 0; display: flex; }

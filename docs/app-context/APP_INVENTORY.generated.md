@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f6cf04e5` — Orders dashboard: at-a-glance cards and an action board (#381)
-- Commits on this branch: 934
+- Commit: `12cd9aa2` — Merge origin/main into feat/pi-breakdown-redesign
+- Commits on this branch: 936
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
 - Migrations: 342 (first `20260530_create_positions.sql`, latest `20270328000300_orders_finance_real_data_not_test.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `12cd9aa2` 2026-10-21 Merge origin/main into feat/pi-breakdown-redesign
 - `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
+- `59598617` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
 - `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
@@ -37,8 +39,6 @@
 - `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
 - `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
 - `c6502016` 2026-10-19 Payment proof drop zone: click, drag-and-drop, paste; admin can attach on Edit (#361)
-- `ddb1c75e` 2026-10-19 Correct a pending payment that is already attached to a PI (#360)
-- `788551e8` 2026-10-19 Revert the app code of #358 until its migrations are applied (#359)
 
 ## Pages by top-level area
 
