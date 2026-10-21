@@ -12,6 +12,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, eslint, 2,481 finance + permissions tests green, `next build --webpack` compiled. Migration executed in a throwaway Postgres (PGlite) with the real September + October statements for both accounts: 312 + 60 lines, credits/debits equal the statements' summaries, re-uploading October added 0, outsider refused, direct table writes refused. NOT yet seen on screen in a signed-in session; `permissions:check` not run (needs production credentials; it will report `finance.reconcile` until the migration is applied).
 - **Rollout order:** back up → owner applies 20270329000000 (`db push --dry-run` first; only this file pending) → merge. Rollback: drop the four tables and six functions and delete the `reconcile` rows; nothing else references them.
 
+## 2026-10-21 — Finance: bank marker on Payment Requests (PR open) · no migration
+- **Owner request.** While verifying a payment, see whether it is in the bank. For holders of `finance.reconcile`: a marker under each HDFC payment's status (In the bank / Bank match · Strong, Likely, Possible / Not found in the bank / Statement not uploaded) and a "Bank statement" panel in the review window with the candidate credit(s), reasons and a Link button.
+- **Linking never verifies or edits the payment.** No new tables or RPCs; reads the Bank Statements tables, links through the existing `link_bank_line_to_payment`. Non-reconcilers run no bank query.
+- Tests: `bankMarks.test.ts`. Not yet seen on screen.
+
 ## 2026-10-21 — PI Draft Commercial breakdown redrawn on the Order page's grid; Commercial terms highlighted, one point per line (PR open) · no migration
 - **Owner request.** `/orders/drafts/[submissionId]` breakdown rows are now bordered label | figure cells with alternate-row tint and a fixed 150px figure column; Grand Total on a tinted band; "Provided by …" is a pill. DOM and the shared row builder are unchanged (CSS appended last in globals.css).
 - **Terms:** a tinted amber block with a left accent bar and a larger heading. New display-only `commercialTermsPoints()` (piTerms.ts) splits the stored note on newlines and before "Fabric considered", "Packing considered", "Packaging considered", "Rest of the material"; the stored text is never changed.

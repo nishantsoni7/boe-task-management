@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `6be85e43` — Orders: salesperson sees PIs sent back or rejected (dashboard + notification) (#383)
-- Commits on this branch: 937
+- Commit: `680bbd12` — Bank Statements: recognise the account from what is recorded
+- Commits on this branch: 940
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 345 (first `20260530_create_positions.sql`, latest `20270329000000_finance_bank_statements.sql`)
 - Tables ever created: 159 (dropped at some point: 7)   SQL functions: 730   Enums: 0
-- Test files: 621   Next.js 16.2.6, React 19.2.4
+- Test files: 622   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `680bbd12` 2026-10-21 Bank Statements: recognise the account from what is recorded
+- `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
+- `edd424e8` 2026-10-21 Docs: record that the PI returned/rejected migrations are applied
 - `6be85e43` 2026-10-21 Orders: salesperson sees PIs sent back or rejected (dashboard + notification) (#383)
 - `9f530e60` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line (#382)
 - `01ae5d86` 2026-10-21 Orders/Finance: re-label real records stamped as test data (#384)
@@ -36,9 +39,6 @@
 - `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
 - `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 - `57ea63c9` 2026-10-20 Approval dialog: preselect the salesperson the PI workbook names
-- `af938908` 2026-10-20 Record that migration 20270324000000 is applied to production
-- `514f7fc5` 2026-10-20 Two HDFC accounts: HDFC PRI and HDFC SEC (migration 20270324000000, apply first)
-- `168eb6b6` 2026-10-19 Warm other modules on intent, not on load (fixes the console preload warning)
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 43 source, 51 test
+- `src/lib/finance` — 44 source, 52 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
