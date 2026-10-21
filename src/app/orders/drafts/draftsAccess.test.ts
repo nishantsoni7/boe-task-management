@@ -738,10 +738,11 @@ describe('the drafts list', () => {
     assert.equal((page.match(/pi_submissions_advance_percent/g) ?? []).length, 1,
       'one batch call, never one per row')
     assert.ok(page.includes("p_submission_ids: rows.map(r => r.id)"))
-    for (const h of ['Confirmed date', 'Due date', 'Advance % received']) {
+    for (const h of ['Confirmed date', 'Due date', 'Advance %']) {
       assert.ok(page.includes(`'${h}'`), `${h} is a column`)
     }
-    for (const gone of ["'Uploaded by'", "'Submitted'"]) {
+    assert.ok(!page.includes("'Advance % received'"), 'the short header: the long one was cut off')
+    for (const gone of ["'Uploaded by'", "'Submitted'", "'Grand total'"]) {
       assert.ok(!page.includes(gone), `${gone} is no longer a column`)
     }
   })
@@ -825,7 +826,6 @@ describe('the drafts list', () => {
     assert.equal(noTotal.grandTotal, GRAND_TOTAL_UNAVAILABLE)
     assert.equal(noTotal.grandTotalMissing, true)
     assert.equal(noTotal.productValue, '₹2,50,000')
-    assert.ok(read(LIST_PAGE).includes('GRAND_TOTAL_UNAVAILABLE_NOTE'), 'and the row can say why')
   })
 
   test('each row names the draft and its number, and invents neither (20270114000000)', () => {
@@ -867,15 +867,15 @@ describe('the drafts list', () => {
     assert.ok(page.includes('>Product value</span>'), 'the phone card labels it the same way')
   })
 
-  test('the row states both money figures, and never one as the other', () => {
-    // The gap between them is discount, fabric, packing, transport and GST. A
-    // list that showed one under a label meaning the other would misprice every
-    // order on the screen.
+  test('the list shows the Product value only: Grand total and the workbook date are not on it', () => {
+    // Owner, 2026-10-21. The PI detail page still states the Grand total.
     const page = read(LIST_PAGE)
     assert.ok(page.includes('{entry.productValue}'))
-    assert.ok(page.includes('{entry.grandTotal}'))
-    assert.ok(page.includes("'Product value', 'Grand total'"),
-      'and the headers stand beside each other, in that order')
+    assert.ok(!page.includes('entry.grandTotal'), 'no Grand total in the table or the cards')
+    assert.ok(!page.includes('GRAND_TOTAL_UNAVAILABLE_NOTE'))
+    assert.ok(!page.includes('entry.authoredOn'),
+      'the workbook date under the salesperson was removed')
+    assert.ok(page.includes('{entry.authoredBy}'), 'the salesperson’s name stays')
   })
 
   test('a PI with no creation date on it shows a dash', () => {
