@@ -126,7 +126,7 @@ Statuses and transitions:
   toast -> 800 ms -> `noteListReturn()` -> `router.replace(target)`. Back button uses `appHistory.ts` (`noteDocumentEntry` sampled in `Providers`) so a task opened in a new
   tab still has a Back that goes somewhere.
 - Navigation caching (#322, #182, #181, #147): Dashboard warms My Tasks list + shared names table once (never under View As) with one option object shared by page and
-  warm-up; My Tasks reads names from the shared table; My Tasks / Assigned By Me / Notifications prefetch each task href ONCE per arrival with the full `?returnTo` href (the
+  warm-up; My Tasks reads names from the shared table; My Tasks / Assigned By Me prefetch each task href ONCE per arrival (Notifications no longer does: it warms on hover/focus/touch only, module 12 trap 15) with the full `?returnTo` href (the
   router cache is keyed by full href); `/tasks/[id]/loading.tsx` makes prefetch work for the dynamic route; My Tasks must not invalidate its own cache on mount.
 - Activity text: one "Send Update" writes ONE `note_added` row whether it carried text, files or both; heading is read from the row (`activityHeadings.ts`:
   `attachmentPhrase`, `commentHeadingRest`). "Read more" appears only when text actually overflows 8 lines.

@@ -124,6 +124,7 @@ function NotificationTaskGroupImpl({
   onDeleteGroup,
   onDeleteOne,
   onRowClick,
+  onWarmTask,
   returnTo,
   isMobile = false,
 }: {
@@ -159,6 +160,8 @@ function NotificationTaskGroupImpl({
   onDeleteGroup: (group: TaskGroup) => void
   onDeleteOne: (id: string) => void
   onRowClick: (n: Notification) => void
+  /** Called with the task href when the title link is pointed at, focused or touched, so the page can warm it on intent. */
+  onWarmTask?: (href: string) => void
   /** The page this card is on, handed to Task Detail so Submit for Approval returns there. */
   returnTo?: string
   isMobile?: boolean
@@ -180,6 +183,7 @@ function NotificationTaskGroupImpl({
   const href = getNotificationMeta(group.latest).href
   // The same destination, carrying this page as `returnTo`.
   const taskHref = withTaskReturnTo(href, returnTo)
+  const warm = onWarmTask && taskHref ? () => onWarmTask(taskHref) : undefined
 
   // One loaded event is not a group. The count is what decides, not the filter:
   // hiding read events under "Unread" must not turn a three-event task into a
@@ -210,7 +214,17 @@ function NotificationTaskGroupImpl({
       : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
   }
   const titleNode = taskHref ? (
-    <Link href={taskHref} className="boe-notif-task-title" style={titleStyle}>
+    <Link
+      href={taskHref}
+      className="boe-notif-task-title"
+      style={titleStyle}
+      // Warmed on intent only: the default viewport prefetch pulled the Task
+      // page's stylesheet for every card on screen ("preloaded but not used").
+      prefetch={false}
+      onPointerEnter={warm}
+      onFocus={warm}
+      onTouchStart={warm}
+    >
       {taskTitle}
     </Link>
   ) : (
@@ -606,7 +620,8 @@ export const NotificationTaskGroup = memo(NotificationTaskGroupImpl, (prev, next
     prev.onMarkGroupRead !== next.onMarkGroupRead ||
     prev.onDeleteGroup !== next.onDeleteGroup ||
     prev.onDeleteOne !== next.onDeleteOne ||
-    prev.onRowClick !== next.onRowClick
+    prev.onRowClick !== next.onRowClick ||
+    prev.onWarmTask !== next.onWarmTask
   ) return false
   if (!sameGroupContent(prev.group, next.group)) return false
   if (!sameSetMembership(next.group, prev.selected, next.selected)) return false

@@ -137,6 +137,7 @@ Triggers on `order_activity_log`, `order_approval_events`, `order_change_request
 12. First-visit gap on `/notifications` was one slow 12 KB JS chunk (4.78 s on a protected preview), not reproduced on production (memory).
 13. Enrichment embeds people through foreign keys (`assignee:assigned_to(full_name)`, `creator:created_by(full_name)`, `actor:actor_id(full_name)`) - merged (#163, verified in `pageEnrichment.ts`); memory still calls #163 OPEN.
 14. Persisted counts are keyed by user id and category; never persist content.
+15. **Task pages are warmed on INTENT only (2026-10-21).** The load-time `router.prefetch` of the first twelve tasks (and the `<Link>` viewport prefetch on each card title) is gone: each warm-up brought the Task page stylesheet, which Chrome preloaded and `/notifications` never applied ("preloaded but not used"), and it added up to 3 RSC requests per task. `NotificationsView` owns `warmTask`; `NotificationTaskGroup` takes an optional `onWarmTask` and calls it on pointer-enter/focus/touch-start of the title link (`prefetch={false}`). The card must not call `prefetch(` itself (`interactionCost.test.ts` matches `/fetch(/`). Guard: `src/lib/notifications/notificationsIntentPrefetch.test.ts`. The reported 5-6 s hang was NOT reproduced on production (about 1 s warm); whether this removes it on slow connections is unmeasured.
 
 ## 10. Tests that guard it
 

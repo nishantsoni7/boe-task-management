@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `dcbd567b` — PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
-- Commits on this branch: 930
+- Commit: `740313b0` — PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
+- Commits on this branch: 931
 - Pages (`page.tsx`): 142   API routes (`route.ts`): 149
 - Migrations: 340 (first `20260530_create_positions.sql`, latest `20270327000000_pi_drafts_list_advance_percent.sql`)
 - Tables ever created: 155 (dropped at some point: 7)   SQL functions: 722   Enums: 0
-- Test files: 616   Next.js 16.2.6, React 19.2.4
+- Test files: 617   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
 - `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
@@ -38,7 +39,6 @@
 - `b8c15e6e` 2026-10-19 Orders notifications from the database (step 2) — migrations 20270321000000/01, apply first (#358)
 - `7f17db52` 2026-10-19 Notifications: show the Orders notices that were written but listed nowhere (#356)
 - `6b3ae524` 2026-10-19 Orders sidebar: Dashboard, Confirmed Orders, PI Drafts; PI format under Resources (#355)
-- `95aefe7a` 2026-10-19 Edit a wrong pending payment from both verification screens (#357)
 
 ## Pages by top-level area
 
@@ -141,7 +141,7 @@
 - `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
-- `src/lib/notifications` — 7 source, 23 test
+- `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 71 source, 121 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test

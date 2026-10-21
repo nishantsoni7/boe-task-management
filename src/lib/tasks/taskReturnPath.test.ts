@@ -290,16 +290,16 @@ describe('every entry point passes its own view (8–12)', () => {
     assert.ok(code.includes('onOpen={task => router.push(taskDetailHref(task.id, pathname))}'))
   })
 
-  test('Notifications: row open, title link and prefetch all carry the page', () => {
+  test('Notifications: row open and title link carry the page; the warm-up gets the full href from the card', () => {
     const view = codeOf(read('src/components/notifications/NotificationsView.tsx'))
     assert.ok(view.includes('const href = withTaskReturnTo(getNotificationMeta(n).href, pathname)'))
-    assert.ok(view.includes('const href = taskDetailHref(n.task_id, pathname)'))
     assert.ok(view.includes('router.prefetch(href)'))
-    assert.ok(view.includes('if (warmedHrefs.current.has(href)) return'))
+    assert.ok(view.includes('onWarmTask={warmTask}'))
     assert.ok(view.includes('returnTo={pathname}'))
     const group = codeOf(read('src/components/notifications/NotificationTaskGroup.tsx'))
     assert.ok(group.includes('const taskHref = withTaskReturnTo(href, returnTo)'))
-    assert.ok(group.includes('<Link href={taskHref}'))
+    assert.ok(group.includes('href={taskHref}'))
+    assert.ok(group.includes('onWarmTask(taskHref)'))
   })
 
   test('list pages read their view from the URL they are showing', () => {
