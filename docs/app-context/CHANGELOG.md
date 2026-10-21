@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Send Payment Request form: quiet, Notion-style layout (PR open) · no migration
+- **Owner request.** The form looked messy: bold large type, repeated headings, a grey box inside the proof section, a footer that repeated the account and destination.
+- **Presentation only.** Quiet small sentence-case labels, no numbered circles, medium (not bold) weights, wider padding. Proof section: no nested heading or panel; fields are Proof, Reference, Notes for Finance. Footer now says the amount and that Finance verifies it, not the account again. Opt-in `quiet` props on FormStep, Field, ProofReferenceSection/Field; ProofDropZone copy shortened and other payment forms inherit its calmer weight and wording. Same submit logic, same columns.
+- **Proof.** tsc, eslint, finance tests green. proofReferenceSection.test.ts now matches `<ProofReferenceSection quiet>`. Not yet seen on screen.
+
 ## 2026-10-22 — Payment Requests: one payment popup (PR open) · no migration
 - **Owner request.** Clicking a row opened one popup and the View icon another. Now there is ONE (the View design): click anywhere on the row; the View icon is removed.
 - **What moved in from the old review window:** the Decision section (Verify Payment / Needs Clarification / Reject, note required for the last two, Confirm) for people who may decide; the bank-statement panel (finance.reconcile); the account hint. It replaces the lone Verify button and, for a verifier, the admin status select. Same RPCs, doors, notifications and rules; `paymentRequestsAdminReview.tsx` is deleted.

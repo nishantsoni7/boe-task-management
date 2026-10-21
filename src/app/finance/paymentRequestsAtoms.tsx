@@ -14,10 +14,12 @@ import { STATUS_META } from './paymentRequestsModel'
 // src/app/finance/components/FinanceModalShell.tsx — shared with Received
 // Payments so both pages use one Finance modal layering system.
 
-export function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+export function Field({ label, required, quiet, children }: { label: string; required?: boolean; quiet?: boolean; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: quiet ? '6px' : '4px' }}>
+      <label style={quiet
+        ? { fontSize: '12px', fontWeight: 500, color: colors.muted }
+        : { fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
       </label>
       {children}

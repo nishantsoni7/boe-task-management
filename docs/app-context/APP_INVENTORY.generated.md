@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d42ea2bd` — Finance: bank marker on Payment Requests and in the review window (#388)
-- Commits on this branch: 946
+- Commit: `35356761` — Payment Requests: one payment popup, opened from anywhere on the row
+- Commits on this branch: 947
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 347 (first `20260530_create_positions.sql`, latest `20270331000000_finance_admin_may_delete_confirmed_payment.sql`)
 - Tables ever created: 160 (dropped at some point: 7)   SQL functions: 733   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `35356761` 2026-10-22 Payment Requests: one payment popup, opened from anywhere on the row
 - `d42ea2bd` 2026-10-21 Finance: bank marker on Payment Requests and in the review window (#388)
 - `ee1e3028` 2026-10-21 Docs: migration 20270331000000 is applied; #391 merged and deployed
 - `792b070b` 2026-10-21 Finance: an admin can delete a Confirmed Payment entered by mistake (#391)
@@ -38,7 +39,6 @@
 - `54be241f` 2026-10-20 Documents card: compact Download toolbar, Details popup for the PI dates
 - `10bbaf19` 2026-10-20 Update two more source-pin tests for the quotation notice queries
 - `d229e74e` 2026-10-20 Quotation completed or cancelled now notifies the sales person who raised it
-- `a3148a5c` 2026-10-20 ERP sheet: bold grey header and wrapped cells
 
 ## Pages by top-level area
 

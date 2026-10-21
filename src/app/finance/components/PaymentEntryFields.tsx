@@ -106,7 +106,7 @@ function DestinationCard({
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Icon size={16} aria-hidden="true" style={{ color: selected ? colors.primary : colors.muted }} />
-        <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{option.label}</span>
+        <span style={{ fontSize: '13px', fontWeight: 500, color: colors.primary }}>{option.label}</span>
         {selected && <Check size={14} aria-hidden="true" style={{ color: colors.primary, marginLeft: 'auto' }} />}
       </span>
       <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.4 }}>
@@ -232,8 +232,8 @@ export function PaymentEntryFields({
       {kind && !state.target && (
         <div>
           <label htmlFor={`${groupId}-search`} style={{
-            fontSize: '12px', fontWeight: 600, color: colors.muted,
-            textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px',
+            fontSize: '12px', fontWeight: 500, color: colors.muted,
+            display: 'block', marginBottom: '6px',
           }}>
             {state.destination === 'pi_draft' ? 'PI Draft' : 'Confirmed Order'}
             <span aria-hidden="true" style={{ color: colors.red }}> *</span>

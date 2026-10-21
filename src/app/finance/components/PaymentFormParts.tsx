@@ -30,9 +30,11 @@ import { PaymentModeHint } from './PaymentModeHint'
 
 // ── A numbered step ──────────────────────────────────────────────────────────
 
-export function FormStep({ number, title, hint, children }: {
+export function FormStep({ number, title, hint, quiet, children }: {
   number: number
   title: string
+  /** A small muted heading with no numbered circle. Opt-in; other forms keep theirs. */
+  quiet?: boolean
   /** Quiet words after the title, such as "Optional". */
   hint?: string
   children: React.ReactNode
@@ -40,16 +42,19 @@ export function FormStep({ number, title, hint, children }: {
   const headingId = useId()
   return (
     <section aria-labelledby={headingId} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <h3 id={headingId} style={{
+      <h3 id={headingId} style={quiet ? {
+        margin: 0, display: 'flex', alignItems: 'baseline', gap: '8px',
+        fontSize: '12px', fontWeight: 500, color: colors.muted,
+      } : {
         margin: 0, display: 'flex', alignItems: 'center', gap: '8px',
         fontSize: '13px', fontWeight: 600, color: colors.primary,
       }}>
-        <span aria-hidden="true" style={{
+        {!quiet && <span aria-hidden="true" style={{
           width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
           border: `1px solid ${colors.border}`, background: colors.raised,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '11px', fontWeight: 600, color: colors.secondary,
-        }}>{number}</span>
+        }}>{number}</span>}
         {title}
         {hint && <span style={{ fontWeight: 400, fontSize: '12px', color: colors.muted }}>{hint}</span>}
       </h3>
@@ -96,8 +101,8 @@ export function PaymentModePicker({ value, onChange, disabled, describedBy }: {
             disabled={disabled}
             onClick={() => onChange(option.value)}
             style={{
-              padding: '10px 12px', borderRadius: '8px', cursor: disabled ? 'default' : 'pointer',
-              fontSize: '13px', fontWeight: 600, color: colors.primary, textAlign: 'center',
+              padding: '9px 12px', borderRadius: '8px', cursor: disabled ? 'default' : 'pointer',
+              fontSize: '13px', fontWeight: 500, color: colors.primary, textAlign: 'center',
               border: `1px solid ${selected ? colors.primary : colors.border}`,
               background: selected ? colors.hover : colors.base,
               boxShadow: selected ? `inset 0 0 0 1px ${colors.primary}` : 'none',
@@ -195,7 +200,7 @@ export function OptionalDisclosure({ title, hint, open, onToggle, children }: {
         style={{
           display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start',
           background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-          fontSize: '13px', fontWeight: 600, color: colors.primary,
+          fontSize: '13px', fontWeight: 500, color: colors.secondary,
         }}
       >
         <Chevron size={15} aria-hidden="true" />
@@ -265,7 +270,7 @@ export function FormDialog({
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{title}</div>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: colors.primary }}>{title}</div>
             {subtitle && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>{subtitle}</div>}
           </div>
           <button
