@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { preconnect } from 'react-dom'
 import localFont from 'next/font/local'
 import { Providers } from '@/components/layout/Providers'
 import './globals.css'
@@ -46,11 +47,30 @@ export const metadata: Metadata = {
   },
 }
 
+// ── Open the database connection while the page is still loading ─────────────
+//
+// Every screen reads its data straight from the browser, so the first request
+// of every page load has to open a connection to the database host first: a DNS
+// lookup, a TCP handshake and a TLS handshake, roughly three round trips, spent
+// only after the JavaScript has downloaded, parsed and started. This hint lets
+// the browser do that work while it is still reading the HTML and the scripts,
+// so the first query leaves on an open connection.
+//
+// "anonymous" is deliberate: the data client's fetches are cross-origin, sent
+// without cookies, and a browser keeps those on their own connection pool — a
+// preconnect without it would open a connection the requests never use.
+//
+// It is a hint, never a dependency: with no URL configured it does nothing, and
+// a browser that ignores it behaves exactly as before.
+const DATA_ORIGIN = process.env.NEXT_PUBLIC_SUPABASE_URL
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  if (DATA_ORIGIN) preconnect(DATA_ORIGIN, { crossOrigin: 'anonymous' })
+
   return (
     <html
       lang="en"

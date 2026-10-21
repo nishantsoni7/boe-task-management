@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Load time: open the database connection during page load (PR open) · no migration
+- **Why.** Every screen reads from the browser, so the first query of each page load first opened a connection (DNS + TCP + TLS, about three round trips) only after the scripts had booted. Measured on the live site (admin, warm): HTML ready in about 75 ms, first query not sent until about 245-285 ms, and the first answer back at about 480-780 ms; the database round trip itself is about 63 ms and the queries run in a few ms inside the database, so the waiting is connection setup and the chain of reads, not the database.
+- **What.** `src/app/layout.tsx` adds `preconnect(NEXT_PUBLIC_SUPABASE_URL, { crossOrigin: 'anonymous' })` (anonymous because the data client's cross-origin fetches carry no cookies and use their own connection pool). A hint only: no URL, no hint.
+- **Not changed (and why).** The module guards still hold back their children until the access check answers: that is a recorded security decision, not an oversight. Per-page permission/profile reads are still fresh per load (pinned by tests). Further gains need an owner decision on short-lived caching.
+- **Proof.** tsc, eslint, full test suite (17,778 tests, 0 failures). Gain not separable in a warm browser (the connection is already open); it is for the first load after idle and for phones.
+
 ## 2026-10-22 — Operations dashboard: changes to production orders answered line by line (PR open) · migration 20270401000000 (NOT APPLIED)
 - **Owner request.** A dashboard for the Operations team (Nitish): orders not aligned for manufacturing, new changes on approved orders to answer, revenue as on the admin side, running orders (number + value), Orders / Dispatches for last month and the last 6 months.
 - **Rule change (owner, 2026-10-22).** A revised PI approved on an order that is ALREADY ALIGNED no longer removes its alignment: the order stays in production while Operations answers. The trigger `order_pi_versions_record_operations_handoff()` is re-emitted without the reset. Orders not yet aligned keep today's rule (acceptance aligns). The 40% advance hold is untouched and still removes alignment.
