@@ -35,6 +35,8 @@ export type PaymentDeletionCode =
   | 'REASON_REQUIRED'
   /** The typed Payment ID did not match. */
   | 'ID_MISMATCH'
+  /** The payment is matched to a bank statement line (20270331000000). */
+  | 'BANK_LINKED'
   | 'DELETE_FAILED'
 
 /**
@@ -77,6 +79,9 @@ const FAILURE_COPY: Record<PaymentDeletionCode, Copy> = {
     message: 'Enter a reason for deleting this payment.', retryable: true },
   ID_MISMATCH: {
     message: 'The typed Payment ID did not match. Nothing was deleted.', retryable: true },
+  BANK_LINKED: {
+    message: 'This payment is linked to a bank statement line. Unlink it in Bank Statements first,'
+      + ' then delete it. Nothing was deleted.', retryable: false },
   DELETE_FAILED: { message: PAYMENT_DELETE_RETRY_MESSAGE, retryable: true },
 }
 
@@ -106,6 +111,7 @@ const RPC_MARKERS: readonly { marker: string; code: PaymentDeletionCode }[] = [
   { marker: 'PAYMENT_DELETION_NOT_FOUND',        code: 'NOT_FOUND' },
   { marker: 'PAYMENT_DELETION_REASON_REQUIRED',  code: 'REASON_REQUIRED' },
   { marker: 'PAYMENT_DELETION_ID_MISMATCH',      code: 'ID_MISMATCH' },
+  { marker: 'PAYMENT_DELETION_BANK_LINKED',      code: 'BANK_LINKED' },
   { marker: 'PAYMENT_DELETION_PROOF_PENDING',    code: 'PROOF_PENDING' },
   { marker: 'PAYMENT_DELETION_IN_PROGRESS',      code: 'IN_PROGRESS' },
   { marker: 'PAYMENT_DELETION_CLAIM_INVALID',    code: 'CLAIM_INVALID' },

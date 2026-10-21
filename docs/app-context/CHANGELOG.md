@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-21 — Finance: an admin can delete a Confirmed Payment entered by mistake (PR open) · migration 20270331000000 (NOT APPLIED)
+- **Owner request.** A way to delete confirmed payments entered by mistake. Decisions: erase completely, admins only, release allocations. Lifts the 2026-09-18 "verified is permanent" rule (20261218) for admins.
+- **Migration 20270331000000** re-emits four functions with bodies extracted by script: `finance_payment_deletable_by` and the delete guard lose the test-data condition; `begin_/finalize_finance_payment_deletion` gain `PAYMENT_DELETION_BANK_LINKED` (an active bank link refuses; finalize re-checks and deletes already-undone link notes). Requires 20270329000000. Reason + typed Payment ID, proof sweep, allocation release and the tombstone claim row are unchanged.
+- **Code:** `canDeletePayment` shows Delete to admins on Confirmed Payments; dialog warns it erases a verified payment and that Orders are not re-checked against the 40% rule; `BANK_LINKED` error code (409, not retryable).
+- **Proof.** tsc, eslint (one warning in untouched piApprovalModals.render.test.tsx, same on clean main), full npm test 17,738 pass / 0 fail. Migration executed in a disposable Postgres 16 (Docker): old behaviour reproduced, apply-time assertions passed, 8 sections passed. Not seen on screen.
+- **Rollout:** back up → owner applies 20270331000000 (`db push --dry-run` first) → merge. Rollback: a new migration re-emitting the 20261218 (deletable_by, guard) and 20261011 (begin, finalize) bodies.
+
 ## 2026-10-21 — Task attachment preview: Download works again and keeps the original filename (PR open) · no migration
 - **Problem:** in the Task/Quotation attachment pop-up, Download did nothing on a large workbook, and Open in Tab saved it under the generated storage key.
 - **Cause:** Download fetched the file into a blob and revoked the blob URL in the same tick as the click (can cancel a big save silently, response never checked). Open in Tab used the plain signed URL, which carries no filename.

@@ -27,6 +27,7 @@ import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import {
   PAYMENT_DELETE_ALLOCATION_WARNING,
+  PAYMENT_DELETE_CONFIRMED_WARNING,
   PAYMENT_DELETE_BUSY_LABEL,
   PAYMENT_DELETE_CONFIRM_LABEL,
   PAYMENT_DELETE_TITLE,
@@ -201,6 +202,9 @@ export function DeletePaymentModal({
         {isConfirmed && (
           <div style={{ marginTop: '4px', fontWeight: 600, color: colors.primary }}>
             This is a Confirmed Payment — money already verified as received.
+            <div style={{ marginTop: '4px', fontWeight: 400, color: colors.secondary }}>
+              {PAYMENT_DELETE_CONFIRMED_WARNING}
+            </div>
           </div>
         )}
       </div>

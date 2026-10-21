@@ -70,6 +70,7 @@ const HTTP_FOR: Partial<Record<PaymentDeletionCode, number>> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   APPROVED: 409,
+  BANK_LINKED: 409,
   CLAIM_INVALID: 409,
   PROOF_PENDING: 409,
   IN_PROGRESS: 409,

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `0efeca34` — Task attachment preview: Download works again and keeps the original filename
-- Commits on this branch: 941
+- Commit: `c499afab` — Finance: Bank Statements money out - link debits to expenses or mark not an expense
+- Commits on this branch: 942
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
-- Migrations: 346 (first `20260530_create_positions.sql`, latest `20270330000000_finance_bank_money_out.sql`)
+- Migrations: 347 (first `20260530_create_positions.sql`, latest `20270331000000_finance_admin_may_delete_confirmed_payment.sql`)
 - Tables ever created: 160 (dropped at some point: 7)   SQL functions: 733   Enums: 0
-- Test files: 623   Next.js 16.2.6, React 19.2.4
+- Test files: 624   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c499afab` 2026-10-21 Finance: Bank Statements money out - link debits to expenses or mark not an expense
 - `0efeca34` 2026-10-21 Task attachment preview: Download works again and keeps the original filename
 - `680bbd12` 2026-10-21 Bank Statements: recognise the account from what is recorded
 - `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
@@ -38,7 +39,6 @@
 - `cfed102f` 2026-10-20 PI upload: accept the shorter "Dimension in inches" heading
 - `5d9412b0` 2026-10-20 Order product code BE0001, Pending-from-client pendencies, Excel-style Commercial breakdown
 - `7d25900a` 2026-10-20 Orders notifications from the database: re-land the app code (migrations 20270321000000/01 now applied)
-- `50b61be4` 2026-10-20 Require the lead source when a PI is submitted
 
 ## Pages by top-level area
 
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 43 source, 52 test
+- `src/lib/finance` — 43 source, 53 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
@@ -355,7 +355,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270306000000_exhibition_management.sql`
 - `20270307000000_exhibition_lead_standings.sql`
 - `20270308000000_exhibition_lead_email_and_card.sql`
 - `20270309000000_exhibition_leads_view_all.sql`
@@ -385,6 +384,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270328000300_orders_finance_real_data_not_test.sql`
 - `20270329000000_finance_bank_statements.sql`
 - `20270330000000_finance_bank_money_out.sql`
+- `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 
 ## All SQL function names
 

@@ -1105,6 +1105,7 @@ describe('the applied migrations are frozen', () => {
       '20270328000300_orders_finance_real_data_not_test.sql',
       '20270329000000_finance_bank_statements.sql',
       '20270330000000_finance_bank_money_out.sql',
+      '20270331000000_finance_admin_may_delete_confirmed_payment.sql',
     ])
   })
 
@@ -1461,6 +1462,7 @@ describe('the applied migrations are frozen', () => {
       '20270328000300_orders_finance_real_data_not_test.sql',
       '20270329000000_finance_bank_statements.sql',
       '20270330000000_finance_bank_money_out.sql',
+      '20270331000000_finance_admin_may_delete_confirmed_payment.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
