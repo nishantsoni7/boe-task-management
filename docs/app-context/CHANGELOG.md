@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Load time: the Finance list opens with three reads, not eight (PR open) · no migration
+- **Measured (live, admin).** Requests that wait beside others finish about 70 ms later for each one (three at once end near 370 ms; nine near 770; eleven near 1,000). The database itself runs the dashboard functions in 17-31 ms and is a small instance (60 connections, about 1 GB). The Finance list opened with eight reads at once. Before: about 608 ms to open it from Confirmed Payments (runs 665, 616, 600, 774, 447, 512).
+- **What.** The first group is now the profile, ONE permissions read for every module (`resolve_effective_permissions_for_user`, in place of one read for finance and one for orders; same resolver, still fresh every load, still failing closed to no capabilities) and the rows. The four head-only tab-badge counts are read after the first draw, against the same cutoff, and show no number until they land. A search or tab change still reloads rows and counts together.
+- **Not changed.** Who may do what; the module guard; Finance data and RLS.
+- **Proof.** tsc, eslint, full suite, a new test (`financeStartupFewerReads.test.ts`). After-numbers in the PR.
+
 ## 2026-10-22 — Load time: PI Drafts in one round trip (PR open) · migration 20270404000000 (NOT APPLIED — waits for the owner)
 - **Measured first (live, admin).** A database call costs about 230-270 ms although the database answers in under 1 ms: about 63 ms network, about 45 ms for the browser's cross-origin check (uncached), and a fixed cost on the Supabase side. So a screen's time is the number of sequential rounds. PI Drafts took about 600 ms in steady state (932 and 1070 ms on the first two runs): one round for rows, profile and permissions, then a second for the advance percentages of those ids.
 - **What.** `public.attached_percent(order_submissions)`, a PostgREST computed column that calls the existing batch function `pi_submissions_advance_percent()` (so it is the same figure and the same visibility rule, not a third copy). The list asks for `attached_percent` in its select, so rows and percentages arrive together. A database without the migration refuses the column by name and the page reads the list the old two-step way, so deploy order cannot break the screen.
