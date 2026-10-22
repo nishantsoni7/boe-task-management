@@ -170,19 +170,23 @@ export const EXPENSE_TABLE_COLUMNS = [
   { key: 'date',        label: 'Date',        align: 'left',  width: '96px' },
   { key: 'amount',      label: 'Amount',      align: 'right', width: '112px' },
   { key: 'paid_to',     label: 'Paid to',     align: 'left' },
-  { key: 'category',    label: 'Category',    align: 'left',  width: '112px' },
-  { key: 'mode',        label: 'Mode',        align: 'left',  width: '92px' },
-  { key: 'remark',      label: 'Remark',      align: 'left' },
-  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '100px' },
-  { key: 'actions',     label: 'Actions',     align: 'right', width: '106px' },
+  { key: 'category',    label: 'Category',    align: 'left',  width: '140px' },
+  { key: 'mode',        label: 'Mode',        align: 'left',  width: '100px' },
+  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '120px' },
+  { key: 'actions',     label: 'Actions',     align: 'right', width: '150px' },
 ] as const
 
-/** The room Paid to and Remark each need before the table is worth drawing. */
+/** The room Paid to needs before the table is worth drawing. */
 export const EXPENSE_FLEX_COLUMN_MIN_PX = 160
-const EXPENSE_FLEX_REMARK_MIN_PX = 150
 
 /**
- * The narrowest CONTAINER the eight-column table fits in.
+ * The narrowest CONTAINER the seven-column table fits in.
+ *
+ * THE REMARK COLUMN IS GONE (owner, 2026-10-22): it crowded the other details.
+ * The remark is in the expense's details window, which every reader opens with
+ * View. The width it used went to Category, Recorded by and the Actions column,
+ * which now holds View beside Edit and Delete. The sum below is the CURRENT
+ * columns; the paragraph after it describes the first version.
  *
  * ARITHMETIC, NOT A GUESS, and the first version of this number was wrong.
  * It was 720 — the container a 1024px window leaves — which is what the LIST
@@ -201,7 +205,7 @@ const EXPENSE_FLEX_REMARK_MIN_PX = 150
  * clipped and nothing ever scrolls sideways.
  */
 export const EXPENSE_TABLE_MIN_CONTAINER_PX =
-  96 + 112 + 112 + 92 + 100 + 106 + EXPENSE_FLEX_COLUMN_MIN_PX + EXPENSE_FLEX_REMARK_MIN_PX + 2
+  96 + 112 + 140 + 100 + 120 + 150 + EXPENSE_FLEX_COLUMN_MIN_PX + 2
 
 /**
  * Table or cards, from the width the list ACTUALLY HAS.
@@ -267,6 +271,8 @@ export function ExpensesView() {
   const [batchId, setBatchId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [recording, setRecording] = useState(false)
+  // The "Filters" panel: category, mode, payment source, who paid, missing bill.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   // The reimbursement just recorded, kept on screen so its Excel file and the
   // history page are one tap away after the toast has gone.
   const [justRecorded, setJustRecorded] = useState<{ id: string; count: number; total: string; reference: string } | null>(null)
@@ -515,6 +521,12 @@ export function ExpensesView() {
   }, [categories])
 
   const narrowed = expenseFiltersActive(filters)
+  // The panel's own filters, so its button can say how many are on. The search
+  // box and the dates sit outside the panel and are visible on their own.
+  const panelFilterCount = [
+    filters.categoryId, filters.paymentMode, filters.reimbursement, filters.paidBy,
+    filters.missingBill ? 'on' : '',
+  ].filter(Boolean).length
   const shownTotal = expenseTotal(rows)
   const capped = total > rows.length
   const pendingCount = pendingDraftCount(drafts)
@@ -656,11 +668,15 @@ export function ExpensesView() {
           waiting for this person, which is exactly the fact a badge should
           report. The Expenses tab carries none: a log is not a queue, and a
           number beside it would count rows rather than report work. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '8px 12px', marginBottom: '10px', flexWrap: 'wrap',
+      }}>
       <div
         role="tablist"
         aria-label="Expenses and captures"
         data-testid="expense-tabs"
-        style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}
+        style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}
       >
         <TabButton
           id="expenses" label="Expenses" active={tab === 'expenses'}
@@ -671,6 +687,61 @@ export function ExpensesView() {
           badge={pendingCount}
           onClick={() => setTab('drafts')}
         />
+      </div>
+
+      {tab === 'expenses' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* ── The total of what is on screen ──
+              Stated as what it is. When the cap has bitten it says which rows it
+              describes rather than presenting a partial figure as the whole.
+              DELETED EXPENSES ARE NOT IN IT: the query excluded them and
+              expenseTotal excludes them again. */}
+          <div
+            aria-live="polite"
+            style={{
+              display: 'flex', alignItems: 'baseline', gap: '8px', padding: '6px 12px', minHeight: '36px',
+              borderRadius: '8px', border: `1px solid ${colors.border}`, background: colors.raised,
+            }}
+          >
+            <span style={{ fontSize: '12px', color: colors.tertiary }}>
+              {listLoading
+                ? 'Loading…'
+                : listError
+                  ? 'Total unavailable'
+                  : capped
+                    ? `Total of the ${rows.length} most recent shown, of ${total}`
+                    : `Total${narrowed ? ' (filtered)' : ''} · ${total} ${total === 1 ? 'expense' : 'expenses'}`}
+            </span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+              {listLoading || listError ? '—' : formatMoney(shownTotal)}
+            </span>
+          </div>
+
+          {/* ── WHAT IS OWED ── Independent of the filters. One tap narrows the
+              list to exactly these, which is where they are selected. */}
+          {pendingSummary && pendingSummary.count > 0 && filters.reimbursement !== 'pending' && (
+            <button
+              type="button"
+              data-testid="pending-reimbursement-summary"
+              onClick={() => setFilters(prev => ({ ...prev, reimbursement: 'pending' }))}
+              className="boe-btn"
+              style={{
+                display: 'flex', alignItems: 'baseline', gap: '8px', padding: '6px 12px', minHeight: '36px',
+                borderRadius: '8px', textAlign: 'left',
+                border: `1px solid ${STATE_TONE.pending.border}`, background: STATE_TONE.pending.bg,
+              }}
+            >
+              <span style={{ fontSize: '12px', color: STATE_TONE.pending.fg, fontWeight: 600 }}>
+                Pending reimbursement · {pendingSummary.count} {pendingSummary.count === 1 ? 'expense' : 'expenses'}
+                {pendingSummary.capped ? ' (total of the first 2000)' : ''}
+              </span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: STATE_TONE.pending.fg, fontVariantNumeric: 'tabular-nums' }}>
+                {formatMoney(pendingSummary.total)} <span aria-hidden="true">›</span>
+              </span>
+            </button>
+          )}
+        </div>
+      )}
       </div>
 
       {tab === 'drafts' ? (
@@ -723,8 +794,12 @@ export function ExpensesView() {
             </div>
           )}
 
-          {/* ── Everything that narrows the list, and nothing else ── */}
-          <div className="boe-list-toolbar" role="search" aria-label="Filter expenses">
+          {/* ── Everything that narrows the list, on ONE line ──
+              Search, the date range as one box, a single Filters button that
+              opens the rest, and (for people who reimburse) Download Excel. The
+              tab row above holds the total and the pending figure, so the whole
+              top of the page is two lines. */}
+          <div className="boe-list-toolbar" role="search" aria-label="Filter expenses" style={{ marginBottom: '10px' }}>
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -741,85 +816,140 @@ export function ExpensesView() {
               )}
             </label>
 
-            <div className="boe-list-daterange" role="group" aria-label="Expense date">
-              <label className="boe-list-date">
-                <span>Paid from</span>
-                <input
-                  type="date" className="boe-input" aria-label="Expenses on or after"
-                  value={filters.dateFrom}
-                  onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                />
-              </label>
-              <label className="boe-list-date">
-                <span>to</span>
-                <input
-                  type="date" className="boe-input" aria-label="Expenses on or before"
-                  value={filters.dateTo}
-                  onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-                />
-              </label>
+            {/* ONE BOX for the date range: from – to. */}
+            <div
+              role="group"
+              aria-label="Expense date"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '2px', height: '36px', padding: '0 6px',
+                background: '#FFFFFF', border: '1px solid var(--boe-border-input)', borderRadius: '8px',
+              }}
+            >
+              <input
+                type="date" aria-label="Expenses on or after"
+                value={filters.dateFrom}
+                onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                style={{ border: 'none', background: 'transparent', font: 'inherit', fontSize: '12.5px', color: colors.primary, width: '128px', padding: '0 2px' }}
+              />
+              <span aria-hidden="true" style={{ color: colors.muted }}>–</span>
+              <input
+                type="date" aria-label="Expenses on or before"
+                value={filters.dateTo}
+                onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                style={{ border: 'none', background: 'transparent', font: 'inherit', fontSize: '12.5px', color: colors.primary, width: '128px', padding: '0 2px' }}
+              />
             </div>
 
-            <select
-              className="boe-input expense-filter-select"
-              aria-label="Filter by category"
-              value={filters.categoryId}
-              onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
-            >
-              <option value="">All categories</option>
-              {selectableCategories(categories, filters.categoryId || null).map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-
-            <select
-              className="boe-input expense-filter-select"
-              aria-label="Filter by payment mode"
-              value={filters.paymentMode}
-              onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
-            >
-              <option value="">All modes</option>
-              {EXPENSE_PAYMENT_MODES.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-
-            <select
-              className="boe-input expense-filter-select"
-              aria-label="Filter by payment source and reimbursement"
-              data-testid="expense-reimbursement-filter"
-              value={filters.reimbursement ?? ''}
-              onChange={e => setFilters(prev => ({ ...prev, reimbursement: e.target.value as ReimbursementFilter }))}
-            >
-              {REIMBURSEMENT_FILTER_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-
-            {/* Only for company-wide Finance sight: anybody else sees their own
-                expenses only, and a list of every colleague would be clutter. */}
-            {caps.canViewAllFinance && (
-              <select
-                className="boe-input expense-filter-select"
-                aria-label="Filter by who paid"
-                value={filters.paidBy ?? ''}
-                onChange={e => setFilters(prev => ({ ...prev, paidBy: e.target.value }))}
+            {/* ONE BUTTON for everything else. Absent filters cost no space. */}
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                data-testid="expense-filters-button"
+                aria-haspopup="dialog"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen(open => !open)}
+                style={{ height: '36px', minHeight: '36px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                <option value="">Anyone paid</option>
-                {payers.map(p => (
-                  <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
-                ))}
-              </select>
-            )}
+                Filters
+                {panelFilterCount > 0 && (
+                  <span style={{
+                    minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: '9px', fontSize: '11px', fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: colors.brand, color: '#FFFFFF',
+                  }}>{panelFilterCount}</span>
+                )}
+              </button>
+              {filtersOpen && (
+                <>
+                  <div aria-hidden="true" onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div
+                    role="dialog"
+                    aria-label="More filters"
+                    onKeyDown={e => { if (e.key === 'Escape') setFiltersOpen(false) }}
+                    style={{
+                      position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 41,
+                      width: 'min(320px, calc(100vw - 32px))', padding: '12px',
+                      display: 'flex', flexDirection: 'column', gap: '8px',
+                      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(48,53,54,0.14)',
+                    }}
+                  >
+                    <select
+                      className="boe-input expense-filter-select"
+                      aria-label="Filter by category"
+                      value={filters.categoryId}
+                      onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
+                    >
+                      <option value="">All categories</option>
+                      {selectableCategories(categories, filters.categoryId || null).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
 
-            <label className="expense-filter-check">
-              <input
-                type="checkbox"
-                checked={!!filters.missingBill}
-                onChange={e => setFilters(prev => ({ ...prev, missingBill: e.target.checked }))}
-              />
-              Missing bill
-            </label>
+                    <select
+                      className="boe-input expense-filter-select"
+                      aria-label="Filter by payment mode"
+                      value={filters.paymentMode}
+                      onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
+                    >
+                      <option value="">All modes</option>
+                      {EXPENSE_PAYMENT_MODES.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      className="boe-input expense-filter-select"
+                      aria-label="Filter by payment source and reimbursement"
+                      data-testid="expense-reimbursement-filter"
+                      value={filters.reimbursement ?? ''}
+                      onChange={e => setFilters(prev => ({ ...prev, reimbursement: e.target.value as ReimbursementFilter }))}
+                    >
+                      {REIMBURSEMENT_FILTER_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+
+                    {/* Only for company-wide Finance sight: anybody else sees their own
+                        expenses only, and a list of every colleague would be clutter. */}
+                    {caps.canViewAllFinance && (
+                      <select
+                        className="boe-input expense-filter-select"
+                        aria-label="Filter by who paid"
+                        value={filters.paidBy ?? ''}
+                        onChange={e => setFilters(prev => ({ ...prev, paidBy: e.target.value }))}
+                      >
+                        <option value="">Anyone paid</option>
+                        {payers.map(p => (
+                          <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    <label className="expense-filter-check">
+                      <input
+                        type="checkbox"
+                        checked={!!filters.missingBill}
+                        onChange={e => setFilters(prev => ({ ...prev, missingBill: e.target.checked }))}
+                      />
+                      Missing bill
+                    </label>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                      <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost" disabled={!narrowed}
+                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
+                        Clear filters
+                      </button>
+                      <button type="button" onClick={() => setFiltersOpen(false)} className="boe-btn boe-btn-primary"
+                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* The list as filtered, in Excel. For people who reimburse only. */}
             {mayRecord && (
@@ -829,74 +959,20 @@ export function ExpensesView() {
                 data-testid="download-expense-list"
                 disabled={downloading !== null || listLoading || !!listError || rows.length === 0}
                 onClick={() => void downloadList()}
-                style={{ minHeight: '40px', fontSize: '12.5px' }}
+                style={{ height: '36px', minHeight: '36px', fontSize: '12.5px' }}
               >
                 {downloading === 'list' ? 'Preparing…' : 'Download Excel'}
               </button>
             )}
 
-            {narrowed && (
-              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
-                Clear filters
+            {/* Anything narrowing the list shows how to undo it without opening the panel. */}
+            {narrowed && !filtersOpen && (
+              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear"
+                style={{ height: '36px', minHeight: '36px' }}>
+                Clear
               </button>
             )}
           </div>
-
-          {/* ── The total of what is on screen ──
-              Stated as what it is. When the cap has bitten it says which rows it
-              describes rather than presenting a partial figure as the whole.
-              DELETED EXPENSES ARE NOT IN IT: the query excluded them and
-              expenseTotal excludes them again. */}
-          <div
-            aria-live="polite"
-            style={{
-              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-              gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
-              padding: '10px 12px', borderRadius: '8px',
-              border: `1px solid ${colors.border}`, background: colors.raised,
-            }}
-          >
-            <span style={{ fontSize: '12px', color: colors.tertiary }}>
-              {listLoading
-                ? 'Loading…'
-                : listError
-                  ? 'Total unavailable'
-                  : capped
-                    ? `Total of the ${rows.length} most recent shown, of ${total}`
-                    : `Total${narrowed ? ' (filtered)' : ''} · ${total} ${total === 1 ? 'expense' : 'expenses'}`}
-            </span>
-            <span style={{
-              fontSize: '17px', fontWeight: 700, color: colors.primary,
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {listLoading || listError ? '—' : formatMoney(shownTotal)}
-            </span>
-          </div>
-
-          {/* ── WHAT IS OWED ── Independent of the filters. One tap narrows the
-              list to exactly these, which is where they are selected. */}
-          {pendingSummary && pendingSummary.count > 0 && filters.reimbursement !== 'pending' && (
-            <button
-              type="button"
-              data-testid="pending-reimbursement-summary"
-              onClick={() => setFilters(prev => ({ ...prev, reimbursement: 'pending' }))}
-              className="boe-btn"
-              style={{
-                width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                gap: '10px', flexWrap: 'wrap', marginBottom: '10px', padding: '9px 12px', minHeight: '44px',
-                borderRadius: '8px', textAlign: 'left',
-                border: `1px solid ${STATE_TONE.pending.border}`, background: STATE_TONE.pending.bg,
-              }}
-            >
-              <span style={{ fontSize: '12px', color: STATE_TONE.pending.fg, fontWeight: 600 }}>
-                Pending reimbursement · {pendingSummary.count} {pendingSummary.count === 1 ? 'expense' : 'expenses'}
-                {pendingSummary.capped ? ' (total of the first 2000)' : ''}
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: STATE_TONE.pending.fg, fontVariantNumeric: 'tabular-nums' }}>
-                {formatMoney(pendingSummary.total)} <span aria-hidden="true">›</span>
-              </span>
-            </button>
-          )}
 
           {capped && !listLoading && !listError && (
             <div role="status" style={{
@@ -1420,17 +1496,27 @@ export function ExpenseTable({
             <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
               {expensePaymentModeLabel(row.payment_mode)}
             </td>
-            {/* COMPACT, and complete on hover: a remark is context, not a field
-                anybody scans down a column. */}
-            <td style={{ ...TD, fontSize: '12px', color: colors.tertiary }} title={row.remark ?? ''}>
-              {row.remark ?? '—'}
-            </td>
             <td style={{ ...TD, fontSize: '12px', color: colors.tertiary }} title={personName(row.created_by)}>
               {personName(row.created_by)}
             </td>
             <td style={{ ...TD, textAlign: 'right' }}>
-              {mayEdit(row) || mayDelete(row) ? (
+              {onOpen || mayEdit(row) || mayDelete(row) ? (
                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  {/* VIEW IS FOR EVERYBODY WHO CAN SEE THE ROW: it opens the
+                      details window (remark, bills, reimbursement) and changes
+                      nothing. */}
+                  {onOpen && (
+                    <button
+                      type="button"
+                      onClick={() => onOpen(row)}
+                      className="boe-btn boe-btn-ghost"
+                      style={{ padding: '4px 9px', fontSize: '12px' }}
+                      aria-label={`View the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                      data-testid="expense-view"
+                    >
+                      View
+                    </button>
+                  )}
                   {mayEdit(row) && (
                     <button
                       onClick={() => onEdit(row)}
@@ -1534,17 +1620,23 @@ export function ExpenseCards({
             </div>
           )}
 
-          {row.remark && (
-            <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
-              {row.remark}
-            </div>
-          )}
-
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
             <span style={{ fontSize: '12px', color: colors.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {personName(row.created_by)}
             </span>
             <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+              {onOpen && (
+                <button
+                  type="button"
+                  onClick={() => onOpen(row)}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ minHeight: '40px', padding: '6px 14px', fontSize: '12.5px' }}
+                  aria-label={`View the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                  data-testid="expense-view"
+                >
+                  View
+                </button>
+              )}
               {mayEdit(row) && (
                 <button
                   onClick={() => onEdit(row)}
