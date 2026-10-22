@@ -618,7 +618,7 @@ function ReceivedPaymentsViewInner(
     const [{ data, error }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, legacy_order_no, legacy_client_name, created_at')
         .in('payment_request_id', rows.map(r => r.id))
         .eq('status', 'active'),
       canViewAllRef.current,
@@ -768,7 +768,7 @@ function ReceivedPaymentsViewInner(
     const [{ data: allocRows, error: allocErr }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, legacy_order_no, legacy_client_name, created_at')
         .eq('payment_request_id', id)
         .eq('status', 'active'),
       canViewAllRef.current,

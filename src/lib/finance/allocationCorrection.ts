@@ -50,6 +50,7 @@ import {
   subtractExact,
 } from './exactMoney'
 import { customerTargetLabel } from './mixedCustomers'
+import { LEGACY_ORDER_WORD } from './legacyOrderAllocation'
 
 export const CORRECT_ALLOCATION_ACTION_LABEL = 'Correct Allocation'
 export const CORRECT_ALLOCATION_MODAL_TITLE = 'Correct Allocation'
@@ -62,7 +63,9 @@ export const CORRECTION_REASON_MAX = 500
 
 export type AllocationLedgerEntry = {
   allocationId: string
-  kind: 'order' | 'submission'
+  /** 'legacy' is an OLD order not in this system (20270407000000). */
+  kind: 'order' | 'submission' | 'legacy'
+  /** For an old order: `legacy:<its number>`, never a record id. */
   targetId: string
   /** The Order number or the PI reference, from the complete ledger read. */
   reference: string | null
@@ -98,19 +101,26 @@ export type LedgerRpcRow = {
 /**
  * The payment's allocations, active first and then reversed.
  *
- * A row pointing at neither target is skipped: finance_payment_allocations_one_target
- * makes that impossible, and a line pointing nowhere would be worse than none.
+ * A row that is neither an Order, a PI Draft nor an old order is skipped:
+ * finance_payment_allocations_one_target makes that impossible, and a line
+ * pointing nowhere would be worse than none.
+ *
+ * An old order (neither id, but a reference) is an entry of kind 'legacy', told
+ * apart by its number.
  */
 export function buildAllocationLedger(rows: readonly LedgerRpcRow[]): AllocationLedgerEntry[] {
   const entries: AllocationLedgerEntry[] = []
 
   for (const row of rows) {
-    const targetId = row.order_id ?? row.order_submission_id
+    const isLegacy = !row.order_id && !row.order_submission_id && Boolean(row.target_reference?.trim())
+    const targetId = isLegacy
+      ? `legacy:${row.target_reference?.trim()}`
+      : row.order_id ?? row.order_submission_id
     if (!targetId) continue
     const share = parseExact(row.allocated_amount)
     entries.push({
       allocationId: row.allocation_id,
-      kind: row.order_id ? 'order' : 'submission',
+      kind: isLegacy ? 'legacy' : row.order_id ? 'order' : 'submission',
       targetId,
       reference: row.target_reference ?? null,
       clientName: row.client_name ?? null,
@@ -136,6 +146,7 @@ export function buildAllocationLedger(rows: readonly LedgerRpcRow[]): Allocation
 
 /** How one ledger target is written: "Order 0524" or "PI Draft 019". */
 export function ledgerTargetName(entry: Pick<AllocationLedgerEntry, 'kind' | 'reference'>): string {
+  if (entry.kind === 'legacy') return `${LEGACY_ORDER_WORD} ${entry.reference ?? ''}`.trim()
   // Never a uuid: a target the reader may not open is named by its kind.
   return customerTargetLabel(entry.kind, entry.reference)
 }
