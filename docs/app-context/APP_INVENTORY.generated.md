@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `caab1753` — Docs: migration 20270401000000 is applied (Operations dashboard)
-- Commits on this branch: 951
+- Commit: `e1029307` — Operations dashboard: Not aligned for manufacturing as a table
+- Commits on this branch: 952
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 349 (first `20260530_create_positions.sql`, latest `20270402000000_operations_dashboard_order_details.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 737   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
 - `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
 - `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
@@ -38,7 +39,6 @@
 - `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
-- `a59f7841` 2026-10-20 Redesign the Payment verification modal (Notion-style hierarchy)
 
 ## Pages by top-level area
 

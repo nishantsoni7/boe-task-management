@@ -54,6 +54,7 @@ Migration: `20270110000000_announcements.sql`. Local proof: `supabase/tests/run_
 - PDF: only PDF, > 0 bytes, under 10 MB (`ANNOUNCEMENT_PDF_MAX_BYTES`); blank type falls back to the `.pdf` extension; object key `{announcementId}/{timestamp}_{random}.pdf`; signed URL TTL 300 s (`ANNOUNCEMENT_PDF_URL_TTL_SECONDS`).
 - Limits in `ANNOUNCEMENT_LIMITS`: title 120, summary 280, body 20000.
 - One query feeds banner, header panel and list: React Query key `['announcements','mine', userId]`, `staleTime` 60 s; acknowledging updates all three. Page load writes nothing. Admin list key `['announcements','admin']`.
+- The left-nav "Announcements" entry is drawn by `BoeOsLayout` only while `my_announcements()` returns at least one row (read or not) and not in View As; admins follow the same rule. The layout loads the list itself (no prop), so every page using it agrees.
 - Not a notification: reading/marking/deleting ordinary notifications cannot affect announcement read state.
 
 ## 7. Key components & lib files
@@ -76,6 +77,7 @@ Migration: `20270110000000_announcements.sql`. Local proof: `supabase/tests/run_
 - Date maths: `announcement_india_date` takes the instant as a parameter for testing; UI uses `Intl.DateTimeFormat('en-CA', timeZone Asia/Kolkata)`; do not use `new Date().toISOString().slice(0,10)` (UTC) for "today".
 - The form grid once overflowed (fix #216: `minmax(0, 1fr)`); keep the pattern in new form columns.
 - A removed or replaced PDF cannot be opened by employees even if they have the old signed URL after 300 s.
+- The nav entry disappears when the last announcement expires or is ended; a cached list can keep it up to 60 s (staleTime).
 - No push/email notification when an announcement is published: recipients only see it by opening the Modules page (design choice, not a bug).
 - Stale staleTime 60 s: a new announcement can take up to a minute to show in an open tab.
 

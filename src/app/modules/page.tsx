@@ -629,7 +629,6 @@ export default function BoeOsHomePage() {
   // the list lands.
   const showAnnouncements = !viewMode && !!userId
   const { data: myAnnouncements = [] } = useMyAnnouncements(userId, showAnnouncements)
-  const unreadAnnouncements = showAnnouncements ? myAnnouncements.filter(a => !a.read_at).length : 0
   const showBell = showAnnouncements && !editingOrder
 
   // Whether Save has anything to write: the working arrangement against what is
@@ -813,7 +812,6 @@ export default function BoeOsHomePage() {
           // enough for three Essentials and five compact tiles across, and
           // narrow enough that a 1920 screen keeps real margins either side.
           contentMaxWidth={1400}
-          announcementUnread={unreadAnnouncements}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
           // only its position on the screen is different. The announcements

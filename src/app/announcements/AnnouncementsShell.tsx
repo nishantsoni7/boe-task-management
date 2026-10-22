@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
-import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 
 // Announcements live in the BOE OS shell beside Home, not inside a module: every
 // signed-in employee reaches them, and what each one sees is decided by the
@@ -21,7 +20,6 @@ export function AnnouncementsShell({
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { ready, userId, role, profile } = usePermissionContext()
-  const { data: mine = [] } = useMyAnnouncements(userId)
 
   useEffect(() => {
     if (ready && userId === null) router.replace('/login')
@@ -36,7 +34,6 @@ export function AnnouncementsShell({
       subtitle={subtitle}
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
       contentMaxWidth={880}
-      announcementUnread={mine.filter(a => !a.read_at).length}
     >
       {children({ userId, isAdmin: role === 'admin' })}
     </BoeOsLayout>
