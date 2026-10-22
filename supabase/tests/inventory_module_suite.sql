@@ -273,5 +273,14 @@ select public.t_eq('old booking history kept', (select count(*) from public.inve
 -- ═══ 9. The CHECK is the last line of defence ═══
 select public.t_fails('update public.inventory_items set qty_sold = qty_total + 1 where product_code = ''CH-001''', 'new row for relation "inventory_items" violates check constraint');
 
+-- ═══ 10. Standard and retail price (20270408000000) ═══
+select public.t_as(public.t_id('manager'));
+select public.t_fails(format('select public.inventory_save_item(null, %L::jsonb, array[public.t_img(5)])', (public.t_data('RP-001', 1) - 'retail_price')::text), 'INVENTORY_INVALID: Enter a valid retail price');
+select public.t_fails(format('select public.inventory_save_item(null, %L::jsonb, array[public.t_img(5)])', (public.t_data('RP-002', 1) || '{"retail_price": 4000}')::text), 'INVENTORY_INVALID: Retail price cannot be below the standard price');
+select public.inventory_save_item(null, public.t_data('RP-003', 1) || '{"retail_price": 4500}', array[public.t_img(5)]);
+select public.t_eq('retail may equal standard', (select retail_price from public.inventory_items where product_code = 'RP-003'), 4500.00::numeric);
+select public.t_reset();
+select public.t_fails('update public.inventory_items set retail_price = 1 where product_code = ''RP-003''', 'new row for relation "inventory_items" violates check constraint');
+
 select 'INVENTORY SUITE PASSED' as result;
 rollback;
