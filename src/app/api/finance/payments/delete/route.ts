@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
     'begin_finance_payment_deletion',
     { p_payment_id: paymentId, p_reason: reason, p_confirm_payment_id: confirmPaymentId })
   if (claimErr) {
+    console.error('[payment-delete] begin failed', paymentId, claimErr.message)
     const code = classifyPaymentDeletionError(claimErr)
     return fail({ code, status: HTTP_FOR[code] ?? 500 })
   }
@@ -158,6 +159,26 @@ export async function POST(req: NextRequest) {
     // A key storage confirms is recorded even when others failed, so the next
     // attempt has less to do rather than the same amount.
     const confirmed = (removed ?? []).map(entry => entry.name).filter(Boolean)
+
+    // AN OBJECT THAT IS ALREADY GONE IS REMOVED. storage.remove() answers an
+    // absent key with an empty result and no error, so a manifest entry whose
+    // file was never uploaded, or went earlier, could never be "confirmed" and
+    // every retry would fail the same way. When the sweep looks short, list the
+    // payment's own folder and count whatever is not there as removed; anything
+    // still listed stays outstanding.
+    if (!rmErr && confirmed.length < confined.length) {
+      const confirmedSet = new Set(confirmed)
+      const { data: listed, error: listErr } = await service.storage
+        .from(PROOF_BUCKET).list(paymentId, { limit: 1000 })
+      if (!listErr && listed) {
+        const present = new Set(listed.map(entry => `${paymentId}/${entry.name}`))
+        for (const path of confined) {
+          if (!confirmedSet.has(path) && !present.has(path)) confirmed.push(path)
+        }
+      }
+    }
+
+    if (rmErr) console.error('[payment-delete] storage remove failed', paymentId, rmErr.message)
     if (confirmed.length > 0) {
       await authClient.rpc('record_finance_payment_proof_removed', {
         p_payment_id: paymentId, p_claim_token: claimToken, p_removed: confirmed,
@@ -180,6 +201,7 @@ export async function POST(req: NextRequest) {
     'finalize_finance_payment_deletion',
     { p_payment_id: paymentId, p_claim_token: claimToken })
   if (finErr) {
+    console.error('[payment-delete] finalize failed', paymentId, finErr.message)
     const code = classifyPaymentDeletionError(finErr)
     return fail({ code, status: HTTP_FOR[code] ?? 500, detail: { retry: PAYMENT_DELETE_RETRY_MESSAGE } })
   }
