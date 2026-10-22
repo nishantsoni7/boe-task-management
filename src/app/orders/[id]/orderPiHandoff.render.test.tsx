@@ -493,7 +493,8 @@ describe('/orders/[id] itself', () => {
 
   test('the four anchored Order reads are issued together', () => {
     assert.ok(page.includes('await Promise.all(['))
-    assert.ok(page.includes('const handoff = loadPiHandoff(mapped)'))
+    // 2026-10-22: handed the PI reads when the database answered the whole page in one call (order_page_bundle)
+    assert.ok(page.includes('const handoff = loadPiHandoff(mapped, bundle?.pi)'))
   })
 
   test('the Order select asks for the link and the billing percentage', () => {
