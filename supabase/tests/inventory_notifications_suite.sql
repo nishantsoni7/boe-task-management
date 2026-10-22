@@ -50,7 +50,7 @@ insert into storage.objects (bucket_id, name, owner_id) select 'inventory-images
 -- a product to book
 select public.t_as(public.t_id('manager'));
 select public.inventory_save_item(null, jsonb_build_object('product_code', 'NT-001', 'name', 'Teak chair', 'size_text', '45 cm',
-  'material', 'Teak', 'price', 4500, 'condition', 'new', 'stage', 'ready', 'qty_total', 20), array[(select path from t_img where n = 1)]);
+  'material', 'Teak', 'price', 4500, 'retail_price', 5200, 'condition', 'new', 'stage', 'ready', 'qty_total', 20), array[(select path from t_img where n = 1)]);
 select public.t_reset();
 
 create function public.t_item() returns uuid language sql as $$ select id from public.inventory_items where product_code = 'NT-001' $$;

@@ -16,8 +16,8 @@ export const DEFAULT_FILTERS: ItemFilters = { q: '', stages: [], conditions: [],
 
 export const SORTS: { value: SortKey; label: string }[] = [
   { value: 'recent', label: 'Recently updated' },
-  { value: 'price_low', label: 'Price: low to high' },
-  { value: 'price_high', label: 'Price: high to low' },
+  { value: 'price_low', label: 'Retail price: low to high' },
+  { value: 'price_high', label: 'Retail price: high to low' },
   { value: 'available', label: 'Most available' },
   { value: 'code', label: 'Product code' },
 ]
@@ -47,8 +47,8 @@ export function filterItems(items: InventoryItem[], f: ItemFilters): InventoryIt
 export function sortItems(items: InventoryItem[], key: SortKey): InventoryItem[] {
   const out = [...items]
   switch (key) {
-    case 'price_low': return out.sort((a, b) => a.price - b.price || a.product_code.localeCompare(b.product_code))
-    case 'price_high': return out.sort((a, b) => b.price - a.price || a.product_code.localeCompare(b.product_code))
+    case 'price_low': return out.sort((a, b) => a.retail_price - b.retail_price || a.product_code.localeCompare(b.product_code))
+    case 'price_high': return out.sort((a, b) => b.retail_price - a.retail_price || a.product_code.localeCompare(b.product_code))
     case 'available': return out.sort((a, b) => b.qty_available - a.qty_available || a.product_code.localeCompare(b.product_code))
     case 'code': return out.sort((a, b) => a.product_code.localeCompare(b.product_code, undefined, { numeric: true }))
     default: return out.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
@@ -63,7 +63,7 @@ export const activeFilterCount = (f: ItemFilters): number =>
 
 export type Totals = { products: number; units: number; available: number; sold: number; reserved: number; value: number }
 
-/** The stats strip. `value` is the price of what is still available. */
+/** The stats strip. `value` is the retail price of what is still available. */
 export function totalsOf(items: InventoryItem[]): Totals {
   return items.reduce<Totals>((t, i) => ({
     products: t.products + 1,
@@ -71,6 +71,6 @@ export function totalsOf(items: InventoryItem[]): Totals {
     available: t.available + i.qty_available,
     sold: t.sold + i.qty_sold,
     reserved: t.reserved + i.qty_reserved,
-    value: t.value + i.qty_available * Number(i.price),
+    value: t.value + i.qty_available * Number(i.retail_price),
   }), { products: 0, units: 0, available: 0, sold: 0, reserved: 0, value: 0 })
 }

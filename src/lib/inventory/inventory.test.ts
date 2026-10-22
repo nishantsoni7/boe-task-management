@@ -16,7 +16,7 @@ import { classifyInventoryError } from './errors'
 
 const item = (over: Partial<InventoryItem> = {}): InventoryItem => ({
   id: '1', product_code: 'CH-001', name: 'Teak dining chair', category: 'Chairs', size_text: '45 × 50 × 90 cm', material: 'Teak',
-  description: null, price: 4500, condition: 'new', stage: 'ready', expected_ready_on: null,
+  description: null, price: 4500, retail_price: 5200, condition: 'new', stage: 'ready', expected_ready_on: null,
   qty_total: 10, qty_reserved: 0, qty_sold: 0, qty_available: 10, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
   inventory_images: [{ path: 'b', position: 1 }, { path: 'a', position: 0 }], ...over,
 })
@@ -73,9 +73,9 @@ describe('pictures', () => {
 
 describe('filters, sort and totals', () => {
   const items = [
-    item({ id: 'a', product_code: 'CH-010', name: 'Oak chair', material: 'Oak', stage: 'finishing', condition: 'new', price: 3000, qty_available: 5, updated_at: '2026-10-02T00:00:00Z' }),
-    item({ id: 'b', product_code: 'SF-002', name: 'Velvet sofa', category: 'Sofas', material: 'Velvet', stage: 'awaiting_upholstery', condition: 'refurbished', price: 24000, qty_total: 2, qty_sold: 2, qty_available: 0, updated_at: '2026-10-05T00:00:00Z' }),
-    item({ id: 'c', product_code: 'TB-001', name: 'Antique table', category: null, stage: 'under_repair', condition: 'antique', price: 9000, qty_total: 1, qty_available: 1, updated_at: '2026-10-03T00:00:00Z' }),
+    item({ id: 'a', product_code: 'CH-010', name: 'Oak chair', material: 'Oak', stage: 'finishing', condition: 'new', price: 3000, retail_price: 3500, qty_available: 5, updated_at: '2026-10-02T00:00:00Z' }),
+    item({ id: 'b', product_code: 'SF-002', name: 'Velvet sofa', category: 'Sofas', material: 'Velvet', stage: 'awaiting_upholstery', condition: 'refurbished', price: 24000, retail_price: 26000, qty_total: 2, qty_sold: 2, qty_available: 0, updated_at: '2026-10-05T00:00:00Z' }),
+    item({ id: 'c', product_code: 'TB-001', name: 'Antique table', category: null, stage: 'under_repair', condition: 'antique', price: 9000, retail_price: 10000, qty_total: 1, qty_available: 1, updated_at: '2026-10-03T00:00:00Z' }),
   ]
   it('search matches every word across code, name, material and stage', () => {
     assert.deepEqual(filterItems(items, { ...DEFAULT_FILTERS, q: 'oak chair' }).map(i => i.id), ['a'])
@@ -109,7 +109,7 @@ describe('filters, sort and totals', () => {
     assert.equal(t.units, 13)
     assert.equal(t.available, 6)
     assert.equal(t.sold, 2)
-    assert.equal(t.value, 5 * 3000 + 0 + 9000)
+    assert.equal(t.value, 5 * 3500 + 0 + 10000)
   })
   it('categories are distinct and sorted; filter count ignores search and sort', () => {
     assert.deepEqual(categoriesOf(items), ['Chairs', 'Sofas'])
@@ -124,7 +124,7 @@ describe('WhatsApp', () => {
   it('carries the facts a buyer asks about, with the pictures last', () => {
     const lines = msg.split('\n')
     assert.equal(lines[0], '*Teak dining chair*')
-    for (const want of ['Code: CH-001', 'Size: 45 × 50 × 90 cm', 'Material: Teak', 'Condition: New', 'Status: Ready in about 12 days', 'Price: ₹4,500 each', 'Available: 8', 'Walnut finish available.']) {
+    for (const want of ['Code: CH-001', 'Size: 45 × 50 × 90 cm', 'Material: Teak', 'Condition: New', 'Status: Ready in about 12 days', 'Price: ₹5,200 each', 'Available: 8', 'Walnut finish available.']) {
       assert.ok(lines.includes(want), `missing ${want}`)
     }
     assert.deepEqual(lines.slice(-3), ['Photos:', 'https://x/1.jpg', 'https://x/2.jpg'])
@@ -138,7 +138,7 @@ describe('WhatsApp', () => {
     assert.match(buildShareMessage(item({ qty_available: 0 }), { imageUrls: [], includePrice: true }), /Currently sold out/)
   })
   it('a single piece is not "each"', () => {
-    assert.match(buildShareMessage(item({ qty_total: 1, qty_available: 1 }), { imageUrls: [], includePrice: true }), /Price: ₹4,500$/m)
+    assert.match(buildShareMessage(item({ qty_total: 1, qty_available: 1 }), { imageUrls: [], includePrice: true }), /Price: ₹5,200$/m)
   })
   it('wa.me links: digits only, text encoded', () => {
     assert.equal(waDigits('98765 43210'), '919876543210')

@@ -5,17 +5,16 @@
 
 ## Snapshot
 
-- Commit: `d3437f5d` — Merge remote-tracking branch 'origin/main' into fix/expense-list-spacing
-- Commits on this branch: 974
+- Commit: `4d39048f` — Expenses list: text no longer cut, Filters panel without dead space (#419)
+- Commits on this branch: 973
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
-- Migrations: 354 (first `20260530_create_positions.sql`, latest `20270407000000_finance_allocate_to_old_order.sql`)
+- Migrations: 355 (first `20260530_create_positions.sql`, latest `20270408000000_inventory_retail_price.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 742   Enums: 0
 - Test files: 638   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `d3437f5d` 2026-10-22 Merge remote-tracking branch 'origin/main' into fix/expense-list-spacing
-- `c4fecf2d` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space
+- `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
 - `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
 - `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
 - `6ab93daa` 2026-10-22 Make Payment IDs clearer in the Confirmed Payments table (#417)
@@ -39,6 +38,7 @@
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
 - `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
+- `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
 
 ## Pages by top-level area
 
@@ -356,7 +356,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270314000000_inventory_notification_types.sql`
 - `20270314000100_inventory_booking_notifications.sql`
 - `20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql`
 - `20270316000000_order_submission_deletion_awaiting_approval.sql`
@@ -386,6 +385,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270405000000_payment_deletion_clears_allocation_intents.sql`
 - `20270406000000_order_page_bundle.sql`
 - `20270407000000_finance_allocate_to_old_order.sql`
+- `20270408000000_inventory_retail_price.sql`
 
 ## All SQL function names
 

@@ -39,7 +39,10 @@ export type InventoryItem = {
   size_text: string
   material: string
   description: string | null
+  /** Standard price: the product with basic packaging. */
   price: number
+  /** Retail price: inclusive of taxes, transportation and packaging. */
+  retail_price: number
   condition: Condition
   stage: Stage
   expected_ready_on: string | null
@@ -58,6 +61,7 @@ export type Booking = {
   product_code: string
   item_name: string
   price: number
+  retail_price: number
   thumb_path: string | null
   qty: number
   customer_name: string

@@ -82,7 +82,7 @@ create function public.t_item(p_code text) returns uuid language sql as $$
   select id from public.inventory_items where product_code = p_code and deleted_at is null $$;
 create function public.t_data(p_code text, p_qty int, p_stage text default 'ready') returns jsonb language sql as $$
   select jsonb_build_object('product_code', p_code, 'name', 'Teak chair', 'size_text', '45 x 50 x 90 cm', 'material', 'Teak',
-    'price', 4500, 'condition', 'new', 'stage', p_stage, 'qty_total', p_qty, 'category', 'Chairs') $$;
+    'price', 4500, 'retail_price', 5200, 'condition', 'new', 'stage', p_stage, 'qty_total', p_qty, 'category', 'Chairs') $$;
 
 -- ═══ 1. Registration ═══
 select public.t_eq('module registered', (select count(*) from public.permission_modules where module_key = 'inventory'), 1::bigint);

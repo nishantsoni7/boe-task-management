@@ -100,3 +100,9 @@ Rollback (documented in the migration header): drop the four tables and `invento
 - Read: `supabase/migrations/20270313000000_inventory_module.sql` (header explains the numbers), `20270314000100_inventory_booking_notifications.sql`, `src/lib/inventory/constants.ts`, `api.ts`, `src/lib/permissions/modules.ts` (inventory block).
 - Query: `supabase migration list --linked`; `select * from role_permissions rp join permission_modules pm ... where module_key='inventory'` and `employee_permission_overrides` to see who holds which action.
 - Run: `src/lib/inventory/*.test.ts`, `npm run permissions:check`, the two SQL suites on a disposable DB, and the migration-pin tests when adding a migration.
+
+## 13. Two prices (migration 20270408000000, branch feat/inventory-standard-retail-price)
+
+- `inventory_items.price` = STANDARD price (product with basic packaging; column unchanged). New `retail_price` = RETAIL price (taxes, transportation and packaging included), NOT NULL, CHECK `retail_price >= price`; existing rows backfilled retail = price, so the manager must set real retail prices.
+- `inventory_save_item` requires both (`price`, `retail_price`); `inventory_bookings_list` returns both. UI shows both everywhere; sort, stats value, booking totals and the WhatsApp "Price" line use the RETAIL price.
+- Not yet applied to prod; SQL suites updated but not run (no disposable DB here).

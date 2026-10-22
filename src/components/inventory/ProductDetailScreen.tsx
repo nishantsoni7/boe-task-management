@@ -140,8 +140,19 @@ export default function ProductDetailScreen() {
               <h2 className={s.title}>{item.name}</h2>
               <div className={s.codeLine}><StageBadge stage={item.stage} /><ConditionBadge condition={item.condition} /><StockBadge item={item} /></div>
               <div>
-                <div className={s.bigPrice}>{formatPrice(item.price)}</div>
-                <div className={s.bigPriceNote}>per piece{item.qty_available > 1 ? ` · ${formatPrice(Number(item.price) * item.qty_available)} for all ${item.qty_available} available` : ''}</div>
+                <div className={s.priceRows}>
+                  <div className={s.priceRow}>
+                    <span className={s.priceLabel}>Retail price</span>
+                    <span className={s.bigPrice}>{formatPrice(item.retail_price)}</span>
+                    <span className={s.bigPriceNote}>per piece · includes taxes, transportation and packaging</span>
+                  </div>
+                  <div className={s.priceRow}>
+                    <span className={s.priceLabel}>Standard price</span>
+                    <span className={s.stdPrice}>{formatPrice(item.price)}</span>
+                    <span className={s.bigPriceNote}>per piece · product with basic packaging</span>
+                  </div>
+                </div>
+                {item.qty_available > 1 && <div className={s.bigPriceNote}>{formatPrice(Number(item.retail_price) * item.qty_available)} retail for all {item.qty_available} available</div>}
               </div>
               <div className={`${s.actions} ${s.actionsDesktop}`}>{bookingButton}{shareButton}</div>
             </div>

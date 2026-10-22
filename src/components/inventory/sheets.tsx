@@ -88,7 +88,7 @@ export function BookingSheet({
       <div className={s.field}>
         <span className={s.label} id="b-qty-l">How many?</span>
         <QtyStepper value={qty} onChange={setQty} min={1} max={max} label="Quantity to book" />
-        <div className={s.hint}>{item.qty_available} available · total {formatPrice(Number(item.price) * qty)} at {formatPrice(item.price)} each</div>
+        <div className={s.hint}>{item.qty_available} available · total {formatPrice(Number(item.retail_price) * qty)} at {formatPrice(item.retail_price)} retail each (standard {formatPrice(item.price)})</div>
       </div>
       <div className={s.field}>
         <label className={s.label} htmlFor="b-name">Customer name <span className={s.req}>*</span></label>
@@ -169,7 +169,7 @@ export function ShareSheet({ item, supabase, onClose }: { item: InventoryItem; s
       <pre className={s.preview} aria-label="Message preview">{text}</pre>
       <label className={s.checkRow}>
         <input type="checkbox" checked={includePrice} onChange={e => setIncludePrice(e.target.checked)} />
-        <span>Include the price<br /><span className={s.hint}>Turn off to send a catalogue message without it.</span></span>
+        <span>Include the retail price<br /><span className={s.hint}>Turn off to send a catalogue message without it.</span></span>
       </label>
       <div className={s.field}>
         <label className={s.label} htmlFor="w-phone">Customer WhatsApp number</label>

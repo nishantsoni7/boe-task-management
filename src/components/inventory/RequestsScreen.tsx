@@ -109,7 +109,7 @@ export default function RequestsScreen() {
                       <BookingBadge status={b.status} />
                     </div>
                     <span className={s.cardCode}>{b.product_code}</span>
-                    <span className={s.reqQty}>{b.qty} × {formatPrice(b.price)} = <strong>{formatPrice(Number(b.price) * b.qty)}</strong></span>
+                    <span className={s.reqQty}>{b.qty} × {formatPrice(b.retail_price)} retail = <strong>{formatPrice(Number(b.retail_price) * b.qty)}</strong></span>
                   </div>
                 </div>
 

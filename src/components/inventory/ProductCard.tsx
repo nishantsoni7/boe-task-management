@@ -22,7 +22,10 @@ export function ProductCard({ item, toUrl, priority = false }: { item: Inventory
         <span className={s.cardName}>{item.name}</span>
         <span className={s.cardMeta}>{item.size_text} · {item.material}</span>
         <div className={s.cardFoot}>
-          <span className={s.price}>{formatPrice(item.price)}</span>
+          <span className={s.priceStack}>
+            <span className={s.price}>{formatPrice(item.retail_price)}<span className={s.priceTag}>Retail</span></span>
+            <span className={s.priceStd}>{formatPrice(item.price)}<span className={s.priceTag}>Standard</span></span>
+          </span>
           <StockBadge item={item} />
         </div>
         {item.stage !== 'ready' && <span className={`${s.cardReady}${late ? ` ${s.late}` : ''}`}>{readyShort(item)}</span>}

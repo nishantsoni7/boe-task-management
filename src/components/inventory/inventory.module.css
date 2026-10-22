@@ -459,3 +459,11 @@
   .sheetOverlay, .sheet, .skel, .spin { animation: none; }
   .card { transition: none; }
 }
+
+.priceStack { display: flex; flex-direction: column; gap: 1px; }
+.priceStd { font-size: 12px; font-weight: 600; color: #686D6C; font-variant-numeric: tabular-nums; }
+.priceTag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #686D6C; margin-left: 5px; }
+.priceRows { display: flex; flex-direction: column; gap: 10px; }
+.priceRow { display: flex; flex-direction: column; gap: 2px; }
+.priceLabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #686D6C; }
+.stdPrice { font-size: 20px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; line-height: 1.1; }
