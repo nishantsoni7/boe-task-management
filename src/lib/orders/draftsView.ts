@@ -392,6 +392,33 @@ export const PI_DRAFT_LIST_COLUMNS = [
   'draft_reference', 'reserved_order_number',
 ].join(', ')
 
+/**
+ * THE LIST'S COLUMNS PLUS THE ADVANCE PERCENTAGE, in the same read (20270403000000).
+ *
+ * `attached_percent` is not a stored column: it is a function of the row
+ * (public.attached_percent(order_submissions)), which PostgREST lets a select ask for by
+ * name. Asking for it here is what turns the list's two dependent round trips (the rows,
+ * then the percentages for those ids) into ONE. The figure is still the one
+ * pi_submissions_advance_percent() computes, because the function calls it.
+ *
+ * A database without that migration refuses the column, so the page reads
+ * isMissingAttachedPercent() and falls back to the two-step read it always had.
+ */
+export const PI_DRAFT_LIST_COLUMNS_WITH_PERCENT = `${PI_DRAFT_LIST_COLUMNS}, attached_percent`
+
+/** True when a list read failed only because the database does not have the attached_percent column yet. */
+export function isMissingAttachedPercent(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  const said = `${error.message ?? ''}`
+  return /attached_percent/.test(said)
+    && (error.code === '42703' || error.code === 'PGRST204' || error.code === 'PGRST200' || /does not exist|could not find|not found/i.test(said))
+}
+
+/** What the read hands back for the percentage: a number, a numeric string, or nothing. */
+export function percentOfRow(row: { attached_percent?: number | string | null }): number | string | null {
+  return row.attached_percent === undefined ? null : row.attached_percent
+}
+
 export const PI_DRAFT_DETAIL_COLUMNS = [
   'id', 'status', 'client_name',
   // The draft's own PID- reference (20270114000000).

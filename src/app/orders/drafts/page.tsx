@@ -60,6 +60,9 @@ import {
   PI_DRAFTS_EMPTY_TEXT,
   PI_DRAFTS_SUBTITLE,
   PI_DRAFT_LIST_COLUMNS,
+  PI_DRAFT_LIST_COLUMNS_WITH_PERCENT,
+  isMissingAttachedPercent,
+  percentOfRow,
   PI_DRAFT_LIST_STATUSES,
   PI_DRAFT_STATUS_LABEL,
   PI_REVIEW_EMPTY_TEXT,
@@ -213,10 +216,10 @@ export default function PiDraftsPage() {
    * a second, unbounded read on every page load for a number nobody makes a
    * decision on. The column went; the query went with it.
    */
-  const draftsQuery = useCallback(() =>
+  const draftsQuery = useCallback((withPercent = true) =>
     supabase
       .from('order_submissions')
-      .select(PI_DRAFT_LIST_COLUMNS)
+      .select(withPercent ? PI_DRAFT_LIST_COLUMNS_WITH_PERCENT : PI_DRAFT_LIST_COLUMNS)
       .in('status', PI_DRAFT_LIST_STATUSES)
       .order('updated_at', { ascending: false })
       .limit(LIST_LIMIT), [supabase])
@@ -236,11 +239,20 @@ export default function PiDraftsPage() {
   ) => {
     setFailed(false)
 
-    const { data, error } = preloaded ?? await draftsQuery()
+    let result = preloaded ?? await draftsQuery()
+    // ONE ROUND TRIP WHEN THE DATABASE HAS THE COLUMN: the percentages ride with the rows
+    // (20270403000000). A database that does not have it yet refuses the column by name, and the
+    // list is read again the way it always was: rows, then the percentages for those ids.
+    let percentsWithRows = true
+    if (isMissingAttachedPercent(result.error)) {
+      percentsWithRows = false
+      result = await draftsQuery(false)
+    }
+    const { data, error } = result
 
     if (error || !data) { setEntries(null); setFailed(true); return }
 
-    const rows = data as unknown as PersistedSubmission[]
+    const rows = data as unknown as (PersistedSubmission & { attached_percent?: number | string | null })[]
 
     // ── Advance % received, for every row in ONE call ──
     //
@@ -250,7 +262,9 @@ export default function PiDraftsPage() {
     // leaves the row without a figure and it prints an honest dash — a missing
     // percentage is not 0%, and it is not a reason to hide the list.
     const advance = new Map<string, number | string | null>()
-    if (rows.length > 0) {
+    if (percentsWithRows) {
+      for (const r of rows) advance.set(r.id, percentOfRow(r))
+    } else if (rows.length > 0) {
       const { data: percents } = await supabase.rpc('pi_submissions_advance_percent', {
         p_submission_ids: rows.map(r => r.id),
       })
