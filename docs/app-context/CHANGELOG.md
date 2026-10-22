@@ -11,6 +11,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, eslint, full test suite; migration executed inside BEGIN…ROLLBACK against the linked DB (shape + per-row keys), nothing left behind. Not yet seen on screen signed in as Nitish.
 - **Rollback.** Re-emit `operations_orders_dashboard()` from 20270401000000 §6.
 
+## 2026-10-22 — Announcements nav entry only while something is active (PR open) · no migration
+- **Owner request.** The Announcements item in the left navigation should show only when an announcement is active for the person; otherwise it should not appear.
+- **What.** `BoeOsLayout` now loads `useMyAnnouncements` itself (same cached query as the banner, bell and list) and draws the entry only when the list is non-empty and the viewer is not previewing somebody else (View As). The unread count comes from the same list. The `announcementUnread` prop is removed; Modules and the Announcements shell no longer pass it, and Account Settings now agrees with them. Applies to admins too.
+- **Note.** `/announcements` itself still opens (empty list) for anyone who types the address.
+- **Proof.** tsc clean for `src`; announcements, launcher, drawer and nav tests pass.
+
 ## 2026-10-22 — Load time: open the database connection during page load (PR open) · no migration
 - **Why.** Every screen reads from the browser, so the first query of each page load first opened a connection (DNS + TCP + TLS, about three round trips) only after the scripts had booted. Measured on the live site (admin, warm): HTML ready in about 75 ms, first query not sent until about 245-285 ms, and the first answer back at about 480-780 ms; the database round trip itself is about 63 ms and the queries run in a few ms inside the database, so the waiting is connection setup and the chain of reads, not the database.
 - **What.** `src/app/layout.tsx` adds `preconnect(NEXT_PUBLIC_SUPABASE_URL, { crossOrigin: 'anonymous' })` (anonymous because the data client's cross-origin fetches carry no cookies and use their own connection pool). A hint only: no URL, no hint.
