@@ -8,7 +8,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Report.** Deleting P-AA-0040 kept showing "Payment deletion did not finish". The production log (added by #408) named the cause: `finance_payment_allocation_intents_applied_allocation_id_fkey`.
 - **Cause.** A payment entered with a destination has an intent whose `applied_allocation_id` names its allocation. The BEFORE DELETE release trigger deletes the allocations while that intent still points at one; the cascade to the intents runs only afterwards. The earlier storage theory (#408) was not the cause, though that change is harmless.
 - **Database.** `finalize_finance_payment_deletion` re-emitted from 20270331000000 §4 by script plus one statement: delete the payment's intents before the payment. Signature, grants, authorization, claim, bank-link rule unchanged. No table, column, policy or permission change.
-- **Proof.** Source-level test `paymentDeletionClearsIntents.test.ts` (order of the delete, body otherwise identical to 20270331000000). NOT executed against Postgres: no local database was available.
+- **Proof.** Source-level test `paymentDeletionClearsIntents.test.ts`, plus a run on a disposable Postgres 16 (docker): with the shaped schema, the deployed 20261011/20261218 bodies and 20270331 applied, an admin's finalize on a payment with an applied intent FAILED with the exact production error; after applying 20270405000000 the same finalize succeeded (payment, intent gone; claim finalized; 1 allocation released). Not run against the real schema or live data.
 - **Owner steps.** Back up, apply 20270405000000, then retry deleting P-AA-0040.
 - **Rollback.** Re-emit the 20270331000000 §4 body.
 
