@@ -2458,11 +2458,14 @@ function PiDraftDetailPageInner() {
       actions={<>
         <AmountsToggle hidden={amountsHidden} onChange={setAmountsHidden} />
         {editPiAction}
-        {backButton}
       </>}
     >
       <AmountMaskRegion hidden={amountsHidden}>
       <div className="pi-detail-stack">
+
+        {/* Back to wherever this PI was opened from, top-left, in the same place and the same
+            style as on the Order page (the header holds actions; a way back is not one). */}
+        <RecordBackLink fallbackHref="/orders/drafts" className="order-back" />
 
         {justSaved && <PiSavedStrip />}
 

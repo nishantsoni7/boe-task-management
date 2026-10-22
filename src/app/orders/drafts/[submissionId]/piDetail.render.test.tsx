@@ -3393,8 +3393,10 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('Edit PI is a compact header action, and the full-width Edit PI card is gone', () => {
     assert.ok(!page.includes('pi-edit-bar'), 'no full-width bar')
     assert.ok(!page.includes('are all edited in one place'), 'and no description card')
-    assert.ok(/actions=\{<>\s*<AmountsToggle[^>]*\/>\s*\{editPiAction\}\s*\{backButton\}\s*<\/>\}/.test(page),
-      'top right, beside Back (after the Hide amounts control)')
+    assert.ok(/actions=\{<>\s*<AmountsToggle[^>]*\/>\s*\{editPiAction\}\s*<\/>\}/.test(page),
+      'top right, after the Hide amounts control')
+    assert.ok(/<div className="pi-detail-stack">\s*(\{\/\*[\s\S]*?\*\/\}\s*)?<RecordBackLink fallbackHref="\/orders\/drafts" className="order-back" \/>/.test(page),
+      'Back is the first thing in the page, top-left, in the Order page\'s style')
   })
 
   test('the commercial breakdown and the activity trail come after them, together', () => {

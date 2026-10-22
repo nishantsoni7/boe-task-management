@@ -745,8 +745,7 @@ function FinancePageInner() {
       onSignOut={handleSignOut}
       onRefresh={reload}
       actions={
-        <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary"
-          style={{ padding: '6px 14px', fontSize: '12px' }}>
+        <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary">
           + New
         </button>
       }

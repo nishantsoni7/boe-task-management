@@ -18,6 +18,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Not changed.** Who may do what; the module guard; Finance data and RLS.
 - **Proof.** tsc, eslint, full suite, a new test (`financeStartupFewerReads.test.ts`). After-numbers in the PR.
 
+## 2026-10-22 — Consistency pass on Orders and Finance (PR open) · no migration
+- **How it was found.** Computed styles of every Orders and Finance list/page on the live site (title, buttons, inputs, table headers and cells, back control), compared. The lists already agree: titles 24 px bold, buttons 38 px / 8 px radius / 13 px, table headers 12 px medium muted, cells 13 px. The disagreements were four:
+  - Payment Requests "+ New" drew 12 px text (an inline override); now the standard 13 px.
+  - Expenses: the Date cell was 1 px too narrow, so 25 of 41 rows read "18 Oct 20…". The cell's right padding is 4 px (the column budget and the 930 px card breakpoint did not move). Its headers were bold; now medium like every other table.
+  - Back on a record: the Order page had it top-left (small text link), the PI Draft page top-right in the header as a button, both the same component. The PI Draft now matches the Order page; the header keeps only actions.
+- **Not changed, on purpose.** The Expenses table keeps its own 12 px dense cells and fixed column budget. Upload PI keeps its "← PI Drafts" header button (a flow page, not a record). The Add Expense submit button is 46 px tall (a form's main action), not a list button.
+- **Could not be checked.** Phone width: the browser window could not be resized here and the app refuses to be framed, so the phone layout was not seen.
+- **Proof.** tsc, eslint, full suite, a new test (`uiConsistencyPass.test.ts`) and the PI Draft's source pin updated.
+
 ## 2026-10-22 — Load time: the Orders dashboard opens with five reads, not nine (PR open) · no migration
 - **Measured (live, admin).** About 860 ms to open the dashboard from Confirmed Orders (865, 796, 1647, 933, 856; one 11 s outlier from an interrupted measurement dropped). Nine reads went out at once and a request finishes about 70 ms later for each one it waits beside. The database is not the cause: the dashboard functions run in 17-31 ms inside it.
 - **What.** The first group is the profile, the permissions and the three dashboard RPCs. The links to other queues at the foot of the page (PI Drafts count, operations handoffs) are read after the page has drawn (`loadQueueCounts`): the PI Drafts count unchanged, and ONE read of the undecided handoffs in place of three head counts, the three numbers taken from it with the same definitions (awaiting and addressed to the reader, awaiting and addressed to nobody, flagged). A refused handoffs read leaves its links absent, never a false "nothing waits".

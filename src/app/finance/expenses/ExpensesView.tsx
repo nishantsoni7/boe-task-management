@@ -1325,7 +1325,7 @@ function EmptyState({ title, body, action, tone }: {
 
 const TH: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left',
-  fontSize: '12px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 500, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
   borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
@@ -1387,7 +1387,7 @@ export function ExpenseTable({
                 <SelectBox row={row} selected={!!selected?.has(row.id)} onToggle={onToggleSelected} maySelect={maySelect} />
               </td>
             )}
-            <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>{fmtDate(row.expense_date)}</td>
+            <td style={{ ...TD, fontSize: '12px', color: colors.secondary, paddingRight: '4px' }}>{fmtDate(row.expense_date)}</td>
             <td style={{
               ...TD, fontSize: '13.5px', fontWeight: 700, color: colors.primary,
               textAlign: 'right', fontVariantNumeric: 'tabular-nums',
