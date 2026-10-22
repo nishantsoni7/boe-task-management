@@ -152,7 +152,7 @@ export function OrdersLayout({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
             <div>
-              <div className="boe-sidebar-brand-name">BOE</div>
+              <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Orders</div>
             </div>
           </div>

@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — "BOE One" in every sidebar; text wordmark on sign-in (PR open) · no migration
+- **Owner request.** All pages should say "BOE One", not "BOE"; the sign-in page drops the logo and shows "BOE One" in the logo colours.
+- **What.** The sidebar brand name in the 12 module layouts that said "BOE" now says "BOE One" (Control Center and Showroom QR keep their own names). `AuthShell` (sign in, forgot and reset password) shows a "BOE One" wordmark in `colors.brand` / `colors.brandInk` instead of the logo image.
+- **Not changed.** Quotation and confirmed-order PDF letterheads still print "BOE".
+- **Proof.** Not yet seen on screen.
+
 ## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
 - **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
 - **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").

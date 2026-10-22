@@ -183,7 +183,7 @@ terracotta `#B9472E` = actions/selection only; charcoal `#303536` text; canvas `
 recoloured to brand. Fonts Manrope (headings) + Inter (body), self-hosted woff2 via `next/font/local` in `src/app/fonts`
 (no Google fetch; Syne was removed after a build-time fetch failure); latin-ext files carry the rupee sign and load by
 `unicode-range`. Geometry: controls 8 px, panels 12 px, badges 6 px; focus ring 2 px terracotta `!important`. Visible app
-name is "BOE One" (`metadata.title`); logo files in `public/branding/` (`boe-one-logo-full.png`, `boe-one-logo-horizontal.png`,
+name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One" and the signed-out frame (`AuthShell`) shows a text wordmark "BOE One" in brand colours instead of the logo image; logo files in `public/branding/` (`boe-one-logo-full.png`, `boe-one-logo-horizontal.png`,
 `boe-icon.png`, `favicon.png`). No dark mode. PDFs/print layouts/Excel exports deliberately keep their own colours
 (PR #314 matched only the PDF accent red). `.boe-badge-urgent` was once referenced but undefined - now defined next to
 `.boe-badge-blocked`.

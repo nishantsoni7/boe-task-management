@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e1029307` — Operations dashboard: Not aligned for manufacturing as a table
-- Commits on this branch: 952
+- Commit: `a3c2c6d8` — Announcements: show the left-nav entry only while one is active
+- Commits on this branch: 953
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
 - Migrations: 349 (first `20260530_create_positions.sql`, latest `20270402000000_operations_dashboard_order_details.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 737   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
 - `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
@@ -38,7 +39,6 @@
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
 - `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
-- `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
 
 ## Pages by top-level area
 

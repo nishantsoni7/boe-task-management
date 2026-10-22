@@ -1,6 +1,6 @@
 import { colors, font } from '@/lib/tokens'
 
-// The signed-out frame: BOE logo, one card, the internal-use footer. Sign in,
+// The signed-out frame: BOE One wordmark, one card, the internal-use footer. Sign in,
 // Forgot password and Reset password all sit in it, so moving between them
 // changes only the card.
 export function AuthShell({ title, children }: { title: string; children: React.ReactNode }) {
@@ -17,18 +17,17 @@ export function AuthShell({ title, children }: { title: string; children: React.
 
         {/* Brand */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/branding/boe-one-logo-full.png"
-            alt="BOE One"
-            style={{
-              maxWidth: 'min(200px, 56vw)',
-              height: 'auto',
-              marginBottom: '16px',
-              display: 'block',
-              margin: '0 auto 16px',
-            }}
-          />
+          <h1 style={{
+            fontFamily: font.display,
+            fontWeight: 700,
+            fontSize: '36px',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
+            marginBottom: '12px',
+            color: colors.brand,
+          }}>
+            BOE <span style={{ color: colors.brandInk }}>One</span>
+          </h1>
           <p style={{ color: colors.tertiary, fontSize: '12.5px', lineHeight: 1.5 }}>
             Tasks, follow-ups, accountability, and daily work tracking for the BOE team.
           </p>
