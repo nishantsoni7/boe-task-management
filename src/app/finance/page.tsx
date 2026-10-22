@@ -21,7 +21,8 @@ import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView
 import { loadPaymentTotals } from '@/lib/finance/paymentCommercialTotals'
 import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
+import type { EffectivePermission } from '@/lib/permissions/types'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -455,22 +456,32 @@ function FinancePageInner() {
       // clicked: pageLoading is not cleared until all three have landed, and a
       // failed resolve still falls back to NO capabilities rather than to the
       // role.
-      const [{ data: me }, financePerms, ordersPerms] = await Promise.all([
+      //
+      // FEWER REQUESTS AT ONCE (2026-10-22). On the live site a request that waits
+      // beside ten others finishes about 70 ms later for each one: eleven at once
+      // took about a second. So this group is six requests, not eleven:
+      //   * ONE permissions read for every module (resolve_effective_permissions_
+      //     for_user) instead of one for finance and one for orders. It is the same
+      //     resolver, still fresh on every load, still failing closed to NO
+      //     capabilities; the two modules are taken from its answer.
+      //   * the four tab badges are read AFTER the first page of rows has drawn,
+      //     not beside it. A badge is a number beside a list; the list is what
+      //     somebody came for. Until a badge lands it is unknown and shows no
+      //     number (never 0).
+      const cutoffIso = archiveCutoffIso(Date.now())
+      setCutoffMs(Date.parse(cutoffIso))
+      const [{ data: me }, permsByModule] = await Promise.all([
         supabase
           .from('users')
           .select(USER_PROFILE_COLUMNS)
           .eq('id', uid)
           .single(),
-        getEffectivePermissions(supabase, uid, 'finance').catch(() => []),
-        // Orders module entry, for the Against cell's link only. In the same
-        // group, so it costs no additional wait; a failed read offers no link.
-        getEffectivePermissions(supabase, uid, 'orders').catch(() => []),
-        // The rows AND the four badge counts, in the same group. The counts are
-        // head-only — `count: 'exact', head: true` transfers no rows — so they
-        // cost four counts and no payload, and being in this group they cost no
-        // additional wait.
-        reload(),
+        getEffectivePermissionsForUser(supabase, uid).catch(() => new Map<string, EffectivePermission[]>()),
+        loadRequests(cutoffIso),
       ])
+      const financePerms = permsByModule.get('finance') ?? []
+      // Orders module entry, for the Against cell's link only; a failed read offers no link.
+      const ordersPerms = permsByModule.get('orders') ?? []
 
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')
@@ -478,6 +489,8 @@ function FinancePageInner() {
       setCanOpenOrders(deriveOrdersCapabilities(me?.role, ordersPerms).canAccessOrdersModule)
 
       setPageLoading(false)
+      // The four head-only counts (no rows transferred), against the SAME cutoff the rows used.
+      void loadCounts(cutoffIso)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
