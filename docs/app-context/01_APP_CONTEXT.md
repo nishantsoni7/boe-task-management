@@ -58,7 +58,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 14 | Review Workflow / Customer Reviews | Shipped | `modules/14-review-workflow.md` | Soft-deleted rows still match status predicates — always `deleted_at is null` |
 | 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass FIXED by `20270319000000` (applied 2026-10-18); admin permanent delete `20270326000000` (UNAPPLIED until merge) |
 | 16 | Assets & Access | Shipped | `modules/16-assets-access.md` | `accept_employee_asset` overloads must not declare DEFAULT |
-| 17 | Inventory | Shipped | `modules/17-inventory.md` | public bucket — no price/customer data in paths |
+| 17 | Inventory | Shipped (two prices: standard + retail, migration 20270408000000 not yet applied) | `modules/17-inventory.md` | public bucket — no price/customer data in paths |
 | 18 | Exhibition Leads | Shipped | `modules/18-exhibition-leads.md` | Anthropic scan; never force `tool_choice` |
 | 19 | Showroom QR & Showroom admin | Shipped, customer-facing | `modules/19-showroom-qr.md` | Preview must stay a read-only GET (number generation is a write) |
 | 20 | Sample Tracking | Shipped, thin | `modules/20-sample-tracking.md` | RLS is the only spec; `sample_notifications` table has no `create table` migration |
