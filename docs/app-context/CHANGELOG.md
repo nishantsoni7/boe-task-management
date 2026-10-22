@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Sign-in logo centred (PR open) · no migration
+- **Report.** After the brand kit (#410) the BOE One logo sat left of centre on sign-in / forgot / reset password.
+- **Cause.** The base CSS makes `img` a block element, so the wrapper's `text-align: center` did not apply. `AuthShell` now centres the logo with `display: block; margin: 0 auto`. Nothing else changed.
+- **Proof.** tsc; on screen the logo centre equals the card centre (512 = 512 px at a 1024 px viewport).
+
 ## 2026-10-22 — BOE One brand kit v1.0 applied (PR open) · no migration
 - **Owner request.** Apply the approved BOE One identity (kit `BOE-One-Production-Kit`); keep the parent BOE identity on company documents and the separate ERP.
 - **What.** Kit assets live in `public/brand/` (svg, icons, animated loader SVG; checksums matched the kit). Browser tab: SVG favicon + ICO fallback, 180px touch icon, theme colour #303536 via the Metadata/Viewport API (`src/app/icon.png` removed so no old icon competes). `public/manifest.json`: BOE One icons (192/512 `any` + dedicated maskable 192/512), kit colours; `start_url`, orientation and the Add Expense shortcut kept. Sidebar mark (`BoeBrandIcon`) is the BOE One app icon; sign-in / forgot / reset password (`AuthShell`) and the daily-quote splash show the horizontal BOE One logo. Logo colour tokens `--boe-one-*` added to `globals.css`.

@@ -24,7 +24,7 @@ export function AuthShell({ title, children }: { title: string; children: React.
               alt="BOE One"
               width={1220}
               height={330}
-              style={{ width: '100%', maxWidth: '240px', height: 'auto' }}
+              style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: '240px', height: 'auto' }}
             />
           </h1>
           <p style={{ color: colors.tertiary, fontSize: '12.5px', lineHeight: 1.5 }}>
