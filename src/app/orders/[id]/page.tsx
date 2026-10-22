@@ -57,6 +57,7 @@ import {
 } from '@/lib/orders/orderCommercial'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
+import { fetchOrderBundle, type PiReads } from '@/lib/orders/orderPageBundle'
 import {
   mergeOrderPayments,
   type OrderAllocationRow,
@@ -988,7 +989,7 @@ export default function OrderDetailPage() {
    * THREE READS, ISSUED TOGETHER, and only when the Order actually names a PI.
    * An Order with no source submission costs nothing at all here.
    */
-  const loadPiHandoff = async (order: Order) => {
+  const loadPiHandoff = async (order: Order, prefetched?: PiReads) => {
     const submissionId = order.source_order_submission_id
 
     // ── NOTHING FROM THE LAST ORDER SURVIVES THE FIRST LINE OF THIS ONE ──
@@ -1030,7 +1031,11 @@ export default function OrderDetailPage() {
       return
     }
 
-    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes, handoffsRes, commissionRes, commissionReadable] = await Promise.all([
+    // THE NINE READS, ALREADY IN HAND when the database answered the whole page in one call (order_page_bundle,
+    // 20270406000000); otherwise issued together, as they always were. The code below is the same for both.
+    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes, handoffsRes, commissionRes, commissionReadable] = prefetched
+      ? [prefetched.submission, prefetched.items, prefetched.images, prefetched.versions, prefetched.trail, prefetched.codes, prefetched.handoffs, prefetched.commission, prefetched.commissionReadable] as const
+      : await Promise.all([
       supabase
         .from('order_submissions')
         .select(ORDER_PI_HANDOFF_COLUMNS)
@@ -1123,9 +1128,12 @@ export default function OrderDetailPage() {
     // person may see this picture. A refusal yields no URL and the table shows
     // its honest "No image" box rather than a broken one.
     const [peopleRes, signedRes] = await Promise.all([
-      actorIds.length > 0
-        ? supabase.from('users').select('id, full_name, is_active').in('id', actorIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null; is_active: boolean | null }[] }),
+      // The names come with the bundle when there is one; otherwise one read, as before.
+      prefetched
+        ? Promise.resolve(prefetched.people)
+        : actorIds.length > 0
+          ? supabase.from('users').select('id, full_name, is_active').in('id', actorIds)
+          : Promise.resolve({ data: [] as { id: string; full_name: string | null; is_active: boolean | null }[] }),
       paths.length > 0
         ? supabase.storage.from(ORDER_FILES_BUCKET)
             .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
@@ -1399,14 +1407,19 @@ export default function OrderDetailPage() {
 
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
-    void loadAdvance()
+    // ONE READ FOR THE WHOLE PAGE when the database has the function (20270406000000): the Order, its PI, its
+    // payments and its history in a single round trip, instead of four in a row. Under the caller's own row-level
+    // security (the function is SECURITY INVOKER). null means "read it the way this page always did": the function
+    // is not there, refused, or answered something unexpected. The old reads below are unchanged.
+    const bundle = await fetchOrderBundle(supabase, id)
+    if (!bundle) void loadAdvance()
     // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
     // OLD one describes a list this page is about to stop showing. It is
     // superseded here rather than allowed to land afterwards; the reader's
     // open dialog simply asks again if they are still looking at it.
     paymentDetailGate.invalidate()
 
-    const { data: o } = await orderRowQuery()
+    const { data: o } = bundle ? bundle.orderRow : await orderRowQuery()
 
     if (!o) { setNotFound(true); releaseShell(); return }
 
@@ -1420,7 +1433,8 @@ export default function OrderDetailPage() {
     // on the Order row just read, so it overlaps the four reads below instead
     // of queueing behind them. Awaited at the end so a refresh still settles in
     // one commit.
-    const handoff = loadPiHandoff(mapped)
+    if (bundle) setAdvance(bundle.advance as AdvanceReadiness | null)
+    const handoff = loadPiHandoff(mapped, bundle?.pi)
 
     // FOUR ANCHORED READS, every one scoped to this Order and every one
     // RLS-checked — issued TOGETHER because none of them depends on another's
@@ -1437,13 +1451,19 @@ export default function OrderDetailPage() {
     //   change requests   not filtered to 'pending': a reader needs to see that
     //                     their last request was rejected, not just that they
     //                     have none open
+    // THE NAMES FOLLOW THE ORDER OF THE READS (2026-10-22). They used to read { aData, cData, apprData } for reads
+    // issued as activity, APPROVALS, change requests, so the approvals state was filled from the change requests and
+    // the change requests from the approvals. Invisible while both tables are empty (they are, today); the first
+    // recorded approval would have vanished from its card on the next full load. Now: activity, approvals, change requests.
     const [
       { data: pData },
       { data: allocData },
       { data: aData },
-      { data: cData },
       { data: apprData },
-    ] = await Promise.all([
+      { data: cData },
+    ] = bundle
+      ? [bundle.payments, bundle.allocations, bundle.activity, bundle.approvals, bundle.changeRequests] as const
+      : await Promise.all([
       supabase
         .from('finance_payment_requests')
         // THE SEVEN COLUMNS THE FIGURES ARE BUILT FROM, and not one more. What
@@ -1528,8 +1548,9 @@ export default function OrderDetailPage() {
     const paymentIds = merged.map(p => p.id)
     const activeTotals = new Map<string, string | number | null>()
     if (paymentIds.length > 0) {
-      const { data: totals } = await supabase
-        .rpc('payment_active_allocation_totals', { p_payment_ids: paymentIds })
+      const { data: totals } = bundle
+        ? { data: bundle.activeTotals }
+        : await supabase.rpc('payment_active_allocation_totals', { p_payment_ids: paymentIds })
       for (const row of (totals ?? []) as { payment_request_id: string; active_total: string | number | null }[]) {
         activeTotals.set(row.payment_request_id, row.active_total)
       }
