@@ -258,3 +258,15 @@ describe('the Expenses page top: two lines, and View for everybody', () => {
     assert.ok(/\{onOpen \|\| mayEdit\(row\) \|\| mayDelete\(row\) \?/.test(EXPENSES))
   })
 })
+
+describe('the Expenses list text is never cut, and the Filters panel has no dead space', () => {
+  const EXPENSES = read('src/app/finance/expenses/ExpensesView.tsx')
+  test('payee, category, mode and recorder cells wrap instead of ending in an ellipsis', () => {
+    assert.ok(EXPENSES.includes("whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip'"))
+    assert.equal((EXPENSES.match(/\.\.\.TD_TEXT/g) ?? []).length, 4)
+  })
+  test('every select in the Filters panel opts out of the class flex-basis that made it 160px tall', () => {
+    const panel = EXPENSES.slice(EXPENSES.indexOf('aria-label="More filters"'))
+    assert.equal((panel.match(/style=\{\{ flex: 'none', width: '100%', height: '36px'/g) ?? []).length, 4)
+  })
+})

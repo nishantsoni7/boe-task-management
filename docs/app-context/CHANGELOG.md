@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Expenses list: text no longer cut, Filters panel without dead space (PR open) · no migration
+- **Owner feedback after seeing #416 live.** List text was cut ("Physical Mar…"); the Filters panel had a lot of empty space.
+- **Cause.** Cells used one-line ellipsis; and `.expense-filter-select` sets `flex: 0 1 160px`, which inside the panel's column flexbox became a 160px HEIGHT.
+- **Fix.** Payee, category, mode and recorder cells wrap onto a second line (`TD_TEXT`); Actions column 150 -> 164px so View + Edit + Delete are not clipped (table threshold 880 -> 894px); the panel's selects are 36px tall and the panel is 280px wide.
+- **Proof.** tsc, expense tests (536). Not seen on screen.
 ## 2026-10-22 — Allocate a payment to an OLD order that is not in the system (PR open) · migration 20270407000000 (NOT yet applied)
 - **Owner request.** Payments often arrive for old orders that were never entered here, so Allocate Funds needs a custom option: type the old order number and the client name.
 - **What.** A third kind of allocation target: a **legacy order**, stored on `finance_payment_allocations` as `legacy_order_no` + `legacy_client_name` with neither `order_id` nor `order_submission_id`. It is a real allocation (the payment's allocated total, balance and Zero / Partially / Fully Allocated count it) but no Order or PI figure ever reads it, so it cannot reach the 40% gate. One active allocation per payment per old order number (number compared trimmed, spaces collapsed, upper case); reversal keeps the row as before. Allocate Funds and Record Payment (under the Confirmed Order destination only) get an "Old order (not in system)" button per row beside "Choose an Order or PI Draft"; Allocated Against, the allocation popup, the detail panel, Correct Allocation, the payment history and Delete Payment name it ("Old order AB-12 · Client"), with no link. The mixed-customer warning counts the typed client.

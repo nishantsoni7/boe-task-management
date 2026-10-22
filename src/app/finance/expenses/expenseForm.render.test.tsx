@@ -257,7 +257,7 @@ describe('table or cards, by the room actually available', () => {
     assert.equal(flexible.length, 1, 'Paid to takes the remainder; there is no Remark column')
     assert.ok(EXPENSE_TABLE_MIN_CONTAINER_PX - fixed >= EXPENSE_FLEX_COLUMN_MIN_PX,
       'the threshold leaves Paid to a readable width')
-    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 880, '718 fixed + 160 for Paid to + 2 for the border')
+    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 894, '732 fixed + 160 for Paid to + 2 for the border')
   })
 
   test('THE FIRST FRAME IS CARDS, so nothing can scroll sideways before measuring', () => {
