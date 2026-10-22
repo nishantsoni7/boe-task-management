@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Deleting a Confirmed Payment that was applied from an intent (PR open) · migration 20270405000000 (NOT YET APPLIED)
+- **Report.** Deleting P-AA-0040 kept showing "Payment deletion did not finish". The production log (added by #408) named the cause: `finance_payment_allocation_intents_applied_allocation_id_fkey`.
+- **Cause.** A payment entered with a destination has an intent whose `applied_allocation_id` names its allocation. The BEFORE DELETE release trigger deletes the allocations while that intent still points at one; the cascade to the intents runs only afterwards. The earlier storage theory (#408) was not the cause, though that change is harmless.
+- **Database.** `finalize_finance_payment_deletion` re-emitted from 20270331000000 §4 by script plus one statement: delete the payment's intents before the payment. Signature, grants, authorization, claim, bank-link rule unchanged. No table, column, policy or permission change.
+- **Proof.** Source-level test `paymentDeletionClearsIntents.test.ts` (order of the delete, body otherwise identical to 20270331000000). NOT executed against Postgres: no local database was available.
+- **Owner steps.** Back up, apply 20270405000000, then retry deleting P-AA-0040.
+- **Rollback.** Re-emit the 20270331000000 §4 body.
+
 ## 2026-10-22 — Payment delete: a proof file already gone from storage no longer blocks deletion (PR open) · no migration
 - **Report.** Deleting Confirmed Payment P-AA-0040 showed "Payment deletion did not finish. Retry deletion." on every retry.
 - **Likely cause (inferred from code, not seen in the live logs).** `/api/finance/payments/delete` counted a proof key as removed only when `storage.remove()` echoed it back. Storage returns nothing for a key that is not in the bucket, so a manifest entry with no object could never be confirmed and every retry ended in `STORAGE_INCOMPLETE`, which shares the generic message.
