@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — "BOE One" in every sidebar; text wordmark on sign-in (PR open) · no migration
+- **Owner request.** All pages should say "BOE One", not "BOE"; the sign-in page drops the logo and shows "BOE One" in the logo colours.
+- **What.** The sidebar brand name in the 12 module layouts that said "BOE" now says "BOE One" (Control Center and Showroom QR keep their own names). `AuthShell` (sign in, forgot and reset password) shows a "BOE One" wordmark in `colors.brand` / `colors.brandInk` instead of the logo image.
+- **Not changed.** Quotation and confirmed-order PDF letterheads still print "BOE".
+- **Proof.** Not yet seen on screen.
+
 ## 2026-10-22 — Expense reimbursement without edit rights, Excel downloads, all-reimbursements page (PR open) · migration 20270403000000 (APPLIED 2026-10-22)
 - **Owner request.** Nitish sees the owner's expenses but cannot edit or delete them; he multi-selects and reimburses with a Challan ID and date; Excel download for managing the data; after reimbursing, a download of that payment; a separate place to see every reimbursement; visible to Nitish and the owner only.
 - **Finding.** Reimbursing already existed but needed `finance.manage`, which also edits and deletes anybody's expense. So the door moved.

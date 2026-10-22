@@ -137,7 +137,7 @@ export function AttendancePayrollLayout({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
             <div>
-              <div className="boe-sidebar-brand-name">BOE</div>
+              <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">{ATTENDANCE_PAYROLL_MODULE_NAME}</div>
             </div>
           </div>

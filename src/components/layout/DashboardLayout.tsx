@@ -230,7 +230,7 @@ export function DashboardLayout({
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="boe-sidebar-brand-name">BOE</div>
+            <div className="boe-sidebar-brand-name">BOE One</div>
             <div className="boe-sidebar-brand-sub">Task Management</div>
           </div>
           <button

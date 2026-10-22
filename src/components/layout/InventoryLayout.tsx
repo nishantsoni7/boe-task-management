@@ -52,7 +52,7 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
             <div>
-              <div className="boe-sidebar-brand-name">BOE</div>
+              <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Inventory</div>
             </div>
           </div>

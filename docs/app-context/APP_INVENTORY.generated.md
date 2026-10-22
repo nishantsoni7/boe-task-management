@@ -5,23 +5,16 @@
 
 ## Snapshot
 
-- Commit: `79f1c30e` — Test: the reimburse migration pin no longer assumes it is the newest
-- Commits on this branch: 961
+- Commit: `d9f8b49f` — Show BOE One in every sidebar; text wordmark on sign-in
+- Commits on this branch: 954
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 351 (first `20260530_create_positions.sql`, latest `20270404000000_order_submission_attached_percent_computed_column.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 738   Enums: 0
-- Test files: 631   Next.js 16.2.6, React 19.2.4
+- Test files: 632   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `79f1c30e` 2026-10-22 Test: the reimburse migration pin no longer assumes it is the newest
-- `32ce9482` 2026-10-22 Merge remote-tracking branch 'origin/main' into feat/expense-reimburse-permission
-- `9a3a47cc` 2026-10-22 Renumber the PI Drafts migration to 20270404000000
-- `9ebe2b8b` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
-- `cc3e996a` 2026-10-22 Docs: migration 20270403000000 is applied (finance.reimburse)
-- `fc649914` 2026-10-22 Merge remote-tracking branch 'origin/main' into feat/expense-reimburse-permission
-- `54975223` 2026-10-22 Expenses: reimburse without edit rights, Excel downloads, all-reimbursements page
-- `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
+- `d9f8b49f` 2026-10-22 Show BOE One in every sidebar; text wordmark on sign-in
 - `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
@@ -39,6 +32,13 @@
 - `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
 - `edd424e8` 2026-10-21 Docs: record that the PI returned/rejected migrations are applied
 - `6be85e43` 2026-10-21 Orders: salesperson sees PIs sent back or rejected (dashboard + notification) (#383)
+- `9f530e60` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line (#382)
+- `01ae5d86` 2026-10-21 Orders/Finance: re-label real records stamped as test data (#384)
+- `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
+- `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
+- `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
+- `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
+- `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 
 ## Pages by top-level area
 
@@ -140,7 +140,7 @@
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 1 source, 2 test
-- `src/lib/navigation` — 4 source, 5 test
+- `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 72 source, 126 test
 - `src/lib/payroll` — 34 source, 32 test

@@ -87,7 +87,7 @@ export function SamplesLayout({
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="boe-sidebar-brand-name">BOE</div>
+            <div className="boe-sidebar-brand-name">BOE One</div>
             <div className="boe-sidebar-brand-sub">Sample Tracking</div>
           </div>
           <button
