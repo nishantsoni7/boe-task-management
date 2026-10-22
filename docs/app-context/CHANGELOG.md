@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Load time: PI Drafts in one round trip (PR open) · migration 20270403000000 (NOT APPLIED — waits for the owner)
+- **Measured first (live, admin).** A database call costs about 230-270 ms although the database answers in under 1 ms: about 63 ms network, about 45 ms for the browser's cross-origin check (uncached), and a fixed cost on the Supabase side. So a screen's time is the number of sequential rounds. PI Drafts took about 600 ms in steady state (932 and 1070 ms on the first two runs): one round for rows, profile and permissions, then a second for the advance percentages of those ids.
+- **What.** `public.attached_percent(order_submissions)`, a PostgREST computed column that calls the existing batch function `pi_submissions_advance_percent()` (so it is the same figure and the same visibility rule, not a third copy). The list asks for `attached_percent` in its select, so rows and percentages arrive together. A database without the migration refuses the column by name and the page reads the list the old two-step way, so deploy order cannot break the screen.
+- **Not changed.** Profile and permission reads stay fresh on every load; the module guards still wait for their answer. The permission cache the owner approved was NOT built: the measurements showed those reads already run in the same round as the data, so a cache would not shorten the screen.
+- **Proof.** tsc, eslint, full test suite; migration executed in BEGIN…ROLLBACK against the linked DB, including a check that the computed column equals the batch function for every row. After-numbers are recorded in the PR once the migration is applied.
+- **Rollback.** `drop function public.attached_percent(public.order_submissions);` (the page falls back by itself).
+
 ## 2026-10-22 — Operations dashboard: the top strip is removed; the two lists are tabs (PR open) · no migration
 - **Owner request (after seeing it live as Nitish).** Remove the four-cell strip (Running orders, Not aligned, Changes to answer, Revenue this month) and make "Changes to review" and "Not aligned for manufacturing" tabs, so how many are in each is clear.
 - **What.** One tablist with a count on each tab; it opens on Changes to review when anything waits for an answer, else on Not aligned. Running orders (count and value) stay as one quiet line at the right of the tab bar, because the owner asked for it earlier (item 4); Revenue still has its own block below (only for readers who hold orders.view_all or admin). Old `.ops-strip` / `.ops-stat*` styles removed; presentation only, the read is unchanged.
