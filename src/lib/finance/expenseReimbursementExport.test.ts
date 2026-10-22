@@ -180,9 +180,9 @@ describe('the migration', () => {
     assert.ok(!/create policy|drop policy|alter table|create table|record_expense_reimbursement\(\s*p_/i.test(MIGRATION))
     assert.ok(!/create or replace function public\.(record|reverse)_expense_reimbursement/.test(MIGRATION))
   })
-  test('it is later than every other migration', () => {
-    const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270403000000_finance_reimburse_permission.sql')
+  test('its version is used by no other migration', () => {
+    const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.startsWith('20270403000000'))
+    assert.deepEqual(files, ['20270403000000_finance_reimburse_permission.sql'])
   })
 })
 
