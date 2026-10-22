@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Expenses list: text no longer cut, Filters panel without dead space (PR open) · no migration
+- **Owner feedback after seeing #416 live.** List text was cut ("Physical Mar…"); the Filters panel had a lot of empty space.
+- **Cause.** Cells used one-line ellipsis; and `.expense-filter-select` sets `flex: 0 1 160px`, which inside the panel's column flexbox became a 160px HEIGHT.
+- **Fix.** Payee, category, mode and recorder cells wrap onto a second line (`TD_TEXT`); Actions column 150 -> 164px so View + Edit + Delete are not clipped (table threshold 880 -> 894px); the panel's selects are 36px tall and the panel is 280px wide.
+- **Proof.** tsc, expense tests (536). Not seen on screen.
+
 ## 2026-10-22 — Expenses: no Remark column, View on every row, top of the page in two lines (PR open) · no migration
 - **Owner request.** The Remark column crowded the list; everybody should be able to press View and see the expense in a pop-up; the top of the page (tabs, search, filters, total, pending) took too much space and should be two lines.
 - **What.** Remark column removed from the table and the phone cards (still in the View window); freed width went to Category, Recorded by and Actions; table threshold 930 -> 880px. New **View** button on every row. Total and Pending figures moved onto the tab row; one toolbar line with search, one date-range box, a Filters button (panel) and Download Excel.

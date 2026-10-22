@@ -173,7 +173,7 @@ export const EXPENSE_TABLE_COLUMNS = [
   { key: 'category',    label: 'Category',    align: 'left',  width: '140px' },
   { key: 'mode',        label: 'Mode',        align: 'left',  width: '100px' },
   { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '120px' },
-  { key: 'actions',     label: 'Actions',     align: 'right', width: '150px' },
+  { key: 'actions',     label: 'Actions',     align: 'right', width: '164px' },
 ] as const
 
 /** The room Paid to needs before the table is worth drawing. */
@@ -205,7 +205,7 @@ export const EXPENSE_FLEX_COLUMN_MIN_PX = 160
  * clipped and nothing ever scrolls sideways.
  */
 export const EXPENSE_TABLE_MIN_CONTAINER_PX =
-  96 + 112 + 140 + 100 + 120 + 150 + EXPENSE_FLEX_COLUMN_MIN_PX + 2
+  96 + 112 + 140 + 100 + 120 + 164 + EXPENSE_FLEX_COLUMN_MIN_PX + 2
 
 /**
  * Table or cards, from the width the list ACTUALLY HAS.
@@ -869,7 +869,7 @@ export function ExpensesView() {
                     onKeyDown={e => { if (e.key === 'Escape') setFiltersOpen(false) }}
                     style={{
                       position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 41,
-                      width: 'min(320px, calc(100vw - 32px))', padding: '12px',
+                      width: 'min(280px, calc(100vw - 32px))', padding: '10px',
                       display: 'flex', flexDirection: 'column', gap: '8px',
                       background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
                       boxShadow: '0 8px 24px rgba(48,53,54,0.14)',
@@ -877,6 +877,7 @@ export function ExpensesView() {
                   >
                     <select
                       className="boe-input expense-filter-select"
+                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
                       aria-label="Filter by category"
                       value={filters.categoryId}
                       onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
@@ -889,6 +890,7 @@ export function ExpensesView() {
 
                     <select
                       className="boe-input expense-filter-select"
+                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
                       aria-label="Filter by payment mode"
                       value={filters.paymentMode}
                       onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
@@ -901,6 +903,7 @@ export function ExpensesView() {
 
                     <select
                       className="boe-input expense-filter-select"
+                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
                       aria-label="Filter by payment source and reimbursement"
                       data-testid="expense-reimbursement-filter"
                       value={filters.reimbursement ?? ''}
@@ -916,6 +919,7 @@ export function ExpensesView() {
                     {caps.canViewAllFinance && (
                       <select
                         className="boe-input expense-filter-select"
+                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
                         aria-label="Filter by who paid"
                         value={filters.paidBy ?? ''}
                         onChange={e => setFilters(prev => ({ ...prev, paidBy: e.target.value }))}
@@ -1409,6 +1413,13 @@ const TD: React.CSSProperties = {
   padding: '9px 12px', borderBottom: `1px solid ${colors.border}`,
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
+// TEXT CELLS (payee, category, mode, recorder) WRAP ONTO A SECOND LINE rather
+// than being cut with an ellipsis: the owner could not read "Physical Mar…".
+// Date, amount and actions stay on one line; their columns are sized for them.
+const TD_TEXT: React.CSSProperties = {
+  ...TD, whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', overflowWrap: 'anywhere',
+  verticalAlign: 'middle', lineHeight: 1.35,
+}
 
 function SelectBox({ row, selected, onToggle, maySelect }: {
   row: ExpenseListRow
@@ -1471,10 +1482,10 @@ export function ExpenseTable({
               {formatMoney(row.amount)}
             </td>
             <td
-              style={{ ...TD, fontSize: '13px', color: colors.primary }}
+              style={{ ...TD_TEXT, fontSize: '13px', color: colors.primary }}
               title={row.paid_from === 'personal' ? `${row.paid_to} · paid by ${(payerName ?? personName)(row.paid_by ?? '')}` : row.paid_to}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 6px', minWidth: 0 }}>
                 {onOpen ? (
                   <button
                     type="button"
@@ -1490,13 +1501,13 @@ export function ExpenseTable({
                 <ReimbursementChip row={row} />
               </span>
             </td>
-            <td style={{ ...TD, fontSize: '12px', color: colors.secondary }} title={categoryName(row.category_id)}>
+            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.secondary }} title={categoryName(row.category_id)}>
               {categoryName(row.category_id)}
             </td>
-            <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.secondary }}>
               {expensePaymentModeLabel(row.payment_mode)}
             </td>
-            <td style={{ ...TD, fontSize: '12px', color: colors.tertiary }} title={personName(row.created_by)}>
+            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.tertiary }} title={personName(row.created_by)}>
               {personName(row.created_by)}
             </td>
             <td style={{ ...TD, textAlign: 'right' }}>
