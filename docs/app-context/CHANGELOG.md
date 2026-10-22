@@ -13,12 +13,23 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, full test suite, build; migration shape and behaviour pinned by `expenseReimbursementExport.test.ts`. NOT executed against a database yet; not seen signed in as Nitish.
 - **Rollback.** Re-emit `can_record_expense_reimbursement()` from 20270205120000; the permission rows may stay.
 
+## 2026-10-22 — Operations dashboard: the top strip is removed; the two lists are tabs (PR open) · no migration
+- **Owner request (after seeing it live as Nitish).** Remove the four-cell strip (Running orders, Not aligned, Changes to answer, Revenue this month) and make "Changes to review" and "Not aligned for manufacturing" tabs, so how many are in each is clear.
+- **What.** One tablist with a count on each tab; it opens on Changes to review when anything waits for an answer, else on Not aligned. Running orders (count and value) stay as one quiet line at the right of the tab bar, because the owner asked for it earlier (item 4); Revenue still has its own block below (only for readers who hold orders.view_all or admin). Old `.ops-strip` / `.ops-stat*` styles removed; presentation only, the read is unchanged.
+- **Proof.** tsc, eslint, full test suite. Not yet seen on screen as Nitish.
+
 ## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
 - **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
 - **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").
 - **Code.** `OperationsDashboardView.tsx` (`NotAlignedSection`), `lib/orders/operationsDashboard.ts` (`notAlignedStatus`, `lateLabel`, `waitShare`, `daysBetween`), `.ops-na-*` in globals.css (the old `.ops-row*` list styles are gone).
 - **Proof.** tsc, eslint, full test suite; migration executed inside BEGIN…ROLLBACK against the linked DB (shape + per-row keys), nothing left behind. Not yet seen on screen signed in as Nitish.
 - **Rollback.** Re-emit `operations_orders_dashboard()` from 20270401000000 §6.
+
+## 2026-10-22 — Announcements nav entry only while something is active (PR open) · no migration
+- **Owner request.** The Announcements item in the left navigation should show only when an announcement is active for the person; otherwise it should not appear.
+- **What.** `BoeOsLayout` now loads `useMyAnnouncements` itself (same cached query as the banner, bell and list) and draws the entry only when the list is non-empty and the viewer is not previewing somebody else (View As). The unread count comes from the same list. The `announcementUnread` prop is removed; Modules and the Announcements shell no longer pass it, and Account Settings now agrees with them. Applies to admins too.
+- **Note.** `/announcements` itself still opens (empty list) for anyone who types the address.
+- **Proof.** tsc clean for `src`; announcements, launcher, drawer and nav tests pass.
 
 ## 2026-10-22 — Load time: open the database connection during page load (PR open) · no migration
 - **Why.** Every screen reads from the browser, so the first query of each page load first opened a connection (DNS + TCP + TLS, about three round trips) only after the scripts had booted. Measured on the live site (admin, warm): HTML ready in about 75 ms, first query not sent until about 245-285 ms, and the first answer back at about 480-780 ms; the database round trip itself is about 63 ms and the queries run in a few ms inside the database, so the waiting is connection setup and the chain of reads, not the database.

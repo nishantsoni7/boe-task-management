@@ -179,6 +179,11 @@ describe('the wiring', () => {
 
   test('Announcements is reachable from the BOE OS sidebar and Control Center', () => {
     assert.match(read('src/components/layout/BoeOsLayout.tsx'), /label="Announcements"[\s\S]{0,200}navTo\('\/announcements'\)/)
+    // The entry exists only while the person has an active announcement, and
+    // never while previewing somebody else.
+    const layout = read('src/components/layout/BoeOsLayout.tsx')
+    assert.match(layout, /const showAnnouncements = !viewMode && myAnnouncements\.length > 0/)
+    assert.match(layout, /\{showAnnouncements && \(\s*<OsNavItem\s+label="Announcements"/)
     assert.match(read('src/lib/controlCenter/navModel.ts'), /label: 'Announcements'[\s\S]{0,120}\/announcements`/)
   })
 

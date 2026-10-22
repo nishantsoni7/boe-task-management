@@ -10889,13 +10889,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    tabular numerals. Colour is reserved for the answers (green / red / amber) and for
    what is late. Uses the .od-* tokens already on this page. */
 .ops-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.ops-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 12px; overflow: hidden; }
-.ops-stat { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-left: 1px solid #ECE7E0; min-width: 0; }
-.ops-stat:first-child { border-left: 0; }
-.ops-stat-label { font-size: 12px; font-weight: 500; color: #686D6C; letter-spacing: 0.01em; }
-.ops-stat-value { font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; color: #303536; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.ops-stat[data-tone='attention'] .ops-stat-value { color: #B3661A; }
-.ops-stat-sub { font-size: 12px; color: #686D6C; overflow-wrap: anywhere; }
 
 .ops-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .ops-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -10986,15 +10979,9 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .ops-resp-note { grid-column: 2; color: #4C5352; overflow-wrap: anywhere; }
 
 @media (max-width: 899px) {
-  .ops-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ops-stat:nth-child(3) { border-left: 0; }
-  .ops-stat:nth-child(n+3) { border-top: 1px solid #ECE7E0; }
   .ops-periods { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 559px) {
-  .ops-strip { grid-template-columns: minmax(0, 1fr); }
-  .ops-stat { border-left: 0; border-top: 1px solid #ECE7E0; }
-  .ops-stat:first-child { border-top: 0; }
   .ops-change-head, .ops-line, .ops-change-foot { padding-left: 14px; padding-right: 14px; }
   .ops-change-reason { padding-left: 14px; padding-right: 14px; }
   .ops-line { grid-template-columns: minmax(0, 1fr); }
@@ -11053,4 +11040,23 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .ops-na-table td:nth-child(6) { grid-column: 1 / -1; }
   .ops-na-table td:nth-child(6) .ops-wbar { margin-left: 0; }
   .ops-na-go { display: none !important; }
+}
+
+/* ── Operations dashboard: the two lists as tabs ───────────────────────────── */
+.ops-tabs-wrap { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ops-tabs-bar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; border-bottom: 1px solid #E4DED7; }
+.ops-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.ops-tab { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 14px; font-weight: 500; color: #4C5352; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ops-tab:hover { color: #303536; }
+.ops-tab:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
+.ops-tab[data-active='true'] { color: #B9472E; border-bottom-color: #B9472E; font-weight: 600; }
+.ops-tab-count { min-width: 22px; padding: 1px 8px; border-radius: 999px; background: #F0EBE5; color: #4C5352; font-size: 12px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.ops-tab[data-active='true'] .ops-tab-count { background: #F6E3DD; color: #9B3A25; }
+.ops-tab-count[data-zero='true'] { background: transparent; color: #8A8F8E; font-weight: 500; }
+.ops-running { padding: 0 2px 10px; font-size: 12px; color: #686D6C; font-variant-numeric: tabular-nums; }
+.ops-tab-panel { min-width: 0; }
+.ops-tab-hint { margin: 0; font-size: 12px; color: #8A8F8E; }
+@media (max-width: 559px) {
+  .ops-tab { padding: 10px 10px; font-size: 13px; }
+  .ops-running { padding-bottom: 8px; }
 }

@@ -7,6 +7,9 @@ import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
 import { QuickActionList, type QuickAction } from './QuickActions'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
+import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 
 type BoeOsLayoutProps = {
   profile: UserProfile | null
@@ -46,11 +49,6 @@ type BoeOsLayoutProps = {
    * caller that passes nothing gets the full-width shell exactly as before.
    */
   contentMaxWidth?: number
-  /**
-   * Unacknowledged announcements, shown as a count beside the Announcements
-   * entry. Optional: a caller that has not loaded them shows the entry alone.
-   */
-  announcementUnread?: number
   children: React.ReactNode
 }
 
@@ -89,8 +87,18 @@ export function isDrawerInert(isPhone: boolean, open: boolean): boolean {
 
 export function BoeOsLayout({
   profile, title, subtitle, onSignOut, quickActions = [], headerActions = null,
-  contentMaxWidth, announcementUnread = 0, children,
+  contentMaxWidth, children,
 }: BoeOsLayoutProps) {
+  // The Announcements entry exists only while the signed-in person has an
+  // active announcement. The same cached query feeds the banner, the bell and
+  // the Announcements pages, so every page agrees. Not while previewing
+  // somebody else (View As): that is the admin's own list, not the viewed
+  // employee's, and the banner and bell are hidden there for the same reason.
+  const { userId } = usePermissionContext()
+  const { viewMode } = useDisplaySubject()
+  const { data: myAnnouncements = [] } = useMyAnnouncements(userId, !viewMode)
+  const showAnnouncements = !viewMode && myAnnouncements.length > 0
+  const announcementUnread = myAnnouncements.filter(a => !a.read_at).length
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
@@ -162,14 +170,17 @@ export function BoeOsLayout({
           {/* Announcements sits beside Home, not inside a module: a notice
               from the company is not Task Management's or anybody else's.
               Every active announcement for this person stays reachable here
-              for its whole window, read or not. */}
-          <OsNavItem
-            label="Announcements"
-            icon={<Megaphone size={15} strokeWidth={1.8} />}
-            active={pathname?.startsWith('/announcements') ?? false}
-            onClick={() => navTo('/announcements')}
-            count={announcementUnread}
-          />
+              for its whole window, read or not. With none active the entry is
+              not drawn at all. */}
+          {showAnnouncements && (
+            <OsNavItem
+              label="Announcements"
+              icon={<Megaphone size={15} strokeWidth={1.8} />}
+              active={pathname?.startsWith('/announcements') ?? false}
+              onClick={() => navTo('/announcements')}
+              count={announcementUnread}
+            />
+          )}
           {/* Account Settings is NOT a second nav item here. The launcher
               carried it in this list and again at the foot of the sidebar; now
               that the foot is one identity menu, keeping it here would put the
