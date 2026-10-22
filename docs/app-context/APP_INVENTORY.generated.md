@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c5095767` — Finance: offer the old-order option in Record Payment too
-- Commits on this branch: 971
+- Commit: `d3437f5d` — Merge remote-tracking branch 'origin/main' into fix/expense-list-spacing
+- Commits on this branch: 974
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 354 (first `20260530_create_positions.sql`, latest `20270407000000_finance_allocate_to_old_order.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 742   Enums: 0
@@ -14,8 +14,11 @@
 
 ## Latest 25 commits
 
-- `c5095767` 2026-10-22 Finance: offer the old-order option in Record Payment too
-- `52439dfe` 2026-10-22 Finance: allocate a payment to an old order that is not in the system
+- `d3437f5d` 2026-10-22 Merge remote-tracking branch 'origin/main' into fix/expense-list-spacing
+- `c4fecf2d` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space
+- `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
+- `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
+- `6ab93daa` 2026-10-22 Make Payment IDs clearer in the Confirmed Payments table (#417)
 - `52428e78` 2026-10-22 Docs: migration 20270406000000 is applied; Order page measurements
 - `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
 - `681d376d` 2026-10-22 Order page: read the whole page in one call, with the old reads as the fallback
@@ -36,9 +39,6 @@
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
 - `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
-- `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
-- `00396982` 2026-10-22 Payment Requests: one payment popup, opened from anywhere on the row (#394)
-- `d8d66b71` 2026-10-22 Send Payment Request: quiet, Notion-style form (#393)
 
 ## Pages by top-level area
 
