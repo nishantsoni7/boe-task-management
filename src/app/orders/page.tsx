@@ -123,14 +123,15 @@ export default function OrdersDashboardPage() {
     const ticket = ++latest.current
     setSummary(prev => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
 
+    // FIVE READS AT ONCE WITH THE PROFILE, NOT NINE (2026-10-22). On the live site a request
+    // that waits beside others finishes about 70 ms later for each one, so nine at once took
+    // about 770 ms. The links to other queues (PI Drafts, the operations handoffs) sit at the
+    // foot of the page; they are read after it has drawn (loadQueueCounts below), and a link
+    // whose count has not landed is simply not drawn yet.
     const [
       personalRes,
       summaryRes,
       operationsRes,
-      { count: draftCount },
-      opsMineRes,
-      opsUnassignedRes,
-      opsFlaggedRes,
     ] = await Promise.all([
       // THE SALESPERSON'S OWN DASHBOARD (20270228000000): the caller's own orders only, scoped by the
       // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
@@ -141,22 +142,6 @@ export default function OrdersDashboardPage() {
       // THE OPERATIONS READ (20270401000000): changes waiting for this reader's answer, the answers
       // already given, and Orders / Dispatches by month. One round trip, beside the summary.
       supabase.rpc('operations_orders_dashboard'),
-
-      // PI Drafts, in exactly the statuses /orders/drafts lists — the same
-      // constant, so the link and the page it opens can never describe
-      // different sets.
-      supabase.from('order_submissions').select('*', { count: 'exact', head: true })
-        .in('status', PI_DRAFT_LIST_STATUSES as unknown as string[]),
-
-      // THE OPERATIONS HANDOFF (20261229000000): live, undecided handoffs
-      // addressed to THIS reader, to nobody, and the ones flagged for
-      // clarification. RLS scopes all three to Orders the reader may open.
-      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
-        .eq('status', 'awaiting').is('superseded_at', null).eq('assigned_to', viewerId),
-      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
-        .eq('status', 'awaiting').is('superseded_at', null).is('assigned_to', null),
-      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
-        .eq('status', 'clarification_needed').is('superseded_at', null),
     ])
 
     if (ticket !== latest.current) return
@@ -179,15 +164,39 @@ export default function OrdersDashboardPage() {
       setSummary(parsed.ok ? { kind: 'ready', summary: parsed.summary } : { kind: 'error' })
     }
 
+    // The queue links come after the page has drawn. Not awaited: nothing on screen waits for them.
+    void loadQueueCounts(viewerId, ticket)
+  }
+
+  /**
+   * THE LINKS TO OTHER QUEUES, read after the first draw.
+   *
+   * PI Drafts, in exactly the statuses /orders/drafts lists (the same constant, so the link and the
+   * page it opens can never describe different sets), and the operations handoffs: live, undecided
+   * ones addressed to THIS reader, to nobody, and the ones flagged for clarification. ONE read of the
+   * undecided handoffs (a short list, scoped by RLS to Orders the reader may open) stands in for the
+   * three head counts it used to be; the three numbers are taken from it. Same definitions as before:
+   *   awaiting and addressed to the reader · awaiting and addressed to nobody · flagged.
+   *
+   * The operations handoff degrades to ABSENT. The table arrives with 20261229000000; against a
+   * database without it the read is refused and an absent count draws no card rather than a false
+   * "nothing waits".
+   */
+  const loadQueueCounts = async (viewerId: string, ticket: number) => {
+    const [{ count: draftCount }, handoffsRes] = await Promise.all([
+      supabase.from('order_submissions').select('*', { count: 'exact', head: true })
+        .in('status', PI_DRAFT_LIST_STATUSES as unknown as string[]),
+      supabase.from('order_operations_handoffs').select('status, assigned_to')
+        .in('status', ['awaiting', 'clarification_needed']).is('superseded_at', null),
+    ])
+    if (ticket !== latest.current) return
+    const live = handoffsRes.error ? null : ((handoffsRes.data ?? []) as { status: string; assigned_to: string | null }[])
     setCounts({
       ...NO_ORDER_DASHBOARD_COUNTS,
-      piDrafts:             draftCount    ?? undefined,
-      // THE OPERATIONS HANDOFF DEGRADES TO ABSENT. The table arrives with
-      // 20261229000000; against a database without it the filter is refused,
-      // and an absent count draws no card rather than a false "nothing waits".
-      operationsReview:     opsMineRes.error ? undefined : (opsMineRes.count ?? 0),
-      operationsUnassigned: opsUnassignedRes.error ? undefined : (opsUnassignedRes.count ?? 0),
-      operationsFlagged:    opsFlaggedRes.error ? undefined : (opsFlaggedRes.count ?? 0),
+      piDrafts:             draftCount ?? undefined,
+      operationsReview:     live ? live.filter(h => h.status === 'awaiting' && h.assigned_to === viewerId).length : undefined,
+      operationsUnassigned: live ? live.filter(h => h.status === 'awaiting' && h.assigned_to === null).length : undefined,
+      operationsFlagged:    live ? live.filter(h => h.status === 'clarification_needed').length : undefined,
     })
   }
 
