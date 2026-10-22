@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b8d0aa1d` — Order page: read the whole page in one call, with the old reads as the fallback
-- Commits on this branch: 967
+- Commit: `50acaee3` — Changelog: 20270405000000 applied and confirmed on screen (#414)
+- Commits on this branch: 968
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 353 (first `20260530_create_positions.sql`, latest `20270406000000_order_page_bundle.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 739   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `b8d0aa1d` 2026-10-22 Order page: read the whole page in one call, with the old reads as the fallback
+- `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
+- `681d376d` 2026-10-22 Order page: read the whole page in one call, with the old reads as the fallback
 - `26d9a971` 2026-10-22 Payment deletion: clear allocation intents before deleting the payment (#411)
 - `db240bf6` 2026-10-22 Centre the BOE One logo on the sign-in pages (#412)
 - `ffc06d94` 2026-10-22 Apply the BOE One brand kit v1.0 (#410)
@@ -38,7 +39,6 @@
 - `d42ea2bd` 2026-10-21 Finance: bank marker on Payment Requests and in the review window (#388)
 - `ee1e3028` 2026-10-21 Docs: migration 20270331000000 is applied; #391 merged and deployed
 - `792b070b` 2026-10-21 Finance: an admin can delete a Confirmed Payment entered by mistake (#391)
-- `47b1b4ef` 2026-10-21 Quotation Details: request on the left, the quotation you send on the right (#390)
 
 ## Pages by top-level area
 

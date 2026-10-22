@@ -225,3 +225,36 @@ describe('the screens', () => {
     assert.ok(modals.includes('Reimbursement date<span'))
   })
 })
+
+describe('the Expenses page top: two lines, and View for everybody', () => {
+  const EXPENSES = read('src/app/finance/expenses/ExpensesView.tsx')
+
+  test('the secondary filters live behind ONE Filters button, not on the page', () => {
+    const toolbar = EXPENSES.slice(EXPENSES.indexOf('aria-label="Filter expenses"'))
+    const button = toolbar.indexOf('data-testid="expense-filters-button"')
+    assert.ok(button > 0)
+    for (const label of ['aria-label="Filter by category"', 'aria-label="Filter by payment mode"', 'aria-label="Filter by who paid"']) {
+      assert.ok(toolbar.indexOf(label) > button, label + ' is inside the panel, after the button')
+    }
+    assert.ok(EXPENSES.includes('role="dialog"') && EXPENSES.includes("e.key === 'Escape'"))
+  })
+
+  test('the date range is one box with two inputs', () => {
+    assert.equal((EXPENSES.match(/aria-label="Expenses on or after"/g) ?? []).length, 1)
+    assert.ok(/role="group"\s*aria-label="Expense date"/.test(EXPENSES))
+  })
+
+  test('the total and the pending figure sit on the tab row, not on lines of their own', () => {
+    const tabs = EXPENSES.indexOf('data-testid="expense-tabs"')
+    const total = EXPENSES.indexOf("Total${narrowed ? ' (filtered)'")
+    const pending = EXPENSES.indexOf('data-testid="pending-reimbursement-summary"')
+    const toolbar = EXPENSES.indexOf('aria-label="Filter expenses"')
+    assert.ok(tabs < total && total < toolbar && pending < toolbar)
+  })
+
+  test('there is no Remark column, and every row offers View', () => {
+    assert.equal(EXPENSES.includes("label: 'Remark'"), false)
+    assert.equal((EXPENSES.match(/data-testid="expense-view"/g) ?? []).length, 2, 'table and cards')
+    assert.ok(/\{onOpen \|\| mayEdit\(row\) \|\| mayDelete\(row\) \?/.test(EXPENSES))
+  })
+})
