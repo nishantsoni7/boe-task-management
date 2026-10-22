@@ -35,7 +35,7 @@
 import { orderDetailHref, piSubmissionHref } from './crossModuleLinks'
 import type { AllocationTarget, PaymentAllocationSummary } from './paymentAllocations'
 
-export type PaymentLinkKind = 'order' | 'submission'
+export type PaymentLinkKind = 'order' | 'submission' | 'legacy'
 
 export type PaymentLink = {
   /** Stable per row. The allocation id, or 'direct' for the legacy linkage. */
@@ -57,9 +57,10 @@ export type PaymentLink = {
 /** The placeholder for a destination this reader may not open. */
 export const UNNAMED_ORDER_LABEL = 'An Order'
 export const UNNAMED_PI_LABEL = 'A PI Draft'
+export const UNNAMED_LEGACY_LABEL = 'An old order'
 
 export function unnamedLabel(kind: PaymentLinkKind): string {
-  return kind === 'order' ? UNNAMED_ORDER_LABEL : UNNAMED_PI_LABEL
+  return kind === 'order' ? UNNAMED_ORDER_LABEL : kind === 'legacy' ? UNNAMED_LEGACY_LABEL : UNNAMED_PI_LABEL
 }
 
 export type PaymentLinksInput = {
@@ -102,7 +103,8 @@ export function paymentLinks(input: PaymentLinksInput): PaymentLink[] {
       // A DOOR ONLY WHERE BOTH HOLD: the reader can open the module at all, and
       // RLS actually returned this record. The second is the real gate; the
       // first only ever narrows it further.
-      href: named && canOpenOrders
+      // An old order (20270407000000) is not a record in this system: no door.
+      href: named && canOpenOrders && target.kind !== 'legacy'
         ? (target.kind === 'order' ? orderDetailHref(target.targetId) : piSubmissionHref(target.targetId))
         : null,
     }
@@ -111,7 +113,8 @@ export function paymentLinks(input: PaymentLinksInput): PaymentLink[] {
   if (summary.targets.length > 0) {
     const orders = summary.targets.filter(t => t.kind === 'order').map(fromTarget)
     const submissions = summary.targets.filter(t => t.kind === 'submission').map(fromTarget)
-    return [...orders, ...submissions]
+    const legacy = summary.targets.filter(t => t.kind === 'legacy').map(fromTarget)
+    return [...orders, ...submissions, ...legacy]
   }
 
   if (directOrder) {

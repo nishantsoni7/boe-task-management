@@ -238,10 +238,11 @@ export async function deletePaymentEntry(
  * security may forbid it to read — the same boundary linkCounts draws.
  */
 export function describePaymentAllocations(
-  links: readonly { kind: 'order' | 'submission' }[],
+  links: readonly { kind: 'order' | 'submission' | 'legacy' }[],
 ): string | null {
   const orders = links.filter(link => link.kind === 'order').length
   const submissions = links.filter(link => link.kind === 'submission').length
+  const legacy = links.filter(link => link.kind === 'legacy').length
   const parts: string[] = []
   if (orders > 0) {
     parts.push(orders === 1 ? '1 Order' : `${orders} Orders`)
@@ -249,6 +250,10 @@ export function describePaymentAllocations(
   if (submissions > 0) {
     parts.push(submissions === 1 ? '1 PI Draft' : `${submissions} PI Drafts`)
   }
+  if (legacy > 0) {
+    parts.push(legacy === 1 ? '1 old order' : `${legacy} old orders`)
+  }
   if (parts.length === 0) return null
-  return `This payment is currently allocated to ${parts.join(' and ')}.`
+  const named = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+  return `This payment is currently allocated to ${named}.`
 }

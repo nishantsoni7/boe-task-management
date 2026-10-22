@@ -55,11 +55,14 @@ export function AllocationDetailsPopup({ payment, view, hrefFor, onOpenTarget, o
         {lines.length > 0 && (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, border: '1px solid #ECE7E0', borderRadius: '10px', overflow: 'hidden' }}>
             {lines.map((line, i) => {
-              const href = hrefFor(line.targetType, line.targetId)
+              // An old order is not a record in this system: there is nothing to open.
+              const href = line.targetType === 'legacy_order' || !line.targetId
+                ? null
+                : hrefFor(line.targetType, line.targetId)
               return (
                 <li key={line.key} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderTop: i === 0 ? 'none' : '1px solid #ECE7E0' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, background: '#F3F0EB', borderRadius: '6px', padding: '2px 6px', flexShrink: 0 }}>
-                    {line.targetType === 'order' ? 'Order' : 'PI Draft'}
+                    {line.targetType === 'order' ? 'Order' : line.targetType === 'legacy_order' ? 'Old order' : 'PI Draft'}
                   </span>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px' }} title={line.label}>
                     {href ? (

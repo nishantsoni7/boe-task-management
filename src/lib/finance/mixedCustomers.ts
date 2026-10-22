@@ -19,6 +19,8 @@
 // not carry over once C is added — the signature below changes, and the box is
 // asked again.
 
+import { normalizeLegacyOrderNo } from './legacyOrderAllocation'
+
 export type CustomerTarget = {
   /** The target's customer as its own record states it. Null when unreadable. */
   clientName: string | null | undefined
@@ -65,11 +67,12 @@ export function customerGroups(targets: readonly CustomerTarget[]): CustomerGrou
     .map(([, g]) => g)
 }
 
-/** "Order 0524" or "PI Draft 019" — never a uuid. */
-export function customerTargetLabel(kind: 'order' | 'submission', reference: string | null | undefined): string {
-  const word = kind === 'order' ? 'Order' : 'PI Draft'
+/** "Order 0524", "PI Draft 019" or "Old order AB-12" — never a uuid. */
+export function customerTargetLabel(kind: 'order' | 'submission' | 'legacy', reference: string | null | undefined): string {
+  const word = kind === 'order' ? 'Order' : kind === 'legacy' ? 'Old order' : 'PI Draft'
   const ref = (reference ?? '').trim()
-  return ref && ref !== '—' ? `${word} ${ref}` : (kind === 'order' ? 'A Confirmed Order' : 'A PI Draft')
+  if (ref && ref !== '—') return `${word} ${ref}`
+  return kind === 'order' ? 'A Confirmed Order' : kind === 'legacy' ? 'An old order' : 'A PI Draft'
 }
 
 /** The customer targets named by a list of allocation rows that have a record chosen. */
@@ -78,12 +81,17 @@ export function rowCustomerTargets(rows: readonly {
   targetId: string | null
   clientName?: string | null
   reference?: string | null
+  /** An OLD order row (20270407000000): chosen once its number is typed. */
+  legacy?: boolean
+  legacyOrderNo?: string | null
 }[]): CustomerTarget[] {
   return rows
-    .filter(r => r.kind && r.targetId)
+    .filter(r => (r.kind && r.targetId) || (r.legacy && (r.legacyOrderNo ?? '').trim()))
     .map(r => ({
       clientName: r.clientName ?? null,
-      label: customerTargetLabel(r.kind as 'order' | 'submission', r.reference),
+      label: r.legacy
+        ? customerTargetLabel('legacy', normalizeLegacyOrderNo(r.legacyOrderNo))
+        : customerTargetLabel(r.kind as 'order' | 'submission', r.reference),
     }))
 }
 

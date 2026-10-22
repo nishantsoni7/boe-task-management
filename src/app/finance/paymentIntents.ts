@@ -98,7 +98,7 @@ export async function loadPaymentAllocation(
 ): Promise<StoredAllocation | null> {
   const { data } = await supabase
     .from('finance_payment_allocations')
-    .select('order_submission_id, order_id, allocated_amount')
+    .select('order_submission_id, order_id, legacy_order_no, allocated_amount')
     .eq('payment_request_id', paymentRequestId)
     .eq('status', 'active')
     .limit(2)
@@ -106,10 +106,14 @@ export async function loadPaymentAllocation(
   const rows = (data ?? []) as {
     order_submission_id: string | null
     order_id: string | null
+    legacy_order_no: string | null
     allocated_amount: number | string
   }[]
   if (rows.length === 0) return null
   if (rows.length > 1) return { kind: 'split' }
+  // An OLD order not in this system (20270407000000) names no PI or Order, so it
+  // is not a destination this form can show or keep: leave it to Correct Allocation.
+  if (rows[0].legacy_order_no) return { kind: 'split' }
 
   const row = rows[0]
   const targetType = row.order_submission_id ? 'pi_draft' : 'confirmed_order'

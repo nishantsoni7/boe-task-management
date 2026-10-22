@@ -48,9 +48,16 @@ import {
   EMPTY_ALLOCATION_ROW,
   duplicateTargetKeys,
   targetKey,
-  toRpcAllocations,
   type SplitAllocationRow,
 } from '@/lib/finance/splitPaymentEntry'
+import {
+  LEGACY_CLIENT_NAME_MAX,
+  LEGACY_ORDER_ACTION_LABEL,
+  LEGACY_ORDER_NO_MAX,
+  LEGACY_ORDER_WORD,
+  legacyRowProblem,
+  toLegacyRpcTarget,
+} from '@/lib/finance/legacyOrderAllocation'
 import {
   KindBadge,
   allocationErrorMessage,
@@ -114,13 +121,16 @@ export function allocateFundsBlockedReason(input: {
   payment: AllocateFundsPayment
   rows: readonly SplitAllocationRow[]
 }): string | null {
-  const filled = input.rows.filter(r => r.kind || r.targetId || r.amount.trim())
+  const filled = input.rows.filter(r => r.kind || r.targetId || r.amount.trim() || r.legacy)
   if (filled.length === 0) return 'Add at least one allocation.'
 
   for (let i = 0; i < filled.length; i++) {
     const row = filled[i]
-    if (!row.kind || !row.targetId) {
-      return `Choose an Order or a PI Draft for allocation ${i + 1}, or remove it.`
+    if (row.legacy) {
+      const problem = legacyRowProblem(row, i + 1)
+      if (problem) return problem
+    } else if (!row.kind || !row.targetId) {
+      return `Choose an Order or a PI Draft for allocation ${i + 1}, or remove it, or add an old order.`
     }
     if (!isValidAmount(row.amount)) {
       const problem = amountInputProblem(row.amount)
@@ -244,11 +254,17 @@ export function AllocateFundsModal({
     setSaving(true)
     setError(null)
 
-    const targets = toRpcAllocations(rows).map(t => ({
-      order_submission_id: t.kind === 'submission' ? t.id : null,
-      order_id: t.kind === 'order' ? t.id : null,
-      allocated_amount: t.amount,
-    }))
+    // In the order the rows are listed. An old order (not in this system) is
+    // sent by the number and client typed for it; every other row by record id.
+    const targets = rows
+      .filter(r => isValidAmount(r.amount) && (r.legacy || (r.kind && r.targetId)))
+      .map(r => r.legacy
+        ? toLegacyRpcTarget(r)
+        : {
+            order_submission_id: r.kind === 'submission' ? r.targetId : null,
+            order_id: r.kind === 'order' ? r.targetId : null,
+            allocated_amount: Number(r.amount),
+          })
 
     // ONE CALL. Every row lands together, or none does.
     const { error: rpcError } = await supabase.rpc('allocate_payment_to_targets', {
@@ -306,7 +322,7 @@ export function AllocateFundsModal({
       <div ref={formRef} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
           Divide what is left of {payment.client_name ?? 'this payment'}&apos;s payment across up to 20
-          Orders or PI Drafts, in one submission. A refusal on any row leaves every row exactly as it
+          Orders, PI Drafts or old orders that are not in the system, in one submission. A refusal on any row leaves every row exactly as it
           was — nothing partial is ever saved.
         </div>
 
@@ -452,7 +468,19 @@ function FundsAllocationRow({
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
         <span style={{ ...LABEL, minWidth: '58px' }}>Row {index + 1}</span>
 
-        {row.targetId && row.kind ? (
+        {row.legacy ? (
+          <>
+            <span style={LEGACY_BADGE}>{LEGACY_ORDER_WORD}</span>
+            <button
+              type="button"
+              onClick={() => onChange({ legacy: false, legacyOrderNo: null, clientName: null, reference: null })}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '3px 9px', fontSize: '12px' }}
+            >
+              Change
+            </button>
+          </>
+        ) : row.targetId && row.kind ? (
           <>
             <KindBadge kind={row.kind} />
             <span style={{
@@ -471,14 +499,24 @@ function FundsAllocationRow({
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={onPick}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '12px' }}
-          >
-            Choose an Order or PI Draft
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onPick}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '4px 10px', fontSize: '12px' }}
+            >
+              Choose an Order or PI Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => { onClosePicker(); setPosition(null); onChange({ legacy: true, legacyOrderNo: '', clientName: '' }) }}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '4px 10px', fontSize: '12px' }}
+            >
+              {LEGACY_ORDER_ACTION_LABEL}
+            </button>
+          </>
         )}
 
         <input
@@ -501,6 +539,34 @@ function FundsAllocationRow({
           Remove
         </button>
       </div>
+
+      {row.legacy && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <input
+            className="boe-input"
+            aria-label={`Old order number for allocation ${index + 1}`}
+            value={row.legacyOrderNo ?? ''}
+            onChange={e => onChange({ legacyOrderNo: e.target.value })}
+            maxLength={LEGACY_ORDER_NO_MAX}
+            placeholder="Old order no."
+            autoFocus
+            style={{ flex: '1 1 160px', minWidth: 0 }}
+          />
+          <input
+            className="boe-input"
+            aria-label={`Client name for allocation ${index + 1}`}
+            value={row.clientName ?? ''}
+            onChange={e => onChange({ clientName: e.target.value })}
+            maxLength={LEGACY_CLIENT_NAME_MAX}
+            placeholder="Client name"
+            style={{ flex: '2 1 220px', minWidth: 0 }}
+          />
+          <div style={{ flexBasis: '100%', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+            This order is not in BOE One. The number and client are recorded with the allocation; it
+            counts toward this payment but not toward any Order here.
+          </div>
+        </div>
+      )}
 
       {row.targetId && position && (
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: colors.secondary }}>
@@ -599,6 +665,12 @@ function FundsAllocationRow({
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────────
+
+const LEGACY_BADGE: React.CSSProperties = {
+  fontSize: '11px', fontWeight: 700, color: colors.secondary, background: colors.raised,
+  border: `1px solid ${colors.border}`, borderRadius: '999px', padding: '2px 8px',
+  textTransform: 'uppercase', letterSpacing: '0.05em',
+}
 
 const LABEL: React.CSSProperties = {
   fontSize: '12px', fontWeight: 600, color: colors.muted,

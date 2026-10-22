@@ -40,6 +40,7 @@ import {
 import { amountInputProblem, isValidAmount } from '@/lib/currency'
 import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
 import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
+import { legacyTargetKey } from './legacyOrderAllocation'
 
 /** The two kinds of destination the business has. There is no third. */
 export type SplitTargetKind = 'order' | 'submission'
@@ -83,6 +84,13 @@ export type SplitAllocationRow = {
   clientName?: string | null
   /** The chosen record's own number or PI reference, for the same warning. */
   reference?: string | null
+  /**
+   * An OLD order that is not in this system (20270407000000), typed rather than
+   * picked. Such a row has no kind and no targetId; it names an order number
+   * and, in clientName, the client — both typed by the person.
+   */
+  legacy?: boolean
+  legacyOrderNo?: string | null
   amount: string
 }
 
@@ -101,6 +109,7 @@ export const EMPTY_ALLOCATION_ROW = (key: string): SplitAllocationRow => ({
  * comparison should not depend on that.
  */
 export function targetKey(row: SplitAllocationRow): string | null {
+  if (row.legacy) return legacyTargetKey(row.legacyOrderNo)
   return row.kind && row.targetId ? `${row.kind}:${row.targetId}` : null
 }
 

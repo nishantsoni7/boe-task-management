@@ -51,6 +51,7 @@
 
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
+import { legacyAllocationErrorMessage } from '@/lib/finance/legacyOrderAllocation'
 
 /** PI statuses that may receive an allocation, mirroring the RPC's own refusals. */
 export const ALLOCATABLE_PI_STATUSES = ['draft', 'submitted', 'needs_changes'] as const
@@ -97,6 +98,8 @@ export function statusLabel(status: string): string {
 /** Server refusals, mapped to a sentence naming the rule that refused. */
 export function allocationErrorMessage(raw: string | null | undefined): string {
   const m = raw ?? ''
+  const legacy = legacyAllocationErrorMessage(m)
+  if (legacy) return legacy
   if (m.includes('ALLOCATION_EXCEEDS_PAYMENT')) {
     return 'That is more than this payment has left. Refresh — somebody may have allocated part of it already.'
   }

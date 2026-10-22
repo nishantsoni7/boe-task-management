@@ -1293,8 +1293,8 @@ describe('this is a presentation change, and costs no extra request', () => {
   test('the allocation date rides the SAME select — one more column, not one more call', () => {
     const reads = (view.match(/\.from\('finance_payment_allocations'\)/g) ?? []).length
     assert.equal(reads, 2, 'the page-load read and refreshOneRow’s single-row read — unchanged')
-    assert.equal((view.match(/allocated_amount, status, order_id, order_submission_id, created_at/g) ?? []).length, 2,
-      'created_at was added to both existing selects rather than fetched separately')
+    assert.equal((view.match(/allocated_amount, status, order_id, order_submission_id, legacy_order_no, legacy_client_name, created_at/g) ?? []).length, 2,
+      'created_at and the old-order columns ride both existing selects rather than being fetched separately')
   })
 
   test('the modal fetches nothing of its own for the new fields', () => {

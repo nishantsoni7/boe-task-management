@@ -214,7 +214,10 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         </div>
       )}
       {view.lines.map(line => {
-        const href = hrefFor(line.targetType, line.targetId)
+        // An old order is not a record in this system: there is nothing to open.
+        const href = line.targetType === 'legacy_order' || !line.targetId
+          ? null
+          : hrefFor(line.targetType, line.targetId)
         return (
           <div key={line.key} role="listitem" style={lineStyle}>
             {href ? (
