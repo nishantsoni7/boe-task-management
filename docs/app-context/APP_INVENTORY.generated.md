@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `caab1753` — Docs: migration 20270401000000 is applied (Operations dashboard)
-- Commits on this branch: 951
-- Pages (`page.tsx`): 143   API routes (`route.ts`): 150
-- Migrations: 349 (first `20260530_create_positions.sql`, latest `20270402000000_operations_dashboard_order_details.sql`)
+- Commit: `e1029307` — Operations dashboard: Not aligned for manufacturing as a table
+- Commits on this branch: 952
+- Pages (`page.tsx`): 144   API routes (`route.ts`): 150
+- Migrations: 350 (first `20260530_create_positions.sql`, latest `20270403000000_finance_reimburse_permission.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 737   Enums: 0
-- Test files: 627   Next.js 16.2.6, React 19.2.4
+- Test files: 628   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
 - `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
 - `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
 - `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
@@ -38,7 +39,6 @@
 - `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
-- `a59f7841` 2026-10-20 Redesign the Payment verification modal (Notion-style hierarchy)
 
 ## Pages by top-level area
 
@@ -52,7 +52,7 @@
 - **customer-reviews** (11): `/customer-reviews`, `/customer-reviews/[id]`, `/customer-reviews/batches`, `/customer-reviews/custom`, `/customer-reviews/history`, `/customer-reviews/images`, `/customer-reviews/mine`, `/customer-reviews/notifications`, `/customer-reviews/progress`, `/customer-reviews/reports`, `/customer-reviews/reviews`
 - **dashboard** (1): `/dashboard`
 - **exhibition-leads** (6): `/exhibition-leads`, `/exhibition-leads/add`, `/exhibition-leads/all`, `/exhibition-leads/exhibitions`, `/exhibition-leads/my`, `/exhibition-leads/ranking`
-- **finance** (9): `/finance`, `/finance/bank`, `/finance/expenses`, `/finance/expenses/new`, `/finance/notifications`, `/finance/payments-to-verify`, `/finance/received`, `/finance/received/linked`, `/finance/received/unlinked`
+- **finance** (10): `/finance`, `/finance/bank`, `/finance/expenses`, `/finance/expenses/new`, `/finance/notifications`, `/finance/payments-to-verify`, `/finance/received`, `/finance/received/linked`, `/finance/received/unlinked`, `/finance/reimbursements`
 - **forgot-password** (1): `/forgot-password`
 - **image-editor** (1): `/image-editor`
 - **inventory** (6): `/inventory`, `/inventory/[id]`, `/inventory/[id]/edit`, `/inventory/new`, `/inventory/notifications`, `/inventory/requests`
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 44 source, 54 test
+- `src/lib/finance` — 45 source, 55 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
@@ -356,7 +356,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270309000000_exhibition_leads_view_all.sql`
 - `20270310000000_exhibition_lead_requirement_residential.sql`
 - `20270311000000_exhibition_lead_duplicate_owner_name.sql`
 - `20270312000000_exhibition_close_reopen.sql`
@@ -386,6 +385,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
 - `20270402000000_operations_dashboard_order_details.sql`
+- `20270403000000_finance_reimburse_permission.sql`
 
 ## All SQL function names
 

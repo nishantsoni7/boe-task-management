@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Expense reimbursement without edit rights, Excel downloads, all-reimbursements page (PR open) · migration 20270403000000 (NOT APPLIED)
+- **Owner request.** Nitish sees the owner's expenses but cannot edit or delete them; he multi-selects and reimburses with a Challan ID and date; Excel download for managing the data; after reimbursing, a download of that payment; a separate place to see every reimbursement; visible to Nitish and the owner only.
+- **Finding.** Reimbursing already existed but needed `finance.manage`, which also edits and deletes anybody's expense. So the door moved.
+- **Database.** New protected action `finance.reimburse` (deny-by-default). `can_record_expense_reimbursement()` re-emitted: `reimburse` + `view_all` instead of `manage` + `view_all`. `record_/reverse_expense_reimbursement` untouched. No policy, table or expense-edit rule changes.
+- **App.** `canReimburseExpenses`; Expenses page: Download Excel (list as filtered) + post-record banner (this reimbursement's Excel, link to history); new `/finance/reimbursements` page + sidebar entry for holders; "Challan ID" wording. `xlsx` is loaded only on pressing Download.
+- **Owner steps.** Apply 20270403000000, then grant `reimburse` and `view_all` to Nitish in Control Center (admins hold both by role). Anyone who reimbursed through `manage` before must be granted `reimburse` to continue.
+- **Proof.** tsc, full test suite, build; migration shape and behaviour pinned by `expenseReimbursementExport.test.ts`. NOT executed against a database yet; not seen signed in as Nitish.
+- **Rollback.** Re-emit `can_record_expense_reimbursement()` from 20270205120000; the permission rows may stay.
+
 ## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
 - **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
 - **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").

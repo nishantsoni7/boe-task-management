@@ -110,6 +110,8 @@ export type FinanceCapabilities = {
   canDecideOwnPayment: boolean
   /** May upload bank statements and link bank credits to payments (protected `reconcile`, 20270329000000). */
   canReconcileBank: boolean
+  /** May record and reverse expense reimbursements and see every one (protected `reimburse`, 20270403000000). Does NOT allow editing or deleting expenses. */
+  canReimburseExpenses: boolean
 }
 
 export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
@@ -126,6 +128,7 @@ export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
   canManageFinance: false,
   canDecideOwnPayment: false,
   canReconcileBank: false,
+  canReimburseExpenses: false,
 }
 
 export function deriveFinanceCapabilities(
@@ -152,6 +155,7 @@ export function deriveFinanceCapabilities(
       canManageFinance: true,
       canDecideOwnPayment: true,
       canReconcileBank: true,
+      canReimburseExpenses: true,
     }
   }
 
@@ -184,5 +188,6 @@ export function deriveFinanceCapabilities(
     canManageFinance: withEntry('manage'),
     canDecideOwnPayment: withEntry('verify_own_payment'),
     canReconcileBank: withEntry('reconcile'),
+    canReimburseExpenses: withEntry('reimburse') && withEntry('view_all'),
   }
 }

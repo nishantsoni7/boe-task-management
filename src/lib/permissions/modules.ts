@@ -218,6 +218,10 @@ registerModule({
     // statements show every balance and counterparty, so it is protected and
     // needs view_all (levels.ts). Registered by 20270329000000.
     { actionKey: 'reconcile', displayName: 'Reconcile Bank Statements' },
+    // Recording and reversing expense reimbursements (challan payments to staff).
+    // Protected; needs view_all (levels.ts). Separate from `manage`, which also
+    // rewrites other people's expenses. Registered by 20270403000000.
+    { actionKey: 'reimburse', displayName: 'Reimburse Expenses' },
   ],
 })
 

@@ -3881,8 +3881,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
                           'export', 'manage', 'delete', 'allocate', 'allocate_correct']) {
       assert.ok(perms.includes(`'${action}'`), `finance.${action} is still derived`)
     }
-    assert.equal(/expense/i.test(perms), false,
-      'expenses introduce no Finance capability of their own — they reuse view, create and manage')
+    // The one capability expenses have of their own is the reimbursement door
+    // (finance.reimburse, 20270403000000); everything else reuses view, create
+    // and manage.
+    const withoutReimburse = perms.split('\n').filter(line => !/reimburse/i.test(line)).join('\n')
+    assert.equal(/expense/i.test(withoutReimburse), false,
+      'expenses introduce no Finance capability of their own besides reimburse — they reuse view, create and manage')
   })
 
   test('the expense tables are referenced by nothing outside the expense feature', () => {
