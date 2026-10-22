@@ -208,15 +208,15 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         opacity: visible ? 1 : 0,
         transition: 'opacity 0.4s ease',
       }}>
-        {/* BOE logo */}
+        {/* BOE One logo */}
         <div style={{ marginBottom: '48px' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/branding/boe-one-logo-full.png"
-            alt="Best of Exports"
-            width={1080}
-            height={821}
-            style={{ maxWidth: '168px', width: '100%', height: 'auto' }}
+            src="/brand/svg/boe-one-logo-horizontal-light.svg"
+            alt="BOE One"
+            width={1220}
+            height={330}
+            style={{ maxWidth: '240px', width: '100%', height: 'auto' }}
           />
         </div>
 

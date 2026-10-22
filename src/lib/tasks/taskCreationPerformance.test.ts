@@ -77,7 +77,10 @@ describe('createAssignmentNotification runs its independent reads concurrently',
   }
 
   test('the duplicate check and the activity lookup overlap, rather than one waiting on the other', async () => {
-    const store = timingStore(40)
+    // 200 ms reads, not 40: the check below is a wall-clock one, and timer jitter on a loaded machine is
+    // tens of milliseconds, which is more than the whole margin a 40 ms read leaves. Jitter is absolute, so a
+    // longer read keeps the same sequential-versus-overlapping gap while making that jitter small beside it.
+    const store = timingStore(200)
     const startedAt = Date.now()
     // The reads sit behind the new-task rule; overridden to reach them.
     const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
@@ -86,10 +89,9 @@ describe('createAssignmentNotification runs its independent reads concurrently',
     assert.equal(outcome.status, 'created')
     assert.equal(store.calls.length, 2)
 
-    // Two sequential 40ms reads would take ~80ms+; run together they take
-    // ~40ms. A generous ceiling avoids flaking on a loaded CI box while still
-    // catching a regression back to sequential awaits (which would be ~80ms+).
-    assert.ok(totalMs < 70, `expected the two reads to overlap (~40ms), took ${totalMs}ms`)
+    // Two sequential 200ms reads would take 400ms+; run together they take ~200ms. A ceiling of 350ms
+    // leaves 150ms for a loaded machine and still catches a regression back to sequential awaits.
+    assert.ok(totalMs < 350, `expected the two reads to overlap (~200ms), took ${totalMs}ms`)
 
     // Direct proof of overlap: the second call to start began before the
     // first had finished.

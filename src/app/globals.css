@@ -15,6 +15,11 @@
    - Tailwind v4 theme names below are kept so existing utilities still resolve.
 ───────────────────────────────────────────────────── */
 :root {
+  /* BOE One logo colours (brand kit v1.0). Logo-related only: status, error and focus colours are separate. */
+  --boe-one-charcoal: #303536;
+  --boe-one-terracotta: #BC472F;
+  --boe-one-ivory: #F7F4EF;
+
   /* Brand / action */
   --boe-brand:          #B9472E;
   --boe-brand-hover:    #9E3B25;

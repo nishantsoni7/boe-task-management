@@ -12,6 +12,26 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Owner steps.** Back up, apply 20270405000000, then retry deleting P-AA-0040.
 - **Rollback.** Re-emit the 20270331000000 §4 body.
 
+## 2026-10-22 — Sign-in logo centred (PR open) · no migration
+- **Report.** After the brand kit (#410) the BOE One logo sat left of centre on sign-in / forgot / reset password.
+- **Cause.** The base CSS makes `img` a block element, so the wrapper's `text-align: center` did not apply. `AuthShell` now centres the logo with `display: block; margin: 0 auto`. Nothing else changed.
+- **Proof.** tsc; on screen the logo centre equals the card centre (512 = 512 px at a 1024 px viewport).
+
+## 2026-10-22 — BOE One brand kit v1.0 applied (PR open) · no migration
+- **Owner request.** Apply the approved BOE One identity (kit `BOE-One-Production-Kit`); keep the parent BOE identity on company documents and the separate ERP.
+- **What.** Kit assets live in `public/brand/` (svg, icons, animated loader SVG; checksums matched the kit). Browser tab: SVG favicon + ICO fallback, 180px touch icon, theme colour #303536 via the Metadata/Viewport API (`src/app/icon.png` removed so no old icon competes). `public/manifest.json`: BOE One icons (192/512 `any` + dedicated maskable 192/512), kit colours; `start_url`, orientation and the Add Expense shortcut kept. Sidebar mark (`BoeBrandIcon`) is the BOE One app icon; sign-in / forgot / reset password (`AuthShell`) and the daily-quote splash show the horizontal BOE One logo. Logo colour tokens `--boe-one-*` added to `globals.css`.
+- **Deliberately not changed.** `public/branding/*` stays: the files named `boe-one-logo-*.png` are the Best of Exports parent logo, still read by the PI and confirmed-order PDF routes, and quotation PDFs. No service worker exists, so there is no precache; icon URLs carry `?v=1` to bust caches.
+- **Not done.** The kit's `BoeOneLoader` component is not wired in: route loading states are skeletons, and a status spinner would duplicate them.
+- **Proof.** tsc, lint, full tests. See the PR for the placements that were checked on screen.
+
+## 2026-10-22 — Load time: Order and PI Draft pages are prepared once and cached (PR open) · no migration
+- **Measured (live, admin).** Opening an Order took about 770 ms warm (runs 668, 924, 887, 772, 636; the header at about 0.7-1.2 s, everything at about 1.4-2.4 s on slower runs). The first data request left about 500 ms after the click, where PI Drafts leaves after about 100 ms. Cause: `/orders/[id]` and `/orders/drafts/[submissionId]` were dynamic routes (`ƒ` in the build), so every open ran a server function in Tokyo to fetch the page itself (`x-vercel-cache: MISS`, `no-store`, about 260-400 ms; the first call after idle took 10.6 s: a cold start) before the browser could ask for any data, and Next does not prefetch a dynamic page. No main-thread blocking was found (no long tasks).
+- **What.** A server `layout.tsx` in each of the two record folders exports an empty `generateStaticParams` (Next: "all paths at runtime"). Each record page is prepared the first time it is asked for and then served from the cache, so the link's hover prefetch really fetches it and an open starts its data reads at once. The build now marks `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/drafts/[submissionId]` and `.../edit-pi` as `●`.
+- **Why it is safe.** Both pages are client components; the server output has no order or draft data (it arrives from the database in the browser, scoped by RLS). There is no middleware. A test pins that nothing under the two routes (or the orders and root layouts) reads cookies or headers or forces dynamic rendering; if that ever changed, Next would refuse to cache and the page would just go back to dynamic.
+- **Not changed.** Who sees what; any query. Other dynamic record routes (tasks, requests) are untouched.
+- **Rollback.** Delete the two `layout.tsx` files.
+- **Proof.** tsc, eslint, full suite, a real `next build` (routes show `●`), a new test (`recordPagesCached.test.ts`). After-numbers in the PR.
+
 ## 2026-10-22 — Payment delete: a proof file already gone from storage no longer blocks deletion (PR open) · no migration
 - **Report.** Deleting Confirmed Payment P-AA-0040 showed "Payment deletion did not finish. Retry deletion." on every retry.
 - **Likely cause (inferred from code, not seen in the live logs).** `/api/finance/payments/delete` counted a proof key as removed only when `storage.remove()` echoed it back. Storage returns nothing for a key that is not in the bucket, so a manifest entry with no object could never be confirmed and every retry ended in `STORAGE_INCOMPLETE`, which shares the generic message.
