@@ -25,6 +25,7 @@ import {
   ALLOCATION_TARGET_WORD,
   type AllocationTarget,
 } from './paymentAllocations'
+import { legacyOrderLabel } from './legacyOrderAllocation'
 
 /** The one row this module describes. Deliberately narrower than the query. */
 export type PaymentActivityRow = {
@@ -51,10 +52,12 @@ const NEVER_RESOLVES: ActivityTargetResolver = () => null
 const KIND_INDEFINITE: Record<ActivityTargetKind, string> = {
   order:      'a Confirmed Order',
   submission: 'a PI Draft',
+  legacy:     'an old order',
 }
 
 /** `target_type` as the trigger writes it, mapped to this module's two kinds. */
 function targetKind(value: unknown): ActivityTargetKind {
+  if (value === 'legacy_order') return 'legacy'
   return value === 'order_submission' ? 'submission' : 'order'
 }
 
@@ -82,7 +85,15 @@ function namedTarget(
   kind: ActivityTargetKind,
   id: unknown,
   resolve: ActivityTargetResolver,
+  payload: Record<string, unknown> = {},
 ): string {
+  // An old order is named by what the allocator typed, written into the payload
+  // by the server (20270407000000); there is no record to resolve.
+  if (kind === 'legacy') {
+    return str(payload.legacy_order_no)
+      ? legacyOrderLabel(str(payload.legacy_order_no), str(payload.legacy_client_name))
+      : KIND_INDEFINITE.legacy
+  }
   return resolvedTarget(kind, id, resolve) ?? KIND_INDEFINITE[kind]
 }
 
@@ -182,7 +193,7 @@ export function paymentActivityLabel(
     // said "allocation_created" instead of saying where the money went.
     case 'allocation_created': {
       const kind = targetKind(p.target_type)
-      return `Payment allocated to ${namedTarget(kind, p.target_id, resolve)}`
+      return `Payment allocated to ${namedTarget(kind, p.target_id, resolve, p)}`
     }
     case 'allocation_reversed': {
       // The REASON is part of the event: a reversal is a correction somebody
@@ -190,7 +201,7 @@ export function paymentActivityLabel(
       // server-written reversal_reason from the payload, never a client value.
       const kind = targetKind(p.target_type)
       const reason = str(p.reversal_reason).trim()
-      const base = `Allocation to ${namedTarget(kind, p.target_id, resolve)} reversed`
+      const base = `Allocation to ${namedTarget(kind, p.target_id, resolve, p)} reversed`
       return reason ? `${base}. Reason: ${reason}` : base
     }
     case 'request_deleted':

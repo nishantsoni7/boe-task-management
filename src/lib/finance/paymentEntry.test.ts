@@ -460,8 +460,8 @@ describe('choosing the record a payment is for', () => {
     const src = code(read('src/lib/finance/splitPaymentEntry.ts'))
     assert.ok(src.includes('A Suspense Entry holds no allocations'),
       'a row left behind must be refused, not quietly dropped')
-    assert.ok(src.includes('targetKind ? toRpcAllocations(rows) : []')
-      || code(read(RECORD_FORM)).includes('targetKind ? toRpcAllocations(rows) : []'),
+    assert.ok(src.includes('targetKind ? toRpcAllocationsWithLegacy(rows) : []')
+      || code(read(RECORD_FORM)).includes('targetKind ? toRpcAllocationsWithLegacy(rows) : []'),
       'and the payload must send an empty list for Suspense')
   })
 })

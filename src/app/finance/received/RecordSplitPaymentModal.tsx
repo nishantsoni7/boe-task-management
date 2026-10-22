@@ -79,7 +79,7 @@ import {
   targetKey,
   targetKindDestination,
   type SplitPaymentBaseline,
-  toRpcAllocations,
+  toRpcAllocationsWithLegacy,
   type SplitAllocationRow,
   type SplitTargetKind,
 } from '@/lib/finance/splitPaymentEntry'
@@ -121,6 +121,7 @@ import {
   ProofReferenceSection,
 } from '@/app/finance/components/ProofReferenceSection'
 import { ProofDropZone } from '@/app/finance/components/ProofDropZone'
+import { LEGACY_CLIENT_NAME_MAX, LEGACY_ORDER_ACTION_LABEL, LEGACY_ORDER_NO_MAX, LEGACY_ORDER_WORD } from '@/lib/finance/legacyOrderAllocation'
 import {
   KindBadge,
   loadTargetPosition,
@@ -425,7 +426,7 @@ export function RecordSplitPaymentModal({
       p_remarks:      remarks.trim() || null,
       // A SUSPENSE ENTRY IS AN EMPTY LIST, not a hidden one. There is no branch
       // here that could send a row the person cannot see.
-      p_allocations:  targetKind ? toRpcAllocations(rows) : [],
+      p_allocations:  targetKind ? toRpcAllocationsWithLegacy(rows) : [],
       // THE CUSTODY TRAIL, in the same transaction as the payment and its
       // allocations. Sent only for a mode somebody carries — and the RPC decides
       // that again for itself, so a section left on screen after the mode changed
@@ -840,7 +841,19 @@ function AllocationRow({
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
         <span style={{ ...LABEL, minWidth: '58px' }}>Row {index + 1}</span>
 
-        {row.targetId && row.kind ? (
+        {row.legacy ? (
+          <>
+            <span style={LEGACY_BADGE}>{LEGACY_ORDER_WORD}</span>
+            <button
+              type="button"
+              onClick={() => onChange({ legacy: false, legacyOrderNo: null, clientName: null, reference: null })}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '3px 9px', fontSize: '12px' }}
+            >
+              Change
+            </button>
+          </>
+        ) : row.targetId && row.kind ? (
           <>
             <KindBadge kind={row.kind} />
             <span style={{
@@ -859,14 +872,28 @@ function AllocationRow({
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={onPick}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '12px' }}
-          >
-            {kind === 'submission' ? 'Choose a PI Draft' : 'Choose an Order'}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onPick}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '4px 10px', fontSize: '12px' }}
+            >
+              {kind === 'submission' ? 'Choose a PI Draft' : 'Choose an Order'}
+            </button>
+            {/* An old order is a Confirmed Order that was never entered here, so
+                it is offered only under that destination. */}
+            {kind === 'order' && (
+              <button
+                type="button"
+                onClick={() => { onClosePicker(); setPosition(null); onChange({ legacy: true, legacyOrderNo: '', clientName: '' }) }}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+              >
+                {LEGACY_ORDER_ACTION_LABEL}
+              </button>
+            )}
+          </>
         )}
 
         <input
@@ -894,6 +921,34 @@ function AllocationRow({
           reads. "Not visible to you" rather than a zero: an unreadable figure
           and an empty one are different facts, and only one of them means the
           gap is still open. */}
+      {row.legacy && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <input
+            className="boe-input"
+            aria-label={`Old order number for allocation ${index + 1}`}
+            value={row.legacyOrderNo ?? ''}
+            onChange={e => onChange({ legacyOrderNo: e.target.value })}
+            maxLength={LEGACY_ORDER_NO_MAX}
+            placeholder="Old order no."
+            autoFocus
+            style={{ flex: '1 1 160px', minWidth: 0 }}
+          />
+          <input
+            className="boe-input"
+            aria-label={`Client name for allocation ${index + 1}`}
+            value={row.clientName ?? ''}
+            onChange={e => onChange({ clientName: e.target.value })}
+            maxLength={LEGACY_CLIENT_NAME_MAX}
+            placeholder="Client name"
+            style={{ flex: '2 1 220px', minWidth: 0 }}
+          />
+          <div style={{ flexBasis: '100%', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+            This order is not in BOE One. The number and client are recorded with the allocation; it
+            counts toward this payment but not toward any Order here.
+          </div>
+        </div>
+      )}
+
       {row.targetId && position && (
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: colors.secondary }}>
           <span>
@@ -992,6 +1047,12 @@ function AllocationRow({
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────────
+
+const LEGACY_BADGE: React.CSSProperties = {
+  fontSize: '11px', fontWeight: 700, color: colors.secondary, background: colors.raised,
+  border: `1px solid ${colors.border}`, borderRadius: '999px', padding: '2px 8px',
+  textTransform: 'uppercase', letterSpacing: '0.05em',
+}
 
 const LABEL: React.CSSProperties = {
   fontSize: '12px', fontWeight: 600, color: colors.muted,

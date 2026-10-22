@@ -114,6 +114,64 @@ describe('Allocate Funds', () => {
     assert.equal(allocated(), 1, 'the list is told only after the server answered')
   })
 
+  test('an OLD order that is not in the system: type its number and client, give an amount, press once', async () => {
+    const { ui, sends, allocated } = openFunds()
+    await ui.settle()
+    ui.click(ui.button('Old order (not in system)'))
+    // the two typed fields appear; until both are filled the form names what is missing
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Amount for allocation 1"]'), '300')
+    ui.click(ui.button('Allocate Funds'))
+    assert.equal(sends().length, 0, 'nothing is sent without the old order number')
+    assert.match(ui.text(), /enter the old order number/)
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Old order number for allocation 1"]'), ' ab-12 ')
+    ui.click(ui.button('Allocate Funds'))
+    assert.equal(sends().length, 0, 'nothing is sent without the client')
+    assert.match(ui.text(), /enter the client/)
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Client name for allocation 1"]'), 'Old Client')
+    assert.match(ui.text(), /700\.00 left/, 'the remaining figure counts an old order like any other')
+    ui.click(ui.button('Allocate Funds'))
+    await ui.settle()
+    assert.equal(sends().length, 1)
+    const sent = sends()[0].args as { p_targets: Array<Record<string, unknown>> }
+    assert.deepEqual(sent.p_targets, [
+      { legacy_order_no: 'AB-12', legacy_client_name: 'Old Client', allocated_amount: 300 },
+    ], 'no record id is sent for an order that is not in the system')
+    assert.equal(allocated(), 1)
+  })
+
+  test('an old order and an Order go in one call, in the order listed', async () => {
+    const { ui, sends } = openFunds()
+    await ui.settle()
+    ui.click(ui.button('Old order (not in system)'))
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Old order number for allocation 1"]'), 'OLD-1')
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Client name for allocation 1"]'), 'Cafe Verde')
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Amount for allocation 1"]'), '200')
+    ui.click(ui.button('+ Add allocation'))
+    ui.click(ui.all<HTMLButtonElement>('button').filter(b => b.textContent === 'Choose an Order or PI Draft')[0])
+    ui.type(ui.one<HTMLInputElement>('input[placeholder^="Order number"]'), 'ORD')
+    await ui.settle()
+    ui.click(ui.button(/ORD-0524/))
+    await ui.settle()
+    ui.type(ui.one<HTMLInputElement>('input[aria-label="Amount for allocation 2"]'), '300')
+    ui.click(ui.button('Allocate Funds'))
+    await ui.settle()
+    assert.equal(sends().length, 1)
+    const sent = sends()[0].args as { p_targets: Array<Record<string, unknown>> }
+    assert.equal(sent.p_targets.length, 2)
+    assert.equal(sent.p_targets[0].legacy_order_no, 'OLD-1')
+    assert.equal(sent.p_targets[1].order_id, 'ord-1')
+  })
+
+  test('"Change" takes an old-order row back to an unchosen one', async () => {
+    const { ui } = openFunds()
+    await ui.settle()
+    ui.click(ui.button('Old order (not in system)'))
+    assert.equal(ui.all('input[aria-label="Old order number for allocation 1"]').length, 1)
+    ui.click(ui.button('Change'))
+    assert.equal(ui.all('input[aria-label="Old order number for allocation 1"]').length, 0)
+    assert.ok(ui.button('Choose an Order or PI Draft'))
+  })
+
   test('more than is left is refused with a sentence, and nothing is sent', async () => {
     const { ui, sends } = openFunds()
     await ui.settle()

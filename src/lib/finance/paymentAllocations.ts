@@ -64,6 +64,9 @@ export type PaymentAllocationRow = {
   status: string
   order_id: string | null
   order_submission_id: string | null
+  /** An OLD order not in this system (20270407000000): its number and client, as typed. */
+  legacy_order_no?: string | null
+  legacy_client_name?: string | null
   /**
    * When the allocation was recorded. Optional because it is a display fact,
    * never an input to a figure: every total here is summed from
@@ -83,7 +86,8 @@ export type PaymentAllocationRow = {
  */
 export type AllocationTarget = {
   allocationId: string
-  kind: 'order' | 'submission'
+  kind: 'order' | 'submission' | 'legacy'
+  /** For an old order (kind 'legacy'): `legacy:<ORDER NO>`, never a record id. */
   targetId: string
   /** The display number, when the caller could read the target. */
   label: string | null
@@ -103,6 +107,7 @@ export type AllocationTarget = {
 export const ALLOCATION_TARGET_WORD: Record<AllocationTarget['kind'], string> = {
   order:      'Order',
   submission: 'PI Draft',
+  legacy:     'Old order',
 }
 
 export type PaymentAllocationState = 'unknown' | 'unallocated' | 'partial' | 'full' | 'over'
@@ -207,8 +212,10 @@ export function summarizePaymentAllocations(
       const share = parseExact(row.allocated_amount)
       if (share) allocated = addExact(allocated, share)
 
-      const kind: 'order' | 'submission' = row.order_id ? 'order' : 'submission'
-      const targetId = row.order_id ?? row.order_submission_id
+      const kind: AllocationTarget['kind'] = row.legacy_order_no ? 'legacy' : row.order_id ? 'order' : 'submission'
+      const targetId = row.legacy_order_no
+        ? `legacy:${row.legacy_order_no}`
+        : row.order_id ?? row.order_submission_id
       // An allocation names exactly one target — the database's
       // finance_payment_allocations_one_target CHECK guarantees it. A row with
       // neither could only be a corrupt one, and is skipped rather than shown
@@ -219,7 +226,9 @@ export function summarizePaymentAllocations(
         allocationId: row.id,
         kind,
         targetId,
-        label: labels.get(targetId) ?? null,
+        label: row.legacy_order_no
+          ? [row.legacy_order_no, row.legacy_client_name].filter(Boolean).join(' · ')
+          : labels.get(targetId) ?? null,
         amount: share ? exactToString(share) : String(row.allocated_amount ?? ''),
         allocatedAt: row.created_at ?? null,
       })

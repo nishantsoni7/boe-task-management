@@ -35,26 +35,31 @@ import {
 } from './exactMoney'
 import type { ConfirmedAllocationStatus } from './paymentSurfaces'
 import type { PaymentAllocationSummary } from './paymentAllocations'
+import { legacyOrderLabel } from './legacyOrderAllocation'
 
 /** One row of received_payment_allocation_targets(). */
 export type AllocationTargetRow = {
   payment_request_id: string
   allocation_id: string
-  target_type: 'order' | 'pi_draft'
-  target_id: string
-  /** Order: display number. PI Draft: workbook file name. Either may be null. */
+  /** 'legacy_order' is an OLD order not in this system (20270407000000): no target_id. */
+  target_type: 'order' | 'pi_draft' | 'legacy_order'
+  target_id: string | null
+  /** Order: display number. PI Draft: workbook file name. Old order: the number typed. */
   target_reference: string | null
   /** PI Draft only: the genuine Order number reserved for it, if any. */
   reserved_order_number: string | null
   allocated_amount: string | number | null
+  /** Old order only: the client typed with it. */
+  target_client_name?: string | null
 }
 
 /** One destination as the cell draws it — duplicates already combined. */
 export type AllocatedAgainstLine = {
   /** `${type}:${id}`, unique within one payment. */
   key: string
-  targetType: 'order' | 'pi_draft'
-  targetId: string
+  targetType: 'order' | 'pi_draft' | 'legacy_order'
+  /** Null for an old order, which names no record in this system. */
+  targetId: string | null
   /** "Order 0425", "PI Draft · Reserved Order 0431", "PI Draft · Hotel ABC.xlsx". */
   label: string
   /** Exact sum of every active allocation to this target, as a decimal string. */
@@ -92,8 +97,9 @@ export const ALLOCATION_TARGETS_MAX_IDS = 50
 
 /** The readable name of one target. Never a bare id, never source_order_number. */
 export function allocationTargetLabel(row: Pick<AllocationTargetRow,
-  'target_type' | 'target_reference' | 'reserved_order_number'>): string {
+  'target_type' | 'target_reference' | 'reserved_order_number'> & { target_client_name?: string | null }): string {
   const ref = row.target_reference?.trim() || null
+  if (row.target_type === 'legacy_order') return legacyOrderLabel(ref, row.target_client_name)
   if (row.target_type === 'order') return ref ? `Order ${ref}` : 'Order'
   const name = allocationTargetName(row)
   return name ? `PI Draft · ${name}` : 'PI Draft'
@@ -122,6 +128,7 @@ function draftName(reference: string | null, reserved: string | null): string | 
 export function allocationTargetName(row: Pick<AllocationTargetRow,
   'target_type' | 'target_reference' | 'reserved_order_number'>): string | null {
   const ref = row.target_reference?.trim() || null
+  if (row.target_type === 'legacy_order') return null
   if (row.target_type === 'order') return ref
   return draftName(ref, row.reserved_order_number?.trim() || null)
 }
@@ -202,13 +209,18 @@ export function buildAllocatedAgainst(
   let allocated: ExactDecimal = ZERO
 
   for (const row of rows) {
-    if (row.payment_request_id !== payment.id || !row.target_id) continue
+    if (row.payment_request_id !== payment.id) continue
+    // An old order has no record id; it is told apart by its (normalised) number.
+    const targetKey = row.target_type === 'legacy_order'
+      ? (row.target_reference?.trim() ? `legacy:${row.target_reference.trim()}` : null)
+      : row.target_id
+    if (!targetKey) continue
     const share = parseExact(row.allocated_amount)
     // An amount that cannot be read exactly is a data defect; the cell must not
     // quietly print a smaller total than the ledger holds.
     if (!share) return { kind: 'unavailable' }
     allocated = addExact(allocated, share)
-    const key = `${row.target_type}:${row.target_id}`
+    const key = `${row.target_type}:${targetKey}`
     const existing = byTarget.get(key)
     if (existing) {
       existing.total = addExact(existing.total, share)
@@ -339,13 +351,21 @@ export function completeAllocationSummary(
   const allocated = parseExact(total) ?? ZERO
   const targets = rows
     .filter(r => r.payment_request_id === payment.id)
-    .map(r => ({
-      allocationId: r.allocation_id,
-      kind: r.target_type === 'order' ? 'order' as const : 'submission' as const,
-      targetId: r.target_id,
-      label: null,
-      amount: exactToString(parseExact(r.allocated_amount) ?? ZERO),
-    }))
+    .map(r => r.target_type === 'legacy_order'
+      ? {
+          allocationId: r.allocation_id,
+          kind: 'legacy' as const,
+          targetId: `legacy:${r.target_reference?.trim() ?? ''}`,
+          label: [r.target_reference?.trim(), r.target_client_name?.trim()].filter(Boolean).join(' · ') || null,
+          amount: exactToString(parseExact(r.allocated_amount) ?? ZERO),
+        }
+      : {
+          allocationId: r.allocation_id,
+          kind: r.target_type === 'order' ? 'order' as const : 'submission' as const,
+          targetId: r.target_id as string,
+          label: null,
+          amount: exactToString(parseExact(r.allocated_amount) ?? ZERO),
+        })
   const amount = parseExact(payment.amount)
   if (!amount) {
     return { paymentId: payment.id, state: 'unknown', allocated: total, unallocated: null, targets }
