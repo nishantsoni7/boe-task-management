@@ -5,16 +5,22 @@
 
 ## Snapshot
 
-- Commit: `50549c42` — PI Drafts: rows and advance percentages in one round trip
-- Commits on this branch: 955
-- Pages (`page.tsx`): 143   API routes (`route.ts`): 150
-- Migrations: 350 (first `20260530_create_positions.sql`, latest `20270404000000_order_submission_attached_percent_computed_column.sql`)
+- Commit: `79f1c30e` — Test: the reimburse migration pin no longer assumes it is the newest
+- Commits on this branch: 961
+- Pages (`page.tsx`): 144   API routes (`route.ts`): 150
+- Migrations: 351 (first `20260530_create_positions.sql`, latest `20270404000000_order_submission_attached_percent_computed_column.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 738   Enums: 0
-- Test files: 628   Next.js 16.2.6, React 19.2.4
+- Test files: 631   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `50549c42` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
+- `79f1c30e` 2026-10-22 Test: the reimburse migration pin no longer assumes it is the newest
+- `32ce9482` 2026-10-22 Merge remote-tracking branch 'origin/main' into feat/expense-reimburse-permission
+- `9a3a47cc` 2026-10-22 Renumber the PI Drafts migration to 20270404000000
+- `9ebe2b8b` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
+- `cc3e996a` 2026-10-22 Docs: migration 20270403000000 is applied (finance.reimburse)
+- `fc649914` 2026-10-22 Merge remote-tracking branch 'origin/main' into feat/expense-reimburse-permission
+- `54975223` 2026-10-22 Expenses: reimburse without edit rights, Excel downloads, all-reimbursements page
 - `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
 - `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
@@ -33,12 +39,6 @@
 - `2011ffd2` 2026-10-21 Finance: Bank Statements - upload HDFC statements, link bank credits to payments
 - `edd424e8` 2026-10-21 Docs: record that the PI returned/rejected migrations are applied
 - `6be85e43` 2026-10-21 Orders: salesperson sees PIs sent back or rejected (dashboard + notification) (#383)
-- `9f530e60` 2026-10-21 PI Draft: Commercial breakdown on the Order page grid; terms highlighted, one point per line (#382)
-- `01ae5d86` 2026-10-21 Orders/Finance: re-label real records stamped as test data (#384)
-- `f6cf04e5` 2026-10-21 Orders dashboard: at-a-glance cards and an action board (#381)
-- `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
-- `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
-- `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
 
 ## Pages by top-level area
 
@@ -52,7 +52,7 @@
 - **customer-reviews** (11): `/customer-reviews`, `/customer-reviews/[id]`, `/customer-reviews/batches`, `/customer-reviews/custom`, `/customer-reviews/history`, `/customer-reviews/images`, `/customer-reviews/mine`, `/customer-reviews/notifications`, `/customer-reviews/progress`, `/customer-reviews/reports`, `/customer-reviews/reviews`
 - **dashboard** (1): `/dashboard`
 - **exhibition-leads** (6): `/exhibition-leads`, `/exhibition-leads/add`, `/exhibition-leads/all`, `/exhibition-leads/exhibitions`, `/exhibition-leads/my`, `/exhibition-leads/ranking`
-- **finance** (9): `/finance`, `/finance/bank`, `/finance/expenses`, `/finance/expenses/new`, `/finance/notifications`, `/finance/payments-to-verify`, `/finance/received`, `/finance/received/linked`, `/finance/received/unlinked`
+- **finance** (10): `/finance`, `/finance/bank`, `/finance/expenses`, `/finance/expenses/new`, `/finance/notifications`, `/finance/payments-to-verify`, `/finance/received`, `/finance/received/linked`, `/finance/received/unlinked`, `/finance/reimbursements`
 - **forgot-password** (1): `/forgot-password`
 - **image-editor** (1): `/image-editor`
 - **inventory** (6): `/inventory`, `/inventory/[id]`, `/inventory/[id]/edit`, `/inventory/new`, `/inventory/notifications`, `/inventory/requests`
@@ -134,7 +134,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 44 source, 54 test
+- `src/lib/finance` — 45 source, 55 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
@@ -142,7 +142,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 5 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 72 source, 125 test
+- `src/lib/orders` — 72 source, 126 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
@@ -356,7 +356,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270310000000_exhibition_lead_requirement_residential.sql`
 - `20270311000000_exhibition_lead_duplicate_owner_name.sql`
 - `20270312000000_exhibition_close_reopen.sql`
 - `20270313000000_inventory_module.sql`
@@ -385,6 +384,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
 - `20270402000000_operations_dashboard_order_details.sql`
+- `20270403000000_finance_reimburse_permission.sql`
 - `20270404000000_order_submission_attached_percent_computed_column.sql`
 
 ## All SQL function names

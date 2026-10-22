@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Expense reimbursement without edit rights, Excel downloads, all-reimbursements page (PR open) · migration 20270403000000 (APPLIED 2026-10-22)
+- **Owner request.** Nitish sees the owner's expenses but cannot edit or delete them; he multi-selects and reimburses with a Challan ID and date; Excel download for managing the data; after reimbursing, a download of that payment; a separate place to see every reimbursement; visible to Nitish and the owner only.
+- **Finding.** Reimbursing already existed but needed `finance.manage`, which also edits and deletes anybody's expense. So the door moved.
+- **Database.** New protected action `finance.reimburse` (deny-by-default). `can_record_expense_reimbursement()` re-emitted: `reimburse` + `view_all` instead of `manage` + `view_all`. `record_/reverse_expense_reimbursement` untouched. No policy, table or expense-edit rule changes.
+- **App.** `canReimburseExpenses`; Expenses page: Download Excel (list as filtered) + post-record banner (this reimbursement's Excel, link to history); new `/finance/reimbursements` page + sidebar entry for holders; "Challan ID" wording. `xlsx` is loaded only on pressing Download.
+- **Owner steps.** 20270403000000 is applied (backup taken first; confirmed with `migration list --linked`). Remaining: grant `reimburse` and `view_all` to Nitish in Control Center (admins hold both by role). Anyone who reimbursed through `manage` before must be granted `reimburse` to continue.
+- **Proof.** tsc, full test suite, build; migration shape and behaviour pinned by `expenseReimbursementExport.test.ts`. NOT executed against a database yet; not seen signed in as Nitish.
+- **Rollback.** Re-emit `can_record_expense_reimbursement()` from 20270205120000; the permission rows may stay.
 ## 2026-10-22 — Load time: the Finance list opens with three reads, not eight (PR open) · no migration
 - **Measured (live, admin).** Requests that wait beside others finish about 70 ms later for each one (three at once end near 370 ms; nine near 770; eleven near 1,000). The database itself runs the dashboard functions in 17-31 ms and is a small instance (60 connections, about 1 GB). The Finance list opened with eight reads at once. Before: about 608 ms to open it from Confirmed Payments (runs 665, 616, 600, 774, 447, 512).
 - **What.** The first group is now the profile, ONE permissions read for every module (`resolve_effective_permissions_for_user`, in place of one read for finance and one for orders; same resolver, still fresh every load, still failing closed to no capabilities) and the rows. The four head-only tab-badge counts are read after the first draw, against the same cutoff, and show no number until they land. A search or tab change still reloads rows and counts together.

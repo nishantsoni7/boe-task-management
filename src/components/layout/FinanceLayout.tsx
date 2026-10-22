@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell, Receipt, Landmark } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -51,6 +51,13 @@ export const ADD_EXPENSE_PATH = '/finance/expenses/new'
  */
 export const BANK_STATEMENTS_PATH = '/finance/bank'
 
+/**
+ * Every expense reimbursement ever recorded. Drawn only for a holder of the
+ * protected finance.reimburse (admins included); the route and the database ask
+ * again.
+ */
+export const REIMBURSEMENTS_PATH = '/finance/reimbursements'
+
 /** The one count the sidebar draws. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
 
@@ -82,7 +89,9 @@ export function FinanceLayout({
   // switch reads), so the account block at the foot of the sidebar is drawn
   // from the first frame instead of appearing when the page lands. Display only.
   const { profile: sessionProfile, role: sessionRole, permissionsByModule } = usePermissionContext()
-  const canReconcileBank = deriveFinanceCapabilities(sessionRole, permissionsByModule.get('finance') ?? []).canReconcileBank
+  const financeCaps = deriveFinanceCapabilities(sessionRole, permissionsByModule.get('finance') ?? [])
+  const canReconcileBank = financeCaps.canReconcileBank
+  const canReimburseExpenses = financeCaps.canReimburseExpenses
   const { triggerRefresh } = useRefresh()
   const queryClient = useQueryClient()
 
@@ -182,6 +191,10 @@ export function FinanceLayout({
     // and the entry is absent (not disabled) for anybody without finance.reconcile.
     ...(canReconcileBank
       ? [{ label: 'Bank Statements', path: BANK_STATEMENTS_PATH, icon: <Landmark size={15} strokeWidth={1.8} />, key: 'bank' as const }]
+      : []),
+    // Every reimbursement done so far. Absent (not disabled) without finance.reimburse.
+    ...(canReimburseExpenses
+      ? [{ label: 'Reimbursements', path: REIMBURSEMENTS_PATH, icon: <HandCoins size={15} strokeWidth={1.8} />, key: 'reimbursements' as const }]
       : []),
   ]
   const activeKey = activeFinanceNav(pathname)
