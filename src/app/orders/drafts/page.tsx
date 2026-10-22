@@ -241,7 +241,7 @@ export default function PiDraftsPage() {
 
     let result = preloaded ?? await draftsQuery()
     // ONE ROUND TRIP WHEN THE DATABASE HAS THE COLUMN: the percentages ride with the rows
-    // (20270403000000). A database that does not have it yet refuses the column by name, and the
+    // (20270404000000). A database that does not have it yet refuses the column by name, and the
     // list is read again the way it always was: rows, then the percentages for those ids.
     let percentsWithRows = true
     if (isMissingAttachedPercent(result.error)) {

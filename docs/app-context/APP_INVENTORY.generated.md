@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `e44e3db1` — Operations dashboard: the two lists become tabs, the top strip is removed
-- Commits on this branch: 954
+- Commit: `50549c42` — PI Drafts: rows and advance percentages in one round trip
+- Commits on this branch: 955
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
-- Migrations: 350 (first `20260530_create_positions.sql`, latest `20270403000000_order_submission_attached_percent_computed_column.sql`)
+- Migrations: 350 (first `20260530_create_positions.sql`, latest `20270404000000_order_submission_attached_percent_computed_column.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 738   Enums: 0
 - Test files: 628   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `50549c42` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
 - `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
 - `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
 - `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
@@ -38,7 +39,6 @@
 - `9d500e20` 2026-10-21 Order page: Shipping and billing details link replaces Total product value; fix due-date rule overlap (#380)
 - `e8a19029` 2026-10-21 Notifications: warm task pages on intent, not on load (#379)
 - `740313b0` 2026-10-21 PI Drafts list: drop Grand total and the date under Salesperson; header Advance % (#378)
-- `dcbd567b` 2026-10-21 PI Drafts list: Confirmed date, Due date, Advance % received; drop Uploaded by/Submitted (#376)
 
 ## Pages by top-level area
 
@@ -385,7 +385,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
 - `20270402000000_operations_dashboard_order_details.sql`
-- `20270403000000_order_submission_attached_percent_computed_column.sql`
+- `20270404000000_order_submission_attached_percent_computed_column.sql`
 
 ## All SQL function names
 

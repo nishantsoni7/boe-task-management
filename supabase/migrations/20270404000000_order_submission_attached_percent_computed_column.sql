@@ -35,7 +35,7 @@ as $$
 $$;
 
 comment on function public.attached_percent(public.order_submissions) is
-  'Advance % received for one PI row (verified + awaiting verification, of Total before GST, truncated to 2 dp), selectable as a column of order_submissions. Calls pi_submissions_advance_percent(), so it is the same figure and the same visibility rule. 20270403000000.';
+  'Advance % received for one PI row (verified + awaiting verification, of Total before GST, truncated to 2 dp), selectable as a column of order_submissions. Calls pi_submissions_advance_percent(), so it is the same figure and the same visibility rule. 20270404000000.';
 
 revoke execute on function public.attached_percent(public.order_submissions) from public, anon;
 grant  execute on function public.attached_percent(public.order_submissions) to authenticated;
