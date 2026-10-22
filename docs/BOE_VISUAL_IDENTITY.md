@@ -61,6 +61,10 @@ was added.
 
 ## Logo
 
+**BOE One kit v1.0 (2026-10).** The product identity is in `public/brand/` (copied unchanged from the kit; never redraw or recolour): `svg/boe-one-logo-horizontal-light.svg` on light layouts (sign-in, splash), `svg/boe-one-app-icon.svg` as the sidebar mark, `svg/favicon.svg` + `icons/favicon.ico`, `icons/icon-180.png`, `icons/icon-192|512.png` and `icons/maskable-192|512.png` for the PWA. Logo colours: `--boe-one-charcoal #303536`, `--boe-one-terracotta #BC472F`, `--boe-one-ivory #F7F4EF`. Alt text: empty when "BOE One" is written beside the logo, otherwise "BOE One".
+
+The parent Best of Exports logo below stays on company documents (PI, order and quotation PDFs) and in the separate ERP.
+
 `public/branding/boe-logo-full.png` is the supplied lockup, trimmed and with its white
 field made transparent; `boe-icon.png` is the symbol alone (sidebar, favicon, PWA icons).
 Neither recolours the logo.
