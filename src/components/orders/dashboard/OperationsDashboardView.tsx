@@ -224,12 +224,8 @@ export function ChangesToReview({ items, supabase, onAnswered, readOnlyReason }:
   readOnlyReason: string | null
 }) {
   return (
-    <section className="ops-section" aria-labelledby="ops-changes-h">
-      <div className="ops-section-head">
-        <h2 id="ops-changes-h" className="ops-section-title">Changes to review</h2>
-        <span className="ops-count" data-zero={items.length === 0 ? 'true' : undefined}>{items.length}</span>
-        <span className="ops-section-hint">Approved by the approver after the customer asked</span>
-      </div>
+    <section className="ops-section" aria-label="Changes to review">
+      <p className="ops-tab-hint">Approved by the approver after the customer asked.</p>
       {items.length === 0 ? (
         <p className="ops-empty">No changes are waiting for your answer.</p>
       ) : (
@@ -316,12 +312,8 @@ function NotAlignedSection({ summary, read }: { summary: DashboardSummary; read:
   const longest = rows.reduce((m, r) => Math.max(m, r.waitingSeconds), 0)
 
   return (
-    <section className="ops-section" aria-labelledby="ops-na-h">
-      <div className="ops-section-head">
-        <h2 id="ops-na-h" className="ops-section-title">Not aligned for manufacturing</h2>
-        <span className="ops-count" data-zero={rows.length === 0 ? 'true' : undefined}>{rows.length}</span>
-        <span className="ops-section-hint">Longest waiting first</span>
-      </div>
+    <section className="ops-section" aria-label="Not aligned for manufacturing">
+      <p className="ops-tab-hint">Longest waiting first.</p>
       {rows.length === 0 ? (
         <p className="ops-empty">Every running order is aligned for manufacturing.</p>
       ) : (
@@ -428,6 +420,8 @@ function OrdersVsDispatchesSection({ read }: { read: OperationsRead }) {
 
 // ── The page ────────────────────────────────────────────────────────────────
 
+type OpsTab = 'changes' | 'aligned'
+
 export function OperationsDashboardView({ summary, read, supabase, onAnswered, readOnlyReason }: {
   summary: DashboardSummary
   read: OperationsRead
@@ -437,46 +431,48 @@ export function OperationsDashboardView({ summary, read, supabase, onAnswered, r
 }) {
   const ov = summary.overview
   const revenue = summary.revenue
-  const notAligned = summary.notAligned.length
-  const stats = [
-    {
-      key: 'running', label: 'Running orders',
-      value: ov ? String(ov.running.orders) : '—',
-      sub: ov ? (ov.running.value > 0 ? `${formatRupees(ov.running.value)} product value` : 'No value on record') : 'Not available yet',
-    },
-    {
-      key: 'not-aligned', label: 'Not aligned', value: String(notAligned),
-      sub: notAligned > 0 ? 'Waiting for manufacturing alignment' : 'Every running order is aligned',
-      tone: notAligned > 0 ? 'attention' : undefined,
-    },
-    {
-      key: 'changes', label: 'Changes to answer', value: String(read.pending.length),
-      sub: read.pending.length > 0 ? plural(read.pending.reduce((n, p) => n + p.lines.length, 0), 'changed line') : 'Nothing waiting',
-      tone: read.pending.length > 0 ? 'attention' : undefined,
-    },
-    {
-      key: 'revenue', label: 'Revenue this month',
-      value: revenue ? formatRupees(revenue.currentMonth.amount) : '—',
-      sub: revenue
-        ? `${formatRange(revenue.currentMonth.from, revenue.currentMonth.to)} · ${plural(revenue.currentMonth.orders, 'order')}`
-        : 'Not shared with your account',
-    },
+  const [picked, setPicked] = useState<OpsTab | null>(null)
+  const counts = { changes: read.pending.length, aligned: summary.notAligned.length }
+  // Opens on what needs an answer; otherwise on what is waiting for alignment.
+  const active: OpsTab = picked ?? (counts.changes > 0 ? 'changes' : 'aligned')
+  const tabs: { key: OpsTab; label: string }[] = [
+    { key: 'changes', label: 'Changes to review' },
+    { key: 'aligned', label: 'Not aligned for manufacturing' },
   ]
 
   return (
     <div className="od-stack">
-      <section className="ops-strip" aria-label="Orders at a glance">
-        {stats.map(s => (
-          <div key={s.key} className="ops-stat" data-tone={s.tone}>
-            <span className="ops-stat-label">{s.label}</span>
-            <span className="ops-stat-value">{s.value}</span>
-            <span className="ops-stat-sub">{s.sub}</span>
+      <section className="ops-tabs-wrap" aria-label="Orders that need Operations">
+        <div className="ops-tabs-bar">
+          <div className="ops-tabs" role="tablist" aria-label="Operations lists">
+            {tabs.map(t => (
+              <button
+                key={t.key} type="button" role="tab" id={`ops-tab-${t.key}`}
+                aria-selected={active === t.key} aria-controls={`ops-panel-${t.key}`}
+                className="ops-tab" data-active={active === t.key ? 'true' : undefined}
+                onClick={() => setPicked(t.key)}
+              >
+                {t.label}
+                <span className="ops-tab-count" data-zero={counts[t.key] === 0 ? 'true' : undefined}>{counts[t.key]}</span>
+              </button>
+            ))}
           </div>
-        ))}
+          {ov ? (
+            <span className="ops-running">
+              {plural(ov.running.orders, 'running order')}
+              {ov.running.value > 0 ? ` · ${formatRupees(ov.running.value)}` : ''}
+            </span>
+          ) : null}
+        </div>
+        <div id={`ops-panel-${active}`} role="tabpanel" aria-labelledby={`ops-tab-${active}`} className="ops-tab-panel">
+          {active === 'changes' ? (
+            <ChangesToReview items={read.pending} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
+          ) : (
+            <NotAlignedSection summary={summary} read={read} />
+          )}
+        </div>
       </section>
 
-      <ChangesToReview items={read.pending} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
-      <NotAlignedSection summary={summary} read={read} />
       <OrdersVsDispatchesSection read={read} />
       {revenue ? <RevenueSection revenue={revenue} /> : null}
       <OperationsResponses responses={read.responses} title="Your recent answers" />

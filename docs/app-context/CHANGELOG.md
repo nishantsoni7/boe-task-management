@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Operations dashboard: the top strip is removed; the two lists are tabs (PR open) · no migration
+- **Owner request (after seeing it live as Nitish).** Remove the four-cell strip (Running orders, Not aligned, Changes to answer, Revenue this month) and make "Changes to review" and "Not aligned for manufacturing" tabs, so how many are in each is clear.
+- **What.** One tablist with a count on each tab; it opens on Changes to review when anything waits for an answer, else on Not aligned. Running orders (count and value) stay as one quiet line at the right of the tab bar, because the owner asked for it earlier (item 4); Revenue still has its own block below (only for readers who hold orders.view_all or admin). Old `.ops-strip` / `.ops-stat*` styles removed; presentation only, the read is unchanged.
+- **Proof.** tsc, eslint, full test suite. Not yet seen on screen as Nitish.
+
 ## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
 - **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
 - **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").
