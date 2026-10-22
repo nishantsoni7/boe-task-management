@@ -406,9 +406,11 @@ describe('the expense list', () => {
     // rather than the markup. The rendered header row is asserted against the
     // same list in expenseForm.render.test.tsx.
     const rendered = read(VIEW)
-    for (const header of ['Date', 'Amount', 'Paid to', 'Category', 'Mode', 'Remark', 'Recorded by', 'Actions']) {
+    for (const header of ['Date', 'Amount', 'Paid to', 'Category', 'Mode', 'Recorded by', 'Actions']) {
       assert.ok(rendered.includes(`label: '${header}'`), `${header} is missing from the column list`)
     }
+    // The Remark column was removed (owner, 2026-10-22): it lives in the details window.
+    assert.equal(rendered.includes("label: 'Remark'"), false)
   })
 
   test('the five filters and Clear are all there', () => {

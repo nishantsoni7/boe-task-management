@@ -254,11 +254,10 @@ describe('table or cards, by the room actually available', () => {
       .filter(c => 'width' in c)
       .reduce((sum, c) => sum + parseInt((c as { width: string }).width, 10), 0)
     const flexible = EXPENSE_TABLE_COLUMNS.filter(c => !('width' in c))
-    assert.equal(flexible.length, 2, 'Paid to and Remark share the remainder')
-    assert.ok(EXPENSE_TABLE_MIN_CONTAINER_PX - fixed >= EXPENSE_FLEX_COLUMN_MIN_PX * 2 - 10,
-      'the threshold leaves both flexible columns a readable width')
-    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 930,
-      'the same switch width as the Confirmed Payments table')
+    assert.equal(flexible.length, 1, 'Paid to takes the remainder; there is no Remark column')
+    assert.ok(EXPENSE_TABLE_MIN_CONTAINER_PX - fixed >= EXPENSE_FLEX_COLUMN_MIN_PX,
+      'the threshold leaves Paid to a readable width')
+    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 880, '718 fixed + 160 for Paid to + 2 for the border')
   })
 
   test('THE FIRST FRAME IS CARDS, so nothing can scroll sideways before measuring', () => {
@@ -286,7 +285,7 @@ describe('the desktop table', () => {
   test('every column the requirement names has a header, in order', () => {
     const headers = [...html.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
     assert.deepEqual(headers,
-      ['Date', 'Amount', 'Paid to', 'Category', 'Mode', 'Remark', 'Recorded by', 'Actions'])
+      ['Date', 'Amount', 'Paid to', 'Category', 'Mode', 'Recorded by', 'Actions'])
     assert.deepEqual(headers, EXPENSE_TABLE_COLUMNS.map(c => c.label),
       'the header row is drawn from the column list the threshold is computed from')
   })
@@ -296,24 +295,27 @@ describe('the desktop table', () => {
     assert.ok(/text-overflow:ellipsis/.test(html.replace(/\s/g, '')))
   })
 
-  test('a row prints every field, and the full remark is available on hover', () => {
+  test('a row prints every field except the remark, which is in the View window', () => {
     assert.ok(html.includes('₹850.50'))
     assert.ok(/18 Sept? 2026/.test(html))
     assert.ok(html.includes('Sharma Ji'))
     assert.ok(html.includes('Diesel'))
     assert.ok(html.includes('UPI'))
-    assert.ok(html.includes('title="welding machine"'), 'the compact cell keeps the whole text')
+    assert.equal(html.includes('welding machine'), false, 'the Remark column was removed (owner, 2026-10-22)')
     assert.ok(html.includes('Nishant'))
   })
 
-  test('a row with no remark prints a dash, not an empty cell', () => {
-    const empty = renderToStaticMarkup(createElement(ExpenseTable, {
-      rows: [listRow({ remark: null })], loading: false, error: null, narrowed: false,
+  test('EVERY READER GETS View, which opens the details window; Edit and Delete stay conditional', () => {
+    const view = renderToStaticMarkup(createElement(ExpenseTable, {
+      rows: [listRow()], loading: false, error: null, narrowed: false,
       categoryName: () => 'Diesel', personName: () => 'Nishant',
-      mayEdit: () => true, mayDelete: () => true,
-      onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {},
+      mayEdit: () => false, mayDelete: () => false,
+      onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {}, onOpen: () => {},
     }))
-    assert.ok(empty.includes('—'))
+    assert.ok(view.includes('>View</button>'))
+    assert.ok(/aria-label="View the expense of [^"]+ paid to [^"]+"/.test(view))
+    assert.equal(view.includes('>Edit</button>'), false)
+    assert.equal(/aria-label="Delete the expense/.test(view), false)
   })
 })
 
@@ -331,11 +333,11 @@ describe('what a row shows', () => {
     assert.equal(html.includes('2026-09-18'), false)
   })
 
-  test('payee, category, mode, remark and recorder are all on the card', () => {
+  test('payee, category, mode and recorder are all on the card; the remark is not', () => {
     assert.ok(html.includes('Sharma Ji'))
     assert.ok(html.includes('Diesel'))
     assert.ok(html.includes('UPI'))
-    assert.ok(html.includes('welding machine'))
+    assert.equal(html.includes('welding machine'), false)
     assert.ok(html.includes('Nishant'))
   })
 

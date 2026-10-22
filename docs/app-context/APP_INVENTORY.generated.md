@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `52439dfe` — Finance: allocate a payment to an old order that is not in the system
-- Commits on this branch: 970
+- Commit: `c5095767` — Finance: offer the old-order option in Record Payment too
+- Commits on this branch: 971
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 354 (first `20260530_create_positions.sql`, latest `20270407000000_finance_allocate_to_old_order.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 742   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `c5095767` 2026-10-22 Finance: offer the old-order option in Record Payment too
 - `52439dfe` 2026-10-22 Finance: allocate a payment to an old order that is not in the system
 - `52428e78` 2026-10-22 Docs: migration 20270406000000 is applied; Order page measurements
 - `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
@@ -38,7 +39,6 @@
 - `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
 - `00396982` 2026-10-22 Payment Requests: one payment popup, opened from anywhere on the row (#394)
 - `d8d66b71` 2026-10-22 Send Payment Request: quiet, Notion-style form (#393)
-- `d42ea2bd` 2026-10-21 Finance: bank marker on Payment Requests and in the review window (#388)
 
 ## Pages by top-level area
 

@@ -10078,8 +10078,15 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 
 /* The Payment ID, quiet: plain monospace with a copy icon on hover. */
 .fin-table .boe-payment-id { background: none; border: 0; padding: 0; gap: 4px; }
-.fin-table .boe-payment-id-text { font-weight: 500; color: #4C5352; }
-.fin-table .boe-payment-id-copy { opacity: 0; }
+.fin-table .boe-payment-id-text { font-size: 13px; font-weight: 600; color: #303536; }
+/* The copy button floats over the cell's right edge instead of taking room in
+   the line. In the line, it (22px, invisible until hover) pushed the ID past the
+   100px column and the cell's ellipsis drew "..." after every ID. */
+.fin-table td:first-child { position: relative; }
+.fin-table .boe-payment-id-copy {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: #F1EEE9; opacity: 0;
+}
 .fin-table tr:hover .boe-payment-id-copy, .fin-table .boe-payment-id-copy:focus-visible { opacity: 1; }
 @media (hover: none) { .fin-table .boe-payment-id-copy { opacity: 1; } }
 
