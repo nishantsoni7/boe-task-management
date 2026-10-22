@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `50acaee3` — Changelog: 20270405000000 applied and confirmed on screen (#414)
-- Commits on this branch: 968
+- Commit: `34d3e18d` — Expenses: no Remark column, View on every row, top of the page in two lines
+- Commits on this branch: 969
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 353 (first `20260530_create_positions.sql`, latest `20270406000000_order_page_bundle.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 739   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `34d3e18d` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines
 - `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
 - `681d376d` 2026-10-22 Order page: read the whole page in one call, with the old reads as the fallback
 - `26d9a971` 2026-10-22 Payment deletion: clear allocation intents before deleting the payment (#411)
@@ -38,7 +39,6 @@
 - `d8d66b71` 2026-10-22 Send Payment Request: quiet, Notion-style form (#393)
 - `d42ea2bd` 2026-10-21 Finance: bank marker on Payment Requests and in the review window (#388)
 - `ee1e3028` 2026-10-21 Docs: migration 20270331000000 is applied; #391 merged and deployed
-- `792b070b` 2026-10-21 Finance: an admin can delete a Confirmed Payment entered by mistake (#391)
 
 ## Pages by top-level area
 
