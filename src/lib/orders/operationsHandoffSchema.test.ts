@@ -352,14 +352,17 @@ describe('the queues and the Control Center', () => {
   const CC = read('src/app/admin/control-center/page.tsx')
   const LAYOUT = read('src/components/layout/ControlCenterLayout.tsx')
 
-  test('the dashboard counts the reader\'s own awaiting handoffs, the unassigned ones, and the flagged ones, inside its one group', () => {
-    const group = DASHBOARD.slice(DASHBOARD.indexOf('] = await Promise.all(['), DASHBOARD.indexOf('setOrders(mapped)'))
-    assert.equal((group.match(/\.from\('order_operations_handoffs'\)/g) ?? []).length, 3)
-    assert.match(group, /\.eq\('assigned_to', viewerId\)/)
-    assert.match(group, /\.is\('assigned_to', null\)/)
-    assert.match(group, /\.eq\('status', 'clarification_needed'\)\.is\('superseded_at', null\)/)
-    assert.match(DASHBOARD, /operationsReview:\s+opsMineRes\.error \? undefined/, 'absent, never zero, against a database without the table')
-    assert.match(DASHBOARD, /operationsFlagged:\s+opsFlaggedRes\.error \? undefined/)
+  test('the dashboard counts the reader\'s own awaiting handoffs, the unassigned ones, and the flagged ones, from ONE read after the first draw', () => {
+    // 2026-10-22: the three head counts became one read of the undecided handoffs (three numbers taken
+    // from it, same definitions), read in loadQueueCounts after the page has drawn, not in the first group.
+    const queues = DASHBOARD.slice(DASHBOARD.indexOf('const loadQueueCounts = async'), DASHBOARD.indexOf('useEffect(() => {\n    const init'))
+    assert.equal((queues.match(/\.from\('order_operations_handoffs'\)/g) ?? []).length, 1)
+    assert.match(queues, /\.in\('status', \['awaiting', 'clarification_needed'\]\)\.is\('superseded_at', null\)/)
+    assert.match(queues, /h\.status === 'awaiting' && h\.assigned_to === viewerId/)
+    assert.match(queues, /h\.status === 'awaiting' && h\.assigned_to === null/)
+    assert.match(queues, /h\.status === 'clarification_needed'/)
+    assert.match(queues, /operationsReview:\s+live \? .* : undefined/, 'absent, never zero, against a database without the table')
+    assert.match(queues, /operationsFlagged:\s+live \? .* : undefined/)
   })
 
   test('the Confirmed Orders list has the ?ops=awaiting queue — awaiting AND flagged — named in a banner with a way out', () => {
