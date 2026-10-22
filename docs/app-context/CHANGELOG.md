@@ -10,6 +10,47 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Not changed.** Quotation and confirmed-order PDF letterheads still print "BOE".
 - **Proof.** Not yet seen on screen.
 
+## 2026-10-22 — Expense reimbursement without edit rights, Excel downloads, all-reimbursements page (PR open) · migration 20270403000000 (APPLIED 2026-10-22)
+- **Owner request.** Nitish sees the owner's expenses but cannot edit or delete them; he multi-selects and reimburses with a Challan ID and date; Excel download for managing the data; after reimbursing, a download of that payment; a separate place to see every reimbursement; visible to Nitish and the owner only.
+- **Finding.** Reimbursing already existed but needed `finance.manage`, which also edits and deletes anybody's expense. So the door moved.
+- **Database.** New protected action `finance.reimburse` (deny-by-default). `can_record_expense_reimbursement()` re-emitted: `reimburse` + `view_all` instead of `manage` + `view_all`. `record_/reverse_expense_reimbursement` untouched. No policy, table or expense-edit rule changes.
+- **App.** `canReimburseExpenses`; Expenses page: Download Excel (list as filtered) + post-record banner (this reimbursement's Excel, link to history); new `/finance/reimbursements` page + sidebar entry for holders; "Challan ID" wording. `xlsx` is loaded only on pressing Download.
+- **Owner steps.** 20270403000000 is applied (backup taken first; confirmed with `migration list --linked`). Remaining: grant `reimburse` and `view_all` to Nitish in Control Center (admins hold both by role). Anyone who reimbursed through `manage` before must be granted `reimburse` to continue.
+- **Proof.** tsc, full test suite, build; migration shape and behaviour pinned by `expenseReimbursementExport.test.ts`. NOT executed against a database yet; not seen signed in as Nitish.
+- **Rollback.** Re-emit `can_record_expense_reimbursement()` from 20270205120000; the permission rows may stay.
+## 2026-10-22 — Load time: the Finance list opens with three reads, not eight (PR open) · no migration
+- **Measured (live, admin).** Requests that wait beside others finish about 70 ms later for each one (three at once end near 370 ms; nine near 770; eleven near 1,000). The database itself runs the dashboard functions in 17-31 ms and is a small instance (60 connections, about 1 GB). The Finance list opened with eight reads at once. Before: about 608 ms to open it from Confirmed Payments (runs 665, 616, 600, 774, 447, 512).
+- **What.** The first group is now the profile, ONE permissions read for every module (`resolve_effective_permissions_for_user`, in place of one read for finance and one for orders; same resolver, still fresh every load, still failing closed to no capabilities) and the rows. The four head-only tab-badge counts are read after the first draw, against the same cutoff, and show no number until they land. A search or tab change still reloads rows and counts together.
+- **Not changed.** Who may do what; the module guard; Finance data and RLS.
+- **Proof.** tsc, eslint, full suite, a new test (`financeStartupFewerReads.test.ts`). After-numbers in the PR.
+
+## 2026-10-22 — Consistency pass on Orders and Finance (PR open) · no migration
+- **How it was found.** Computed styles of every Orders and Finance list/page on the live site (title, buttons, inputs, table headers and cells, back control), compared. The lists already agree: titles 24 px bold, buttons 38 px / 8 px radius / 13 px, table headers 12 px medium muted, cells 13 px. The disagreements were four:
+  - Payment Requests "+ New" drew 12 px text (an inline override); now the standard 13 px.
+  - Expenses: the Date cell was 1 px too narrow, so 25 of 41 rows read "18 Oct 20…". The cell's right padding is 4 px (the column budget and the 930 px card breakpoint did not move). Its headers were bold; now medium like every other table.
+  - Back on a record: the Order page had it top-left (small text link), the PI Draft page top-right in the header as a button, both the same component. The PI Draft now matches the Order page; the header keeps only actions.
+- **Not changed, on purpose.** The Expenses table keeps its own 12 px dense cells and fixed column budget. Upload PI keeps its "← PI Drafts" header button (a flow page, not a record). The Add Expense submit button is 46 px tall (a form's main action), not a list button.
+- **Could not be checked.** Phone width: the browser window could not be resized here and the app refuses to be framed, so the phone layout was not seen.
+- **Proof.** tsc, eslint, full suite, a new test (`uiConsistencyPass.test.ts`) and the PI Draft's source pin updated.
+
+## 2026-10-22 — Load time: the Orders dashboard opens with five reads, not nine (PR open) · no migration
+- **Measured (live, admin).** About 860 ms to open the dashboard from Confirmed Orders (865, 796, 1647, 933, 856; one 11 s outlier from an interrupted measurement dropped). Nine reads went out at once and a request finishes about 70 ms later for each one it waits beside. The database is not the cause: the dashboard functions run in 17-31 ms inside it.
+- **What.** The first group is the profile, the permissions and the three dashboard RPCs. The links to other queues at the foot of the page (PI Drafts count, operations handoffs) are read after the page has drawn (`loadQueueCounts`): the PI Drafts count unchanged, and ONE read of the undecided handoffs in place of three head counts, the three numbers taken from it with the same definitions (awaiting and addressed to the reader, awaiting and addressed to nobody, flagged). A refused handoffs read leaves its links absent, never a false "nothing waits".
+- **Not changed.** What the dashboard shows or to whom; permissions still resolved by the database every load.
+- **Proof.** tsc, eslint, full suite, a new test (`ordersDashboardFewerReads.test.ts`), the startup-shape pin updated 9 -> 7 with its reason. After-numbers in the PR.
+
+## 2026-10-22 — Load time: PI Drafts in one round trip (PR open) · migration 20270404000000 (NOT APPLIED — waits for the owner)
+- **Measured first (live, admin).** A database call costs about 230-270 ms although the database answers in under 1 ms: about 63 ms network, about 45 ms for the browser's cross-origin check (uncached), and a fixed cost on the Supabase side. So a screen's time is the number of sequential rounds. PI Drafts took about 600 ms in steady state (932 and 1070 ms on the first two runs): one round for rows, profile and permissions, then a second for the advance percentages of those ids.
+- **What.** `public.attached_percent(order_submissions)`, a PostgREST computed column that calls the existing batch function `pi_submissions_advance_percent()` (so it is the same figure and the same visibility rule, not a third copy). The list asks for `attached_percent` in its select, so rows and percentages arrive together. A database without the migration refuses the column by name and the page reads the list the old two-step way, so deploy order cannot break the screen.
+- **Not changed.** Profile and permission reads stay fresh on every load; the module guards still wait for their answer. The permission cache the owner approved was NOT built: the measurements showed those reads already run in the same round as the data, so a cache would not shorten the screen.
+- **Proof.** tsc, eslint, full test suite; migration executed in BEGIN…ROLLBACK against the linked DB, including a check that the computed column equals the batch function for every row. After-numbers are recorded in the PR once the migration is applied.
+- **Rollback.** `drop function public.attached_percent(public.order_submissions);` (the page falls back by itself).
+
+## 2026-10-22 — Operations dashboard: the top strip is removed; the two lists are tabs (PR open) · no migration
+- **Owner request (after seeing it live as Nitish).** Remove the four-cell strip (Running orders, Not aligned, Changes to answer, Revenue this month) and make "Changes to review" and "Not aligned for manufacturing" tabs, so how many are in each is clear.
+- **What.** One tablist with a count on each tab; it opens on Changes to review when anything waits for an answer, else on Not aligned. Running orders (count and value) stay as one quiet line at the right of the tab bar, because the owner asked for it earlier (item 4); Revenue still has its own block below (only for readers who hold orders.view_all or admin). Old `.ops-strip` / `.ops-stat*` styles removed; presentation only, the read is unchanged.
+- **Proof.** tsc, eslint, full test suite. Not yet seen on screen as Nitish.
+
 ## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
 - **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
 - **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").

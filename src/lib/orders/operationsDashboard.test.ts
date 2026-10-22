@@ -164,6 +164,29 @@ describe('the not-aligned table', () => {
   })
 })
 
+describe('the two lists are tabs (owner, 2026-10-22)', () => {
+  const view = read('src/components/orders/dashboard/OperationsDashboardView.tsx')
+
+  test('the top strip is gone and both lists sit in one tablist with their counts', () => {
+    assert.equal(view.includes('ops-strip'), false)
+    assert.equal(/ops-stat(?![a-z])/.test(view), false)
+    assert.match(view, /role="tablist"/)
+    assert.match(view, /label: 'Changes to review'/)
+    assert.match(view, /label: 'Not aligned for manufacturing'/)
+    assert.match(view, /role="tabpanel"/)
+    assert.match(view, /ops-tab-count/)
+  })
+
+  test('it opens on what needs an answer, else on what waits for alignment', () => {
+    assert.match(view, /picked \?\? \(counts\.changes > 0 \? 'changes' : 'aligned'\)/)
+  })
+
+  test('running orders stay visible as a quiet line beside the tabs, not as a tile', () => {
+    assert.match(view, /plural\(ov\.running\.orders, 'running order'\)/)
+    assert.match(view, /className="ops-running"/)
+  })
+})
+
 describe('answering', () => {
   test('Accept all and Reject all fill every line; typed notes stay', () => {
     const d = emptyDraft(lines)

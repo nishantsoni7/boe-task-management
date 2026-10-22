@@ -42,6 +42,7 @@ import {
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const MIGRATION = read('supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql')
+const REIMBURSE_MIGRATION = read('supabase/migrations/20270403000000_finance_reimburse_permission.sql')
 const VIEW = read('src/app/finance/expenses/ExpensesView.tsx')
 const FORM = read('src/app/finance/expenses/ExpenseForm.tsx')
 const MODALS = read('src/app/finance/expenses/ExpenseReimbursementModals.tsx')
@@ -138,12 +139,17 @@ describe('selecting expenses to reimburse', () => {
 })
 
 describe('who may do what — the courtesy mirrors the database', () => {
-  test('recording takes finance.manage AND company-wide sight', () => {
-    assert.equal(mayRecordReimbursement({ canManageFinance: true, canViewAllFinance: true }), true)
-    assert.equal(mayRecordReimbursement({ canManageFinance: true, canViewAllFinance: false }), false)
-    assert.equal(mayRecordReimbursement({ canManageFinance: false, canViewAllFinance: true }), false)
-    assert.ok(/actor_has_module_permission\('finance', 'manage'\)\s*and public\.actor_has_module_permission\('finance', 'view_all'\)/
-      .test(MIGRATION), 'can_record_expense_reimbursement() requires the same two')
+  test('recording takes finance.reimburse AND company-wide sight — not finance.manage', () => {
+    assert.equal(mayRecordReimbursement({ canReimburseExpenses: true, canViewAllFinance: true }), true)
+    assert.equal(mayRecordReimbursement({ canReimburseExpenses: true, canViewAllFinance: false }), false)
+    assert.equal(mayRecordReimbursement({ canReimburseExpenses: false, canViewAllFinance: true }), false)
+    // The original migration asked for manage; 20270403000000 replaced it, and
+    // the LAST definition is the one in force.
+    assert.ok(/actor_has_module_permission\('finance', 'manage'\)/.test(MIGRATION), 'the original door (superseded)')
+    assert.ok(/actor_has_module_permission\('finance', 'reimburse'\)\s*and public\.actor_has_module_permission\('finance', 'view_all'\)/
+      .test(REIMBURSE_MIGRATION), 'can_record_expense_reimbursement() now requires reimburse + view_all')
+    const door = REIMBURSE_MIGRATION.slice(REIMBURSE_MIGRATION.indexOf('create or replace function public.can_record_expense_reimbursement'))
+    assert.ok(!/actor_has_module_permission\('finance', 'manage'\)/.test(door.slice(0, door.indexOf('$fn$;'))))
   })
 
   test('the named payer may ADD a bill to a live personal expense, and nobody else gains that', () => {
@@ -173,7 +179,7 @@ describe('who may do what — the courtesy mirrors the database', () => {
     assert.ok(friendlyReimbursementError({ message: 'EXPENSE_REIMBURSEMENT_STALE: the selected amounts changed since they were shown (now 5). Refresh and check again.' })
       .startsWith('The selected amounts changed'))
     assert.ok(friendlyReimbursementError({ code: '42501', message: 'EXPENSE_REIMBURSEMENT_FORBIDDEN: only Finance can record a reimbursement' })
-      .includes('Only Finance users'))
+      .includes('Only people allowed to reimburse expenses'))
   })
 })
 

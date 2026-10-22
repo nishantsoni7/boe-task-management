@@ -143,7 +143,7 @@ export function validateReimbursementForm(form: ReimbursementFormState, todayIso
   if (!/^\d{4}-\d{2}-\d{2}$/.test(form.reimbursedOn)) errors.reimbursedOn = 'Choose the reimbursement date.'
   else if (form.reimbursedOn > todayIso) errors.reimbursedOn = 'A reimbursement cannot be dated in the future.'
   const reference = form.reference.trim()
-  if (reference === '') errors.reference = 'Enter the challan / payment reference.'
+  if (reference === '') errors.reference = 'Enter the challan ID.'
   else if (reference.length > REIMBURSEMENT_REFERENCE_MAX) {
     errors.reference = `Keep the reference to ${REIMBURSEMENT_REFERENCE_MAX} characters or fewer.`
   }
@@ -156,12 +156,14 @@ export function validateReimbursementForm(form: ReimbursementFormState, todayIso
 // ── Who may do what (a courtesy; the database decides) ───────────────────────
 
 /**
- * Record or reverse a reimbursement: finance.manage AND company-wide Finance
- * sight — exactly can_record_expense_reimbursement() in the database. An admin
- * holds both through the admin branch.
+ * Record or reverse a reimbursement, and open the list of every one:
+ * finance.reimburse AND company-wide Finance sight — exactly
+ * can_record_expense_reimbursement() in the database (20270403000000; before
+ * that it was finance.manage, which also lets its holder edit and delete other
+ * people's expenses). An admin holds both through the admin branch.
  */
-export function mayRecordReimbursement(caps: { canManageFinance: boolean; canViewAllFinance: boolean }): boolean {
-  return caps.canManageFinance && caps.canViewAllFinance
+export function mayRecordReimbursement(caps: { canReimburseExpenses: boolean; canViewAllFinance: boolean }): boolean {
+  return caps.canReimburseExpenses && caps.canViewAllFinance
 }
 
 /**
@@ -203,7 +205,7 @@ export function friendlyReimbursementError(error: RpcError): string {
   if (message.includes('EXPENSE_REIMBURSEMENT_INVALID')) return tail('EXPENSE_REIMBURSEMENT_INVALID')
   if (message.includes('EXPENSE_REIMBURSEMENT_NOT_FOUND')) return 'That reimbursement no longer exists.'
   if (message.includes('EXPENSE_REIMBURSEMENT_FORBIDDEN') || error?.code === '42501') {
-    return 'Only Finance users who manage expenses can record or reverse a reimbursement.'
+    return 'Only people allowed to reimburse expenses can record or reverse a reimbursement.'
   }
   return message || 'The reimbursement could not be saved. Nothing was recorded — try again.'
 }

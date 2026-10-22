@@ -33,6 +33,11 @@ import {
   type ExpenseReimbursementRow,
   type ReimbursementFormState,
 } from '@/lib/finance/expenseReimbursements'
+import {
+  downloadWorkbook,
+  reimbursementExportFileName,
+  reimbursementWorkbook,
+} from '@/lib/finance/expenseReimbursementExport'
 import { ExpenseBills } from './ExpenseBills'
 
 type Supabase = ReturnType<typeof createClient>
@@ -61,7 +66,7 @@ export function RecordReimbursementModal({
   rows: readonly ExpenseListRow[]
   personName: (id: string | null | undefined) => string
   onClose: () => void
-  onRecorded: (result: { reimbursementId: string; count: number; total: string }) => void
+  onRecorded: (result: { reimbursementId: string; count: number; total: string; reference: string }) => void
 }) {
   const todayIso = useMemo(() => localTodayIso(), [])
   const [form, setForm] = useState<ReimbursementFormState>({ reimbursedOn: todayIso, reference: '', note: '' })
@@ -94,7 +99,7 @@ export function RecordReimbursementModal({
       })
       if (rpcError) { setError(friendlyReimbursementError(rpcError)); return }
       const result = data as { reimbursement_id: string; expense_count: number; total_amount: string | number }
-      onRecorded({ reimbursementId: result.reimbursement_id, count: result.expense_count, total: String(result.total_amount) })
+      onRecorded({ reimbursementId: result.reimbursement_id, count: result.expense_count, total: String(result.total_amount), reference: form.reference.trim() })
     } catch {
       setError('The reimbursement could not be saved. Nothing was recorded — check your connection and try again.')
     } finally {
@@ -153,9 +158,9 @@ export function RecordReimbursementModal({
             {shown.reimbursedOn && <span role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{shown.reimbursedOn}</span>}
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-            <span style={LABEL}>Challan / payment reference<span style={{ color: colors.red }} aria-hidden="true">*</span></span>
+            <span style={LABEL}>Challan ID<span style={{ color: colors.red }} aria-hidden="true">*</span></span>
             <input className="boe-input" value={form.reference} maxLength={REIMBURSEMENT_REFERENCE_MAX + 20} disabled={saving}
-              autoComplete="off" placeholder="e.g. UTR or challan no."
+              autoComplete="off" placeholder="e.g. challan no. or UTR"
               onChange={e => setForm(p => ({ ...p, reference: e.target.value }))} />
             {shown.reference && <span role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{shown.reference}</span>}
           </label>
@@ -222,6 +227,7 @@ export function ReimbursementBatchModal({
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
   const inFlight = useRef(false)
 
   const fetchBatch = useCallback(async () => {
@@ -277,6 +283,30 @@ export function ReimbursementBatchModal({
     onReversed()
   }
 
+  // The Excel file of THIS reimbursement: what is on screen, nothing more.
+  const download = async () => {
+    if (!batch || downloading) return
+    setDownloading(true)
+    setError(null)
+    try {
+      const sheets = reimbursementWorkbook(
+        [batch],
+        items.map(i => ({
+          reimbursement_id: batch.id,
+          amount: i.amount,
+          paid_by: i.paid_by,
+          expense: i.expense ? { expense_date: i.expense.expense_date, paid_to: i.expense.paid_to, remark: i.expense.remark ?? null } : null,
+        })),
+        nameOf,
+      )
+      await downloadWorkbook(reimbursementExportFileName({ challan: batch.reference }, localTodayIso()), sheets)
+    } catch {
+      setError('The Excel file could not be made. Try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const shownItems = items.filter(i => batch?.status === 'reversed' || i.reversed_at === null)
 
   return (
@@ -293,7 +323,7 @@ export function ReimbursementBatchModal({
               </dd>
               <dt style={{ color: colors.muted }}>Paid to</dt><dd style={{ margin: 0, fontWeight: 600 }}>{nameOf(batch.payer_id)}</dd>
               <dt style={{ color: colors.muted }}>Date</dt><dd style={{ margin: 0 }}>{fmtExpenseDate(batch.reimbursed_on)}</dd>
-              <dt style={{ color: colors.muted }}>Reference</dt><dd style={{ margin: 0, wordBreak: 'break-word' }}>{batch.reference}</dd>
+              <dt style={{ color: colors.muted }}>Challan ID</dt><dd style={{ margin: 0, wordBreak: 'break-word' }}>{batch.reference}</dd>
               <dt style={{ color: colors.muted }}>Total</dt>
               <dd style={{ margin: 0, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                 {formatMoney(batch.total_amount)} · {batch.expense_count} {batch.expense_count === 1 ? 'expense' : 'expenses'}
@@ -330,6 +360,11 @@ export function ReimbursementBatchModal({
             </div>
 
             {error && <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>}
+
+            <button type="button" className="boe-btn boe-btn-ghost" data-testid="download-reimbursement" onClick={() => void download()}
+              disabled={downloading} style={{ alignSelf: 'flex-start', minHeight: '40px', fontSize: '12.5px' }}>
+              {downloading ? 'Preparing…' : 'Download this reimbursement (Excel)'}
+            </button>
 
             {mayReverse && batch.status === 'recorded' && (
               reversing ? (
@@ -441,7 +476,7 @@ export function ExpenseDetailModal({
             reimbursement ? (
               <>
                 <span style={{ fontSize: '12px', color: colors.secondary }}>
-                  {formatMoney(reimbursement.amount)} on {fmtExpenseDate(reimbursement.reimbursed_on)} · Ref {reimbursement.reference}
+                  {formatMoney(reimbursement.amount)} on {fmtExpenseDate(reimbursement.reimbursed_on)} · Challan {reimbursement.reference}
                 </span>
                 <span style={{ fontSize: '12px', color: colors.muted }}>
                   Recorded by {personName(reimbursement.recorded_by)} on {fmtExpenseDate(reimbursement.recorded_at)}

@@ -41,7 +41,7 @@ import { Toast, useToast } from '@/components/ui/toast'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
-import { formatMoney } from '@/lib/finance/piPaymentView'
+import { formatMoney, localTodayIso } from '@/lib/finance/piPaymentView'
 import type { UserProfile } from '@/lib/types'
 import {
   EMPTY_EXPENSE_FILTERS,
@@ -95,6 +95,13 @@ import {
   ReimbursementBatchModal,
   STATE_TONE,
 } from './ExpenseReimbursementModals'
+import {
+  downloadWorkbook,
+  expenseExportFileName,
+  expenseSheet,
+  reimbursementExportFileName,
+} from '@/lib/finance/expenseReimbursementExport'
+import { loadBatchesByIds, loadReimbursementSheets } from '@/app/finance/reimbursements/reimbursementData'
 
 /**
  * How many rows one read returns.
@@ -260,6 +267,10 @@ export function ExpensesView() {
   const [batchId, setBatchId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [recording, setRecording] = useState(false)
+  // The reimbursement just recorded, kept on screen so its Excel file and the
+  // history page are one tap away after the toast has gone.
+  const [justRecorded, setJustRecorded] = useState<{ id: string; count: number; total: string; reference: string } | null>(null)
+  const [downloading, setDownloading] = useState<'list' | 'batch' | null>(null)
   const [pendingSummary, setPendingSummary] = useState<{ count: number; total: string; capped: boolean } | null>(null)
 
   const handleSignOut = useCallback(async () => {
@@ -517,7 +528,7 @@ export function ExpensesView() {
 
   // ── Selecting pending expenses to reimburse ──
   // Offered only on the Pending filter and only to Finance users who may record
-  // a reimbursement (finance.manage + company-wide sight) — exactly who
+  // a reimbursement (finance.reimburse + company-wide sight) — exactly who
   // record_expense_reimbursement() admits.
   const mayRecord = mayRecordReimbursement(caps)
   const selecting = mayRecord && filters.reimbursement === 'pending'
@@ -541,6 +552,40 @@ export function ExpensesView() {
     setSelected(new Set(selectablePending.slice(0, REIMBURSEMENT_BATCH_MAX).map(r => r.id)))
   }
   const selectedPayer = selectionPayer(selectedRows)
+
+  // ── Excel ──
+  // The list exactly as filtered and shown (pending, reimbursed, anything) — the
+  // rows are the ones already read under this person's row-level security.
+  const downloadList = async () => {
+    if (downloading) return
+    setDownloading('list')
+    try {
+      const label = REIMBURSEMENT_FILTER_OPTIONS.find(o => o.value === (filters.reimbursement ?? ''))?.label ?? 'all'
+      await downloadWorkbook(
+        expenseExportFileName(label, localTodayIso()),
+        [expenseSheet(rows, { categoryName: id => categoryName(id ?? ''), personName })],
+      )
+    } catch {
+      show('The Excel file could not be made. Try again.', 'error')
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  // The reimbursement just recorded: its summary and its lines.
+  const downloadJustRecorded = async () => {
+    if (downloading || !justRecorded) return
+    setDownloading('batch')
+    try {
+      const batches = await loadBatchesByIds(supabase, [justRecorded.id])
+      const sheets = await loadReimbursementSheets(supabase, batches)
+      await downloadWorkbook(reimbursementExportFileName({ challan: justRecorded.reference }, localTodayIso()), sheets)
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'The Excel file could not be made. Try again.', 'error')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   const clearFilters = () => {
     setSearchTerm('')
@@ -650,6 +695,34 @@ export function ExpensesView() {
         </div>
       ) : (
         <>
+          {/* ── JUST REIMBURSED ── the file of exactly that payment, and the history. */}
+          {mayRecord && justRecorded && (
+            <div role="status" data-testid="reimbursement-recorded" style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+              marginBottom: '10px', padding: '10px 12px', borderRadius: '8px',
+              border: `1px solid ${STATE_TONE.reimbursed.border}`, background: STATE_TONE.reimbursed.bg,
+            }}>
+              <span style={{ fontSize: '12.5px', color: STATE_TONE.reimbursed.fg, fontWeight: 600, minWidth: 0 }}>
+                Challan {justRecorded.reference} · {justRecorded.count} {justRecorded.count === 1 ? 'expense' : 'expenses'} · {formatMoney(justRecorded.total)} reimbursed
+              </span>
+              <span style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button type="button" className="boe-btn boe-btn-primary" disabled={downloading !== null}
+                  data-testid="download-just-recorded" onClick={() => void downloadJustRecorded()}
+                  style={{ minHeight: '40px', fontSize: '12.5px' }}>
+                  {downloading === 'batch' ? 'Preparing…' : 'Download this reimbursement (Excel)'}
+                </button>
+                <button type="button" className="boe-btn boe-btn-ghost" onClick={() => router.push('/finance/reimbursements')}
+                  style={{ minHeight: '40px', fontSize: '12.5px' }}>
+                  All reimbursements
+                </button>
+                <button type="button" className="boe-btn boe-btn-ghost" aria-label="Dismiss" onClick={() => setJustRecorded(null)}
+                  style={{ minHeight: '40px', fontSize: '12.5px' }}>
+                  ✕
+                </button>
+              </span>
+            </div>
+          )}
+
           {/* ── Everything that narrows the list, and nothing else ── */}
           <div className="boe-list-toolbar" role="search" aria-label="Filter expenses">
             <label className="boe-list-search">
@@ -747,6 +820,20 @@ export function ExpensesView() {
               />
               Missing bill
             </label>
+
+            {/* The list as filtered, in Excel. For people who reimburse only. */}
+            {mayRecord && (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                data-testid="download-expense-list"
+                disabled={downloading !== null || listLoading || !!listError || rows.length === 0}
+                onClick={() => void downloadList()}
+                style={{ minHeight: '40px', fontSize: '12.5px' }}
+              >
+                {downloading === 'list' ? 'Preparing…' : 'Download Excel'}
+              </button>
+            )}
 
             {narrowed && (
               <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
@@ -902,6 +989,7 @@ export function ExpensesView() {
             setRecording(false)
             setSelected(new Set())
             show(`Reimbursement recorded — ${result.count} ${result.count === 1 ? 'expense' : 'expenses'}, ${formatMoney(result.total)}`)
+            setJustRecorded({ id: result.reimbursementId, count: result.count, total: result.total, reference: result.reference })
             void loadExpenses()
             void loadPendingSummary()
           }}
@@ -1237,7 +1325,7 @@ function EmptyState({ title, body, action, tone }: {
 
 const TH: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left',
-  fontSize: '12px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 500, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
   borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
@@ -1299,7 +1387,7 @@ export function ExpenseTable({
                 <SelectBox row={row} selected={!!selected?.has(row.id)} onToggle={onToggleSelected} maySelect={maySelect} />
               </td>
             )}
-            <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>{fmtDate(row.expense_date)}</td>
+            <td style={{ ...TD, fontSize: '12px', color: colors.secondary, paddingRight: '4px' }}>{fmtDate(row.expense_date)}</td>
             <td style={{
               ...TD, fontSize: '13.5px', fontWeight: 700, color: colors.primary,
               textAlign: 'right', fontVariantNumeric: 'tabular-nums',

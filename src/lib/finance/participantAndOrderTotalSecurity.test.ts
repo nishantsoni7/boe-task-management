@@ -1108,6 +1108,8 @@ describe('the applied migrations are frozen', () => {
       '20270331000000_finance_admin_may_delete_confirmed_payment.sql',
       '20270401000000_operations_dashboard.sql',
       '20270402000000_operations_dashboard_order_details.sql',
+      '20270403000000_finance_reimburse_permission.sql',
+      '20270404000000_order_submission_attached_percent_computed_column.sql',
     ])
   })
 
@@ -1467,6 +1469,8 @@ describe('the applied migrations are frozen', () => {
       '20270331000000_finance_admin_may_delete_confirmed_payment.sql',
       '20270401000000_operations_dashboard.sql',
       '20270402000000_operations_dashboard_order_details.sql',
+      '20270403000000_finance_reimburse_permission.sql',
+      '20270404000000_order_submission_attached_percent_computed_column.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
