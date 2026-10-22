@@ -491,7 +491,7 @@ describe('RecordSplitPaymentModal is wired to the rule, and its write is untouch
 
   test('SUBMITTING STILL GOES THROUGH THE SAME RPC, with the same arguments', () => {
     assert.ok(code.includes("supabase.rpc('record_payment_with_allocations', {"))
-    assert.ok(code.includes('p_allocations:  targetKind ? toRpcAllocations(rows) : [],'))
+    assert.ok(code.includes('p_allocations:  targetKind ? toRpcAllocationsWithLegacy(rows) : [],'))
     // Nothing about this fix touches what is sent or what refuses it.
     assert.ok(code.includes('splitPaymentBlockedReason({'))
     assert.ok(code.includes('toRpcCustodyEvents'))

@@ -212,4 +212,74 @@ begin
 end $$;
 set test.perms = 'allocate,view';
 
+-- ── 7. Record Payment: old-order rows ride in the allocation list ───────────
+do $$
+declare v jsonb; pid uuid; c text; n integer;
+begin
+  -- old order only: its client becomes the payment's customer
+  v := public.record_payment_with_allocations_core(200000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":" old-77 ","client_name":"Legacy Co","amount":200000}]'::jsonb, '[]'::jsonb);
+  pid := (v->>'payment_request_id')::uuid;
+  select client_name into c from public.finance_payment_requests where id = pid;
+  if c is distinct from 'Legacy Co' then raise exception 'customer should be Legacy Co, got %', c; end if;
+  if (v->>'allocation_count')::int <> 1 or (v->>'allocated_total')::numeric <> 200000
+     or (v->>'unallocated_balance')::numeric <> 0 then raise exception 'result wrong: %', v; end if;
+  if not exists (select 1 from public.finance_payment_allocations
+                  where payment_request_id = pid and legacy_order_no = 'OLD-77') then
+    raise exception 'legacy row missing';
+  end if;
+
+  -- old order + Order of a DIFFERENT customer: no single customer
+  v := public.record_payment_with_allocations_core(300000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"order","id":"00000000-0000-0000-0000-0000000000b1","amount":100000},
+      {"kind":"legacy","order_no":"OLD-78","client_name":"Legacy Co","amount":200000}]'::jsonb, '[]'::jsonb);
+  pid := (v->>'payment_request_id')::uuid;
+  select client_name into c from public.finance_payment_requests where id = pid;
+  if c is not null then raise exception 'two customers must store NULL, got %', c; end if;
+  if jsonb_array_length(v->'allocations') <> 2 or (v->>'allocation_count')::int <> 2 then
+    raise exception 'merged result wrong: %', v;
+  end if;
+
+  -- old order + Order of the SAME customer: that customer
+  v := public.record_payment_with_allocations_core(300000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"order","id":"00000000-0000-0000-0000-0000000000b2","amount":100000},
+      {"kind":"legacy","order_no":"OLD-80","client_name":"Acme","amount":200000}]'::jsonb, '[]'::jsonb);
+  pid := (v->>'payment_request_id')::uuid;
+  select client_name into c from public.finance_payment_requests where id = pid;
+  if c is distinct from 'Acme' then raise exception 'same customer should be kept, got %', c; end if;
+
+  -- no old-order row: straight through to the base, untouched
+  v := public.record_payment_with_allocations_core(100000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"submission","id":"00000000-0000-0000-0000-0000000000c1","amount":100000}]'::jsonb, '[]'::jsonb);
+  if (v->>'allocated_total')::numeric <> 100000 then raise exception 'plain entry changed: %', v; end if;
+
+  -- no allocations at all: still a Suspense entry
+  v := public.record_payment_with_allocations_core(100000, current_date, 'hdfc', null, null, null, null,
+    '[]'::jsonb, '[]'::jsonb);
+  select count(*) into n from public.finance_payment_allocations where payment_request_id = (v->>'payment_request_id')::uuid;
+  if n <> 0 then raise exception 'suspense entry gained allocations'; end if;
+  raise notice 'ok 7: Record Payment with old-order rows';
+end $$;
+
+-- the refusals, each leaving no payment behind
+do $$ declare before_n integer; after_n integer; begin
+  select count(*) into before_n from public.finance_payment_requests;
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(100, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":"A","client_name":"C","amount":100.5}]'::jsonb, '[]'::jsonb)$q$, 'EXCEED_AMOUNT');
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(1000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":"A","client_name":"C","amount":10},{"kind":"legacy","order_no":" a ","client_name":"C","amount":10}]'::jsonb, '[]'::jsonb)$q$, 'ALLOCATION_DUPLICATE');
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(1000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":"","client_name":"C","amount":10}]'::jsonb, '[]'::jsonb)$q$, 'PAYMENT_ALLOCATION_LEGACY_ORDER_INVALID');
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(1000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":"A","client_name":"","amount":10}]'::jsonb, '[]'::jsonb)$q$, 'PAYMENT_ALLOCATION_LEGACY_CLIENT_INVALID');
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(1000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"legacy","order_no":"A","client_name":"C","amount":0}]'::jsonb, '[]'::jsonb)$q$, 'PAYMENT_ALLOCATION_AMOUNT_INVALID');
+  perform pg_temp.fails_with($q$select public.record_payment_with_allocations_core(1000, current_date, 'hdfc', null, null, null, null,
+    '[{"kind":"order","id":"00000000-0000-0000-0000-0000000000b1","amount":900},{"kind":"legacy","order_no":"A","client_name":"C","amount":200}]'::jsonb, '[]'::jsonb)$q$, 'EXCEED');
+  select count(*) into after_n from public.finance_payment_requests;
+  -- the failing calls ran inside fails_with's sub-block, so their payments rolled back
+  if after_n <> before_n then raise exception 'a refused entry left a payment behind (% -> %)', before_n, after_n; end if;
+  raise notice 'ok 7b: refusals leave nothing behind';
+end $$;
+
 select 'ALL ASSERTIONS PASSED';

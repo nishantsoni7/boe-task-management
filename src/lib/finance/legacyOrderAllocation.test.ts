@@ -29,7 +29,16 @@ import {
   normalizeLegacyOrderNo,
   toLegacyRpcTarget,
 } from './legacyOrderAllocation'
-import { EMPTY_ALLOCATION_ROW, duplicateTargetKeys, targetKey, type SplitAllocationRow } from './splitPaymentEntry'
+import {
+  EMPTY_ALLOCATION_ROW,
+  duplicateTargetKeys,
+  splitPaymentBlockedReason,
+  splitPaymentIsDirty,
+  splitPaymentRowsChanged,
+  targetKey,
+  toRpcAllocationsWithLegacy,
+  type SplitAllocationRow,
+} from './splitPaymentEntry'
 import { allocateFundsBlockedReason } from '@/app/finance/received/AllocateFundsModal'
 import { allocationErrorMessage } from '@/app/finance/received/AllocatePaymentModal'
 import {
@@ -140,6 +149,65 @@ describe('what stops an old-order row before it is sent', () => {
     const payment = { id: 'p', human_payment_id: 'P', amount: 1000, allocated_total: 0 }
     const order: SplitAllocationRow = { ...EMPTY_ALLOCATION_ROW('o'), kind: 'order', targetId: 'o1', amount: '100' }
     assert.equal(allocateFundsBlockedReason({ payment, rows: [order, legacyRow({ amount: '100' })] }), null)
+  })
+})
+
+describe('Record Payment: an old order under a Confirmed Order entry', () => {
+  const base = { amount: '5000', paymentDate: '2026-10-22', paymentMode: 'hdfc' }
+  const order: SplitAllocationRow = { ...EMPTY_ALLOCATION_ROW('o'), kind: 'order', targetId: 'o1', amount: '1000' }
+
+  test('a lone old-order row is a complete entry', () => {
+    assert.equal(splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [legacyRow({ amount: '5000' })] }), null)
+  })
+
+  test('an old order and an Order together are allowed, and the total still has to fit', () => {
+    assert.equal(splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [order, legacyRow({ amount: '4000' })] }), null)
+    assert.match(
+      splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [order, legacyRow({ amount: '4000.01' })] }) ?? '',
+      /total more than the 5000/,
+    )
+  })
+
+  test('both typed fields are required, and the same old order twice is refused', () => {
+    assert.match(splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [legacyRow({ clientName: '' })] }) ?? '', /enter the client/)
+    assert.match(splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [legacyRow({ legacyOrderNo: '' })] }) ?? '', /enter the old order number/)
+    assert.match(
+      splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: [legacyRow({ amount: '1' }), legacyRow({ key: 'k2', legacyOrderNo: ' AB-12', amount: '1' })] }) ?? '',
+      /listed twice/,
+    )
+  })
+
+  test('an old order is a Confirmed Order that is not in the system: refused under PI Draft and Suspense', () => {
+    assert.match(splitPaymentBlockedReason({ ...base, destination: 'pi_draft', rows: [legacyRow()] }) ?? '', /only be added to a Confirmed Order entry/)
+    assert.match(splitPaymentBlockedReason({ ...base, destination: 'suspense', rows: [legacyRow()] }) ?? '', /Suspense Entry holds no allocations/)
+  })
+
+  test('what is sent keeps the listed order and carries no record id for an old order', () => {
+    assert.deepEqual(toRpcAllocationsWithLegacy([order, legacyRow({ legacyOrderNo: ' ab-12 ', clientName: ' Old   Client ', amount: '250.5' })]), [
+      { kind: 'order', id: 'o1', amount: 1000 },
+      { kind: 'legacy', order_no: 'AB-12', client_name: 'Old Client', amount: 250.5 },
+    ])
+    assert.deepEqual(toRpcAllocationsWithLegacy([legacyRow({ amount: '' })]), [])
+  })
+
+  test('an old-order row is something entered, so closing asks first', () => {
+    assert.equal(splitPaymentRowsChanged([EMPTY_ALLOCATION_ROW('k')], { initialTarget: null }), false)
+    assert.equal(splitPaymentRowsChanged([{ ...EMPTY_ALLOCATION_ROW('k'), legacy: true, legacyOrderNo: '' }], { initialTarget: null }), true)
+    assert.equal(splitPaymentIsDirty({
+      destination: 'confirmed_order', emptyDestination: 'confirmed_order', amount: '', paymentDate: '', paymentMode: 'hdfc',
+      defaultPaymentMode: 'hdfc', reference: '', remarks: '', custodyCount: 0, hasAttachment: false,
+      rows: [{ ...EMPTY_ALLOCATION_ROW('k'), legacy: true, legacyOrderNo: '' }], baseline: { initialTarget: null },
+    }), true)
+  })
+
+  test('the form sends the list it builds, offers the option only under Confirmed Order, and the migration reads {kind:legacy}', () => {
+    const modal = readFileSync(join(process.cwd(), 'src/app/finance/received/RecordSplitPaymentModal.tsx'), 'utf8')
+    assert.match(modal, /targetKind \? toRpcAllocationsWithLegacy\(rows\) : \[\]/)
+    assert.match(modal, /kind === 'order' && \(/)
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270407000000_finance_allocate_to_old_order.sql'), 'utf8')
+    assert.ok(sql.includes("'legacy'"))
+    assert.ok(sql.includes('v_row->>\'order_no\''))
+    assert.ok(sql.includes('v_row->>\'client_name\''))
   })
 })
 

@@ -181,6 +181,51 @@ begin
   return jsonb_build_object('allocation_id', v_id);
 end $$;
 
+-- The deployed Record Payment core, reduced: the payment, its Order/PI rows, a
+-- derived customer — and the same 'rows over the amount' refusal.
+create function public.record_payment_with_allocations(
+  p_amount numeric, p_payment_date date, p_payment_mode text, p_client_name text,
+  p_received_in text default null, p_reference text default null, p_remarks text default null,
+  p_allocations jsonb default '[]'::jsonb, p_custody_events jsonb default '[]'::jsonb)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_row jsonb; v_id uuid; v_sum numeric := 0; v_res jsonb := '[]'::jsonb; v_a jsonb;
+  v_client text; v_i int := 0;
+begin
+  for v_row in select jsonb_array_elements(p_allocations) loop
+    if btrim(lower(v_row->>'kind')) not in ('order', 'submission') then
+      raise exception 'PAYMENT_ALLOCATION_KIND_INVALID: row must name a Confirmed Order or a PI Draft.';
+    end if;
+    v_sum := v_sum + (v_row->>'amount')::numeric;
+  end loop;
+  if v_sum > p_amount then
+    raise exception 'PAYMENT_ALLOCATIONS_EXCEED_AMOUNT: % allocated is more than the % received.', v_sum, p_amount;
+  end if;
+  select case when count(distinct name) = 1 then min(name) end into v_client
+  from (select coalesce((select o.client_name from public.orders o where o.id = (t->>'id')::uuid),
+                        (select s.client_name from public.order_submissions s where s.id = (t->>'id')::uuid)) as name
+        from jsonb_array_elements(p_allocations) t) n where name is not null;
+  insert into public.finance_payment_requests (request_number, status, amount, client_name, submitted_by)
+  values ('PAY-REQ-T-' || (select count(*) + 1 from public.finance_payment_requests), 'pending_approval',
+          p_amount, v_client, auth.uid())
+  returning id into v_id;
+  for v_row in select jsonb_array_elements(p_allocations) loop
+    v_i := v_i + 1;
+    v_a := public.allocate_payment_to_target_internal(v_id,
+      case when btrim(lower(v_row->>'kind')) = 'submission' then (v_row->>'id')::uuid end,
+      case when btrim(lower(v_row->>'kind')) = 'order' then (v_row->>'id')::uuid end,
+      (v_row->>'amount')::numeric);
+    v_res := v_res || jsonb_build_array(jsonb_build_object('row', v_i, 'kind', v_row->>'kind',
+      'allocation_id', v_a->>'allocation_id', 'allocated_amount', (v_row->>'amount')::numeric));
+  end loop;
+  return jsonb_build_object('payment_request_id', v_id, 'allocation_count', jsonb_array_length(p_allocations),
+    'allocated_total', v_sum, 'unallocated_balance', p_amount - v_sum, 'allocations', v_res);
+end $$;
+-- The migration renames record_payment_with_allocations_core; the stand-in is
+-- therefore created under that name.
+alter function public.record_payment_with_allocations(numeric, date, text, text, text, text, text, jsonb, jsonb)
+  rename to record_payment_with_allocations_core;
+
 -- The deployed readers/door the migration replaces, with their old shapes.
 create function public.allocate_payment_to_targets(p_payment_request_id uuid, p_targets jsonb)
 returns jsonb language sql as $$ select '{}'::jsonb $$;

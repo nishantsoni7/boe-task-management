@@ -40,7 +40,7 @@ import {
 import { amountInputProblem, isValidAmount } from '@/lib/currency'
 import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
 import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
-import { legacyTargetKey } from './legacyOrderAllocation'
+import { legacyRowProblem, legacyTargetKey, normalizeLegacyClientName, normalizeLegacyOrderNo } from './legacyOrderAllocation'
 
 /** The two kinds of destination the business has. There is no third. */
 export type SplitTargetKind = 'order' | 'submission'
@@ -184,10 +184,11 @@ export function splitPaymentRowsChanged(
   baseline: SplitPaymentBaseline,
 ): boolean {
   const seed = baseline.initialTarget
-  if (!seed) return rows.some(r => Boolean(r.kind) || Boolean(r.targetId) || r.amount.trim() !== '')
+  if (!seed) return rows.some(r => Boolean(r.kind) || Boolean(r.targetId) || Boolean(r.legacy) || r.amount.trim() !== '')
   if (rows.length !== 1) return true
   const row = rows[0]
-  return row.kind !== seed.kind
+  return Boolean(row.legacy)
+    || row.kind !== seed.kind
     || row.targetId !== seed.id
     || row.amount.trim() !== ''
 }
@@ -304,7 +305,7 @@ export function splitPaymentBlockedReason(input: {
   if (!input.paymentMode) return 'Choose how the payment was made.'
 
   const rows = input.rows
-  const filled = rows.filter(r => r.kind || r.targetId || r.amount.trim())
+  const filled = rows.filter(r => r.kind || r.targetId || r.legacy || r.amount.trim())
 
   const wantedKind = destinationTargetKind(input.destination)
 
@@ -328,6 +329,9 @@ export function splitPaymentBlockedReason(input: {
   // kind, so this can only be reached by a row left behind — which is the case
   // worth refusing rather than sending.
   for (const row of filled) {
+    if (row.legacy && input.destination !== 'confirmed_order') {
+      return 'An old order can only be added to a Confirmed Order entry. Remove the row, or choose Confirmed Order.'
+    }
     if (row.kind && row.kind !== wantedKind) {
       return input.destination === 'pi_draft'
         ? 'One row names an Order. A PI Draft entry allocates to PI Drafts only.'
@@ -337,7 +341,10 @@ export function splitPaymentBlockedReason(input: {
 
   for (let i = 0; i < filled.length; i++) {
     const row = filled[i]
-    if (!row.kind || !row.targetId) {
+    if (row.legacy) {
+      const problem = legacyRowProblem(row, i + 1)
+      if (problem) return problem
+    } else if (!row.kind || !row.targetId) {
       const noun = input.destination === 'pi_draft' ? 'PI Draft' : 'Order'
       return `Choose ${noun === 'Order' ? 'an' : 'a'} ${noun} for allocation ${i + 1}, or remove it.`
     }
@@ -376,6 +383,34 @@ export function toRpcAllocations(rows: readonly SplitAllocationRow[]): {
 }
 
 /**
+ * The allocation list as record_payment_with_allocations() reads it, in the
+ * order the rows were added: Orders and PI Drafts by record id, and an OLD order
+ * that is not in the system (20270407000000) by the number and client typed for
+ * it. Complete rows only.
+ */
+export type RpcAllocation =
+  | { kind: SplitTargetKind; id: string; amount: number }
+  | { kind: 'legacy'; order_no: string; client_name: string; amount: number }
+
+export function toRpcAllocationsWithLegacy(rows: readonly SplitAllocationRow[]): RpcAllocation[] {
+  const out: RpcAllocation[] = []
+  for (const r of rows) {
+    if (!isValidAmount(r.amount)) continue
+    if (r.legacy) {
+      out.push({
+        kind: 'legacy',
+        order_no: normalizeLegacyOrderNo(r.legacyOrderNo),
+        client_name: normalizeLegacyClientName(r.clientName),
+        amount: Number(r.amount),
+      })
+    } else if (r.kind && r.targetId) {
+      out.push({ kind: r.kind, id: r.targetId, amount: Number(r.amount) })
+    }
+  }
+  return out
+}
+
+/**
  * Server refusals, mapped to a sentence naming the rule that refused.
  *
  * Every one of these is a message the RPC raises by name. A refusal the form has
@@ -399,6 +434,12 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
   }
   if (m.includes('PAYMENT_ALLOCATION_KIND_INVALID')) {
     return 'One row does not name a Confirmed Order or a PI Draft.'
+  }
+  if (m.includes('PAYMENT_ALLOCATION_LEGACY_ORDER_INVALID')) {
+    return 'An old order needs its order number (at most 60 characters). Nothing was saved.'
+  }
+  if (m.includes('PAYMENT_ALLOCATION_LEGACY_CLIENT_INVALID')) {
+    return 'An old order needs the client it belongs to (at most 120 characters). Nothing was saved.'
   }
   if (m.includes('PAYMENT_ALLOCATION_AMOUNT_INVALID')) {
     return 'Every allocation must be a positive amount in rupees and paise.'

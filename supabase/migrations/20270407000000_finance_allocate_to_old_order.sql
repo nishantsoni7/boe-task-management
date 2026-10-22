@@ -33,7 +33,10 @@
 -- allocate_payment_to_targets (20261011000000 §4) accepts a legacy target;
 -- received_payment_allocation_targets (20270116000000 §5) returns legacy rows
 -- (one column appended: target_client_name); payment_allocation_ledger_for_
--- correction (20261215000000) names them.
+-- correction (20261215000000) names them. record_payment_with_allocations_core
+-- is wrapped, not rewritten: the deployed core is renamed ..._base and a thin
+-- core takes the old-order rows out of the list, hands the rest to the base, and
+-- allocates the old-order rows in the same transaction.
 --
 -- NOT TOUCHED: finance_payment_destinations (a payment whose only destination is
 -- a legacy order still reads as having no Order or PI destination there; the
@@ -55,6 +58,7 @@ do $$
 begin
   if to_regclass('public.finance_payment_allocations') is null
      or to_regprocedure('public.allocate_payment_to_targets(uuid, jsonb)') is null
+     or to_regprocedure('public.record_payment_with_allocations_core(numeric, date, text, text, text, text, text, jsonb, jsonb)') is null
      or to_regprocedure('public.received_payment_allocation_targets(uuid[])') is null
      or to_regprocedure('public.payment_allocation_ledger_for_correction(uuid)') is null then
     raise exception 'DEPENDENCY MISSING: the allocation model (20260918000000 .. 20270116000000) must be applied first';
@@ -516,7 +520,191 @@ comment on function public.allocate_payment_to_targets(uuid, jsonb) is
   'Allocates a payment across up to 20 targets in one atomic submission. p_targets is a JSON array of {order_submission_id?, order_id?, allocated_amount} or, for an OLD order not in this system, {legacy_order_no, legacy_client_name, allocated_amount}. Requires finance.allocate once, then calls the single allocation implementation once per target inside this one transaction — a refusal on any target rolls the entire submission back, so a partial split is never committed. 20261011000000, 20270407000000.';
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §6. Allocated Against: legacy rows are listed
+-- §6. Record Payment: old-order rows ride in the same allocation list
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- The deployed core (20261014000000, as amended by 20270111120000) is renamed
+-- and left exactly as it is. The new core has the same signature, so the
+-- idempotency wrapper above it (20261219000000) is untouched and its
+-- fingerprint covers the old-order rows too. An old-order row is
+-- {kind:'legacy', order_no, client_name, amount}.
+--
+-- The base validates and writes every non-legacy row and the payment; the
+-- old-order rows are then allocated through the one legacy implementation, in
+-- the order listed, in the same transaction — a refusal on any row rolls the
+-- whole entry back, payment included. The display customer is then re-derived
+-- over ALL the targets with the rule the base uses: one distinct customer is
+-- stored, none or several store NULL.
+
+alter function public.record_payment_with_allocations_core(numeric, date, text, text, text, text, text, jsonb, jsonb)
+  rename to record_payment_with_allocations_base;
+
+revoke execute on function public.record_payment_with_allocations_base(numeric, date, text, text, text, text, text, jsonb, jsonb)
+  from public, anon, authenticated;
+
+create function public.record_payment_with_allocations_core(
+  p_amount       numeric,
+  p_payment_date date,
+  p_payment_mode text,
+  p_client_name  text,
+  p_received_in  text    default null,
+  p_reference    text    default null,
+  p_remarks      text    default null,
+  p_allocations  jsonb   default '[]'::jsonb,
+  p_custody_events jsonb default '[]'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_regular    jsonb := '[]'::jsonb;
+  v_row        jsonb;
+  v_legacy     jsonb := '[]'::jsonb;
+  v_index      integer := 0;
+  v_share      numeric;
+  v_legacy_sum numeric := 0;
+  v_seen       text[] := array[]::text[];
+  v_no         text;
+  v_client     text;
+  v_result     jsonb;
+  v_payment    uuid;
+  v_alloc      jsonb;
+  v_results    jsonb;
+  v_name       text;
+  v_names      integer;
+begin
+  -- Not an array, or no old-order row at all: the deployed behaviour, untouched.
+  if p_allocations is null
+     or jsonb_typeof(p_allocations) <> 'array'
+     or not exists (
+       select 1 from jsonb_array_elements(p_allocations) e
+       where jsonb_typeof(e) = 'object' and btrim(lower(coalesce(e->>'kind', ''))) = 'legacy'
+     )
+  then
+    return public.record_payment_with_allocations_base(p_amount, p_payment_date, p_payment_mode,
+      p_client_name, p_received_in, p_reference, p_remarks, p_allocations, p_custody_events);
+  end if;
+
+  -- The 20-row bound covers the whole list, old-order rows included.
+  if jsonb_array_length(p_allocations) > 20 then
+    raise exception
+      'PAYMENT_ALLOCATIONS_TOO_MANY: a payment may be divided at most 20 ways in one entry.'
+      using errcode = 'P0001';
+  end if;
+
+  -- Shape-check the old-order rows here, naming the row the person is looking at.
+  for v_row in select jsonb_array_elements(p_allocations) loop
+    v_index := v_index + 1;
+
+    if jsonb_typeof(v_row) = 'object'
+       and btrim(lower(coalesce(v_row->>'kind', ''))) = 'legacy' then
+      v_no     := public.normalize_legacy_order_no(v_row->>'order_no');
+      v_client := nullif(btrim(coalesce(v_row->>'client_name', '')), '');
+
+      if v_no is null or length(v_no) > 60 then
+        raise exception
+          'PAYMENT_ALLOCATION_LEGACY_ORDER_INVALID: row % must name the old order number (at most 60 characters).', v_index
+          using errcode = 'P0001';
+      end if;
+      if v_client is null or length(v_client) > 120 then
+        raise exception
+          'PAYMENT_ALLOCATION_LEGACY_CLIENT_INVALID: row % must name the old order''s client (at most 120 characters).', v_index
+          using errcode = 'P0001';
+      end if;
+
+      begin
+        v_share := (v_row->>'amount')::numeric;
+      exception when others then
+        v_share := null;
+      end;
+      if v_share is null
+         or v_share = 'NaN'::numeric
+         or v_share <= 0
+         or v_share <> round(v_share, 2)
+      then
+        raise exception
+          'PAYMENT_ALLOCATION_AMOUNT_INVALID: row % must allocate a positive amount in rupees and paise.', v_index
+          using errcode = 'P0001';
+      end if;
+
+      if v_no = any (v_seen) then
+        raise exception
+          'ALLOCATION_DUPLICATE: old order % is listed twice. One payment holds one allocation per record.', v_no
+          using errcode = 'P0001';
+      end if;
+      v_seen := v_seen || v_no;
+      v_legacy_sum := v_legacy_sum + v_share;
+
+      v_legacy := v_legacy || jsonb_build_array(jsonb_build_object(
+        'row', v_index, 'order_no', v_no, 'client_name', v_client, 'amount', v_share));
+    else
+      v_regular := v_regular || jsonb_build_array(v_row);
+    end if;
+  end loop;
+
+  if p_amount is not null and p_amount <> 'NaN'::numeric and v_legacy_sum > p_amount then
+    raise exception
+      'PAYMENT_ALLOCATIONS_EXCEED_AMOUNT: % allocated is more than the % received.', v_legacy_sum, p_amount
+      using errcode = 'P0001';
+  end if;
+
+  -- The payment, and every Order / PI Draft row, exactly as before. The base
+  -- also refuses the list when the REMAINING rows exceed the amount; the
+  -- allocator below re-checks the grand total under the payment lock.
+  v_result  := public.record_payment_with_allocations_base(p_amount, p_payment_date, p_payment_mode,
+    p_client_name, p_received_in, p_reference, p_remarks, v_regular, p_custody_events);
+  v_payment := (v_result->>'payment_request_id')::uuid;
+  v_results := coalesce(v_result->'allocations', '[]'::jsonb);
+
+  for v_row in select jsonb_array_elements(v_legacy) loop
+    v_alloc := public.allocate_payment_to_legacy_order_internal(
+      v_payment, v_row->>'order_no', v_row->>'client_name', (v_row->>'amount')::numeric);
+
+    v_results := v_results || jsonb_build_array(jsonb_build_object(
+      'row',              (v_row->>'row')::integer,
+      'kind',             'legacy',
+      'target_id',        null,
+      'legacy_order_no',  v_row->>'order_no',
+      'allocation_id',    v_alloc->>'allocation_id',
+      'allocated_amount', (v_row->>'amount')::numeric
+    ));
+  end loop;
+
+  -- The display customer over ALL the targets: one distinct name, else NULL.
+  select count(distinct n.name), min(n.name) into v_names, v_name
+  from (
+    select nullif(btrim(coalesce(o.client_name, s.client_name, a.legacy_client_name, '')), '') as name
+    from public.finance_payment_allocations a
+    left join public.orders            o on o.id = a.order_id
+    left join public.order_submissions s on s.id = a.order_submission_id
+    where a.payment_request_id = v_payment and a.status = 'active'
+  ) n
+  where n.name is not null;
+
+  update public.finance_payment_requests
+     set client_name = case when v_names = 1 then v_name end
+   where id = v_payment
+     and client_name is distinct from (case when v_names = 1 then v_name end);
+
+  return v_result || jsonb_build_object(
+    'allocation_count',    jsonb_array_length(p_allocations),
+    'allocated_total',     coalesce((v_result->>'allocated_total')::numeric, 0) + v_legacy_sum,
+    'unallocated_balance', p_amount - coalesce((v_result->>'allocated_total')::numeric, 0) - v_legacy_sum,
+    'allocations',         v_results
+  );
+end;
+$$;
+
+revoke execute on function public.record_payment_with_allocations_core(numeric, date, text, text, text, text, text, jsonb, jsonb)
+  from public, anon, authenticated;
+
+comment on function public.record_payment_with_allocations_core(numeric, date, text, text, text, text, text, jsonb, jsonb) is
+  'Takes old-order rows ({kind:''legacy'', order_no, client_name, amount}) out of the allocation list, hands the rest to record_payment_with_allocations_base (the 20261014000000 / 20270111120000 body, unchanged) and allocates the old-order rows in the same transaction, then re-derives the display customer over every target. Closed to clients; the idempotency wrapper calls it. 20270407000000.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §7. Allocated Against: legacy rows are listed
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- 20270116000000 §5 with ONE column appended (target_client_name, the client of
@@ -613,7 +801,7 @@ revoke execute on function public.received_payment_allocation_targets(uuid[]) fr
 grant  execute on function public.received_payment_allocation_targets(uuid[]) to authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §7. Correct Allocation: the ledger names a legacy order
+-- §8. Correct Allocation: the ledger names a legacy order
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- 20261215000000 §1 verbatim; only the reference and client expressions learn
@@ -732,7 +920,7 @@ revoke all on function public.payment_allocation_ledger_for_correction(uuid) fro
 grant execute on function public.payment_allocation_ledger_for_correction(uuid) to authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §8. Apply-time assertions
+-- §9. Apply-time assertions
 -- ═══════════════════════════════════════════════════════════════════════════
 
 do $$
@@ -760,7 +948,11 @@ begin
   if has_function_privilege('authenticated',
        'public.allocate_payment_to_legacy_order_internal(uuid, text, text, numeric)', 'EXECUTE')
      or has_function_privilege('anon',
-       'public.allocate_payment_to_legacy_order_internal(uuid, text, text, numeric)', 'EXECUTE') then
+       'public.allocate_payment_to_legacy_order_internal(uuid, text, text, numeric)', 'EXECUTE')
+     or has_function_privilege('authenticated',
+       'public.record_payment_with_allocations_core(numeric, date, text, text, text, text, text, jsonb, jsonb)', 'EXECUTE')
+     or has_function_privilege('authenticated',
+       'public.record_payment_with_allocations_base(numeric, date, text, text, text, text, text, jsonb, jsonb)', 'EXECUTE') then
     raise exception 'ASSERT: the allocation implementations must stay closed to client roles';
   end if;
 
