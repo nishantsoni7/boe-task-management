@@ -15,13 +15,17 @@ import { join } from 'node:path'
 import {
   applyToAll,
   buildAnswers,
+  daysBetween,
   describeAnswerFailure,
   dispatchGapNotes,
   emptyDraft,
+  lateLabel,
+  notAlignedStatus,
   parseOperationsRead,
   responseSummary,
   responseTone,
   tally,
+  waitShare,
   ANSWER_FALLBACK,
   type ChangeLine,
 } from './operationsDashboard'
@@ -29,6 +33,7 @@ import {
 const ROOT = join(__dirname, '..', '..', '..')
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8').replace(/\r/g, '')
 const MIGRATION = 'supabase/migrations/20270401000000_operations_dashboard.sql'
+const DETAILS_MIGRATION = 'supabase/migrations/20270402000000_operations_dashboard_order_details.sql'
 
 const period = (o = 3, d = 2) => ({
   from: '2026-09-01', to: '2026-09-30',
@@ -54,6 +59,10 @@ const payload = (over: Record<string, unknown> = {}) => ({
     answered_at: '2026-10-20T08:00:00Z', answered_by_name: 'Nitish', can_do: 1, cannot_do: 1, discuss: 0,
     lines: [{ key: 'item:B002', title: 'Table', decision: 'cannot_do', note: 'Cut already made' }],
   }],
+  order_details: [
+    { order_id: 'o1', salesperson: 'Prerna', due_date: '2026-10-20', value: 4500 },
+    { order_id: 'o2', salesperson: null, due_date: null, value: null },
+  ],
   periods: { last_month: period(), last_six_months: period(9, 7), gaps: { dispatched_without_date: 2, orders_without_value: 1, no_confirm_date: 0 } },
   ...over,
 })
@@ -90,6 +99,68 @@ describe('parseOperationsRead', () => {
     const r = parseOperationsRead(payload({ pending_changes: [], responses: [] }))
     assert.ok(r.ok)
     if (r.ok) assert.deepEqual([r.read.pending.length, r.read.responses.length], [0, 0])
+  })
+})
+
+describe('the not-aligned table', () => {
+  test('order details are read by order id, and a missing figure stays missing', () => {
+    const r = parseOperationsRead(payload())
+    assert.ok(r.ok)
+    if (!r.ok) return
+    assert.deepEqual(r.read.orderDetails.o1, { salesperson: 'Prerna', dueDate: '2026-10-20', value: 4500 })
+    assert.deepEqual(r.read.orderDetails.o2, { salesperson: null, dueDate: null, value: null })
+  })
+
+  test('a read from a database without the details still parses (older answer, no key)', () => {
+    const old: any = payload()
+    delete old.order_details
+    const r = parseOperationsRead(old)
+    assert.ok(r.ok)
+    if (r.ok) assert.deepEqual(r.read.orderDetails, {})
+  })
+
+  test('every alignment state has one short label and a filter', () => {
+    const states = ['awaiting_reviewer', 'awaiting_unassigned', 'clarification_needed', 'held_advance', 'accepted_not_aligned', 'no_handoff'] as const
+    for (const state of states) {
+      const s = notAlignedStatus({ state })
+      assert.ok(s.label.length > 0 && s.label.length <= 24, state)
+      assert.ok(['amber', 'red', 'gray'].includes(s.tone))
+    }
+    assert.equal(notAlignedStatus({ state: 'awaiting_reviewer' }).filter, notAlignedStatus({ state: 'accepted_not_aligned' }).filter)
+    assert.equal(notAlignedStatus({ state: 'clarification_needed' }).label, 'Waiting on approver')
+  })
+
+  test('late is by calendar date: due before today only', () => {
+    assert.equal(lateLabel('2026-10-20', '2026-10-22'), '2 days late')
+    assert.equal(lateLabel('2026-10-21', '2026-10-22'), '1 day late')
+    assert.equal(lateLabel('2026-10-22', '2026-10-22'), null)
+    assert.equal(lateLabel('2026-11-01', '2026-10-22'), null)
+    assert.equal(lateLabel(null, '2026-10-22'), null)
+    assert.equal(daysBetween('2026-02-27', '2026-03-02'), 3)
+  })
+
+  test('the waiting bar is a share of the longest wait, never empty for a real wait', () => {
+    assert.equal(waitShare(100, 100), 100)
+    assert.equal(waitShare(50, 100), 50)
+    assert.equal(waitShare(1, 1000), 4)
+    assert.equal(waitShare(0, 100), 0)
+    assert.equal(waitShare(10, 0), 0)
+  })
+
+  test('the follow-up migration only adds order_details and keeps the read closed to anon', () => {
+    const sql = read(DETAILS_MIGRATION)
+    assert.match(sql, /'order_details', v_details/)
+    assert.match(sql, /not in \('dispatched', 'cancelled'\)\s+and public\.can_read_order_detail\(o\.id\)/)
+    assert.match(sql, /revoke execute on function public\.operations_orders_dashboard\(\) from public, anon/)
+    assert.equal(/create\s+table|alter\s+table|create\s+(or\s+replace\s+)?trigger/i.test(sql), false, 'no table or trigger changes')
+    assert.equal(/insert\s+into|update\s+public\./i.test(sql), false, 'the read writes nothing')
+  })
+
+  test('the screen draws the table from the summary and the details, and the row opens the order', () => {
+    const view = read('src/components/orders/dashboard/OperationsDashboardView.tsx')
+    assert.match(view, /read\.orderDetails\[r\.orderId\]/)
+    assert.match(view, /className="ops-na-row" onClick=\{open\}/)
+    assert.match(view, /withReturnTo\(`\/orders\/\$\{r\.orderId\}`, '\/orders'\)/)
   })
 })
 

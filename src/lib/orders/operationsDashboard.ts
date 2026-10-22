@@ -51,6 +51,9 @@ export type ChangeResponse = {
   lines: { key: string; title: string; decision: ChangeDecision; note: string | null }[]
 }
 
+/** What the not-aligned table shows beside each order, from the Operations read. */
+export type OrderDetail = { salesperson: string | null; dueDate: string | null; value: number | null }
+
 export type PeriodFigure = { count: number; value: number }
 export type OrdersVsDispatches = {
   from: string
@@ -64,6 +67,8 @@ export type OperationsRead = {
   viewer: { isReviewer: boolean; isApprover: boolean }
   pending: PendingChange[]
   responses: ChangeResponse[]
+  /** By order id, for every open order the reader may open. */
+  orderDetails: Record<string, OrderDetail>
   lastMonth: OrdersVsDispatches
   lastSixMonths: OrdersVsDispatches
   gaps: { dispatchedWithoutDate: number; ordersWithoutValue: number; noConfirmDate: number }
@@ -72,6 +77,8 @@ export type OperationsRead = {
 export type ParsedOperationsRead =
   | { ok: true; read: OperationsRead }
   | { ok: false; message: string }
+
+import type { AlignmentState } from '@/lib/orders/orderDashboardSummary'
 
 class Bad extends Error {}
 type Obj = Record<string, unknown>
@@ -180,6 +187,14 @@ export function parseOperationsRead(raw: unknown): ParsedOperationsRead {
             }),
           }
         }),
+        orderDetails: Object.fromEntries(arr(root.order_details ?? [], 'order details').map(x => {
+          const o = obj(x, 'order detail')
+          return [str(o.order_id, 'order_id'), {
+            salesperson: optStr(o.salesperson),
+            dueDate: o.due_date === null || o.due_date === undefined ? null : str(o.due_date, 'due_date').slice(0, 10),
+            value: o.value === null || o.value === undefined ? null : num(o.value, 'value'),
+          } satisfies OrderDetail]
+        })),
         lastMonth: period(periods.last_month, 'last month'),
         lastSixMonths: period(periods.last_six_months, 'last six months'),
         gaps: {
@@ -317,4 +332,54 @@ export function dispatchGapNotes(g: OperationsRead['gaps']): string[] {
     notes.push(`${g.ordersWithoutValue} ${g.ordersWithoutValue === 1 ? 'order' : 'orders'} in these months ${g.ordersWithoutValue === 1 ? 'has' : 'have'} no product value on record and ${g.ordersWithoutValue === 1 ? 'is' : 'are'} counted without a value.`)
   }
   return notes
+}
+
+// ── The not-aligned table ────────────────────────────────────────────────────
+
+export type StatusTone = 'amber' | 'red' | 'gray'
+export type NotAlignedStatus = { label: string; tone: StatusTone; filter: string }
+
+/**
+ * The one short label an order carries in the table, and the filter chip it falls under. Who it
+ * waits on is the database's answer; this only names it. An order waiting on somebody else says so
+ * in its label, so nobody reads "Awaiting review" as their own job when it is not.
+ */
+export function notAlignedStatus(r: { state: AlignmentState }): NotAlignedStatus {
+  switch (r.state) {
+    case 'awaiting_reviewer': return { label: 'Awaiting review', tone: 'amber', filter: 'review' }
+    case 'accepted_not_aligned': return { label: 'Accepted, not aligned', tone: 'amber', filter: 'review' }
+    case 'awaiting_unassigned': return { label: 'No reviewer assigned', tone: 'red', filter: 'unassigned' }
+    case 'clarification_needed': return { label: 'Waiting on approver', tone: 'red', filter: 'clarification' }
+    case 'held_advance': return { label: 'Held for advance', tone: 'red', filter: 'advance' }
+    case 'no_handoff': return { label: 'Older order', tone: 'gray', filter: 'older' }
+  }
+}
+
+export const NOT_ALIGNED_FILTER_LABEL: Record<string, string> = {
+  review: 'Awaiting your review',
+  unassigned: 'No reviewer assigned',
+  clarification: 'Waiting on approver',
+  advance: 'Held for advance',
+  older: 'Older orders',
+}
+
+/** Whole days from `from` to `to` (both YYYY-MM-DD), by calendar date: no time zone can move the answer. */
+export function daysBetween(from: string, to: string): number {
+  const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(from)
+  const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(to)
+  if (!a || !b) return 0
+  return Math.round((Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86400000)
+}
+
+/** `2 days late` when the due date is before today, else null. */
+export function lateLabel(dueDate: string | null, today: string): string | null {
+  if (!dueDate || dueDate >= today) return null
+  const d = daysBetween(dueDate, today)
+  return `${d} ${d === 1 ? 'day' : 'days'} late`
+}
+
+/** 0–100, the share of the longest wait: the bar under each time. At least a sliver for any wait. */
+export function waitShare(seconds: number, longest: number): number {
+  if (longest <= 0 || seconds <= 0) return 0
+  return Math.max(4, Math.min(100, Math.round((seconds / longest) * 100)))
 }

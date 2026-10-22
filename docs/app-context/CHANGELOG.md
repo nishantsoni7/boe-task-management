@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — Operations dashboard: Not aligned for manufacturing as a table (PR open) · migration 20270402000000 (NOT APPLIED)
+- **Owner request.** The not-aligned list looked empty: two small lines on the left, one number far right. Design approved in chat: a table with Order and client, Status, Salesperson, Due (with "N days late"), Value, Waiting (with a bar against the longest wait), whole-row link; filter chips only for reasons that have orders; on a phone each order is a small card.
+- **Data.** `operations_orders_dashboard()` re-emitted in full with ONE new key, `order_details` (salesperson, due date, product value for every open order the reader may open), joined on the screen by order id. No table, trigger or permission change; the read writes nothing. A database without it still renders (the table shows "—").
+- **Code.** `OperationsDashboardView.tsx` (`NotAlignedSection`), `lib/orders/operationsDashboard.ts` (`notAlignedStatus`, `lateLabel`, `waitShare`, `daysBetween`), `.ops-na-*` in globals.css (the old `.ops-row*` list styles are gone).
+- **Proof.** tsc, eslint, full test suite; migration executed inside BEGIN…ROLLBACK against the linked DB (shape + per-row keys), nothing left behind. Not yet seen on screen signed in as Nitish.
+- **Rollback.** Re-emit `operations_orders_dashboard()` from 20270401000000 §6.
+
 ## 2026-10-22 — Load time: open the database connection during page load (PR open) · no migration
 - **Why.** Every screen reads from the browser, so the first query of each page load first opened a connection (DNS + TCP + TLS, about three round trips) only after the scripts had booted. Measured on the live site (admin, warm): HTML ready in about 75 ms, first query not sent until about 245-285 ms, and the first answer back at about 480-780 ms; the database round trip itself is about 63 ms and the queries run in a few ms inside the database, so the waiting is connection setup and the chain of reads, not the database.
 - **What.** `src/app/layout.tsx` adds `preconnect(NEXT_PUBLIC_SUPABASE_URL, { crossOrigin: 'anonymous' })` (anonymous because the data client's cross-origin fetches carry no cookies and use their own connection pool). A hint only: no URL, no hint.

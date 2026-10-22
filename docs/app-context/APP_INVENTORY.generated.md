@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `00396982` — Payment Requests: one payment popup, opened from anywhere on the row (#394)
-- Commits on this branch: 948
+- Commit: `caab1753` — Docs: migration 20270401000000 is applied (Operations dashboard)
+- Commits on this branch: 951
 - Pages (`page.tsx`): 143   API routes (`route.ts`): 150
-- Migrations: 348 (first `20260530_create_positions.sql`, latest `20270401000000_operations_dashboard.sql`)
+- Migrations: 349 (first `20260530_create_positions.sql`, latest `20270402000000_operations_dashboard_order_details.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 737   Enums: 0
 - Test files: 627   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
+- `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
+- `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
 - `00396982` 2026-10-22 Payment Requests: one payment popup, opened from anywhere on the row (#394)
 - `d8d66b71` 2026-10-22 Send Payment Request: quiet, Notion-style form (#393)
 - `d42ea2bd` 2026-10-21 Finance: bank marker on Payment Requests and in the review window (#388)
@@ -36,9 +39,6 @@
 - `76b9bfed` 2026-10-21 Meetings: administrators can permanently delete a meeting with all its data
 - `516acfbe` 2026-10-20 Admin can edit any payment inside the PI Draft and Order payments popups (#375)
 - `a59f7841` 2026-10-20 Redesign the Payment verification modal (Notion-style hierarchy)
-- `45738704` 2026-10-20 Edit Received Payment: drop Received In, quiet Notion-style form
-- `54be241f` 2026-10-20 Documents card: compact Download toolbar, Details popup for the PI dates
-- `10bbaf19` 2026-10-20 Update two more source-pin tests for the quotation notice queries
 
 ## Pages by top-level area
 
@@ -180,7 +180,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (9 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (135 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (136 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
@@ -356,7 +356,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270308000000_exhibition_lead_email_and_card.sql`
 - `20270309000000_exhibition_leads_view_all.sql`
 - `20270310000000_exhibition_lead_requirement_residential.sql`
 - `20270311000000_exhibition_lead_duplicate_owner_name.sql`
@@ -386,6 +385,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270330000000_finance_bank_money_out.sql`
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
+- `20270402000000_operations_dashboard_order_details.sql`
 
 ## All SQL function names
 

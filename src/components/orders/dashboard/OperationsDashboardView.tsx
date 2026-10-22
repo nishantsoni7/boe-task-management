@@ -13,6 +13,7 @@
 // whatever is answered. Nothing is computed here — the database sent every figure.
 
 import { useMemo, useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Check, MessageSquare, X } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -22,6 +23,7 @@ import {
   formatInstantIst,
   formatRange,
   formatRupees,
+  formatWaiting,
   plural,
   type DashboardSummary,
 } from '@/lib/orders/orderDashboardSummary'
@@ -37,12 +39,16 @@ import {
   applyToAll,
   buildAnswers,
   changeText,
+  NOT_ALIGNED_FILTER_LABEL,
   describeAnswerFailure,
   dispatchGapNotes,
   emptyDraft,
+  lateLabel,
+  notAlignedStatus,
   responseSummary,
   responseTone,
   tally,
+  waitShare,
   type ChangeDecision,
   type ChangeResponse,
   type DraftAnswers,
@@ -50,7 +56,6 @@ import {
   type OrdersVsDispatches,
   type PendingChange,
 } from '@/lib/orders/operationsDashboard'
-import { boardRows } from '@/components/orders/dashboard/OverviewSection'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 
 const DECISIONS: readonly ChangeDecision[] = ['can_do', 'cannot_do', 'discuss']
@@ -288,9 +293,28 @@ export function OperationsResponses({ responses, title = 'Operations responses' 
 }
 
 // ── Not aligned ─────────────────────────────────────────────────────────────
+//
+// A table, not a list: order and client, a short status, salesperson, due date, value, and how long
+// it has waited (with a bar against the longest wait). The whole row opens the order. Filter chips
+// appear only for a reason that has orders behind it. Nothing is computed here beyond layout: who an
+// order waits on, and since when, are the database's answers.
 
-function NotAlignedSection({ summary }: { summary: DashboardSummary }) {
-  const rows = boardRows(summary, 'not_aligned')
+function NotAlignedSection({ summary, read }: { summary: DashboardSummary; read: OperationsRead }) {
+  const router = useRouter()
+  const [filter, setFilter] = useState<string>('all')
+  const rows = summary.notAligned
+  const chips = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const r of rows) {
+      const f = notAlignedStatus(r).filter
+      counts.set(f, (counts.get(f) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+  }, [rows])
+  const active = filter === 'all' || chips.some(([k]) => k === filter) ? filter : 'all'
+  const shown = active === 'all' ? rows : rows.filter(r => notAlignedStatus(r).filter === active)
+  const longest = rows.reduce((m, r) => Math.max(m, r.waitingSeconds), 0)
+
   return (
     <section className="ops-section" aria-labelledby="ops-na-h">
       <div className="ops-section-head">
@@ -301,24 +325,61 @@ function NotAlignedSection({ summary }: { summary: DashboardSummary }) {
       {rows.length === 0 ? (
         <p className="ops-empty">Every running order is aligned for manufacturing.</p>
       ) : (
-        <ul className="ops-table">
-          {rows.map(r => (
-            <li key={r.key} className="ops-row">
-              <div className="ops-row-id">
-                <OrderLink orderId={r.orderId}>{r.displayNumber}</OrderLink>
-                <span className="ops-row-client">{r.clientName || 'Client not recorded'}</span>
-              </div>
-              <div className="ops-row-what">
-                <span className="ops-row-strong">{r.headline}</span>
-                <span className="ops-row-sub">{r.sub}</span>
-              </div>
-              <div className="ops-row-figure" title={r.figureLabel}>
-                <span>{r.figure}</span>
-                <span className="ops-row-figure-label">{r.figureLabel}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="ops-na">
+          {chips.length > 1 ? (
+            <div className="ops-na-filters" role="group" aria-label="Filter by status">
+              <button type="button" className="ops-na-chip" aria-pressed={active === 'all'} onClick={() => setFilter('all')}>All {rows.length}</button>
+              {chips.map(([k, n]) => (
+                <button key={k} type="button" className="ops-na-chip" aria-pressed={active === k} onClick={() => setFilter(k)}>
+                  {NOT_ALIGNED_FILTER_LABEL[k] ?? k} {n}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <table className="ops-na-table">
+            <thead>
+              <tr>
+                <th scope="col">Order</th>
+                <th scope="col">Status</th>
+                <th scope="col">Salesperson</th>
+                <th scope="col">Due</th>
+                <th scope="col" className="ops-r">Value</th>
+                <th scope="col" className="ops-r">Waiting</th>
+                <th scope="col"><span className="ops-sr">Open</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(r => {
+                const st = notAlignedStatus(r)
+                const d = read.orderDetails[r.orderId]
+                const late = lateLabel(d?.dueDate ?? null, read.today)
+                const open = () => router.push(withReturnTo(`/orders/${r.orderId}`, '/orders'))
+                return (
+                  <tr key={r.orderId} className="ops-na-row" onClick={open}>
+                    <td data-label="Order">
+                      <OrderLink orderId={r.orderId}>{r.displayNumber}</OrderLink>
+                      <span className="ops-na-client">{r.clientName || 'Client not recorded'}</span>
+                    </td>
+                    <td data-label="Status">
+                      <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
+                    </td>
+                    <td data-label="Salesperson" className="ops-na-sp">{d?.salesperson ?? '—'}</td>
+                    <td data-label="Due" className="ops-na-due">
+                      {d?.dueDate ? formatDate(d.dueDate) : '—'}
+                      {late ? <span className="ops-late">{late}</span> : null}
+                    </td>
+                    <td data-label="Value" className="ops-r ops-na-value">{d?.value != null ? formatRupees(d.value) : '—'}</td>
+                    <td data-label="Waiting" className="ops-r ops-na-wait">
+                      <span className="ops-na-time">{formatWaiting(r.waitingSeconds)}</span>
+                      <span className="ops-wbar" aria-hidden="true"><i style={{ width: `${waitShare(r.waitingSeconds, longest)}%` }} /></span>
+                    </td>
+                    <td className="ops-na-go" aria-hidden="true">›</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   )
@@ -415,7 +476,7 @@ export function OperationsDashboardView({ summary, read, supabase, onAnswered, r
       </section>
 
       <ChangesToReview items={read.pending} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
-      <NotAlignedSection summary={summary} />
+      <NotAlignedSection summary={summary} read={read} />
       <OrdersVsDispatchesSection read={read} />
       {revenue ? <RevenueSection revenue={revenue} /> : null}
       <OperationsResponses responses={read.responses} title="Your recent answers" />
