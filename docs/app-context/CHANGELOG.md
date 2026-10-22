@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-22 — Load time: PI Drafts in one round trip (PR open) · migration 20270403000000 (NOT APPLIED — waits for the owner)
+## 2026-10-22 — Load time: PI Drafts in one round trip (PR open) · migration 20270404000000 (NOT APPLIED — waits for the owner)
 - **Measured first (live, admin).** A database call costs about 230-270 ms although the database answers in under 1 ms: about 63 ms network, about 45 ms for the browser's cross-origin check (uncached), and a fixed cost on the Supabase side. So a screen's time is the number of sequential rounds. PI Drafts took about 600 ms in steady state (932 and 1070 ms on the first two runs): one round for rows, profile and permissions, then a second for the advance percentages of those ids.
 - **What.** `public.attached_percent(order_submissions)`, a PostgREST computed column that calls the existing batch function `pi_submissions_advance_percent()` (so it is the same figure and the same visibility rule, not a third copy). The list asks for `attached_percent` in its select, so rows and percentages arrive together. A database without the migration refuses the column by name and the page reads the list the old two-step way, so deploy order cannot break the screen.
 - **Not changed.** Profile and permission reads stay fresh on every load; the module guards still wait for their answer. The permission cache the owner approved was NOT built: the measurements showed those reads already run in the same round as the data, so a cache would not shorten the screen.

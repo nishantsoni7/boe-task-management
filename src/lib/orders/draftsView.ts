@@ -393,7 +393,7 @@ export const PI_DRAFT_LIST_COLUMNS = [
 ].join(', ')
 
 /**
- * THE LIST'S COLUMNS PLUS THE ADVANCE PERCENTAGE, in the same read (20270403000000).
+ * THE LIST'S COLUMNS PLUS THE ADVANCE PERCENTAGE, in the same read (20270404000000).
  *
  * `attached_percent` is not a stored column: it is a function of the row
  * (public.attached_percent(order_submissions)), which PostgREST lets a select ask for by

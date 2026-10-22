@@ -1,4 +1,4 @@
-// PI DRAFTS IN ONE ROUND TRIP (20270403000000).
+// PI DRAFTS IN ONE ROUND TRIP (20270404000000).
 //
 // The list used to read its rows and then, in a second round trip, the advance percentage of
 // those ids. The percentage is now a column of the same select (a PostgREST computed column
@@ -21,7 +21,7 @@ import {
 
 const ROOT = join(__dirname, '..', '..', '..')
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8').replace(/\r/g, '')
-const SQL = read('supabase/migrations/20270403000000_order_submission_attached_percent_computed_column.sql')
+const SQL = read('supabase/migrations/20270404000000_order_submission_attached_percent_computed_column.sql')
 const PAGE = read('src/app/orders/drafts/page.tsx')
 
 describe('the list asks for the percentage in the same select', () => {
@@ -59,7 +59,7 @@ describe('the page', () => {
   })
 })
 
-describe('the migration (20270403000000)', () => {
+describe('the migration (20270404000000)', () => {
   test('it is a function of the row that calls the batch function, not a third copy of the rule', () => {
     assert.match(SQL, /create or replace function public\.attached_percent\(p_submission public\.order_submissions\)\s+returns numeric/)
     assert.match(SQL, /from public\.pi_submissions_advance_percent\(array\[p_submission\.id\]\) p/)
