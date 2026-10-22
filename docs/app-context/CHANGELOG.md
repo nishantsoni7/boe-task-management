@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-22 — BOE One brand kit v1.0 applied (PR open) · no migration
+- **Owner request.** Apply the approved BOE One identity (kit `BOE-One-Production-Kit`); keep the parent BOE identity on company documents and the separate ERP.
+- **What.** Kit assets live in `public/brand/` (svg, icons, animated loader SVG; checksums matched the kit). Browser tab: SVG favicon + ICO fallback, 180px touch icon, theme colour #303536 via the Metadata/Viewport API (`src/app/icon.png` removed so no old icon competes). `public/manifest.json`: BOE One icons (192/512 `any` + dedicated maskable 192/512), kit colours; `start_url`, orientation and the Add Expense shortcut kept. Sidebar mark (`BoeBrandIcon`) is the BOE One app icon; sign-in / forgot / reset password (`AuthShell`) and the daily-quote splash show the horizontal BOE One logo. Logo colour tokens `--boe-one-*` added to `globals.css`.
+- **Deliberately not changed.** `public/branding/*` stays: the files named `boe-one-logo-*.png` are the Best of Exports parent logo, still read by the PI and confirmed-order PDF routes, and quotation PDFs. No service worker exists, so there is no precache; icon URLs carry `?v=1` to bust caches.
+- **Not done.** The kit's `BoeOneLoader` component is not wired in: route loading states are skeletons, and a status spinner would duplicate them.
+- **Proof.** tsc, lint, full tests. See the PR for the placements that were checked on screen.
+
 ## 2026-10-22 — Payment delete: a proof file already gone from storage no longer blocks deletion (PR open) · no migration
 - **Report.** Deleting Confirmed Payment P-AA-0040 showed "Payment deletion did not finish. Retry deletion." on every retry.
 - **Likely cause (inferred from code, not seen in the live logs).** `/api/finance/payments/delete` counted a proof key as removed only when `storage.remove()` echoed it back. Storage returns nothing for a key that is not in the bucket, so a manifest entry with no object could never be confirmed and every retry ended in `STORAGE_INCOMPLETE`, which shares the generic message.

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { preconnect } from 'react-dom'
 import localFont from 'next/font/local'
 import { Providers } from '@/components/layout/Providers'
@@ -33,9 +33,13 @@ export const metadata: Metadata = {
   title: 'BOE One',
   description: 'Best of Exports — BOE One',
   manifest: '/manifest.json',
+  applicationName: 'BOE One',
   icons: {
-    icon: '/branding/favicon.png',
-    apple: '/branding/favicon.png',
+    icon: [
+      { url: '/brand/svg/favicon.svg?v=1', type: 'image/svg+xml' },
+      { url: '/brand/icons/favicon.ico?v=1', sizes: 'any' },
+    ],
+    apple: [{ url: '/brand/icons/icon-180.png?v=1', sizes: '180x180' }],
   },
   appleWebApp: {
     capable: true,
@@ -45,6 +49,11 @@ export const metadata: Metadata = {
   other: {
     'mobile-web-app-capable': 'yes',
   },
+}
+
+// The browser chrome colour is the BOE One charcoal (brand-tokens.css).
+export const viewport: Viewport = {
+  themeColor: '#303536',
 }
 
 // ── Open the database connection while the page is still loading ─────────────

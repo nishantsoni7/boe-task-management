@@ -1,10 +1,10 @@
-/* Shared sidebar brand mark — the BOE symbol, unframed, at a readable size. */
+/* Shared sidebar brand mark — the BOE One app icon. Empty alt: "BOE One" is the visible text beside it. */
 export function BoeBrandIcon() {
   return (
     <div className="boe-sidebar-brand-icon">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/branding/boe-icon.png"
+        src="/brand/svg/boe-one-app-icon.svg"
         alt=""
         width={40}
         height={40}
