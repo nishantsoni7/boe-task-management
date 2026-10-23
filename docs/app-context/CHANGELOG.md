@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — Orders dashboard for approvers: PI review lists first (PR open) · no migration
+- **Owner request.** The approver's Orders dashboard should lead with the PIs waiting for their decision, show revenue more professionally, and keep only three cards (Payments pending, Fabric or finish pending, Ready for production) at the bottom; the delayed/not-aligned/due tab board goes.
+- **What.** New `PiReviewSections`: **PI submitted for review** (full width) and, only when non-empty, **PI changes requested** (revised PIs awaiting the approver). Revenue card restyled. `OverviewCards` takes `only`; the PI Drafts queue pill is hidden for approvers. Other roles unchanged. "Changes requested" was read as revised PIs on confirmed Orders awaiting approval (`order_pi_versions.status = pending`), not PIs sent back to sales — confirm with the owner.
+- **Proof.** tsc; 181 dashboard tests. NOT seen on screen.
+- **Rollback.** Revert the PR.
+
 ## 2026-10-23 — Finance: cash handover with acceptance (PR #426, merge c18d8e73) · migrations 20270410000000 → 20270410000100 (APPLIED 2026-10-23) · backup 20261023T053806Z
 - **Owner request.** When someone hands cash to someone else, the receiver must accept it; until then BOTH people must see it, highlighted so it cannot be missed, on the Finance dashboard, and be reminded regularly.
 - **What.** "Hand over cash" (header of every Finance page): pick the person (any active employee), tick the PNB/Paytm payments you currently hold, date/time, note; live total. The recipient Accepts (with a confirm step) or Disputes with a reason; the giver can Remind (every 4 h) or Cancel; an admin can cancel with a reason. Accepting writes one "Handed Over" custody event per payment, so the existing Collection & Handover trail stays the one record. Open handovers are a non-dismissable banner on every Finance page and on `/modules`, colour escalating with age (amber → orange at 24 h → red OVERDUE at 72 h; disputed purple-red); admins/`view_all` also see others' open handovers, quieter. Sidebar "Cash Handovers" (history + red count). Notifications for every step link to `/handover/<id>`, which works without Finance access. Daily reminder cron `/api/finance/handovers/remind` (needs `CRON_SECRET`).

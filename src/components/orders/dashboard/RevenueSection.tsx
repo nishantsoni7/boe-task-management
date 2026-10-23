@@ -33,9 +33,8 @@ export function RevenueSection({ revenue }: { revenue: DashboardRevenue | null }
           <div key={t.key} className="od-revenue-tile">
             <dt>{t.label}</dt>
             <dd className="od-revenue-amount">{formatRupees(t.period.amount)}</dd>
-            <dd className="od-revenue-range">
-              {formatRange(t.period.from, t.period.to)} · {plural(t.period.orders, 'order')}
-            </dd>
+            <dd className="od-revenue-range">{formatRange(t.period.from, t.period.to)}</dd>
+            <dd className="od-revenue-orders">{plural(t.period.orders, 'order')}</dd>
           </div>
         ))}
       </dl>
