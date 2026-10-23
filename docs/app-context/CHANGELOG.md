@@ -4,11 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-23 — Finance: Cash journeys redesign, flat and Notion-style (PR open) · no migration
+## 2026-10-23 — Finance: Cash journeys redesign, flat and Notion-style (PR #437 merged, 4c4d6cdc) · no migration · backup 20261023T175335Z
 - **Owner request.** The Cash journeys page and the handover banner were too big and heavy.
 - **What.** Visual only. The handover banner/card is now one compact row (thin severity edge, small icon, headline, amount, Accept/Remind; Dispute and Cancel moved into a "⋯" menu; payments expand from the "N payments" link). No glow or pulse. Cash journeys: underline tabs with a count, one summary line (the duplicate "Money not yet with the company" card is gone), flat holder groups with 44px payment rows, quiet status text, Journey shown on hover/focus (always on touch), a one-line "Receives cash for the company" footer, history as flat rows with a segmented filter. `CashStateChip` gained `quiet`; `CashPaymentActions` gained `quietJourney`.
 - **Unchanged.** Every can_* gate, RPC, permission and the alert role / no-dismiss / confirm-before-accept contracts pinned by `handover.test.ts`.
-- **Proof.** tsc, lint, full `npm test`. NOT seen on screen; phone layout not seen.
+- **Proof.** tsc, lint, full `npm test`, `npm run build`, `permissions:check`. Seen on screen only at narrow widths (Cash journeys, Expenses strip). NOT seen: the open-handover banner row, the wide desktop layout, a real phone. Production deploy `success` for 4c4d6cdc.
 - **Rollback.** Revert the PR.
 
 ## 2026-10-23 — Orders: approve with cash not yet with the company, with a reason (PR open) · migration 20270414000000 (APPLIED 2026-10-23, before deploy)
