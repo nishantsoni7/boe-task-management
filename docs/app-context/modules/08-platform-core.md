@@ -163,6 +163,10 @@ View As (`src/lib/viewAs.ts`, `src/contexts/ViewAsContext.tsx`, `src/hooks/queri
   paths (header `x-boe-view-as`, `PREVIEW_WRITE_REFUSED` 403). Other routes act on the admin's own session. The header can
   only remove authority.
 - Performance app-open recording while previewing records the admin, not the employee (verified in memory; route comment says so).
+- LOGIN AS MEMBER (2026-10-23, separate from the read-only preview above): floating admin-only icon
+  (`src/components/layout/LoginAsMemberWidget.tsx`, rules in `src/lib/impersonation.ts`) performs a REAL session swap via
+  `/api/impersonation/{members,start,end}` and audits to `admin_impersonation_sessions`. The sidebar Switch User dropdown
+  is gone. See CHANGELOG 2026-10-23 for traps (no signOut during swap; stash before verifyOtp; single-use refresh tokens).
 - View As never lends permissions to a screen that resolves the actor (e.g. `useAssetsAccess`), so it cannot test
   non-admin visibility there; that needs a real non-admin login.
 

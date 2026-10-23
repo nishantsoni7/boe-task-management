@@ -1114,6 +1114,7 @@ describe('the applied migrations are frozen', () => {
       '20270406000000_order_page_bundle.sql',
       '20270407000000_finance_allocate_to_old_order.sql',
       '20270408000000_inventory_retail_price.sql',
+      '20270409000000_admin_impersonation_sessions.sql',
     ])
   })
 
@@ -1479,6 +1480,7 @@ describe('the applied migrations are frozen', () => {
       '20270406000000_order_page_bundle.sql',
       '20270407000000_finance_allocate_to_old_order.sql',
       '20270408000000_inventory_retail_price.sql',
+      '20270409000000_admin_impersonation_sessions.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
