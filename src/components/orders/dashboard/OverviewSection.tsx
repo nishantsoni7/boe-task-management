@@ -103,8 +103,17 @@ export function boardRows(summary: DashboardSummary, key: BoardKey): BoardRow[] 
   }
 }
 
-export function OverviewCards({ summary, onOpen }: { summary: DashboardSummary; onOpen: (key: BoardKey) => void }) {
-  const cards = overviewCards(summary)
+export function OverviewCards({ summary, onOpen, only }: {
+  summary: DashboardSummary
+  /** Without it the cards are plain figures: nothing opens. */
+  onOpen?: (key: BoardKey) => void
+  /** Draw only these cards, in this order. */
+  only?: readonly string[]
+}) {
+  const all = overviewCards(summary)
+  const cards = only
+    ? only.flatMap(k => all.filter(c => c.key === k))
+    : all
   if (cards.length === 0) return null
   return (
     <section className="od-ov" aria-label="Orders at a glance">
@@ -120,7 +129,7 @@ export function OverviewCards({ summary, onOpen }: { summary: DashboardSummary; 
           )
           return (
             <li key={c.key}>
-              {c.board && c.count > 0 ? (
+              {onOpen && c.board && c.count > 0 ? (
                 <button type="button" className="od-ov-card" data-tone={c.tone} onClick={() => onOpen(c.board as BoardKey)}>
                   {body}
                 </button>

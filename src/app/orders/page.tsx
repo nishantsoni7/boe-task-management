@@ -39,6 +39,7 @@ import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/da
 import { AdvanceSection, AlignmentSection, FabricFinishSection, StatusStrip } from '@/components/orders/dashboard/AttentionSections'
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
+import { PiReviewSections } from '@/components/orders/dashboard/PiReviewSections'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
@@ -240,9 +241,11 @@ export default function OrdersDashboardPage() {
   // The queue links: only what somebody is asked to WORK, and only where the
   // reader is offered it. One decision, made in one place
   // (src/lib/orders/orderDashboard.ts).
-  const queues = orderDashboardCards({ counts, orders: ordersCaps })
-
   const ready = summary.kind === 'ready' ? summary.summary : null
+  // THE APPROVER'S DASHBOARD: the PIs waiting for their decision lead, then revenue, then three cards.
+  // The PI Drafts link is dropped for them: the list above it is the same queue, in full.
+  const approverView = ordersCaps.canApproveOrderSubmission && !!ready?.overview
+  const queues = orderDashboardCards({ counts, orders: ordersCaps }).filter(q => !(approverView && q.key === 'pi_drafts'))
   const personalView = personal.kind === 'ready' || personal.kind === 'error'
   // The Operations team gets its own dashboard once the database offers it.
   const operationsView = !personalView && profile?.team === 'operations' && operations.kind !== 'absent'
@@ -332,7 +335,15 @@ export default function OrdersDashboardPage() {
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
             stepping in. Revenue only when the read returned it: the database sends it to a reader
             who sees every Order. */}
-        {ready?.overview ? (
+        {approverView ? (
+          <PiReviewSections
+            supabase={supabase}
+            viewerId={profile?.id ?? null}
+            isAdmin={ordersCaps.canApproveOrderSubmission}
+            viewingAs={!!viewAsUserId}
+          />
+        ) : null}
+        {ready?.overview && !approverView ? (
           // ── THE AT-A-GLANCE CARDS ── lead the page once the database offers the overview.
           <OverviewCards
             summary={ready}
@@ -377,7 +388,13 @@ export default function OrdersDashboardPage() {
             </button>
           </div>
         ) : (
-          summary.summary.overview ? (
+          approverView ? (
+            <>
+              {/* ── REVENUE, THEN THE THREE CARDS THAT STILL NEED WATCHING ── plain figures. */}
+              <RevenueSection revenue={summary.summary.revenue} />
+              <OverviewCards summary={summary.summary} only={['payments', 'fabric', 'aligned']} />
+            </>
+          ) : summary.summary.overview ? (
             <>
               {/* ── THE ACTION BOARD ── one list at a time, then revenue. */}
               <div id="od-board">
