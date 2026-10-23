@@ -46,6 +46,7 @@ import {
 } from './ModuleOrderControls'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
+import { HandoverBanner } from '@/components/finance/HandoverBanner'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -841,6 +842,11 @@ export default function BoeOsHomePage() {
               Save, Cancel and the cards being moved; the action returns the
               moment edit mode closes. */}
           {!editingOrder && <QuickActionList actions={quickActions} variant="page" />}
+
+          {/* Cash handed to this person (or by them) that nobody has accepted yet.
+              Not dismissible; renders nothing when there is none. It is here as
+              well as in Finance because a recipient need not have Finance access. */}
+          {!editingOrder && <HandoverBanner />}
 
           {/* ── The launcher ──
               `.launcher` is the size container every column count below is

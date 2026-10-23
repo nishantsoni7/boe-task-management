@@ -117,6 +117,10 @@ Triggers on `order_activity_log`, `order_approval_events`, `order_change_request
 
 `order_submission_review_notify()` (restated in 20270328000100, APPLIED 2026-10-21) now also notifies `order_submissions.salesperson_id` on needs_changes / rejected. `pi_review_decided` is one type for both outcomes, so `getNotificationMeta` picks the badge from the title ("Changes were requested…" amber, "…was rejected" red).
 
+## 8c. Finance cash handover notices (20270410000000 / 20270410000100)
+
+Five types, all in `FINANCE_NOTIFICATION_TYPES` and written by the handover RPCs through `order_notify_users` (so the same no-actor / 2-minute rules): `finance_handover_requested` (to recipient), `_accepted` / `_disputed` (to giver), `_cancelled` (to both), `_reminder` (giver's Remind, and the daily sweep to both). `entity_id` is the HANDOVER; `getNotificationMeta` links every one to `/handover/<id>`, which works without Finance access. These notices are the backup: the primary surface is `HandoverBanner`, driven by `finance_handover_list`, never by unread counts.
+
 ## 9. Known traps / gotchas / unfixed defects
 
 1. **FIXED 2026-10-19 (code only): these types are now in `ORDER_NOTIFICATION_TYPES` and filed under Orders by `getNotificationMeta` (test `hiddenOrderTypes.test.ts`). Original note:** Some written types are not in any feed list. `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and

@@ -7,6 +7,10 @@
     {
       "path": "/api/image-editor/cleanup",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/finance/handovers/remind",
+      "schedule": "30 3 * * *"
     }
   ]
 }

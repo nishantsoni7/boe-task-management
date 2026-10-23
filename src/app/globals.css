@@ -8463,6 +8463,213 @@ tr:hover .boe-payment-id-copy,
   .boe-announce-form-dates { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* ─────────────────────────────────────────────────────
+   CASH HANDOVER ATTENTION (Finance)
+   A handover that has not been accepted is shown to BOTH people on every
+   Finance page and cannot be dismissed. Colour escalates with age and is never
+   the only signal: every card also carries an icon, a status word and the time
+   it has been waiting. Severity: fresh (<24h) amber, late (24-72h) orange,
+   overdue (>72h) red, disputed purple-red.
+───────────────────────────────────────────────────── */
+.boe-handover-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.boe-handover {
+  --ho-accent: #C48A1A;
+  --ho-bg: #FFF8E8;
+  --ho-border: rgba(196, 138, 26, 0.6);
+  --ho-glow: rgba(196, 138, 26, 0.22);
+  --ho-ink: #5E4106;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 16px 24px;
+  border: 2px solid var(--ho-border);
+  border-radius: 14px;
+  background: var(--ho-bg);
+  color: var(--ho-ink);
+  overflow: hidden;
+  box-shadow: 0 2px 14px var(--ho-glow);
+  animation: boe-handover-glow 2.6s ease-in-out infinite;
+}
+.boe-handover::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 7px;
+  background: var(--ho-accent);
+}
+.boe-handover--late     { --ho-accent: #D2691E; --ho-bg: #FFF0E3; --ho-border: rgba(210, 105, 30, 0.7); --ho-glow: rgba(210, 105, 30, 0.26); --ho-ink: #6A3208; }
+.boe-handover--overdue  { --ho-accent: #B42332; --ho-bg: #FDECEE; --ho-border: rgba(180, 35, 50, 0.75); --ho-glow: rgba(180, 35, 50, 0.3);  --ho-ink: #7A1523; }
+.boe-handover--disputed { --ho-accent: #8A2B6B; --ho-bg: #F9EAF4; --ho-border: rgba(138, 43, 107, 0.75); --ho-glow: rgba(138, 43, 107, 0.28); --ho-ink: #5F1B49; }
+.boe-handover--observer { animation: none; box-shadow: none; border-width: 1.5px; }
+
+@keyframes boe-handover-glow {
+  0%, 100% { box-shadow: 0 2px 14px var(--ho-glow); }
+  50%      { box-shadow: 0 2px 22px 3px var(--ho-glow); }
+}
+
+.boe-handover-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.boe-handover-icon {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ho-accent);
+  color: #FFFFFF;
+  animation: boe-notif-ring 2.8s ease-in-out infinite;
+}
+.boe-handover--observer .boe-handover-icon { animation: none; }
+.boe-handover-main { flex: 1 1 auto; min-width: 0; }
+.boe-handover-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--ho-accent);
+  color: #FFFFFF;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.boe-handover-headline {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ho-ink);
+  overflow-wrap: anywhere;
+}
+.boe-handover-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ho-ink);
+  opacity: 0.88;
+}
+.boe-handover-amount {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ho-ink);
+}
+.boe-handover-amount small {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.boe-handover-reason {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--ho-border);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.boe-handover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.boe-handover-actions .boe-btn { min-height: 40px; }
+.boe-handover-toggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 6px 4px;
+  color: var(--ho-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.boe-handover-toggle:focus-visible { outline: 2px solid var(--ho-accent); outline-offset: 2px; border-radius: 4px; }
+.boe-handover-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--ho-border);
+  overflow: hidden;
+}
+.boe-handover-items li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #303536;
+}
+.boe-handover-items li + li { border-top: 1px solid rgba(0, 0, 0, 0.07); }
+.boe-handover-items .ho-item-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.boe-handover-error {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #FBE9EC;
+  border: 1px solid #B42332;
+  color: #8E1A27;
+  font-size: 13px;
+  font-weight: 600;
+}
+.boe-handover-observers-title {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #686D6C;
+}
+
+@media (max-width: 640px) {
+  .boe-handover { padding: 14px 14px 14px 20px; }
+  .boe-handover-top { flex-wrap: wrap; }
+  .boe-handover-main { flex: 1 1 calc(100% - 64px); }
+  .boe-handover-amount { width: 100%; text-align: left; font-size: 26px; }
+  .boe-handover-actions .boe-btn { flex: 1 1 100%; justify-content: center; min-height: 46px; }
+  .boe-handover-toggle { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boe-handover, .boe-handover-icon { animation: none; }
+}
+
+/* The sidebar's nav item for open handovers: a count that cannot read as decoration. */
+.boe-handover-nav-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #B42332;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
 
 /* ─────────────────────────────────────────────────────
    ORDERS DASHBOARD (20270221000000)
@@ -11078,3 +11285,4 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .ops-tab { padding: 10px 10px; font-size: 13px; }
   .ops-running { padding-bottom: 8px; }
 }
+

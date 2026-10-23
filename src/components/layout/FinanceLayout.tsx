@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -19,6 +19,9 @@ import { activeFinanceNav, type FinanceNavKey } from '@/lib/navigation/moduleNav
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
+import { HandoverBanner } from '@/components/finance/HandoverBanner'
+import { HandoverModal } from '@/components/finance/HandoverModal'
+import { useOpenHandovers } from '@/hooks/queries/useHandovers'
 
 /**
  * The one Received Payments list — now ONE nav entry, no `?view=` sub-items.
@@ -58,6 +61,13 @@ export const BANK_STATEMENTS_PATH = '/finance/bank'
  */
 export const REIMBURSEMENTS_PATH = '/finance/reimbursements'
 
+/**
+ * Every cash handover, open or closed. Open handovers are ALSO drawn as a banner
+ * on every Finance page (HandoverBanner), so this entry is the history, and its
+ * red count is the number of open handovers the viewer is part of.
+ */
+export const HANDOVERS_PATH = '/finance/handovers'
+
 /** The one count the sidebar draws. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
 
@@ -82,6 +92,7 @@ export function FinanceLayout({
 }: FinanceLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
+  const [handoverOpen, setHandoverOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
   // While a page is still loading it has no profile of its own yet; the
@@ -94,6 +105,7 @@ export function FinanceLayout({
   const canReimburseExpenses = financeCaps.canReimburseExpenses
   const { triggerRefresh } = useRefresh()
   const queryClient = useQueryClient()
+  const openHandovers = useOpenHandovers()
 
   // Finance-only unread count — drives both the sidebar "Notifications" badge and
   // the pulsing alert block below. Shares the notifications query cache, so
@@ -180,7 +192,7 @@ export function FinanceLayout({
   // WHICH ONE IS LIT is activeFinanceNav's decision (src/lib/navigation/
   // moduleNav.ts). It used to be an exact path match, so no sub-route of
   // Confirmed Payments, and not the retired Payments to Verify page, lit anything.
-  const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number }[] = [
+  const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number; alertBadge?: number }[] = [
     { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} />, key: 'requests' },
     { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, key: 'confirmed', badge: receivedCounts.all },
     // MONEY GOING OUT. Not a third payment section — see EXPENSES_PATH above.
@@ -196,6 +208,8 @@ export function FinanceLayout({
     ...(canReimburseExpenses
       ? [{ label: 'Reimbursements', path: REIMBURSEMENTS_PATH, icon: <HandCoins size={15} strokeWidth={1.8} />, key: 'reimbursements' as const }]
       : []),
+    // Cash handed between people, each needing acceptance. Open for everybody in Finance.
+    { label: 'Cash Handovers', path: HANDOVERS_PATH, icon: <Wallet size={15} strokeWidth={1.8} />, key: 'handovers' as const, alertBadge: openHandovers.mine.length },
   ]
   const activeKey = activeFinanceNav(pathname)
 
@@ -240,7 +254,9 @@ export function FinanceLayout({
                    reading "0" beside a page with nothing on it describes
                    the same fact twice, once as a number and once as the
                    page's own empty state. */
-                typeof item.badge === 'number' && item.badge > 0 ? (
+                typeof item.alertBadge === 'number' && item.alertBadge > 0 ? (
+                  <span className="boe-handover-nav-count" aria-label={`${item.alertBadge} open`}>{item.alertBadge}</span>
+                ) : typeof item.badge === 'number' && item.badge > 0 ? (
                   <span style={{
                     marginLeft: 'auto', flexShrink: 0,
                     fontSize: '12px', fontWeight: 700, color: '#4C5352',
@@ -324,6 +340,9 @@ export function FinanceLayout({
           <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
             <ModuleSwitchButton target="orders" />
             {actions}
+            <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setHandoverOpen(true)}>
+              <Wallet size={15} strokeWidth={1.8} /> Hand over cash
+            </button>
             <ShellRefreshButton refreshing={refreshing} onRefresh={handleRefresh} />
           </div>
         </div>
@@ -331,10 +350,13 @@ export function FinanceLayout({
         {/* Page body */}
         <div className="boe-page-body">
           <ViewModeBanner />
+          <HandoverBanner />
           {children}
         </div>
 
       </div>
+
+      {handoverOpen && <HandoverModal onClose={() => setHandoverOpen(false)} />}
     </div>
   )
 }
