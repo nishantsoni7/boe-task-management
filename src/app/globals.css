@@ -10422,6 +10422,12 @@ textarea.pi-form-input { height: auto; }
   background: #F1EEE9;
   color: #4C5352;
 }
+/* A light tint tells the two apart from the row text and from each other:
+   amber for a sample (swatch), teal for a commission (percentage badge). Still
+   soft, never a status colour. */
+.orders-list-flag--sampling_needed,
+.orders-list-flag--sample_order { background: #FBF0D9; color: #8A5A00; }
+.orders-list-flag--commission { background: #DDF1EE; color: #0F6B62; }
 /* The markers sit at the RIGHT EDGE of the Project code cell (owner,
    2026-10-19): the code (and any update badge) on the left, the symbols pushed
    right with margin-left: auto. A flex wrapper inside the cell, never on the
