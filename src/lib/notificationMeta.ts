@@ -109,6 +109,12 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   finance_rejected:          { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   finance_linked:            { label: 'Linked',          color: colors.green, bg: colors.greenTint },
   finance_status_corrected:  { label: 'Status updated',  color: colors.amber, bg: colors.amberTint },
+  // Cash handover (20270410000000): amber/red where somebody must act, blue/green where it reports.
+  finance_handover_requested: { label: 'Accept cash',     color: colors.amber, bg: colors.amberTint },
+  finance_handover_reminder:  { label: 'Still waiting',   color: colors.red,   bg: colors.redTint   },
+  finance_handover_disputed:  { label: 'Disputed',        color: colors.red,   bg: colors.redTint   },
+  finance_handover_accepted:  { label: 'Accepted',        color: colors.green, bg: colors.greenTint },
+  finance_handover_cancelled: { label: 'Cancelled',       color: colors.blue,  bg: colors.blueTint  },
   // Orders
   order_submitted:           { label: 'Needs review',    color: colors.amber, bg: colors.amberTint },
   order_assigned:            { label: 'Assigned',        color: colors.blue,  bg: colors.blueTint  },
@@ -338,6 +344,22 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
         : { label: 'Reapplied',      color: colors.blue,  bg: colors.blueTint  },
       href: n.entity_id ? `/customer-reviews/custom?submission=${n.entity_id}` : '/customer-reviews/custom',
       actionLabel: 'Open review',
+    }
+  }
+
+  // ── Finance cash handover ──────────────────────────────────────────────────
+  // entity_id is the HANDOVER. /handover/[id] is open to its two participants
+  // whether or not they hold Finance access, so the link works for any employee.
+  if (type.startsWith('finance_handover_')) {
+    return {
+      category: 'finance',
+      heading: 'Finance',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: n.entity_id ? `/handover/${n.entity_id}` : '/finance',
+      actionLabel: type === 'finance_handover_requested' || type === 'finance_handover_reminder'
+        ? 'Review handover'
+        : 'View handover',
     }
   }
 
