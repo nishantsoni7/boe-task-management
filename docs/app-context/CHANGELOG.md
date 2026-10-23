@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — PI detail: no empty right half (branch fix/pi-detail-layout-empty-right) · no migration
+- **Why.** On the saved-PI page the short management panel (e.g. "Changes requested") sat beside a tall details column, leaving the right half blank once scrolled.
+- **Change.** Details row grid now has a modifier: `--rail` for a reviewer (panel stays right, sticky) and `--banner` for everyone else (panel full-width above, Supporting details and Internal order details in two columns at ≥860px container width). Layout/CSS only, in globals.css and the second split row of drafts/[submissionId]/page.tsx.
+- **Proof.** piDetail.render.test.tsx (new pin). NOT seen on screen.
+
 ## 2026-10-23 — List pagination: shared pager + Sample Tracking paged (branch feat/list-pagination, PR open) · no migration
 - **Why.** Lists that download a whole table and filter in the browser are silently clipped at PostgREST's 1000-row cap and slow down with every row added. Audit found ~30 such screens.
 - **Shared pieces.** `src/lib/listPaging.ts` (30-row pages, ranges, page strip), `usePagedQuery` (keeps the previous page on screen within the same scope, reads the next page early), `components/ui/Pagination.tsx` (renders nothing at 30 rows or fewer; prefetches on hover/focus).

@@ -3222,6 +3222,15 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.ok(!/\.pi-detail-split[a-z-]* \{[^}]*\border:/.test(css), 'CSS order never moves one card past the other')
   })
 
+  test('the details row: a reviewer gets a sticky rail, everyone else a banner over two columns', () => {
+    const page = read(PAGE)
+    assert.ok(/actions\.canRequestChanges \|\| actions\.canReject\s*\? 'pi-detail-split-grid pi-detail-split-grid--rail'/.test(page), 'rail for a reviewer')
+    assert.ok(page.includes("'pi-detail-split-grid pi-detail-split-grid--banner'"), 'banner for everyone else')
+    assert.ok(/\.pi-detail-split-grid--rail > :not\(\.pi-detail-split-stack\) \{\s*position: sticky/.test(css), 'the rail follows the scroll')
+    assert.ok(/\.pi-detail-split-grid--banner > :not\(\.pi-detail-split-stack\) \{ grid-row: 1; \}/.test(css), 'the banner sits above the details')
+    assert.ok(/\.pi-detail-split-grid--banner > \.pi-detail-split-stack \{\s*display: grid;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css), 'the details sit in two columns')
+  })
+
   test('the green approval controls stay readable in every state', () => {
     const rule = (selector: string) => {
       const match = css.match(new RegExp(`${selector.replace(/[.:]/g, m => `\\${m}`)} \\{([^}]*)\\}`))

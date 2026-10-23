@@ -6214,6 +6214,33 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
   }
 }
 
+/* THE DECISION PANEL IN THE DETAILS ROW (2026-10-23). A short panel beside the
+   tall details column left the right half of the page blank once you scrolled.
+   --rail (a reviewer): the panel stays in the right column but sticks, so it
+   follows the scroll. --banner (everyone else): the panel is a full-width band
+   above the details, which sit in two columns. grid-row places the banner, so
+   no rule here uses the CSS ordering property. */
+.pi-detail-split-grid--banner > :not(.pi-detail-split-stack) { grid-row: 1; }
+.pi-detail-split-grid--banner > .pi-detail-split-stack { grid-row: 2; }
+
+@container (min-width: 860px) {
+  .pi-detail-split-grid--rail > :not(.pi-detail-split-stack) {
+    position: sticky;
+    top: 96px;
+    max-height: calc(100vh - 112px);
+    overflow-y: auto;
+  }
+  .pi-detail-split-grid--banner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pi-detail-split-grid--banner > .pi-detail-split-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+}
+
 /* THE ORDER HIGHLIGHT (20270210000000): an optional internal note, in its own
    quiet card beside the documents. */
 .pi-detail-highlight {
