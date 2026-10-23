@@ -467,3 +467,13 @@
 .priceRow { display: flex; flex-direction: column; gap: 2px; }
 .priceLabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #686D6C; }
 .stdPrice { font-size: 20px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; line-height: 1.1; }
+
+.priceBox { display: grid; grid-template-columns: 3fr 2fr; border: 1px solid #E4E2DC; border-radius: 12px; overflow: hidden; background: #FBFAF7; }
+.priceMain, .priceSide { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; min-width: 0; }
+.priceSide { border-left: 1px solid #E4E2DC; background: #F4F2EC; justify-content: center; }
+.priceNote { font-size: 12px; font-weight: 500; color: #686D6C; line-height: 1.35; }
+.priceTotal { margin-top: 8px; font-size: 13px; font-weight: 600; color: #686D6C; }
+@media (max-width: 420px) {
+  .priceBox { grid-template-columns: 1fr; }
+  .priceSide { border-left: 0; border-top: 1px solid #E4E2DC; }
+}

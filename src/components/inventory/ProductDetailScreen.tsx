@@ -140,19 +140,19 @@ export default function ProductDetailScreen() {
               <h2 className={s.title}>{item.name}</h2>
               <div className={s.codeLine}><StageBadge stage={item.stage} /><ConditionBadge condition={item.condition} /><StockBadge item={item} /></div>
               <div>
-                <div className={s.priceRows}>
-                  <div className={s.priceRow}>
+                <div className={s.priceBox}>
+                  <div className={s.priceMain}>
                     <span className={s.priceLabel}>Retail price</span>
                     <span className={s.bigPrice}>{formatPrice(item.retail_price)}</span>
-                    <span className={s.bigPriceNote}>per piece · includes taxes, transportation and packaging</span>
+                    <span className={s.priceNote}>Per piece, incl. taxes, transport and packaging</span>
                   </div>
-                  <div className={s.priceRow}>
+                  <div className={s.priceSide}>
                     <span className={s.priceLabel}>Standard price</span>
                     <span className={s.stdPrice}>{formatPrice(item.price)}</span>
-                    <span className={s.bigPriceNote}>per piece · product with basic packaging</span>
+                    <span className={s.priceNote}>Per piece, basic packaging</span>
                   </div>
                 </div>
-                {item.qty_available > 1 && <div className={s.bigPriceNote}>{formatPrice(Number(item.retail_price) * item.qty_available)} retail for all {item.qty_available} available</div>}
+                {item.qty_available > 1 && <div className={s.priceTotal}>{formatPrice(Number(item.retail_price) * item.qty_available)} retail for all {item.qty_available} available</div>}
               </div>
               <div className={`${s.actions} ${s.actionsDesktop}`}>{bookingButton}{shareButton}</div>
             </div>
