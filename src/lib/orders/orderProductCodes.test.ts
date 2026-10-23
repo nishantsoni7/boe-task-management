@@ -7,6 +7,7 @@ import {
   normalizeBoeItemCode,
   formatOrderProductCode,
   orderProductCodesByItemId,
+  formatPiLineCode,
 } from './orderProductCodes'
 
 describe('formatOrderOperationalNumber', () => {
@@ -119,5 +120,15 @@ describe('Orders screens show 0526; product codes keep 526-BE0001', () => {
   })
   test('product codes are unchanged', () => {
     assert.equal(formatOrderOperationalNumber('0526'), '526')
+  })
+})
+
+describe('PI line codes', () => {
+  test('the workbook shape B004 reads as BE0004, the Order shape', () => {
+    assert.equal(formatPiLineCode('B004'), 'BE0004')
+    assert.equal(formatPiLineCode('BE004'), 'BE0004')
+    assert.equal(formatPiLineCode('BE0004'), 'BE0004')
+    assert.equal(formatPiLineCode('  '), null)
+    assert.equal(formatPiLineCode('X-9'), 'X-9')
   })
 })

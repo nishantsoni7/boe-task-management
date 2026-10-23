@@ -36,6 +36,22 @@ export function normalizeBoeItemCode(code: string | null | undefined): string | 
   return m ? formatBoeItemCode(Number(m[1])) : code
 }
 
+/** The number inside a PI line number — 'B004', 'BE004' and 'BE0004' all read 4.
+ *  Null for anything that is not a plain B/BE number. */
+export function piLineNumber(code: string | null | undefined): number | null {
+  const m = /^BE?0*([0-9]+)$/i.exec((code ?? '').trim())
+  return m ? Number(m[1]) : null
+}
+
+/** What a PI shows for a line number: 'B004' (the workbook template's shape) →
+ *  'BE0004', the same shape the Order's product codes use. Anything else prints
+ *  as typed; blank stays blank. */
+export function formatPiLineCode(code: string | null | undefined): string | null {
+  if (code === null || code === undefined || code.trim() === '') return null
+  const n = piLineNumber(code)
+  return n === null || n === 0 ? code.trim() : formatBoeItemCode(n)
+}
+
 /** ('0524', 1) → '524-BE0001'. Null when the Order has no display number yet —
  *  which never happens for a Confirmed Order, only guards a caller that asks
  *  before one exists. */

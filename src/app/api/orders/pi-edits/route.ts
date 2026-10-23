@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     return fail(409, 'REQUIRES_REVISION', 'This PI is approved and in force. Propose a new version instead.')
   }
   const proposal = buildEditProposal({
-    current: content, state: edit, priced, baseVersionId: null,
+    current: content, state: edit, priced, baseVersionId: null, renumber: true,
     newId: () => crypto.randomUUID(),
     fingerprint: json => sha256Hex(new TextEncoder().encode(json)),
   })

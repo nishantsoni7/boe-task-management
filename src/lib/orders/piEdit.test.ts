@@ -154,7 +154,7 @@ describe('adding, removing and changing products', () => {
     assert.deepEqual(items.map(i => i.product_name), ['Lounge chair', 'Side table'])
     assert.notEqual(items[1].id, B)
     assert.equal(items[1].source_row, 34)
-    assert.equal((items[1] as unknown as { item_sequence: string }).item_sequence, 'B003',
+    assert.equal((items[1] as unknown as { item_sequence: string }).item_sequence, 'BE0003',
       'an added line takes the next free sequence, so the PI stays submittable')
     assert.equal(items[1].total_amount, 15000)
     assert.equal((p.payload.commercial as { gross_product_amount: number }).gross_product_amount, 215000)
@@ -264,7 +264,7 @@ describe('an item number once used on an Order is never handed out again (202701
       retiredSequences: everUsed,
     })
     const items = p.payload.items as { item_sequence: string; product_name: string }[]
-    assert.equal(items[2].item_sequence, 'B004', 'not B003, which a removed product held')
+    assert.equal(items[2].item_sequence, 'BE0004', 'not B003, which a removed product held')
   })
 
   test('typing a removed product\'s number on an added line is refused while editing', () => {
@@ -343,5 +343,30 @@ describe('Edit PI states Product value as the PI Draft does — after the discou
     const editor = readFileSync('src/components/orders/PiEditor.tsx', 'utf8')
     assert.ok(editor.includes('editProductFigures(priced.commercial).map('))
     assert.ok(!/Product value <strong>\{formatInr\(priced\.commercial\.gross_product_amount\)/.test(editor))
+  })
+})
+
+describe('a PI that is not yet an Order is always numbered 1…n in order', () => {
+  const run = (s: ReturnType<typeof initialEditState>) => {
+    const content = current()
+    const p = buildEditProposal({
+      current: content, state: s, priced: priceEdit(content, s), baseVersionId: null, renumber: true,
+      newId: (() => { let n = 0; return () => `eeeeeeee-eeee-4eee-8eee-${String(++n).padStart(12, '0')}` })(),
+      fingerprint: json => `fp-${json.length}`,
+    })
+    return (p.payload.items as { item_sequence: string; product_name: string }[]).map(i => [i.item_sequence, i.product_name])
+  }
+
+  test('removing a line from the middle closes the gap', () => {
+    const s = initialEditState(current())
+    s.items.splice(1, 0, { ...newEditItem('mid'), product_name: 'Middle', quantity: '1', cost_per_piece: '100' })
+    s.items[0].removed = true
+    assert.deepEqual(run(s).map(r => r[0]), ['BE0001', 'BE0002'])
+  })
+
+  test('a product inserted in the middle takes its place and pushes the rest down', () => {
+    const s = initialEditState(current())
+    s.items.splice(1, 0, { ...newEditItem('mid'), product_name: 'Middle', quantity: '1', cost_per_piece: '100' })
+    assert.deepEqual(run(s), [['BE0001', 'Lounge chair'], ['BE0002', 'Middle'], ['BE0003', s.items[2].product_name]])
   })
 })
