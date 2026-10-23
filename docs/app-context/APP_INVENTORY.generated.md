@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `c646ede8` — Changelog: Order header draws without waiting for the combined read
+- Commit: `fd597e1e` — Changelog: Order header draws without waiting for the combined read
 - Commits on this branch: 980
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 153
 - Migrations: 356 (first `20260530_create_positions.sql`, latest `20270409000000_admin_impersonation_sessions.sql`)
 - Tables ever created: 162 (dropped at some point: 7)   SQL functions: 742   Enums: 0
-- Test files: 639   Next.js 16.2.6, React 19.2.4
+- Test files: 641   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `c646ede8` 2026-10-23 Changelog: Order header draws without waiting for the combined read
-- `a9ae23a6` 2026-10-23 Order page: draw the header from the order row read alongside the combined read
+- `fd597e1e` 2026-10-23 Changelog: Order header draws without waiting for the combined read
+- `00a6bcb8` 2026-10-23 Order page: draw the header from the order row read alongside the combined read
 - `b2c4d469` 2026-10-23 Sidebar footer: show designation instead of department (#424)
 - `e9591ebc` 2026-10-23 Docs: record Login as member merge and applied migration (#423)
 - `1f0d4a5e` 2026-10-23 Orders list: clearer, tinted sample and commission icons (#422)
@@ -147,6 +147,7 @@
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
+- `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test

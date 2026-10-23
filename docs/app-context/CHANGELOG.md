@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — List pagination: shared pager + Sample Tracking paged (branch feat/list-pagination, PR open) · no migration
+- **Why.** Lists that download a whole table and filter in the browser are silently clipped at PostgREST's 1000-row cap and slow down with every row added. Audit found ~30 such screens.
+- **Shared pieces.** `src/lib/listPaging.ts` (30-row pages, ranges, page strip), `usePagedQuery` (keeps the previous page on screen within the same scope, reads the next page early), `components/ui/Pagination.tsx` (renders nothing at 30 rows or fewer; prefetches on hover/focus).
+- **Sample Tracking.** The page no longer reads the whole table. Each tab is a status filter on one 30-row page (`src/lib/samples/listQuery.ts`, `useSampleRequests.ts`); tab counts are database head counts; an action invalidates cached pages instead of re-downloading everything. Dispatched tab now orders by earliest expected return (overdue first). Visibility rule unchanged (admin or any sample permission sees all, else own requests).
+- **Proof.** tsc, eslint, listPaging + samples listQuery unit tests, existing Samples permission suites. NOT seen on screen.
+- **Next.** Orders (All) needs a view/RPC for value sort and name search, then My Tasks, Customer Reviews test cards, Inventory, the rest of the audit list.
+
 ## 2026-10-23 — Load time: the Order header draws without waiting for the combined read
 
 - **What changed.** `loadOrder` on the Order page now starts the Order's own row read at the same moment as the combined `order_page_bundle` read, and draws the header from whichever lands first. The combined read then replaces the same values and brings the rest of the page. A flag (`bundleApplied`) stops a row that lands late from overwriting what the combined read already put on screen; if the combined read is unavailable, the fallback path reuses the early row instead of reading it again. No migration, no permission change: the row is read under the caller's own row-level security exactly as before.
