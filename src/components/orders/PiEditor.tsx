@@ -49,6 +49,7 @@ import {
   type PiEditState,
 } from '@/lib/orders/piEdit'
 import type { EditPiOutcome } from '@/lib/orders/editPiPage'
+import { formatBoeItemCode, formatPiLineCode } from '@/lib/orders/orderProductCodes'
 
 export const EDIT_PI_LABEL = 'Edit PI'
 export const EDIT_PI_PROPOSE_NOTE =
@@ -422,19 +423,32 @@ export function PiEditor({
           >
             <ol className="pi-edit-products">
               {state.items.map((item, n) => {
+                // A PI that is not yet an Order is numbered by where the line stands, so the
+                // code shown moves as lines are removed, added or inserted. An Order's own
+                // numbers are permanent: a stored one is shown as it is, a new one waits.
+                const lineCode = mode === 'apply'
+                  ? (item.removed ? null : formatBoeItemCode(state.items.slice(0, n + 1).filter(i => !i.removed).length))
+                  : formatPiLineCode(item.item_sequence)
                 const repPath = item.photo.kind === 'new' ? item.photo.storage_path
                   : item.photo.kind === 'remove' ? null
                   : current?.images.find(m => m.item_id === item.id && m.role === 'representative')?.storage_path ?? null
                 const line = priced?.lines.find(l => l.item.key === item.key)
                 const label = item.removed ? `Product ${n + 1} — will be removed`
-                  : item.id === null ? 'New product'
-                  : [item.item_sequence, item.product_name].map(s => (s ?? '').trim()).filter(Boolean).join(' · ') || `Product ${n + 1}`
+                  : item.id === null ? [lineCode, 'New product'].filter(Boolean).join(' · ')
+                  : [lineCode, item.product_name].map(s => (s ?? '').trim()).filter(Boolean).join(' · ') || `Product ${n + 1}`
                 return (
                   <li key={item.key} aria-label={`Product ${n + 1}`}
                       className={item.removed ? 'pi-edit-product pi-edit-product--removed' : item.id === null ? 'pi-edit-product pi-edit-product--new' : 'pi-edit-product'}>
                     <div className="pi-edit-product-head">
                       <strong className="pi-edit-product-title">{label}</strong>
                       {line && !item.removed && <span className="pi-edit-product-total">{formatInr(line.total_amount)}</span>}
+                      {mode === 'apply' && (
+                        <button type="button" className="boe-btn boe-btn-ghost pi-edit-product-toggle"
+                          aria-label={`Insert a product after product ${n + 1}`}
+                          onClick={() => set(s => ({ ...s, items: [...s.items.slice(0, n + 1), newEditItem(crypto.randomUUID()), ...s.items.slice(n + 1)] }))}>
+                          <Plus size={13} aria-hidden="true" /> Insert below
+                        </button>
+                      )}
                       <button type="button" className="boe-btn boe-btn-ghost pi-edit-product-toggle"
                         aria-label={item.removed ? `Keep product ${n + 1}` : `Remove product ${n + 1}`}
                         onClick={() => (item.id === null
@@ -483,7 +497,9 @@ export function PiEditor({
                 )
               })}
             </ol>
-            <p className="pi-edit-hint">A new product gets the next free item number when the PI is saved; numbers already used on this Order are never reused.</p>
+            <p className="pi-edit-hint">{mode === 'apply'
+              ? 'Product codes run BE0001, BE0002, BE0003 … in the order shown here, with none missing. Remove a product or insert one in the middle and the codes after it renumber when the PI is saved.'
+              : 'A new product gets the next free item number when the PI is saved; numbers already used on this Order are never reused.'}</p>
           </Section>
 
           <Section id="pi-edit-commercial" title="Commercial figures" summary={summaries.commercial}>

@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — PI product codes: contiguous BE0001… while a draft, insert in the middle · no migration
+- **Owner request (PI PID-00017).** A product removed from the middle of a draft left a gap (B006 missing) and a new product could only go at the end. A PI must always read 1, 2, 3 … with none missing or repeated; codes after a removal or insertion renumber; the code is shown as BE0001, like the Order's.
+- **What.** Edit PI on a PI that is not yet an Order (mode `apply`): every save numbers the lines BE0001…n in editor order (`buildEditProposal({renumber: true})`, passed by `/api/orders/pi-edits` apply only); the editor shows the live code per line and has **Insert below** on each line. Once an Order exists nothing changes: append-only, numbers never reused (generator now numeric-aware, writes BE0001 style). `formatPiLineCode` shows legacy B004 as BE0004 on the PI Draft/Order read model (`persistedProducts`). Stored value is rewritten only when a draft is saved in Edit PI. Order Product Codes at conversion still issue 1…n by `sort_order`, so they match.
+- **Not done.** The Reorder dialog and the single-line "Line number" edit do not renumber; the workbook import preview still prints B###.
+- **Proof.** tsc; 5245 orders tests pass. NOT seen on screen.
+- **Rollback.** Revert the PR.
+
 ## 2026-10-23 — Orders dashboard for approvers: PI review lists first (PR #430) · no migration
 - **Owner request.** The approver's Orders dashboard should lead with the PIs waiting for their decision, show revenue more professionally, and keep only three cards (Payments pending, Fabric or finish pending, Ready for production) at the bottom; the delayed/not-aligned/due tab board goes.
 - **What.** New `PiReviewSections`: **PI submitted for review** (full width) and, only when non-empty, **PI changes requested** (revised PIs awaiting the approver). Revenue card restyled. `OverviewCards` takes `only`; the PI Drafts queue pill is hidden for approvers. Other roles unchanged. "Changes requested" was read as revised PIs on confirmed Orders awaiting approval (`order_pi_versions.status = pending`), not PIs sent back to sales — confirm with the owner.

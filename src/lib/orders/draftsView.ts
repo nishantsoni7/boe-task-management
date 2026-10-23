@@ -29,6 +29,7 @@
 // a user id, and must not start to: a client-side visibility rule would be a
 // second, weaker answer to a question the database already answers.
 
+import { formatPiLineCode } from './orderProductCodes'
 import type {
   PiAmountOrText,
   PiCommercialSummary,
@@ -932,7 +933,7 @@ export function persistedProducts(items: readonly PersistedItem[]): PersistedPro
     .map(item => ({
       id: item.id,
       row: item.source_row,
-      itemSequence: text(item.item_sequence),
+      itemSequence: formatPiLineCode(text(item.item_sequence)),
       sourceProductCode: text(item.source_product_code),
       productName: text(item.product_name),
       quantity: toNumber(item.quantity),

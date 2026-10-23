@@ -25,6 +25,8 @@
 //
 // No React, no network: every rule is a function a test can pin.
 
+import { formatBoeItemCode, piLineNumber } from './orderProductCodes'
+
 // ── The PI as it stands (the version in force, read from its rows) ───────────
 
 export type PiContentSubmission = Record<string, unknown>
@@ -462,28 +464,39 @@ export function buildEditProposal(input: {
    * a PI that is not yet an Order.
    */
   retiredSequences?: readonly string[]
+  /** A PI that is not yet an Order: number every line 1…n in its final order. */
+  renumber?: boolean
 }): PiEditProposal {
   const { current, state, priced } = input
   const s = current.submission
   const byId = new Map(current.items.map(i => [i.id, i]))
   let nextRow = Math.max(0, ...current.items.map(i => i.source_row)) + 1
 
-  // A line needs a sequence (B001 …) to be submittable. One added here gets the
+  // A line needs a sequence (BE0001 …) to be submittable.
+  //
+  // A PI that is not yet an Order (renumber) is numbered 1, 2, 3 … in the order
+  // the lines stand in the editor, every time it is saved: a product removed
+  // from the middle closes the gap, a product added in the middle pushes the
+  // ones after it down by one. No number is ever missing or repeated. Nothing
+  // outside the PI holds these numbers yet — the Order's own product codes are
+  // issued from them at conversion, top to bottom.
+  //
+  // Once it is an Order the numbers are permanent: a line added here gets the
   // next free one after every sequence the PI uses now OR any earlier version
   // of this Order used, in order. Sequences of removed lines stay taken: a
   // number once printed for one product is never handed to another.
   const used = new Set([
-    ...priced.lines.map(l => l.item.item_sequence.trim()),
-    ...current.items.map(i => (i.item_sequence ?? '').trim()),
-    ...(input.retiredSequences ?? []).map(q => q.trim()),
-  ].filter(Boolean).map(q => q.toUpperCase()))
-  let nextSeq = Math.max(0, ...[...used].map(s => Number(/^B(\d+)$/i.exec(s)?.[1] ?? 0)))
-  const sequenceFor = (typed: string): string => {
+    ...priced.lines.map(l => piLineNumber(l.item.item_sequence)),
+    ...current.items.map(i => piLineNumber(i.item_sequence)),
+    ...(input.retiredSequences ?? []).map(q => piLineNumber(q)),
+  ].filter((n): n is number => n !== null))
+  let nextSeq = Math.max(0, ...used)
+  const sequenceFor = (typed: string, position: number): string => {
+    if (input.renumber) return formatBoeItemCode(position + 1)
     if (typed.trim() !== '') return typed.trim()
-    let s: string
-    do { nextSeq += 1; s = `B${String(nextSeq).padStart(3, '0')}` } while (used.has(s))
-    used.add(s)
-    return s
+    do { nextSeq += 1 } while (used.has(nextSeq))
+    used.add(nextSeq)
+    return formatBoeItemCode(nextSeq)
   }
 
   const items: Record<string, unknown>[] = []
@@ -511,7 +524,7 @@ export function buildEditProposal(input: {
     items.push({
       id,
       source_row: sourceRow,
-      item_sequence: sequenceFor(line.item.item_sequence),
+      item_sequence: sequenceFor(line.item.item_sequence, order),
       source_product_code: blankToNull(line.item.source_product_code),
       product_name: line.item.product_name.trim(),
       quantity: line.quantity,
