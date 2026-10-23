@@ -343,7 +343,9 @@ describe('the page structure', () => {
   test('nothing is sticky, so nothing can clip inside the shell', () => {
     // The shell's own page header is already sticky. A rail taller than the
     // remaining viewport would stick with its bottom unreachable.
-    const guideCss = CSS.slice(CSS.indexOf('.payroll-guide-sr-only'))
+    // Only the guide's own rules: the stylesheet goes on after them, and other
+    // screens may legitimately stick something.
+    const guideCss = (CSS.match(/[^{}]*\.payroll-guide[^{}]*\{[^}]*\}/g) ?? []).join('\n')
     assert.equal(/position:\s*sticky/.test(guideCss), false, 'the guide introduced sticky positioning')
   })
 

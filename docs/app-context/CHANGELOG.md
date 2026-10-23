@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — PI detail: no empty right half (branch fix/pi-detail-layout-empty-right) · no migration
+- **Why.** On the saved-PI page the short management panel (e.g. "Changes requested") sat beside a tall details column, leaving the right half blank once scrolled.
+- **Change.** Details row grid now has a modifier: `--rail` for a reviewer (panel stays right, sticky) and `--banner` for everyone else (panel full-width above, Supporting details and Internal order details in two columns at ≥860px container width). Layout/CSS only, in globals.css and the second split row of drafts/[submissionId]/page.tsx.
+- **Proof.** piDetail.render.test.tsx (new pin). NOT seen on screen.
+
 ## 2026-10-23 — PI product codes: contiguous BE0001… while a draft, insert in the middle · no migration
 - **Owner request (PI PID-00017).** A product removed from the middle of a draft left a gap (B006 missing) and a new product could only go at the end. A PI must always read 1, 2, 3 … with none missing or repeated; codes after a removal or insertion renumber; the code is shown as BE0001, like the Order's.
 - **What.** Edit PI on a PI that is not yet an Order (mode `apply`): every save numbers the lines BE0001…n in editor order (`buildEditProposal({renumber: true})`, passed by `/api/orders/pi-edits` apply only); the editor shows the live code per line and has **Insert below** on each line. Once an Order exists nothing changes: append-only, numbers never reused (generator now numeric-aware, writes BE0001 style). `formatPiLineCode` shows legacy B004 as BE0004 on the PI Draft/Order read model (`persistedProducts`). Stored value is rewritten only when a draft is saved in Edit PI. Order Product Codes at conversion still issue 1…n by `sort_order`, so they match.

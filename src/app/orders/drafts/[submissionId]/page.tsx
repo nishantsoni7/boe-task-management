@@ -2631,7 +2631,13 @@ function PiDraftDetailPageInner() {
           </>
         ) : (
         <div className="pi-detail-split">
-          <div className="pi-detail-split-grid">
+          {/* A reviewer gets the decision panel as a sticky right rail; everyone
+              else gets it as a full-width banner above the details, which then
+              sit in two columns. A short panel beside a tall column left the
+              right half of the page empty. */}
+          <div className={actions.canRequestChanges || actions.canReject
+            ? 'pi-detail-split-grid pi-detail-split-grid--rail'
+            : 'pi-detail-split-grid pi-detail-split-grid--banner'}>
             <div className="pi-detail-split-stack">
               {/* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
                   seen and entered together; each value saved by the RPC that
