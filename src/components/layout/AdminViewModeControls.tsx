@@ -1,16 +1,14 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Users, ChevronDown, LogOut, Settings,
+  ChevronDown, LogOut, Settings,
   Eye, X,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { useRouter, usePathname } from 'next/navigation'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
-import { createClient } from '@/lib/supabase/client'
 import { employeeSubtitle } from '@/lib/users/designationLevels'
 
 // ─── ViewModeBanner ───────────────────────────────────────────────────────────
@@ -91,33 +89,8 @@ export function ViewModeSidebarSection({
   /** If provided, shows an Account Settings link navigating to this URL. */
   accountSettingsHref?: string
 }) {
-  const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
-  const [switcherOpen, setSwitcherOpen] = useState(false)
-  const supabase = useMemo(() => createClient(), [])
-
-  const isRealAdmin = profile?.role === 'admin'
-  const inViewMode  = !!viewAsUserId
-
-  // Fetch member list once — only needed for the admin switcher
-  const { data: members = [] } = useQuery<UserProfile[]>({
-    queryKey: ['users', 'active-full'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, designation_level, is_active, created_at')
-        .eq('is_active', true)
-        .order('full_name')
-      return (data as UserProfile[]) ?? []
-    },
-    enabled: isRealAdmin,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  })
-
-  const handleEnterViewMode = (member: UserProfile) => {
-    enterViewMode(member.id, member)
-    setSwitcherOpen(false)
-  }
+  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const inViewMode = !!viewAsUserId
 
   const handleExitViewMode = () => {
     exitViewMode()
@@ -175,90 +148,8 @@ export function ViewModeSidebarSection({
       ) : (
         /* ── Normal mode: the user menu + the admin View As switcher ── */
         <>
-          {/* Switch User — admin only */}
-          {isRealAdmin && members.length > 0 && (
-            <div style={{ position: 'relative', margin: '4px 0 6px' }}>
-              <button
-                onClick={() => setSwitcherOpen(o => !o)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  fontSize: '12px', fontWeight: 500,
-                  color: '#4C5352', background: 'rgba(0,0,0,0.04)',
-                  border: '1px solid #E4DED7', borderRadius: '8px',
-                  padding: '6px 10px', cursor: 'pointer',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Users size={13} strokeWidth={1.8} />
-                  Switch User
-                </span>
-                <ChevronDown
-                  size={12} strokeWidth={2}
-                  style={{ transform: switcherOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
-                />
-              </button>
-
-              {switcherOpen && (
-                <>
-                  {/* Click-away backdrop */}
-                  <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 49 }}
-                    onClick={() => setSwitcherOpen(false)}
-                  />
-                  <div style={{
-                    position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
-                    background: '#fff',
-                    border: '1px solid #E4DED7',
-                    borderRadius: '8px',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                    zIndex: 50,
-                    maxHeight: '260px',
-                    overflowY: 'auto',
-                    padding: '6px',
-                  }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
-                      View as member
-                    </div>
-                    {members
-                      .filter(m => m.id !== profile.id)
-                      .map(member => (
-                        <button
-                          key={member.id}
-                          onClick={() => handleEnterViewMode(member)}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-                            padding: '7px 8px', borderRadius: '8px',
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            textAlign: 'left', transition: 'background 0.1s',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#FBFAF8')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                        >
-                          <div style={{
-                            width: 26, height: 26, borderRadius: '6px',
-                            background: '#303536',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '12px', fontWeight: 700, color: '#B9472E', flexShrink: 0,
-                          }}>
-                            {initials(member.full_name)}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#303536', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {member.full_name}
-                            </div>
-                            {/* Their designation, not `member` — the switcher
-                                names people the way the rest of the app does. */}
-                            <div style={{ fontSize: '12px', color: '#686D6C' }}>
-                              {employeeSubtitle(member)}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          {/* Admin "Login as member" is the floating icon mounted from Providers
+              (LoginAsMemberWidget), on every page — not a per-layout dropdown. */}
 
           {/* ONE identity control, in place of the chip + two loose buttons
               that used to sit here. Account Settings and Sign Out are the two

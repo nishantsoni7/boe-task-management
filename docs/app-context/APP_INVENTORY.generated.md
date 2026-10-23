@@ -5,19 +5,16 @@
 
 ## Snapshot
 
-- Commit: `14504e80` — Inventory detail: retail and standard price side by side in one card
-- Commits on this branch: 977
-- Pages (`page.tsx`): 144   API routes (`route.ts`): 150
-- Migrations: 355 (first `20260530_create_positions.sql`, latest `20270408000000_inventory_retail_price.sql`)
-- Tables ever created: 161 (dropped at some point: 7)   SQL functions: 742   Enums: 0
-- Test files: 638   Next.js 16.2.6, React 19.2.4
+- Commit: `355ae006` — Inventory: standard price and retail price per product (#420)
+- Commits on this branch: 974
+- Pages (`page.tsx`): 144   API routes (`route.ts`): 153
+- Migrations: 356 (first `20260530_create_positions.sql`, latest `20270409000000_admin_impersonation_sessions.sql`)
+- Tables ever created: 162 (dropped at some point: 7)   SQL functions: 742   Enums: 0
+- Test files: 639   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `14504e80` 2026-10-23 Inventory detail: retail and standard price side by side in one card
-- `b1902e91` 2026-10-22 Tests: inventory suite covers standard and retail price rules
-- `c9665fd9` 2026-10-22 Docs: inventory two-price note in app context
-- `88dc579e` 2026-10-22 Inventory: standard price and retail price per product
+- `355ae006` 2026-10-23 Inventory: standard price and retail price per product (#420)
 - `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
 - `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
 - `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
@@ -39,6 +36,9 @@
 - `9ebe2b8b` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
 - `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
 - `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
+- `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
+- `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
+- `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
 
 ## Pages by top-level area
 
@@ -101,6 +101,7 @@
 - **exhibition-leads** (1): `/scan [POST]`
 - **finance** (3): `/bank/parse [POST]`, `/notify [POST]`, `/payments/delete [POST]`
 - **image-editor** (5): `/cleanup [GET]`, `/convert [POST]`, `/results [GET]`, `/results/[id] [DELETE,PATCH]`, `/studio [POST]`
+- **impersonation** (3): `/end [POST]`, `/members [GET]`, `/start [POST]`
 - **integrations** (2): `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`
 - **meetings** (5): `/delete [POST]`, `/import [POST]`, `/import-pi [POST]`, `/import-pi/confirm [POST]`, `/template [GET]`
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
@@ -179,8 +180,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (9 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (136 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (10 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (137 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
@@ -193,6 +194,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 ## Tables (first migration that created each; * = dropped later)
 
 - `access_records` — 20260640_reset
+- `admin_impersonation_sessions` — 20270409000000
 - `announcement_reads` — 20270110000000
 - `announcement_recipients` — 20270110000000
 - `announcements` — 20270110000000
@@ -356,7 +358,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270314000100_inventory_booking_notifications.sql`
 - `20270315000000_order_submission_deletion_releases_deleted_payment_allocations.sql`
 - `20270316000000_order_submission_deletion_awaiting_approval.sql`
 - `20270317000000_order_submission_admin_order_deletion.sql`
@@ -386,6 +387,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270406000000_order_page_bundle.sql`
 - `20270407000000_finance_allocate_to_old_order.sql`
 - `20270408000000_inventory_retail_price.sql`
+- `20270409000000_admin_impersonation_sessions.sql`
 
 ## All SQL function names
 

@@ -7,11 +7,16 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
+
+// Loaded on demand and never on the server: it is admin-only and must not weigh
+// on the root bundle every route ships.
+const LoginAsMemberWidget = dynamic(() => import('./LoginAsMemberWidget'), { ssr: false })
 
 export function Providers({ children }: { children: ReactNode }) {
   // One QueryClient per browser session — created once, never recreated on re-render
@@ -47,7 +52,10 @@ export function Providers({ children }: { children: ReactNode }) {
           inside the provider so useQueryClient() resolves to that instance. */}
       <AuthIdentityBoundary>
         <RefreshProvider>
-          <ViewAsProvider>{children}</ViewAsProvider>
+          <ViewAsProvider>
+            {children}
+            <LoginAsMemberWidget />
+          </ViewAsProvider>
         </RefreshProvider>
       </AuthIdentityBoundary>
     </QueryClientProvider>

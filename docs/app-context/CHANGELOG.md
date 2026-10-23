@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — Admin "Login as member": floating icon, real session swap (PR open) · migration 20270409000000 (NOT yet applied)
+- **Owner request.** An admin must be able to open any member's app exactly as they see it and act for them, to test new features; members change their passwords, so the admin cannot log in normally. No filters or limits.
+- **What.** A floating icon (`LoginAsMemberWidget`, mounted once from `Providers`, admin-only, hidden on login pages) lists EVERY non-deleted member (inactive flagged). Choosing one calls `POST /api/impersonation/start` (active admin only; audits first; mints a one-time magic-link token, no email sent), the browser stashes the admin session in localStorage (`boeAdminImpersonation`) and exchanges the token with `verifyOtp`. From then on RLS, permissions, notifications, writes behave as that member. An amber "Acting as X" pill and a Return button stay on screen; switching member returns to admin first. `POST /api/impersonation/end` closes the audit row (caller must be the target). `GET /api/impersonation/members` is the admin-gated list.
+- **Replaces.** The per-layout "Switch User" read-only dropdown in `ViewModeSidebarSection` is removed. The read-only View As preview (`viewAs.ts`, Team Performance "full report") is untouched.
+- **Audit.** `admin_impersonation_sessions` (admin, target, started/ended, ip, user agent); RLS on, no policies, no grants to browser roles. Actions taken as a member are real and attributed to the member; they are NOT tagged.
+- **Traps.** Never call `signOut()` during a swap (revokes the stashed admin refresh token). The stash is written BEFORE `verifyOtp`. Admin refresh tokens are single-use: `freshAdminToken` refreshes through an isolated client and writes the rotated tokens back. Emails/WhatsApp triggered while acting as a member go to real recipients.
+- **Proof.** tsc, eslint, `impersonation.test.ts` + related View As suites. NOT seen on screen; the swap itself needs the migration applied and a real login.
+- **Owner steps.** Apply migration 20270409000000, then test on a real member.
+- **Rollback.** Drop the table; revert the PR.
+
 ## 2026-10-22 — Inventory: standard price and retail price (PR open) · migration 20270408000000 (APPLIED 2026-10-22)
 - **Owner request.** Each product carries two prices: STANDARD (product with basic packaging) and RETAIL (inclusive of taxes, transportation and packaging).
 - **What.** `inventory_items.price` stays the standard price; new NOT NULL `retail_price` (CHECK retail >= standard, existing rows backfilled retail = standard). `inventory_save_item` requires both; `inventory_bookings_list` returns both. Form, card, detail, booking sheet and requests show both; sort, stats value, booking totals and the WhatsApp Price line use retail.
