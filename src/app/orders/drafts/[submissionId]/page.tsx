@@ -209,6 +209,9 @@ import {
 import { completePaymentEntry, PAYMENT_RECORDED_AND_VERIFIED_BODY } from '@/lib/finance/paymentEntryCompletion'
 import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
 import { handOverAfterRecording } from '@/components/finance/WhereIsMoneyNowField'
+import { OrderCashCheck } from '@/components/orders/OrderCashCheck'
+import { useOrderCashCheck } from '@/hooks/queries/useCashJourneys'
+import { EMPTY_ORDER_CASH_ACK, orderCashAckError, orderCashFailureMessage, recordOrderCashException, type OrderCashAck } from '@/lib/orders/orderCashCheck'
 import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
@@ -575,6 +578,15 @@ function PiDraftDetailPageInner() {
   const [confirmationField, setConfirmationField] = useState<OrderConfirmationField | null>(null)
   /** "Pending from client" entered in the convert dialog; saved on the new Order. */
   const [pendencyDrafts, setPendencyDrafts] = useState<string[]>([])
+  // Cash on this PI that has not reached the company (20270414000000): read only
+  // while a dialog that creates an Order is open; the tick and reason are the
+  // approver's, reset whenever the dialog closes.
+  const cashCheck = useOrderCashCheck(submissionId, dialog === 'approve' || dialog === 'create_order')
+  // Keyed by the dialog it was typed in, so closing and reopening starts clean
+  // without an effect.
+  const [cashAckState, setCashAckState] = useState<{ dialog: typeof dialog; ack: OrderCashAck }>({ dialog: null, ack: EMPTY_ORDER_CASH_ACK })
+  const cashAck = cashAckState.dialog === dialog && dialog !== null ? cashAckState.ack : EMPTY_ORDER_CASH_ACK
+  const setCashAck = useCallback((ack: OrderCashAck) => setCashAckState({ dialog, ack }), [dialog])
   /** Said when the Order was created but its pendencies could not be saved. */
   const [pendencyFailure, setPendencyFailure] = useState<string | null>(null)
   /** Who may be named as the salesperson. Read once, with the record. */
@@ -1624,7 +1636,20 @@ function PiDraftDetailPageInner() {
       return
     }
     setConfirmationField(null)
+    // CASH THAT HAS NOT REACHED THE COMPANY (20270414000000): the approver must
+    // tick and say why, or the database refuses the Order. Asked here first so
+    // nothing is sent before the reason exists.
+    const cashProblem = orderCashAckError(cashCheck.data, cashAck)
+    if (cashProblem) {
+      setActionFailure(cashProblem)
+      return
+    }
+    const needsCashException = (cashCheck.data?.uncovered.length ?? 0) > 0
     return runAction('approve', async () => {
+      if (needsCashException) {
+        const exceptionError = await recordOrderCashException(supabase, submissionId, cashAck.reason)
+        if (exceptionError) return { error: exceptionError }
+      }
       const { data, error } = await supabase.rpc('approve_order_submission', {
         p_submission_id: submissionId,
         p_assigned_to:   check.values.salesperson,
@@ -1652,8 +1677,8 @@ function PiDraftDetailPageInner() {
         }
       }
       return { error }
-    }, error => describeConfirmationFailure(error)?.message ?? null)
-  }, [runAction, supabase, submissionId, confirmation, pendencyDrafts])
+    }, error => describeConfirmationFailure(error)?.message ?? orderCashFailureMessage(error))
+  }, [runAction, supabase, submissionId, confirmation, pendencyDrafts, cashCheck.data, cashAck])
 
   /**
    * The PI decision ON ITS OWN (20261119000000).
@@ -3209,6 +3234,15 @@ function PiDraftDetailPageInner() {
           failure={actionFailure}
           onCancel={closeDialog}
           onConfirm={dialog === 'approve_pi' ? approvePiReview : approveSubmission}
+          cashCheck={dialog === 'approve_pi' ? undefined : (
+            <OrderCashCheck
+              check={cashCheck.data}
+              loading={cashCheck.isPending}
+              ack={cashAck}
+              onAck={setCashAck}
+              disabled={acting}
+            />
+          )}
           // The four fields the Order is built from. Not offered in
           // `approve_pi`, which records a decision and creates no Order.
           salespeople={salespeople}

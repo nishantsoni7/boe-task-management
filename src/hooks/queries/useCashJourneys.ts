@@ -8,6 +8,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { HANDOVERS_KEY } from '@/hooks/queries/useHandovers'
 import { notificationKeys } from '@/lib/notificationCache'
 import { handoverErrorMessage, isHandoverFeatureMissing } from '@/lib/finance/handover'
+import { readOrderCashCheck, type OrderCashCheck } from '@/lib/orders/orderCashCheck'
 import {
   readCashPayments,
   readJourney,
@@ -109,4 +110,24 @@ export function useCashJourneyActions() {
   })
 
   return { receive, setCustodians }
+}
+
+/**
+ * Verified cash on one PI that has not reached the company, and any exception
+ * already recorded (20270414000000) — for the Approve dialog. Asked only while
+ * the dialog that creates an Order is open.
+ */
+export function useOrderCashCheck(submissionId: string | null, enabled: boolean) {
+  const { data: userId } = useSignedInUserId()
+  return useQuery<OrderCashCheck | null>({
+    queryKey: [...CASH_JOURNEYS_KEY, 'order-check', submissionId, userId ?? null],
+    enabled: enabled && !!userId && !!submissionId,
+    queryFn: async () => {
+      const { data, error } = await createClient().rpc('order_submission_cash_check', { p_submission_id: submissionId })
+      if (isHandoverFeatureMissing(error)) return null
+      if (error) throw new Error(handoverErrorMessage(error))
+      return readOrderCashCheck(data)
+    },
+    staleTime: 0,
+  })
 }

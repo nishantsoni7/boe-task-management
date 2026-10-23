@@ -363,7 +363,8 @@ describe('the approval dialog asks for all four, and the page sends them', () =>
 
   test('a database refusal that names a field marks and says that field', () => {
     assert.ok(page.includes('describeConfirmationFailure(error)'))
-    assert.match(page, /error => describeConfirmationFailure\(error\)\?\.message \?\? null/)
+    // 20270414000000: a cash refusal (ORDER_SUBMISSION_CASH_*) is then said in its own words.
+    assert.match(page, /error => describeConfirmationFailure\(error\)\?\.message \?\? orderCashFailureMessage\(error\)/)
   })
 
   test('the two dates start from what the PI already states, and are still required', () => {
