@@ -21,6 +21,7 @@ import {
   OWN_DELETE_TITLE,
   type OwnDeleteResult,
 } from '@/lib/finance/ownPaymentRequestDeletion'
+import { PaymentCashLockNotice, usePaymentCashLock } from '@/components/finance/PaymentCashLockNotice'
 
 export type DeleteOwnPaymentRequestModalPayment = {
   id: string
@@ -46,6 +47,7 @@ export function DeleteOwnPaymentRequestModal({
   onDelete,
   onClose,
   onDeleted,
+  lockClient,
 }: {
   payment: DeleteOwnPaymentRequestModalPayment
   formatAmount: (amount: number) => string
@@ -54,10 +56,15 @@ export function DeleteOwnPaymentRequestModal({
   onClose: () => void
   /** Called once, after a successful deletion — refresh the list and counts. */
   onDeleted: (paymentId: string) => void
+  /** Asks whether a cash handover locks this payment (20270415000000). */
+  lockClient?: Parameters<typeof usePaymentCashLock>[0]
 }) {
   const inFlight = useRef(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // A payment in an open or accepted cash handover cannot be deleted here; the
+  // database refuses it regardless, this only says so before the press.
+  const cashLock = usePaymentCashLock(lockClient, payment.id)
 
   const confirm = async () => {
     if (inFlight.current) return
@@ -88,6 +95,8 @@ export function DeleteOwnPaymentRequestModal({
         <Row label="Requested payment amount" value={formatAmount(payment.amount)} />
       </div>
 
+      {cashLock && <PaymentCashLockNotice lock={cashLock} />}
+
       {message && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.55,
@@ -103,11 +112,11 @@ export function DeleteOwnPaymentRequestModal({
         </button>
         <button
           onClick={confirm}
-          disabled={busy}
+          disabled={busy || !!cashLock}
           style={{
             padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
             border: 'none', color: '#fff', background: '#B42332',
-            cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+            cursor: busy || cashLock ? 'not-allowed' : 'pointer', opacity: busy || cashLock ? 0.6 : 1,
           }}
         >
           {busy ? OWN_DELETE_BUSY_LABEL : OWN_DELETE_CONFIRM_LABEL}

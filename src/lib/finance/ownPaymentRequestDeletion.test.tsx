@@ -11,6 +11,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { createElement } from 'react'
+import { mount } from '@/lib/testing/domHarness'
 
 import {
   canDeleteOwnPaymentRequest,
@@ -127,6 +129,43 @@ describe('the confirmation dialog', () => {
   test('on failure the message is shown and the dialog stays; success alone calls onDeleted', () => {
     assert.ok(SRC.includes("if (result.outcome === 'success') {\n      onDeleted(payment.id)\n      return\n    }"))
     assert.ok(SRC.includes('setMessage(result.message)'))
+  })
+})
+
+describe('a payment locked by its cash journey (20270415000000)', () => {
+  const open = (locks: unknown[]) => {
+    let deletes = 0
+    const ui = mount(createElement(DeleteOwnPaymentRequestModal, {
+      payment: { id: 'p1', human_payment_id: 'P-AA-0042', client_name: 'Sharma Furnishings', amount: 125000 },
+      formatAmount: (n: number) => String(n),
+      onDelete: async () => { deletes += 1; return { outcome: 'success', alreadyDeleted: false } as const },
+      onClose: () => {},
+      onDeleted: () => {},
+      lockClient: { rpc: async () => ({ data: locks, error: null }) },
+    }))
+    return { ui, deletes: () => deletes }
+  }
+
+  test('an open handover is named and Delete request cannot be pressed', async () => {
+    const { ui, deletes } = open([{ payment_id: 'p1', reason: 'open_handover', handover: 'H-0004' }])
+    await ui.settle()
+    assert.match(ui.text(), /cash handover H-0004, which has not been accepted yet/)
+    const del = ui.button(OWN_DELETE_CONFIRM_LABEL)
+    assert.equal(del.disabled, true)
+    ui.click(del)
+    await ui.settle()
+    assert.equal(deletes(), 0)
+    ui.unmount()
+  })
+
+  test('an unlocked payment deletes exactly as before', async () => {
+    const { ui, deletes } = open([])
+    await ui.settle()
+    assert.doesNotMatch(ui.text(), /cash handover/)
+    ui.click(ui.button(OWN_DELETE_CONFIRM_LABEL))
+    await ui.settle()
+    assert.equal(deletes(), 1)
+    ui.unmount()
   })
 })
 

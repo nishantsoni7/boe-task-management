@@ -23,6 +23,7 @@
 // row at all.
 
 import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
+import { paymentCashLockErrorMessage } from './paymentCashLock'
 
 export const PAYMENT_DESTINATIONS = ['pi_draft', 'confirmed_order', 'suspense'] as const
 export type PaymentDestination = typeof PAYMENT_DESTINATIONS[number]
@@ -282,6 +283,9 @@ export function customerDisplayName(
 export function paymentEntryErrorMessage(message: string | null | undefined): string {
   const m = message ?? ''
 
+  // 20270415000000: the payment is in an open or accepted cash handover.
+  const cashLocked = paymentCashLockErrorMessage(m)
+  if (cashLocked) return cashLocked
   if (m.includes('FINANCE_MODULE_CLOSED')) {
     return 'You do not have access to Finance. Ask an administrator to open the module for you.'
   }

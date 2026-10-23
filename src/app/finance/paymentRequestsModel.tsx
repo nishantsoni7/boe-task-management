@@ -8,6 +8,7 @@ import { accentFromBadge, BRAND_TAB_ACCENT, type TabAccent } from '@/components/
 import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { type FilterTab } from './paymentRequestsQuery'
 import { paymentTargetErrorMessage } from './paymentTargets'
+import { paymentCashLockErrorMessage } from '@/lib/finance/paymentCashLock'
 import { PAYMENT_DISPLAY_STATE_META, orderNumberDisplay, type PaymentDestination } from '@/lib/finance/paymentDestination'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -202,6 +203,9 @@ export function orderNoCell(destination: PaymentDestination | null | undefined) 
 // never collapses into a generic constraint sentence.
 export function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
   if (!dbError) return ''
+  // 20270415000000: the payment is in an open or accepted cash handover.
+  const cashLocked = paymentCashLockErrorMessage(dbError.message)
+  if (cashLocked) return cashLocked
   const target = paymentTargetErrorMessage(dbError.message)
   if (target) return target
   // Named BEFORE the generic 23514 branch: all three are check-constraint

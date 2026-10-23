@@ -105,7 +105,9 @@ describe('Edit Payment', () => {
 
   test('nothing can be saved before the destination has been read back', () => {
     assert.ok(src.includes('if (saving || submitting.current || entry === null) return'))
-    assert.ok(src.includes('disabled={saving || entry === null}'))
+    // 20270415000000 adds a cash-handover lock to the same disabled expression;
+    // the proof-retry button (recorded) stays usable.
+    assert.ok(src.includes('disabled={saving || entry === null || (!!cashLock && !recorded)}'))
     assert.ok(src.includes('const canSubmit = entry !== null'))
   })
 
