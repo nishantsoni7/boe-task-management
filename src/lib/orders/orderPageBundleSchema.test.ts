@@ -82,7 +82,9 @@ describe('the page', () => {
   test('asks the database for the whole page first and keeps its separate reads as the fallback', () => {
     assert.match(PAGE, /const bundle = await fetchOrderBundle\(supabase, id\)/)
     assert.match(PAGE, /if \(!bundle\) void loadAdvance\(\)/)
-    assert.match(PAGE, /bundle \? bundle\.orderRow : await orderRowQuery\(\)/)
+    assert.match(PAGE, /bundle \? bundle\.orderRow : await earlyRow/)
+    // the header is drawn from the order row read alongside the bundle, and never after the bundle has landed
+    assert.match(PAGE, /const earlyRow = orderRowQuery\(\)[\s\S]*?if \(bundleApplied \|\| !early\) return[\s\S]*?const bundle = await fetchOrderBundle/)
     assert.match(PAGE, /loadPiHandoff\(mapped, bundle\?\.pi\)/)
     assert.match(PAGE, /\? Promise\.resolve\(prefetched\.people\)/)
     assert.match(PAGE, /: await supabase\.rpc\('payment_active_allocation_totals'/)
