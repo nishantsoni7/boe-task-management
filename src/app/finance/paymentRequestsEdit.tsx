@@ -20,6 +20,7 @@ import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { loadPaymentAllocation, loadPaymentIntent, type StoredAllocation } from './paymentIntents'
 import { APPROVED_RACE_MESSAGE, type PaymentRequest } from './paymentRequestsModel'
 import { ErrorBanner } from './paymentRequestsAtoms'
+import { PaymentCashLockNotice, usePaymentCashLock } from '@/components/finance/PaymentCashLockNotice'
 
 // ── Edit Payment modal (creator only) ────────────────────────────────────────
 
@@ -62,6 +63,10 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // Allocation's job. 'split' = several allocations, which cannot be corrected
   // here; null = an ordinary request whose destination is its intent.
   const [allocation, setAllocation] = useState<StoredAllocation | null>(null)
+
+  // A payment in an open or accepted cash handover cannot be corrected at all
+  // (20270415000000); the database refuses the save, this only says so first.
+  const cashLock = usePaymentCashLock(supabase, r.id)
 
   const loadedDestination = useRef<PaymentEntryDestination | null>(null)
   const loadedTargetId    = useRef<string | undefined>(undefined)
@@ -325,6 +330,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
       width="660px"
       summary={stale ? null : summary}
       banner={<>
+      {cashLock && <PaymentCashLockNotice lock={cashLock} />}
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
@@ -369,7 +375,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
         <>
           <button onClick={guard.requestClose} disabled={saving}
             className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
-          <button onClick={reviewAndSave} disabled={saving || entry === null}
+          <button onClick={reviewAndSave} disabled={saving || entry === null || (!!cashLock && !recorded)}
             className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
             {recorded
               ? (saving ? 'Uploading…' : 'Retry proof upload')

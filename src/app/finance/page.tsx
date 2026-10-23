@@ -952,6 +952,7 @@ function FinancePageInner() {
           payment={deleteOwnRequest}
           formatAmount={fmtAmount}
           onDelete={id => deleteOwnPaymentRequest(supabase, id)}
+          lockClient={supabase}
           onClose={() => setDeleteOwnRequest(null)}
           onDeleted={id => {
             // Gone from this screen at once; the re-read below confirms it and

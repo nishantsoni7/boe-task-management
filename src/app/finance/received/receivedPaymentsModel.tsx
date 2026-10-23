@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { PAYMENT_DISPLAY_STATE_META } from '@/lib/finance/paymentDestination'
 import { formatMoney } from '@/lib/finance/piPaymentView'
+import { paymentCashLockErrorMessage } from '@/lib/finance/paymentCashLock'
 import { CONFIRMED_ALLOCATION_FILTERS, DEFAULT_CONFIRMED_ALLOCATION_FILTER, type ConfirmedAllocationFilter, type ConfirmedAllocationStatus } from '@/lib/finance/paymentSurfaces'
 
 // The data model, constants and small display helpers of Received Payments, split out of
@@ -349,6 +350,9 @@ export const fmtAmount = formatMoney
 // clear message instead of surfacing the raw Postgres error.
 export function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
   if (!dbError) return ''
+  // 20270415000000: the payment is in an open or accepted cash handover.
+  const cashLocked = paymentCashLockErrorMessage(dbError.message)
+  if (cashLocked) return cashLocked
   if (dbError.code === '23514' || dbError.message?.includes('finance_payment_requests_approved_linked_requires_order_id')) {
     return 'Select a valid order before marking this payment as linked.'
   }

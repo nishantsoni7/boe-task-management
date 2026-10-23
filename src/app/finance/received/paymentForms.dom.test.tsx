@@ -18,12 +18,15 @@ import type { PaymentRequest } from './receivedPaymentsModel'
 
 type Call = { kind: 'rpc' | 'update'; name: string; args: unknown }
 
-function fakeClient(opts: { updateError?: string } = {}) {
+function fakeClient(opts: { updateError?: string; cashLocked?: boolean } = {}) {
   const calls: Call[] = []
   const candidate = { id: 'ord-1', display_number: 'ORD-0524', client_name: 'Cafe Verde', status: 'confirmed', total_value: 50000 }
   const client = {
     rpc: async (name: string, args: unknown) => {
       calls.push({ kind: 'rpc', name, args })
+      if (name === 'finance_payment_cash_locks') {
+        return { data: opts.cashLocked ? [{ payment_id: 'pay-1', reason: 'accepted_transfer', handover: 'H-0001' }] : [], error: null }
+      }
       if (name === 'payment_allocation_ledger_for_correction') return { data: [], error: null }
       if (name === 'finance_order_search') return { data: [candidate], error: null }
       if (name === 'order_linked_payment_total') return { data: '0', error: null }
@@ -207,8 +210,8 @@ const RECEIVED = {
   proof_note: null, sales_note: null, order_number: null, status: 'approved_unlinked',
 } as unknown as PaymentRequest
 
-function openEdit(updateError?: string) {
-  const fake = fakeClient({ updateError })
+function openEdit(updateError?: string, cashLocked = false) {
+  const fake = fakeClient({ updateError, cashLocked })
   let saved = 0
   let closed = 0
   const ui = mount(createElement(EditPaymentModal, {
@@ -269,6 +272,35 @@ describe('Edit Received Payment', () => {
     ui.click(ui.button('Save Changes'))
     await ui.settle()
     assert.match(ui.text(), /permission denied/)
+    assert.equal(saved(), 0)
+  })
+
+  test('a payment locked by an accepted cash handover says why and cannot be saved (20270415000000)', async () => {
+    const { ui, updates, saved } = openEdit(undefined, true)
+    await ui.settle()
+    assert.match(ui.one('[data-testid="payment-cash-lock"]').textContent ?? '', /handed over and accepted \(H-0001\)/)
+    const save = ui.button('Save Changes')
+    assert.equal(save.disabled, true)
+    ui.click(save)
+    await ui.settle()
+    assert.equal(updates().length, 0)
+    assert.equal(saved(), 0)
+  })
+
+  test('an unlocked payment shows no lock and saves as before', async () => {
+    const { ui } = openEdit()
+    await ui.settle()
+    assert.equal(ui.all('[data-testid="payment-cash-lock"]').length, 0)
+    assert.equal(ui.button('Save Changes').disabled, false)
+  })
+
+  test('the database refusal of a locked payment is said in plain words', async () => {
+    const { ui, saved } = openEdit('PAYMENT_LOCKED_BY_CASH_HANDOVER: payment P-AA-0001 is in cash handover H-0003, which has not been accepted yet.')
+    ui.type(ui.one<HTMLInputElement>('input[inputmode="decimal"]'), '1')
+    ui.click(ui.button('Save Changes'))
+    await ui.settle()
+    assert.match(ui.text(), /Payment P-AA-0001 is in cash handover H-0003/)
+    assert.doesNotMatch(ui.text(), /PAYMENT_LOCKED_BY_CASH_HANDOVER/)
     assert.equal(saved(), 0)
   })
 

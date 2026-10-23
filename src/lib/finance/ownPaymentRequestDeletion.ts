@@ -38,6 +38,7 @@ export type OwnDeleteResult =
   | { outcome: 'failure'; message: string }
 
 const FAILURE_MESSAGES: Array<[RegExp, string]> = [
+  [/PAYMENT_LOCKED_BY_CASH_HANDOVER/, 'This payment is in a cash handover that is open or was accepted, so it can no longer be deleted.'],
   [/PAYMENT_APPROVED/, 'This payment has been approved, so it can no longer be deleted.'],
   [/PAYMENT_NOT_OWNER/, 'Only the person who raised this request can delete it.'],
   [/PAYMENT_NOT_FOUND/, 'This request could not be found. It may already have been removed.'],

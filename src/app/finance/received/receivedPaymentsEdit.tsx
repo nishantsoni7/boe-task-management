@@ -9,6 +9,7 @@ import { groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { paymentModeLabel, customerDisplayName } from '@/lib/finance/paymentEntry'
 import { FormDialog, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { PaymentRequest, friendlyDbErrorMessage, ErrorBanner } from './receivedPaymentsModel'
+import { PaymentCashLockNotice, usePaymentCashLock } from '@/components/finance/PaymentCashLockNotice'
 
 // Quiet, Notion-like type: labels small and muted, values larger and darker.
 const LABEL_STYLE: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: colors.muted }
@@ -50,6 +51,9 @@ export function EditPaymentModal({
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+  // A payment in an open or accepted cash handover cannot be corrected at all
+  // (20270415000000); the database refuses the save, this only says so first.
+  const cashLock = usePaymentCashLock(supabase, r.id)
 
   // Every row on this page is approved_unlinked or approved_linked (see the
   // page-level query), so this is always true here — order_number for those
@@ -132,10 +136,11 @@ export function EditPaymentModal({
       closeOnEscape
       width="600px"
       summary={summary}
+      banner={cashLock ? <PaymentCashLockNotice lock={cashLock} /> : undefined}
       actions={
         <>
           <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
-          <button onClick={reviewAndSave} disabled={saving}
+          <button onClick={reviewAndSave} disabled={saving || !!cashLock}
             className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
