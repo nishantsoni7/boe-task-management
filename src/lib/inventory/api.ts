@@ -67,7 +67,10 @@ export type ItemInput = {
   size_text: string
   material: string
   description: string
+  /** Standard price (basic packaging). */
   price: number
+  /** Retail price (taxes, transportation and packaging included). */
+  retail_price: number
   condition: Condition
   stage: Stage
   qty_total: number

@@ -82,7 +82,7 @@ create function public.t_item(p_code text) returns uuid language sql as $$
   select id from public.inventory_items where product_code = p_code and deleted_at is null $$;
 create function public.t_data(p_code text, p_qty int, p_stage text default 'ready') returns jsonb language sql as $$
   select jsonb_build_object('product_code', p_code, 'name', 'Teak chair', 'size_text', '45 x 50 x 90 cm', 'material', 'Teak',
-    'price', 4500, 'condition', 'new', 'stage', p_stage, 'qty_total', p_qty, 'category', 'Chairs') $$;
+    'price', 4500, 'retail_price', 5200, 'condition', 'new', 'stage', p_stage, 'qty_total', p_qty, 'category', 'Chairs') $$;
 
 -- ═══ 1. Registration ═══
 select public.t_eq('module registered', (select count(*) from public.permission_modules where module_key = 'inventory'), 1::bigint);
@@ -272,6 +272,15 @@ select public.t_eq('old booking history kept', (select count(*) from public.inve
 
 -- ═══ 9. The CHECK is the last line of defence ═══
 select public.t_fails('update public.inventory_items set qty_sold = qty_total + 1 where product_code = ''CH-001''', 'new row for relation "inventory_items" violates check constraint');
+
+-- ═══ 10. Standard and retail price (20270408000000) ═══
+select public.t_as(public.t_id('manager'));
+select public.t_fails(format('select public.inventory_save_item(null, %L::jsonb, array[public.t_img(5)])', (public.t_data('RP-001', 1) - 'retail_price')::text), 'INVENTORY_INVALID: Enter a valid retail price');
+select public.t_fails(format('select public.inventory_save_item(null, %L::jsonb, array[public.t_img(5)])', (public.t_data('RP-002', 1) || '{"retail_price": 4000}')::text), 'INVENTORY_INVALID: Retail price cannot be below the standard price');
+select public.inventory_save_item(null, public.t_data('RP-003', 1) || '{"retail_price": 4500}', array[public.t_img(5)]);
+select public.t_eq('retail may equal standard', (select retail_price from public.inventory_items where product_code = 'RP-003'), 4500.00::numeric);
+select public.t_reset();
+select public.t_fails('update public.inventory_items set retail_price = 1 where product_code = ''RP-003''', 'new row for relation "inventory_items" violates check constraint');
 
 select 'INVENTORY SUITE PASSED' as result;
 rollback;

@@ -22,7 +22,7 @@ export function buildShareMessage(item: InventoryItem, opts: ShareOptions): stri
   lines.push(`Material: ${item.material}`)
   lines.push(`Condition: ${conditionLabel(item.condition)}`)
   lines.push(`Status: ${readyText(item, opts.today)}`)
-  if (opts.includePrice) lines.push(`Price: ${formatPrice(item.price)}${item.qty_total > 1 ? ' each' : ''}`)
+  if (opts.includePrice) lines.push(`Price: ${formatPrice(item.retail_price)}${item.qty_total > 1 ? ' each' : ''}`)
   lines.push(item.qty_available > 0 ? `Available: ${item.qty_available}` : 'Currently sold out')
   if (item.description?.trim()) lines.push('', item.description.trim())
   const urls = opts.imageUrls.slice(0, 4)

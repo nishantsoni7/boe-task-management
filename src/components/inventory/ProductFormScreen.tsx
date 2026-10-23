@@ -23,10 +23,10 @@ import s from './inventory.module.css'
 
 type Draft = {
   code: string; name: string; category: string; size: string; material: string; notes: string
-  price: string; condition: Condition | ''; stage: Stage | ''; days: string; qty: number
+  price: string; retailPrice: string; condition: Condition | ''; stage: Stage | ''; days: string; qty: number
 }
 
-const EMPTY: Draft = { code: '', name: '', category: '', size: '', material: '', notes: '', price: '', condition: '', stage: '', days: '', qty: 1 }
+const EMPTY: Draft = { code: '', name: '', category: '', size: '', material: '', notes: '', price: '', retailPrice: '', condition: '', stage: '', days: '', qty: 1 }
 const CODE_OK = /^[A-Z0-9][A-Z0-9._/-]{0,39}$/
 const PRICE_OK = /^\d{1,10}(\.\d{1,2})?$/
 
@@ -34,7 +34,7 @@ function draftFrom(item: InventoryItem): Draft {
   const days = item.expected_ready_on ? Math.max(0, daysBetween(istToday(), item.expected_ready_on)) : null
   return {
     code: item.product_code, name: item.name, category: item.category ?? '', size: item.size_text, material: item.material,
-    notes: item.description ?? '', price: String(Number(item.price)), condition: item.condition, stage: item.stage,
+    notes: item.description ?? '', price: String(Number(item.price)), retailPrice: String(Number(item.retail_price)), condition: item.condition, stage: item.stage,
     days: days === null ? '' : String(days), qty: item.qty_total,
   }
 }
@@ -158,7 +158,9 @@ function ProductForm({
   if (!draft.name.trim()) errors.name = 'Enter the product name'
   if (!draft.size.trim()) errors.size = 'Enter the size'
   if (!draft.material.trim()) errors.material = 'Enter the material'
-  if (!PRICE_OK.test(draft.price.replace(/[,\s₹]/g, ''))) errors.price = 'Enter the price, like 4500 or 4500.50'
+  if (!PRICE_OK.test(draft.price.replace(/[,\s₹]/g, ''))) errors.price = 'Enter the standard price, like 4500 or 4500.50'
+  if (!PRICE_OK.test(draft.retailPrice.replace(/[,\s₹]/g, ''))) errors.retailPrice = 'Enter the retail price, like 5200 or 5200.50'
+  else if (!errors.price && Number(draft.retailPrice.replace(/[,\s₹]/g, '')) < Number(draft.price.replace(/[,\s₹]/g, ''))) errors.retailPrice = 'Retail price cannot be below the standard price'
   if (!draft.condition) errors.condition = 'Choose the condition'
   if (!draft.stage) errors.stage = 'Choose the stage'
   if (draft.stage && draft.stage !== 'ready' && draft.days.trim() !== '' && !/^\d{1,4}$/.test(draft.days.trim())) errors.days = 'Days must be a whole number'
@@ -188,7 +190,7 @@ function ProductForm({
     try {
       const base: ItemInput = {
         product_code: codeUp, name: draft.name.trim(), category: draft.category.trim(), size_text: draft.size.trim(),
-        material: draft.material.trim(), description: draft.notes.trim(), price: Number(draft.price.replace(/[,\s₹]/g, '')),
+        material: draft.material.trim(), description: draft.notes.trim(), price: Number(draft.price.replace(/[,\s₹]/g, '')), retail_price: Number(draft.retailPrice.replace(/[,\s₹]/g, '')),
         condition: draft.condition as Condition, stage: draft.stage as Stage, qty_total: draft.qty,
       }
       const stageChanged = !!item && item.stage !== draft.stage
@@ -333,13 +335,22 @@ function ProductForm({
           <h2 className={s.formTitle} id="f-stock"><span className={s.stepNo}>4</span> Price and quantity</h2>
           <div className={s.grid2}>
             <div className={s.field}>
-              <label className={s.label} htmlFor="f-price">Price per piece <span className={s.req}>*</span></label>
+              <label className={s.label} htmlFor="f-price">Standard price per piece <span className={s.req}>*</span></label>
               <div className={s.adorn}>
                 <span className={s.adornLead} aria-hidden="true">₹</span>
                 <input id="f-price" className={`${s.input}${show('price') ? ` ${s.invalid}` : ''}`} value={draft.price} onChange={e => set('price', e.target.value)}
                   onBlur={() => touch('price')} inputMode="decimal" placeholder="0" autoComplete="off" aria-invalid={!!show('price')} data-invalid={!!show('price')} />
               </div>
-              {show('price') && <div className={s.err} role="alert">{errors.price}</div>}
+              {show('price') ? <div className={s.err} role="alert">{errors.price}</div> : <div className={s.hint}>The product with basic packaging only.</div>}
+            </div>
+            <div className={s.field}>
+              <label className={s.label} htmlFor="f-retail">Retail price per piece <span className={s.req}>*</span></label>
+              <div className={s.adorn}>
+                <span className={s.adornLead} aria-hidden="true">₹</span>
+                <input id="f-retail" className={`${s.input}${show('retailPrice') ? ` ${s.invalid}` : ''}`} value={draft.retailPrice} onChange={e => set('retailPrice', e.target.value)}
+                  onBlur={() => touch('retailPrice')} inputMode="decimal" placeholder="0" autoComplete="off" aria-invalid={!!show('retailPrice')} data-invalid={!!show('retailPrice')} />
+              </div>
+              {show('retailPrice') ? <div className={s.err} role="alert">{errors.retailPrice}</div> : <div className={s.hint}>Includes taxes, transportation and packaging.</div>}
             </div>
             <div className={s.field} data-invalid={!!show('qty')}>
               <span className={s.label} id="f-qty-l">Total quantity</span>
