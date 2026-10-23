@@ -4,11 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-23 — Orders dashboard for approvers: PI review lists first (PR open) · no migration
-- **Owner request.** The approver's Orders dashboard should lead with the PIs waiting for their decision, show revenue more professionally, and keep only three cards (Payments pending, Fabric or finish pending, Ready for production) at the bottom; the delayed/not-aligned/due tab board goes.
-- **What.** New `PiReviewSections`: **PI submitted for review** (full width) and, only when non-empty, **PI changes requested** (revised PIs awaiting the approver). Revenue card restyled. `OverviewCards` takes `only`; the PI Drafts queue pill is hidden for approvers. Other roles unchanged. "Changes requested" was read as revised PIs on confirmed Orders awaiting approval (`order_pi_versions.status = pending`), not PIs sent back to sales — confirm with the owner.
-- **Proof.** tsc; 181 dashboard tests. NOT seen on screen.
-- **Rollback.** Revert the PR.
+## 2026-10-23 — List pagination: shared pager + Sample Tracking paged (branch feat/list-pagination, PR open) · no migration
+- **Why.** Lists that download a whole table and filter in the browser are silently clipped at PostgREST's 1000-row cap and slow down with every row added. Audit found ~30 such screens.
+- **Shared pieces.** `src/lib/listPaging.ts` (30-row pages, ranges, page strip), `usePagedQuery` (keeps the previous page on screen within the same scope, reads the next page early), `components/ui/Pagination.tsx` (renders nothing at 30 rows or fewer; prefetches on hover/focus).
+- **Sample Tracking.** The page no longer reads the whole table. Each tab is a status filter on one 30-row page (`src/lib/samples/listQuery.ts`, `useSampleRequests.ts`); tab counts are database head counts; an action invalidates cached pages instead of re-downloading everything. Dispatched tab now orders by earliest expected return (overdue first). Visibility rule unchanged (admin or any sample permission sees all, else own requests).
+- **Proof.** tsc, eslint, listPaging + samples listQuery unit tests, existing Samples permission suites. NOT seen on screen.
+- **Next.** Orders (All) needs a view/RPC for value sort and name search, then My Tasks, Customer Reviews test cards, Inventory, the rest of the audit list.
 
 ## 2026-10-23 — Finance: cash handover with acceptance (PR #426, merge c18d8e73) · migrations 20270410000000 → 20270410000100 (APPLIED 2026-10-23) · backup 20261023T053806Z
 - **Owner request.** When someone hands cash to someone else, the receiver must accept it; until then BOTH people must see it, highlighted so it cannot be missed, on the Finance dashboard, and be reminded regularly.
