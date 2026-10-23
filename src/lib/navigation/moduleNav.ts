@@ -19,7 +19,7 @@
 // route's own guard and the database still decide what opens.
 
 export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed'
-export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank' | 'reimbursements'
+export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank' | 'reimbursements' | 'handovers'
 
 // The destinations themselves (labels, paths, icons) stay in OrdersLayout and
 // FinanceLayout, where several retirement tests read them; this file only
@@ -72,6 +72,7 @@ export function activeFinanceNav(pathname: string): FinanceNavKey | null {
   if (section === 'expenses') return 'expenses'
   if (section === 'bank') return 'bank'
   if (section === 'reimbursements') return 'reimbursements'
+  if (section === 'handovers') return 'handovers'
   return null
 }
 
@@ -92,6 +93,7 @@ export function pendingModuleTitle(pathname: string): string {
     if (section === 'expenses') return id === 'new' ? 'Add Expense' : 'Expenses'
     if (section === 'bank') return 'Bank Statements'
     if (section === 'reimbursements') return 'Reimbursements'
+    if (section === 'handovers') return 'Cash Handovers'
     if (section === 'notifications') return 'Notifications'
     return 'Finance'
   }

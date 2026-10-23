@@ -167,11 +167,13 @@ describe('the cleanup endpoint', () => {
 
   test('is scheduled daily in vercel.json', () => {
     const config = JSON.parse(VERCEL)
-    assert.equal(config.crons.length, 1)
-    assert.equal(config.crons[0].path, '/api/image-editor/cleanup')
+    // This feature owns exactly ONE cron; others (the Finance handover reminder)
+    // are separate decisions with their own tests.
+    const mine = config.crons.filter((c: { path: string }) => c.path === '/api/image-editor/cleanup')
+    assert.equal(mine.length, 1)
     // Once a day. A schedule with more fields than this would be a different
     // decision than the one that was made.
-    assert.match(config.crons[0].schedule, /^\d+ \d+ \* \* \*$/)
+    assert.match(mine[0].schedule, /^\d+ \d+ \* \* \*$/)
   })
 
   test('vercel.json adds NOTHING else', () => {

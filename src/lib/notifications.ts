@@ -40,6 +40,13 @@ export const FINANCE_NOTIFICATION_TYPES = [
   'finance_rejected',
   'finance_linked',
   'finance_status_corrected',
+  // Cash handover with acceptance (20270410000000). entity_id is the HANDOVER;
+  // written by the database RPCs and the daily reminder sweep.
+  'finance_handover_requested',
+  'finance_handover_accepted',
+  'finance_handover_disputed',
+  'finance_handover_cancelled',
+  'finance_handover_reminder',
 ] as const
 
 // Assets & Access (20260731000000). Same contract as Finance/Orders: stable
