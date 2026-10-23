@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — Load time: the Order header draws without waiting for the combined read
+
+- **What changed.** `loadOrder` on the Order page now starts the Order's own row read at the same moment as the combined `order_page_bundle` read, and draws the header from whichever lands first. The combined read then replaces the same values and brings the rest of the page. A flag (`bundleApplied`) stops a row that lands late from overwriting what the combined read already put on screen; if the combined read is unavailable, the fallback path reuses the early row instead of reading it again. No migration, no permission change: the row is read under the caller's own row-level security exactly as before.
+- **Cost.** Two more database requests per open (the row and its total are read twice when the combined read also answers): about 17 instead of 15.
+- **Measured on the live page** (same click-through test as #413, warm runs, signed in): see the PR description for before and after.
+
 ## 2026-10-23 — Confirmed Orders: clearer sample and commission icons (PR open) · no migration
 - **Owner request.** The flask (sample) and hand-coins (commission) markers did not say what they meant and looked like plain text chips.
 - **What.** Sample order uses a package-search icon on a light amber chip; commission uses a percent icon on a light teal chip (`.orders-list-flag--sampling_needed/--sample_order/--commission` in globals.css). The PI form's sample label uses the same icon. Tooltips and labels unchanged.

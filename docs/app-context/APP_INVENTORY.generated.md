@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `355ae006` — Inventory: standard price and retail price per product (#420)
-- Commits on this branch: 974
+- Commit: `c646ede8` — Changelog: Order header draws without waiting for the combined read
+- Commits on this branch: 980
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 153
 - Migrations: 356 (first `20260530_create_positions.sql`, latest `20270409000000_admin_impersonation_sessions.sql`)
 - Tables ever created: 162 (dropped at some point: 7)   SQL functions: 742   Enums: 0
@@ -14,6 +14,12 @@
 
 ## Latest 25 commits
 
+- `c646ede8` 2026-10-23 Changelog: Order header draws without waiting for the combined read
+- `a9ae23a6` 2026-10-23 Order page: draw the header from the order row read alongside the combined read
+- `b2c4d469` 2026-10-23 Sidebar footer: show designation instead of department (#424)
+- `e9591ebc` 2026-10-23 Docs: record Login as member merge and applied migration (#423)
+- `1f0d4a5e` 2026-10-23 Orders list: clearer, tinted sample and commission icons (#422)
+- `f154f397` 2026-10-23 Admin "Login as member": floating icon with real, audited session swap (#421)
 - `355ae006` 2026-10-23 Inventory: standard price and retail price per product (#420)
 - `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
 - `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
@@ -33,12 +39,6 @@
 - `57a9545e` 2026-10-22 Orders dashboard: open with five reads at once, not nine
 - `bcaf0e0b` 2026-10-22 Finance list: open with three reads at once, not eight
 - `9a3a47cc` 2026-10-22 Renumber the PI Drafts migration to 20270404000000
-- `9ebe2b8b` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
-- `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
-- `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
-- `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
-- `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
-- `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
 
 ## Pages by top-level area
 
