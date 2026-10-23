@@ -4,13 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-23 — Finance: cash handover with acceptance (PR open) · migrations 20270410000000 → 20270410000100 (NOT APPLIED)
+## 2026-10-23 — Finance: cash handover with acceptance (PR #426, merge c18d8e73) · migrations 20270410000000 → 20270410000100 (NOT APPLIED) · backup 20261023T053806Z
 - **Owner request.** When someone hands cash to someone else, the receiver must accept it; until then BOTH people must see it, highlighted so it cannot be missed, on the Finance dashboard, and be reminded regularly.
 - **What.** "Hand over cash" (header of every Finance page): pick the person (any active employee), tick the PNB/Paytm payments you currently hold, date/time, note; live total. The recipient Accepts (with a confirm step) or Disputes with a reason; the giver can Remind (every 4 h) or Cancel; an admin can cancel with a reason. Accepting writes one "Handed Over" custody event per payment, so the existing Collection & Handover trail stays the one record. Open handovers are a non-dismissable banner on every Finance page and on `/modules`, colour escalating with age (amber → orange at 24 h → red OVERDUE at 72 h; disputed purple-red); admins/`view_all` also see others' open handovers, quieter. Sidebar "Cash Handovers" (history + red count). Notifications for every step link to `/handover/<id>`, which works without Finance access. Daily reminder cron `/api/finance/handovers/remind` (needs `CRON_SECRET`).
 - **Not financial.** No payment, total or allocation is changed.
 - **Proof.** tsc, lint (0 errors), full `npm test` 0 failures (`handover.test.ts` 32 tests). The migration was executed on an in-memory Postgres (PGlite) with real copies of the functions it calls: 12 scenarios passed (create, idempotency, refusals, list visibility, dispute, remind, accept + custody events + holder move, cancel, immutability and revoked writes, daily sweep, payment deletion still works). NOT seen on screen against the real database.
 - **Owner steps.** Apply 20270410000000, then 20270410000100; confirm `CRON_SECRET` is set in Vercel.
 - **Rollback.** Revert the PR (the banner and button go); the tables are additive.
+- **Merged** 2026-10-23 05:37 UTC by rebase. Post-merge backup: code bundle `boe-code-20261023T053756Z.bundle`, database export `20261023T053806Z` (170 tables, 98,338 rows); `verify-backups` all required layers fresh (optional second copy not configured).
 
 ## 2026-10-23 — Load time: the Order header draws without waiting for the combined read
 
