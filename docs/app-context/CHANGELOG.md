@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — Confirmed Orders: clearer sample and commission icons (PR open) · no migration
+- **Owner request.** The flask (sample) and hand-coins (commission) markers did not say what they meant and looked like plain text chips.
+- **What.** Sample order uses a package-search icon on a light amber chip; commission uses a percent icon on a light teal chip (`.orders-list-flag--sampling_needed/--sample_order/--commission` in globals.css). The PI form's sample label uses the same icon. Tooltips and labels unchanged.
+- **Proof.** tsc. Not seen on screen.
+
 ## 2026-10-23 — Admin "Login as member": floating icon, real session swap (PR open) · migration 20270409000000 (NOT yet applied)
 - **Owner request.** An admin must be able to open any member's app exactly as they see it and act for them, to test new features; members change their passwords, so the admin cannot log in normally. No filters or limits.
 - **What.** A floating icon (`LoginAsMemberWidget`, mounted once from `Providers`, admin-only, hidden on login pages) lists EVERY non-deleted member (inactive flagged). Choosing one calls `POST /api/impersonation/start` (active admin only; audits first; mints a one-time magic-link token, no email sent), the browser stashes the admin session in localStorage (`boeAdminImpersonation`) and exchanges the token with `verifyOtp`. From then on RLS, permissions, notifications, writes behave as that member. An amber "Acting as X" pill and a Return button stay on screen; switching member returns to admin first. `POST /api/impersonation/end` closes the audit row (caller must be the target). `GET /api/impersonation/members` is the admin-gated list.
