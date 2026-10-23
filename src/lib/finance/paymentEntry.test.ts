@@ -242,17 +242,22 @@ describe('the payment-mode vocabulary', () => {
     assert.equal(legacy[0].retired, true)
   })
 
-  test('only PNB and Paytm carry a custody trail', () => {
+  test('PNB, Paytm and Canara carry a custody trail; the HDFC accounts do not', () => {
     assert.equal(modeRequiresCustodyTrail('pnb'), true)
     assert.equal(modeRequiresCustodyTrail('paytm'), true)
     assert.equal(modeRequiresCustodyTrail('hdfc'), false)
-    assert.equal(modeRequiresCustodyTrail('canara'), false)
+    assert.equal(modeRequiresCustodyTrail('hdfc_sec'), false)
+    // 20270413000000: Canara joined (it also stands for a savings account).
+    assert.equal(modeRequiresCustodyTrail('canara'), true)
     assert.equal(modeRequiresCustodyTrail('cash'), false)
     assert.equal(modeRequiresCustodyTrail(null), false)
-    // And the database decides the same two, in its own function.
+    // And the database decides the same three, in its own function — first the
+    // two in 20261014000000, then Canara added by 20270413000000.
     assert.ok(read(MIGRATION_114).includes(
-      "select btrim(lower(coalesce(p_mode, ''))) in ('pnb', 'paytm');"),
-      'payment_mode_requires_custody must name the same two')
+      "select btrim(lower(coalesce(p_mode, ''))) in ('pnb', 'paytm');"))
+    assert.ok(read('supabase/migrations/20270413000000_finance_cash_journeys.sql').includes(
+      "select btrim(lower(coalesce(p_mode, ''))) in ('pnb', 'paytm', 'canara');"),
+      'payment_mode_requires_custody must name the same three')
   })
 
   test('no surface keeps its own mode list any more', () => {

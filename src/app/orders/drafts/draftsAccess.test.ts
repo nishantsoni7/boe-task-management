@@ -2092,7 +2092,8 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // The entry form, its RPC and its proof upload are untouched: the dialog is
     // the same component, opened from a different control.
     assert.ok(source.includes('<AddPiPaymentModal'))
-    assert.ok(source.includes('const err = await recordPayment(form, proof)'))
+    // 20270413000000: the dialog also passes who the money was handed to.
+    assert.ok(source.includes('const err = await recordPayment(form, proof, handTo ?? null)'))
     assert.ok(source.includes("{paymentDialog === 'add' && canAddPayment && ("),
       'and the gate is re-checked at the point the form is drawn')
   })

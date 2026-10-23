@@ -324,7 +324,7 @@ export function handoverErrorMessage(error: { message?: string } | null | undefi
   const raw = (error?.message ?? '').trim()
   const m = /^HANDOVER_[A-Z_]+:\s*([\s\S]+)$/.exec(raw)
   if (m) return m[1].trim()
-  const c = /CUSTODY_[A-Z_]+:\s*([\s\S]+)$/.exec(raw)
+  const c = /(?:CUSTODY|CUSTODIAN)_[A-Z_]+:\s*([\s\S]+)$/.exec(raw)
   if (c) return c[1].trim()
   return 'Something went wrong. Please try again.'
 }

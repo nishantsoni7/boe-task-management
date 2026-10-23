@@ -223,10 +223,12 @@ export function paymentModeOptionsFor(
 
 // ── Which modes are physically carried by a person ──────────────────────────
 //
-// PNB and Paytm. The money passes through somebody's hands between the customer
+// Everything except the two HDFC accounts: PNB, Paytm and Canara (Canara also
+// stands for money received in somebody's savings account — owner decision
+// 2026-10-23). The money passes through somebody's hands between the customer
 // and the company, so who held it and when is a real accountability record —
-// which is what the custody trail (20261014000000 §2, and
-// src/lib/finance/custodyTrail.ts) exists to hold.
+// the custody trail (20261014000000 §2) and its journey to the company
+// (20270413000000, src/lib/finance/cashJourney.ts).
 //
 // THE SERVER DECIDES THIS AGAIN, in payment_mode_requires_custody(), so a form
 // that drew the section for a bank account has its events refused rather than
@@ -234,7 +236,7 @@ export function paymentModeOptionsFor(
 
 export function modeRequiresCustodyTrail(value: string | null | undefined): boolean {
   const key = (value ?? '').trim()
-  return key === 'pnb' || key === 'paytm'
+  return key === 'pnb' || key === 'paytm' || key === 'canara'
 }
 
 // ── The customer, which is never typed ───────────────────────────────────────

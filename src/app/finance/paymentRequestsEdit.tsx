@@ -8,7 +8,6 @@ import { colors } from '@/lib/tokens'
 import { groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
 import { PaymentEntryFields, isPaymentEntryComplete, type PaymentEntryState, type PaymentEntryTarget } from './components/PaymentEntryFields'
-import { CustodyTrailFields } from './components/CustodyTrailFields'
 import { FormDialog, FormStep, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from './components/PaymentFormParts'
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
 import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
@@ -16,7 +15,7 @@ import { ProofDropZone } from './components/ProofDropZone'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type PaymentDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
-import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
+import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { loadPaymentAllocation, loadPaymentIntent, type StoredAllocation } from './paymentIntents'
 import { APPROVED_RACE_MESSAGE, type PaymentRequest } from './paymentRequestsModel'
@@ -116,10 +115,6 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // handover is filled in on a later visit to this same form.
   const [paymentMode, setPaymentMode] = useState<string>(r.payment_mode)
 
-  // THE CUSTODY ACTIVITIES THIS CORRECTION ADDS — never the ones it already has.
-  // A saved activity cannot be edited or removed by anybody, so this list starts
-  // empty on every visit and holds only what has not been sent yet.
-  const [custody, setCustody] = useState<CustodyDraft[]>([])
 
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
@@ -151,10 +146,6 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   // second click inside the same tick finds the window already shut.
   const submitting = useRef(false)
 
-  // Same single blocking rule as the submission form, and for the same reason:
-  // a half-entered activity would be refused server-side and take the whole
-  // correction with it.
-  const custodyError = custodyDraftsError(custody)
 
   // Nothing may be saved before the destination has been read back: a Save that
   // landed while `entry` was still null would write Suspense over a targeted
@@ -162,7 +153,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
   const splitBlocked = allocation?.kind === 'split'
   const canSubmit = entry !== null && isPaymentEntryComplete(entry)
     && isValidAmount(form.amount) && !!form.paymentDate
-    && isPaymentMode(paymentMode) && !custodyError && !splitBlocked
+    && isPaymentMode(paymentMode) && !splitBlocked
 
   // ── Not losing what was typed ──
   const isDirty = () =>
@@ -171,7 +162,6 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     form.proofNote.trim() !== (r.proof_note ?? '').trim() ||
     form.salesNote.trim() !== (r.sales_note ?? '').trim() ||
     paymentMode !== r.payment_mode ||
-    custody.length > 0 ||
     attachFile !== null ||
     (entry !== null && (entry.destination !== loadedDestination.current
       || entry.target?.id !== loadedTargetId.current))
@@ -263,12 +253,10 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     // NO CUSTOMER IS SENT. There is no parameter for one: edit_payment_request
     // re-derives it from whichever record the destination now names, and sets
     // it NULL for Suspense.
-    // THE ACTIVITIES BEING ADDED, and only those. Correcting a request away from
-    // PNB or Paytm sends none and DELETES none: what was already recorded stays,
-    // because the money really did pass through those hands.
-    const custodyEvents = modeRequiresCustodyTrail(paymentMode)
-      ? toRpcCustodyEvents(custody)
-      : []
+    // A correction adds no custody activity (20270413000000): where the money is
+    // changes only through a handover the receiver accepts. What was already
+    // recorded stays, because the money really did pass through those hands.
+    const custodyEvents: unknown[] = []
 
     const { data, error: rpcError } = await supabase.rpc('edit_payment_request', {
       p_payment_request_id: r.id,
@@ -462,24 +450,14 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
         />
       </FormStep>
 
-      {/* WHO CARRIED IT. Adding an activity is possible for as long as the
-          request is editable — which is what makes "collect today, hand over
-          tomorrow, record it then" work. What is ALREADY saved is shown by the
-          details popup and cannot be changed here or anywhere. */}
+      {/* WHERE THE MONEY IS. Not edited here: it moves only through a handover
+          the receiver accepts (Hand over cash on the Finance page), and its
+          journey is shown in the payment's details. */}
       {modeRequiresCustodyTrail(paymentMode) && (
-        <FormStep number={3} title="Who carried the money" hint="Optional">
-          <CustodyTrailFields
-            supabase={supabase}
-            paymentMode={paymentMode}
-            drafts={custody}
-            onDraftsChange={setCustody}
-            // The submitter is who collected the cash, not whoever is editing — an
-            // admin correcting someone else's request must not become the collector
-            // by opening the form.
-            defaultActorId={r.submitted_by}
-            disabled={saving}
-            showTitle={false}
-          />
+        <FormStep number={3} title="Where is this money now?">
+          <p style={{ margin: 0, fontSize: '13px', color: '#4C5352', lineHeight: 1.5 }}>
+            This is cash the company must receive. To pass it on, use <strong>Hand over cash</strong> on the Finance page; the receiver accepts it there.
+          </p>
         </FormStep>
       )}
 

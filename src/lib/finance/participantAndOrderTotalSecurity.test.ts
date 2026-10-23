@@ -1119,6 +1119,10 @@ describe('the applied migrations are frozen', () => {
       '20270410000000_finance_handover_notification_types.sql',
       '20270410000100_finance_cash_handovers.sql',
       '20270411000000_order_submission_reorder_renumbers_lines.sql',
+      // Typed cash + cash-in-hand ledger (PR #434): APPLIED, its UI retired.
+      '20270412000000_finance_handover_cash_balance.sql',
+      // Cash journeys: every non-HDFC payment travels until it reaches the company.
+      '20270413000000_finance_cash_journeys.sql',
     ])
   })
 
@@ -1489,6 +1493,10 @@ describe('the applied migrations are frozen', () => {
       '20270410000000_finance_handover_notification_types.sql',
       '20270410000100_finance_cash_handovers.sql',
       '20270411000000_order_submission_reorder_renumbers_lines.sql',
+      // Typed cash + cash-in-hand ledger (PR #434): APPLIED, its UI retired.
+      '20270412000000_finance_handover_cash_balance.sql',
+      // Cash journeys: every non-HDFC payment travels until it reaches the company.
+      '20270413000000_finance_cash_journeys.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -92,11 +92,14 @@ const NAMES = new Map([
 // 1. WHICH MODES CARRY A TRAIL
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('the trail belongs to the two modes a person carries', () => {
-  test('PNB and Paytm, and nothing else', () => {
+describe('the trail belongs to the modes a person carries', () => {
+  // 20270413000000: everything except the two HDFC accounts — Canara joined
+  // PNB and Paytm (it also stands for money received in a savings account).
+  test('PNB, Paytm and Canara, and nothing else', () => {
     assert.equal(modeRequiresCustodyTrail('pnb'), true)
     assert.equal(modeRequiresCustodyTrail('paytm'), true)
-    for (const other of ['hdfc', 'canara', 'bank_transfer', 'cash', 'upi', 'cheque', 'other', '', null]) {
+    assert.equal(modeRequiresCustodyTrail('canara'), true)
+    for (const other of ['hdfc', 'hdfc_sec', 'bank_transfer', 'cash', 'upi', 'cheque', 'other', '', null]) {
       assert.equal(modeRequiresCustodyTrail(other), false, String(other))
     }
   })
@@ -115,7 +118,7 @@ describe('the trail belongs to the two modes a person carries', () => {
     // The heading and its one sentence name the ACCOUNTS. "PNB" is what a person
     // reads; what PNB means internally lives in the database's column comment.
     assert.equal(/[(（][^)）]*[)）]/.test(CUSTODY_TRAIL_TITLE), false)
-    assert.ok(CUSTODY_TRAIL_NOTE.includes('PNB and Paytm'))
+    assert.ok(CUSTODY_TRAIL_NOTE.includes('PNB, Paytm and Canara'))
     for (const file of [TRAIL_CONTROL, TRAIL_BLOCK, 'src/lib/finance/custodyTrail.ts']) {
       assert.equal(/hawala/i.test(read(file)), false, `${file} must not name what an account MEANS`)
     }
@@ -405,8 +408,10 @@ describe('a saved activity cannot be edited or removed', () => {
       assert.equal(/from\('finance_payment_custody_events'\)[\s\S]{0,80}\.(update|delete|upsert|insert)\(/.test(src), false,
         `${file} must not write finance_payment_custody_events directly`)
     }
-    // The only write path is the protected door.
-    assert.ok(read(TRAIL_BLOCK).includes(".rpc('append_payment_custody_events'"))
+    // 20270413000000: the details block no longer writes at all. A handover is
+    // recorded only when its receiver accepts it; the block shows the journey.
+    assert.equal(read(TRAIL_BLOCK).includes(".rpc('append_payment_custody_events'"), false)
+    assert.ok(read(TRAIL_BLOCK).includes('<PaymentJourneyButton'))
   })
 
   test('and the database refuses an edit for every role', () => {
@@ -432,23 +437,26 @@ describe('a saved activity cannot be edited or removed', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('every surface that should carry the trail does', () => {
-  test('both Payment Request forms and Record Payment offer the editor', () => {
+  // 20270413000000: the optional activity list is replaced by one question,
+  // "Where is this money now?", on the forms that RECORD a payment. A
+  // correction (Edit) does not move money: it says how to hand it over.
+  test('Send Payment Request and Record Payment ask where the money is now', () => {
     const page = read(REQUEST_PAGE)
-    assert.equal((page.match(/<CustodyTrailFields/g) ?? []).length, 2,
-      'Send Payment Request AND Edit Payment Request must both offer it')
-    assert.ok(read(RECORD_FORM).includes('<CustodyTrailFields'),
-      'Record Payment must offer it too')
+    assert.equal((page.match(/<WhereIsMoneyNowField/g) ?? []).length, 1,
+      'Send Payment Request asks it; Edit Payment Request does not')
+    assert.equal((page.match(/<CustodyTrailFields/g) ?? []).length, 0)
+    assert.ok(read(RECORD_FORM).includes('<WhereIsMoneyNowField'), 'Record Payment asks it too')
+    assert.equal(read(RECORD_FORM).includes('<CustodyTrailFields'), false)
   })
 
-  test('all three send it through the RPC, and only for a mode that carries one', () => {
+  test('both decide by the mode, send no activity, and offer the handover after the save', () => {
     for (const file of [REQUEST_PAGE, RECORD_FORM]) {
       const src = read(file)
-      assert.ok(src.includes('modeRequiresCustodyTrail('),
-        `${file} must decide by the mode`)
-      assert.ok(src.includes('toRpcCustodyEvents('),
-        `${file} must send the activities through the shared serializer`)
-      assert.ok(src.includes('p_custody_events'),
-        `${file} must pass them to the protected door`)
+      assert.ok(src.includes('modeRequiresCustodyTrail('), `${file} must decide by the mode`)
+      assert.equal(src.includes('toRpcCustodyEvents('), false,
+        `${file} must not send a handed-over activity with the payment`)
+      assert.ok(src.includes('p_custody_events'), `${file} still passes the (empty) list to the door`)
+      assert.ok(src.includes('handOverAfterRecording('), `${file} must offer the handover after the save`)
     }
   })
 

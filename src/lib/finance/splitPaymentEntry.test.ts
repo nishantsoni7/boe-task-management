@@ -494,7 +494,10 @@ describe('RecordSplitPaymentModal is wired to the rule, and its write is untouch
     assert.ok(code.includes('p_allocations:  targetKind ? toRpcAllocationsWithLegacy(rows) : [],'))
     // Nothing about this fix touches what is sent or what refuses it.
     assert.ok(code.includes('splitPaymentBlockedReason({'))
-    assert.ok(code.includes('toRpcCustodyEvents'))
+    // 20270413000000: no custody activity is sent with the payment any more;
+    // a handover is offered after the save and accepted by its receiver.
+    assert.ok(code.includes('p_custody_events: [],'))
+    assert.ok(code.includes('handOverAfterRecording('))
   })
 
   test('and the seed itself is untouched: still optional, still defaulted to null', () => {

@@ -28,6 +28,7 @@ import {
   paymentModeLabel as sharedPaymentModeLabel,
   type PaymentMode,
 } from './paymentEntry'
+import { isTrackedPaymentMode } from './cashJourney'
 import { canVerifyPayment } from '@/app/finance/paymentRouting'
 import { formatInr } from '@/lib/pi/previewView'
 import {
@@ -312,6 +313,8 @@ export type PiPaymentRowView = {
   requestNumber: string
   date: string
   mode: string
+  /** PNB, Paytm or Canara, not reversed: its cash journey is shown on the row (20270413000000). */
+  tracksCash: boolean
   reference: string | null
   /** Allocated to this PI. */
   amount: string
@@ -365,6 +368,7 @@ export function describePiPaymentRow(
     requestNumber: row.request_number ?? '—',
     date: formatPaymentDate(row.payment_date),
     mode: paymentModeLabel(row.payment_mode),
+    tracksCash: !reversed && isTrackedPaymentMode(row.payment_mode),
     reference: (row.reference ?? '').trim() || null,
     amount,
     paymentAmount: whole !== amount && whole !== '—' ? whole : null,

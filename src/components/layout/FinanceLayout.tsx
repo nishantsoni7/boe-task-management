@@ -20,6 +20,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
 import { HandoverBanner } from '@/components/finance/HandoverBanner'
+import { UnclosedFundsCard } from '@/components/finance/UnclosedFundsCard'
 import { HandoverModal } from '@/components/finance/HandoverModal'
 import { useOpenHandovers } from '@/hooks/queries/useHandovers'
 
@@ -209,7 +210,7 @@ export function FinanceLayout({
       ? [{ label: 'Reimbursements', path: REIMBURSEMENTS_PATH, icon: <HandCoins size={15} strokeWidth={1.8} />, key: 'reimbursements' as const }]
       : []),
     // Cash handed between people, each needing acceptance. Open for everybody in Finance.
-    { label: 'Cash Handovers', path: HANDOVERS_PATH, icon: <Wallet size={15} strokeWidth={1.8} />, key: 'handovers' as const, alertBadge: openHandovers.mine.length },
+    { label: 'Cash journeys', path: HANDOVERS_PATH, icon: <Wallet size={15} strokeWidth={1.8} />, key: 'handovers' as const, alertBadge: openHandovers.mine.length },
   ]
   const activeKey = activeFinanceNav(pathname)
 
@@ -351,6 +352,7 @@ export function FinanceLayout({
         <div className="boe-page-body">
           <ViewModeBanner />
           <HandoverBanner />
+          <UnclosedFundsCard />
           {children}
         </div>
 

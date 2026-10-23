@@ -37,8 +37,9 @@ function editSource(): string {
 describe('Record Payment', () => {
   const src = read(RECORD)
 
-  test('steps: what it is for, the payment, who carried it, then the division', () => {
-    const order = ['title="What is this payment for?"', 'title="Payment"', 'title="Who carried the money"', 'Divide it across']
+  // 20270413000000: step 3 asks "Where is this money now?" (PNB, Paytm, Canara).
+  test('steps: what it is for, the payment, where the money is now, then the division', () => {
+    const order = ['title="What is this payment for?"', 'title="Payment"', 'title="Where is this money now?"', 'Divide it across']
       .map(t => src.indexOf(t))
     assert.ok(order.every(i => i > 0), 'every step exists')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
@@ -95,8 +96,8 @@ describe('Record Payment', () => {
 describe('Edit Payment', () => {
   const src = editSource()
 
-  test('steps: what it is for, the payment, then who carried it', () => {
-    const order = ['title="What is this payment for?"', 'title="Payment"', 'title="Who carried the money"']
+  test('steps: what it is for, the payment, then where the money is now', () => {
+    const order = ['title="What is this payment for?"', 'title="Payment"', 'title="Where is this money now?"']
       .map(t => src.indexOf(t))
     assert.ok(order.every(i => i > 0))
     assert.deepEqual([...order].sort((a, b) => a - b), order)
@@ -125,8 +126,12 @@ describe('Edit Payment', () => {
     assert.ok(src.includes('banner={'))
   })
 
-  test('the submitter, not the editor, is who collected the cash', () => {
-    assert.ok(src.includes('defaultActorId={r.submitted_by}'))
+  // 20270413000000: a correction never moves money. Where it is changes only
+  // through a handover the receiver accepts, so Edit sends no activity.
+  test('a correction adds no custody activity; it says how to hand the money over', () => {
+    assert.ok(src.includes('const custodyEvents: unknown[] = []'))
+    assert.equal(src.includes('<CustodyTrailFields'), false)
+    assert.ok(src.includes('Hand over cash'))
   })
 
   test('closing still asks first, and the save is still one transaction', () => {

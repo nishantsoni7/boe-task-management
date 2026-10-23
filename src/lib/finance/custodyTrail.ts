@@ -57,7 +57,7 @@ export const CUSTODY_TRAIL_TITLE = 'Collection & Handover Activity'
  * print.
  */
 export const CUSTODY_TRAIL_NOTE =
-  'Recorded for PNB and Paytm payments. Each activity is saved permanently and cannot be edited afterwards — add a new activity to correct the record.'
+  'Recorded for PNB, Paytm and Canara payments. A handover is saved when the receiver accepts it, and nothing here can be edited afterwards.'
 
 // ── A saved activity ─────────────────────────────────────────────────────────
 

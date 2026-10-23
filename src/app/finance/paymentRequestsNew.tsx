@@ -13,7 +13,7 @@ import { notifyFinance } from '@/lib/notify'
 import { useDialogFocus, useModalScrollLock, FINANCE_MODAL_OVERLAY_Z, FINANCE_MODAL_DIALOG_Z } from '@/app/finance/components/FinanceModalShell'
 import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
 import { EMPTY_PAYMENT_ENTRY, PaymentEntryFields, isPaymentEntryComplete, type PaymentEntryState, type PaymentEntryTarget } from './components/PaymentEntryFields'
-import { CustodyTrailFields } from './components/CustodyTrailFields'
+import { HandoverAfterSaveNotice, WhereIsMoneyNowField, handOverAfterRecording } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentModeHint } from './components/PaymentModeHint'
 import { FieldProblem, FormStep, OptionalDisclosure, PaymentModePicker, QuickDateField } from './components/PaymentFormParts'
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
@@ -21,7 +21,8 @@ import { ProofReferenceField, ProofReferenceSection } from './components/ProofRe
 import { ProofDropZone } from './components/ProofDropZone'
 import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage } from '@/lib/finance/paymentEntry'
 import { SubmissionAttempt, SUBMISSION_OUTCOME_UNKNOWN, isAmbiguousFailure } from '@/lib/finance/submissionAttempt'
-import { custodyDraftsError, modeRequiresCustodyTrail, toRpcCustodyEvents, type CustodyDraft } from '@/lib/finance/custodyTrail'
+import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
+import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { Field, ErrorBanner } from './paymentRequestsAtoms'
 
@@ -86,10 +87,14 @@ export function NewPaymentConfirmationModal({
 
   const [form, setForm] = useState(() => ({ ...EMPTY_FORM, salesNote: initialSalesNote ?? '' }))
   const [entry, setEntry] = useState<PaymentEntryState>(EMPTY_PAYMENT_ENTRY)
-  // THE CUSTODY TRAIL, as many activities as the money actually went through.
-  // Empty until somebody adds one: a PNB payment that was collected and handed
-  // over in one motion is one activity, and one that has not moved yet is none.
-  const [custody, setCustody] = useState<CustodyDraft[]>([])
+  // WHERE IS THIS MONEY NOW (20270413000000). For PNB, Paytm and Canara the
+  // recorder says whether they still hold it or handed it to someone; a handover
+  // is offered after the payment is saved, and the receiver must accept it.
+  const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
+  // The payment saved but its handover did not: the record is right ("with
+  // you"), and the notice offers one retry. Send is closed while it shows.
+  const [handoverNotice, setHandoverNotice] = useState<{ paymentId: string; label: string; recipientId: string; message: string } | null>(null)
+  const [retryingHandover, setRetryingHandover] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   // Nothing is shouted at a person who has not finished. Problems are named only
@@ -119,11 +124,8 @@ export function NewPaymentConfirmationModal({
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  // ADDING AN ACTIVITY IS OPTIONAL; FINISHING ONE IS NOT. A half-entered
-  // activity — a handover with nobody named, a collection with no time — blocks
-  // the save, because the server would refuse it and take the whole request with
-  // it. append_payment_custody_events_internal applies exactly these rules.
-  const custodyError = custodyDraftsError(custody)
+  // "Handed to" needs a person. create_cash_handover decides everything again.
+  const custodyError = modeRequiresCustodyTrail(form.paymentMode) ? moneyNowError(moneyNow, userId) : null
 
   const canSubmit = !!(
     isPaymentEntryComplete(entry) &&
@@ -131,7 +133,8 @@ export function NewPaymentConfirmationModal({
     form.paymentDate &&
     isPaymentMode(form.paymentMode) &&
     !custodyError &&
-    !attachError
+    !attachError &&
+    !handoverNotice
   )
 
   // ── Not losing what was typed ──
@@ -147,7 +150,7 @@ export function NewPaymentConfirmationModal({
     form.paymentMode !== EMPTY_FORM.paymentMode ||
     entry.destination !== EMPTY_PAYMENT_ENTRY.destination ||
     entry.target !== null ||
-    custody.length > 0 ||
+    moneyNow.choice !== 'with_me' ||
     attachFile !== null
 
   const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
@@ -256,9 +259,9 @@ export function NewPaymentConfirmationModal({
     // decides that again for itself, so this agreement is a convenience and not
     // the rule. A stale activity left over from a mode the person changed away
     // from is refused server-side rather than stored.
-    const custodyEvents = modeRequiresCustodyTrail(form.paymentMode)
-      ? toRpcCustodyEvents(custody)
-      : []
+    // No custody activity is sent with the payment any more: who holds it is
+    // the recorder, and a handover is offered after the save (20270413000000).
+    const custodyEvents: unknown[] = []
 
     // ONE CALL, ONE TRANSACTION. The payment, its allocation intent and its
     // custody activities are written together or not at all. No client name is
@@ -326,6 +329,27 @@ export function NewPaymentConfirmationModal({
       })
     }
 
+    // HANDED TO SOMEONE: offer the handover now that the payment exists. If it
+    // fails the payment stays correct ("with you") and the notice offers a retry.
+    if (modeRequiresCustodyTrail(form.paymentMode) && moneyNow.choice === 'handed_to') {
+      const failed = await handOverAfterRecording(supabase, created.payment_request_id, moneyNow.recipientId)
+      if (failed) {
+        submitting.current = false
+        setHandoverNotice({ paymentId: created.payment_request_id, label: created.request_number, recipientId: moneyNow.recipientId, message: failed })
+        return
+      }
+    }
+
+    onSaved()
+  }
+
+  const retryHandover = async () => {
+    if (!handoverNotice || retryingHandover) return
+    setRetryingHandover(true)
+    const failed = await handOverAfterRecording(supabase, handoverNotice.paymentId, handoverNotice.recipientId)
+    setRetryingHandover(false)
+    if (failed) { setHandoverNotice({ ...handoverNotice, message: failed }); return }
+    setHandoverNotice(null)
     onSaved()
   }
 
@@ -387,6 +411,16 @@ export function NewPaymentConfirmationModal({
           display: 'flex', flexDirection: 'column', gap: '24px',
         }}>
 
+          {handoverNotice && (
+            <HandoverAfterSaveNotice
+              paymentLabel={handoverNotice.label}
+              message={handoverNotice.message}
+              retrying={retryingHandover}
+              onRetry={() => void retryHandover()}
+              onClose={onSaved}
+            />
+          )}
+
           {/* 1. What the money is for — and, for the two targeted destinations,
               which record. The customer follows from it and is shown read-only;
               there is no field to type one into. */}
@@ -435,18 +469,16 @@ export function NewPaymentConfirmationModal({
             </Field>
           </FormStep>
 
-          {/* 3. WHO CARRIED IT — for PNB and Paytm only, decided by the mode and
-              decided again server-side. */}
+          {/* 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara, decided by
+              the mode and decided again server-side. */}
           {modeRequiresCustodyTrail(form.paymentMode) && (
-            <FormStep number={3} quiet title="Who carried the money" hint="Optional">
-              <CustodyTrailFields
-                supabase={supabase}
+            <FormStep number={3} quiet title="Where is this money now?">
+              <WhereIsMoneyNowField
                 paymentMode={form.paymentMode}
-                drafts={custody}
-                onDraftsChange={setCustody}
-                defaultActorId={userId}
-                disabled={saving}
-                showTitle={false}
+                value={moneyNow}
+                onChange={setMoneyNow}
+                recorderId={userId}
+                problem={showProblems ? custodyError : null}
               />
             </FormStep>
           )}

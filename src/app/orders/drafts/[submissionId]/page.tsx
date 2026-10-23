@@ -208,6 +208,7 @@ import {
 } from '@/lib/finance/piPaymentView'
 import { completePaymentEntry, PAYMENT_RECORDED_AND_VERIFIED_BODY } from '@/lib/finance/paymentEntryCompletion'
 import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
+import { handOverAfterRecording } from '@/components/finance/WhereIsMoneyNowField'
 import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
@@ -1100,6 +1101,7 @@ function PiDraftDetailPageInner() {
   const recordPayment = useCallback(async (
     form: PiPaymentFormState,
     proof: File | null,
+    handTo: string | null = null,
   ): Promise<string | null> => {
     setPaymentSaving(true)
     try {
@@ -1146,6 +1148,14 @@ function PiDraftDetailPageInner() {
       const completion = await completePaymentEntry(supabase, paymentId)
       attempt.settle()
       setPaymentNotice(completion.verified ? PAYMENT_RECORDED_AND_VERIFIED_BODY : PI_PAYMENT_RECORDED_BODY)
+      // HANDED TO SOMEONE (20270413000000): offer the handover now that the
+      // payment exists. A failure never undoes the payment; it stays "with you".
+      if (handTo && paymentId) {
+        const handoverFailed = await handOverAfterRecording(supabase, paymentId, handTo)
+        if (handoverFailed) {
+          setPaymentNotice(`Payment recorded. Handing it over did not go through: ${handoverFailed} It is shown as with you — hand it over from the Finance page.`)
+        }
+      }
       // TELL THE VERIFIERS (owner audit, 2026-10-19): a payment recorded here
       // used to reach nobody until someone opened Finance. The same notice the
       // Finance form sends. The record RPC returns only the id, so the route
@@ -3119,8 +3129,9 @@ function PiDraftDetailPageInner() {
           todayIso={localTodayIso()}
           saving={paymentSaving}
           onClose={() => setPaymentDialog(null)}
-          onSubmit={async (form, proof) => {
-            const err = await recordPayment(form, proof)
+          recorderId={viewerId}
+          onSubmit={async (form, proof, handTo) => {
+            const err = await recordPayment(form, proof, handTo ?? null)
             if (!err) setPaymentDialog(null)
             return err
           }}

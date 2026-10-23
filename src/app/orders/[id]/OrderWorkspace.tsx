@@ -14,6 +14,8 @@
 // sections already use, buttons are the record-header actions the Assets and
 // Order Request screens introduced, and every colour is a token.
 
+import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
+import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
 import { useState } from 'react'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
@@ -747,6 +749,10 @@ export function OrderPaymentListDialog({
                     </div>
                   )}
                 </dl>
+                {/* WHERE THE CASH IS (20270413000000): PNB, Paytm and Canara
+                    payments travel until they reach the company; Accept is
+                    offered here to the person it was handed to. */}
+                {isTrackedPaymentMode(row.mode) && <PaymentCashLine paymentId={row.id} />}
                 {/* THE DOOR TO FINANCE'S OWN RECORD, and it opens HERE rather
                     than in the Finance module. Drawn on the SAME capability
                     that used to decide whether the Finance record link existed:
