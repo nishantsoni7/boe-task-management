@@ -45,10 +45,10 @@ describe('the date chips', () => {
 describe('the form is organised as steps', () => {
   const src = modalSource()
 
-  test('what it is for, the payment, then who carried the money', () => {
+  test('what it is for, the payment, then where the money is now', () => {
     const one = src.indexOf('title="What is this payment for?"')
     const two = src.indexOf('title="Payment"')
-    const three = src.indexOf('title="Who carried the money"')
+    const three = src.indexOf('title="Where is this money now?"')
     assert.ok(one > 0 && two > one && three > two, 'steps appear in that order')
   })
 

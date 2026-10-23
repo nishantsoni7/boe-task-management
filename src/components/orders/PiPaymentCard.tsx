@@ -28,6 +28,9 @@ import {
   scrollToFirstProblem,
 } from '@/app/finance/components/PaymentFormParts'
 import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
+import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
+import { isTrackedPaymentMode, moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   EMPTY_PI_PAYMENT_FORM,
@@ -217,11 +220,14 @@ const LABEL: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
-export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
+export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorderId = null }: {
   todayIso: string
   saving: boolean
   onClose: () => void
-  onSubmit: (form: PiPaymentFormState, proof: File | null) => Promise<string | null>
+  /** handTo: for PNB, Paytm and Canara, who the recorder handed the money to (null = still with them). */
+  onSubmit: (form: PiPaymentFormState, proof: File | null, handTo?: string | null) => Promise<string | null>
+  /** Who is recording it (the default holder of the money). */
+  recorderId?: string | null
 }) {
   const [form, setForm] = useState<PiPaymentFormState>({ ...EMPTY_PI_PAYMENT_FORM, paymentDate: todayIso })
   const [proof, setProof] = useState<File | null>(null)
@@ -229,6 +235,10 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   const [touched, setTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [extrasOpen, setExtrasOpen] = useState(false)
+  // Where is this money now (20270413000000): for PNB, Paytm and Canara.
+  const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
+  const tracked = isTrackedPaymentMode(form.paymentMode)
+  const moneyNowProblem = tracked ? moneyNowError(moneyNow, recorderId) : null
   const formRef = useRef<HTMLDivElement>(null)
   // Belt and braces alongside `saving`: a second click that lands in the same
   // tick, before the parent's saving state has propagated, is still refused.
@@ -251,7 +261,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   // is sent.
   const submit = async () => {
     if (submittedRef.current || saving) return
-    if (!allowed) {
+    if (!allowed || moneyNowProblem) {
       setTouched(true)
       scrollToFirstProblem(formRef.current)
       return
@@ -259,7 +269,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
     submittedRef.current = true
     setSubmitted(true)
     setError(null)
-    const err = await onSubmit(form, proof)
+    const err = await onSubmit(form, proof, tracked && moneyNow.choice === 'handed_to' ? moneyNow.recipientId : null)
     if (err) {
       // A failure returns the form to the user with what they typed intact.
       submittedRef.current = false
@@ -313,6 +323,18 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
           />
           <FieldProblem message={touched ? errors.paymentMode ?? null : null} />
         </FormStep>
+
+        {tracked && (
+          <FormStep number={2} title="Where is this money now?">
+            <WhereIsMoneyNowField
+              paymentMode={form.paymentMode}
+              value={moneyNow}
+              onChange={setMoneyNow}
+              recorderId={recorderId}
+              problem={touched ? moneyNowProblem : null}
+            />
+          </FormStep>
+        )}
 
         <OptionalDisclosure
           title="Add reference, remarks or proof"
@@ -517,6 +539,8 @@ export function PiPaymentRow({
           </button>
         )}
       </div>
+
+      {row.tracksCash && <PaymentCashLine paymentId={row.paymentId} />}
 
       {row.remarks && (
         <div style={{ fontSize: '12px', lineHeight: 1.45, color: colors.secondary, overflowWrap: 'anywhere' }}>

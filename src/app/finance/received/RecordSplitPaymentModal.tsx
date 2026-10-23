@@ -95,19 +95,15 @@ import {
   paymentModeLabel,
   type PaymentDestination,
 } from '@/lib/finance/paymentEntry'
-import {
-  custodyDraftsError,
-  modeRequiresCustodyTrail,
-  toRpcCustodyEvents,
-  type CustodyDraft,
-} from '@/lib/finance/custodyTrail'
+import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
+import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import {
   SubmissionAttempt,
   SUBMISSION_OUTCOME_UNKNOWN,
   isAmbiguousFailure,
 } from '@/lib/finance/submissionAttempt'
-import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
+import { HandoverAfterSaveNotice, WhereIsMoneyNowField, handOverAfterRecording } from '@/components/finance/WhereIsMoneyNowField'
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
 import {
   MIXED_CUSTOMER_BLOCKED_REASON,
@@ -197,8 +193,12 @@ export function RecordSplitPaymentModal({
   const [reference,   setReference]   = useState('')
   const [remarks,     setRemarks]     = useState('')
 
-  // ── The custody trail, for the two modes a person carries ──
-  const [custody, setCustody] = useState<CustodyDraft[]>([])
+  // ── Where is this money now (20270413000000), for PNB, Paytm and Canara ──
+  const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
+  type Recorded = { requestNumber: string; allocationCount: number; verified?: boolean }
+  // Saved, but the handover to the chosen person did not go through.
+  const [handoverNotice, setHandoverNotice] = useState<{ paymentId: string; recipientId: string; message: string; summary: Recorded } | null>(null)
+  const [retryingHandover, setRetryingHandover] = useState(false)
 
   // ── The optional proof, attached after the payment exists ──
   const [attachFile,  setAttachFile]  = useState<File | null>(null)
@@ -279,10 +279,8 @@ export function RecordSplitPaymentModal({
   // the same set of rows.
   const totals     = splitPaymentTotals({ amount, rows })
   const duplicates = duplicateTargetKeys(rows)
-  // A HALF-ENTERED CUSTODY ACTIVITY BLOCKS THE SAVE, for the same reason a
-  // half-entered allocation does: the server refuses it and takes the whole
-  // entry with it, so the person is told here instead of after a round trip.
-  const custodyError = custodyDraftsError(custody)
+  // "Handed to" needs a person; create_cash_handover decides everything again.
+  const custodyError = modeRequiresCustodyTrail(paymentMode) ? moneyNowError(moneyNow, userId ?? null) : null
 
   // SEVERAL CUSTOMERS IN ONE PAYMENT is allowed and never silent: the warning
   // lists them and the entry waits for an explicit tick, which is tied to this
@@ -293,6 +291,7 @@ export function RecordSplitPaymentModal({
 
   const blocked    = splitPaymentBlockedReason({ destination, amount, paymentDate, paymentMode, rows })
     ?? custodyError ?? attachError
+    ?? (handoverNotice ? 'This payment is already saved.' : null)
     ?? (mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null)
 
   // ── Not losing what was typed ──
@@ -310,7 +309,7 @@ export function RecordSplitPaymentModal({
     defaultPaymentMode: DEFAULT_PAYMENT_MODE,
     reference,
     remarks,
-    custodyCount: custody.length,
+    custodyCount: moneyNow.choice === 'with_me' ? 0 : 1,
     hasAttachment: attachFile !== null,
     rows,
     baseline: dirtyBaseline,
@@ -349,11 +348,36 @@ export function RecordSplitPaymentModal({
         entityId: recordedWithoutProof.paymentRequestId,
       })
     }
-    onRecorded({
+    await finishRecording(recordedWithoutProof.paymentRequestId, {
       requestNumber:   recordedWithoutProof.requestNumber,
       allocationCount: recordedWithoutProof.allocationCount,
       verified:        completion.verified,
     })
+  }
+
+  // ── After the payment is saved: offer the handover, then report ──
+  // A failed handover never undoes the payment: it is shown as with the
+  // recorder, and the notice offers one retry before the form closes.
+  const finishRecording = async (paymentId: string | undefined, summary: Recorded) => {
+    if (paymentId && modeRequiresCustodyTrail(paymentMode) && moneyNow.choice === 'handed_to') {
+      const failed = await handOverAfterRecording(supabase, paymentId, moneyNow.recipientId)
+      if (failed) {
+        setHandoverNotice({ paymentId, recipientId: moneyNow.recipientId, message: failed, summary })
+        return
+      }
+    }
+    onRecorded(summary)
+  }
+
+  const retryHandover = async () => {
+    if (!handoverNotice || retryingHandover) return
+    setRetryingHandover(true)
+    const failed = await handOverAfterRecording(supabase, handoverNotice.paymentId, handoverNotice.recipientId)
+    setRetryingHandover(false)
+    if (failed) { setHandoverNotice({ ...handoverNotice, message: failed }); return }
+    const summary = handoverNotice.summary
+    setHandoverNotice(null)
+    onRecorded(summary)
   }
 
   // ── What is still missing, in words ──
@@ -427,11 +451,9 @@ export function RecordSplitPaymentModal({
       // A SUSPENSE ENTRY IS AN EMPTY LIST, not a hidden one. There is no branch
       // here that could send a row the person cannot see.
       p_allocations:  targetKind ? toRpcAllocationsWithLegacy(rows) : [],
-      // THE CUSTODY TRAIL, in the same transaction as the payment and its
-      // allocations. Sent only for a mode somebody carries — and the RPC decides
-      // that again for itself, so a section left on screen after the mode changed
-      // has its rows refused rather than stored.
-      p_custody_events: modeRequiresCustodyTrail(paymentMode) ? toRpcCustodyEvents(custody) : [],
+      // No custody activity is sent with the payment any more (20270413000000):
+      // the recorder holds it, and a handover is offered after the save.
+      p_custody_events: [],
     }
     const attempt = attemptRef.current!
     const { data, error: rpcError } = await supabase.rpc('record_payment_with_allocations', {
@@ -499,7 +521,7 @@ export function RecordSplitPaymentModal({
         entityId: result.payment_request_id,
       })
     }
-    onRecorded({
+    await finishRecording(result.payment_request_id, {
       requestNumber:   result.request_number ?? '',
       allocationCount: result.allocation_count ?? 0,
       verified:        completion.verified,
@@ -604,17 +626,15 @@ export function RecordSplitPaymentModal({
         />
       </FormStep>
 
-      {/* ── 3. WHO CARRIED IT — for PNB and Paytm only. ── */}
+      {/* ── 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara. ── */}
       {carriesCustody && (
-        <FormStep number={3} title="Who carried the money" hint="Optional">
-          <CustodyTrailFields
-            supabase={supabase}
+        <FormStep number={3} title="Where is this money now?">
+          <WhereIsMoneyNowField
             paymentMode={paymentMode}
-            drafts={custody}
-            onDraftsChange={setCustody}
-            defaultActorId={userId ?? undefined}
-            disabled={saving}
-            showTitle={false}
+            value={moneyNow}
+            onChange={setMoneyNow}
+            recorderId={userId ?? null}
+            problem={custodyError}
           />
         </FormStep>
       )}
@@ -745,6 +765,16 @@ export function RecordSplitPaymentModal({
       {/* THE PAYMENT LANDED AND THE FILE DID NOT. Said plainly, and NOT as a
           failure of the entry: the money is recorded, and the proof can be
           attached from the payment's own screen. */}
+      {handoverNotice && (
+        <HandoverAfterSaveNotice
+          paymentLabel={handoverNotice.summary.requestNumber}
+          message={handoverNotice.message}
+          retrying={retryingHandover}
+          onRetry={() => void retryHandover()}
+          onClose={() => onRecorded(handoverNotice.summary)}
+        />
+      )}
+
       {proofNotice && (
         <div style={{
           fontSize: '12px', color: '#805B0D', background: '#FAF0DA',

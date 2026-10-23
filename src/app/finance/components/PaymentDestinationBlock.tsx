@@ -25,20 +25,19 @@ import {
 } from '@/lib/finance/paymentDestination'
 import {
   CUSTODY_TRAIL_TITLE,
-  custodyDraftsError,
   custodyTrail,
   custodyTrailUserIds,
   legacyCustodyEvents,
   modeRequiresCustodyTrail,
   readCustodyEvent,
-  toRpcCustodyEvents,
   type CustodyDraft,
   type CustodyEvent,
   type CustodyEventRow,
   type LegacyCustodyColumns,
 } from '@/lib/finance/custodyTrail'
-import { customerDisplayName, paymentEntryErrorMessage } from '@/lib/finance/paymentEntry'
-import { CustodyTrailFields, CustodyTrailView, newCustodyDraftKey } from './CustodyTrailFields'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
+import { CustodyTrailView, newCustodyDraftKey } from './CustodyTrailFields'
+import { PaymentJourneyButton } from '@/components/finance/PaymentJourneyDialog'
 
 const SECTION_LABEL: React.CSSProperties = {
   fontSize: '12px', fontWeight: 700, color: colors.muted,
@@ -155,7 +154,7 @@ export type CustodyTrailSource = LegacyCustodyColumns & {
  * holds DELETE. Correcting the record means adding what actually happened.
  */
 export function PaymentCustodyTrail({
-  supabase, payment, canAppend, formatDateTime, onAppended,
+  supabase, payment, formatDateTime,
 }: {
   supabase: ReturnType<typeof createClient> | null
   payment: CustodyTrailSource
@@ -165,9 +164,6 @@ export function PaymentCustodyTrail({
 }) {
   const [saved, setSaved] = useState<CustodyEvent[] | undefined>(undefined)
   const [names, setNames] = useState<Map<string, string>>(new Map())
-  const [drafts, setDrafts] = useState<CustodyDraft[]>([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const legacy = useMemo(
     () => legacyCustodyEvents(payment, payment.payment_date ?? null),
@@ -226,23 +222,6 @@ export function PaymentCustodyTrail({
   }
   if (!applies && events.length === 0) return null
 
-  const draftError = custodyDraftsError(drafts)
-
-  const save = async () => {
-    if (!supabase || saving || drafts.length === 0 || draftError) return
-    setSaving(true)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('append_payment_custody_events', {
-      p_payment_request_id: payment.id,
-      p_events: toRpcCustodyEvents(drafts),
-    })
-    setSaving(false)
-    if (rpcError) { setError(paymentEntryErrorMessage(rpcError.message)); return }
-    setDrafts([])
-    await load()
-    onAppended?.()
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <CustodyTrailView
@@ -254,50 +233,13 @@ export function PaymentCustodyTrail({
           : 'No collection or handover was recorded for this payment.'}
       />
 
-      {canAppend && applies && supabase && (
-        <>
-          <CustodyTrailFields
-            supabase={supabase}
-            paymentMode={payment.payment_mode}
-            drafts={drafts}
-            onDraftsChange={setDrafts}
-            formatDateTime={formatDateTime}
-            names={names}
-            disabled={saving}
-          />
-          {drafts.length > 0 && (
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
-              {draftError && (
-                <span role="alert" style={{ fontSize: '12px', color: colors.red, flex: 1 }}>
-                  {draftError}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setDrafts([])}
-                disabled={saving}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving || !!draftError}
-                className="boe-btn boe-btn-primary"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-              >
-                {saving ? 'Saving…' : `Save ${drafts.length === 1 ? 'activity' : 'activities'}`}
-              </button>
-            </div>
-          )}
-          {error && (
-            <span role="alert" style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
-              {error}
-            </span>
-          )}
-        </>
+      {/* WHERE THE MONEY IS NOW, and how it got there (20270413000000). A
+          handover is no longer typed in here: it is recorded when the receiver
+          accepts it, so this block only reads. */}
+      {applies && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <PaymentJourneyButton paymentId={payment.id} />
+        </div>
       )}
     </div>
   )

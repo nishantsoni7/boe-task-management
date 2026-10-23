@@ -93,7 +93,7 @@ export function pendingModuleTitle(pathname: string): string {
     if (section === 'expenses') return id === 'new' ? 'Add Expense' : 'Expenses'
     if (section === 'bank') return 'Bank Statements'
     if (section === 'reimbursements') return 'Reimbursements'
-    if (section === 'handovers') return 'Cash Handovers'
+    if (section === 'handovers') return 'Cash journeys'
     if (section === 'notifications') return 'Notifications'
     return 'Finance'
   }
