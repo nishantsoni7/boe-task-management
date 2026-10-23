@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AlertTriangle, BellRing, ChevronDown, ChevronUp, HandCoins } from 'lucide-react'
+import { AlertTriangle, BellRing, ChevronDown, ChevronUp, HandCoins, MoreHorizontal } from 'lucide-react'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatINR } from '@/lib/currency'
 import { formatDateTime, formatFullDate } from '@/lib/ui'
@@ -52,6 +52,7 @@ export function HandoverCard({
   const severity = handoverSeverity(h)
   const [showItems, setShowItems] = useState(defaultOpen)
   const [dialog, setDialog] = useState<'accept' | 'dispute' | 'cancel' | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { accept, dispute, cancel, remind } = useHandoverActions()
   const busy = accept.isPending || dispute.isPending || cancel.isPending || remind.isPending
@@ -70,13 +71,12 @@ export function HandoverCard({
   ].filter(Boolean).join(' ')
 
   const closedStyle = open ? undefined : ({
-    '--ho-accent': h.status === 'accepted' ? '#276247' : '#686D6C',
-    '--ho-bg': h.status === 'accepted' ? '#E8F2EC' : '#F1EEE9',
-    '--ho-border': h.status === 'accepted' ? 'rgba(39,98,71,0.5)' : '#CFC8BF',
-    '--ho-glow': 'transparent',
-    '--ho-ink': h.status === 'accepted' ? '#1B4A35' : '#4C5352',
-    animation: 'none',
+    '--ho-accent': h.status === 'accepted' ? '#276247' : '#8C8379',
+    '--ho-bg': '#FFFFFF',
   } as React.CSSProperties)
+
+  const hasMenu = h.canDispute || h.canCancel
+  const waitingText = open ? `${waitingFor(h.ageHours)}${h.ageHours >= 1 ? ' waiting' : ''}` : null
 
   return (
     <section
@@ -88,22 +88,30 @@ export function HandoverCard({
       <div className="boe-handover-top">
         <div className="boe-handover-icon" aria-hidden="true">
           {open
-            ? (severity === 'fresh' ? <BellRing size={24} strokeWidth={2} /> : <AlertTriangle size={24} strokeWidth={2} />)
-            : <HandCoins size={24} strokeWidth={2} />}
+            ? (severity === 'fresh' ? <BellRing size={18} strokeWidth={2} /> : <AlertTriangle size={18} strokeWidth={2} />)
+            : <HandCoins size={18} strokeWidth={2} />}
         </div>
 
         <div className="boe-handover-main">
-          <div className="boe-handover-tag">
-            {open ? SEVERITY_TAG[severity] : HANDOVER_STATUS_LABEL[h.status]}
-            {open && <span aria-hidden="true">·</span>}
-            {open && <span>{waitingFor(h.ageHours)}{h.ageHours >= 1 ? ' waiting' : ''}</span>}
-          </div>
           <h3 className="boe-handover-headline">
             {open ? handoverHeadline(h, role) : `${h.giverName} → ${h.recipientName}`}
           </h3>
           <div className="boe-handover-meta">
-            {h.humanId} · {handoverPaymentCount(h)} · handed {h.handedAt ? formatDateTime(h.handedAt) : '—'}
+            <span className="boe-handover-tag">{open ? SEVERITY_TAG[severity] : HANDOVER_STATUS_LABEL[h.status]}</span>
+            {waitingText ? ` · ${waitingText}` : ''}
+            {` · ${h.humanId} · `}
+            <button
+              type="button"
+              className="boe-handover-toggle"
+              aria-expanded={showItems}
+              onClick={() => setShowItems(v => !v)}
+            >
+              {handoverPaymentCount(h)}
+              {showItems ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+            </button>
+            {` · handed ${h.handedAt ? formatDateTime(h.handedAt) : '—'}`}
             {h.note ? ` · “${h.note}”` : ''}
+            {open && role === 'giver' && !h.canRemind && h.lastRemindedAt ? ` · reminder sent ${formatDateTime(h.lastRemindedAt)}` : ''}
           </div>
         </div>
 
@@ -111,6 +119,54 @@ export function HandoverCard({
           {formatINR(h.totalAmount)}
           <small>{role === 'recipient' ? 'to accept' : open ? 'not confirmed' : HANDOVER_STATUS_LABEL[h.status]}</small>
         </div>
+
+        {(h.canAccept || h.canRemind || hasMenu) && (
+          <div className="boe-handover-actions">
+            {h.canAccept && (
+              <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { setError(null); setDialog('accept') }}>
+                Accept {formatINR(h.totalAmount)}
+              </button>
+            )}
+            {h.canRemind && (
+              <button type="button" className="boe-btn boe-btn-primary" disabled={busy} aria-busy={remind.isPending} onClick={doRemind}>
+                {remind.isPending ? 'Sending…' : `Remind ${h.recipientName.split(' ')[0]}`}
+              </button>
+            )}
+            {hasMenu && (
+              <div
+                className="boe-handover-more"
+                onKeyDown={e => { if (e.key === 'Escape') setMenuOpen(false) }}
+                onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setMenuOpen(false) }}
+              >
+                <button
+                  type="button"
+                  className="boe-handover-more-btn"
+                  aria-label="More actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  disabled={busy}
+                  onClick={() => setMenuOpen(v => !v)}
+                >
+                  <MoreHorizontal size={18} aria-hidden="true" />
+                </button>
+                {menuOpen && (
+                  <div className="boe-handover-menu" role="menu">
+                    {h.canDispute && (
+                      <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuOpen(false); setError(null); setDialog('dispute') }}>
+                        Dispute
+                      </button>
+                    )}
+                    {h.canCancel && (
+                      <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setError(null); setDialog('cancel') }}>
+                        Cancel handover
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {h.status === 'disputed' && h.disputeReason && (
@@ -146,43 +202,6 @@ export function HandoverCard({
             </li>
           ))}
         </ul>
-      )}
-
-      {(open || h.items.length > 0) && (
-        <div className="boe-handover-actions">
-          {h.canAccept && (
-            <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { setError(null); setDialog('accept') }}>
-              Accept {formatINR(h.totalAmount)}
-            </button>
-          )}
-          {h.canDispute && (
-            <button type="button" className="boe-btn boe-btn-danger" disabled={busy} onClick={() => { setError(null); setDialog('dispute') }}>
-              Dispute
-            </button>
-          )}
-          {h.canRemind && (
-            <button type="button" className="boe-btn boe-btn-primary" disabled={busy} aria-busy={remind.isPending} onClick={doRemind}>
-              {remind.isPending ? 'Sending…' : `Remind ${h.recipientName.split(' ')[0]}`}
-            </button>
-          )}
-          {open && role === 'giver' && !h.canRemind && h.lastRemindedAt && (
-            <span className="boe-handover-meta" style={{ margin: 0 }}>Reminder sent {formatDateTime(h.lastRemindedAt)}</span>
-          )}
-          {h.canCancel && (
-            <button type="button" className="boe-btn boe-btn-secondary" disabled={busy} onClick={() => { setError(null); setDialog('cancel') }}>
-              Cancel handover
-            </button>
-          )}
-          <button
-            type="button"
-            className="boe-handover-toggle"
-            aria-expanded={showItems}
-            onClick={() => setShowItems(v => !v)}
-          >
-            {showItems ? 'Hide payments' : 'Show payments'}
-            {showItems ? <ChevronUp size={14} style={{ verticalAlign: 'middle', marginLeft: 4 }} /> : <ChevronDown size={14} style={{ verticalAlign: 'middle', marginLeft: 4 }} />}
-          </button>
-        </div>
       )}
 
       {dialog === 'accept' && (

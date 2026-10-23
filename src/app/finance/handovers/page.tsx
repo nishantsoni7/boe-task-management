@@ -42,13 +42,6 @@ const HISTORY_TABS = [
   { key: 'all',       label: 'Everything', statuses: null },
 ] as const
 
-const pill = (selected: boolean): React.CSSProperties => ({
-  padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-  border: `1px solid ${selected ? '#B9472E' : '#CFC8BF'}`,
-  background: selected ? '#F8EAE4' : '#FFFFFF',
-  color: selected ? '#963B27' : '#4C5352',
-})
-
 export default function CashJourneysPage() {
   return (
     <Suspense fallback={null}>
@@ -62,6 +55,8 @@ function CashJourneysView() {
   const queryClient = useQueryClient()
   const params = useSearchParams()
   const [view, setView] = useState<'open' | 'history'>('open')
+  const unclosed = useUnclosedFunds(true)
+  const openCount = unclosed.data?.payments.length ?? 0
 
   const handleSignOut = async () => {
     await createClient().auth.signOut()
@@ -76,22 +71,22 @@ function CashJourneysView() {
       onSignOut={handleSignOut}
       onRefresh={async () => { await queryClient.invalidateQueries({ queryKey: HANDOVERS_KEY }) }}
     >
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Cash journeys">
-        <button type="button" role="tab" aria-selected={view === 'open'} style={pill(view === 'open')} onClick={() => setView('open')}>
+      <div className="boe-cj-tabs" role="tablist" aria-label="Cash journeys">
+        <button type="button" role="tab" className="boe-cj-tab" aria-selected={view === 'open'} onClick={() => setView('open')}>
           Not yet with company
+          {openCount > 0 && <span className="boe-cj-count">{openCount}</span>}
         </button>
-        <button type="button" role="tab" aria-selected={view === 'history'} style={pill(view === 'history')} onClick={() => setView('history')}>
+        <button type="button" role="tab" className="boe-cj-tab" aria-selected={view === 'history'} onClick={() => setView('history')}>
           Handover history
         </button>
       </div>
 
-      {view === 'open' ? <OpenJourneys holderFilter={params.get('holder')} /> : <HandoverHistory />}
+      {view === 'open' ? <OpenJourneys q={unclosed} holderFilter={params.get('holder')} /> : <HandoverHistory />}
     </FinanceLayout>
   )
 }
 
-function OpenJourneys({ holderFilter }: { holderFilter: string | null }) {
-  const q = useUnclosedFunds(true)
+function OpenJourneys({ q, holderFilter }: { q: ReturnType<typeof useUnclosedFunds>; holderFilter: string | null }) {
   const { role } = usePermissionContext()
   const [handOverOpen, setHandOverOpen] = useState(false)
   const [filter, setFilter] = useState<string | null>(holderFilter)
@@ -113,19 +108,19 @@ function OpenJourneys({ holderFilter }: { holderFilter: string | null }) {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatINR(total)}</div>
-        <div style={{ fontSize: 13, color: '#4C5352' }}>
+      <div className="boe-cj-summary">
+        <strong>{formatINR(total)}</strong>
+        <span>
           {payments.length === 0
             ? 'Everything has reached the company.'
             : `${payments.length} ${payments.length === 1 ? 'payment' : 'payments'} not yet with the company${q.data?.scope === 'mine' ? ' (yours)' : ''}`}
-        </div>
+        </span>
         {holders.length > 1 && (
           <select
             value={filter ?? ''}
             onChange={e => setFilter(e.target.value || null)}
             aria-label="Show one person"
-            style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid #686D6C', font: 'inherit', fontSize: 13 }}
+            style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 8, border: '1px solid #8C8379', font: 'inherit', fontSize: 13 }}
           >
             <option value="">Everyone</option>
             {holders.map(h => <option key={h.holderId} value={h.holderId}>{h.holderName} · {formatINR(h.amount)}</option>)}
@@ -134,26 +129,26 @@ function OpenJourneys({ holderFilter }: { holderFilter: string | null }) {
       </div>
 
       {shownHolders.map(h => (
-        <section key={h.holderId} style={{ background: '#FFFFFF', border: '1px solid #E4DED7', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
-          <header style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: '#FBFAF8', borderBottom: '1px solid #E4DED7' }}>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>With {h.holderName}</h2>
-            <span style={{ fontSize: 13, color: '#4C5352' }}>{h.count} {h.count === 1 ? 'payment' : 'payments'} · oldest {waitingAge(h.oldestAgeHours)}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatINR(h.amount)}</span>
+        <section key={h.holderId} className="boe-cj-group" aria-label={`With ${h.holderName}`}>
+          <header className="boe-cj-group-head">
+            <h2>With {h.holderName}</h2>
+            <span>{h.count} {h.count === 1 ? 'payment' : 'payments'} · oldest {waitingAge(h.oldestAgeHours)}</span>
+            <span className="boe-cj-group-total">{formatINR(h.amount)}</span>
           </header>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="boe-cj-list">
             {payments.filter(p => (p.holderId ?? 'unknown') === h.holderId).map(p => (
-              <li key={p.paymentId} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', padding: '10px 14px', borderTop: '1px solid #F1EEE9' }}>
-                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontSize: 14 }}>
-                    <strong>{p.humanPaymentId ?? 'Payment'}</strong> · {p.clientName ?? 'Suspense'}
+              <li key={p.paymentId} className="boe-cj-row">
+                <div className="boe-cj-row-main">
+                  <div className="boe-cj-row-title">
+                    <strong style={{ fontWeight: 600 }}>{p.humanPaymentId ?? 'Payment'}</strong> · {p.clientName ?? 'Suspense'}
                   </div>
-                  <div style={{ fontSize: 12, color: '#686D6C' }}>
+                  <div className="boe-cj-row-sub">
                     {paymentModeLabel(p.paymentMode)}{p.paymentDate ? ` · paid ${formatFullDate(p.paymentDate)}` : ''}
                   </div>
                 </div>
-                <div style={{ flex: '0 0 auto', fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatINR(p.amount)}</div>
-                <div style={{ flex: '1 1 220px' }}><CashStateChip payment={p} /></div>
-                <CashPaymentActions payment={p} onHandOver={() => setHandOverOpen(true)} />
+                <div className="boe-cj-row-amount">{formatINR(p.amount)}</div>
+                <div className="boe-cj-row-status"><CashStateChip payment={p} quiet /></div>
+                <CashPaymentActions payment={p} onHandOver={() => setHandOverOpen(true)} quietJourney />
               </li>
             ))}
           </ul>
@@ -180,14 +175,16 @@ function HandoverHistory() {
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }} role="tablist" aria-label="Handover history">
-        {HISTORY_TABS.map(t => (
-          <button key={t.key} type="button" role="tab" aria-selected={t.key === tab} style={pill(t.key === tab)}
-            onClick={() => { setTab(t.key); setPage(0) }}>
-            {t.label}
-          </button>
-        ))}
-        <label style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <div className="boe-cj-seg" role="tablist" aria-label="Handover history">
+          {HISTORY_TABS.map(t => (
+            <button key={t.key} type="button" role="tab" aria-selected={t.key === tab}
+              onClick={() => { setTab(t.key); setPage(0) }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <label style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#4C5352', cursor: 'pointer' }}>
           <input type="checkbox" checked={!onlyMine} onChange={e => { setOnlyMine(!e.target.checked); setPage(0) }} />
           Show everyone&apos;s (if you are allowed)
         </label>
@@ -200,7 +197,7 @@ function HandoverHistory() {
         </div>
       )}
       {history.data && visible.length === 0 && (
-        <div style={{ padding: 24, borderRadius: 12, background: '#FFFFFF', border: '1px solid #E4DED7', textAlign: 'center', fontSize: 14, color: '#4C5352' }}>
+        <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 14, color: '#686D6C' }}>
           No handovers here yet.
         </div>
       )}

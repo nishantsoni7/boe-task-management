@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `02e756bf` — Finance: cash journeys until money reaches the company (#435)
-- Commits on this branch: 989
+- Commit: `526963df` — Orders: approve with cash not yet with the company, with a reason (#436)
+- Commits on this branch: 990
 - Pages (`page.tsx`): 146   API routes (`route.ts`): 154
 - Migrations: 362 (first `20260530_create_positions.sql`, latest `20270414000000_order_submission_cash_exceptions.sql`)
 - Tables ever created: 168 (dropped at some point: 7)   SQL functions: 779   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `526963df` 2026-10-23 Orders: approve with cash not yet with the company, with a reason (#436)
 - `02e756bf` 2026-10-23 Finance: cash journeys until money reaches the company (#435)
 - `a8192a78` 2026-10-23 PI line numbers: Reorder renumbers, Line number field removed (#433)
 - `0be7c6f0` 2026-10-23 PI detail: stop the right half going blank beside the details column (#431)
@@ -38,7 +39,6 @@
 - `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
 - `681d376d` 2026-10-22 Order page: read the whole page in one call, with the old reads as the fallback
 - `26d9a971` 2026-10-22 Payment deletion: clear allocation intents before deleting the payment (#411)
-- `db240bf6` 2026-10-22 Centre the BOE One logo on the sign-in pages (#412)
 
 ## Pages by top-level area
 
