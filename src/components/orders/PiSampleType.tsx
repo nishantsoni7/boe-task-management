@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { FlaskConical } from 'lucide-react'
+import { PackageSearch } from 'lucide-react'
 import {
   PI_SAMPLE_TYPE_RPC,
   SAMPLE_FIELD_HINT,
@@ -34,7 +34,7 @@ export function SampleTypeControl({ value, canEdit, saving, failure, onChange, i
   return (
     <div className="pi-sample-type">
       <label htmlFor={canEdit ? id : undefined} className="pi-sample-type-label">
-        <FlaskConical size={13} strokeWidth={2} aria-hidden="true" />
+        <PackageSearch size={13} strokeWidth={2} aria-hidden="true" />
         {SAMPLE_FIELD_LABEL}
       </label>
       {canEdit ? (

@@ -27,7 +27,7 @@ import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
-import { FlaskConical, HandCoins } from 'lucide-react'
+import { PackageSearch, Percent } from 'lucide-react'
 import {
   COMMISSION_ICON_LABEL,
   factoryStatus,
@@ -212,12 +212,12 @@ function ProjectFlags({ sample, commission }: { sample: SampleType | null; commi
     <span className="orders-list-flags">
       {sample && (
         <span className={`orders-list-flag orders-list-flag--${sample}`} title={SAMPLE_TYPE_LABEL[sample]} aria-label={SAMPLE_TYPE_LABEL[sample]} role="img">
-          <FlaskConical size={14} strokeWidth={2} aria-hidden="true" />
+          <PackageSearch size={14} strokeWidth={2} aria-hidden="true" />
         </span>
       )}
       {commission && (
         <span className="orders-list-flag orders-list-flag--commission" title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img">
-          <HandCoins size={14} strokeWidth={2} aria-hidden="true" />
+          <Percent size={14} strokeWidth={2} aria-hidden="true" />
         </span>
       )}
     </span>
