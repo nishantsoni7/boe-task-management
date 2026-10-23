@@ -1344,8 +1344,15 @@ export function PiApproveOrderModal({
   detailsReview,
   pendencies,
   onPendenciesChange,
+  cashCheck,
 }: {
   client: string
+  /**
+   * The "Payments check" (20270414000000): where this PI's cash is, and the
+   * approver's reason when some has not reached the company. Drawn by the page
+   * only in the modes that create an Order.
+   */
+  cashCheck?: React.ReactNode
   /** What is still pending from the client; owned by the page. Optional. */
   pendencies?: readonly string[]
   onPendenciesChange?: (next: string[]) => void
@@ -1645,6 +1652,8 @@ export function PiApproveOrderModal({
               )}
             </span>
           </div>
+
+          {cashCheck}
 
           {failure && <FailureNote message={failure} />}
 

@@ -20,7 +20,7 @@ export function CashStateChip({ payment, showAge = true }: { payment: CashPaymen
   const Icon = payment.state === 'with_company' ? CheckCircle2
     : payment.state === 'disputed' ? AlertTriangle
     : payment.state === 'waiting' ? Clock : Hand
-  return (
+  const chip = (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 9px', borderRadius: 999,
       fontSize: 12.5, fontWeight: 700, color: s.fg, background: s.bg, border: `1px solid ${s.border}`,
@@ -31,6 +31,17 @@ export function CashStateChip({ payment, showAge = true }: { payment: CashPaymen
       {showAge && payment.state !== 'with_company' && payment.ageHours >= 1 && (
         <span style={{ fontWeight: 500 }}>· {waitingAge(payment.ageHours)}</span>
       )}
+    </span>
+  )
+  // ORDER APPROVED WITHOUT THIS CASH (20270414000000): said under the chip, with
+  // the approver's reason, for as long as the money has not reached the company.
+  if (!payment.orderException || payment.state === 'with_company') return chip
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, maxWidth: '100%' }}>
+      {chip}
+      <span style={{ fontSize: 12, color: '#7A1523', fontWeight: 600, overflowWrap: 'anywhere' }}>
+        Order approved without this cash{payment.orderException.byName ? ` by ${payment.orderException.byName}` : ''}: “{payment.orderException.reason}”
+      </span>
     </span>
   )
 }

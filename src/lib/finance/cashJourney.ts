@@ -45,6 +45,8 @@ export type CashPayment = {
   canAccept: boolean
   canHandOver: boolean
   canReceive: boolean
+  /** Its Order was approved before this cash reached the company (20270414000000). */
+  orderException: { reason: string; byName: string | null; at: string } | null
 }
 
 export type UnclosedFunds = {
@@ -132,7 +134,15 @@ export function readCashPayment(raw: unknown): CashPayment | null {
     canAccept: o.can_accept === true,
     canHandOver: o.can_hand_over === true,
     canReceive: o.can_receive === true,
+    orderException: readOrderException(o.order_exception),
   }
+}
+
+function readOrderException(raw: unknown): CashPayment['orderException'] {
+  if (!raw || typeof raw !== 'object') return null
+  const x = raw as Raw
+  const reason = str(x.reason)
+  return reason ? { reason, byName: str(x.by_name), at: str(x.at) ?? '' } : null
 }
 
 export function readCashPayments(raw: unknown): CashPayment[] {
