@@ -38,18 +38,18 @@ export function CustodiansSetting({ current, isAdmin }: { current: { id: string;
   }
 
   return (
-    <section style={{ background: '#FFFFFF', border: '1px solid #E4DED7', borderRadius: 12, padding: 16, marginTop: 24 }} aria-label="Who receives cash for the company">
-      <h2 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700 }}>Who receives cash for the company</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 13, color: '#4C5352' }}>
-        A payment&apos;s journey closes when its money reaches {current.length ? current.map(c => c.fullName).join(' or ') : 'one of these people'}.
-      </p>
+    <section className="boe-cj-footer" aria-label="Who receives cash for the company">
+      <span>
+        <strong>Receives cash for the company:</strong>{' '}
+        {current.length ? current.map(c => c.fullName).join(', ') : 'nobody set'}. A journey closes when its money reaches them.
+      </span>
       {isAdmin && !editing && (
-        <button type="button" className="boe-btn boe-btn-secondary" onClick={() => { setChosen(new Set(current.map(c => c.id))); setEditing(true) }}>
+        <button type="button" className="boe-btn boe-btn-text" style={{ minHeight: 28, padding: '2px 8px', marginLeft: 'auto' }} onClick={() => { setChosen(new Set(current.map(c => c.id))); setEditing(true) }}>
           Change
         </button>
       )}
       {editing && (
-        <>
+        <div style={{ flex: '1 1 100%' }}>
           <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #E4DED7', borderRadius: 8, marginBottom: 10 }}>
             {everyone.map(p => (
               <label key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 12px', fontSize: 14, cursor: 'pointer' }}>
@@ -66,7 +66,7 @@ export function CustodiansSetting({ current, isAdmin }: { current: { id: string;
               {setCustodians.isPending ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </>
+        </div>
       )}
     </section>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { Landmark } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
@@ -23,13 +24,16 @@ const AGE_COLOUR = (hours: number) => (hours >= 72 ? '#B42332' : hours >= 24 ? '
  */
 export function UnclosedFundsCard() {
   const q = useUnclosedFunds(true)
+  const pathname = usePathname()
   const [handOverOpen, setHandOverOpen] = useState(false)
   const data = q.data
-  if (!data || data.scope === 'none') return null
+  // The Cash journeys page IS this list; repeating it above itself is noise.
+  if (!data || data.scope === 'none' || pathname === CASH_JOURNEYS_PATH) return null
 
+  // One quiet line, not a block: the page the link opens has the detail.
   const card: React.CSSProperties = {
-    border: '1.5px solid rgba(210,105,30,0.55)', background: '#FFF8F1', borderRadius: 14,
-    padding: '14px 16px', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10,
+    border: '1px solid #E4DED7', borderLeft: '3px solid #D2691E', background: '#FFFFFF', borderRadius: 8,
+    padding: '8px 12px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#4C5352',
   }
 
   if (data.scope === 'all') {
@@ -38,27 +42,24 @@ export function UnclosedFundsCard() {
     const holders = totalsByHolder(data.payments)
     return (
       <section style={card} aria-label="Money not yet with the company">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <Landmark size={20} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#6A3208' }}>Money not yet with the company</h2>
-          <span style={{ marginLeft: 'auto', fontSize: 24, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: '#6A3208' }}>{formatINR(total)}</span>
-        </div>
-        <div style={{ fontSize: 13, color: '#6A3208' }}>
+        <Landmark size={16} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatINR(total)}</span> not yet with the company
+        </h2>
+        <span>
           {data.payments.length} {data.payments.length === 1 ? 'payment' : 'payments'} with {holders.length} {holders.length === 1 ? 'person' : 'people'}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {holders.map(h => (
-            <Link key={h.holderId} href={`${CASH_JOURNEYS_PATH}?holder=${encodeURIComponent(h.holderId)}`}
-              style={{ textDecoration: 'none', display: 'inline-flex', flexDirection: 'column', gap: 2, padding: '8px 12px', borderRadius: 10, background: '#FFFFFF', border: '1px solid #E4DED7', minWidth: 140 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#303536' }}>{h.holderName}</span>
-              <span style={{ fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: '#303536' }}>{formatINR(h.amount)}</span>
-              <span style={{ fontSize: 12, color: AGE_COLOUR(h.oldestAgeHours) }}>
-                {h.count} {h.count === 1 ? 'payment' : 'payments'} · oldest {waitingAge(h.oldestAgeHours)}
-              </span>
-            </Link>
+          {holders.slice(0, 3).map(h => (
+            <span key={h.holderId}>
+              {' · '}
+              <Link href={`${CASH_JOURNEYS_PATH}?holder=${encodeURIComponent(h.holderId)}`} style={{ color: '#303536', textDecoration: 'none' }}>
+                {h.holderName} <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatINR(h.amount)}</strong>
+                <span style={{ color: AGE_COLOUR(h.oldestAgeHours) }}> ({waitingAge(h.oldestAgeHours)})</span>
+              </Link>
+            </span>
           ))}
-        </div>
-        <Link href={CASH_JOURNEYS_PATH} style={{ fontSize: 13, fontWeight: 700, color: '#963B27' }}>See every payment →</Link>
+          {holders.length > 3 ? ` · +${holders.length - 3} more` : ''}
+        </span>
+        <Link href={CASH_JOURNEYS_PATH} style={{ marginLeft: 'auto', fontWeight: 600, color: '#963B27' }}>See every payment →</Link>
       </section>
     )
   }
@@ -71,19 +72,19 @@ export function UnclosedFundsCard() {
   const oldest = Math.max(...holding.map(p => p.ageHours))
   return (
     <section style={card} aria-label="Money you are holding">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <Landmark size={20} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#6A3208' }}>
+      <div style={{ display: 'contents' }}>
+        <Landmark size={16} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
+        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
           You are holding {formatINR(total)} that has not reached the company
         </h2>
       </div>
-      <div style={{ fontSize: 13, color: AGE_COLOUR(oldest) }}>
+      <div style={{ color: AGE_COLOUR(oldest) }}>
         {holding.length} {holding.length === 1 ? 'payment' : 'payments'} · oldest {waitingAge(oldest)}.
         {data.custodians.length > 0 ? ` Hand it to ${data.custodians.map(c => c.fullName).join(' or ')}, or to a senior.` : ''}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="boe-btn boe-btn-primary" onClick={() => setHandOverOpen(true)}>Hand over</button>
-        <Link href={CASH_JOURNEYS_PATH} className="boe-btn boe-btn-secondary" style={{ textDecoration: 'none' }}>See the payments</Link>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
+        <button type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 32, padding: '4px 12px' }} onClick={() => setHandOverOpen(true)}>Hand over</button>
+        <Link href={CASH_JOURNEYS_PATH} className="boe-btn boe-btn-secondary" style={{ textDecoration: 'none', minHeight: 32, padding: '4px 12px' }}>See the payments</Link>
       </div>
       {handOverOpen && <HandoverModal onClose={() => setHandOverOpen(false)} />}
     </section>
