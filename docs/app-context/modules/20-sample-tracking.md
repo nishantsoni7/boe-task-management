@@ -81,3 +81,6 @@ API (`src/app/api/samples/`): `POST /notify` (events: sample_request_created, _a
 - Read: `src/app/samples/page.tsx` (RequestCard handlers and the gate expressions), `20260904000000_sample_tracking_view_parent_gate.sql` (current policies), `20260630` (requester transitions), `src/app/api/samples/notify/route.ts`, `src/lib/permissions/modules.ts` sample block.
 - Query: `select polname, pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid) from pg_policy where polrelid='sample_dispatches'::regclass`; list `sample_notifications` columns; effective permissions for dispatch/receive/mark_lost/close holders.
 - Run: `sampleReceiveAction.test.ts`; sign in as admin, requester, receiver for a manual click-through of every transition.
+
+## List paging (2026-10-23)
+- The list is server-paged: 30 rows per tab page, exact per-tab counts from head queries, no whole-table read. Rules in `src/lib/samples/listQuery.ts`, hooks in `src/hooks/queries/useSampleRequests.ts`, shared `usePagedQuery` + `Pagination`. Cache keys include the effective (View As) user.

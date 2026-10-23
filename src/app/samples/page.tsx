@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -17,6 +18,9 @@ import { SamplesLayout, TABS, type TabKey } from '@/components/layout/SamplesLay
 import { QRCodeSVG } from 'qrcode.react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { Pagination } from '@/components/ui/Pagination'
+import { useSamplePage, useSampleTabCounts } from '@/hooks/queries/useSampleRequests'
+import { ownRequestsOnly } from '@/lib/samples/listQuery'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,9 +129,10 @@ function mapRows(rows: any[]): SampleRequest[] {
 export default function SamplesPage() {
   const [profile, setProfile]         = useState<UserProfile | null>(null)
   const [myPermissions, setMyPermissions] = useState<Set<string>>(new Set())
-  const [requests, setRequests]       = useState<SampleRequest[]>([])
   const [loading, setLoading]         = useState(true)
   const [activeTab, setActiveTab]     = useState<TabKey>('all')
+  const [page, setPage]               = useState(1)
+  const queryClient = useQueryClient()
   const [showModal, setShowModal]     = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const router   = useRouter()
@@ -142,32 +147,18 @@ export default function SamplesPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: profileData }, { data: rows, error: rowsErr }, myEffective, countRes] = await Promise.all([
+      const [{ data: profileData }, myEffective, countRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', session.user.id)
           .single(),
-        supabase
-          .from('sample_dispatches')
-          .select(`
-            *,
-            requested_by_user:users!requested_by(full_name),
-            approved_by_user:users!approved_by(full_name),
-            rejected_by_user:users!rejected_by(full_name),
-            received_by_user:users!received_by(full_name),
-            dispatched_by_user:users!dispatched_by(full_name),
-            lost_by_user:users!lost_by(full_name)
-          `)
-          .order('created_at', { ascending: false }),
         getEffectivePermissions(supabase, session.user.id, 'sample_tracking').catch(() => []),
         fetch('/api/samples/notifications?count=1'),
       ])
 
-      if (rowsErr) console.error('[samples] init fetch failed:', rowsErr)
       setProfile(profileData as UserProfile)
       setMyPermissions(new Set(myEffective.filter(p => p.allowed).map(p => p.actionKey)))
-      if (rows) setRequests(mapRows(rows))
       if (countRes.ok) {
         const { unreadCount: count } = await countRes.json()
         setUnreadCount(count ?? 0)
@@ -200,21 +191,14 @@ export default function SamplesPage() {
     loadViewAsPermissions()
   }, [viewAsUserId, supabase])
 
+  // Every action re-reads only the cached pages and tab counts it changed,
+  // instead of downloading the whole table again.
   const refresh = async () => {
-    const { data: rows, error: rowsErr } = await supabase
-      .from('sample_dispatches')
-      .select(`
-        *,
-        requested_by_user:users!requested_by(full_name),
-        approved_by_user:users!approved_by(full_name),
-        rejected_by_user:users!rejected_by(full_name),
-        received_by_user:users!received_by(full_name),
-        dispatched_by_user:users!dispatched_by(full_name),
-        lost_by_user:users!lost_by(full_name)
-      `)
-      .order('created_at', { ascending: false })
-    if (rowsErr) console.error('[samples] refresh fetch failed:', rowsErr)
-    if (rows) setRequests(mapRows(rows))
+    await queryClient.invalidateQueries({
+      predicate: q =>
+        q.queryKey[0] === 'samples' ||
+        (q.queryKey[0] === 'paged' && String(q.queryKey[1]).startsWith('["samples"')),
+    })
   }
 
   // Effective identity — must be above buckets useMemo so filtering can use them
@@ -231,39 +215,29 @@ export default function SamplesPage() {
     effectivePerms.has('mark_lost') ||
     effectivePerms.has('close')
 
-  // Filter rows to what the effective user is allowed to see
-  const filteredRequests = useMemo(() => {
-    if (effectiveIsAdmin) return requests
-    return requests.filter(r =>
-      r.requested_by === effectiveUserId || effectiveHasAnySamplePermission
-    )
-  }, [requests, effectiveIsAdmin, effectiveUserId, effectiveHasAnySamplePermission])
+  // The database narrows to what the effective user may see and to the active
+  // tab, 30 rows at a time; the page only renders what comes back.
+  const reader = {
+    userId: effectiveUserId,
+    ownOnly: ownRequestsOnly({
+      isAdmin: effectiveIsAdmin,
+      hasAnySamplePermission: effectiveHasAnySamplePermission,
+      userId: effectiveUserId,
+    }),
+  }
+  const list = useSamplePage(reader, activeTab, page, !loading)
+  const tabCounts = useSampleTabCounts(reader, !loading)
+  const visibleRequests = useMemo(() => mapRows(list.rows), [list.rows])
 
-  const buckets = useMemo<Record<TabKey, SampleRequest[]>>(() => ({
-    all:              filteredRequests,
-    pending_approval: filteredRequests.filter(r => r.status === 'pending_approval'),
-    approved:         filteredRequests.filter(r => r.status === 'approved'),
-    qr_submitted:     filteredRequests.filter(r => r.status === 'qr_submitted'),
-    dispatched:       [...filteredRequests.filter(r => r.status === 'dispatched')]
-      .sort((a, b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0)),
-    rejected:         filteredRequests.filter(r => r.status === 'rejected'),
-    closed:           filteredRequests.filter(r => r.status === 'returned' || r.status === 'lost'),
-  }), [filteredRequests])
+  const selectTab = (tab: TabKey) => { setActiveTab(tab); setPage(1) }
 
   if (loading) return <LoadingScreen />
 
-  const counts: Record<TabKey, number> = {
-    all:              buckets.all.length,
-    pending_approval: buckets.pending_approval.length,
-    approved:         buckets.approved.length,
-    qr_submitted:     buckets.qr_submitted.length,
-    dispatched:       buckets.dispatched.length,
-    rejected:         buckets.rejected.length,
-    closed:           buckets.closed.length,
+  const counts: Record<TabKey, number> = tabCounts.data ?? {
+    all: 0, pending_approval: 0, approved: 0, qr_submitted: 0, dispatched: 0, rejected: 0, closed: 0,
   }
 
   const activeTabMeta = TABS.find(t => t.key === activeTab)!
-  const visibleRequests = buckets[activeTab]
 
   return (
     <>
@@ -273,7 +247,7 @@ export default function SamplesPage() {
         counts={counts}
         unreadCount={unreadCount}
         title="Sample Tracking"
-        onTabSelect={setActiveTab}
+        onTabSelect={selectTab}
         onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
         actions={
           <button
@@ -315,10 +289,19 @@ export default function SamplesPage() {
             </span>
           </div>
 
-          {visibleRequests.length === 0 ? (
+          {list.isError ? (
+            <div role="alert" style={{ padding: '24px 0', fontSize: '13px', color: colors.muted }}>
+              Could not load sample requests.{' '}
+              <button type="button" onClick={() => list.refetch()} style={{ background: 'none', border: 'none', color: colors.primary, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
+            </div>
+          ) : list.isLoading ? (
+            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[0, 1, 2, 3].map(i => <div key={i} className="boe-skel" style={{ height: '88px', borderRadius: '10px' }} />)}
+            </div>
+          ) : visibleRequests.length === 0 ? (
             <EmptyState />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', opacity: list.isFetchingNext ? 0.6 : 1, transition: 'opacity 0.12s' }}>
               {visibleRequests.map(r => (
                 <RequestCard
                   key={r.id}
@@ -335,6 +318,15 @@ export default function SamplesPage() {
               ))}
             </div>
           )}
+
+          <Pagination
+            label="Sample request pages"
+            page={page}
+            total={list.total}
+            busy={list.isFetchingNext}
+            onPage={next => { setPage(next); window.scrollTo({ top: 0 }) }}
+            onIntent={list.prefetchPage}
+          />
         </div>
       </SamplesLayout>
 
