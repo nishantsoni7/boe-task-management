@@ -19,6 +19,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Owner steps.** Apply migration 20270409000000, then test on a real member.
 - **Rollback.** Drop the table; revert the PR.
 
+## 2026-10-23 — Sidebar footer shows the designation, not the department (PR open) · no migration
+- **Owner request.** Under the signed-in name (bottom left) show the Designation, not the Department.
+- **Cause.** The footer used `employeeSubtitle` (title · department), and the shared profile query never loads `position` / `designation_level`, so only the department appeared.
+- **Fix.** The footer reads `position, designation_level` itself (own query, 5 min cache) and shows the job title, else the level, else nothing. The shared profile and permission queries are unchanged: a test forbids permission code from reading `designation_level`. View-as switcher and Account page unchanged.
+- **Proof.** tsc, 127 related tests (designation, view-as, no-star-select, members, task navigation). Full suite not run. Not seen on screen.
+
 ## 2026-10-22 — Inventory: standard price and retail price (PR open) · migration 20270408000000 (APPLIED 2026-10-22)
 - **Owner request.** Each product carries two prices: STANDARD (product with basic packaging) and RETAIL (inclusive of taxes, transportation and packaging).
 - **What.** `inventory_items.price` stays the standard price; new NOT NULL `retail_price` (CHECK retail >= standard, existing rows backfilled retail = standard). `inventory_save_item` requires both; `inventory_bookings_list` returns both. Form, card, detail, booking sheet and requests show both; sort, stats value, booking totals and the WhatsApp Price line use retail.
