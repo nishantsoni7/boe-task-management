@@ -9,6 +9,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Change.** Details row grid now has a modifier: `--rail` for a reviewer (panel stays right, sticky) and `--banner` for everyone else (panel full-width above, Supporting details and Internal order details in two columns at ≥860px container width). Layout/CSS only, in globals.css and the second split row of drafts/[submissionId]/page.tsx.
 - **Proof.** piDetail.render.test.tsx (new pin). NOT seen on screen.
 
+## 2026-10-23 — Orders dashboard for approvers: PI review lists first (PR #430) · no migration
+- **Owner request.** The approver's Orders dashboard should lead with the PIs waiting for their decision, show revenue more professionally, and keep only three cards (Payments pending, Fabric or finish pending, Ready for production) at the bottom; the delayed/not-aligned/due tab board goes.
+- **What.** New `PiReviewSections`: **PI submitted for review** (full width) and, only when non-empty, **PI changes requested** (revised PIs awaiting the approver). Revenue card restyled. `OverviewCards` takes `only`; the PI Drafts queue pill is hidden for approvers. Other roles unchanged. "Changes requested" was read as revised PIs on confirmed Orders awaiting approval (`order_pi_versions.status = pending`), not PIs sent back to sales — confirm with the owner.
+- **Proof.** tsc; 181 dashboard tests. NOT seen on screen.
+- **Rollback.** Revert the PR.
+
 ## 2026-10-23 — List pagination: shared pager + Sample Tracking paged (branch feat/list-pagination, PR open) · no migration
 - **Why.** Lists that download a whole table and filter in the browser are silently clipped at PostgREST's 1000-row cap and slow down with every row added. Audit found ~30 such screens.
 - **Shared pieces.** `src/lib/listPaging.ts` (30-row pages, ranges, page strip), `usePagedQuery` (keeps the previous page on screen within the same scope, reads the next page early), `components/ui/Pagination.tsx` (renders nothing at 30 rows or fewer; prefetches on hover/focus).

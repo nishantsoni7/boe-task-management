@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b7cf1f92` — Merge remote-tracking branch 'origin/main' into feat/list-pagination
-- Commits on this branch: 986
+- Commit: `04997f04` — Orders dashboard: approvers see PI review lists first, restyled revenue, three cards
+- Commits on this branch: 984
 - Pages (`page.tsx`): 146   API routes (`route.ts`): 154
 - Migrations: 358 (first `20260530_create_positions.sql`, latest `20270410000100_finance_cash_handovers.sql`)
 - Tables ever created: 165 (dropped at some point: 7)   SQL functions: 755   Enums: 0
@@ -14,12 +14,10 @@
 
 ## Latest 25 commits
 
-- `b7cf1f92` 2026-10-23 Merge remote-tracking branch 'origin/main' into feat/list-pagination
-- `06826a8d` 2026-10-23 Docs: handover migrations applied to production
-- `c909cc60` 2026-10-23 Merge remote-tracking branch 'origin/main' into feat/list-pagination
+- `04997f04` 2026-10-23 Orders dashboard: approvers see PI review lists first, restyled revenue, three cards
+- `c3beae77` 2026-10-23 Docs: handover migrations applied to production
 - `c1b67d29` 2026-10-23 Docs: record cash handover merge (#426) and post-merge backup
 - `c18d8e73` 2026-10-23 Finance: cash handover with acceptance
-- `5a84bb04` 2026-10-23 Paginate Sample Tracking and add shared list paging
 - `fd597e1e` 2026-10-23 Changelog: Order header draws without waiting for the combined read
 - `00a6bcb8` 2026-10-23 Order page: draw the header from the order row read alongside the combined read
 - `b2c4d469` 2026-10-23 Sidebar footer: show designation instead of department (#424)
@@ -39,6 +37,8 @@
 - `ffc06d94` 2026-10-22 Apply the BOE One brand kit v1.0 (#410)
 - `b3f43c59` 2026-10-22 Order and PI Draft pages: prepare once, serve from the cache
 - `6a3f1cc1` 2026-10-22 Payment delete: treat proof files already absent from storage as removed (#408)
+- `2333645f` 2026-10-22 Show BOE One in every sidebar; text wordmark on sign-in (#406)
+- `5dc67187` 2026-10-22 Consistency pass on Orders and Finance
 
 ## Pages by top-level area
 
