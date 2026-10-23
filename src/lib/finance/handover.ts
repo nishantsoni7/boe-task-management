@@ -9,6 +9,13 @@
 // remind is decided by the RPCs in 20270410000100 (create_cash_handover and
 // friends) and echoed to the browser as the can_* flags of
 // finance_handover_list. The browser only draws what the server already allowed.
+//
+// TYPED CASH (20270412000000). A handover may also carry one typed cash line:
+// cash FROM THE GIVER'S CASH IN HAND (up to what they have available) and/or NEW
+// cash with a "where is it from" note. Typed cash is tracked as a per-person
+// cash-in-hand balance (finance_cash_balance_entries), moved only on accept.
+
+import { amountInputProblem } from '@/lib/currency'
 
 export const HANDOVER_STATUSES = ['pending', 'accepted', 'disputed', 'cancelled'] as const
 export type HandoverStatus = typeof HANDOVER_STATUSES[number]
@@ -48,6 +55,11 @@ export type Handover = {
   recipientId: string
   recipientName: string
   totalAmount: number
+  /** Typed cash taken from the giver's cash in hand (20270412000000). */
+  cashFromHand: number
+  /** Typed cash not recorded anywhere before this handover, with its source. */
+  cashNew: number
+  cashNewSource: string | null
   handedAt: string
   note: string | null
   createdAt: string
@@ -98,6 +110,9 @@ export function readHandover(raw: unknown): Handover | null {
     recipientId: str(r.recipient_id) ?? '',
     recipientName: str(r.recipient_name) ?? 'Unknown user',
     totalAmount: num(r.total_amount),
+    cashFromHand: num(r.cash_from_hand),
+    cashNew: num(r.cash_new),
+    cashNewSource: str(r.cash_new_source),
     handedAt: str(r.handed_at) ?? '',
     note: str(r.note),
     createdAt: str(r.created_at) ?? '',
@@ -234,6 +249,26 @@ export function handoverPaymentCount(h: Pick<Handover, 'items'>): string {
   return `${n} ${n === 1 ? 'payment' : 'payments'}`
 }
 
+/** Typed cash on a handover (from hand + new), in rupees. */
+export function handoverCash(h: Pick<Handover, 'cashFromHand' | 'cashNew'>): number {
+  return sumRupees([h.cashFromHand, h.cashNew])
+}
+
+/**
+ * What a handover carries, in a few words: "2 payments", "₹500 cash", or
+ * "2 payments + ₹500 cash". `money` is the caller's formatter (formatINR).
+ */
+export function handoverContentsLabel(
+  h: Pick<Handover, 'items' | 'cashFromHand' | 'cashNew'>,
+  money: (n: number) => string,
+): string {
+  const parts: string[] = []
+  if (h.items.length > 0) parts.push(handoverPaymentCount(h))
+  const cash = handoverCash(h)
+  if (cash > 0) parts.push(`${money(cash)} cash`)
+  return parts.length > 0 ? parts.join(' + ') : 'nothing'
+}
+
 // ── The create form ──────────────────────────────────────────────────────────
 
 export type HandoverCandidate = {
@@ -286,10 +321,32 @@ export function handoverDraftError(draft: {
   recipientId: string
   paymentIds: readonly string[]
   handedAt: string
+  /** Typed amounts as entered (raw input text); '' means none. */
+  cashFromHand?: string
+  cashNew?: string
+  cashNewSource?: string
+  /** The giver's available cash in hand, when known. */
+  available?: number | null
 }): string | null {
   if (!draft.recipientId) return 'Choose who you are handing the cash to.'
-  if (draft.paymentIds.length === 0) return 'Choose at least one payment to hand over.'
+  const fromHandRaw = (draft.cashFromHand ?? '').trim()
+  const newRaw = (draft.cashNew ?? '').trim()
+  const fromHandProblem = amountInputProblem(fromHandRaw)
+  if (fromHandProblem) return `Cash from your hand: ${fromHandProblem}`
+  const newProblem = amountInputProblem(newRaw)
+  if (newProblem) return `New cash: ${newProblem}`
+  const fromHand = fromHandRaw ? Number(fromHandRaw) || 0 : 0
+  const cashNew = newRaw ? Number(newRaw) || 0 : 0
+  if (draft.paymentIds.length === 0 && fromHand <= 0 && cashNew <= 0) {
+    return 'Choose a payment or enter a cash amount to hand over.'
+  }
   if (draft.paymentIds.length > 50) return 'A handover can carry at most 50 payments.'
+  if (fromHand > 0 && typeof draft.available === 'number' && fromHand > draft.available) {
+    return 'That is more than the cash you have available in hand.'
+  }
+  const source = (draft.cashNewSource ?? '').trim()
+  if (cashNew > 0 && source.length < 3) return 'Say where the new cash came from.'
+  if (cashNew > 0 && source.length > 200) return 'Keep where the cash came from under 200 characters.'
   if (!draft.handedAt.trim()) return 'Enter the date and time of the handover.'
   const when = new Date(draft.handedAt)
   if (Number.isNaN(when.getTime())) return 'Enter a valid date and time.'
@@ -327,4 +384,146 @@ export function handoverErrorMessage(error: { message?: string } | null | undefi
   const c = /CUSTODY_[A-Z_]+:\s*([\s\S]+)$/.exec(raw)
   if (c) return c[1].trim()
   return 'Something went wrong. Please try again.'
+}
+
+// ── Cash in hand (20270412000000) ────────────────────────────────────────────
+//
+// A person's balance is the sum of their append-only ledger entries; available
+// is the balance minus the typed cash they already offered in open handovers.
+// Both numbers come from the database (finance_my_cash_balance /
+// finance_cash_balances); nothing here recomputes them.
+
+export const CASH_ENTRY_KINDS = ['handover_in', 'handover_out', 'new_cash', 'cash_out', 'adjustment'] as const
+export type CashEntryKind = typeof CASH_ENTRY_KINDS[number]
+
+export const CASH_OUT_KINDS = ['bank_deposit', 'paid_out', 'other'] as const
+export type CashOutKind = typeof CASH_OUT_KINDS[number]
+
+export const CASH_OUT_KIND_LABEL: Record<CashOutKind, string> = {
+  bank_deposit: 'Deposited in the bank',
+  paid_out:     'Paid out',
+  other:        'Other',
+}
+
+export type CashEntry = {
+  id: string
+  delta: number
+  kind: CashEntryKind
+  cashOutKind: CashOutKind | null
+  note: string | null
+  handoverId: string | null
+  handoverHumanId: string | null
+  counterpartName: string | null
+  createdAt: string
+}
+
+export type CashBalance = {
+  balance: number
+  reserved: number
+  available: number
+  entries: CashEntry[]
+}
+
+export type CashBalanceRow = {
+  userId: string
+  fullName: string
+  balance: number
+  reserved: number
+  available: number
+}
+
+const isCashEntryKind = (v: unknown): v is CashEntryKind =>
+  typeof v === 'string' && (CASH_ENTRY_KINDS as readonly string[]).includes(v)
+const isCashOutKind = (v: unknown): v is CashOutKind =>
+  typeof v === 'string' && (CASH_OUT_KINDS as readonly string[]).includes(v)
+
+export function readCashBalance(raw: unknown): CashBalance {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Raw
+  const entries = Array.isArray(r.entries) ? r.entries : []
+  return {
+    balance: num(r.balance),
+    reserved: num(r.reserved),
+    available: num(r.available),
+    entries: entries.flatMap((e): CashEntry[] => {
+      const o = (e ?? {}) as Raw
+      const id = str(o.id)
+      if (!id || !isCashEntryKind(o.kind)) return []
+      return [{
+        id,
+        delta: num(o.delta),
+        kind: o.kind,
+        cashOutKind: isCashOutKind(o.cash_out_kind) ? o.cash_out_kind : null,
+        note: str(o.note),
+        handoverId: str(o.handover_id),
+        handoverHumanId: str(o.handover_human_id),
+        counterpartName: str(o.counterpart_name),
+        createdAt: str(o.created_at) ?? '',
+      }]
+    }),
+  }
+}
+
+export function readCashBalances(raw: unknown): { allowed: boolean; canAdjust: boolean; rows: CashBalanceRow[] } {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Raw
+  const rows = Array.isArray(r.rows) ? r.rows : []
+  return {
+    allowed: r.allowed === true,
+    canAdjust: r.can_adjust === true,
+    rows: rows.flatMap((x): CashBalanceRow[] => {
+      const o = (x ?? {}) as Raw
+      const userId = str(o.user_id)
+      if (!userId) return []
+      return [{
+        userId,
+        fullName: str(o.full_name) ?? 'Unknown user',
+        balance: num(o.balance),
+        reserved: num(o.reserved),
+        available: num(o.available),
+      }]
+    }),
+  }
+}
+
+/** One ledger line in words, from the holder's own seat. */
+export function cashEntryLabel(e: CashEntry): string {
+  switch (e.kind) {
+    case 'handover_in':  return `Received from ${e.counterpartName ?? 'someone'}${e.handoverHumanId ? ` (${e.handoverHumanId})` : ''}`
+    case 'handover_out': return `Handed to ${e.counterpartName ?? 'someone'}${e.handoverHumanId ? ` (${e.handoverHumanId})` : ''}`
+    case 'new_cash':     return `New cash from ${e.counterpartName ?? 'someone'}${e.note ? `: ${e.note}` : ''}`
+    case 'cash_out':     return `${e.cashOutKind ? CASH_OUT_KIND_LABEL[e.cashOutKind] : 'Cash out'}${e.note ? `: ${e.note}` : ''}`
+    case 'adjustment':   return `Adjusted by ${e.counterpartName ?? 'an administrator'}${e.note ? `: ${e.note}` : ''}`
+  }
+}
+
+/** What is wrong with a cash-out form, or null. Mirrors record_cash_out. */
+export function cashOutError(draft: { amount: string; kind: string; note: string; available: number | null }): string | null {
+  const raw = draft.amount.trim()
+  const problem = amountInputProblem(raw)
+  if (problem) return problem
+  const amount = raw ? Number(raw) || 0 : 0
+  if (amount <= 0) return 'Enter the amount.'
+  if (typeof draft.available === 'number' && amount > draft.available) {
+    return 'That is more than the cash you have available in hand.'
+  }
+  if (!(CASH_OUT_KINDS as readonly string[]).includes(draft.kind)) return 'Choose what happened to the cash.'
+  const note = draft.note.trim()
+  if (note.length < 3) return 'Add a short note (at least a few characters).'
+  if (note.length > 500) return 'Keep the note under 500 characters.'
+  return null
+}
+
+/** What is wrong with an administrator's adjustment, or null. Mirrors adjust_cash_balance. */
+export function adjustmentError(draft: { amount: string; direction: 'add' | 'remove'; reason: string; available: number }): string | null {
+  const raw = draft.amount.trim()
+  const problem = amountInputProblem(raw)
+  if (problem) return problem
+  const amount = raw ? Number(raw) || 0 : 0
+  if (amount <= 0) return 'Enter the amount.'
+  if (draft.direction === 'remove' && amount > draft.available) {
+    return 'That would take the balance below what this person has available.'
+  }
+  const reason = draft.reason.trim()
+  if (reason.length < 3) return 'Give a reason (at least a few characters).'
+  if (reason.length > 500) return 'Keep the reason under 500 characters.'
+  return null
 }

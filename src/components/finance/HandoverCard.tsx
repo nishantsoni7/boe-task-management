@@ -11,7 +11,8 @@ import {
   HANDOVER_REASON_MAX,
   HANDOVER_STATUS_LABEL,
   handoverHeadline,
-  handoverPaymentCount,
+  handoverCash,
+  handoverContentsLabel,
   handoverReasonError,
   handoverRole,
   handoverSeverity,
@@ -102,7 +103,7 @@ export function HandoverCard({
             {open ? handoverHeadline(h, role) : `${h.giverName} → ${h.recipientName}`}
           </h3>
           <div className="boe-handover-meta">
-            {h.humanId} · {handoverPaymentCount(h)} · handed {h.handedAt ? formatDateTime(h.handedAt) : '—'}
+            {h.humanId} · {handoverContentsLabel(h, formatINR)} · handed {h.handedAt ? formatDateTime(h.handedAt) : '—'}
             {h.note ? ` · “${h.note}”` : ''}
           </div>
         </div>
@@ -133,7 +134,19 @@ export function HandoverCard({
       {error && <div className="boe-handover-error" role="alert">{error}</div>}
 
       {showItems && (
-        <ul className="boe-handover-items" aria-label="Payments in this handover">
+        <ul className="boe-handover-items" aria-label="What this handover carries">
+          {h.cashFromHand > 0 && (
+            <li>
+              <span><strong>Cash</strong> · from {h.giverName}&apos;s cash in hand</span>
+              <span className="ho-item-amount">{formatINR(h.cashFromHand)}</span>
+            </li>
+          )}
+          {h.cashNew > 0 && (
+            <li>
+              <span><strong>New cash</strong>{h.cashNewSource ? ` · ${h.cashNewSource}` : ''}</span>
+              <span className="ho-item-amount">{formatINR(h.cashNew)}</span>
+            </li>
+          )}
           {h.items.map(i => (
             <li key={i.paymentId}>
               <span>
@@ -148,7 +161,7 @@ export function HandoverCard({
         </ul>
       )}
 
-      {(open || h.items.length > 0) && (
+      {(open || h.items.length > 0 || handoverCash(h) > 0) && (
         <div className="boe-handover-actions">
           {h.canAccept && (
             <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { setError(null); setDialog('accept') }}>
@@ -179,7 +192,7 @@ export function HandoverCard({
             aria-expanded={showItems}
             onClick={() => setShowItems(v => !v)}
           >
-            {showItems ? 'Hide payments' : 'Show payments'}
+            {showItems ? 'Hide details' : 'Show details'}
             {showItems ? <ChevronUp size={14} style={{ verticalAlign: 'middle', marginLeft: 4 }} /> : <ChevronDown size={14} style={{ verticalAlign: 'middle', marginLeft: 4 }} />}
           </button>
         </div>
@@ -199,8 +212,9 @@ export function HandoverCard({
         >
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
             Accept only after the cash is in your hands. You are confirming that you received{' '}
-            <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> for {handoverPaymentCount(h)}.
-            You will then be the holder of these payments in the custody trail.
+            <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> ({handoverContentsLabel(h, formatINR)}).
+            {h.items.length > 0 && ' You will then be the holder of these payments in the custody trail.'}
+            {handoverCash(h) > 0 && ` ${formatINR(handoverCash(h))} will be added to your cash in hand.`}
           </p>
         </HandoverConfirmDialog>
       )}

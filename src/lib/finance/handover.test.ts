@@ -15,6 +15,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  adjustmentError,
+  cashEntryLabel,
+  cashOutError,
+  handoverCash,
+  handoverContentsLabel,
+  readCashBalance,
+  readCashBalances,
   handoverDraftError,
   handoverErrorMessage,
   handoverHeadline,
@@ -150,7 +157,7 @@ describe('the create form and the reasons', () => {
 
   test('each missing piece is named', () => {
     assert.match(handoverDraftError({ ...ok, recipientId: '' }) ?? '', /who you are handing/)
-    assert.match(handoverDraftError({ ...ok, paymentIds: [] }) ?? '', /at least one payment/)
+    assert.match(handoverDraftError({ ...ok, paymentIds: [] }) ?? '', /payment or enter a cash amount/)
     assert.match(handoverDraftError({ ...ok, handedAt: '' }) ?? '', /date and time/)
     assert.match(handoverDraftError({ ...ok, handedAt: 'not a date' }) ?? '', /valid date/)
   })
@@ -281,5 +288,111 @@ describe('source contracts', () => {
     const route = read('src/app/api/finance/handovers/remind/route.ts')
     assert.match(route, /CRON_SECRET/)
     assert.match(route, /timingSafeEqual/)
+  })
+})
+
+describe('typed cash and cash in hand (20270412000000)', () => {
+  const money = (n: number) => `Rs${n}`
+  const CASH_SQL = read('supabase/migrations/20270412000000_finance_handover_cash_balance.sql')
+  const strip = (s: string) => s.replace(/--.*$/gm, '')
+
+  test('a handover row carries its typed cash line', () => {
+    const x = h({ cash_from_hand: 300, cash_new: 200.5, cash_new_source: 'Acme at office' })
+    assert.equal(x.cashFromHand, 300)
+    assert.equal(x.cashNew, 200.5)
+    assert.equal(x.cashNewSource, 'Acme at office')
+    assert.equal(handoverCash(x), 500.5)
+  })
+
+  test('an old row without cash fields reads as no typed cash', () => {
+    const x = h()
+    assert.equal(x.cashFromHand, 0)
+    assert.equal(x.cashNew, 0)
+    assert.equal(x.cashNewSource, null)
+  })
+
+  test('the contents label names payments, cash, or both', () => {
+    assert.equal(handoverContentsLabel(h(), money), '1 payment')
+    assert.equal(handoverContentsLabel(h({ items: [], cash_new: 50, cash_new_source: 'tin' }), money), 'Rs50 cash')
+    assert.equal(handoverContentsLabel(h({ cash_from_hand: 10 }), money), '1 payment + Rs10 cash')
+  })
+
+  const base = { recipientId: 'u', paymentIds: [] as string[], handedAt: '2026-01-01T10:00' }
+
+  test('a cash-only draft is valid; an empty one is not', () => {
+    assert.equal(handoverDraftError({ ...base, cashNew: '500', cashNewSource: 'Acme' }), null)
+    assert.equal(handoverDraftError({ ...base, cashFromHand: '100', available: 200 }), null)
+    assert.match(handoverDraftError(base) ?? '', /payment or enter a cash amount/)
+    assert.match(handoverDraftError({ ...base, cashNew: '0' }) ?? '', /payment or enter a cash amount/)
+  })
+
+  test('new cash needs a source; from-hand cannot exceed what is available', () => {
+    assert.match(handoverDraftError({ ...base, cashNew: '500' }) ?? '', /where the new cash came from/)
+    assert.match(handoverDraftError({ ...base, cashNew: '500', cashNewSource: 'ab' }) ?? '', /where the new cash came from/)
+    assert.match(handoverDraftError({ ...base, cashFromHand: '300', available: 200 }) ?? '', /more than the cash you have available/)
+  })
+
+  test('a typed amount with three decimals is refused, never rounded', () => {
+    assert.match(handoverDraftError({ ...base, cashNew: '10.555', cashNewSource: 'x shop' }) ?? '', /two decimal places/)
+  })
+
+  test('balances are read field for field, unknown entry kinds dropped', () => {
+    const b = readCashBalance({
+      balance: '650', reserved: 100, available: 550,
+      entries: [
+        { id: 'e1', delta: -600, kind: 'handover_out', handover_human_id: 'H-0002', counterpart_name: 'Nita', created_at: 'x' },
+        { id: 'e2', delta: 50, kind: 'mystery', created_at: 'x' },
+        { id: 'e3', delta: -100, kind: 'cash_out', cash_out_kind: 'bank_deposit', note: 'slip 1', created_at: 'x' },
+      ],
+    })
+    assert.equal(b.balance, 650); assert.equal(b.available, 550)
+    assert.deepEqual(b.entries.map(e => e.id), ['e1', 'e3'])
+    assert.equal(cashEntryLabel(b.entries[0]), 'Handed to Nita (H-0002)')
+    assert.equal(cashEntryLabel(b.entries[1]), 'Deposited in the bank: slip 1')
+    const all = readCashBalances({ allowed: true, can_adjust: 'yes', rows: [{ user_id: 'u1', full_name: 'Owner', balance: 5, reserved: 0, available: 5 }, {}] })
+    assert.equal(all.allowed, true); assert.equal(all.canAdjust, false); assert.equal(all.rows.length, 1)
+  })
+
+  test('cash out and adjustment forms mirror the database rules', () => {
+    assert.equal(cashOutError({ amount: '100', kind: 'bank_deposit', note: 'slip 44', available: 200 }), null)
+    assert.match(cashOutError({ amount: '300', kind: 'bank_deposit', note: 'slip 44', available: 200 }) ?? '', /more than/)
+    assert.match(cashOutError({ amount: '100', kind: 'bank_deposit', note: 'x', available: 200 }) ?? '', /short note/)
+    assert.match(cashOutError({ amount: '100', kind: 'nope', note: 'slip 44', available: 200 }) ?? '', /what happened/)
+    assert.equal(adjustmentError({ amount: '50', direction: 'remove', reason: 'counted short', available: 100 }), null)
+    assert.match(adjustmentError({ amount: '150', direction: 'remove', reason: 'counted short', available: 100 }) ?? '', /below/)
+    assert.equal(adjustmentError({ amount: '150', direction: 'add', reason: 'opening', available: 0 }), null)
+    assert.match(adjustmentError({ amount: '10', direction: 'add', reason: '', available: 0 }) ?? '', /reason/)
+  })
+
+  test('create_cash_handover has exactly one signature after the migration', () => {
+    assert.match(CASH_SQL, /drop function if exists public\.create_cash_handover\(uuid, uuid\[\], timestamptz, text, text\);/)
+    assert.match(CASH_SQL, /grant execute on function public\.create_cash_handover\(uuid, uuid\[\], timestamptz, text, text, numeric, numeric, text\) to authenticated/)
+  })
+
+  test('the ledger is append-only and only the RPCs write it', () => {
+    assert.match(CASH_SQL, /revoke all on public\.finance_cash_balance_entries from public, anon, authenticated;/)
+    assert.match(CASH_SQL, /grant select on public\.finance_cash_balance_entries to authenticated;/)
+    assert.match(CASH_SQL, /before update or delete on public\.finance_cash_balance_entries/)
+    for (const fn of ['finance_cash_balance', 'finance_cash_reserved', 'finance_cash_available', 'finance_cash_lock']) {
+      assert.ok(CASH_SQL.includes(`revoke all on function public.${fn}(uuid) from public, anon, authenticated;`), fn)
+    }
+  })
+
+  test('every write to a balance takes the person lock first; adjust is admin only', () => {
+    const code = strip(CASH_SQL)
+    assert.match(code, /perform public\.finance_cash_lock\(v_actor\);\s*if v_from_hand > public\.finance_cash_available\(v_actor\)/)
+    assert.match(code, /perform public\.finance_cash_lock\(least\(v_h\.giver_user_id, v_h\.recipient_user_id\)\)/)
+    assert.match(code, /u\.role = 'admin'[\s\S]{0,120}only an administrator can adjust cash in hand/)
+  })
+
+  test('still not financial: no payment amount, total or allocation is written', () => {
+    const code = strip(CASH_SQL)
+    assert.doesNotMatch(code, /finance_payment_allocations/)
+    assert.doesNotMatch(code, /update\s+public\.finance_payment_requests/i)
+  })
+
+  test('the form sends the three cash arguments by name', () => {
+    const hook = read('src/hooks/queries/useHandovers.ts')
+    for (const arg of ['p_cash_from_hand', 'p_cash_new', 'p_cash_new_source']) assert.ok(hook.includes(arg), arg)
   })
 })

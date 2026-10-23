@@ -13,6 +13,11 @@ import {
   readHandoverCandidates,
   readHandoverRecipients,
   readHandovers,
+  readCashBalance,
+  readCashBalances,
+  type CashBalance,
+  type CashBalanceRow,
+  type CashOutKind,
   type Handover,
 } from '@/lib/finance/handover'
 
@@ -142,19 +147,61 @@ export function useHandoverFormData(enabled: boolean) {
   })
 }
 
+// ── Cash in hand (20270412000000) ────────────────────────────────────────────
+// Under HANDOVERS_KEY on purpose: every handover write invalidates that prefix,
+// and an accept or a cancel changes balances, so they refresh together.
+export const CASH_BALANCE_KEY = [...HANDOVERS_KEY, 'cash-balance'] as const
+
+/** The viewer's own cash in hand: balance, reserved in open handovers, available, recent entries. */
+export function useMyCashBalance(enabled = true) {
+  const { data: userId } = useSignedInUserId()
+  return useQuery<CashBalance | null>({
+    queryKey: [...CASH_BALANCE_KEY, 'mine', userId ?? null],
+    enabled: enabled && !!userId,
+    queryFn: async () => {
+      const { data, error } = await createClient().rpc('finance_my_cash_balance')
+      if (isHandoverFeatureMissing(error)) return null
+      if (error) throw new Error(handoverErrorMessage(error))
+      return readCashBalance(data)
+    },
+    staleTime: 15_000,
+  })
+}
+
+/** Everyone's cash in hand, for administrators and finance.view_all holders. */
+export function useCashBalances(enabled = true) {
+  const { data: userId } = useSignedInUserId()
+  return useQuery<{ allowed: boolean; canAdjust: boolean; rows: CashBalanceRow[] }>({
+    queryKey: [...CASH_BALANCE_KEY, 'all', userId ?? null],
+    enabled: enabled && !!userId,
+    queryFn: async () => {
+      const { data, error } = await createClient().rpc('finance_cash_balances')
+      if (isHandoverFeatureMissing(error)) return { allowed: false, canAdjust: false, rows: [] }
+      if (error) throw new Error(handoverErrorMessage(error))
+      return readCashBalances(data)
+    },
+    staleTime: 15_000,
+  })
+}
+
 export type CreateHandoverInput = {
   recipientId: string
   paymentIds: string[]
   handedAtIso: string | null
   note: string
+  /** Typed cash from the giver's cash in hand, in rupees (0 when none). */
+  cashFromHand: number
+  /** Typed cash not recorded before, in rupees (0 when none), and where it came from. */
+  cashNew: number
+  cashNewSource: string
   /** Minted once per open form, so a double click or a retry writes one handover. */
   idempotencyKey: string
 }
 
 /**
- * The five writes. Each one throws an Error whose message is the server's own
- * sentence, and each refreshes every handover query plus the Finance
- * notification count when it succeeds.
+ * The writes. Each one throws an Error whose message is the server's own
+ * sentence, and each refreshes every handover and cash-in-hand query plus the
+ * Finance notification count when it succeeds.
  */
 export function useHandoverActions() {
   const queryClient = useQueryClient()
@@ -180,6 +227,9 @@ export function useHandoverActions() {
       p_handed_at: input.handedAtIso,
       p_note: input.note.trim() || null,
       p_idempotency_key: input.idempotencyKey,
+      p_cash_from_hand: input.cashFromHand,
+      p_cash_new: input.cashNew,
+      p_cash_new_source: input.cashNew > 0 ? input.cashNewSource.trim() : null,
     }),
   })
   const accept = useMutation({
@@ -197,5 +247,18 @@ export function useHandoverActions() {
     mutationFn: (id: string) => run('remind_cash_handover', { p_handover_id: id }),
   })
 
-  return { create, accept, dispute, cancel, remind, refresh }
+  const recordCashOut = useMutation({
+    mutationFn: (v: { amount: number; kind: CashOutKind; note: string; idempotencyKey: string }) =>
+      run('record_cash_out', {
+        p_amount: v.amount, p_kind: v.kind, p_note: v.note.trim(), p_idempotency_key: v.idempotencyKey,
+      }),
+  })
+  const adjustBalance = useMutation({
+    mutationFn: (v: { userId: string; delta: number; reason: string; idempotencyKey: string }) =>
+      run('adjust_cash_balance', {
+        p_user: v.userId, p_delta: v.delta, p_reason: v.reason.trim(), p_idempotency_key: v.idempotencyKey,
+      }),
+  })
+
+  return { create, accept, dispute, cancel, remind, recordCashOut, adjustBalance, refresh }
 }

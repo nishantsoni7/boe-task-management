@@ -1118,6 +1118,8 @@ describe('the applied migrations are frozen', () => {
       // Cash handover with acceptance. NOT APPLIED. The enum values first, alone.
       '20270410000000_finance_handover_notification_types.sql',
       '20270410000100_finance_cash_handovers.sql',
+      // Typed cash + cash-in-hand ledger. Apply BEFORE the code deploys.
+      '20270412000000_finance_handover_cash_balance.sql',
     ])
   })
 
@@ -1487,6 +1489,8 @@ describe('the applied migrations are frozen', () => {
       // Cash handover with acceptance. NOT APPLIED. The enum values first, alone.
       '20270410000000_finance_handover_notification_types.sql',
       '20270410000100_finance_cash_handovers.sql',
+      // Typed cash + cash-in-hand ledger. Apply BEFORE the code deploys.
+      '20270412000000_finance_handover_cash_balance.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

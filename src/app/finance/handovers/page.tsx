@@ -16,7 +16,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { HandoverCard } from '@/components/finance/HandoverCard'
-import { useHandoverHistory } from '@/hooks/queries/useHandovers'
+import { CashInHandPanel } from '@/components/finance/CashInHandPanel'
+import { HANDOVERS_KEY, useHandoverHistory } from '@/hooks/queries/useHandovers'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 
 const PAGE_SIZE = 25
@@ -30,6 +32,7 @@ const TABS = [
 
 export default function HandoversPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { data: userId } = useSignedInUserId()
   const [tab, setTab] = useState<typeof TABS[number]['key']>('closed')
   const [onlyMine, setOnlyMine] = useState(true)
@@ -57,10 +60,12 @@ export default function HandoversPage() {
     <FinanceLayout
       profile={null}
       title="Cash Handovers"
-      subtitle="Cash handed between people, and who accepted it"
+      subtitle="Cash handed between people, who accepted it, and who holds what"
       onSignOut={handleSignOut}
-      onRefresh={async () => { await history.refetch() }}
+      onRefresh={async () => { await queryClient.invalidateQueries({ queryKey: HANDOVERS_KEY }) }}
     >
+      <CashInHandPanel />
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }} role="tablist" aria-label="Handover history">
         {TABS.map(t => (
           <button key={t.key} type="button" role="tab" aria-selected={t.key === tab} style={pill(t.key === tab)}

@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — Finance: typed cash in a handover + cash in hand (PR open) · migration 20270412000000 (APPLIED 2026-10-23, before deploy)
+- **Owner request.** Allow handing over a typed cash amount that is not tied to a recorded payment; owner chose one cash line mixed with payments, and typed cash tracked as a per-person cash-in-hand balance.
+- **What.** Hand over cash now has "Cash not tied to a payment": from your cash in hand (up to available) and/or new cash with where it came from. A handover may be payments only, cash only, or both. Accepting moves the cash between balances; dispute/cancel move nothing. `/finance/handovers` shows Your cash in hand (balance, in open handovers, available, recent entries, Record cash out) and, for admin/`view_all`, Cash in hand by person with Adjust (admin).
+- **Not financial.** No payment, total or allocation is changed.
+- **Proof.** tsc, lint (0 errors), full `npm test` 0 failures (17,979), `npm run build`. PGlite harness applied 20270410000000 → 0100 → 20270412000000: 17 scenarios pass, including the original 12 with the old 5-argument call (old clients keep working), cash-only and mixed handovers, reserve/cancel/accept-once, cash out, admin-only adjust, ledger immutability. NOT seen on screen.
+- **Owner steps.** Done: 20270412000000 APPLIED to production 2026-10-23 by `supabase db push` (owner approved; dry run showed only this file; the other branch's 20270411000000 was copied in untracked for the push and removed). Checked after: recorded in remote history; one 8-argument `create_cash_handover`; 3 new columns; ledger RLS on; `authenticated` cannot insert into the ledger or call the helpers; 5 new functions. Still owed: merge, then the on-screen sequence in the PR.
+- **Rollback.** Revert the code; the columns and ledger are additive.
+
 ## 2026-10-23 — PI detail: no empty right half (branch fix/pi-detail-layout-empty-right) · no migration
 - **Why.** On the saved-PI page the short management panel (e.g. "Changes requested") sat beside a tall details column, leaving the right half blank once scrolled.
 - **Change.** Details row grid now has a modifier: `--rail` for a reviewer (panel stays right, sticky) and `--banner` for everyone else (panel full-width above, Supporting details and Internal order details in two columns at ≥860px container width). Layout/CSS only, in globals.css and the second split row of drafts/[submissionId]/page.tsx.
