@@ -1411,7 +1411,19 @@ export default function OrderDetailPage() {
     // payments and its history in a single round trip, instead of four in a row. Under the caller's own row-level
     // security (the function is SECURITY INVOKER). null means "read it the way this page always did": the function
     // is not there, refused, or answered something unexpected. The old reads below are unchanged.
+    //
+    // THE HEADER DOES NOT WAIT FOR THE BUNDLE. The Order's own row is read alongside it and draws the shell the
+    // moment it lands; the bundle then replaces the same values and brings the rest. `bundleApplied` stops a row
+    // that lands late from overwriting what the bundle has already put on screen.
+    let bundleApplied = false
+    const earlyRow = orderRowQuery()
+    void earlyRow.then(({ data: early }) => {
+      if (bundleApplied || !early) return
+      setOrder(mapOrderRow(early))
+      releaseShell()
+    }, () => {})
     const bundle = await fetchOrderBundle(supabase, id)
+    bundleApplied = true
     if (!bundle) void loadAdvance()
     // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
     // OLD one describes a list this page is about to stop showing. It is
@@ -1419,7 +1431,7 @@ export default function OrderDetailPage() {
     // open dialog simply asks again if they are still looking at it.
     paymentDetailGate.invalidate()
 
-    const { data: o } = bundle ? bundle.orderRow : await orderRowQuery()
+    const { data: o } = bundle ? bundle.orderRow : await earlyRow
 
     if (!o) { setNotFound(true); releaseShell(); return }
 
