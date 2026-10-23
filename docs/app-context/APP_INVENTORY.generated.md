@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4d39048f` — Expenses list: text no longer cut, Filters panel without dead space (#419)
-- Commits on this branch: 973
+- Commit: `14504e80` — Inventory detail: retail and standard price side by side in one card
+- Commits on this branch: 977
 - Pages (`page.tsx`): 144   API routes (`route.ts`): 150
 - Migrations: 355 (first `20260530_create_positions.sql`, latest `20270408000000_inventory_retail_price.sql`)
 - Tables ever created: 161 (dropped at some point: 7)   SQL functions: 742   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `14504e80` 2026-10-23 Inventory detail: retail and standard price side by side in one card
+- `b1902e91` 2026-10-22 Tests: inventory suite covers standard and retail price rules
+- `c9665fd9` 2026-10-22 Docs: inventory two-price note in app context
+- `88dc579e` 2026-10-22 Inventory: standard price and retail price per product
 - `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
 - `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
 - `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
@@ -35,10 +39,6 @@
 - `9ebe2b8b` 2026-10-22 PI Drafts: rows and advance percentages in one round trip
 - `e44e3db1` 2026-10-22 Operations dashboard: the two lists become tabs, the top strip is removed
 - `a3c2c6d8` 2026-10-22 Announcements: show the left-nav entry only while one is active
-- `e1029307` 2026-10-22 Operations dashboard: Not aligned for manufacturing as a table
-- `caab1753` 2026-10-22 Docs: migration 20270401000000 is applied (Operations dashboard)
-- `9a921dd3` 2026-10-22 Load time: open the database connection while the page is still loading
-- `39f87ab4` 2026-10-22 Orders: Operations team dashboard, with per-line answers to changes in production
 
 ## Pages by top-level area
 

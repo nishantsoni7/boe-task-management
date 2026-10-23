@@ -4,11 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-22 — Inventory: standard price and retail price (PR not yet opened) · migration 20270408000000 (NOT yet applied)
+## 2026-10-22 — Inventory: standard price and retail price (PR open) · migration 20270408000000 (APPLIED 2026-10-22)
 - **Owner request.** Each product carries two prices: STANDARD (product with basic packaging) and RETAIL (inclusive of taxes, transportation and packaging).
 - **What.** `inventory_items.price` stays the standard price; new NOT NULL `retail_price` (CHECK retail >= standard, existing rows backfilled retail = standard). `inventory_save_item` requires both; `inventory_bookings_list` returns both. Form, card, detail, booking sheet and requests show both; sort, stats value, booking totals and the WhatsApp Price line use retail.
-- **Proof.** tsc, full suite (17,903). SQL suites updated, NOT run; not seen on screen.
-- **Owner steps.** Back up, apply 20270408000000 with `db push --linked` BEFORE merging, then set real retail prices on every product.
+- **Detail page.** Retail and standard sit side by side in one card (retail larger); stacks on narrow phones. WhatsApp share stays retail by default and is editable before sending.
+- **Proof.** tsc, full suite (17,903); both inventory SQL suites PASS on a disposable Postgres 16 with stand-in dependency tables (not the real schema). Detail page seen on screen by the owner; migration APPLIED 2026-10-22 together with 20270407000000. Existing products still have retail = standard until edited.
+- **Owner steps.** Migration already applied. Set real retail prices on every product later.
 - **Rollback.** Drop the column; re-create the two functions from 20270313000000.
 
 ## 2026-10-22 — Expenses list: text no longer cut, Filters panel without dead space (PR open) · no migration

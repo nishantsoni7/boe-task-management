@@ -105,4 +105,4 @@ Rollback (documented in the migration header): drop the four tables and `invento
 
 - `inventory_items.price` = STANDARD price (product with basic packaging; column unchanged). New `retail_price` = RETAIL price (taxes, transportation and packaging included), NOT NULL, CHECK `retail_price >= price`; existing rows backfilled retail = price, so the manager must set real retail prices.
 - `inventory_save_item` requires both (`price`, `retail_price`); `inventory_bookings_list` returns both. UI shows both everywhere; sort, stats value, booking totals and the WhatsApp "Price" line use the RETAIL price.
-- Not yet applied to prod; SQL suites updated but not run (no disposable DB here).
+- Applied to prod 2026-10-22; SQL suites pass on a disposable DB.
