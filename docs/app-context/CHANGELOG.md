@@ -4,13 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-24 — Finance: payments in a cash handover are locked (PR open) · migration 20270415000000 (NOT applied)
+## 2026-10-24 — Finance: payments in a cash handover are locked (PR #439 open) · migration 20270415000000 (APPLIED 2026-10-24, before merge)
 - **Owner request.** Phase 1 of the cash handover simplification: once a handover is accepted (or while one is waiting), the payment must not be edited or deleted; P-AA-0044 could still be changed after Nishant accepted H-0001.
 - **What.** A database trigger refuses every UPDATE that changes a non-decision column, and every DELETE, of a payment that is in an open (pending/disputed) handover or has any accepted transfer (accepted handover or custodian direct receipt). It applies to everyone, admins and direct SQL included. Allowed: verification, reject, send back, admin status correction, allocations, further handovers, the audited admin deletion (reason + typed Payment ID + tombstone), Test Data Cleanup. A cancelled handover releases only a pending lock. Edit Payment Request, Edit Received Payment (also opened from PI/Order pages) and the submitter delete dialog show the reason and disable Save/Delete; refusals are mapped to plain words.
 - **Not changed.** Receipt verification, the disputed/rejected state, typed cash, the handover UI (later phases). One-sided legacy handed_over activities (2 payments in production) do not lock.
 - **Affected records at apply.** Exactly one: P-AA-0044 (Paytm ₹2,000, pending verification, H-0001 accepted).
 - **Proof.** PGlite suite `supabase/tests/payment_cash_handover_lock_pglite.mjs`: real handover migrations + real payment guards/doors + the new migration, 17 checks pass. Unit/DOM tests for the screens; tsc, lint, full `npm test`, `npm run build` (see PR).
-- **Owner steps.** Apply 20270415000000 before the code deploys (`supabase db push --dry-run` must list only this file), then merge.
+- **Owner steps.** Done: 20270415000000 APPLIED to production 2026-10-24 by `supabase db push` (owner approved; backup 20261023T191700Z taken first; dry run listed only this file). Checked after: in remote history; trigger bound for UPDATE and DELETE; lock helper closed to clients, read door signed-in only; exactly one payment locked (P-AA-0044, accepted, H-0001); a rolled-back amount edit of P-AA-0044 was refused. Remaining: merge PR #439 (owner go-ahead).
 - **Rollback.** `drop trigger finance_payment_requests_lock_cash_custody on public.finance_payment_requests` (new migration); revert the code.
 
 ## 2026-10-23 — Finance: Cash journeys redesign, flat and Notion-style (PR #437 merged, 4c4d6cdc) · no migration · backup 20261023T175335Z
