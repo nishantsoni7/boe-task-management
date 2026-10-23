@@ -3023,7 +3023,6 @@ function PiDraftDetailPageInner() {
               total:    formatInr(line.lineTotal),
             }}
             current={{
-              item_sequence:       line.itemSequence,
               source_product_code: line.sourceProductCode,
               product_name:        line.productName,
               dimensions:          line.dimensions,

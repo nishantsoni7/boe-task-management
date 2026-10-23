@@ -80,7 +80,9 @@ const editor = (over: Partial<Parameters<typeof PiProductEditModal>[0]> = {}) =>
  * that has to be edited deliberately.
  */
 const EXPECTED_FIELDS = [
-  'item_sequence', 'source_product_code', 'product_name',
+  // No line number (2026-10-23): a PI's lines are numbered BE0001..n by position, by the
+  // database (reorder) and by Edit PI (save). A typed number could only leave a gap or a repeat.
+  'source_product_code', 'product_name',
   'dimensions', 'material', 'customization',
 ] as const
 
@@ -93,7 +95,7 @@ const FORBIDDEN_FIELDS = [
 ] as const
 
 describe('the editable product fields are descriptive, and only those', () => {
-  test('the field table is exactly the six descriptive columns', () => {
+  test('the field table is exactly the five descriptive columns', () => {
     assert.deepEqual(PI_PRODUCT_FIELDS.map(f => f.key), [...EXPECTED_FIELDS],
       'a field was added or removed — was it deliberate?')
   })

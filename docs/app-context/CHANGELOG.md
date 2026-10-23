@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-23 — PI line numbers: Reorder renumbers, Line number field removed (follow-up to #432) · 20270411000000 (NOT applied)
+- **Why.** #432 made Edit PI renumber a draft BE0001..n, but the Reorder dialog and the single-line "Line number" field could still leave a gap or repeat.
+- **What.** `reorder_order_submission_items` restated: for a PI with no Order it also renumbers item_sequence BE0001..n in the new order (two passes, unique index). A PI that has an Order is untouched. The "Line number" field is removed from the product edit dialog (`PI_PRODUCT_FIELDS` now five; its render test updated deliberately). Safe to apply before or after the code.
+- **Proof.** Migration rehearsed against production inside BEGIN…ROLLBACK: applies, and a real draft reversed through the RPC as its owner reads BE0001..n. tsc; 6951 orders/finance tests. Not seen on screen.
+- **Rollback.** Revert the PR; re-apply 20261002's function body if the migration was applied.
+
 ## 2026-10-23 — PI detail: no empty right half (branch fix/pi-detail-layout-empty-right) · no migration
 - **Why.** On the saved-PI page the short management panel (e.g. "Changes requested") sat beside a tall details column, leaving the right half blank once scrolled.
 - **Change.** Details row grid now has a modifier: `--rail` for a reviewer (panel stays right, sticky) and `--banner` for everyone else (panel full-width above, Supporting details and Internal order details in two columns at ≥860px container width). Layout/CSS only, in globals.css and the second split row of drafts/[submissionId]/page.tsx.

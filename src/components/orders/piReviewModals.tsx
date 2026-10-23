@@ -2244,7 +2244,6 @@ export type PiScheduleFieldValues = Partial<Record<PiScheduleFieldKey, string | 
  * every screen that shows a product line.
  */
 export const PI_PRODUCT_FIELDS = [
-  { key: 'item_sequence',       label: 'Line number',        kind: 'text',     hint: 'As printed on the PI' },
   { key: 'source_product_code', label: 'Product code',       kind: 'text',     hint: '' },
   { key: 'product_name',        label: 'Product name',       kind: 'textarea', hint: '' },
   { key: 'dimensions',          label: 'Dimensions',         kind: 'textarea', hint: '' },
