@@ -21,6 +21,7 @@ import {
   type PaymentSuggestion,
 } from '@/lib/finance/bankMatching'
 import { toPaise } from '@/lib/finance/bankMoney'
+import { samePayer, suggestOrdersForLine, type OrderSuggestion, type PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
 
 export type BankLink = {
   id: string
@@ -135,11 +136,15 @@ export type LineWithSuggestions = {
   expenseSuggestions: ExpenseSuggestion[]
   /** Money out: what kind of non-expense this debit looks like. */
   debitKind: { kind: DebitKind; reason: string; payee: string | null } | null
+  /** Money in: orders that earlier credits from the same payer went to. */
+  orderSuggestions: OrderSuggestion[]
 }
 
-export function analyseLine(line: BankLine, payments: BankPayment[], expenses: BankExpense[] = []): LineWithSuggestions {
+export function analyseLine(
+  line: BankLine, payments: BankPayment[], expenses: BankExpense[] = [], history: PayerHistoryEntry[] = [],
+): LineWithSuggestions {
   const status = lineStatus(line)
-  const none = { line, status, suggestions: [], nonCustomer: null, expenseSuggestions: [], debitKind: null }
+  const none = { line, status, suggestions: [], nonCustomer: null, expenseSuggestions: [], debitKind: null, orderSuggestions: [] }
   if (status !== 'unlinked' && status !== 'partly') return none
   if (line.withdrawal > 0) {
     const remainingOut = (toPaise(line.withdrawal) - toPaise(linkedTotal(line))) / 100
@@ -159,7 +164,7 @@ export function analyseLine(line: BankLine, payments: BankPayment[], expenses: B
         { id: line.id, account: line.account, line_date: line.line_date, narration: line.narration, bank_ref: line.bank_ref, remaining },
         payments,
       )
-  return { ...none, suggestions, nonCustomer }
+  return { ...none, suggestions, nonCustomer, orderSuggestions: nonCustomer ? [] : suggestOrdersForLine(line, history) }
 }
 
 // ── Months ──────────────────────────────────────────────────────────────────
@@ -362,6 +367,62 @@ export async function loadCandidateExpenses(
     for (const r of (extra ?? []) as unknown as ExpenseRow[]) byId.set(r.id, toBankExpense(r))
   }
   return [...byId.values()]
+}
+
+type HistoryLinkRow = {
+  payment_id: string
+  bank_statement_lines: { narration: string; line_date: string; deposit: number | string } | null
+}
+
+/**
+ * Where earlier credits from the payers of THESE lines went. Reads the active
+ * links of stored credits, keeps only those from the same payer as an unlinked
+ * credit on screen, and asks the existing allocation-targets read (verified
+ * payments only, visible ones only) where each payment is allocated. At most
+ * 50 payments per call, so the matching payments are chunked.
+ */
+export async function loadPayerHistory(supabase: SupabaseClient, wantedNarrations: string[]): Promise<PayerHistoryEntry[]> {
+  if (wantedNarrations.length === 0) return []
+  const { data, error } = await supabase
+    .from('bank_line_payment_links')
+    .select('payment_id, bank_statement_lines!inner(narration, line_date, deposit)')
+    .is('unlinked_at', null)
+    .order('linked_at', { ascending: false })
+    .range(0, 1999)
+  if (error) throw new Error('Earlier payments could not be read.')
+  const rows = ((data ?? []) as unknown as HistoryLinkRow[]).filter(
+    r => r.bank_statement_lines && wantedNarrations.some(n => samePayer(n, r.bank_statement_lines!.narration)))
+  const ids = [...new Set(rows.map(r => r.payment_id))]
+  if (ids.length === 0) return []
+
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50))
+  const targets: { payment_request_id: string; target_type: string; target_id: string; target_reference: string | null; reserved_order_number: string | null; allocated_amount: number | string }[] = []
+  const humans = new Map<string, string | null>()
+  for (const chunk of chunks) {
+    const [t, p] = await Promise.all([
+      supabase.rpc('received_payment_allocation_targets', { p_payment_request_ids: chunk }),
+      supabase.from('finance_payment_requests').select('id, human_payment_id').in('id', chunk),
+    ])
+    if (t.error || p.error) throw new Error('Earlier allocations could not be read.')
+    targets.push(...((t.data ?? []) as typeof targets))
+    for (const r of (p.data ?? []) as { id: string; human_payment_id: string | null }[]) humans.set(r.id, r.human_payment_id)
+  }
+
+  const out: PayerHistoryEntry[] = []
+  for (const r of rows) {
+    const line = r.bank_statement_lines!
+    for (const t of targets.filter(x => x.payment_request_id === r.payment_id)) {
+      if (t.target_type !== 'order' && t.target_type !== 'pi_draft') continue
+      out.push({
+        narration: line.narration, lineDate: line.line_date, allocatedAmount: num(t.allocated_amount),
+        paymentId: r.payment_id, humanPaymentId: humans.get(r.payment_id) ?? null,
+        targetType: t.target_type, targetId: t.target_id,
+        reference: t.target_reference, reservedOrderNumber: t.reserved_order_number,
+      })
+    }
+  }
+  return out
 }
 
 /** The message after the RPC's error code ("BANK_LINE_OVER_LINKED: the bank line has only 5 left"). */
