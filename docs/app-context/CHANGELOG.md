@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-24 — Tasks: Assigned By Me row colours separated (PR #445) · no migration · no backup needed (no data change)
+- **Owner request.** Important and For Approval rows blended together on Assigned By Me.
+- **What.** Important rows: stronger gold fill and border (0.10 fill, 0.45 border) with the star. For Approval rows: blue fill, blue left stripe and blue badge (`.boe-badge-approval-review`). A row that is both keeps the blue fill plus the gold border and star. Phone card: blue stripe and badge, no fill.
+- **Not changed.** Data, status logic, tabs, permissions. Visual only.
+- **Not seen on screen** at the time of writing.
+
 ## 2026-10-24 — Finance: "Not received" is final; handovers carry whole payments only (PR #444 merged, 1e5e1e52) · migration 20270418000000 (APPLIED 2026-10-24, before merge) · backup 20261024T070013Z
 - **Owner request.** Phase 2 of the cash handover simplification: accept the whole handover or refuse it with a reason; no partial receipt; a new handover is possible after a refusal.
 - **What.** Marking a handover "Not received" (stored status `disputed`) now ends it: it can no longer be accepted, cancelled, reminded or answered again, and nobody has to cancel it. Custody never moved, so the payment is back with the giver, who can hand it over again at once; the refusal and its reason stay on record next to the later handover. Everywhere "open" now means pending only (banner, lists, the Phase 1 lock, reservations, reminders, direct receipt). `create_cash_handover` refuses a typed cash amount; a handover carries whole payments only. Acceptance still never approves a payment (20270417000000 body kept).
