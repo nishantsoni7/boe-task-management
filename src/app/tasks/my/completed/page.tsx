@@ -203,7 +203,7 @@ function CompletedTaskCard({
         }
       </div>
 
-      {/* Title + note */}
+      {/* Title — single line; the description is left to the detail panel */}
       <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
         <div style={{
           fontSize: '13px', fontWeight: 500, color: colors.muted,
@@ -212,15 +212,6 @@ function CompletedTaskCard({
         }}>
           {task.title}
         </div>
-        {task.note && (
-          <div style={{
-            fontSize: '12px', color: colors.muted,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            marginTop: '2px',
-          }}>
-            {task.note}
-          </div>
-        )}
       </div>
 
       {/* Assigned by — fixed 140px */}
@@ -258,11 +249,11 @@ function CompletedTaskCard({
         </span>
       </div>
 
-      {/* Completion info — fixed 140px */}
+      {/* Completion info — fixed 190px, wide enough for "Completed on: 24 Oct 2026" */}
       <div style={{
-        flexShrink: 0, width: '140px',
+        flexShrink: 0, width: '190px',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        gap: '2px', paddingLeft: '4px',
+        gap: '2px', paddingLeft: '4px', paddingRight: '8px',
       }}>
         <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           <span style={{ opacity: 0.6 }}>Completed on: </span>{completionInfo.completedLabel}

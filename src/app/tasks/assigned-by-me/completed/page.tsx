@@ -161,16 +161,11 @@ function CompletedTaskCard({
         {task.is_urgent ? <Star size={11} fill="#B7892A" color="#B7892A" /> : <div style={{ width: '11px' }} />}
       </div>
 
-      {/* Title + note */}
+      {/* Title — single line; the description is left to the detail panel */}
       <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
         <div style={{ fontSize: '13px', fontWeight: 500, color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
           {task.title}
         </div>
-        {task.note && (
-          <div style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>
-            {task.note}
-          </div>
-        )}
       </div>
 
       {/* Assigned to — fixed 140px */}
@@ -193,8 +188,8 @@ function CompletedTaskCard({
         <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
       </div>
 
-      {/* Completion info — fixed 140px */}
-      <div style={{ flexShrink: 0, width: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', paddingLeft: '4px' }}>
+      {/* Completion info — fixed 190px, wide enough for "Completed on: 24 Oct 2026" */}
+      <div style={{ flexShrink: 0, width: '190px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', paddingLeft: '4px', paddingRight: '8px' }}>
         <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           <span style={{ opacity: 0.6 }}>Completed on: </span>{completionInfo.completedLabel}
         </span>
