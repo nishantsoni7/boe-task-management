@@ -1128,6 +1128,8 @@ describe('the applied migrations are frozen', () => {
       // A payment in an open or accepted cash handover cannot be edited or deleted.
       '20270415000000_finance_payment_cash_handover_lock.sql',
       '20270416000000_finance_accept_handover_confirms_payment.sql',
+      // Accepting a handover never approves a payment (removes the 20270416 auto-approval).
+      '20270417000000_finance_accept_handover_no_auto_approval.sql',
     ])
   })
 
@@ -1507,6 +1509,8 @@ describe('the applied migrations are frozen', () => {
       // A payment in an open or accepted cash handover cannot be edited or deleted.
       '20270415000000_finance_payment_cash_handover_lock.sql',
       '20270416000000_finance_accept_handover_confirms_payment.sql',
+      // Accepting a handover never approves a payment (removes the 20270416 auto-approval).
+      '20270417000000_finance_accept_handover_no_auto_approval.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
