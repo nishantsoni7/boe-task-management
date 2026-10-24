@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `f183008c` — Docs: record PR #437 merge SHA and backup in the changelog (#438)
-- Commits on this branch: 992
+- Commit: `8409355d` — Docs: record PR #439 merge SHA and backup
+- Commits on this branch: 995
 - Pages (`page.tsx`): 146   API routes (`route.ts`): 154
-- Migrations: 363 (first `20260530_create_positions.sql`, latest `20270415000000_finance_payment_cash_handover_lock.sql`)
+- Migrations: 364 (first `20260530_create_positions.sql`, latest `20270416000000_finance_accept_handover_confirms_payment.sql`)
 - Tables ever created: 168 (dropped at some point: 7)   SQL functions: 782   Enums: 0
-- Test files: 645   Next.js 16.2.6, React 19.2.4
+- Test files: 646   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `8409355d` 2026-10-24 Docs: record PR #439 merge SHA and backup
+- `b0db6adf` 2026-10-24 Docs: 20270415000000 applied to production
+- `e1616454` 2026-10-24 Finance: lock a payment once it is in a cash handover
 - `f183008c` 2026-10-23 Docs: record PR #437 merge SHA and backup in the changelog (#438)
 - `4c4d6cdc` 2026-10-23 Finance: flat, Notion-style Cash journeys and handover banner (#437)
 - `526963df` 2026-10-23 Orders: approve with cash not yet with the company, with a reason (#436)
@@ -36,9 +39,6 @@
 - `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
 - `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
 - `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
-- `6ab93daa` 2026-10-22 Make Payment IDs clearer in the Confirmed Payments table (#417)
-- `52428e78` 2026-10-22 Docs: migration 20270406000000 is applied; Order page measurements
-- `50acaee3` 2026-10-22 Changelog: 20270405000000 applied and confirmed on screen (#414)
 
 ## Pages by top-level area
 
@@ -136,7 +136,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 49 source, 60 test
+- `src/lib/finance` — 49 source, 61 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
@@ -366,7 +366,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270321000001_order_submission_notifications_complete.sql`
 - `20270322000000_finance_payment_edit_reallocates.sql`
 - `20270323000000_finance_payment_proof_admin_attach.sql`
 - `20270324000000_payment_mode_hdfc_secondary.sql`
@@ -396,6 +395,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270413000000_finance_cash_journeys.sql`
 - `20270414000000_order_submission_cash_exceptions.sql`
 - `20270415000000_finance_payment_cash_handover_lock.sql`
+- `20270416000000_finance_accept_handover_confirms_payment.sql`
 
 ## All SQL function names
 
