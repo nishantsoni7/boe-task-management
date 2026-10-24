@@ -1,6 +1,10 @@
 /**
  * ACCEPTING A CASH HANDOVER CONFIRMS ITS PAYMENTS (20270416000000).
  *
+ * SUPERSEDED by 20270417000000 (owner decision 2026-10-24): acceptance no longer
+ * approves anything. These tests still describe what the applied 20270416 file
+ * contains; acceptNoAutoApproval.test.ts pins the behaviour that is live.
+ *
  * The behaviour was proven by executing the migration against the real schema
  * (rolled-back rehearsal). These tests keep its shape from drifting: the
  * restated accept keeps every step of 20270413000000 and adds one guarded loop.

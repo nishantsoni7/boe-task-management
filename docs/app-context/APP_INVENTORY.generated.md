@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `8409355d` — Docs: record PR #439 merge SHA and backup
-- Commits on this branch: 995
+- Commit: `4d043236` — Docs: 20270416000000 applied to production
+- Commits on this branch: 997
 - Pages (`page.tsx`): 146   API routes (`route.ts`): 154
-- Migrations: 364 (first `20260530_create_positions.sql`, latest `20270416000000_finance_accept_handover_confirms_payment.sql`)
+- Migrations: 365 (first `20260530_create_positions.sql`, latest `20270417000000_finance_accept_handover_no_auto_approval.sql`)
 - Tables ever created: 168 (dropped at some point: 7)   SQL functions: 782   Enums: 0
-- Test files: 646   Next.js 16.2.6, React 19.2.4
+- Test files: 647   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `4d043236` 2026-10-24 Docs: 20270416000000 applied to production
+- `a4f3abc0` 2026-10-24 Finance: accepting a cash handover confirms its payments
 - `8409355d` 2026-10-24 Docs: record PR #439 merge SHA and backup
 - `b0db6adf` 2026-10-24 Docs: 20270415000000 applied to production
 - `e1616454` 2026-10-24 Finance: lock a payment once it is in a cash handover
@@ -37,8 +39,6 @@
 - `f154f397` 2026-10-23 Admin "Login as member": floating icon with real, audited session swap (#421)
 - `355ae006` 2026-10-23 Inventory: standard price and retail price per product (#420)
 - `4d39048f` 2026-10-22 Expenses list: text no longer cut, Filters panel without dead space (#419)
-- `a3ad63c4` 2026-10-22 Finance: allocate a payment to an old order that is not in the system (#418)
-- `ceb13dcd` 2026-10-22 Expenses: no Remark column, View on every row, top of the page in two lines (#416)
 
 ## Pages by top-level area
 
@@ -136,7 +136,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 49 source, 61 test
+- `src/lib/finance` — 49 source, 62 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
@@ -366,7 +366,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270322000000_finance_payment_edit_reallocates.sql`
 - `20270323000000_finance_payment_proof_admin_attach.sql`
 - `20270324000000_payment_mode_hdfc_secondary.sql`
 - `20270325000000_order_pendencies.sql`
@@ -396,6 +395,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270414000000_order_submission_cash_exceptions.sql`
 - `20270415000000_finance_payment_cash_handover_lock.sql`
 - `20270416000000_finance_accept_handover_confirms_payment.sql`
+- `20270417000000_finance_accept_handover_no_auto_approval.sql`
 
 ## All SQL function names
 
