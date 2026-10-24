@@ -4,12 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-24 — Finance: Bank Statements — suggested order + Add to Confirmed Payments (PR pending) · migration 20270419000000 (NOT APPLIED) · no backup yet
+## 2026-10-24 — Finance: Bank Statements — suggested order + Add to Confirmed Payments (PR pending) · migration 20270419000000 (APPLIED 2026-10-24, before merge; backup 20261024T103027Z first, dry run listed only this file) · no backup yet
 - **Owner request.** Frequent unrecorded bank credits: suggest the order an earlier payment from the same payer went to, and add the credit to Confirmed Payments with one button after a duplicate check.
 - **What.** (1) `create_payment_from_bank_line(line, allow_possible_duplicate)`: needs finance.reconcile AND finance.create; locks the line; records a Suspense payment through `submit_payment_request` (the credit's HDFC account, bank date and amount, bank reference in the proof note), links it to the line, then `complete_payment_entry` verifies it ONLY for admins / verify_own_payment holders; anyone else leaves it Awaiting verification, already linked. Refused in the database: line already linked, line marked old order / not customer money, a non-rejected payment already carrying the bank reference, and (unless confirmed) an unlinked HDFC payment of the same amount within 21 days. (2) Page: an Add to Confirmed button on unlinked credits with no strong/likely recorded match, a confirm window, and a Suggested order line (`lib/finance/bankOrderHistory.ts`; history read by `loadPayerHistory` through the existing `received_payment_allocation_targets`). The payment shows Not identified until allocated; allocation stays in Confirmed Payments (the window links there).
 - **Not changed.** Linking still never verifies by itself; no bank file calls an allocation RPC; no payer-name field.
 - **Proof.** PGlite `supabase/tests/bank_add_confirmed_payment_pglite.mjs` (14 checks; the payment door and verification are stubs, the reconcile door is the real one); `bankOrderHistory.test.ts`; tsc and eslint clean. Not seen on screen.
-- **Owner steps.** Apply 20270419000000 BEFORE merging (the Add button calls it). Rollback: `drop function public.create_payment_from_bank_line(uuid, boolean);` (payments already created stay).
+- **Owner steps.** Done: applied before merge. Rollback: `drop function public.create_payment_from_bank_line(uuid, boolean);` (payments already created stay).
 
 ## 2026-10-24 — Tasks: Assigned By Me row colours separated (PR #445) · no migration · no backup needed (no data change)
 - **Owner request.** Important and For Approval rows blended together on Assigned By Me.
