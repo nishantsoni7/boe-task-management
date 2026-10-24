@@ -112,7 +112,7 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // Cash handover (20270410000000): amber/red where somebody must act, blue/green where it reports.
   finance_handover_requested: { label: 'Accept cash',     color: colors.amber, bg: colors.amberTint },
   finance_handover_reminder:  { label: 'Still waiting',   color: colors.red,   bg: colors.redTint   },
-  finance_handover_disputed:  { label: 'Disputed',        color: colors.red,   bg: colors.redTint   },
+  finance_handover_disputed:  { label: 'Not received',    color: colors.red,   bg: colors.redTint   },
   finance_handover_accepted:  { label: 'Accepted',        color: colors.green, bg: colors.greenTint },
   finance_handover_cancelled: { label: 'Cancelled',       color: colors.blue,  bg: colors.blueTint  },
   // Orders
