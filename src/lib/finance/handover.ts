@@ -13,12 +13,14 @@
 export const HANDOVER_STATUSES = ['pending', 'accepted', 'disputed', 'cancelled'] as const
 export type HandoverStatus = typeof HANDOVER_STATUSES[number]
 
-export const OPEN_HANDOVER_STATUSES: readonly HandoverStatus[] = ['pending', 'disputed']
+// 20270418000000: "not received" (stored as 'disputed') is final, so only a
+// pending handover is open.
+export const OPEN_HANDOVER_STATUSES: readonly HandoverStatus[] = ['pending']
 
 export const HANDOVER_STATUS_LABEL: Record<HandoverStatus, string> = {
   pending:   'Waiting for acceptance',
   accepted:  'Accepted',
-  disputed:  'Disputed',
+  disputed:  'Not received',
   cancelled: 'Cancelled',
 }
 
@@ -148,7 +150,7 @@ export function readHandovers(raw: unknown): Handover[] {
 }
 
 export function isOpenHandover(h: Pick<Handover, 'status'>): boolean {
-  return h.status === 'pending' || h.status === 'disputed'
+  return h.status === 'pending'
 }
 
 // ── Who is looking, and how loud to be ───────────────────────────────────────
@@ -216,16 +218,16 @@ export function handoverHeadline(h: Handover, role: HandoverRole): string {
   const disputed = h.status === 'disputed'
   if (role === 'recipient') {
     return disputed
-      ? `You disputed the cash from ${h.giverName}`
+      ? `You did not receive the cash from ${h.giverName}`
       : `${h.giverName} handed you cash. Accept it once you have received it`
   }
   if (role === 'giver') {
     return disputed
-      ? `${h.recipientName} disputed your handover`
+      ? `${h.recipientName} did not receive your handover`
       : `${h.recipientName} has not accepted your handover yet`
   }
   return disputed
-    ? `${h.recipientName} disputed the cash from ${h.giverName}`
+    ? `${h.recipientName} did not receive the cash from ${h.giverName}`
     : `${h.recipientName} has not accepted the cash from ${h.giverName}`
 }
 

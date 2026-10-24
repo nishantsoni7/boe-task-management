@@ -103,7 +103,7 @@ describe('words', () => {
     assert.equal(cashStateLabel({ ...p, state: 'with_company' }), 'With company')
     const w = { ...p, state: 'waiting' as const, openHandover: { id: 'h', humanId: 'H', status: 'pending' as const, giverId: '', giverName: 'Ashok', recipientId: '', recipientName: 'Nitish', createdAt: '' } }
     assert.equal(cashStateLabel(w), 'Waiting for Nitish to accept')
-    assert.equal(cashStateLabel({ ...w, state: 'disputed' }), 'Disputed by Nitish')
+    assert.equal(cashStateLabel({ ...w, state: 'disputed' }), 'Not received by Nitish')
   })
 
   test('journey steps read as sentences', () => {

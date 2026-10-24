@@ -36,9 +36,11 @@ import { sumAmounts, totalsByHolder, waitingAge } from '@/lib/finance/cashJourne
 const PAGE_SIZE = 25
 
 const HISTORY_TABS = [
-  { key: 'closed',    label: 'Closed',     statuses: ['accepted', 'cancelled'] },
-  { key: 'accepted',  label: 'Accepted',   statuses: ['accepted'] },
-  { key: 'cancelled', label: 'Cancelled',  statuses: ['cancelled'] },
+  // "Not received" (stored as 'disputed') is final since 20270418000000.
+  { key: 'closed',    label: 'Closed',       statuses: ['accepted', 'disputed', 'cancelled'] },
+  { key: 'accepted',  label: 'Accepted',     statuses: ['accepted'] },
+  { key: 'disputed',  label: 'Not received', statuses: ['disputed'] },
+  { key: 'cancelled', label: 'Cancelled',    statuses: ['cancelled'] },
   { key: 'all',       label: 'Everything', statuses: null },
 ] as const
 

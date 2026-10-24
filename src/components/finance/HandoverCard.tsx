@@ -25,7 +25,7 @@ const SEVERITY_TAG: Record<HandoverSeverity, string> = {
   fresh:    'Action needed',
   late:     'Waiting over a day',
   overdue:  'Overdue',
-  disputed: 'Disputed',
+  disputed: 'Not received',
 }
 
 /**
@@ -153,7 +153,7 @@ export function HandoverCard({
                   <div className="boe-handover-menu" role="menu">
                     {h.canDispute && (
                       <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuOpen(false); setError(null); setDialog('dispute') }}>
-                        Dispute
+                        Not received
                       </button>
                     )}
                     {h.canCancel && (
@@ -171,7 +171,7 @@ export function HandoverCard({
 
       {h.status === 'disputed' && h.disputeReason && (
         <div className="boe-handover-reason">
-          <strong>Dispute reason:</strong> {h.disputeReason}
+          <strong>Not received:</strong> {h.disputeReason}. The cash stayed with {h.giverName}, who can hand it over again.
         </div>
       )}
       {h.status === 'cancelled' && (
@@ -226,9 +226,9 @@ export function HandoverCard({
 
       {dialog === 'dispute' && (
         <HandoverReasonDialog
-          title="Dispute this handover"
-          label="What is wrong? (for example: received less, nothing received)"
-          confirmLabel="Send dispute"
+          title="Cash not received"
+          label="Why? The whole handover is refused and the cash stays with the giver."
+          confirmLabel="Mark not received"
           danger
           required
           pending={dispute.isPending}

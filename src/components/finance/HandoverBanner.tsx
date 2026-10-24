@@ -6,9 +6,9 @@ import { HandoverCard } from '@/components/finance/HandoverCard'
 import { sortMyHandovers } from '@/lib/finance/handover'
 
 /**
- * Every open (pending or disputed) cash handover the viewer is part of, drawn as
+ * Every open (pending) cash handover the viewer is part of, drawn as
  * a full-width card above the page. THERE IS NO DISMISS: a card goes away only
- * when the handover is accepted or cancelled. Administrators and finance.view_all
+ * when the handover is accepted, marked not received or cancelled. Administrators and finance.view_all
  * holders additionally see other people's open handovers, quieter, underneath.
  *
  * Mounted once in FinanceLayout, so it appears on every Finance page.

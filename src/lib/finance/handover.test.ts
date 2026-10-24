@@ -23,6 +23,8 @@ import {
   handoverSeverity,
   isHandoverFeatureMissing,
   isOpenHandover,
+  HANDOVER_STATUS_LABEL,
+  OPEN_HANDOVER_STATUSES,
   readHandover,
   readHandovers,
   sortMyHandovers,
@@ -105,11 +107,13 @@ describe('who is looking, and how loud the card is', () => {
     assert.equal(handoverSeverity({ status: 'disputed', ageHours: 500 }), 'disputed')
   })
 
-  test('only pending and disputed are open', () => {
+  test('only pending is open: "not received" (disputed) is final since 20270418000000', () => {
     assert.equal(isOpenHandover({ status: 'pending' }), true)
-    assert.equal(isOpenHandover({ status: 'disputed' }), true)
+    assert.equal(isOpenHandover({ status: 'disputed' }), false)
     assert.equal(isOpenHandover({ status: 'accepted' }), false)
     assert.equal(isOpenHandover({ status: 'cancelled' }), false)
+    assert.deepEqual([...OPEN_HANDOVER_STATUSES], ['pending'])
+    assert.equal(HANDOVER_STATUS_LABEL.disputed, 'Not received')
   })
 
   test('waitingFor reads in hours then days', () => {
@@ -127,8 +131,8 @@ describe('who is looking, and how loud the card is', () => {
     assert.match(handoverHeadline(x, 'giver'), /Owner has not accepted your handover/)
     assert.match(handoverHeadline(x, 'observer'), /Owner has not accepted the cash from Ashok/)
     const d = h({ status: 'disputed' })
-    assert.match(handoverHeadline(d, 'giver'), /disputed your handover/)
-    assert.match(handoverHeadline(d, 'recipient'), /You disputed/)
+    assert.match(handoverHeadline(d, 'giver'), /Owner did not receive your handover/)
+    assert.match(handoverHeadline(d, 'recipient'), /You did not receive the cash from Ashok/)
   })
 
   test('the recipient\'s cards come first, then louder, then older', () => {

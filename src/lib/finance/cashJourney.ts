@@ -202,7 +202,7 @@ export function cashStateLabel(p: Pick<CashPayment, 'state' | 'holderName' | 'op
   switch (p.state) {
     case 'with_company': return 'With company'
     case 'waiting':      return `Waiting for ${p.openHandover?.recipientName ?? 'the receiver'} to accept`
-    case 'disputed':     return `Disputed by ${p.openHandover?.recipientName ?? 'the receiver'}`
+    case 'disputed':     return `Not received by ${p.openHandover?.recipientName ?? 'the receiver'}`
     case 'with_holder':  return `With ${p.holderName ?? 'someone'}`
   }
 }
@@ -228,7 +228,7 @@ export function journeyStepLabel(s: JourneyStep): string {
     case 'received_directly':  return `${s.toName ?? 'The company'} received it directly${s.actorName ? ` from ${s.actorName}` : ''}`
     case 'handover_created':   return `${who} handed it to ${s.toName ?? 'someone'} — waiting for acceptance`
     case 'handover_accepted':  return `${who} accepted it`
-    case 'handover_disputed':  return `${who} disputed it`
+    case 'handover_disputed':  return `${who} said it was not received`
     case 'handover_cancelled': return `${who} cancelled the handover`
   }
 }

@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-24 — Finance: "Not received" is final; handovers carry whole payments only (PR open) · migration 20270418000000 (NOT applied)
+- **Owner request.** Phase 2 of the cash handover simplification: accept the whole handover or refuse it with a reason; no partial receipt; a new handover is possible after a refusal.
+- **What.** Marking a handover "Not received" (stored status `disputed`) now ends it: it can no longer be accepted, cancelled, reminded or answered again, and nobody has to cancel it. Custody never moved, so the payment is back with the giver, who can hand it over again at once; the refusal and its reason stay on record next to the later handover. Everywhere "open" now means pending only (banner, lists, the Phase 1 lock, reservations, reminders, direct receipt). `create_cash_handover` refuses a typed cash amount; a handover carries whole payments only. Acceptance still never approves a payment (20270417000000 body kept).
+- **Screens.** "Dispute" became "Not received" (menu, dialog, notification label, journey wording); history has a Not received tab and counts it as closed.
+- **Not changed.** Table, statuses, events, notification types, RLS, grants, custody history, cash-balance tables, Finance verification, order approval.
+- **Existing records.** None affected: production has 0 disputed, 0 pending, 0 typed-cash handovers and 0 cash-balance rows (census 2026-10-24).
+- **Proof.** PGlite `supabase/tests/handover_not_received_final_pglite.mjs`: real migrations 20270410 → 20270418, 14 checks pass (refusal needs the recipient and a reason; final; retry with full history; duplicate acceptance refused; whole amounts and one-argument accept; amount frozen while open; typed cash refused; lock follows; reminders; direct receipt; order-approval check; privileges); the negative control without the migration fails. Each restated body diffed against its source: only the intended lines differ.
+- **Owner steps.** Apply 20270418000000 before the code deploys, then merge.
+- **Rollback.** A new migration re-emitting the 14 bodies from their source migrations; revert the code.
+
 ## 2026-10-24 — Finance: accepting a cash handover never approves a payment (PR #442 merged, 73c4a13c) · migration 20270417000000 (APPLIED 2026-10-24, before merge) · backup 20261024T060502Z
 - **Owner decision.** Custody acceptance must never mark a payment Confirmed. 20270416000000 (PR #441, applied and merged earlier the same day) approved every Pending payment in a handover when the accepter held Finance approve: in production that was Nishant (admin) as well as Nitish (custodian), so an employee-to-employee acceptance could confirm money that had not reached the company, and Nitish's acceptance skipped Finance's own checks.
 - **What.** `accept_cash_handover` is restored to its 20270413000000 body, extracted verbatim. Custody events, cash-balance moves, the handover closing, its history event, the notification and the Phase 1 lock are unchanged. Finance approval is unchanged and stays a separate step.
