@@ -146,20 +146,22 @@ function TaskCard({
   // stored value; nothing here writes or reinterprets it.
   const isForApproval = task.status === 'pending_approval'
 
+  // Two signals, two hues, so neither can be mistaken for the other:
+  //   Important  = warm GOLD fill + gold border (+ the star)
+  //   For Approval = cool BLUE fill + blue stripe (+ the blue badge)
+  // A row that is both keeps the blue fill (it is waiting on the reader) and
+  // the gold border and star (it was marked important).
   const cardBackground = isImportant
-    ? (hovered ? 'rgba(183,137,42,0.08)' : 'rgba(183,137,42,0.04)')
+    ? (hovered ? 'rgba(183,137,42,0.16)' : 'rgba(183,137,42,0.10)')
     : (hovered ? colors.raised : colors.base)
 
   const cardBorder = isImportant
-    ? `1.5px solid rgba(183,137,42,${hovered ? '0.40' : '0.20'})`
+    ? `1.5px solid rgba(183,137,42,${hovered ? '0.65' : '0.45'})`
     : `1.5px solid ${colors.border}`
 
   // ── Desktop row only ──
-  // An approval row is tinted only when it is not ALREADY tinted as important;
-  // stacking the two would leave the reader unable to tell which signal they
-  // are looking at, and would quietly restyle every important row.
-  const desktopBackground = (isForApproval && !isImportant)
-    ? (hovered ? 'rgba(196,138,26,0.07)' : 'rgba(196,138,26,0.035)')
+  const desktopBackground = isForApproval
+    ? (hovered ? 'rgba(51,90,134,0.12)' : 'rgba(51,90,134,0.07)')
     : cardBackground
 
   const elevation = hovered
@@ -173,7 +175,7 @@ function TaskCard({
   // at exactly the same x as every other row's. Elevation is preserved, so
   // hover still lifts the card.
   const desktopShadow = isForApproval
-    ? `inset 3px 0 0 ${colors.amber}, ${elevation}`
+    ? `inset 3px 0 0 ${colors.blue}, ${elevation}`
     : elevation
 
   // Same accent for the mobile card, by the same means and for the same reason.
@@ -181,7 +183,7 @@ function TaskCard({
   // entry — and `undefined` leaves a non-approval card exactly as it was.
   // No background tint here: the card is the full width of a phone screen, so
   // the stripe alone is already unmissable and a tint would only muddy it.
-  const mobileShadow = isForApproval ? `inset 3px 0 0 ${colors.amber}` : undefined
+  const mobileShadow = isForApproval ? `inset 3px 0 0 ${colors.blue}` : undefined
 
   if (isMobile) {
     return (
