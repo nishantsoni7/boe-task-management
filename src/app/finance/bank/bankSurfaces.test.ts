@@ -32,6 +32,10 @@ describe('Bank Statements never decides a payment', () => {
       'import_bank_statement', 'link_bank_line_to_payment', 'unlink_bank_line_payment',
       'classify_bank_line', 'clear_bank_line_classification',
       'link_bank_debit_to_expense', 'unlink_bank_debit_expense', 'classify_bank_debits',
+      // 20270419000000: records the credit as a payment and links it in one transaction (duplicates refused in the database).
+      'create_payment_from_bank_line',
+      // A read: where the payments linked to earlier credits are allocated (for the order suggestion).
+      'received_payment_allocation_targets',
     ])
     for (const f of bankFiles) {
       const src = read(f)

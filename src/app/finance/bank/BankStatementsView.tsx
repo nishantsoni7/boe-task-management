@@ -46,6 +46,7 @@ import {
   loadCandidateExpenses,
   loadCandidatePayments,
   loadMonthLines,
+  loadPayerHistory,
   loadStoredRange,
   monthLabel,
   monthOf,
@@ -57,7 +58,9 @@ import {
   type BankPayment,
   type LineWithSuggestions,
 } from './bankStatementsModel'
+import { orderSuggestionLabel, type PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
 import { BankLineModal } from './bankLineModal'
+import { BankAddConfirmedModal } from './bankAddConfirmedModal'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { BankUploadModal } from './bankUploadModal'
 
@@ -99,14 +102,16 @@ export function BankStatementsView() {
   // "the data on screen answers a different question", so a reload after a write
   // replaces it in place instead of flashing the list away.
   const dataKey = `${account}|${month}`
-  const [data, setData] = useState<{ key: string; lines: BankLine[]; payments: BankPayment[]; expenses: BankExpense[]; error: string | null } | null>(null)
+  const [data, setData] = useState<{ key: string; lines: BankLine[]; payments: BankPayment[]; expenses: BankExpense[]; history: PayerHistoryEntry[]; error: string | null } | null>(null)
   const loading = month !== null && data?.key !== dataKey
   const lines = useMemo(() => (data?.key === dataKey ? data.lines : []), [data, dataKey])
   const payments = useMemo(() => (data?.key === dataKey ? data.payments : []), [data, dataKey])
   const expenses = useMemo(() => (data?.key === dataKey ? data.expenses : []), [data, dataKey])
+  const history = useMemo(() => (data?.key === dataKey ? data.history : []), [data, dataKey])
   const loadError = data?.key === dataKey ? data.error : null
 
   const [opened, setOpened] = useState<string | null>(null)
+  const [adding, setAdding] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
 
   // ── who is this, and may they be here ──
@@ -165,9 +170,13 @@ export function BankStatementsView() {
         loadCandidatePayments(supabase, month, linked),
         loadCandidateExpenses(supabase, month, linkedExpenses),
       ])
-      setData({ key, lines: ls, payments: ps, expenses: es, error: null })
+      // Which order earlier money from the same payers went to. A suggestion
+      // only: if it cannot be read the page still works, without it.
+      const unlinkedNarrations = ls.filter(l => l.deposit > 0 && l.classification === null && activeLinks(l).length === 0).map(l => l.narration)
+      const hist = await loadPayerHistory(supabase, unlinkedNarrations).catch(() => [])
+      setData({ key, lines: ls, payments: ps, expenses: es, history: hist, error: null })
     } catch (e) {
-      setData({ key, lines: [], payments: [], expenses: [], error: e instanceof Error ? e.message : 'This month could not be loaded.' })
+      setData({ key, lines: [], payments: [], expenses: [], history: [], error: e instanceof Error ? e.message : 'This month could not be loaded.' })
     }
   }, [supabase, account, month])
 
@@ -180,7 +189,7 @@ export function BankStatementsView() {
   // ── derived ──
   const credits = useMemo(() => lines.filter(l => l.deposit > 0), [lines])
   const debits = useMemo(() => lines.filter(l => l.withdrawal > 0), [lines])
-  const analysed = useMemo<LineWithSuggestions[]>(() => credits.map(l => analyseLine(l, payments)), [credits, payments])
+  const analysed = useMemo<LineWithSuggestions[]>(() => credits.map(l => analyseLine(l, payments, [], history)), [credits, payments, history])
 
   const counts = useMemo(() => {
     const c = { all: analysed.length, unlinked: 0, suggested: 0, linked: 0, old_order: 0, not_customer: 0 }
@@ -448,6 +457,7 @@ export function BankStatementsView() {
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
                       <th style={{ width: 170 }}>Status</th>
                       <th style={{ width: 240 }}>Linked to / suggestion</th>
+                      {caps.canCreatePaymentRecord && <th style={{ width: 150 }} aria-label="Add to Confirmed Payments" />}
                     </tr></thead>
                     <tbody>
                       {shownIn.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
@@ -461,6 +471,13 @@ export function BankStatementsView() {
                           <td className="fin-num"><span className="fin-amount">{formatMoney(a.line.deposit)}</span></td>
                           <td><span className={`fin-pill fin-pill--${STATUS_TONE[a.status]}`}>{STATUS_LABEL[a.status]}</span></td>
                           <td><LinkedCell a={a} payments={payments} /></td>
+                          {caps.canCreatePaymentRecord && (
+                            <td onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                              {canAddToConfirmed(a) && (
+                                <button className="boe-btn boe-btn-ghost" onClick={() => setAdding(a.line.id)}>Add to Confirmed</button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -544,6 +561,19 @@ export function BankStatementsView() {
         />
       )}
 
+      {adding && (() => {
+        const item = analysed.find(a => a.line.id === adding)
+        return item ? (
+          <BankAddConfirmedModal
+            supabase={supabase}
+            item={item}
+            verifiesOwn={caps.canDecideOwnPayment}
+            onClose={() => setAdding(null)}
+            onAdded={() => { void loadMonth() }}
+          />
+        ) : null
+      })()}
+
       {confirmingAll && (
         <FinanceModal title="Confirm suggested reasons" onClose={() => { if (!markingAll) setConfirmingAll(false) }} width="520px" closeOnBackdropClick={!markingAll}>
           <p style={{ margin: 0, fontSize: 14 }}>
@@ -581,6 +611,15 @@ export function BankStatementsView() {
       <Toast toast={toast} onDismiss={dismiss} />
     </FinanceLayout>
   )
+}
+
+/**
+ * A credit nobody has explained yet, with no strong or likely recorded payment
+ * to link instead. The database re-checks everything (including duplicates).
+ */
+function canAddToConfirmed(a: LineWithSuggestions): boolean {
+  if (a.status !== 'unlinked' || a.nonCustomer) return false
+  return !a.suggestions.some(s => s.confidence !== 'possible')
 }
 
 function DebitCell({ a, expenses }: { a: LineWithSuggestions; expenses: BankExpense[] }) {
@@ -646,5 +685,14 @@ function LinkedCell({ a, payments }: { a: LineWithSuggestions; payments: BankPay
     )
   }
   if (a.nonCustomer) return <span className="fin-muted">Looks like: {a.nonCustomer.reason}</span>
+  if (a.orderSuggestions.length > 0) {
+    const s = a.orderSuggestions[0]
+    return (
+      <>
+        <span className="fin-primary-text">Suggested: {orderSuggestionLabel(s)}</span>
+        <span className="fin-sub">Earlier {s.latest.humanPaymentId ?? 'payment'} from this payer{s.times > 1 ? ` (${s.times} times)` : ''}</span>
+      </>
+    )
+  }
   return <span className="fin-muted">No suggestion</span>
 }
