@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-24 — Finance: accepting a cash handover confirms its payments (PR open) · migration 20270416000000 (NOT yet applied — apply before deploy)
+## 2026-10-24 — Finance: accepting a cash handover confirms its payments (PR open) · migration 20270416000000 (APPLIED 2026-10-24, before merge; checked: in history, function confirms, anon closed, dry run up to date)
 - **Owner request.** After a recipient accepted a handover, the payment page still asked for the payment to be verified again. Receiving the cash is the verification.
 - **What.** `accept_cash_handover` also confirms each Pending payment in the handover through `approve_finance_payment_request` (same door, same checks and allocation intents), in the same transaction, only when the person accepting holds Finance approve. Each payment in its own sub-transaction: a refusal leaves it Pending with a WARNING and never blocks the acceptance. A recipient without Finance approve still records custody; the payment stays Pending for a verifier.
 - **Not done on purpose.** Payments accepted before this (P-AA-0044) are not bulk-confirmed; a verifier confirms it once (the 20270415000000 lock lets verification through). No notification to the submitter on auto-confirmation. No screen change.
