@@ -4,13 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-24 — Finance: accepting a cash handover never approves a payment (PR open) · migration 20270417000000 (NOT applied)
+## 2026-10-24 — Finance: accepting a cash handover never approves a payment (PR #442 open) · migration 20270417000000 (APPLIED 2026-10-24, before merge)
 - **Owner decision.** Custody acceptance must never mark a payment Confirmed. 20270416000000 (PR #441, applied and merged earlier the same day) approved every Pending payment in a handover when the accepter held Finance approve: in production that was Nishant (admin) as well as Nitish (custodian), so an employee-to-employee acceptance could confirm money that had not reached the company, and Nitish's acceptance skipped Finance's own checks.
 - **What.** `accept_cash_handover` is restored to its 20270413000000 body, extracted verbatim. Custody events, cash-balance moves, the handover closing, its history event, the notification and the Phase 1 lock are unchanged. Finance approval is unchanged and stays a separate step.
 - **Existing records.** None change. No handover was accepted while 20270416000000 was live (0 pending handovers; P-AA-0044 still Pending).
 - **Proof.** PGlite `supabase/tests/handover_accept_no_auto_approval_pglite.mjs`: real migrations 20270410 → 20270417 plus the real decision guard and lock; the negative control under 20270416 shows the auto-approval; after 20270417, acceptance by Nishant, Nitish and an ordinary employee leaves every payment Pending; Finance then approves on its own; duplicate and wrong-person acceptance are refused. 8 checks pass. The restored body is proven identical to the 20270413 body.
 - **Next (owner, Phase 3).** Nitish's acceptance recorded as company cash receipt and shown to Finance; Finance still verifies. Phase 2 ("Not received" final) follows in its own PR after this one is released.
-- **Owner steps.** Apply 20270417000000, then merge.
+- **Owner steps.** Done: 20270417000000 APPLIED to production 2026-10-24 by `supabase db push` (owner approved; backup 20261024T054842Z first; dry run listed only this file). Checked after, read-only: in history; live `accept_cash_handover` no longer calls the approval door; custody step, acceptance marker and notification present; anon cannot accept, signed-in users can; Finance approval still gated on finance approve; payment lock trigger bound; 0 auto-confirmed payments; P-AA-0044 Pending. Remaining: merge PR #442 (owner go-ahead).
 - **Rollback.** Re-emit the 20270416000000 body (not recommended).
 
 ## 2026-10-24 — Finance: accepting a cash handover confirms its payments (PR open) · migration 20270416000000 (APPLIED 2026-10-24, before merge; checked: in history, function confirms, anon closed, dry run up to date)
