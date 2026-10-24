@@ -1045,9 +1045,9 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
    file), so `tasks/my`, `tasks/all` and components/ui/TaskCard.tsx keep the
    gold badge they render today. */
 .boe-badge-approval-review {
-  background: rgba(196,138,26,0.14);
-  border: 1px solid rgba(196,138,26,0.45);
-  color: #805B0D;
+  background: rgba(51,90,134,0.12);
+  border: 1px solid rgba(51,90,134,0.45);
+  color: #335A86;
   font-weight: 600;
   gap: 4px;
 }
