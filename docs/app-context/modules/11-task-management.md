@@ -108,6 +108,7 @@ Statuses and transitions:
 - Waiting needs `team_member` (user must exist) or `external` (text). Blocker/waiting fields clear when the state that explained them ends.
 - Tabs on My Tasks (`myTaskTabs.ts`): Today/Overdue/Future Actionable, Waiting/Blocked, Awaiting Approval, Action Required, All, Important, Unacknowledged, In Progress,
   Overdue, Needs Update, Non-Completion, Completed. "Actionable workload" excludes closed (completed/cancelled) AND `pending_approval`.
+- Assigned By Me row colours (PR #445): Important = gold fill + gold border + star; For Approval = blue fill + blue stripe + blue badge; both = blue fill with gold border and star. Phone card: stripe and badge only.
 - Overdue: `accruesAssigneeOverdue(status)` is false for completed, cancelled, pending_approval (`reviewTransitions.ts`); single source for My Tasks, dashboard, manager
   views, Team Performance and the per-day score reconstruction. **`isOverdue(dueDate)` in `src/lib/ui.ts` compares to the UTC date (`toISOString().slice(0,10)`), not IST** -
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
