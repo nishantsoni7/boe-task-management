@@ -1134,6 +1134,8 @@ describe('the applied migrations are frozen', () => {
       '20270418000000_finance_handover_not_received_final.sql',
       // Bank Statements: Add to Confirmed Payments from a bank credit.
       '20270419000000_finance_bank_add_confirmed_payment.sql',
+      // Customize image learning: attempts, house rules, approved examples. APPLIED 2026-10-25.
+      '20270420000000_orders_customize_image_learning.sql',
     ])
   })
 
@@ -1519,6 +1521,8 @@ describe('the applied migrations are frozen', () => {
       '20270418000000_finance_handover_not_received_final.sql',
       // Bank Statements: Add to Confirmed Payments from a bank credit.
       '20270419000000_finance_bank_add_confirmed_payment.sql',
+      // Customize image learning: attempts, house rules, approved examples. APPLIED 2026-10-25.
+      '20270420000000_orders_customize_image_learning.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

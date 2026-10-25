@@ -3423,7 +3423,39 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 .pi-regen-assumptions ul { margin: 4px 0 0; padding-left: 18px; }
 .pi-regen-from { display: flex; gap: 10px; align-items: flex-start; }
 .pi-regen-from .pi-edit-photo-frame { width: 72px; flex: none; }
+.pi-regen-verdict { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: #37352F; }
+.pi-regen-wrong { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; }
 .pi-regen-link { border: 0; background: none; padding: 0; color: #2F6FDF; font-size: inherit; cursor: pointer; text-decoration: underline; }
+/* /orders/customize-learning */
+.cil { display: flex; flex-direction: column; gap: 14px; max-width: 1100px; }
+.cil-tabs { display: flex; gap: 4px; border-bottom: 1px solid #F1EEE9; }
+.cil-tab { border: 0; background: none; padding: 8px 12px; font-size: 13px; color: #686D6C; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.cil-tab-on { color: #37352F; font-weight: 600; border-bottom-color: #37352F; }
+.cil-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cil-chip-on { background: #37352F; color: #FFFFFF; border-color: #37352F; }
+.cil-chip-on:hover { background: #37352F; }
+.cil-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cil-card { border: 1px solid #F1EEE9; border-radius: 8px; padding: 12px; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px; }
+.cil-off { opacity: 0.6; }
+.cil-card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: #686D6C; }
+.cil-card-head strong { color: #37352F; font-size: 13px; }
+.cil-card-body { display: grid; grid-template-columns: 120px 120px minmax(0, 1fr); gap: 12px; align-items: start; }
+.cil-pic { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #686D6C; }
+.cil-pic .pi-edit-photo-frame img { object-fit: contain; }
+.cil-text { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #37352F; min-width: 0; }
+.cil-text p { margin: 0; overflow-wrap: anywhere; }
+.cil-text p > span:first-child { display: block; font-size: 11px; color: #686D6C; }
+.cil-badge { padding: 1px 8px; border-radius: 999px; background: #F1EEE9; color: #37352F; }
+.cil-badge-ok { background: #E7F3EA; color: #1E6B36; }
+.cil-badge-bad { background: #FBEAE7; color: #B42318; }
+.cil-add { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.cil-add .boe-btn { align-self: flex-start; }
+.cil-rule { margin: 0; font-size: 13px; color: #37352F; }
+.cil-teach { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: #FBFAF8; }
+@media (max-width: 640px) {
+  .cil-card-body { grid-template-columns: 1fr 1fr; }
+  .cil-text { grid-column: 1 / -1; }
+}
 .pi-edit-figures { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 14px; border-radius: 8px; background: #FBFAF8; }
 .pi-edit-figures > div { min-width: 0; }
 .pi-edit-figures dt { font-size: 12px; color: #686D6C; }

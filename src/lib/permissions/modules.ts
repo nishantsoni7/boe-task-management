@@ -368,6 +368,10 @@ registerModule({
     // what widens it. Confers no edit, approve, manage, delete, assignee
     // eligibility, or any Finance or quotation sight.
     { actionKey: 'view_all', displayName: 'View All Company Orders' },
+    // Teach Customize image (Edit PI): review attempts, write house rules,
+    // approve examples on /orders/customize-learning. Registered by
+    // 20270420000000, deny-by-default; admins hold it through the admin branch.
+    { actionKey: 'train_customize_image', displayName: 'Train Customize image' },
   ],
 })
 

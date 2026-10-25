@@ -22,6 +22,7 @@ import {
   CUSTOMIZATION_CHIPS, MAX_INSTRUCTION_LENGTH, MAX_REFERENCES, MAX_REFERENCE_BYTES, REFERENCE_MAX_SIDE,
   INSTRUCTION_MESSAGES, addChipToInstruction, instructionProblem, suggestInstruction,
 } from '@/lib/orders/customizationImage'
+import { MAX_FEEDBACK_NOTE } from '@/lib/orders/customizationLearning'
 
 export type RegeneratedPhoto = { storage_path: string; sha256: string; mime_type: string }
 
@@ -71,7 +72,16 @@ export function PiImageRegenerate({
   const [open, setOpen] = useState(false)
   const [comment, setComment] = useState('')
   const [references, setReferences] = useState<string[]>([])
-  const [understood, setUnderstood] = useState<{ instruction: string; assumptions: string[] } | null>(null)
+  const [understood, setUnderstood] = useState<{
+    instruction: string
+    assumptions: string[]
+    /** The recorded attempt (Learning, 20270420000000); null when learning is not set up. */
+    attemptId: string | null
+    applied: { rules: number; examples: number }
+  } | null>(null)
+  /** The salesperson's verdict on the current preview. */
+  const [verdict, setVerdict] = useState<null | 'correct' | 'wrong' | 'wrong-sent'>(null)
+  const [wrongNote, setWrongNote] = useState('')
   const [working, setWorking] = useState<null | 'understand' | 'regenerate'>(null)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ photo: RegeneratedPhoto; url: string | null } | null>(null)
@@ -94,16 +104,28 @@ export function PiImageRegenerate({
     return { ok: res.ok, body }
   }
 
+  /** Tells the Learning page what happened. Fire and forget: it never blocks the panel. */
+  const report = (event: 'used' | 'discarded' | 'refined' | 'correct' | 'wrong', note = '') => {
+    const attemptId = understood?.attemptId
+    if (!attemptId) return
+    void post('/api/orders/pi-edits/customization-feedback', { attemptId, event, note }).catch(() => undefined)
+  }
+
   const understand = async () => {
     const problem = instructionProblem(comment)
     if (problem) { setError(INSTRUCTION_MESSAGES[problem]); return }
     setWorking('understand'); setError(null)
     try {
       const { ok, body } = await post('/api/orders/pi-edits/interpret-customization', {
-        submissionId, sourcePath: startFrom, comment, productName, dimensions, material, references,
+        submissionId, itemId, sourcePath: startFrom, comment, productName, dimensions, material, references,
       })
       if (!ok) { setError(body.message ?? 'The customization could not be worked out. Please try again.'); return }
-      setUnderstood({ instruction: body.instruction, assumptions: Array.isArray(body.assumptions) ? body.assumptions : [] })
+      setUnderstood({
+        instruction: body.instruction,
+        assumptions: Array.isArray(body.assumptions) ? body.assumptions : [],
+        attemptId: typeof body.attemptId === 'string' ? body.attemptId : null,
+        applied: { rules: Number(body.applied?.rules) || 0, examples: Number(body.applied?.examples) || 0 },
+      })
     } catch {
       setError('The customization could not be checked. Check your connection and try again.')
     } finally { setWorking(null) }
@@ -117,11 +139,13 @@ export function PiImageRegenerate({
     try {
       const { ok, body } = await post('/api/orders/pi-edits/regenerate-image', {
         submissionId, itemId, sourcePath: startFrom, instruction: understood.instruction, references,
+        attemptId: understood.attemptId,
       })
       if (!ok) { setError(body.message ?? 'The picture could not be regenerated. Please try again.'); return }
       const photo: RegeneratedPhoto = { storage_path: body.storage_path, sha256: body.sha256, mime_type: body.mime_type }
       const { data } = await supabase.storage.from('order-files').createSignedUrl(photo.storage_path, 600)
       setPreview({ photo, url: data?.signedUrl ?? null })
+      setVerdict(null); setWrongNote('')
     } catch {
       setError('The picture could not be regenerated. Check your connection and try again.')
     } finally { setWorking(null) }
@@ -136,6 +160,7 @@ export function PiImageRegenerate({
 
   const refineFurther = () => {
     if (!preview) return
+    report('refined')
     setRefineFrom(preview); setPreview(null)
     setComment(''); setUnderstood(null); setReferences([])
   }
@@ -214,6 +239,10 @@ export function PiImageRegenerate({
                   <ul>{understood.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
                 </div>
               )}
+              {(understood.applied.rules > 0 || understood.applied.examples > 0) && (
+                <p className="pi-regen-note">Used {understood.applied.rules} company rule{understood.applied.rules === 1 ? '' : 's'}
+                  {understood.applied.examples > 0 ? ` and ${understood.applied.examples} similar approved example${understood.applied.examples === 1 ? '' : 's'}` : ''}.</p>
+              )}
               <div className="pi-regen-actions">
                 <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => void regenerate()}>
                   {working === 'regenerate' ? 'Regenerating… (up to a minute)' : preview ? 'Regenerate again' : 'Regenerate picture'}
@@ -232,12 +261,36 @@ export function PiImageRegenerate({
               </div>
               <div className="pi-regen-actions">
                 <button type="button" className="boe-btn boe-btn-primary" disabled={busy}
-                  onClick={() => { onUse(preview.photo, preview.url); setPreview(null); setRefineFrom(null); setOpen(false) }}>
+                  onClick={() => { report('used'); onUse(preview.photo, preview.url); setPreview(null); setRefineFrom(null); setOpen(false) }}>
                   Use this image
                 </button>
                 <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={refineFurther}>Change this picture further</button>
-                <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => setPreview(null)}>Discard</button>
+                <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => { report('discarded'); setPreview(null) }}>Discard</button>
               </div>
+              {understood?.attemptId && (
+                <div className="pi-regen-verdict" role="group" aria-label="Was this picture right?">
+                  {verdict === null && (
+                    <>
+                      <span>Was this picture right?</span>
+                      <button type="button" className="pi-regen-chip" onClick={() => { setVerdict('correct'); report('correct') }}>👍 Correct</button>
+                      <button type="button" className="pi-regen-chip" onClick={() => setVerdict('wrong')}>👎 Wrong</button>
+                    </>
+                  )}
+                  {verdict === 'wrong' && (
+                    <div className="pi-regen-wrong">
+                      <label className="pi-edit-field"><span>What was wrong? (this teaches it)</span>
+                        <textarea rows={2} value={wrongNote} maxLength={MAX_FEEDBACK_NOTE} className="boe-input"
+                          placeholder="e.g. the two pedestals still have separate floor plates"
+                          onChange={e => setWrongNote(e.target.value)} /></label>
+                      <div className="pi-regen-actions">
+                        <button type="button" className="boe-btn boe-btn-primary" onClick={() => { report('wrong', wrongNote); setVerdict('wrong-sent') }}>Send</button>
+                        <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setVerdict(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  {(verdict === 'correct' || verdict === 'wrong-sent') && <span>Thanks, noted for the admin’s review.</span>}
+                </div>
+              )}
             </div>
           )}
           <p className="pi-regen-note">{REGENERATE_NOTE}</p>
