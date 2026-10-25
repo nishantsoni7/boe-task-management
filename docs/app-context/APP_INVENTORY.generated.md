@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `688a4f4b` — Completed task lists: drop description, widen date column (#448)
-- Commits on this branch: 1007
-- Pages (`page.tsx`): 146   API routes (`route.ts`): 155
+- Commit: `5d1e2944` — Ship libvips with the Customize image route (sharp tracing)
+- Commits on this branch: 1009
+- Pages (`page.tsx`): 146   API routes (`route.ts`): 156
 - Migrations: 367 (first `20260530_create_positions.sql`, latest `20270419000000_finance_bank_add_confirmed_payment.sql`)
 - Tables ever created: 168 (dropped at some point: 7)   SQL functions: 783   Enums: 0
 - Test files: 650   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `5d1e2944` 2026-10-25 Ship libvips with the Customize image route (sharp tracing)
+- `12b57bbe` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization)
 - `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
 - `a1a772a1` 2026-10-24 Finance: Bank Statements - suggested order and Add to Confirmed Payments (#447)
 - `446380cf` 2026-10-24 Docs: changelog and task dossier for row colours
@@ -37,8 +39,6 @@
 - `0be7c6f0` 2026-10-23 PI detail: stop the right half going blank beside the details column (#431)
 - `c5b5a935` 2026-10-23 PI product codes: contiguous BE0001 numbering in drafts, insert in the middle (#432)
 - `3ccb3bf9` 2026-10-23 Orders dashboard: PI review lists first for approvers (#430)
-- `7c05396c` 2026-10-23 Paginate Sample Tracking and add shared list paging (#428)
-- `06826a8d` 2026-10-23 Docs: handover migrations applied to production
 
 ## Pages by top-level area
 
@@ -108,7 +108,7 @@
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (15): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (16): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 75 source, 131 test
+- `src/lib/orders` — 76 source, 131 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
@@ -161,7 +161,7 @@
 
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
-- `ANTHROPIC_API_KEY` (13 reads)
+- `ANTHROPIC_API_KEY` (14 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
 - `BOE_BACKUP_ROOT` (1 reads)

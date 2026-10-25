@@ -1,13 +1,15 @@
 // ── Regenerate a product picture for a customization (Edit PI) ───────────────
 //
-// POST { submissionId, itemId, sourcePath, instruction }
+// POST { submissionId, itemId, sourcePath, instruction, references? }
 //
 // Takes the picture a line shows now (the standard product, or an earlier
-// regeneration of it), applies the written change, and stores the result as a
-// NEW content-addressed product image for that line — the same key shape the
-// plain photo upload uses. Nothing on the PI changes here: the picture becomes
-// part of the PI only when the person presses "Use this image" and then saves
-// the edit, exactly like Replace photo.
+// regeneration of it), applies the instruction — normally the one the person
+// checked under "Understood as" (../interpret-customization) — and stores the
+// result as a NEW content-addressed product image for that line, the same key
+// shape the plain photo upload uses. Up to two reference pictures (a catalogue
+// photo, a phone sketch) go with it for the changed parts. Nothing on the PI
+// changes here: the picture becomes part of the PI only when the person presses
+// "Use this image" and then saves the edit, exactly like Replace photo.
 //
 // WHO MAY: the people who may change photos on this PI (see ../photo/route.ts).
 //
@@ -20,7 +22,6 @@
 // route cannot be pointed at another object in the bucket.
 
 import { NextRequest, NextResponse } from 'next/server'
-import sharp from 'sharp'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import { isUuid, sha256Hex, MAX_IMAGE_OBJECT_BYTES } from '@/lib/orders/submissionPayload'
@@ -28,16 +29,17 @@ import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import { callFal, NO_RETRY_FAILURES, toDataUrl, type FalFailure } from '@/lib/imageEditor/falRequest'
 import {
-  PI_IMAGE_EDIT_MODEL, buildEditPrompt, instructionProblem, INSTRUCTION_MESSAGES,
+  PI_IMAGE_EDIT_MODEL, buildEditPrompt, instructionProblem, INSTRUCTION_MESSAGES, parseReferences,
 } from '@/lib/orders/customizationImage'
+import {
+  SOURCE_MESSAGES, loadSourcePicture, makeRateLimiter, mayChangePiPhotos,
+} from '@/lib/orders/customizationImageServer'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const ROUTE_BUDGET_MS = 55_000
-const PROVIDER_TIMEOUT_MS = 45_000
-/** The picture is sent at most this wide/tall: enough to edit, small to upload. */
-const SEND_MAX_SIDE = 1600
+const ROUTE_BUDGET_MS = 57_000
+const PROVIDER_TIMEOUT_MS = 50_000
 
 const EXT = { png: 'png', jpeg: 'jpg', webp: 'webp' } as const
 const MIME = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' } as const
@@ -45,19 +47,8 @@ const MIME = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' } as con
 const fail = (status: number, code: string, message: string, extra: Record<string, unknown> = {}) =>
   NextResponse.json({ error: code, message, ...extra }, { status })
 
-// Per user, in memory: a spend guard on a route that costs money per press, not
-// a security control (same reasoning as /api/image-editor/studio).
-const WINDOW_MS = 60_000
-const MAX_PER_WINDOW = 6
-const recentCalls = new Map<string, number[]>()
-function rateLimited(userId: string): boolean {
-  const now = Date.now()
-  const recent = (recentCalls.get(userId) ?? []).filter(t => now - t < WINDOW_MS)
-  if (recent.length >= MAX_PER_WINDOW) { recentCalls.set(userId, recent); return true }
-  recent.push(now)
-  recentCalls.set(userId, recent)
-  return false
-}
+// Same reasoning as /api/image-editor/studio: a spend guard, not a security control.
+const rateLimited = makeRateLimiter(6)
 
 const statusFor = (reason: FalFailure): number => {
   switch (reason) {
@@ -81,25 +72,16 @@ export async function POST(req: NextRequest) {
   const itemId = typeof body.itemId === 'string' ? body.itemId : ''
   const sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : ''
   const instruction = typeof body.instruction === 'string' ? body.instruction : ''
-  if (!isUuid(submissionId) || !isUuid(itemId) || !isCanonicalPiImageKey(sourcePath, { submissionId })) {
+  const references = parseReferences(body.references)
+  if (!isUuid(submissionId) || !isUuid(itemId) || !isCanonicalPiImageKey(sourcePath, { submissionId }) || references === null) {
     return fail(400, 'BAD_REQUEST', 'The request could not be read.')
   }
   const problem = instructionProblem(instruction)
   if (problem) return fail(400, 'INSTRUCTION', INSTRUCTION_MESSAGES[problem])
 
-  // Who may: the person who may edit this PI now, or propose a revision of it.
-  const { data: sub } = await authClient.from('order_submissions')
-    .select('id, order_id').eq('id', submissionId).maybeSingle()
-  if (!sub) return fail(404, 'NOT_FOUND', 'This PI is not available to you.')
-  const orderId = (sub as { order_id: string | null }).order_id
-  const checks = orderId
-    ? [authClient.rpc('can_propose_order_pi_edit', { p_order_id: orderId })]
-    : [authClient.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
-       authClient.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })]
-  const answers = await Promise.all(checks)
-  if (!answers.some(a => !a.error && a.data === true)) {
-    return fail(403, 'FORBIDDEN', 'You cannot change the photos on this PI.')
-  }
+  const may = await mayChangePiPhotos(authClient, submissionId)
+  if (may === 'not_found') return fail(404, 'NOT_FOUND', 'This PI is not available to you.')
+  if (may === 'forbidden') return fail(403, 'FORBIDDEN', 'You cannot change the photos on this PI.')
 
   const apiKey = process.env.FAL_KEY
   if (!apiKey) return fail(503, 'not_configured', 'The image service is not set up yet. Ask your administrator to configure it.')
@@ -109,22 +91,8 @@ export async function POST(req: NextRequest) {
   if (rateLimited(user.id)) return fail(429, 'RATE_LIMITED', 'Too many pictures in a minute. Wait a moment and try again.')
 
   // Everything refusable is refused BEFORE the paying call.
-  const download = await admin.client.storage.from('order-files').download(sourcePath)
-  if (download.error || !download.data) return fail(404, 'SOURCE_MISSING', 'The product picture could not be read. Reload the page and try again.')
-  const sourceBytes = new Uint8Array(await download.data.arrayBuffer())
-  const sourceFormat = sniffImageFormat(sourceBytes)
-  if ((sourceFormat !== 'png' && sourceFormat !== 'jpeg' && sourceFormat !== 'webp') || sourceBytes.length > MAX_IMAGE_OBJECT_BYTES) {
-    return fail(422, 'SOURCE_UNSUPPORTED', 'This product picture cannot be edited. Replace it with a PNG, JPEG or WebP photo first.')
-  }
-
-  let toSend: Buffer
-  try {
-    toSend = await sharp(sourceBytes).rotate()
-      .resize(SEND_MAX_SIDE, SEND_MAX_SIDE, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 90 }).toBuffer()
-  } catch {
-    return fail(422, 'SOURCE_UNSUPPORTED', 'This product picture cannot be edited. Replace it with a PNG, JPEG or WebP photo first.')
-  }
+  const source = await loadSourcePicture(admin.client, sourcePath)
+  if (!source.ok) return fail(source.code === 'SOURCE_MISSING' ? 404 : 422, source.code, SOURCE_MESSAGES[source.code])
 
   const result = await callFal({
     modelId: PI_IMAGE_EDIT_MODEL,
@@ -133,11 +101,16 @@ export async function POST(req: NextRequest) {
     deadlineAt: startedAt + ROUTE_BUDGET_MS,
     expect: 1,
     body: {
-      prompt: buildEditPrompt(instruction),
-      image_url: toDataUrl(toSend, 'image/jpeg'),
+      prompt: buildEditPrompt(instruction, references.length),
+      image_urls: [
+        toDataUrl(source.jpeg, 'image/jpeg'),
+        ...references.map(r => `data:${r.mimeType};base64,${r.base64}`),
+      ],
       num_images: 1,
+      aspect_ratio: 'auto',
+      resolution: '1K',
       output_format: 'png',
-      safety_tolerance: '2',
+      limit_generations: true,
     },
   })
   if (!result.ok) {

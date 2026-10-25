@@ -495,6 +495,7 @@ export function PiEditor({
                         {mode === 'apply' && (
                           <PiImageRegenerate supabase={supabase} submissionId={submissionId} itemId={item.id ?? item.key}
                             sourcePath={repPath} customization={item.customization} disabled={busy !== null}
+                            productName={item.product_name} dimensions={item.dimensions} material={item.material}
                             canRevert={item.id !== null && item.photo.kind === 'new'
                               && !!current?.images.some(m => m.item_id === item.id && m.role === 'representative')}
                             onUse={(photo, url) => {
