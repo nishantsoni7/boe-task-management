@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9767b1d7` — Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
-- Commits on this branch: 1008
+- Commit: `01c6e8c2` — Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
+- Commits on this branch: 1009
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `01c6e8c2` 2026-10-25 Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
 - `9767b1d7` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
 - `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
 - `a1a772a1` 2026-10-24 Finance: Bank Statements - suggested order and Add to Confirmed Payments (#447)
@@ -38,7 +39,6 @@
 - `0be7c6f0` 2026-10-23 PI detail: stop the right half going blank beside the details column (#431)
 - `c5b5a935` 2026-10-23 PI product codes: contiguous BE0001 numbering in drafts, insert in the middle (#432)
 - `3ccb3bf9` 2026-10-23 Orders dashboard: PI review lists first for approvers (#430)
-- `7c05396c` 2026-10-23 Paginate Sample Tracking and add shared list paging (#428)
 
 ## Pages by top-level area
 

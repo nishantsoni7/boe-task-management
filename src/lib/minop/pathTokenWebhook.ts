@@ -38,6 +38,33 @@ export type MinopPathTokenDeps = {
   insertDelivery: (row: MinopRawDeliveryRow) => Promise<{ ok: boolean }>
 }
 
+/**
+ * What Minop documents as the success reply (Developer Dashboard examples):
+ *
+ *   Say Hello         {"status":1}
+ *   Transaction Data  {"transStatus":[{"txnId":21,"status":1},{"txnId":22,"status":1}]}
+ *
+ * A Transaction Data reply must name every transaction it accepts, with each
+ * txnId echoed exactly as sent (number or string). A bare {"status":1} does not
+ * acknowledge any transaction, so Minop leaves them unsynced (IsSync = False)
+ * and keeps re-sending them: production held 196 stored copies of 14 punches.
+ * Entries without a txnId cannot be acknowledged and are left out.
+ */
+export function minopSuccessReply(payload: unknown): { status: 1 } | { transStatus: { txnId: number | string; status: 1 }[] } {
+  const trans = payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as { trans?: unknown }).trans
+    : undefined
+  if (!Array.isArray(trans)) return { status: 1 }
+
+  const transStatus: { txnId: number | string; status: 1 }[] = []
+  for (const entry of trans) {
+    const txnId = entry !== null && typeof entry === 'object' ? (entry as { txnId?: unknown }).txnId : undefined
+    if (typeof txnId === 'number' && Number.isFinite(txnId)) transStatus.push({ txnId, status: 1 })
+    else if (typeof txnId === 'string' && txnId.trim() !== '') transStatus.push({ txnId, status: 1 })
+  }
+  return { transStatus }
+}
+
 /** After the token is proven, failures answer in Minop's own vocabulary. */
 function refuse(status: number): NextResponse {
   return NextResponse.json({ status: 0 }, { status })
@@ -93,5 +120,5 @@ export async function handleMinopPathTokenWebhook(
   // header-authenticated route treats it.
   if (capture.processing_status !== 'received') return refuse(400)
 
-  return NextResponse.json({ status: 1 })
+  return NextResponse.json(minopSuccessReply(capture.payload))
 }
