@@ -25,7 +25,8 @@ import { buildInterpretRequest, INTERPRET_SYSTEM_PROMPT } from './customizationI
 import { activeOrdersNav } from '@/lib/navigation/moduleNav'
 import type { EffectivePermission } from '@/lib/permissions/types'
 
-const read = (p: string) => readFileSync(p, 'utf8')
+// CRLF → LF: CI checks the repository out with Windows line endings.
+const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 
 describe('who sees the Learning link', () => {
   const grant = (actionKey: string, allowed = true) => ({ actionKey, allowed } as EffectivePermission)
