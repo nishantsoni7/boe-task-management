@@ -56,6 +56,9 @@ const nextConfig: NextConfig = {
     '/api/showroom/quotation/\\[id\\]': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
     // Custom review proofs are re-encoded and hashed (duplicate detection) with sharp.
     '/api/customer-reviews/custom-submissions': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
+    // Edit PI Customize image shrinks the product picture with sharp before sending it.
+    '/api/orders/pi-edits/regenerate-image': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
+    '/api/orders/pi-edits/interpret-customization': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
   },
 
   images: {

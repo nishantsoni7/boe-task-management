@@ -18,7 +18,7 @@ Owner/decision maker: Nishant Soni (admin). All business rules are owner decisio
 | Libraries | `@supabase/ssr`, `@supabase/supabase-js`, `@tanstack/react-query`, `pdfkit` (external), `sharp`, `xlsx`, `fflate`, `qrcode.react`, `lucide-react` |
 | Hosting | Vercel; `vercel.json`: functions in **`hnd1`** (Tokyo, next to the DB — each DB round trip from elsewhere cost ~0.6 s), cron `/api/image-editor/cleanup` daily 03:00 UTC (needs `CRON_SECRET`) |
 | Source | GitHub `nishantsoni7/boe-task-management` — **public** repo. Ruleset "Protect main": PR required (squash/rebase only, 0 approvals), required check **Vercel**, linear history, no force-push, no deletion, no bypass. Merge to `main` = production deploy |
-| External services | fal.ai (Image Editor, `FAL_KEY`), Anthropic API (Exhibition Leads card scan, Payroll "Ask about your salary", `ANTHROPIC_API_KEY`), Minop/MORX attendance cloud (webhook receiver), WhatsApp share links (no API) |
+| External services | fal.ai (Image Editor; Orders Edit PI Customize image, `FAL_KEY`), Anthropic API (Exhibition Leads card scan, Payroll "Ask about your salary", Orders Edit PI Customize image understanding, `ANTHROPIC_API_KEY`), Minop/MORX attendance cloud (webhook receiver), WhatsApp share links (no API) |
 | Scale | 142 pages, 148 API routes, 330 migrations, ~150 tables, ~700 SQL functions, ~600 test files, ~880 commits |
 | Supabase keys | Legacy anon/service-role JWT keys were **disabled on 2026-08-16**; production uses the new publishable/secret keys (in Vercel). The local `.env.local` still holds the dead legacy keys |
 
