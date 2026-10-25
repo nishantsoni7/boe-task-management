@@ -198,7 +198,7 @@ Immutability / apply-state facts:
 - Pick a timestamp above every migration IN FLIGHT, not only above main (collisions happened: 20261113 and 20261115 were renumbered to 20261118/19/20).
 - Release order is always **migration first, then code** for any screen that reads a new table/function.
 - Apply-state evidence **(from memory unless noted)**: 20260816-21, 20260705/06/84, 20261111, 20261118-21, 20261211, 20261215-18 applied (2026-09-07/14/18); 20270111120000 applied 2026-09-26 08:54 IST (`docs/releases/2026-09-26-pi-order-release.md`, in repo); #209 stack 20270112-16 released the same day (`docs/releases`); 20270315/16 applied 2026-10-17; 20270318 applied 2026-10-17; **20270317 UNAPPLIED when last recorded** and its code (#320 = commit `0b06be5e`) IS on main — if still unapplied, the admin "Delete Order" action fails at the RPC. Everything between 20261219 and 20270314 not listed: apply state unknown from this checkout.
-- `20270420000000_orders_customize_image_learning.sql` — Customize image learning (3 service-role-only tables, `train_customize_image`, `can_train_customize_image()`, 5 seed rules). NOT APPLIED until the owner pushes it.
+- `20270420000000_orders_customize_image_learning.sql` — Customize image learning (3 service-role-only tables, `train_customize_image`, `can_train_customize_image()`, 5 seed rules). APPLIED 2026-10-25 (backup 20261025T105831Z first).
 
 ## 5. Permissions and access
 
