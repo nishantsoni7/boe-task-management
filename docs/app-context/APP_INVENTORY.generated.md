@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `446380cf` — Docs: changelog and task dossier for row colours
-- Commits on this branch: 1005
-- Pages (`page.tsx`): 146   API routes (`route.ts`): 154
+- Commit: `688a4f4b` — Completed task lists: drop description, widen date column (#448)
+- Commits on this branch: 1007
+- Pages (`page.tsx`): 146   API routes (`route.ts`): 155
 - Migrations: 367 (first `20260530_create_positions.sql`, latest `20270419000000_finance_bank_add_confirmed_payment.sql`)
 - Tables ever created: 168 (dropped at some point: 7)   SQL functions: 783   Enums: 0
-- Test files: 649   Next.js 16.2.6, React 19.2.4
+- Test files: 650   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
+- `a1a772a1` 2026-10-24 Finance: Bank Statements - suggested order and Add to Confirmed Payments (#447)
 - `446380cf` 2026-10-24 Docs: changelog and task dossier for row colours
 - `fcc43067` 2026-10-24 Assigned By Me: separate Important and For Approval row colours
 - `a475918d` 2026-10-24 Docs: record PR #444 merge SHA and backup
@@ -37,8 +39,6 @@
 - `3ccb3bf9` 2026-10-23 Orders dashboard: PI review lists first for approvers (#430)
 - `7c05396c` 2026-10-23 Paginate Sample Tracking and add shared list paging (#428)
 - `06826a8d` 2026-10-23 Docs: handover migrations applied to production
-- `c1b67d29` 2026-10-23 Docs: record cash handover merge (#426) and post-merge backup
-- `c18d8e73` 2026-10-23 Finance: cash handover with acceptance
 
 ## Pages by top-level area
 
@@ -108,7 +108,7 @@
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (14): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/photo [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (15): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 74 source, 130 test
+- `src/lib/orders` — 75 source, 131 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
@@ -174,7 +174,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `CRON_SECRET` (2 reads)
 - `EXHIBITION_SCAN_MODEL` (1 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
-- `FAL_KEY` (5 reads)
+- `FAL_KEY` (6 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
 - `MINOP_ATTENDANCE_PROCESSING_ENABLED` (2 reads)
 - `MINOP_WEBHOOK_PATH_TOKEN` (1 reads)

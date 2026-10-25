@@ -50,6 +50,7 @@ import {
 } from '@/lib/orders/piEdit'
 import type { EditPiOutcome } from '@/lib/orders/editPiPage'
 import { formatBoeItemCode, formatPiLineCode } from '@/lib/orders/orderProductCodes'
+import { PiImageRegenerate } from './PiImageRegenerate'
 
 export const EDIT_PI_LABEL = 'Edit PI'
 export const EDIT_PI_PROPOSE_NOTE =
@@ -491,6 +492,17 @@ export function PiEditor({
                           <label className="pi-edit-field pi-edit-field--wide"><span>Customization / description</span>
                             <textarea rows={2} value={item.customization} maxLength={2000} className="boe-input" onChange={e => setItem(item.key, { customization: e.target.value })} /></label>
                         </div>
+                        {mode === 'apply' && (
+                          <PiImageRegenerate supabase={supabase} submissionId={submissionId} itemId={item.id ?? item.key}
+                            sourcePath={repPath} customization={item.customization} disabled={busy !== null}
+                            canRevert={item.id !== null && item.photo.kind === 'new'
+                              && !!current?.images.some(m => m.item_id === item.id && m.role === 'representative')}
+                            onUse={(photo, url) => {
+                              setItem(item.key, { photo: { kind: 'new', ...photo } })
+                              if (url) setPhotoUrls(u => ({ ...u, [photo.storage_path]: url }))
+                            }}
+                            onRevert={() => setItem(item.key, { photo: { kind: 'keep' } })} />
+                        )}
                       </div>
                     )}
                   </li>
