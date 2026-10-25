@@ -13,7 +13,7 @@ Verified against checkout `852e0493`. Secrets and tokens are referred to BY NAME
 | Piece | Status |
 |---|---|
 | Stage 1 raw capture, header/payload-token authenticated: `POST /api/integrations/minop/webhook` | Shipped (stores only; returns `{"status":"1"}` string) |
-| Raw path-token receiver: `POST /api/integrations/minop/webhook/[token]` | Shipped (PR #159; stores only; returns `{"status":1}` numeric) |
+| Raw path-token receiver: `POST /api/integrations/minop/webhook/[token]` | Shipped (PR #159; stores only). Reply: Say Hello `{"status":1}`; Transaction Data `{"transStatus":[{"txnId":<as sent>,"status":1},…]}` (per-transaction acknowledgement, fix branch `fix/minop-transstatus-ack`, PR pending; before it the reply was a bare `{"status":1}`) |
 | Stage 2 attendance processor (`runProcessing.ts` etc.) | Code present but DISABLED by compile-time constant `MINOP_COLLECTION_ONLY = true`; the function throws before any read/write |
 | Retry/reprocess route `POST /api/attendance/minop-deliveries/[id]/reprocess` | DELETED (only `GET` route.ts remains in that folder) |
 | `/attendance/minop` ("Attendance Sync") diagnostics | Shipped, Retry action removed; unprocessed rows read "Stored only" |
@@ -68,7 +68,7 @@ Verified against checkout `852e0493`. Secrets and tokens are referred to BY NAME
 - Raw-first: store the exact body, hash it, never dedupe on the hash (a genuine second punch can serialise identically); idempotency belongs to the (future) merge.
 - Header auth kept for the simulator/vendor configs; a SECOND route authenticates by secret URL path because the Minop Developer Dashboard accepts only a URL (two fields: Say Hello, Transaction Data).
 - Collection-only (2026-10-01): the device is a test unit; admins want to verify what Minop actually sends before anything touches attendance/payroll. Made a code constant, not an env flag.
-- Replies follow Minop's contract: `{"status":"1"}` / `{"status":1}`; not acknowledging on store failure so Minop retries.
+- Replies follow Minop's contract (Developer Dashboard examples, read 2026-10-25): Say Hello -> `{"status":1}`; Transaction Data -> `{"transStatus":[{"txnId":21,"status":1}]}`, naming every accepted transaction with its txnId as sent. A bare `{"status":1}` for Transaction Data (the earlier behaviour) acknowledges nothing, which is the likely reason Minop kept `IsSync = False` and re-sent each punch ~14 times. Not acknowledging on store failure so Minop retries. The header-authenticated route still answers `{"status":"1"}` (simulator only).
 - Wrong/unset token -> bare 404 so the endpoint's existence is not revealed.
 
 ## 9. Known traps / gotchas / unfixed defects

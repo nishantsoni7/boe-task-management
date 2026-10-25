@@ -132,12 +132,41 @@ test('several entries inside trans[] are one delivery row, in their original ord
   assert.deepEqual(rows[0].payload, JSON.parse(multipleTrans))
 })
 
-test('the success response is exactly {"status":1}, with status a number', async () => {
-  const { res, text } = await deliver(stringTrans)
+test('a Say Hello message is answered exactly {"status":1}, with status a number', async () => {
+  const { res, text } = await deliver('{"dvcSrNo":"911573950381867","dvcTime":"2018-02-27 09:00:00 +05:30:00"}')
   assert.equal(res.status, 200)
   assert.equal(text, '{"status":1}')
   assert.equal(typeof JSON.parse(text).status, 'number')
   assert.match(res.headers.get('content-type') ?? '', /^application\/json/)
+})
+
+test('a Transaction Data message is answered with a transStatus entry per txnId, echoed as sent', async () => {
+  const numeric = await deliver(multipleTrans)
+  assert.equal(numeric.res.status, 200)
+  // Fixture: txnId 21 (number), "22" (string), 23 (number) — each echoed in its own type.
+  assert.deepEqual(JSON.parse(numeric.text), {
+    transStatus: [{ txnId: 21, status: 1 }, { txnId: '22', status: 1 }, { txnId: 23, status: 1 }],
+  })
+  assert.match(numeric.res.headers.get('content-type') ?? '', /^application\/json/)
+
+  // The real device's shape: txnId is a string there, and must come back a string.
+  const string = await deliver(stringTrans)
+  assert.equal(string.text, '{"transStatus":[{"txnId":"3","status":1}]}')
+  assert.notEqual(string.text, '{"status":1}')
+})
+
+test('transactions without a txnId are not acknowledged; an empty trans list gets an empty transStatus', async () => {
+  const noId = await deliver('{"trans":[{"punchId":1,"txnDateTime":"2026-09-24 15:23:14"},{"txnId":7},null,{"txnId":""}]}')
+  assert.deepEqual(JSON.parse(noId.text), { transStatus: [{ txnId: 7, status: 1 }] })
+  const empty = await deliver('{"trans":[]}')
+  assert.deepEqual(JSON.parse(empty.text), { transStatus: [] })
+})
+
+test('the reply does not depend on the stored copy: a failed insert is still not acknowledged', async () => {
+  const store = fakeStore(false)
+  const res = await handleMinopPathTokenWebhook(post(multipleTrans), TOKEN, { configuredToken: TOKEN, insertDelivery: store.insertDelivery })
+  assert.equal(res.status, 500)
+  assert.doesNotMatch(await res.text(), /transStatus/)
 })
 
 test('the raw body is stored byte-for-byte — whitespace, key order and unicode untouched', async () => {
