@@ -9,7 +9,10 @@
 // continuous floor plate" rather than "bottom plate combined". The page shows
 // it as "Understood as", editable, BEFORE any image request is paid for.
 //
-// Nothing is stored. Same gate as the photo upload. ANTHROPIC_API_KEY is read
+// LEARNING (20270420000000): the active house rules and the approved examples
+// most like this request go into the request, and the attempt is recorded for
+// the Learning page — both best effort, so without the tables it works as
+// before. Same gate as the photo upload. ANTHROPIC_API_KEY is read
 // here and never leaves the server. Refusals fall back server-side
 // (`fallbacks: "default"`) so a policy false positive still gets an answer.
 
@@ -25,6 +28,8 @@ import {
 import {
   SOURCE_MESSAGES, loadSourcePicture, makeRateLimiter, mayChangePiPhotos,
 } from '@/lib/orders/customizationImageServer'
+import { buildLearningContext } from '@/lib/orders/customizationLearning'
+import { loadLearningFor, recordAttempt } from '@/lib/orders/customizationLearningServer'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -48,10 +53,14 @@ export async function POST(req: NextRequest) {
   let body: Record<string, unknown>
   try { body = (await req.json()) as Record<string, unknown> } catch { return fail(400, 'BAD_REQUEST', 'The request could not be read.') }
   const submissionId = str(body.submissionId, 64)
+  const itemId = str(body.itemId, 64)
   const sourcePath = str(body.sourcePath, 400)
   const comment = str(body.comment, 4000)
+  const productName = str(body.productName, 300)
+  const dimensions = str(body.dimensions, 500)
+  const material = str(body.material, 1000)
   const references = parseReferences(body.references)
-  if (!isUuid(submissionId) || !isCanonicalPiImageKey(sourcePath, { submissionId }) || references === null) {
+  if (!isUuid(submissionId) || !isUuid(itemId) || !isCanonicalPiImageKey(sourcePath, { submissionId }) || references === null) {
     return fail(400, 'BAD_REQUEST', 'The request could not be read.')
   }
   const problem = instructionProblem(comment)
@@ -67,7 +76,11 @@ export async function POST(req: NextRequest) {
   if (!admin.ok) return fail(500, 'SERVER_NOT_CONFIGURED', 'Image regeneration is not configured on this deployment.')
   if (rateLimited(user.id)) return fail(429, 'RATE_LIMITED', 'Too many requests in a minute. Wait a moment and try again.')
 
-  const source = await loadSourcePicture(admin.client, sourcePath)
+  // The picture and what the company has taught so far (rules + similar examples), together.
+  const [source, learning] = await Promise.all([
+    loadSourcePicture(admin.client, sourcePath),
+    loadLearningFor(admin.client, { comment, productName }),
+  ])
   if (!source.ok) return fail(source.code === 'SOURCE_MISSING' ? 404 : 422, source.code, SOURCE_MESSAGES[source.code])
 
   // One attempt, inside the route's time: a timeout is answered, not retried.
@@ -96,11 +109,9 @@ export async function POST(req: NextRequest) {
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: source.jpeg.toString('base64') } },
             ...references.map(r => ({ type: 'image', source: { type: 'base64', media_type: r.mimeType, data: r.base64 } })),
             { type: 'text', text: buildInterpretRequest({
-              comment,
-              productName: str(body.productName, 300),
-              dimensions: str(body.dimensions, 500),
-              material: str(body.material, 1000),
+              comment, productName, dimensions, material,
               referenceCount: references.length,
+              learning: buildLearningContext(learning.rules, learning.examples),
             }) },
           ],
         }],
@@ -130,5 +141,28 @@ export async function POST(req: NextRequest) {
   try { parsed = JSON.parse(text) } catch { /* answered below */ }
   const interpretation = readInterpretation(parsed)
   if (!interpretation) return fail(422, 'NOT_UNDERSTOOD', NOT_UNDERSTOOD)
-  return NextResponse.json({ ok: true, ...interpretation })
+
+  // Recorded for the Learning page; best effort, never a reason to fail.
+  const attemptId = await recordAttempt(admin.client, {
+    submission_id: submissionId,
+    item_id: itemId,
+    created_by: user.id,
+    source_path: sourcePath,
+    comment: comment.trim().slice(0, 1500),
+    product_name: productName.trim() || null,
+    pi_dimensions: dimensions.trim() || null,
+    pi_material: material.trim() || null,
+    reference_count: references.length,
+    understood_instruction: interpretation.instruction,
+    understood_assumptions: interpretation.assumptions,
+    applied_rule_ids: learning.rules.map(r => r.id),
+    applied_example_ids: learning.examples.map(e => e.id),
+  })
+
+  return NextResponse.json({
+    ok: true,
+    ...interpretation,
+    attemptId,
+    applied: { rules: learning.rules.length, examples: learning.examples.length },
+  })
 }

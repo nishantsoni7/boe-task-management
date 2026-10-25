@@ -44,7 +44,8 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
   if (section === undefined) return 'dashboard'
   if (section === 'drafts' || section === 'import') return 'drafts'
   if (section === 'all') return 'confirmed'
-  if (section === 'notifications' || section === 'requests') return null
+  // customize-learning sits under Resources (admin), not among the destinations.
+  if (section === 'notifications' || section === 'requests' || section === 'customize-learning') return null
   // Anything else directly under /orders is an Order record.
   return 'confirmed'
 }

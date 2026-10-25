@@ -34,6 +34,30 @@ import {
 import {
   SOURCE_MESSAGES, loadSourcePicture, makeRateLimiter, mayChangePiPhotos,
 } from '@/lib/orders/customizationImageServer'
+import { ATTEMPTS, updateOwnAttempt } from '@/lib/orders/customizationLearningServer'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Notes on the person's own attempt what was sent and what came back, for the
+ * Learning page. Best effort: no attempt id, or no learning tables, changes nothing.
+ */
+async function noteOnAttempt(
+  service: SupabaseClient, attemptId: string | null, owner: { userId: string; submissionId: string },
+  instruction: string, outcome: 'generated' | 'failed', resultPath: string | null,
+) {
+  if (!attemptId) return
+  const { data } = await service.from(ATTEMPTS).select('understood_instruction')
+    .eq('id', attemptId).eq('created_by', owner.userId).eq('submission_id', owner.submissionId).maybeSingle()
+  if (!data) return
+  const understood = String((data as { understood_instruction: string }).understood_instruction ?? '')
+  await updateOwnAttempt(service, attemptId, owner, {
+    final_instruction: instruction.trim().slice(0, 1500),
+    instruction_edited: instruction.trim() !== understood.trim(),
+    outcome,
+    ...(resultPath ? { result_path: resultPath } : {}),
+    updated_at: new Date().toISOString(),
+  })
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -73,6 +97,7 @@ export async function POST(req: NextRequest) {
   const sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : ''
   const instruction = typeof body.instruction === 'string' ? body.instruction : ''
   const references = parseReferences(body.references)
+  const attemptId = typeof body.attemptId === 'string' && isUuid(body.attemptId) ? body.attemptId : null
   if (!isUuid(submissionId) || !isUuid(itemId) || !isCanonicalPiImageKey(sourcePath, { submissionId }) || references === null) {
     return fail(400, 'BAD_REQUEST', 'The request could not be read.')
   }
@@ -115,6 +140,7 @@ export async function POST(req: NextRequest) {
   })
   if (!result.ok) {
     console.error('[pi-regenerate-image] failed', { reason: result.reason, status: result.status, requestId: result.requestId, phase: result.phase })
+    await noteOnAttempt(admin.client, attemptId, { userId: user.id, submissionId }, instruction, 'failed', null)
     return fail(statusFor(result.reason), result.reason, result.message, { noRetry: NO_RETRY_FAILURES.has(result.reason) })
   }
 
@@ -129,5 +155,6 @@ export async function POST(req: NextRequest) {
     .upload(storagePath, out, { contentType: MIME[format], upsert: true })
   if (error) return fail(500, 'PHOTO_NOT_STORED', 'The picture was made but could not be stored. Please try again.')
 
+  await noteOnAttempt(admin.client, attemptId, { userId: user.id, submissionId }, instruction, 'generated', storagePath)
   return NextResponse.json({ ok: true, storage_path: storagePath, sha256, mime_type: MIME[format] })
 }

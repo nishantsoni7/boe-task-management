@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, FileText, Bell } from 'lucide-react'
+import { LayoutDashboard, List, FileText, Bell, GraduationCap } from 'lucide-react'
+import { LEARNING_PATH, canTrainCustomizeImage } from '@/lib/orders/customizationLearning'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -55,7 +56,11 @@ export function OrdersLayout({
   // session-scoped context already holds the same row (it is the one the module
   // switch reads), so the account block at the foot of the sidebar is drawn
   // from the first frame instead of appearing when the page lands. Display only.
-  const { profile: sessionProfile } = usePermissionContext()
+  const { profile: sessionProfile, role, permissionsByModule } = usePermissionContext()
+  // Customize image learning (admin / train_customize_image): read from the
+  // context this layout already resolves, so the link costs no query. Shows
+  // the link only; the page's routes ask the database.
+  const canTrain = canTrainCustomizeImage(role, permissionsByModule.get('orders') ?? [])
   const { triggerRefresh } = useRefresh()
 
   // Orders-only unread count — drives both the sidebar "Notifications" badge
@@ -225,6 +230,15 @@ export function OrdersLayout({
           <div className="boe-sidebar-resources" role="group" aria-label="Resources">
             <div className="boe-sidebar-resources-label">Resources</div>
             <PiFormatNavLink quiet onNavigate={() => setSidebarOpen(false)} />
+            {canTrain && (
+              <ShellNavLink
+                href={LEARNING_PATH}
+                label="Customize image learning"
+                icon={<GraduationCap size={14} strokeWidth={1.8} />}
+                active={pathname.startsWith(LEARNING_PATH)}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            )}
           </div>
 
           {/* Bottom profile section */}

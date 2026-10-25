@@ -128,6 +128,9 @@ Write the instruction the image model needs. It must:
 - Follow engineering sense where the salesperson implies it: a much longer top needs supports spread out under it; two pedestals under one long top stand near each end.
 - Keep everything the salesperson did not ask to change: say it stays the same as in the photograph.
 - When reference pictures are given, say which part to take from them and keep everything else from the product photograph.
+- Compare the dimensions on the PI with the shape in the photograph even when the salesperson does not mention it: a rectangular size on a square or round top means the top changes shape, and the base must change to support it.
+
+The request may include company rules and approved examples of similar requests. Follow the company rules, and read similar wording the way the approved examples do, unless the salesperson clearly asks for something different.
 
 Write the instruction as plain sentences, no headings, under 120 words. Put every guess you had to make into "assumptions", in short plain English the salesperson can check. Leave "assumptions" empty if nothing was guessed.
 
@@ -142,8 +145,11 @@ export function buildInterpretRequest(input: {
   dimensions: string
   material: string
   referenceCount: number
+  /** Company rules and similar approved examples (customizationLearning.ts); '' for none. */
+  learning?: string
 }): string {
   const lines = [
+    input.learning?.trim() ? `${input.learning.trim()}\n\nThe request:` : '',
     `Salesperson's customization: ${input.comment.trim()}`,
     input.productName.trim() && `Product name: ${input.productName.trim()}`,
     input.dimensions.trim() && `Dimensions on the PI: ${input.dimensions.trim()}`,
