@@ -402,11 +402,63 @@ export function filterIncomingRows(rows: IncomingRegisterRow[], filters: Incomin
   })
 }
 
-/** Newest received first; within one message, punches in the order sent. */
-export function sortIncomingRows(rows: IncomingRegisterRow[]): IncomingRegisterRow[] {
+export type IncomingSortField = 'punch_time' | 'received'
+export type IncomingSortDir = 'asc' | 'desc'
+export type IncomingSort = { field: IncomingSortField; dir: IncomingSortDir }
+
+/** Latest punch time first, unless the user picks otherwise. */
+export const DEFAULT_INCOMING_SORT: IncomingSort = { field: 'punch_time', dir: 'desc' }
+
+export function parseIncomingSort(field: string | null | undefined, dir: string | null | undefined): IncomingSort {
+  return {
+    field: field === 'received' || field === 'punch_time' ? field : DEFAULT_INCOMING_SORT.field,
+    dir: dir === 'asc' || dir === 'desc' ? dir : DEFAULT_INCOMING_SORT.dir,
+  }
+}
+
+const NAIVE_PUNCH_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/
+
+/**
+ * Comparable instant for a punch. A punch time sent without a time zone is
+ * read as IST (the register's display zone) only so it can be ordered; it is
+ * never shown or stored as an instant. Null when there is no usable punch time.
+ */
+function punchTimeMs(row: IncomingRegisterRow): number | null {
+  if (row.punchTimeHasZone && row.punchTimeInstant) {
+    const ms = Date.parse(row.punchTimeInstant)
+    return Number.isFinite(ms) ? ms : null
+  }
+  const m = row.punchTimeRaw ? NAIVE_PUNCH_TIME.exec(row.punchTimeRaw.trim()) : null
+  if (!m) return null
+  const ms = Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}${IST_OFFSET}`)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/**
+ * Sorts by punch time (default, latest first) or received time. Rows with no
+ * usable punch time always go last. Ties fall back to newest received, then
+ * the order sent within a message, so paging is stable.
+ */
+export function sortIncomingRows(
+  rows: IncomingRegisterRow[],
+  sort: IncomingSort = DEFAULT_INCOMING_SORT,
+): IncomingRegisterRow[] {
+  const sign = sort.dir === 'asc' ? 1 : -1
   return [...rows].sort((a, b) => {
-    const byTime = Date.parse(b.receivedAt) - Date.parse(a.receivedAt)
-    if (byTime !== 0) return byTime
+    if (sort.field === 'punch_time') {
+      const pa = punchTimeMs(a)
+      const pb = punchTimeMs(b)
+      if (pa !== pb) {
+        if (pa === null) return 1
+        if (pb === null) return -1
+        return sign * (pa - pb)
+      }
+    } else {
+      const byReceived = Date.parse(a.receivedAt) - Date.parse(b.receivedAt)
+      if (byReceived !== 0) return sign * byReceived
+    }
+    const newest = Date.parse(b.receivedAt) - Date.parse(a.receivedAt)
+    if (newest !== 0) return newest
     if (a.deliveryId !== b.deliveryId) return a.deliveryId < b.deliveryId ? -1 : 1
     return (a.entryNumber ?? 0) - (b.entryNumber ?? 0)
   })

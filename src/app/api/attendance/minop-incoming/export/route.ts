@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { readAllMinopDeliveries } from '@/lib/minop/incomingQuery'
-import { buildIncomingRows, filterIncomingRows, sortIncomingRows, isIstDate } from '@/lib/minop/incomingRegister'
+import { buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, isIstDate } from '@/lib/minop/incomingRegister'
 import { buildIncomingCsv, buildRawPayloadExport } from '@/lib/minop/incomingCsv'
 
 /**
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
   const rows = sortIncomingRows(
     filterIncomingRows(buildIncomingRows(read.deliveries), { q: params.get('q') ?? '', from: from ?? undefined, to: to ?? undefined }),
+    parseIncomingSort(params.get('sort'), params.get('dir')),
   )
   const stamp = new Date().toISOString().slice(0, 10)
   const headers = { 'Cache-Control': 'no-store', 'X-Minop-Export-Truncated': read.truncated ? 'yes' : 'no' }
