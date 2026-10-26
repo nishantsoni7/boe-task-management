@@ -616,9 +616,11 @@ describe('the payments behind a figure', () => {
 
   test('each row says the useful things, and no more', () => {
     const body = text(dialog([payment({})], 'verified'))
-    for (const s of ['₹7,50,000.00', 'Date', '2026-09-01 formatted', 'Mode', 'Client', 'Vittaazio']) {
+    // The payer is named ONCE, in the header, when every row shares it (owner, 2026-10-26).
+    for (const s of ['₹7,50,000.00', 'Date', '2026-09-01 formatted', 'Mode', 'Vittaazio', '1 payment']) {
       assert.ok(body.includes(s), s)
     }
+    assert.equal(body.includes('Client'), false, 'not repeated on the row')
   })
 
   test('the status is stated only where it distinguishes anything', () => {
@@ -668,7 +670,7 @@ describe('the payments behind a figure', () => {
     assert.equal(/<a |href=/.test(html), false, 'nothing in the dialog navigates')
     assert.equal(/Finance record/.test(text(html)), false)
     assert.ok(text(html).includes(PAYMENT_DETAIL_VIEW))
-    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-secondary order-pay-list-link"/)
   })
 
   test('the list can be reached from either figure and says which it is', () => {
@@ -710,7 +712,7 @@ describe('the payment detail', () => {
   test('Back returns to the list INSIDE the dialog, never through the browser', () => {
     const html = detail()
     assert.ok(text(html).includes(PAYMENT_DETAIL_BACK))
-    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-detail-back"/)
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-text order-pay-detail-back"/)
     assert.equal(/history\.back|<a |href=/.test(html), false)
   })
 
@@ -871,7 +873,7 @@ describe('a reader who may see the Order but NOT enter Finance', () => {
 
   test('still gets the brief list the Order is built from', () => {
     const body = text(noFinance())
-    for (const s of ['₹7,50,000.00', 'Date', 'Mode', 'Client', 'Vittaazio']) {
+    for (const s of ['₹7,50,000.00', 'Date', 'Mode', 'Vittaazio']) {
       assert.ok(body.includes(s), s)
     }
     // And the allocation fact, which is the Order's own, not Finance's.
@@ -926,7 +928,7 @@ describe('a reader who holds Finance module entry', () => {
   test('is offered View details and can open the record in the same dialog', () => {
     const list = dialog([payment({})], 'verified')
     assert.ok(text(list).includes(PAYMENT_DETAIL_VIEW))
-    assert.match(list, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+    assert.match(list, /<button[^>]*class="boe-btn boe-btn-secondary order-pay-list-link"/)
 
     const open = dialog([payment({})], 'verified', {
       openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 },
@@ -1227,5 +1229,27 @@ describe('the loading shell', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderWorkspace.tsx'), 'utf8')
     const fn = source.slice(source.indexOf('export function OrderDetailSkeleton'))
     assert.equal(/setTimeout|setInterval|useEffect|animation|supabase/.test(fn), false)
+  })
+})
+
+describe('the payment list header and rows (owner, 2026-10-26)', () => {
+  test('the header states the payer once, the count and the sum of this Order\'s shares', () => {
+    const rows = [payment({}), payment({ id: 'p2', exactAmount: '250000.00', exactAllocatedAmount: '250000.00' })]
+    const html = dialog(rows, 'verified')
+    const body = text(html)
+    assert.ok(body.includes('Vittaazio · 2 payments'))
+    assert.ok(body.includes('₹10,00,000.00'), 'the sum of ₹7,50,000.00 and ₹2,50,000.00')
+    assert.match(html, /class="order-pay-sum-total"/)
+  })
+
+  test('a payer that differs from the header is named on its own row', () => {
+    const body = text(dialog([payment({}), payment({ id: 'p2', client_name: 'Someone Else' })], 'verified'))
+    assert.ok(body.includes('Client Someone Else'))
+  })
+
+  test('the footnote is pinned under the list, once, in the dialog footer', () => {
+    const html = dialog([payment({})], 'verified')
+    assert.equal((html.match(/class="order-modal-foot"/g) ?? []).length, 1)
+    assert.ok(text(html.slice(html.indexOf('order-modal-foot'))).includes("Amounts are this Order's allocated share"))
   })
 })

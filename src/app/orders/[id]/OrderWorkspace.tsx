@@ -39,6 +39,7 @@ import {
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
+import { commonPayer, paymentListSummary } from '@/lib/orders/orderPaymentListSummary'
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import { OrderModalShell } from './OrderStatusWorkspace'
 import {
@@ -539,7 +540,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
  */
 export function OrderPaymentListDialog({
   kind, rows, formatDate, formatDateTime,
-  canViewDetails, openId, detail, onOpen, onBack, onClose, onEdit,
+  canViewDetails, openId, detail, onOpen, onBack, onClose, onEdit, summary,
 }: {
   kind: OrderPaymentListKind
   rows: readonly OrderPaymentListRow[]
@@ -566,6 +567,12 @@ export function OrderPaymentListDialog({
    * edit form; the database decides again.
    */
   onEdit?: ((paymentId: string) => void) | null
+  /**
+   * The Order's position, said once under the title of the VERIFIED list: the
+   * share of the Total before GST those payments make up, as words and as a
+   * bar. Absent: the header states the count and the sum only.
+   */
+  summary?: { context: string; percent: number | null } | null
 }) {
   // BOTH CONDITIONS, NOT EITHER. An openId without the capability draws the
   // list, so a state left over from anything cannot become a detail view.
@@ -641,8 +648,8 @@ export function OrderPaymentListDialog({
     ] : []
 
     return (
-      <OrderModalShell title={PAYMENT_DETAIL_TITLE} onClose={onClose}>
-        <button type="button" className="boe-btn boe-btn-ghost order-pay-detail-back" onClick={onBack}>
+      <OrderModalShell title={PAYMENT_DETAIL_TITLE} subtitle={customerDisplayName(open.client)} wide onClose={onClose}>
+        <button type="button" className="boe-btn boe-btn-text order-pay-detail-back" onClick={onBack}>
           {PAYMENT_DETAIL_BACK}
         </button>
 
@@ -682,13 +689,36 @@ export function OrderPaymentListDialog({
     )
   }
 
+  const { count, totalPaise } = paymentListSummary(rows)
+  const payer = commonPayer(rows)
+  const subtitle = [payer, `${count} payment${count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
+
   return (
-    <OrderModalShell title={PAYMENT_LIST_TITLE[kind]} onClose={onClose}>
+    <OrderModalShell
+      title={PAYMENT_LIST_TITLE[kind]}
+      subtitle={rows.length > 0 ? subtitle : null}
+      footer={rows.length > 0 ? paymentListCaption(canViewDetails) : null}
+      wide
+      onClose={onClose}
+    >
       {rows.length === 0 ? (
         /* AN EMPTY SET IS AN ANSWER, and it is given rather than withheld. */
         <p className="order-pay-list-empty">{PAYMENT_LIST_EMPTY[kind]}</p>
       ) : (
         <>
+          {/* THE HEADLINE: the sum of this Order's shares, then — for the verified list — where that stands against the Total before GST. */}
+          <div className="order-pay-sum">
+            <div className="order-pay-sum-row">
+              <span className="order-pay-sum-total">{formatMoney((totalPaise / 100).toFixed(2))}</span>
+              {summary?.context && <span className="order-pay-sum-context">{summary.context}</span>}
+            </div>
+            {summary?.percent != null && (
+              <div className="order-pay-sum-bar" aria-hidden="true">
+                <i style={{ width: `${Math.max(0, Math.min(100, summary.percent))}%` }} />
+              </div>
+            )}
+          </div>
+
           <ul className="order-pay-list">
             {rows.map(row => (
               <li key={row.id} className="order-pay-list-row">
@@ -710,12 +740,15 @@ export function OrderPaymentListDialog({
                   </div>
                   <div className="order-pay-list-fact">
                     <dt>Mode</dt>
-                    <dd>{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '\u2014'}</dd>
+                    <dd><span className="order-pay-mode">{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '\u2014'}</span></dd>
                   </div>
-                  <div className="order-pay-list-fact">
-                    <dt>Client</dt>
-                    <dd>{customerDisplayName(row.client)}</dd>
-                  </div>
+                  {/* THE PAYER, ONLY WHERE IT IS NOT THE ONE THE HEADER NAMED. */}
+                  {(!payer || (row.client ?? '').trim() !== payer) && (
+                    <div className="order-pay-list-fact">
+                      <dt>Client</dt>
+                      <dd>{customerDisplayName(row.client)}</dd>
+                    </div>
+                  )}
                   {/* THE STATUS, ONLY WHERE IT DISTINGUISHES ANYTHING. Every
                       row in the verified list is verified and captioning each
                       one so says nothing; a row awaiting Finance may be
@@ -728,37 +761,34 @@ export function OrderPaymentListDialog({
                     </div>
                   )}
                 </dl>
+                {/* THE DOORS: View details (Finance entry) and Edit (an administrator). */}
+                <div className="order-pay-list-actions">
+                  {canViewDetails && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-secondary order-pay-list-link"
+                      onClick={() => onOpen(row.id)}
+                    >
+                      {PAYMENT_DETAIL_VIEW}
+                    </button>
+                  )}
+                  {onEdit && isCorrectablePayment(row.status) && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-text order-pay-list-link"
+                      onClick={() => onEdit(row.id)}
+                    >
+                      {EDIT_PAYMENT_LABEL}
+                    </button>
+                  )}
+                </div>
                 {/* WHERE THE CASH IS (20270413000000): PNB, Paytm and Canara
                     payments travel until they reach the company; Accept is
                     offered here to the person it was handed to. */}
-                {isTrackedPaymentMode(row.mode) && <PaymentCashLine paymentId={row.id} />}
-                {/* THE DOOR TO FINANCE'S OWN RECORD, and it opens HERE rather
-                    than in the Finance module. Drawn on the SAME capability
-                    that used to decide whether the Finance record link existed:
-                    a reader without it gets the list and no control, which is
-                    exactly what they got before. */}
-                {canViewDetails && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-pay-list-link"
-                    onClick={() => onOpen(row.id)}
-                  >
-                    {PAYMENT_DETAIL_VIEW}
-                  </button>
-                )}
-                {onEdit && isCorrectablePayment(row.status) && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-pay-list-link"
-                    onClick={() => onEdit(row.id)}
-                  >
-                    {EDIT_PAYMENT_LABEL}
-                  </button>
-                )}
+                {isTrackedPaymentMode(row.mode) && <div className="order-pay-list-cash"><PaymentCashLine paymentId={row.id} /></div>}
               </li>
             ))}
           </ul>
-          <p className="order-pay-list-note">{paymentListCaption(canViewDetails)}</p>
         </>
       )}
     </OrderModalShell>

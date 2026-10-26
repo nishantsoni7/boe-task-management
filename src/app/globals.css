@@ -11723,3 +11723,26 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-pi-details-pop dt { grid-column: 2; font-size: 12px; color: #686D6C; }
 .order-pi-details-pop dd { grid-column: 2; margin: 0; text-align: left; font-weight: 600; color: #303536; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .order-pi-details-pop > div { row-gap: 0; }
+
+/* ── Payment lists: a headline, then one card per payment ── */
+.order-pay-sum { background: #F7F5F1; border: 1px solid #E4DED7; border-radius: 12px; padding: 12px 14px; }
+.order-pay-sum-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }
+.order-pay-sum-total { font-family: var(--font-display, inherit); font-size: 22px; font-weight: 800; color: #303536; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.order-pay-sum-context { font-size: 13px; color: #686D6C; }
+.order-pay-sum-bar { height: 8px; border-radius: 999px; background: #E7E1D9; overflow: hidden; margin-top: 10px; }
+.order-pay-sum-bar i { display: block; height: 100%; background: #276247; border-radius: 999px; }
+.order-pay-list { gap: 8px; }
+.order-pay-list-row { grid-template-columns: minmax(120px, 1.1fr) minmax(0, 2fr) auto; align-items: center; gap: 8px 16px; padding: 12px 14px; border-radius: 12px; }
+.order-pay-list-amount { font-family: var(--font-display, inherit); font-size: 17px; font-weight: 800; }
+.order-pay-list-facts { gap: 4px 24px; }
+.order-pay-list-fact dt { font-size: 11px; letter-spacing: 0.08em; }
+.order-pay-list-fact dd { font-size: 14px; font-weight: 500; margin-top: 2px; }
+.order-pay-mode { display: inline-block; background: #F1EDE7; border: 1px solid #E4DED7; border-radius: 6px; padding: 0 8px; font-size: 13px; font-weight: 600; color: #4C5352; }
+.order-pay-list-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+.order-pay-list-link { height: 32px; padding: 0 12px; font-size: 13px; font-weight: 600; }
+.order-pay-list-cash { grid-column: 1 / -1; border-top: 1px solid #F1EDE7; padding-top: 8px; }
+@media (max-width: 620px) {
+  .order-pay-list-row { grid-template-columns: minmax(0, 1fr); }
+  .order-pay-list-actions { justify-content: flex-start; }
+}
+.order-pay-detail-back { align-self: flex-start; margin: -4px 0 4px -8px; }
