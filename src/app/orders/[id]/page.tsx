@@ -3011,8 +3011,23 @@ export default function OrderDetailPage() {
     />
   )
 
-  // PAYMENT, NOW THE THIRD COLUMN OF THE TOP BAND (owner, 2026-10-26): same card, same figures,
-  // same buttons — only where it is drawn changed.
+  // PENDENCIES (the former Fabric & Finish card), the third column of the top band (owner, 2026-10-26).
+  const pendenciesCard = (
+  <OrderFabricFinishCard
+    standing={approvalView}
+    canUpdate={mayRecordApproval}
+    onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
+    onViewEvidence={path => { void viewEvidence(path) }}
+    busyEvidence={proofBusy}
+    pendencies={{
+      orderId: order.id,
+      canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
+    }}
+  />
+  )
+
+  // PAYMENT, NOW BESIDE DOCUMENTS (owner, 2026-10-26): same card, same figures, same buttons —
+  // only where it is drawn changed.
   const paymentCard = (
           <div className="order-docs-pay">
             {/* ══ 5. PAYMENT ══
@@ -3297,7 +3312,7 @@ export default function OrderDetailPage() {
         <OrderSummaryPanel
           view={summaryView}
           client={piHandoff.kind === 'ready' ? piHandoff.client : null}
-          paymentSlot={paymentCard}
+          pendenciesSlot={pendenciesCard}
           datesSlot={(
             <OrderDatesTimelineCard
               title={SUMMARY_GROUP_TITLE.dates}
@@ -3332,17 +3347,7 @@ export default function OrderDetailPage() {
             ADVANCE RECEIVED IS STILL GONE, and did not move: every figure it drew
             is in the Payment section below the products. */}
         <OrderDocumentsRow>
-          <OrderFabricFinishCard
-            standing={approvalView}
-            canUpdate={mayRecordApproval}
-            onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
-            onViewEvidence={path => { void viewEvidence(path) }}
-            busyEvidence={proofBusy}
-            pendencies={{
-              orderId: order.id,
-              canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
-            }}
-          />
+          {paymentCard}
           {/* ── Notes ──
               OPERATIONAL CONTENT, and the one thing on Record Information that
               was never metadata: somebody typed it about this Order for somebody

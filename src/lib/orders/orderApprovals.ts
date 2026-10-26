@@ -60,6 +60,8 @@ export const APPROVAL_STATUS_TONE: Record<ApprovalStatus, ApprovalTone> = {
 export const APPROVAL_EVIDENCE_BUCKET = 'order-approval-evidence'
 
 export const FABRIC_FINISH_TITLE = 'Fabric & Finish'
+/** What the card that holds the Fabric / Finish approvals and Pending from client is called on the Order page (owner, 2026-10-26). */
+export const PENDENCIES_TITLE = 'Pendencies'
 export const FABRIC_FINISH_UPDATE_LABEL = 'Update'
 export const FABRIC_FINISH_READ_ONLY =
   'Only the salesperson on this Order, an admin or a manager can update these.'

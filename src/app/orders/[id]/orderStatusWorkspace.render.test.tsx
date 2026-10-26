@@ -412,6 +412,14 @@ const fabricCard = (events: PersistedApprovalEvent[], canUpdate = false) =>
   )
 
 describe('the Fabric & Finish card', () => {
+  test('is called Pendencies on the Order page, and still states both approvals (owner, 2026-10-26)', () => {
+    const html = fabricCard([])
+    assert.match(html, /aria-label="Pendencies"/)
+    assert.ok(text(html).includes('Pendencies'))
+    assert.equal(text(html).includes('Fabric & Finish'), false)
+    assert.ok(text(html).includes('Fabric') && text(html).includes('Finish') && text(html).includes('Not Approved'))
+  })
+
   test('states both kinds, each with its status in words', () => {
     const body = text(fabricCard([]))
     for (const s of ['Fabric', 'Finish', 'Not Approved']) assert.ok(body.includes(s), s)

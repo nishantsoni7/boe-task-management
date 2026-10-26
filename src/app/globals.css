@@ -11655,3 +11655,20 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-docs .order-docs-side .order-doc-section .order-doc-row-head { margin: 0 0 4px; }
 .order-docs .order-doc-prop { border-bottom: 1px solid #F3EEE9; }
 .order-docs .order-doc-section--primary .order-doc-prop:last-child { border-bottom: 1px solid #F3EEE9; }
+
+/* ── Pendencies is the top band's third column; Payment sits beside Documents ── */
+.order-sum-groups > .order-ff { flex-direction: column; align-items: stretch; gap: 12px; padding: 18px 20px; border-color: #ECE7E0; border-radius: 12px; box-sizing: border-box; min-width: 0; }
+.order-sum-groups .order-ff-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7573; }
+.order-sum-groups .order-ff-items { flex-direction: column; gap: 10px; }
+.order-sum-groups .order-ff-item { justify-content: space-between; gap: 12px; }
+.order-sum-groups .order-ff-label { font-size: 13px; font-weight: 500; color: #686D6C; }
+.order-sum-groups .order-ff-value { justify-content: flex-end; text-align: right; }
+.order-sum-groups .order-ff-end { margin-left: 0; padding-top: 10px; border-top: 1px solid #F3F0EB; }
+.order-sum-groups .order-ff-end .order-status-note { max-width: none; text-align: left; }
+.order-sum-groups .order-ff-end .order-status-action { width: 100%; justify-content: center; }
+.order-docs-row > .order-docs-pay { grid-area: ff; display: flex; min-width: 0; }
+.order-docs-row > .order-docs-pay > div { flex: 1 1 auto; }
+/* The commercial breakdown is about 20% wider (360px -> 432px); the left side gives it up. */
+.order-lower { grid-template-columns: minmax(0, 1fr) minmax(360px, 432px); }
+@media (max-width: 1100px) { .order-lower { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1100px) { .order-sum-groups > .order-ff { grid-column: 1 / -1; } }

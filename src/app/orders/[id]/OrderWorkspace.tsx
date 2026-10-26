@@ -238,14 +238,14 @@ export function OrderAddressesDialog({ client, onClose }: {
   )
 }
 
-export function OrderSummaryPanel({ view, client = null, datesSlot = null, paymentSlot = null }: {
+export function OrderSummaryPanel({ view, client = null, datesSlot = null, pendenciesSlot = null }: {
   view: OrderSummaryView
   /** The approved PI's client, or null while it has not been read. */
   client?: ClientDetails | null
   /** The dates group drawn as a timeline; the plain rows are the fallback. */
   datesSlot?: React.ReactNode
-  /** The Payment card, drawn as the third column. */
-  paymentSlot?: React.ReactNode
+  /** The Pendencies card (Fabric / Finish approvals and Pending from client), drawn as the third column. */
+  pendenciesSlot?: React.ReactNode
 }) {
   const [addressesOpen, setAddressesOpen] = useState(false)
   return (
@@ -284,7 +284,7 @@ export function OrderSummaryPanel({ view, client = null, datesSlot = null, payme
           </section>
         )}
 
-        {paymentSlot}
+        {pendenciesSlot}
 
       </div>
     </section>
