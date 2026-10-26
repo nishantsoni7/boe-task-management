@@ -48,7 +48,6 @@ import {
   attentionAriaLabel,
   attentionHeading,
   ORDER_ADDRESSES_LINK,
-  ORDER_PRODUCTION_LABEL,
   SUMMARY_GROUP_TITLE,
   type OrderAttentionItem,
   type OrderFactRow,
@@ -245,14 +244,14 @@ export function OrderAddressesDialog({ client, onClose }: {
   )
 }
 
-export function OrderSummaryPanel({ view, client = null }: {
+export function OrderSummaryPanel({ view, client = null, datesSlot = null }: {
   view: OrderSummaryView
   /** The approved PI's client, or null while it has not been read. */
   client?: ClientDetails | null
+  /** The dates group drawn as a timeline; the plain rows are the fallback. */
+  datesSlot?: React.ReactNode
 }) {
   const [addressesOpen, setAddressesOpen] = useState(false)
-  const production = view.sales.production
-  const productionTone = STATUS_PILL_TONE[production.tone]
   return (
     <section className="order-facts" aria-label={ORDER_SUMMARY_TITLE}>
       <div className="order-sum-groups">
@@ -281,31 +280,21 @@ export function OrderSummaryPanel({ view, client = null }: {
             carries it, and the tint only agrees. */}
         <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.sales}>
           <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.sales}</h3>
-          {/* THE CURRENT STATUS LEADS, large, with ONE short line of what it is
-              waiting on. How production got here (who accepted which version,
-              every re-alignment) is Activity's and PI history's to tell. */}
-          <div className="order-sum-status" aria-label={ORDER_PRODUCTION_LABEL}>
-            <span className="order-sum-status-label">{ORDER_PRODUCTION_LABEL}</span>
-            <span
-              className="order-sum-badge"
-              style={{ background: productionTone.bg, color: productionTone.fg, borderColor: productionTone.border }}
-            >
-              {production.label}
-            </span>
-            {production.line && <p className="order-sum-production-line">{production.line}</p>}
-          </div>
+          {/* PRODUCTION AND ERP STATUS MOVED TO THE STATUS STRIP above this panel. */}
           <dl className="order-sum-rows">
             {view.sales.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
         </section>
 
         {/* ── 3. Important dates ── */}
-        <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.dates}>
-          <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.dates}</h3>
-          <dl className="order-sum-rows order-sum-rows--dates">
-            {view.dates.map(row => <SummaryRow key={row.key} row={row} />)}
-          </dl>
-        </section>
+        {datesSlot ?? (
+          <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.dates}>
+            <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.dates}</h3>
+            <dl className="order-sum-rows order-sum-rows--dates">
+              {view.dates.map(row => <SummaryRow key={row.key} row={row} />)}
+            </dl>
+          </section>
+        )}
 
       </div>
     </section>

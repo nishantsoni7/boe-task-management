@@ -19,7 +19,6 @@ import {
   OrderAttentionBar,
   OrderDetailSkeleton,
   OrderPaymentListDialog,
-  OrderStatusPill,
   OrderSummaryPanel,
   ADD_PAYMENT_ACTION_LABEL,
   PAYMENT_SECTION_TITLE,
@@ -30,6 +29,8 @@ import {
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
+import { OrderDatesTimelineCard, OrderStatusStrip } from './OrderRedesign'
+import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
 import {
   PAYMENT_DETAIL_COLUMNS,
@@ -48,6 +49,7 @@ import {
   orderSummaryView,
   orderProductValue,
   orderSummaryFields,
+  SUMMARY_GROUP_TITLE,
   type OrderHeaderActionKey,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
@@ -114,6 +116,7 @@ import {
   describeSampleTypeFailure,
   effectiveSampleType,
   readSampleType,
+  SAMPLE_TYPE_LABEL,
   type SampleType,
 } from '@/lib/orders/sampleType'
 import {
@@ -151,6 +154,7 @@ import {
   canDecideRevisionOperations,
   canReapproveRevision,
   describeRevisionOperationsFailure,
+  piVersionLabel,
   type RevisionDifferences,
 } from '@/lib/orders/orderPiVersions'
 import {
@@ -165,7 +169,6 @@ import {
   UPDATE_DOCUMENTS_LABEL,
   UPLOAD_CLIENT_PO_LABEL,
   UPLOAD_DESIGN_FILES_LABEL,
-  UPLOAD_NEW_PI_LABEL,
   absenceLine,
   documentChanges,
   supportingRow,
@@ -2692,7 +2695,8 @@ export default function OrderDetailPage() {
    */
   type DocUpdateKey = 'pi' | DocumentCategory
   const docUpdateItems: MoreActionItem<DocUpdateKey>[] = []
-  if (mayProposeRevision) docUpdateItems.push({ key: 'pi', label: UPLOAD_NEW_PI_LABEL })
+  // A NEW PI IS PROPOSED FROM Edit PI ONLY (owner, 2026-10-26): it is no longer offered here.
+  // Design Files and Client PO stay, because Edit PI does not carry them.
   for (const category of ['design_files', 'client_po'] as const) {
     const upload = uploadAvailability(category, docSubs, docViewer)
     if (!upload.offered) continue
@@ -2817,6 +2821,17 @@ export default function OrderDetailPage() {
    * sat below the payment section and is gone. They are the same facts from the
    * same columns; only where they are drawn changed.
    */
+  // The upload and approval moments, as ISO, for the dates timeline.
+  const currentPiVersion = piHistory.current
+    ? piVersions.find(v => piVersionLabel(v.version_number) === piHistory.current!.label)
+    : undefined
+  const piApprovedAtIso = history.find(e => e.label === 'PI approved')?.createdAtIso ?? currentPiVersion?.decided_at ?? null
+  const datesTimeline = orderDatesTimeline({
+    confirmDate: order.confirm_date,
+    uploadedAt: currentPiVersion?.uploaded_at ?? null,
+    dueDate: order.due_date,
+  })
+
   const summaryView = orderSummaryView({
     fields: summaryFields,
     facts: recordFacts,
@@ -2958,7 +2973,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  const overflowItems: MoreActionItem<OrderHeaderActionKey>[] = actions.overflow.map(key => ({
+  const overflowItems: MoreActionItem<OrderHeaderActionKey>[] = actions.overflow.filter(key => key !== 'amend').map(key => ({
     key,
     label: actionLabel(key),
     disabled: actionDisabled(key),
@@ -3012,8 +3027,13 @@ export default function OrderDetailPage() {
             below; every date in Important Dates under it. */}
         <header className="order-command-header">
           <div className="order-command-identity">
-            <h1 className="order-command-title">Order {shownOrderNumber}</h1>
-            <OrderStatusPill label={STATUS_META[order.status]?.label ?? order.status} tone={statusTone} />
+            <div className="order-command-heading">
+              <div>
+                <span className="order-command-eyebrow">Order</span>
+                <h1 className="order-command-title order-command-number">{shownOrderNumber}</h1>
+              </div>
+              {order.client_name && <p className="order-command-client">{order.client_name}</p>}
+            </div>
           </div>
 
           <div className="order-command-actions">
@@ -3055,7 +3075,7 @@ export default function OrderDetailPage() {
                 Edit PI
               </button>
             )}
-            {actions.secondary.map(key => (
+            {actions.secondary.filter(key => key !== 'amend').map(key => (
               <button
                 key={key}
                 type="button"
@@ -3067,7 +3087,7 @@ export default function OrderDetailPage() {
                 {actionLabel(key)}
               </button>
             ))}
-            {actions.primary && (
+            {actions.primary && actions.primary !== 'amend' && (
               <button
                 type="button"
                 onClick={() => runAction(actions.primary as OrderHeaderActionKey)}
@@ -3079,6 +3099,44 @@ export default function OrderDetailPage() {
             <MoreActionsMenu items={overflowItems} onSelect={runAction} />
           </div>
         </header>
+
+        {/* ══ 1a. NOTIFICATIONS, THEN THE TWO STAGES ══
+            The attention strip sits directly under the order number: it is the
+            first thing a reader needs ("PI awaiting review", "not aligned"), so
+            it is not buried under the client facts. Production and ERP status
+            moved out of the Sales group into the strip beneath it. */}
+        {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it.
+            THE OPERATIONS REVIEWER DECIDES HERE (20261229000000): while the
+            strip names the PI version in force as awaiting review or flagged,
+            the assigned reviewer's Cannot accept / Accept for production sit on
+            its right. They replaced the Operations review card, whose facts the
+            strip, the Production row and the Documents box already state. The
+            notification and action-queue links land on this strip. */}
+        <OrderAttentionBar
+          id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
+          items={attention}
+          actions={operationsDecisionOffered ? (
+            <OperationsReviewActions
+              view={operationsView}
+              busy={handoffBusy}
+              onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
+              onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+              acceptBlockedReason={advanceAttentionLabel(advance)}
+              heldForAdvance={!!advance?.hold}
+              realignOffered={operationsRealignOffered}
+              recoverOffered={operationsRecoverOffered}
+              onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
+            />
+          ) : undefined}
+        />
+
+        <OrderStatusStrip
+          erp={{ label: summaryView.sales.production.label, tone: summaryView.sales.production.tone, line: summaryView.sales.production.line }}
+          production={{ label: STATUS_META[order.status]?.label ?? order.status, tone: statusTone }}
+          isSample={sampleType === 'sample_order'}
+          sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
+          fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
+        />
 
         {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══
             The internal remark Sales wrote on the PI before approval, read from
@@ -3116,31 +3174,20 @@ export default function OrderDetailPage() {
             revision rule reads to find the PI's owner, and the activity trail
             still names who did what. Nothing was dropped from a select and
             nothing was dropped from the database. */}
-        <OrderSummaryPanel view={summaryView} client={piHandoff.kind === 'ready' ? piHandoff.client : null} />
-
-        {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it.
-            THE OPERATIONS REVIEWER DECIDES HERE (20261229000000): while the
-            strip names the PI version in force as awaiting review or flagged,
-            the assigned reviewer's Cannot accept / Accept for production sit on
-            its right. They replaced the Operations review card, whose facts the
-            strip, the Production row and the Documents box already state. The
-            notification and action-queue links land on this strip. */}
-        <OrderAttentionBar
-          id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
-          items={attention}
-          actions={operationsDecisionOffered ? (
-            <OperationsReviewActions
-              view={operationsView}
-              busy={handoffBusy}
-              onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
-              onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
-              acceptBlockedReason={advanceAttentionLabel(advance)}
-              heldForAdvance={!!advance?.hold}
-              realignOffered={operationsRealignOffered}
-              recoverOffered={operationsRecoverOffered}
-              onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
+        <OrderSummaryPanel
+          view={summaryView}
+          client={piHandoff.kind === 'ready' ? piHandoff.client : null}
+          datesSlot={(
+            <OrderDatesTimelineCard
+              title={SUMMARY_GROUP_TITLE.dates}
+              confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
+              upload={currentPiVersion?.uploaded_at ? fmtDateTime(currentPiVersion.uploaded_at) : piUploadedAt}
+              approved={piApprovedAtIso ? fmtDateTime(piApprovedAtIso) : null}
+              due={order.due_date ? fmtDate(order.due_date) : null}
+              timeline={datesTimeline}
+              overdue={!!isOverdue}
             />
-          ) : undefined}
+          )}
         />
 
         {/* ══ 3. FABRIC & FINISH, THEN DOCUMENTS ══

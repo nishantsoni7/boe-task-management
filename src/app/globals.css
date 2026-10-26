@@ -11505,3 +11505,37 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .bank-facts > div { display: flex; justify-content: space-between; gap: 16px; }
 .bank-facts dt { color: #6B7573; }
 .bank-facts dd { margin: 0; font-weight: 600; text-align: right; }
+
+/* ── Confirmed Order redesign: number + client, status strip, dates timeline ── */
+.order-command-heading { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 4px 0; min-width: 0; }
+.order-command-eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7573; margin-bottom: 4px; }
+.order-command-number { font-family: var(--font-display); font-size: 44px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; margin: 0; color: #303536; text-transform: none; }
+.order-command-client { font-size: 20px; font-weight: 600; color: #4a4f50; margin: 0 0 3px 16px; padding-left: 16px; border-left: 2px solid #ECE7E0; min-width: 0; overflow-wrap: anywhere; }
+.order-stages { display: flex; gap: 10px; flex-wrap: wrap; }
+.order-stage { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #ECE7E0; border-radius: 12px; padding: 10px 16px; min-width: 0; }
+.order-stage-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7573; }
+.order-stage-badge { display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: 999px; padding: 3px 12px; font-size: 13px; font-weight: 700; }
+.order-stage-line { font-size: 12.5px; color: #6B7573; flex-basis: 100%; }
+.order-stage-full { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #4a4f50; }
+.order-stage--sample { background: #FFF0EE; border-color: #F2C2BC; }
+.order-stage-sample { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; color: #B42318; text-transform: uppercase; letter-spacing: 0.04em; }
+.order-sample-dot { width: 10px; height: 10px; border-radius: 50%; background: #D92D20; animation: order-sample-pulse 1.2s ease-in-out infinite; }
+@keyframes order-sample-pulse { 0% { box-shadow: 0 0 0 0 rgba(217,45,32,.55); opacity: 1; } 70% { box-shadow: 0 0 0 9px rgba(217,45,32,0); opacity: .55; } 100% { box-shadow: 0 0 0 0 rgba(217,45,32,0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .order-sample-dot { animation: none; } }
+.order-timeline { list-style: none; margin: 4px 0 0; padding: 0 0 0 20px; position: relative; }
+.order-timeline::before { content: ""; position: absolute; left: 5px; top: 10px; bottom: 14px; width: 2px; background: #ECE7E0; }
+.order-timeline-stop { position: relative; padding: 4px 0 10px; }
+.order-timeline-stop::before { content: ""; position: absolute; left: -20px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #B9AEA5; box-sizing: border-box; }
+.order-timeline-stop--done::before { background: #15803D; border-color: #15803D; }
+.order-timeline-stop--flag::before { background: #D92D20; border-color: #D92D20; }
+.order-timeline-stop--next::before { border-color: #C2410C; }
+.order-timeline-date { font-weight: 600; font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.order-timeline-stop--waiting .order-timeline-date { color: #6B7573; font-weight: 500; }
+.order-timeline-label { font-size: 12px; color: #6B7573; }
+.order-timeline-flag { background: #FFF0EE; color: #B42318; border: 1px solid #F2C2BC; border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+.order-timeline-bar { height: 8px; border-radius: 999px; background: #F0E9E3; overflow: hidden; margin: 6px 0 5px; }
+.order-timeline-bar i { display: block; height: 100%; background: #C2410C; border-radius: 999px; }
+.order-timeline-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #6B7573; }
+.order-timeline-foot strong { color: #303536; }
+.order-timeline-foot strong.is-late { color: #B42318; }
+@media (max-width: 640px) { .order-command-number { font-size: 36px; } .order-command-client { font-size: 17px; margin-left: 12px; padding-left: 12px; } }
