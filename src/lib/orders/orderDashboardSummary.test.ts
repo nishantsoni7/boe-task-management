@@ -449,7 +449,8 @@ describe('the page, and what this phase changed', () => {
 
   test('nothing here animates', () => {
     const css = read('src/app/globals.css')
-    const block = css.slice(css.indexOf('ORDERS DASHBOARD (20270221000000)'))
+    // Up to the Confirmed Order redesign block appended later (its sample-order dot pulses, on purpose).
+    const block = css.slice(css.indexOf('ORDERS DASHBOARD (20270221000000)'), css.indexOf('/* ── Confirmed Order redesign'))
     assert.equal(/@keyframes|animation\s*:/.test(block), false)
   })
 })

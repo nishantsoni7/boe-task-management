@@ -5,15 +5,19 @@
 
 ## Snapshot
 
-- Commit: `1f4ede54` — Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
-- Commits on this branch: 1010
+- Commit: `0ab7e7b6` — Confirmed Order page: internal details and terms cards, activity under the breakdown, fabric note, client contact
+- Commits on this branch: 1014
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
-- Test files: 651   Next.js 16.2.6, React 19.2.4
+- Test files: 653   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0ab7e7b6` 2026-10-26 Confirmed Order page: internal details and terms cards, activity under the breakdown, fabric note, client contact
+- `03640cc3` 2026-10-26 Confirmed Order page: order number with client name, notifications first, status strip, dates timeline
+- `41525f8b` 2026-10-26 Orders: show the order number without leading zeros; add the dates timeline rules
+- `c164df17` 2026-10-26 Minop: sort the Incoming Minop data register, latest punch time first by default (#452)
 - `1f4ede54` 2026-10-25 Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
 - `01c6e8c2` 2026-10-25 Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
 - `9767b1d7` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
@@ -35,10 +39,6 @@
 - `f183008c` 2026-10-23 Docs: record PR #437 merge SHA and backup in the changelog (#438)
 - `4c4d6cdc` 2026-10-23 Finance: flat, Notion-style Cash journeys and handover banner (#437)
 - `526963df` 2026-10-23 Orders: approve with cash not yet with the company, with a reason (#436)
-- `02e756bf` 2026-10-23 Finance: cash journeys until money reaches the company (#435)
-- `a8192a78` 2026-10-23 PI line numbers: Reorder renumbers, Line number field removed (#433)
-- `0be7c6f0` 2026-10-23 PI detail: stop the right half going blank beside the details column (#431)
-- `c5b5a935` 2026-10-23 PI product codes: contiguous BE0001 numbering in drafts, insert in the middle (#432)
 
 ## Pages by top-level area
 
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 78 source, 132 test
+- `src/lib/orders` — 79 source, 133 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

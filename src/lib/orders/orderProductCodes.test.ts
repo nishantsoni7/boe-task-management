@@ -90,23 +90,23 @@ describe('orderProductCodesByItemId', () => {
 // 2026-09-27: every Orders SCREEN shows the stored four-digit number (0526);
 // product codes keep the operational form (526-BE0001). The list and the Order
 // header used to print '526' while the PI Draft and the dialogs said '0526'.
-describe('Orders screens show 0526; product codes keep 526-BE0001', () => {
+describe('Orders screens show 526 (stored 0526); product codes keep 526-BE0001', () => {
   const read = (f: string) => readFileSync(f, 'utf8')
-  test('the Confirmed Orders list and the Order header print display_number as stored', () => {
+  test('the Confirmed Orders list and the Order header print the number without its leading zeros (owner, 2026-10-26; stored value unchanged)', () => {
     const list = read('src/app/orders/all/page.tsx')
     const detail = read('src/app/orders/[id]/page.tsx')
     assert.equal(/formatOrderOperationalNumber/.test(list), false, 'the list does not strip the zero')
     assert.equal(/formatOrderOperationalNumber/.test(detail), false, 'the Order page does not strip the zero')
-    assert.ok(list.includes('const number = o.display_number'))
-    assert.ok(list.includes('{o.display_number}'))
-    assert.ok(detail.includes('const shownOrderNumber = order.display_number'))
-    assert.ok(detail.includes('Order {shownOrderNumber}</h1>'))
+    assert.ok(list.includes('const number = displayOrderNumber(o.display_number)'))
+    assert.ok(list.includes('{displayOrderNumber(o.display_number)}'))
+    assert.ok(detail.includes('const shownOrderNumber = displayOrderNumber(order.display_number)'))
+    assert.ok(detail.includes('{shownOrderNumber}</h1>'))
   })
-  test('the Order documents export and Order notifications say 0526 too', () => {
+  test('the Order documents export keeps the stored number; new Order notifications say it without zeros', () => {
     const docs = read('src/app/api/orders/[id]/documents/route.ts')
     const notify = read('src/app/api/orders/[id]/notify/route.ts')
     assert.ok(docs.includes("const orderNumber = String(order.display_number ?? '').trim()"))
-    assert.ok(notify.includes('const orderNumber = order.display_number'))
+    assert.ok(notify.includes('const orderNumber = displayOrderNumber(order.display_number)'))
     assert.equal(/formatOrderOperationalNumber/.test(docs + notify), false)
     // Issued exports are never rewritten: each generation writes new keys.
     assert.ok(docs.includes('upsert: false'))
