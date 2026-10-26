@@ -29,44 +29,45 @@ const open: OrderAttentionInput = {
   documentsFailed: false, documentsOutdated: false,
 }
 
-describe('the attention strip: one issue is a title and a reason; several stay as compact rows', () => {
+describe('the notifications: one banner per item, tinted by kind', () => {
   const hold = orderAttentionItems({
     ...open, productionAligned: false,
     advanceBelowLabel: 'Production on hold: advance below 40% — see Payment',
     advanceBelowParts: { title: 'Production on hold', detail: 'Verified advance is below 40%.' },
   })
 
-  test('a single issue leads with its title, then one short reason — and never says "1 item needs attention"', () => {
+  test('a banner leads with its title, then one short reason', () => {
     const html = renderToStaticMarkup(<OrderAttentionBar items={hold} />)
     assert.equal(hold.length, 1)
-    assert.match(html, /<strong class="order-attention-title">Production on hold<\/strong><span class="order-attention-detail">Verified advance is below 40%\.<\/span>/)
+    assert.match(html, /<strong class="order-notice-title">Production on hold<\/strong><span class="order-notice-detail">Verified advance is below 40%\.<\/span>/)
     assert.doesNotMatch(text(html), /needs? attention/)
     assert.match(html, /aria-label="Production on hold"/, 'a screen reader hears the issue, not a count')
     assert.equal(attentionAriaLabel(hold), 'Production on hold')
   })
 
-  test('it is amber and never relies on colour alone: an icon and the words say it', () => {
+  test('amber for waiting work, blue for a changed PI, red for a flagged or wrong thing — an icon and the words always say it', () => {
     const html = renderToStaticMarkup(<OrderAttentionBar items={hold} />)
     assert.ok(hold[0].tone === 'amber')
-    assert.match(html, /order-attention-icon/)
-    assert.doesNotMatch(html, /order-attention-item--red/)
-    // The LAST rule wins: a white card with an amber edge and border, so the
-    // strip never melts into the warm page background (owner, 2026-10-19).
-    const last = css.slice(css.lastIndexOf('.order-attention {'))
-    assert.match(last, /^\.order-attention \{[^}]*background: #FFFFFF;[^}]*border: 1px solid var\(--boe-warning-border\);[^}]*box-shadow: inset 4px 0 0 #C48A1A;/)
+    assert.match(html, /order-notice order-notice--amber/)
+    assert.match(html, /order-notice-icon/)
+    assert.match(css, /\.order-notice--amber \{[^}]*background: #FFF7E6;[^}]*border-left-color: #E08A00/)
+    assert.match(css, /\.order-notice--blue \{[^}]*background: #EEF4FF;[^}]*border-left-color: #2F6BFF/)
+    assert.match(css, /\.order-notice--red \{[^}]*background: #FFF0EE;[^}]*border-left-color: #D92D20/)
+    const revision = orderAttentionItems({ ...open, pendingPiRevision: true })
+    assert.equal(revision[0].tone, 'blue')
+    assert.match(renderToStaticMarkup(<OrderAttentionBar items={revision} />), /order-notice--blue/)
   })
 
-  test('the permitted action stays on the right, and an unavailable one is simply not drawn', () => {
-    const withAction = renderToStaticMarkup(<OrderAttentionBar items={hold} actions={<button type="button">Align production again</button>} />)
-    assert.ok(withAction.indexOf('order-attention-message') < withAction.indexOf('order-attention-actions'))
-    assert.match(withAction, /<div class="order-attention-actions"><button type="button">Align production again<\/button><\/div>/)
-    assert.doesNotMatch(renderToStaticMarkup(<OrderAttentionBar items={hold} />), /order-attention-actions/)
-    // wraps below the message on a narrow screen
-    assert.match(css, /\.order-attention \{[^}]*flex-wrap: wrap/)
-    assert.match(css, /\.order-attention-actions \{ width: 100%; margin-left: 0; \}/)
+  test('the permitted action sits on the right of the operations-review banner, and an unavailable one is simply not drawn', () => {
+    const items = orderAttentionItems({ ...open, operationsReview: { versionNumber: 1, status: 'awaiting', unassigned: false } })
+    const withAction = renderToStaticMarkup(<OrderAttentionBar items={items} actions={<button type="button">Accept for production</button>} />)
+    assert.ok(withAction.indexOf('order-notice-text') < withAction.indexOf('order-notice-actions'))
+    assert.match(withAction, /<div class="order-notice-actions"><button type="button">Accept for production<\/button><\/div>/)
+    assert.doesNotMatch(renderToStaticMarkup(<OrderAttentionBar items={items} />), /order-notice-actions/)
+    assert.match(css, /\.order-notice-actions \{[^}]*margin-left: auto/)
   })
 
-  test('several issues are ALL kept, as compact rows under a count; red stays for the overdue one', () => {
+  test('several issues are ALL kept, one banner each; red stays for the overdue one', () => {
     const items = orderAttentionItems({
       ...open, productionAligned: false, isOverdue: true, hasDueDate: true,
       advanceBelowLabel: 'x', advanceBelowParts: { title: 'Production on hold', detail: 'Verified advance is below 40%.' },
@@ -74,17 +75,26 @@ describe('the attention strip: one issue is a title and a reason; several stay a
     })
     assert.deepEqual(items.map(i => i.key), ['overdue', 'advance_below', 'awaiting_verification'])
     const html = renderToStaticMarkup(<OrderAttentionBar items={items} />)
-    assert.match(text(html), /3 items need attention/)
-    assert.equal((html.match(/<li /g) ?? []).length, 3)
-    assert.match(html, /order-attention-item order-attention-item--red"><strong class="order-attention-title">Due date has passed/)
+    assert.match(html, /aria-label="3 items need attention"/)
+    assert.equal((html.match(/class="order-notice order-notice--/g) ?? []).length, 3)
+    assert.match(html, /order-notice order-notice--red"><span class="order-notice-icon">.*?<strong class="order-notice-title">Due date has passed/)
     assert.match(text(html), /Production on hold Verified advance is below 40%\./)
     assert.match(text(html), /2 payments awaiting Finance verification/)
+  })
+
+  test('a confirm-to-upload gap over a week is raised in red, in words, with the number of days', () => {
+    const items = orderAttentionItems({ ...open, confirmUploadGapDays: 30 })
+    assert.deepEqual(items.map(i => i.key), ['upload_gap'])
+    assert.equal(items[0].tone, 'red')
+    assert.match(text(renderToStaticMarkup(<OrderAttentionBar items={items} />)), /Confirm date and PI upload are 30 days apart/)
+    assert.deepEqual(orderAttentionItems({ ...open, confirmUploadGapDays: 7 }), [])
+    assert.deepEqual(orderAttentionItems({ ...open, confirmUploadGapDays: null }), [])
   })
 
   test('an item with no separate reason uses its label as the title — every existing condition still draws', () => {
     const items = orderAttentionItems({ ...open, hasSalesperson: false })
     assert.deepEqual(items.map(i => i.label), ['Salesperson not set'])
-    assert.match(renderToStaticMarkup(<OrderAttentionBar items={items} />), /<strong class="order-attention-title">Salesperson not set<\/strong>/)
+    assert.match(renderToStaticMarkup(<OrderAttentionBar items={items} />), /<strong class="order-notice-title">Salesperson not set<\/strong>/)
   })
 
   test('nothing to say, nothing drawn', () => {
@@ -98,12 +108,25 @@ describe('Activity: quiet, ordered, and complete', () => {
     when: '2 Oct 2026, 06:02 pm', dot: <span className="order-activity-dot" />, fromPi: false, ...over,
   })
 
-  test('title first, then the detail, then who and when', () => {
+  test('what happened first (title, then detail), then who, then when — three clear places', () => {
     const html = renderToStaticMarkup(<OrderActivityList items={[entry()]} />)
     const body = html.slice(html.indexOf('order-activity-body'))
     assert.ok(body.indexOf('order-activity-title') < body.indexOf('order-activity-detail'))
-    assert.ok(body.indexOf('order-activity-detail') < body.indexOf('order-activity-meta'))
-    assert.match(html, /Ops Olivia · 2 Oct 2026, 06:02 pm/)
+    assert.ok(body.indexOf('order-activity-detail') < body.indexOf('order-activity-by'))
+    assert.ok(body.indexOf('order-activity-by') < body.indexOf('order-activity-when'))
+    assert.match(html, /<div class="order-activity-by">Ops Olivia<\/div><div class="order-activity-when">2 Oct 2026, 06:02 pm<\/div>/)
+  })
+
+  test('key events are listed in a navigation on the right, and each is a button that jumps to its entry', () => {
+    const html = renderToStaticMarkup(<OrderActivityList items={[
+      entry({ key: 'a', label: 'Order amended', important: true }),
+      entry({ key: 'b', label: 'Note added' }),
+    ]} />)
+    assert.match(html, /<nav class="order-activity-nav" aria-label="Key events">/)
+    assert.equal((html.match(/class="order-activity-nav-link"/g) ?? []).length, 1)
+    assert.match(html, /id="activity-a"/)
+    assert.match(html, /order-activity-item--key/)
+    assert.doesNotMatch(renderToStaticMarkup(<OrderActivityList items={[entry()]} />), /order-activity-nav"/, 'no key events, no navigation')
   })
 
   test('an unread event gets a small mark and a word for a screen reader — not a badge on every row', () => {

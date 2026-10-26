@@ -10,12 +10,14 @@
 // "Restricted", never a value and never a false "No".
 
 import { orderDetailsAbsent, orderDetailsReview, type OrderDetailsRow } from './salesOrderDetails'
+import { describeMiddlemanParts } from './piInternalDetails'
+import { formatBillingPercentage, readBillingPercentage } from './billingPercentage'
 
-export const ORDER_INTERNAL_DETAILS_TITLE = 'Internal order details'
+export const ORDER_INTERNAL_DETAILS_TITLE = 'Internal Order Details'
 export const ORDER_INTERNAL_DETAILS_NOTE = 'BOE only'
 
 export type OrderInternalDetailRow = {
-  key: 'fabric_responsibility' | 'middleman_commission' | 'billing_percentage' | 'billing_terms' | 'payment_terms'
+  key: 'fabric_responsibility' | 'billing_percentage' | 'middleman_commission' | 'middleman_name' | 'billing_terms' | 'payment_terms'
   label: string
   value: string
   /** No value (or restricted): drawn quieter than an answer. */
@@ -24,24 +26,41 @@ export type OrderInternalDetailRow = {
 
 const blank = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim())
 
+/**
+ * THE CARD'S ROWS, in the order the owner asked for (2026-10-26): fabric
+ * responsibility, bill / cash percentage, middleman commission, middleman name.
+ * Billing and payment terms follow only when the PI states them.
+ */
 export function orderInternalDetailRows(row: OrderDetailsRow): OrderInternalDetailRow[] {
   const review = new Map(orderDetailsReview(row, []).map(r => [r.key, r]))
-  const pick = (key: 'fabric_responsibility' | 'middleman_commission' | 'billing_percentage' | 'payment_terms'): OrderInternalDetailRow => {
-    const r = review.get(key)
-    const value = r?.value ?? null
-    return {
-      key,
-      label: r?.label ?? key,
-      value: value ?? orderDetailsAbsent(r?.need ?? 'optional', key),
-      muted: value === null || (key === 'middleman_commission' && !!row.commission_restricted),
-    }
-  }
+  const fabric = review.get('fabric_responsibility')
+  const fabricValue = fabric?.value ?? null
+  const billing = readBillingPercentage(row.billing_percentage ?? null)
+  const middleman = describeMiddlemanParts(row)
+  const restricted = !!row.commission_restricted
   const billingTerms = blank(row.billing_terms)
-  return [
-    pick('fabric_responsibility'),
-    pick('middleman_commission'),
-    pick('billing_percentage'),
-    { key: 'billing_terms', label: 'Billing terms', value: billingTerms ?? orderDetailsAbsent('optional'), muted: billingTerms === null },
-    pick('payment_terms'),
+  const paymentTerms = blank(row.payment_terms)
+  const rows: OrderInternalDetailRow[] = [
+    {
+      key: 'fabric_responsibility', label: fabric?.label ?? 'Fabric responsibility',
+      value: fabricValue ?? orderDetailsAbsent(fabric?.need ?? 'submission', 'fabric_responsibility'),
+      muted: fabricValue === null,
+    },
+    {
+      key: 'billing_percentage', label: 'Bill / cash percentage',
+      value: billing === null ? orderDetailsAbsent('optional') : `Bill ${formatBillingPercentage(billing)} · Cash ${formatBillingPercentage(Math.round((100 - billing) * 100) / 100)}`,
+      muted: billing === null,
+    },
+    {
+      key: 'middleman_commission', label: 'Middleman commission', value: middleman.commission,
+      muted: restricted || middleman.commission === 'Not answered' || middleman.commission === 'No',
+    },
+    {
+      key: 'middleman_name', label: 'Middleman name', value: middleman.name,
+      muted: restricted || ['Not answered', 'Not applicable', 'Not named'].includes(middleman.name),
+    },
   ]
+  if (billingTerms) rows.push({ key: 'billing_terms', label: 'Billing terms', value: billingTerms, muted: false })
+  if (paymentTerms) rows.push({ key: 'payment_terms', label: 'Payment terms', value: paymentTerms, muted: false })
+  return rows
 }

@@ -52,7 +52,7 @@ describe('the page reads in one order, with no second summary', () => {
     attention: body.indexOf('<OrderAttentionBar'),
     documents: body.indexOf('<OrderDocumentsRow>'),
     products: body.indexOf('className="order-products"'),
-    payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
+    payment:  body.indexOf('paymentSlot={paymentCard}'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -65,10 +65,10 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     // REVISED (owner, 2026-10-26): notifications come right under the order number,
-    // ahead of the summary. Earlier (2026-10-19): Payment sits in the rail beside Documents,
+    // ahead of the summary, and Payment is the summary band's third column. Earlier (2026-10-19): Payment sits in the rail beside Documents,
     // below Fabric & Finish and Notes, so it comes before the products.
     assert.deepEqual(order, [
-      'header', 'attention', 'summary', 'documents', 'payment', 'products',
+      'header', 'attention', 'summary', 'payment', 'documents', 'products',
       'activity',
     ])
   })
@@ -420,13 +420,19 @@ describe('no Order fact is stated twice', () => {
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
     // REVISED (owner, 2026-10-19): inside the Documents row's rail.
+    // REVISED (owner, 2026-10-26): the third column of the summary band, built once.
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.ok(row.includes('className="order-docs-pay"') && row.includes('PAYMENT_SECTION_TITLE'))
+    assert.equal(row.includes('PAYMENT_SECTION_TITLE'), false, 'Payment left the Documents row')
+    assert.equal((page.match(/const paymentCard =/g) ?? []).length, 1)
+    assert.ok(page.includes('className="order-docs-pay"') && page.includes('PAYMENT_SECTION_TITLE'))
     // ONE line is allowed to name the advance above the products: the attention
     // strip's figure-free "Production blocked: advance below 40% — see Payment"
     // (20270116000000). Its figures are in the Payment section.
     // Nothing BEFORE the Documents row (which now holds Payment) names a figure.
-    const above = body.slice(0, body.indexOf('<OrderDocumentsRow>'))
+    // The Payment card is built once above the return (const paymentCard) and drawn in the summary band.
+    const cardStart = body.indexOf('const paymentCard = (')
+    const cardEnd = body.indexOf('\n  )\n', cardStart) + 5
+    const above = (body.slice(0, cardStart) + body.slice(cardEnd)).slice(0, body.indexOf('<OrderDocumentsRow>') - (cardEnd - cardStart))
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
       // …and the same words as the reason Accept for production is disabled.
       .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
@@ -532,9 +538,11 @@ describe('no Order fact is stated twice', () => {
     // REVISED (owner, 2026-10-26): Internal order details and General terms on the left;
     // the Commercial working with Activity beneath it on the right.
     assert.ok(left.includes('<OrderInternalDetailsCard'), 'Internal order details belong in the left column')
-    assert.ok(left.includes('<OrderGeneralTermsCard'), 'General terms belong in the left column')
+    assert.ok(left.includes('termsPoints='), 'General terms are inside the same card')
     assert.ok(right.includes('<OrderCommercialBreakdown'), 'the Commercial working is on the right')
-    assert.ok(right.indexOf('<OrderCommercialBreakdown') < right.indexOf('<OrderActivityList'), 'Activity sits beneath the Commercial working')
+    // REVISED (owner, 2026-10-26, again): Activity is FULL WIDTH, after the lower band.
+    assert.ok(body.indexOf('<OrderActivityList') > body.indexOf('</aside>'), 'Activity follows the lower band')
+    assert.equal(lower.slice(main, body.indexOf('</aside>') - body.indexOf('className="order-lower"')).includes('<OrderActivityList'), false)
     assert.ok(!lower.includes('PAYMENT_SECTION_TITLE'), 'Payment is no longer in the lower workspace')
   })
 })

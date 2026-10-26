@@ -320,6 +320,30 @@ export function describeMiddleman(row: PiInternalDetailsRow): string {
 }
 
 /**
+ * THE MIDDLEMAN ANSWER SPLIT FOR THE ORDER PAGE: the commission on one line and
+ * the name on its own. Same data and the same reader rule as describeMiddleman
+ * — a reader who may not see the commission gets "Restricted" in both, never a
+ * value and never a false "No".
+ */
+export function describeMiddlemanParts(row: PiInternalDetailsRow): { commission: string; name: string } {
+  if (row.commission_restricted) return { commission: 'Restricted', name: 'Restricted' }
+  const answer = text(row.middleman_commission)
+  if (!answer) return { commission: 'Not answered', name: 'Not answered' }
+  if (answer === 'no') return { commission: 'No', name: 'Not applicable' }
+  const name = text(row.middleman_recipient).trim() || 'Not named'
+  const basis = text(row.middleman_commission_basis)
+  if (basis === 'amount' && text(row.middleman_commission_amount)) {
+    return { commission: INR.format(Number(row.middleman_commission_amount)), name }
+  }
+  if (basis === 'percent' && text(row.middleman_commission_percent)) {
+    const of = text(row.middleman_commission_percent_of) as CommissionPercentOf
+    const base = COMMISSION_PERCENT_OF_LABEL[of] ?? 'an unnamed figure'
+    return { commission: `${Number(row.middleman_commission_percent)}% of ${base}`, name }
+  }
+  return { commission: 'Amount not given', name }
+}
+
+/**
  * WHERE THE APP DATE AND THE WORKBOOK DISAGREE. Nothing is chosen silently:
  * the card shows both, and Sales confirms the app value knowing the workbook
  * said something else (or nothing).
