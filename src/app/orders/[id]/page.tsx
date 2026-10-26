@@ -29,10 +29,11 @@ import {
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
-import { OrderDatesTimelineCard, OrderGeneralTermsCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
+import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
+import { isKeyActivityEvent } from '@/lib/orders/orderActivityImportance'
 import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
-import { ORDER_INTERNAL_DETAILS_NOTE, ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
+import { ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
 import {
   PAYMENT_DETAIL_COLUMNS,
@@ -2875,6 +2876,7 @@ export default function OrderDetailPage() {
     awaitingVerificationCount: recordsReady ? finance.counts.awaiting : 0,
     pendingChangeRequests: pendingRequests.length,
     pendingPiRevision: piHistory.pending !== null,
+    confirmUploadGapDays: datesTimeline.uploadGapDays,
     // The operations handoff for the version in force, while it is undecided
     // or flagged — and the one warning a quiet "Not aligned" cannot carry:
     // production aligned against an EARLIER version than the one now in force.
@@ -3007,6 +3009,111 @@ export default function OrderDetailPage() {
       customizationThumbnails={customizationThumbnails}
       unresolvedImages={piImages.unresolved}
     />
+  )
+
+  // PAYMENT, NOW THE THIRD COLUMN OF THE TOP BAND (owner, 2026-10-26): same card, same figures,
+  // same buttons — only where it is drawn changed.
+  const paymentCard = (
+          <div className="order-docs-pay">
+            {/* ══ 5. PAYMENT ══
+                THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
+
+                IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
+                blocks, a bar, a legend naming the bar's three shares, a grid of
+                three more captioned figures — one of which was the order value the
+                headline had just stated and another the sum of the two metrics —
+                and, underneath all of it, a permanently open table of every payment
+                with a paragraph explaining the table. The same rupees were on the
+                screen up to three times.
+
+                WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
+                verified (the headline, and the Verified button); how much is with
+                Finance (the Awaiting verification button); how much remains (the
+                Balance line); what share that is (the headline percentage). The
+                per-payment rows are behind the two buttons, which is where somebody
+                who wants them goes and where nobody else has to scroll past them.
+
+                EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
+                percentage, no status rule and no allocation rule changed here. */}
+            <PiCard>
+              <PiCardHeader
+                title={PAYMENT_SECTION_TITLE}
+                style={SECTION_HEADER_STYLE}
+                right={recordsReady ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* ── Add payment ──
+                        A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
+                        opens record_payment_with_allocations’ one flow, seeded with
+                        this Order, and this page contains no payment form, no
+                        validation and no write of its own.
+
+                        DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
+                        button on — finance.allocate with module entry — plus the
+                        Order not being cancelled, which the RPC refuses anyway. A
+                        reader without it is offered no control at all, not a
+                        disabled one: the RPC would refuse them and a dead button
+                        only asks them to find that out.
+
+                        UNCHANGED IN THIS PASS: the same gate, the same label, the
+                        same modal, the same refresh. Only the payment COUNT that
+                        used to sit beside it has gone — each figure now states its
+                        own count on its own button. */}
+                    {mayRecordPayment && (
+                      <button
+                        type="button"
+                        onClick={() => setRecordingPayment(true)}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
+                      >
+                        {ADD_PAYMENT_ACTION_LABEL}
+                      </button>
+                    )}
+                  </div>
+                ) : undefined}
+              />
+              <div style={{ padding: '11px 16px 13px' }}>
+                {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
+                    names the payment and says plainly that verification has not
+                    happened — recording money is not the same as its having
+                    arrived, and this page must not let the two read alike. */}
+                {paymentNotice && (
+                  <div className="order-pay-notice" role="status">
+                    <span>{paymentNotice}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentNotice(null)}
+                      aria-label="Dismiss"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                <PaymentSummaryFigures
+                  finance={finance}
+                  loaded={recordsReady}
+                  onOpenList={setPaymentList}
+                />
+                {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
+                    with the rest of the payment position, and nowhere above. */}
+                <AdvanceGatePanel
+                  readiness={advance}
+                  versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
+                  isAdmin={mayApproveBelowAdvance}
+                  approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
+                  formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
+                  onApprove={async reason => {
+                    const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
+                    if (!error) await reloadOrderRow()
+                    return { error }
+                  }}
+                />
+              </div>
+            </PiCard>
+          </div>
   )
 
   return (
@@ -3190,6 +3297,7 @@ export default function OrderDetailPage() {
         <OrderSummaryPanel
           view={summaryView}
           client={piHandoff.kind === 'ready' ? piHandoff.client : null}
+          paymentSlot={paymentCard}
           datesSlot={(
             <OrderDatesTimelineCard
               title={SUMMARY_GROUP_TITLE.dates}
@@ -3314,108 +3422,6 @@ export default function OrderDetailPage() {
               onCancel: () => setReapproveConfirming(false),
             } : undefined}
           />
-          {/* PAYMENT, IN THE RAIL BESIDE DOCUMENTS (owner, 2026-10-19): below
-              Fabric & Finish and Notes, where the right-hand column had room. */}
-          <div className="order-docs-pay">
-            {/* ══ 5. PAYMENT ══
-                THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
-
-                IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
-                blocks, a bar, a legend naming the bar's three shares, a grid of
-                three more captioned figures — one of which was the order value the
-                headline had just stated and another the sum of the two metrics —
-                and, underneath all of it, a permanently open table of every payment
-                with a paragraph explaining the table. The same rupees were on the
-                screen up to three times.
-
-                WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
-                verified (the headline, and the Verified button); how much is with
-                Finance (the Awaiting verification button); how much remains (the
-                Balance line); what share that is (the headline percentage). The
-                per-payment rows are behind the two buttons, which is where somebody
-                who wants them goes and where nobody else has to scroll past them.
-
-                EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
-                percentage, no status rule and no allocation rule changed here. */}
-            <PiCard>
-              <PiCardHeader
-                title={PAYMENT_SECTION_TITLE}
-                style={SECTION_HEADER_STYLE}
-                right={recordsReady ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    {/* ── Add payment ──
-                        A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
-                        opens record_payment_with_allocations’ one flow, seeded with
-                        this Order, and this page contains no payment form, no
-                        validation and no write of its own.
-
-                        DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
-                        button on — finance.allocate with module entry — plus the
-                        Order not being cancelled, which the RPC refuses anyway. A
-                        reader without it is offered no control at all, not a
-                        disabled one: the RPC would refuse them and a dead button
-                        only asks them to find that out.
-
-                        UNCHANGED IN THIS PASS: the same gate, the same label, the
-                        same modal, the same refresh. Only the payment COUNT that
-                        used to sit beside it has gone — each figure now states its
-                        own count on its own button. */}
-                    {mayRecordPayment && (
-                      <button
-                        type="button"
-                        onClick={() => setRecordingPayment(true)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
-                      >
-                        {ADD_PAYMENT_ACTION_LABEL}
-                      </button>
-                    )}
-                  </div>
-                ) : undefined}
-              />
-              <div style={{ padding: '11px 16px 13px' }}>
-                {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
-                    names the payment and says plainly that verification has not
-                    happened — recording money is not the same as its having
-                    arrived, and this page must not let the two read alike. */}
-                {paymentNotice && (
-                  <div className="order-pay-notice" role="status">
-                    <span>{paymentNotice}</span>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentNotice(null)}
-                      aria-label="Dismiss"
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-                <PaymentSummaryFigures
-                  finance={finance}
-                  loaded={recordsReady}
-                  onOpenList={setPaymentList}
-                />
-                {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
-                    with the rest of the payment position, and nowhere above. */}
-                <AdvanceGatePanel
-                  readiness={advance}
-                  versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
-                  isAdmin={mayApproveBelowAdvance}
-                  approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
-                  formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
-                  onApprove={async reason => {
-                    const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
-                    if (!error) await reloadOrderRow()
-                    return { error }
-                  }}
-                />
-              </div>
-            </PiCard>
-          </div>
         </OrderDocumentsRow>
         {pendingUploadSettled && (
           <RunOnce run={() => {
@@ -3556,10 +3562,9 @@ export default function OrderDetailPage() {
           <>
             <OrderInternalDetailsCard
               title={ORDER_INTERNAL_DETAILS_TITLE}
-              tag={ORDER_INTERNAL_DETAILS_NOTE}
               rows={piInternalRows}
+              termsPoints={commercialTermsPoints(piTerms.terms)}
             />
-            <OrderGeneralTermsCard points={commercialTermsPoints(piTerms.terms)} />
           </>
         )}
 
@@ -3585,42 +3590,42 @@ export default function OrderDetailPage() {
                 <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
               )}
             </div>
-
-            {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
-                understood before the history that produced it. */}
-            {!recordsReady ? (
-              <SectionSkeleton rows={3} label="Loading activity" />
-            ) : (
-              /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
-                 PI's, interleaved newest first. Every entry is worded HERE,
-                 exactly as before; the list only decides how many are on screen —
-                 the latest five until it is expanded. */
-              <OrderActivityList items={history.map((entry): OrderActivityItem => {
-                const orderEntry = entry.source === 'order'
-                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-                  : null
-                return {
-                  key: entry.key,
-                  label: entry.label,
-                  detail: entry.detail,
-                  lines: orderEntry ? amendmentLines(orderEntry) : [],
-                  actor: entry.actor,
-                  when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
-                  dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
-                  fromPi: entry.source === 'pi',
-                  // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
-                  // of their oldest unread update, captured on open before those
-                  // rows were marked read, so everything at or after it is what
-                  // they have not seen. Null — the ordinary case — marks nothing.
-                  isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
-                }
-              })} />
-            )}
-
           </div>
         </aside>
 
         </div>
+
+        {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
+            understood before the history that produced it. */}
+        {!recordsReady ? (
+          <SectionSkeleton rows={3} label="Loading activity" />
+        ) : (
+          /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
+             PI's, interleaved newest first. Every entry is worded HERE,
+             exactly as before; the list only decides how many are on screen —
+             the latest five until it is expanded. */
+          <OrderActivityList items={history.map((entry): OrderActivityItem => {
+            const orderEntry = entry.source === 'order'
+              ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+              : null
+            return {
+              key: entry.key,
+              label: entry.label,
+              detail: entry.detail,
+              lines: orderEntry ? amendmentLines(orderEntry) : [],
+                  important: isKeyActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+              actor: entry.actor,
+              when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
+              dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
+              fromPi: entry.source === 'pi',
+              // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
+              // of their oldest unread update, captured on open before those
+              // rows were marked read, so everything at or after it is what
+              // they have not seen. Null — the ordinary case — marks nothing.
+              isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
+            }
+          })} />
+        )}
 
       </div>
 

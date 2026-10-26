@@ -337,17 +337,19 @@ describe('the Main PI as a property list, and Internal order details (owner, 202
       middleman_commission_amount: '50000', commission_restricted: false,
     })
     const t = text(panel({ internalDetails: rows }))
-    assert.ok(t.includes('Internal order details BOE only'))
-    for (const label of ['Fabric responsibility', 'Middleman commission', 'Billing percentage', 'Billing terms', 'Payment terms']) {
-      assert.ok(t.includes(label), label)
-    }
-    assert.ok(t.includes('Yes — Ramesh, ₹50,000.00'))
-    assert.ok(t.includes('65%') && t.includes('50% advance') && t.includes('Billing terms Not given'))
+    assert.ok(t.includes('Internal Order Details BOE only'))
+    // The four rows the owner asked for (2026-10-26), in that order; payment terms follow when stated.
+    const labels = ['Fabric responsibility', 'Bill / cash percentage', 'Middleman commission', 'Middleman name', 'Payment terms']
+    for (const label of labels) assert.ok(t.includes(label), label)
+    assert.deepEqual(rows.map(x => x.label), labels, 'billing terms are absent when the PI states none')
+    assert.ok(t.includes('Middleman commission ₹50,000.00') && t.includes('Middleman name Ramesh'))
+    assert.ok(t.includes('Bill 65% · Cash 35%') && t.includes('50% advance'))
 
     const restricted = orderInternalDetailRows({ middleman_commission: 'yes', commission_restricted: true })
     const r = restricted.find(x => x.key === 'middleman_commission')
-    assert.ok(r?.value.startsWith('Restricted') && r.muted, 'never a value, never a false "No"')
-    assert.equal(text(panel({})).includes('Internal order details'), false, 'not drawn without rows')
+    assert.ok(r?.value === 'Restricted' && r.muted, 'never a value, never a false "No"')
+    assert.equal(restricted.find(x => x.key === 'middleman_name')?.value, 'Restricted')
+    assert.equal(text(panel({})).includes('Internal Order Details'), false, 'not drawn without rows')
   })
 
   test('the page reads the commission in the existing load group, through the reader rule', () => {

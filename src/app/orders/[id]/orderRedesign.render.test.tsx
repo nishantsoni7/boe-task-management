@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   OrderDatesTimelineCard,
-  OrderGeneralTermsCard,
   OrderInternalDetailsCard,
   OrderStatusStrip,
 } from './OrderRedesign'
@@ -98,28 +97,37 @@ describe('the dates timeline', () => {
   })
 })
 
-describe('the internal details and general terms cards', () => {
-  test('internal details list their rows and say they are internal', () => {
-    const html = renderToStaticMarkup(
-      <OrderInternalDetailsCard
-        title="Internal order details"
-        tag="BOE only"
-        rows={[
-          { key: 'fabric_responsibility', label: 'Fabric responsibility', value: 'Fabric will be provided by BOE', muted: false },
-          { key: 'middleman_commission', label: 'Middleman commission', value: 'Restricted', muted: true },
-        ]}
-      />,
-    )
-    const body = text(html)
-    for (const s of ['Internal order details', 'BOE only', 'Fabric responsibility', 'Fabric will be provided by BOE', 'Middleman commission', 'Restricted']) {
-      assert.ok(body.includes(s), s)
+describe('the internal details card, with the general terms inside it', () => {
+  const card = (termsPoints: string[]) => renderToStaticMarkup(
+    <OrderInternalDetailsCard
+      title="Internal Order Details"
+      rows={[
+        { key: 'fabric_responsibility', label: 'Fabric responsibility', value: 'Fabric will be provided by BOE', muted: false },
+        { key: 'billing_percentage', label: 'Bill / cash percentage', value: 'Bill 70% · Cash 30%', muted: false },
+        { key: 'middleman_commission', label: 'Middleman commission', value: 'Restricted', muted: true },
+        { key: 'middleman_name', label: 'Middleman name', value: 'Restricted', muted: true },
+      ]}
+      termsPoints={termsPoints}
+    />,
+  )
+
+  test('lists the four rows in order, then General Terms in the same card', () => {
+    const body = text(card(['Prices are ex-factory.', 'GST extra.']))
+    const at = (x: string) => body.indexOf(x)
+    for (const x of ['Internal Order Details', 'Fabric responsibility', 'Bill / cash percentage', 'Middleman commission', 'Middleman name', 'General Terms']) {
+      assert.ok(at(x) >= 0, x)
     }
-    assert.equal((html.match(/is-muted/g) ?? []).length, 1)
+    assert.ok(at('Fabric responsibility') < at('Bill / cash percentage'))
+    assert.ok(at('Bill / cash percentage') < at('Middleman commission'))
+    assert.ok(at('Middleman commission') < at('Middleman name'))
+    assert.ok(at('Middleman name') < at('General Terms'))
+    assert.ok(body.includes('Prices are ex-factory. GST extra.'))
+    assert.equal((card([]).match(/class="order-info-card"/g) ?? []).length, 1, 'one card, not two')
   })
 
-  test('general terms print the PI points, or say there are none', () => {
-    assert.ok(text(renderToStaticMarkup(<OrderGeneralTermsCard points={['Prices are ex-factory.', 'GST extra.']} />)).includes('Prices are ex-factory. GST extra.'))
-    assert.ok(text(renderToStaticMarkup(<OrderGeneralTermsCard points={[]} />)).includes('No general terms are recorded on the PI.'))
+  test('restricted values are muted, and an empty terms note says so', () => {
+    assert.equal((card([]).match(/is-muted/g) ?? []).length, 2)
+    assert.ok(text(card([])).includes('No general terms are recorded on the PI.'))
   })
 })
 

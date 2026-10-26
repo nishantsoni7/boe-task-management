@@ -20,6 +20,8 @@
 // the capabilities the database resolved; this only decides which of the
 // controls it was told about is the primary one and where the rest sit.
 
+import { CONFIRM_TO_UPLOAD_FLAG_DAYS } from './orderDatesTimeline'
+
 export type WorkspaceTone = 'neutral' | 'blue' | 'green' | 'amber' | 'red'
 
 /** The statuses under which an Order is no longer being worked. The overdue
@@ -49,6 +51,7 @@ export type OrderAttentionItem = {
     | 'alignment_predates_version'
     | 'advance_below'
     | 'advance_realign'
+    | 'upload_gap'
   label: string
   /**
    * The strip's two parts, for the items that have a reason worth saying: a
@@ -57,8 +60,11 @@ export type OrderAttentionItem = {
    */
   title?: string
   detail?: string
-  /** Red only for a genuinely overdue Order or a flagged PI; every other gap is amber. */
-  tone: 'amber' | 'red'
+  /**
+   * Red for a genuinely overdue Order, a flagged PI or a date that looks wrong;
+   * blue for a changed PI waiting on a decision; every other gap is amber.
+   */
+  tone: 'amber' | 'red' | 'blue'
 }
 
 export type OrderAttentionInput = {
@@ -76,6 +82,11 @@ export type OrderAttentionInput = {
   pendingChangeRequests: number
   /** A revised PI is uploaded and awaiting a decision. */
   pendingPiRevision: boolean
+  /**
+   * Days from the confirm date to the day the PI was uploaded (see
+   * orderDatesTimeline); a gap over CONFIRM_TO_UPLOAD_FLAG_DAYS is raised.
+   */
+  confirmUploadGapDays?: number | null
   /** The document register's own states, from buildOrderDocumentsView. */
   documentsFailed: boolean
   documentsOutdated: boolean
@@ -132,6 +143,17 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   if (open && input.isOverdue) {
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
   }
+  // THE CONFIRM DATE AND THE PI UPLOAD ARE FAR APART: usually a mistyped confirm
+  // date, or a PI sent late. Said once, in words, with the number of days.
+  if (input.confirmUploadGapDays != null && input.confirmUploadGapDays > CONFIRM_TO_UPLOAD_FLAG_DAYS) {
+    items.push({
+      key: 'upload_gap',
+      label: `Confirm date and PI upload are ${input.confirmUploadGapDays} days apart`,
+      tone: 'red',
+      title: `Confirm date and PI upload are ${input.confirmUploadGapDays} days apart`,
+      detail: 'The PI was uploaded long after the order was confirmed; check the confirm date.',
+    })
+  }
   // A SHORT ADVANCE BLOCKS PRODUCTION, and the database refuses the alignment
   // until it is met or excepted. It is a standing condition with a clear action
   // (Finance verifies, or an administrator approves), not an emergency: amber,
@@ -171,7 +193,10 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
     items.push({ key: 'lead_source', label: 'Lead source not set', tone: 'amber' })
   }
   if (input.pendingPiRevision) {
-    items.push({ key: 'pi_revision', label: 'Revised PI awaiting decision', tone: 'amber' })
+    items.push({
+      key: 'pi_revision', label: 'Revised PI awaiting decision', tone: 'blue',
+      title: 'PI modified', detail: 'A revised PI was uploaded and is waiting for a decision.',
+    })
   }
   // THE OPERATIONS HANDOFF. An aligned Order whose current PI version has not
   // been accepted is the case the strip exists for: "Production not aligned"
@@ -200,6 +225,12 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
         ? `PI V${r.versionNumber} flagged by operations: clarification needed`
         : `PI V${r.versionNumber} awaiting operations review`,
       tone: r.status === 'clarification_needed' ? 'red' : 'amber',
+      title: r.status === 'clarification_needed'
+        ? `PI V${r.versionNumber} flagged by operations`
+        : `PI V${r.versionNumber} awaiting operations review`,
+      detail: r.status === 'clarification_needed'
+        ? 'Operations needs a clarification before it can accept this PI.'
+        : 'Operations has not accepted this PI version yet.',
     })
   }
   if (input.pendingChangeRequests > 0) {

@@ -91,8 +91,8 @@ describe('the attention strip carries the decision, state by state', () => {
     const html = strip(view(handoff(), NITISH))
     assert.match(html, /id="operations-review"/)
     assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
-    assert.match(html, /<div class="order-attention-message">.*PI V1 awaiting operations review.*<\/div><div class="order-attention-actions">/)
-    assert.match(html, /<div class="order-attention-actions"><button[^>]*>Cannot accept<\/button><button[^>]*>Accept for production<\/button><\/div>/)
+    assert.match(html, /<div class="order-notice-text">.*PI V1 awaiting operations review.*<\/div><div class="order-notice-actions">/)
+    assert.match(html, /<div class="order-notice-actions"><button[^>]*>Cannot accept<\/button><button[^>]*>Accept for production<\/button><\/div>/)
     assert.doesNotMatch(html, /Withdraw acceptance/)
   })
 
@@ -109,7 +109,7 @@ describe('the attention strip carries the decision, state by state', () => {
     const html = strip(view(handoff(), NISHANT))
     assert.match(html, /PI V1 awaiting operations review/)
     assert.doesNotMatch(html, /<button/)
-    assert.doesNotMatch(html, /order-attention-actions/)
+    assert.doesNotMatch(html, /order-notice-actions/)
   })
 
   test('unassigned: both items counted, nobody offered a control', () => {
@@ -121,7 +121,7 @@ describe('the attention strip carries the decision, state by state', () => {
 
   test('flagged: the red item, and only Accept remains for the reviewer', () => {
     const html = strip(view(handoff({ status: 'clarification_needed', clarification_by: NITISH, clarification_at: '2026-09-21T09:00:00Z', clarification_reason: 'Which fabric?' }), NITISH))
-    assert.match(html, /PI V1 flagged by operations: clarification needed/)
+    assert.match(html, /PI V1 flagged by operations/)
     assert.match(html, /<button[^>]*>Accept for production/)
     assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
   })
@@ -199,7 +199,7 @@ describe('after dispatch, and after cancellation', () => {
 
   test('dispatched, flagged: the red item, and only Accept for the reviewer', () => {
     const { html } = at('dispatched', flagged(), NITISH)
-    assert.match(html, /PI V1 flagged by operations: clarification needed/)
+    assert.match(html, /PI V1 flagged by operations/)
     assert.match(html, /<button[^>]*>Accept for production/)
     assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
   })

@@ -141,27 +141,26 @@ export function OrderDatesTimelineCard({ title, confirm, upload, approved, due, 
   )
 }
 
-export const GENERAL_TERMS_TITLE = 'General terms'
+export const GENERAL_TERMS_TITLE = 'General Terms'
 export const GENERAL_TERMS_EMPTY = 'No general terms are recorded on the PI.'
 
 /**
- * WHAT SALES FILLED ON THE PI, as a card of its own on the Order (it used to be
- * a block inside the Documents card). The rows are the shared builder's:
- * fabric responsibility, billing percentage, the middleman answer, billing and
- * payment terms. The middleman row already says "Restricted" to a reader who may
- * not see the commission; nothing is resolved differently here.
+ * INTERNAL ORDER DETAILS AND GENERAL TERMS, ONE CARD (owner, 2026-10-26).
+ *
+ * What Sales filled on the PI — fabric responsibility, bill / cash percentage,
+ * the middleman commission and the middleman's name — then, under a rule, the
+ * PI's own terms note word for word. The rows are the shared builder's; the
+ * middleman rows already say "Restricted" to a reader who may not see the
+ * commission. Nothing is resolved differently here.
  */
-export function OrderInternalDetailsCard({ title, tag, rows }: {
+export function OrderInternalDetailsCard({ title, rows, termsPoints }: {
   title: string
-  tag: string
   rows: readonly { key: string; label: string; value: string; muted: boolean }[]
+  termsPoints: readonly string[]
 }) {
   return (
     <section className="order-info-card" aria-label={title}>
-      <h3 className="order-info-card-head">
-        <span>{title}</span>
-        <span className="order-info-card-tag">{tag}</span>
-      </h3>
+      <h3 className="order-info-card-head"><span>{title}</span></h3>
       <dl className="order-info-rows">
         {rows.map(r => (
           <div key={r.key} className="order-info-row">
@@ -170,22 +169,16 @@ export function OrderInternalDetailsCard({ title, tag, rows }: {
           </div>
         ))}
       </dl>
-    </section>
-  )
-}
-
-/** The PI's own terms note, one point to a line, word for word. */
-export function OrderGeneralTermsCard({ points }: { points: readonly string[] }) {
-  return (
-    <section className="order-info-card" aria-label={GENERAL_TERMS_TITLE}>
-      <h3 className="order-info-card-head"><span>{GENERAL_TERMS_TITLE}</span></h3>
-      {points.length === 0 ? (
-        <p className="order-info-empty">{GENERAL_TERMS_EMPTY}</p>
-      ) : (
-        <ul className="order-info-terms">
-          {points.map((p, i) => <li key={i}>{p}</li>)}
-        </ul>
-      )}
+      <div className="order-info-sub" role="group" aria-label={GENERAL_TERMS_TITLE}>
+        <h3 className="order-info-card-head"><span>{GENERAL_TERMS_TITLE}</span></h3>
+        {termsPoints.length === 0 ? (
+          <p className="order-info-empty">{GENERAL_TERMS_EMPTY}</p>
+        ) : (
+          <ul className="order-info-terms">
+            {termsPoints.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        )}
+      </div>
     </section>
   )
 }

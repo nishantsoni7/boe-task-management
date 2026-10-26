@@ -16,9 +16,8 @@
 
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
-import { useState } from 'react'
-import { AlertTriangle, ChevronDown } from 'lucide-react'
-import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
+import { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, ChevronDown, CircleMinus, Pencil } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
@@ -46,7 +45,6 @@ import {
   activityToggleLabel,
   activityWindow,
   attentionAriaLabel,
-  attentionHeading,
   ORDER_ADDRESSES_LINK,
   SUMMARY_GROUP_TITLE,
   type OrderAttentionItem,
@@ -73,17 +71,17 @@ const TONE: Record<WorkspaceTone, { dot: string; text: string }> = {
 // ── The attention bar ─────────────────────────────────────────────────────────
 
 /**
- * What needs somebody's attention, in one restrained strip: the count, then
- * the conditions separated so each reads on its own. Rendered only when there
- * is something to say; the page hides it otherwise. Amber ground, red text
- * only for the genuinely overdue item — and the words carry the meaning, so
- * nothing here depends on colour alone.
+ * WHAT NEEDS SOMEBODY'S ATTENTION, as one banner per item, directly under the
+ * order number. Each banner is tinted by its kind — amber for work waiting on
+ * somebody, blue for a changed PI, red for a flagged PI, an overdue order or a
+ * date that looks wrong — with a title, one sentence of reason and, where there
+ * is one, the action on the right. The words carry the meaning; the tint only
+ * agrees. Rendered only when there is something to say.
  *
- * ACTIONS, WHEN GIVEN, SIT ON THE RIGHT: the operations reviewer's decision on
- * the PI version the strip names. The page passes them only while that review
- * is open and this reader may decide it; the message keeps the left, and on a
- * narrow screen the actions wrap below it. `id` lets the notification and
- * action-queue links land here.
+ * ACTIONS, WHEN GIVEN, SIT ON THE RIGHT OF THE OPERATIONS-REVIEW BANNER (the
+ * reviewer's decision on the PI version it names), or of the first banner when
+ * that one is not showing. `id` lets the notification and action-queue links
+ * land here.
  */
 export function OrderAttentionBar({ items, actions, id }: {
   items: readonly OrderAttentionItem[]
@@ -91,35 +89,23 @@ export function OrderAttentionBar({ items, actions, id }: {
   id?: string
 }) {
   if (items.length === 0) return null
-  const rowClass = (item: OrderAttentionItem) =>
-    item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'
+  const actionHost = items.some(i => i.key === 'operations_review') ? 'operations_review' : items[0].key
+  const icon = (tone: OrderAttentionItem['tone']) =>
+    tone === 'blue' ? <Pencil size={16} strokeWidth={2.2} aria-hidden="true" />
+      : tone === 'red' ? <CircleMinus size={16} strokeWidth={2.2} aria-hidden="true" />
+      : <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" />
   return (
-    <section id={id} className="order-attention" aria-label={attentionAriaLabel(items)}>
-      <div className="order-attention-message">
-        <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
-        {items.length === 1 ? (
-          // ONE ISSUE: its title, then its one reason. No count — "1 item needs
-          // attention" only restated what the strip already said.
-          <p className={rowClass(items[0]) + ' order-attention-single'}>
-            <strong className="order-attention-title">{items[0].title ?? items[0].label}</strong>
-            {items[0].detail && <span className="order-attention-detail">{items[0].detail}</span>}
-          </p>
-        ) : (
-          // SEVERAL: every one stays, as a compact row under a count.
-          <div className="order-attention-multi">
-            <p className="order-attention-heading">{attentionHeading(items.length)}</p>
-            <ul className="order-attention-list">
-              {items.map(item => (
-                <li key={item.key} className={rowClass(item)}>
-                  <strong className="order-attention-title">{item.title ?? item.label}</strong>
-                  {item.detail && <span className="order-attention-detail">{item.detail}</span>}
-                </li>
-              ))}
-            </ul>
+    <section id={id} className="order-notices" aria-label={attentionAriaLabel(items)}>
+      {items.map(item => (
+        <div key={item.key} className={`order-notice order-notice--${item.tone}`}>
+          <span className="order-notice-icon">{icon(item.tone)}</span>
+          <div className="order-notice-text">
+            <strong className="order-notice-title">{item.title ?? item.label}</strong>
+            {item.detail && <span className="order-notice-detail">{item.detail}</span>}
           </div>
-        )}
-      </div>
-      {actions && <div className="order-attention-actions">{actions}</div>}
+          {actions && item.key === actionHost && <div className="order-notice-actions">{actions}</div>}
+        </div>
+      ))}
     </section>
   )
 }
@@ -252,12 +238,14 @@ export function OrderAddressesDialog({ client, onClose }: {
   )
 }
 
-export function OrderSummaryPanel({ view, client = null, datesSlot = null }: {
+export function OrderSummaryPanel({ view, client = null, datesSlot = null, paymentSlot = null }: {
   view: OrderSummaryView
   /** The approved PI's client, or null while it has not been read. */
   client?: ClientDetails | null
   /** The dates group drawn as a timeline; the plain rows are the fallback. */
   datesSlot?: React.ReactNode
+  /** The Payment card, drawn as the third column. */
+  paymentSlot?: React.ReactNode
 }) {
   const [addressesOpen, setAddressesOpen] = useState(false)
   return (
@@ -279,17 +267,9 @@ export function OrderSummaryPanel({ view, client = null, datesSlot = null }: {
             {ORDER_ADDRESSES_LINK}
           </button>
           {addressesOpen && <OrderAddressesDialog client={client} onClose={() => setAddressesOpen(false)} />}
-        </section>
-
-        {/* ── 2. Sales and production ──
-            PRODUCTION LEADS, as a row like the two under it. Its value is the
-            badge rather than plain text, because the alignment state is the one
-            thing in this group that is a STATUS and not a name — the word still
-            carries it, and the tint only agrees. */}
-        <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.sales}>
-          <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.sales}</h3>
-          {/* PRODUCTION AND ERP STATUS MOVED TO THE STATUS STRIP above this panel. */}
-          <dl className="order-sum-rows">
+          {/* THE SALE, UNDER THE CLIENT (owner, 2026-10-26): who owns it and where it came from. */}
+          <hr className="order-sum-divider" />
+          <dl className="order-sum-rows" aria-label={SUMMARY_GROUP_TITLE.sales}>
             {view.sales.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
         </section>
@@ -303,6 +283,8 @@ export function OrderSummaryPanel({ view, client = null, datesSlot = null }: {
             </dl>
           </section>
         )}
+
+        {paymentSlot}
 
       </div>
     </section>
@@ -805,9 +787,15 @@ export type OrderActivityItem = {
    * ordinary case.
    */
   isNew?: boolean
+  /**
+   * A milestone worth jumping to (created, approved, amended, status, payment
+   * decisions …). Listed in the navigation beside the trail.
+   */
+  important?: boolean
 }
 
 export const ACTIVITY_TITLE = 'Activity'
+export const ACTIVITY_NAV_TITLE = 'Key events'
 export const ACTIVITY_EMPTY = 'No activity recorded yet.'
 
 /**
@@ -833,99 +821,152 @@ export function activityTitle(label: string): string {
 }
 
 /**
- * The complete trail, newest first, showing the latest five until asked for
- * the rest. Every entry, timestamp and actor is exactly what the page handed
- * over; this only decides how many are on screen at once.
+ * The complete trail, newest first, FULL WIDTH: what happened, who did it and
+ * when, in three clear places on every row, with a navigation of the key events
+ * on the right. Every entry, timestamp and actor is exactly what the page
+ * handed over; this only decides how many are on screen at once and how they
+ * are laid out. The latest five show until the reader asks for the rest; a key
+ * event further back opens the rest and scrolls to itself.
  */
 export function OrderActivityList({ items }: { items: readonly OrderActivityItem[] }) {
   const [expanded, setExpanded] = useState(false)
+  // A key event further back than the window opens the rest first, then scrolls.
+  const pendingRef = useRef<string | null>(null)
   const { shown, hidden } = activityWindow(items.length, expanded)
   const visible = items.slice(0, shown)
   const collapsible = items.length > shown || expanded
   // Counted over the WHOLE trail, not the visible window: a reader with six
   // unseen entries and five on screen must not be told there are five.
   const newCount = items.filter(i => i.isNew).length
+  const keyEvents = items.filter(i => i.important)
+
+  const scrollToEntry = (key: string) => {
+    const el = document.getElementById(`activity-${key}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('is-flash')
+    window.setTimeout(() => el.classList.remove('is-flash'), 1800)
+  }
+
+  const goTo = (key: string) => {
+    if (items.findIndex(i => i.key === key) >= shown) {
+      pendingRef.current = key
+      setExpanded(true)
+      return
+    }
+    scrollToEntry(key)
+  }
+
+  useEffect(() => {
+    if (!expanded || !pendingRef.current) return
+    const key = pendingRef.current
+    pendingRef.current = null
+    scrollToEntry(key)
+  }, [expanded])
 
   return (
-    <PiCard>
-      <PiCardHeader
-        title={ACTIVITY_TITLE}
-        style={SECTION_HEADER_STYLE}
-        right={items.length > 0 ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', whiteSpace: 'nowrap' }}>
+    <section className="order-activity-card" aria-label={ACTIVITY_TITLE}>
+      <div className="order-activity-card-head">
+        <h3 className="order-activity-card-title">{ACTIVITY_TITLE}</h3>
+        {items.length > 0 && (
+          <span className="order-activity-card-count">
             {newCount > 0 && (
               <span className="order-activity-new">
                 {newCount} {NEW_SINCE_LABEL.toLowerCase()}
               </span>
             )}
-            <span style={{ fontSize: '12px', color: colors.muted }}>
+            <span>
               {hidden > 0 ? `Latest ${shown} of ${items.length}` : `${items.length} event${items.length === 1 ? '' : 's'}`}
             </span>
           </span>
-        ) : undefined}
-      />
-      <div style={{ padding: '12px 16px 12px' }}>
-        {items.length === 0 ? (
-          <div style={{ color: colors.muted, fontSize: '13px' }}>{ACTIVITY_EMPTY}</div>
-        ) : (
-          <ol id="order-activity-list" className="order-activity">
-            {visible.map((entry, idx) => (
-              <li
-                key={entry.key}
-                className={entry.isNew ? 'order-activity-item order-activity-item--new' : 'order-activity-item'}
-              >
-                <div className="order-activity-rail">
-                  {entry.dot}
-                  {idx < visible.length - 1 && <span className="order-activity-line" aria-hidden="true" />}
-                </div>
-                <div className="order-activity-body">
-                  {/* TITLE FIRST, THEN DETAIL, THEN WHO AND WHEN. */}
-                  <div className="order-activity-title">
-                    {activityTitle(entry.label)}
-                    {entry.fromPi && <span className="order-activity-pi" title="From the source PI's trail">PI</span>}
-                    {/* UNREAD IS A SMALL MARK AND A WORD FOR A SCREEN READER, not a
-                        badge on every row: the count in the header says how many. */}
-                    {entry.isNew && (
-                      <>
-                        <span className="order-activity-unread" aria-hidden="true" title={NEW_SINCE_LABEL} />
-                        <span className="order-sr-only">{NEW_SINCE_LABEL}</span>
-                      </>
-                    )}
-                  </div>
-                  {entry.detail && <div className="order-activity-detail">{entry.detail}</div>}
-                  {entry.lines.length > 0 && (
-                    <ul className="order-activity-lines">
-                      {entry.lines.map(line => <li key={line}>{line}</li>)}
-                    </ul>
-                  )}
-                  <div className="order-activity-meta">
-                    {entry.actor ? `${entry.actor} · ` : ''}{entry.when}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-        {collapsible && (
-          <button
-            type="button"
-            onClick={() => setExpanded(e => !e)}
-            aria-expanded={expanded}
-            aria-controls="order-activity-list"
-            className="order-inline-link"
-            style={{ marginTop: '8px' }}
-          >
-            {activityToggleLabel(items.length, expanded)}
-            <ChevronDown
-              size={13}
-              strokeWidth={2.2}
-              aria-hidden="true"
-              style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
-            />
-          </button>
         )}
       </div>
-    </PiCard>
+      {items.length === 0 ? (
+        <div className="order-activity-empty">{ACTIVITY_EMPTY}</div>
+      ) : (
+        <div className={keyEvents.length > 0 ? 'order-activity-layout order-activity-layout--nav' : 'order-activity-layout'}>
+          <div className="order-activity-main">
+            <div className="order-activity-cols" aria-hidden="true">
+              <span>What happened</span><span>By</span><span>When</span>
+            </div>
+            <ol id="order-activity-list" className="order-activity">
+              {visible.map((entry, idx) => (
+                <li
+                  key={entry.key}
+                  className={[
+                    'order-activity-item',
+                    entry.isNew ? 'order-activity-item--new' : '',
+                    entry.important ? 'order-activity-item--key' : '',
+                  ].filter(Boolean).join(' ')}
+                  id={`activity-${entry.key}`}
+                >
+                  <div className="order-activity-rail">
+                    {entry.dot}
+                    {idx < visible.length - 1 && <span className="order-activity-line" aria-hidden="true" />}
+                  </div>
+                  <div className="order-activity-body">
+                    {/* WHAT HAPPENED: the title, the sentence under it, and every before / after line. */}
+                    <div className="order-activity-title">
+                      {activityTitle(entry.label)}
+                      {entry.fromPi && <span className="order-activity-pi" title="From the source PI's trail">PI</span>}
+                      {/* UNREAD IS A SMALL MARK AND A WORD FOR A SCREEN READER, not a
+                          badge on every row: the count in the header says how many. */}
+                      {entry.isNew && (
+                        <>
+                          <span className="order-activity-unread" aria-hidden="true" title={NEW_SINCE_LABEL} />
+                          <span className="order-sr-only">{NEW_SINCE_LABEL}</span>
+                        </>
+                      )}
+                    </div>
+                    {entry.detail && <div className="order-activity-detail">{entry.detail}</div>}
+                    {entry.lines.length > 0 && (
+                      <ul className="order-activity-lines">
+                        {entry.lines.map(line => <li key={line}>{line}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="order-activity-by">{entry.actor ?? '—'}</div>
+                  <div className="order-activity-when">{entry.when}</div>
+                </li>
+              ))}
+            </ol>
+            {collapsible && (
+              <button
+                type="button"
+                onClick={() => setExpanded(e => !e)}
+                aria-expanded={expanded}
+                aria-controls="order-activity-list"
+                className="order-inline-link"
+                style={{ marginTop: '8px' }}
+              >
+                {activityToggleLabel(items.length, expanded)}
+                <ChevronDown
+                  size={13}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                  style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+                />
+              </button>
+            )}
+          </div>
+          {keyEvents.length > 0 && (
+            <nav className="order-activity-nav" aria-label={ACTIVITY_NAV_TITLE}>
+              <h4 className="order-activity-nav-title">{ACTIVITY_NAV_TITLE}</h4>
+              <ul>
+                {keyEvents.map(e => (
+                  <li key={e.key}>
+                    <button type="button" className="order-activity-nav-link" onClick={() => goTo(e.key)}>
+                      <span className="order-activity-nav-label">{activityTitle(e.label)}</span>
+                      <span className="order-activity-nav-when">{e.when}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

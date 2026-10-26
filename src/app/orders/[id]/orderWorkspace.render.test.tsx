@@ -77,7 +77,7 @@ describe('the attention bar', () => {
     assert.equal(renderToStaticMarkup(<OrderAttentionBar items={[]} />), '')
   })
 
-  test('names the count and every item, as words', () => {
+  test('names every item, as words, one banner each', () => {
     const items = orderAttentionItems({
       status: 'running', productionAligned: false, hasSalesperson: false, hasDueDate: false, hasLeadSource: true,
       isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0,
@@ -85,11 +85,10 @@ describe('the attention bar', () => {
     })
     const html = renderToStaticMarkup(<OrderAttentionBar items={items} />)
     const body = text(html)
-    assert.ok(body.includes('3 items need attention'))
     assert.ok(body.includes('Production not aligned'))
     assert.ok(body.includes('Salesperson not set'))
     assert.ok(body.includes('Due date not set'))
-    assert.match(html, /<ul/, 'a list, so a screen reader counts it')
+    assert.equal((html.match(/class="order-notice order-notice--/g) ?? []).length, 3, 'one banner each')
     assert.match(html, /aria-label="3 items need attention"/)
     assert.match(html, /aria-hidden="true"/, 'the icon is decorative')
   })
@@ -101,7 +100,7 @@ describe('the attention bar', () => {
       pendingPiRevision: false, documentsFailed: false, documentsOutdated: false,
     })
     const html = renderToStaticMarkup(<OrderAttentionBar items={items} />)
-    assert.ok(html.includes('order-attention-item--red'))
+    assert.ok(html.includes('order-notice--red'))
     assert.ok(text(html).includes('Due date has passed'))
   })
 })
@@ -247,8 +246,8 @@ describe('the Order Summary panel: group 1, client and value', () => {
 describe('the Order Summary panel: group 2, sales and production', () => {
   test('production and ERP status are NOT in the Sales group any more — the status strip states them', () => {
     const html = summaryMarkup()
-    const body = text(html)
-    assert.ok(body.includes('Sales and production'))
+    assert.ok(html.includes('aria-label="Sales and production"'), 'the sale sits under the client, beneath a divider')
+    assert.ok(html.indexOf('order-sum-divider') < html.indexOf('aria-label="Sales and production"'))
     assert.equal(html.includes('order-sum-badge'), false)
     assert.equal(html.includes('order-sum-status'), false)
     assert.equal(html.includes('order-sum-production-line'), false)
@@ -1001,7 +1000,8 @@ describe('the activity trail', () => {
       { ...event(1), lines: ['Due date: 1 Oct → 8 Oct'], detail: 'Running → On Hold' },
     ]} />)
     const body = text(html)
-    assert.ok(body.includes('Ravi Menon · 1 Sep 2026, 10:00 am'))
+    assert.ok(body.includes('Ravi Menon'))
+    assert.ok(body.includes('1 Sep 2026, 10:00 am'))
     assert.ok(body.includes('Running → On Hold'))
     assert.ok(body.includes('Due date: 1 Oct → 8 Oct'))
     assert.ok(!body.includes(' PI '), 'an Order event is not marked as the PI\'s')
