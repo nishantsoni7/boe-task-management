@@ -177,3 +177,16 @@ function capitalize(s: string): string {
   if (!s) return s
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
+
+/**
+ * HOW AN ORDER NUMBER IS SHOWN. The database stores it four-digit ('0539'), and
+ * that stored value is what every query, key and link still uses. People read
+ * it without the padding: '0539' -> '539'. Display only — never feed the result
+ * back into a query, a comparison with a stored number, or a database write.
+ * Anything that is not a plain padded number ('BOE-147', '', null) is returned
+ * as given, so a legacy or free-text value is never mangled.
+ */
+export function displayOrderNumber(value: string | null | undefined): string {
+  const text = (value ?? '').trim()
+  return /^0+\d+$/.test(text) ? text.replace(/^0+(?=\d)/, '') : text
+}

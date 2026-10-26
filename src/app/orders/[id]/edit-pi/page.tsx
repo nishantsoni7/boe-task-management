@@ -9,6 +9,7 @@
 // While a proposed version is still open, the editor is not offered: one
 // proposal at a time, exactly the rule the Order page's Edit PI button follows.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -92,7 +93,7 @@ export default function EditOrderPiPage() {
     router.replace('/login')
   }
 
-  const title = ready ? `${EDIT_PI_LABEL} · Order ${ready.order.display_number ?? ''}`.trim() : EDIT_PI_LABEL
+  const title = ready ? `${EDIT_PI_LABEL} · Order ${displayOrderNumber(ready.order.display_number)}`.trim() : EDIT_PI_LABEL
 
   return (
     <OrdersLayout profile={profile} title={title} onSignOut={handleSignOut} showRefresh={false}>
@@ -114,7 +115,7 @@ export default function EditOrderPiPage() {
           submissionId={ready.submissionId}
           orderId={ready.order.id}
           backHref={orderHref}
-          context={[`Order ${ready.order.display_number ?? ''}`.trim(), ready.order.client_name].filter(Boolean).join(' · ')}
+          context={[`Order ${displayOrderNumber(ready.order.display_number)}`.trim(), ready.order.client_name].filter(Boolean).join(' · ')}
           onDone={outcome => {
             // The proposal's one notification, as the modal used to send it.
             if (outcome === 'proposed') void notifyPiSubmission({ event: 'pi_revision_proposed', submissionId: ready.submissionId })

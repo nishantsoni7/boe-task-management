@@ -1,5 +1,6 @@
 'use client'
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { OrderHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { useRouter, useParams } from 'next/navigation'
@@ -2483,7 +2484,7 @@ export default function OrderDetailPage() {
 
   // THE ORDER NUMBER AS EVERY ORDERS SCREEN SHOWS IT: the stored four-digit
   // display_number (0526). Product codes (526-BE001) keep their own format.
-  const shownOrderNumber = order.display_number
+  const shownOrderNumber = displayOrderNumber(order.display_number)
 
   // ── What this screen says, decided once ──
   //

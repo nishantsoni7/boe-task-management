@@ -1,5 +1,6 @@
 'use client'
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { parseListState } from '@/lib/listState'
@@ -716,7 +717,7 @@ function ReceivedPaymentsViewInner(
     const labels = new Map<string, string>()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const row of ((ordersRes.data ?? []) as any[])) {
-      if (row.display_number) labels.set(row.id, row.display_number)
+      if (row.display_number) labels.set(row.id, displayOrderNumber(row.display_number))
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const row of ((submissionsRes.data ?? []) as any[])) {
@@ -809,7 +810,7 @@ function ReceivedPaymentsViewInner(
       setTargetLabels(prev => {
         const next = new Map(prev)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const o of ((ordersRes.data ?? []) as any[])) if (o.display_number) next.set(o.id, o.display_number)
+        for (const o of ((ordersRes.data ?? []) as any[])) if (o.display_number) next.set(o.id, displayOrderNumber(o.display_number))
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const s of ((submissionsRes.data ?? []) as any[])) next.set(s.id, piDraftSafeName(s))
         return next

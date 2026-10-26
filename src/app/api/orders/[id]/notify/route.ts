@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import { insertUserNotifications, type NotificationInsert } from '@/lib/notificationWrites'
@@ -151,7 +152,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // ── 3. The sentence, from the stored row ──
   // The stored four-digit number (0526), as every Orders screen shows it.
   // Notifications already sent keep their own text.
-  const orderNumber = order.display_number
+  const orderNumber = displayOrderNumber(order.display_number)
   const { data: actor } = await authClient
     .from('users').select('full_name').eq('id', user.id).maybeSingle()
 

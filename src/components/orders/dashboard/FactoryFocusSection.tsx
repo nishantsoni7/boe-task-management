@@ -18,6 +18,7 @@
 // When there are none, nothing is drawn at all — not a large empty panel. The
 // owner's "Select an order" control lives in the page header and opens the form.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useId, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -83,9 +84,11 @@ export function FactoryFocusSection({ focus, supabase, readOnlyReason, addOpen, 
   const closeForm = () => { setAdd({ kind: 'entering', error: null, busy: false }); setNumber(''); setNote(''); onCloseAdd() }
 
   const lookUp = async () => {
-    const wanted = number.trim().replace(/^#/, '')
+    const typed = number.trim().replace(/^#/, '')
+    // The database keeps the number four-digit; people type it as they read it.
+    const wanted = /^\d{1,4}$/.test(typed) ? typed.padStart(4, '0') : typed
     if (!/^\d{4}$/.test(wanted)) {
-      setAdd({ kind: 'entering', error: 'Enter the four-digit order number, for example 1021.', busy: false })
+      setAdd({ kind: 'entering', error: 'Enter the order number, for example 539.', busy: false })
       return
     }
     setAdd({ kind: 'entering', error: null, busy: true })
@@ -114,7 +117,7 @@ export function FactoryFocusSection({ focus, supabase, readOnlyReason, addOpen, 
     }
     setAdd({
       kind: 'confirming',
-      order: { id: data.id, displayNumber: data.display_number, clientName: data.client_name ?? '', status: data.status, salesperson },
+      order: { id: data.id, displayNumber: displayOrderNumber(data.display_number), clientName: data.client_name ?? '', status: data.status, salesperson },
       error: null, busy: false,
     })
   }

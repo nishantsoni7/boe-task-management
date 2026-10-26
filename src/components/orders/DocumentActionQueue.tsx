@@ -13,6 +13,7 @@
 // the decision itself is made. Draws nothing when nothing is waiting, and
 // nothing under View As. Accepted order rows elsewhere are untouched.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -74,7 +75,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = ((data ?? []) as any[]).map(r => ({
         submission: r as PersistedDocumentSubmission,
-        orderNumber: (r.order?.display_number as string | undefined) ?? '—',
+        orderNumber: displayOrderNumber(r.order?.display_number as string | undefined) || '—',
       }))
       const { data: revData, error: revErr } = await supabase
         .from('order_pi_versions')
@@ -85,7 +86,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
       if (!live) return
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const revisions: RevisionQueueRow[] = revErr ? [] : ((revData ?? []) as any[]).map(r => ({
-        id: r.id, orderId: r.order_id, orderNumber: (r.order?.display_number as string | undefined) ?? '—',
+        id: r.id, orderId: r.order_id, orderNumber: displayOrderNumber(r.order?.display_number as string | undefined) || '—',
         versionNumber: r.version_number, status: r.status, uploadedBy: r.uploaded_by ?? null,
         uploadedAt: r.uploaded_at, operationsReviewer: r.operations_reviewer ?? null,
       }))

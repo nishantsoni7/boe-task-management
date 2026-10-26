@@ -10,6 +10,7 @@
 // may not open. A failed read draws nothing rather than a false "nothing is waiting". Each row
 // is a link to the PI (or the order) where the decision itself is made. Nothing under View As.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
@@ -90,7 +91,7 @@ export function PiReviewSections({ supabase, viewerId, isAdmin, viewingAs }: {
       // A refused revisions read (migration not applied) just leaves that section out.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const all: ChangeRow[] = revs.error ? [] : ((revs.data ?? []) as any[]).map(r => ({
-        id: r.id, orderId: r.order_id, orderNumber: (r.order?.display_number as string | undefined) ?? '—',
+        id: r.id, orderId: r.order_id, orderNumber: displayOrderNumber(r.order?.display_number as string | undefined) || '—',
         versionNumber: r.version_number, status: r.status, uploadedBy: r.uploaded_by ?? null,
         uploadedAt: r.uploaded_at, operationsReviewer: r.operations_reviewer ?? null,
         client: (r.order?.client_name as string | undefined) || 'Client not recorded',

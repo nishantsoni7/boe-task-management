@@ -49,6 +49,7 @@
 // within their permitted scope" is not a filter written here that could drift —
 // it is the same policy the Orders module itself applies, asked again.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { legacyAllocationErrorMessage } from '@/lib/finance/legacyOrderAllocation'
@@ -190,7 +191,7 @@ export async function searchAllocationTargets(
   const orders: AllocationCandidate[] = ((ordersRes.data ?? []) as any[]).map(o => ({
     kind: 'order',
     id: o.id,
-    reference: o.display_number ?? '—',
+    reference: o.display_number ? displayOrderNumber(o.display_number) : '—',
     clientName: o.client_name ?? '—',
     status: o.status,
     value: o.total_value,

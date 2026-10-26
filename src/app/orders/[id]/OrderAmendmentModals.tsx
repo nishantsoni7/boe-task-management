@@ -12,6 +12,7 @@
 // click handler at all. Losing a typed reason and seven re-entered figures to a
 // stray click is exactly what the BOE Form Modal Dismissal Rule exists to stop.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
@@ -204,7 +205,7 @@ export function AmendOrderModal({
   return (
     <OrderModal
       title="Amend Order"
-      subtitle={`${order.display_number} · applies immediately and is recorded in Activity`}
+      subtitle={`${displayOrderNumber(order.display_number)} · applies immediately and is recorded in Activity`}
       onClose={onClose}
       width={520}
     >
@@ -286,7 +287,7 @@ export function RequestOrderChangeModal({
   return (
     <OrderModal
       title="Request a Change"
-      subtitle={`${order.display_number} · an admin has to approve this before it takes effect`}
+      subtitle={`${displayOrderNumber(order.display_number)} · an admin has to approve this before it takes effect`}
       onClose={onClose}
       width={520}
     >
@@ -403,7 +404,7 @@ export function CancelOrderModal({
   return (
     <OrderModal
       title={isAdmin ? 'Cancel Order' : 'Request Cancellation'}
-      subtitle={order.display_number}
+      subtitle={displayOrderNumber(order.display_number)}
       onClose={onClose}
     >
       {error && <OrderModalError message={error} />}
