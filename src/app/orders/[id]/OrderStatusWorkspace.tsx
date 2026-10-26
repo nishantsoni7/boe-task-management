@@ -980,8 +980,12 @@ const VERSION_TONE: Record<PiVersionTone, StatusTone> = {
  * that drops focus back to the top of a long page, is a dialog that stops
  * people using the keyboard at all.
  */
-function Modal({ title, onClose, children, wide = false }: {
+function Modal({ title, subtitle, footer, onClose, children, wide = false }: {
   title: string
+  /** One quiet line under the title: what this is about, or its headline fact. */
+  subtitle?: string | null
+  /** A pinned strip under the scrolling body (a footnote, an action). */
+  footer?: React.ReactNode
   onClose: () => void
   children: React.ReactNode
   wide?: boolean
@@ -1026,12 +1030,16 @@ function Modal({ title, onClose, children, wide = false }: {
         onKeyDown={onKeyDown}
       >
         <div className="order-modal-head">
-          <h2 className="order-modal-title">{title}</h2>
+          <div className="order-modal-heading">
+            <h2 className="order-modal-title">{title}</h2>
+            {subtitle && <p className="order-modal-subtitle">{subtitle}</p>}
+          </div>
           <button type="button" className="order-modal-close" onClick={onClose} aria-label="Close">
             <X size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
         <div className="order-modal-body">{children}</div>
+        {footer && <div className="order-modal-foot">{footer}</div>}
       </div>
     </div>
   )
