@@ -73,7 +73,7 @@ import {
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
-import { formatMoney } from '@/lib/finance/piPaymentView'
+import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -3756,6 +3756,10 @@ export default function OrderDetailPage() {
           /* An administrator may correct any payment in the list, awaiting or
              verified. It opens Finance's own edit form; the database decides. */
           onEdit={actingAsAdmin ? (paymentId => { setEditingPaymentId(paymentId) }) : null}
+          /* THE VERIFIED LIST'S HEADLINE: the same percentage and base the Payment card states. */
+          summary={paymentList === 'verified' && finance.advanceBase !== null
+            ? { context: `${formatPercent(finance.verifiedPercent)} of ${formatMoney(finance.advanceBase)} Total before GST`, percent: finance.verifiedPercent === null ? null : Number(finance.verifiedPercent) }
+            : null}
         />
       )}
 

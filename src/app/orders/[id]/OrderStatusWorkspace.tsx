@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, ExternalLink, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { Check, Download, ExternalLink, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -190,6 +190,11 @@ const DL_PDF_LABEL = 'PDF'
  * <details> so the dates are in the markup (and the tests) without script;
  * the effect only closes it on an outside click or Escape.
  */
+/** "25 Oct 2026, 02:18 pm" reads on one line as "25 Oct 2026 · 02:18 pm" (display only). */
+export function popoverWhen(when: string): string {
+  return when.replace(/,\s+(?=\d{1,2}:\d{2})/, ' · ')
+}
+
 function PiDetails({ uploadedAt, approvedAt }: { uploadedAt: string; approvedAt: string | null }) {
   const ref = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
@@ -209,9 +214,17 @@ function PiDetails({ uploadedAt, approvedAt }: { uploadedAt: string; approvedAt:
     <details className="order-pi-details" ref={ref}>
       <summary className="order-pi-details-trigger">Details</summary>
       <dl className="order-pi-details-pop">
-        <div><dt>{MAIN_PI_UPLOADED_LABEL}</dt><dd>{uploadedAt}</dd></div>
+        <div>
+          <span className="order-pi-pop-ic" aria-hidden="true"><Upload size={15} strokeWidth={2} /></span>
+          <dt>{MAIN_PI_UPLOADED_LABEL}</dt><dd>{popoverWhen(uploadedAt)}</dd>
+        </div>
         {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
-        {approvedAt && <div><dt>{MAIN_PI_APPROVED_LABEL}</dt><dd>{approvedAt}</dd></div>}
+        {approvedAt && (
+          <div>
+            <span className="order-pi-pop-ic order-pi-pop-ic--done" aria-hidden="true"><Check size={15} strokeWidth={2.4} /></span>
+            <dt>{MAIN_PI_APPROVED_LABEL}</dt><dd>{popoverWhen(approvedAt)}</dd>
+          </div>
+        )}
       </dl>
     </details>
   )
@@ -980,8 +993,12 @@ const VERSION_TONE: Record<PiVersionTone, StatusTone> = {
  * that drops focus back to the top of a long page, is a dialog that stops
  * people using the keyboard at all.
  */
-function Modal({ title, onClose, children, wide = false }: {
+function Modal({ title, subtitle, footer, onClose, children, wide = false }: {
   title: string
+  /** One quiet line under the title: what this is about, or its headline fact. */
+  subtitle?: string | null
+  /** A pinned strip under the scrolling body (a footnote, an action). */
+  footer?: React.ReactNode
   onClose: () => void
   children: React.ReactNode
   wide?: boolean
@@ -1026,12 +1043,16 @@ function Modal({ title, onClose, children, wide = false }: {
         onKeyDown={onKeyDown}
       >
         <div className="order-modal-head">
-          <h2 className="order-modal-title">{title}</h2>
+          <div className="order-modal-heading">
+            <h2 className="order-modal-title">{title}</h2>
+            {subtitle && <p className="order-modal-subtitle">{subtitle}</p>}
+          </div>
           <button type="button" className="order-modal-close" onClick={onClose} aria-label="Close">
             <X size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
         <div className="order-modal-body">{children}</div>
+        {footer && <div className="order-modal-foot">{footer}</div>}
       </div>
     </div>
   )

@@ -183,15 +183,16 @@ describe('the Order Summary panel: group 1, client and value', () => {
       shipTo: { name: null, address: '9 Dock Lane, Nashik' },
     }} />)
     const body = text(html)
-    assert.ok(body.includes('Billing details Name Acme Billing Address 1 Bill Road, Jaipur'))
-    assert.ok(body.includes('Shipping details Name Not provided Address 9 Dock Lane, Nashik'))
+    assert.ok(body.includes('Billing details Copy Acme Billing 1 Bill Road, Jaipur'))
+    assert.ok(body.includes('Shipping details Copy Not provided 9 Dock Lane, Nashik'))
     assert.match(html, /role="dialog"/)
   })
 
   test('with no client read the dialog still opens and says Not provided', () => {
     const body = text(renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={null} />))
-    // Contact (client, contact, location) and the billing and shipping blocks (name, address each).
-    assert.equal((body.match(/Not provided/g) ?? []).length, 7)
+    // The client strip (name, place, contact) and the two empty address cards.
+    assert.equal((body.match(/Not provided/g) ?? []).length, 5)
+    assert.equal(body.includes('Copy'), false, 'nothing to copy from an empty card')
   })
 
   test('the rows are in the agreed order', () => {
@@ -616,9 +617,11 @@ describe('the payments behind a figure', () => {
 
   test('each row says the useful things, and no more', () => {
     const body = text(dialog([payment({})], 'verified'))
-    for (const s of ['₹7,50,000.00', 'Date', '2026-09-01 formatted', 'Mode', 'Client', 'Vittaazio']) {
+    // The payer is named ONCE, in the header, when every row shares it (owner, 2026-10-26).
+    for (const s of ['₹7,50,000.00', 'Date', '2026-09-01 formatted', 'Mode', 'Vittaazio', '1 payment']) {
       assert.ok(body.includes(s), s)
     }
+    assert.equal(body.includes('Client'), false, 'not repeated on the row')
   })
 
   test('the status is stated only where it distinguishes anything', () => {
@@ -668,7 +671,7 @@ describe('the payments behind a figure', () => {
     assert.equal(/<a |href=/.test(html), false, 'nothing in the dialog navigates')
     assert.equal(/Finance record/.test(text(html)), false)
     assert.ok(text(html).includes(PAYMENT_DETAIL_VIEW))
-    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-secondary order-pay-list-link"/)
   })
 
   test('the list can be reached from either figure and says which it is', () => {
@@ -710,7 +713,7 @@ describe('the payment detail', () => {
   test('Back returns to the list INSIDE the dialog, never through the browser', () => {
     const html = detail()
     assert.ok(text(html).includes(PAYMENT_DETAIL_BACK))
-    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-detail-back"/)
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-text order-pay-detail-back"/)
     assert.equal(/history\.back|<a |href=/.test(html), false)
   })
 
@@ -871,7 +874,7 @@ describe('a reader who may see the Order but NOT enter Finance', () => {
 
   test('still gets the brief list the Order is built from', () => {
     const body = text(noFinance())
-    for (const s of ['₹7,50,000.00', 'Date', 'Mode', 'Client', 'Vittaazio']) {
+    for (const s of ['₹7,50,000.00', 'Date', 'Mode', 'Vittaazio']) {
       assert.ok(body.includes(s), s)
     }
     // And the allocation fact, which is the Order's own, not Finance's.
@@ -926,7 +929,7 @@ describe('a reader who holds Finance module entry', () => {
   test('is offered View details and can open the record in the same dialog', () => {
     const list = dialog([payment({})], 'verified')
     assert.ok(text(list).includes(PAYMENT_DETAIL_VIEW))
-    assert.match(list, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+    assert.match(list, /<button[^>]*class="boe-btn boe-btn-secondary order-pay-list-link"/)
 
     const open = dialog([payment({})], 'verified', {
       openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 },
@@ -1227,5 +1230,59 @@ describe('the loading shell', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderWorkspace.tsx'), 'utf8')
     const fn = source.slice(source.indexOf('export function OrderDetailSkeleton'))
     assert.equal(/setTimeout|setInterval|useEffect|animation|supabase/.test(fn), false)
+  })
+})
+
+describe('the payment list header and rows (owner, 2026-10-26)', () => {
+  test('the header states the payer once, the count and the sum of this Order\'s shares', () => {
+    const rows = [payment({}), payment({ id: 'p2', exactAmount: '250000.00', exactAllocatedAmount: '250000.00' })]
+    const html = dialog(rows, 'verified')
+    const body = text(html)
+    assert.ok(body.includes('Vittaazio · 2 payments'))
+    assert.ok(body.includes('₹10,00,000.00'), 'the sum of ₹7,50,000.00 and ₹2,50,000.00')
+    assert.match(html, /class="order-pay-sum-total"/)
+  })
+
+  test('a payer that differs from the header is named on its own row', () => {
+    const body = text(dialog([payment({}), payment({ id: 'p2', client_name: 'Someone Else' })], 'verified'))
+    assert.ok(body.includes('Client Someone Else'))
+  })
+
+  test('the footnote is pinned under the list, once, in the dialog footer', () => {
+    const html = dialog([payment({})], 'verified')
+    assert.equal((html.match(/class="order-modal-foot"/g) ?? []).length, 1)
+    assert.ok(text(html.slice(html.indexOf('order-modal-foot'))).includes("Amounts are this Order's allocated share"))
+  })
+})
+
+describe('the shipping and billing dialog (owner, 2026-10-26)', () => {
+  const dialogFor = (client: Parameters<typeof OrderAddressesDialog>[0]['client']) =>
+    renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={client} />)
+  const PORTAL = 'Building No./Flat No.: 160 Name Of Premises/Building: Tiverton Bungalow Road/Street: Coonoor Road City/Town/Village: Ooty State: Tamil Nadu PIN Code: 643001'
+
+  test('who first (client, place, contact), then billing and shipping side by side', () => {
+    const html = dialogFor({
+      name: 'Hotel Alankar', city: 'Ooty', phone: { label: '+91 98765 43210', tel: '+919876543210' }, phoneText: null,
+      billTo: { name: 'Hotel Alankar', address: PORTAL }, shipTo: { name: null, address: null },
+    })
+    assert.ok(html.indexOf('order-addr-who') < html.indexOf('order-addr-grid'))
+    assert.ok(text(html).includes('+91 98765 43210'))
+    assert.equal(/href=/.test(html), false, 'the content area carries no links')
+    assert.ok(html.indexOf('Billing details') < html.indexOf('Shipping details'))
+  })
+
+  test('the portal text is broken into labelled lines; text that is not that shape is shown as stored', () => {
+    const split = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: PORTAL }, shipTo: { name: null, address: '9 Dock Lane, Nashik' } })
+    const t = text(split)
+    assert.ok(t.includes('Flat / building 160') && t.includes('Road Coonoor Road') && t.includes('PIN 643001'))
+    assert.ok(t.includes('9 Dock Lane, Nashik'), 'shown exactly as stored')
+  })
+
+  test('an absent shipping address is a quiet dashed card; an identical one says Same as billing', () => {
+    const none = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: '1 Road' }, shipTo: { name: null, address: null } })
+    assert.match(none, /order-addr-block order-addr-block--empty/)
+    const same = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: '1 Road' }, shipTo: { name: 'A', address: '1  road' } })
+    assert.ok(text(same).includes('Same as billing'))
+    assert.equal(text(none).includes('Same as billing'), false)
   })
 })

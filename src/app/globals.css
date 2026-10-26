@@ -11672,3 +11672,101 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-lower { grid-template-columns: minmax(0, 1fr) minmax(360px, 432px); }
 @media (max-width: 1100px) { .order-lower { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1100px) { .order-sum-groups > .order-ff { grid-column: 1 / -1; } }
+
+/* ══ Order popups, BOE One theme (owner, 2026-10-26) ══════════════════════════
+   One shell for PI history, the payment lists and the address dialog: a title
+   with a quiet subtitle, a scrolling body and an optional pinned footer. */
+.order-modal-backdrop { background: rgba(48,53,54,0.48); padding: 48px 16px; }
+.order-modal { border-radius: 12px; border-color: #E4DED7; box-shadow: 0 24px 64px rgba(48,53,54,0.28), 0 2px 6px rgba(48,53,54,0.12); max-height: calc(100vh - 96px); }
+.order-modal--wide { max-width: 720px; }
+.order-modal-head { padding: 16px 20px; border-bottom: 1px solid #E4DED7; align-items: flex-start; }
+.order-modal-heading { min-width: 0; }
+.order-modal-title { font-family: var(--font-display, inherit); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
+.order-modal-subtitle { margin: 2px 0 0; font-size: 13px; color: #686D6C; }
+.order-modal-close { width: 36px; height: 36px; border-radius: 8px; margin: -4px -6px -4px 0; }
+.order-modal-body { padding: 16px 20px 20px; }
+.order-modal-foot { padding: 12px 20px; border-top: 1px solid #E4DED7; background: #FBFAF8; color: #686D6C; font-size: 12.5px; line-height: 1.5; flex-shrink: 0; border-radius: 0 0 12px 12px; }
+@media (max-width: 640px) { .order-modal-head, .order-modal-body, .order-modal-foot { padding-left: 16px; padding-right: 16px; } }
+
+/* ── PI history: a timeline of version cards ── */
+.pih-list { list-style: none; margin: 0; padding: 0 0 0 22px; position: relative; display: flex; flex-direction: column; gap: 12px; }
+.pih-list::before { content: ""; position: absolute; left: 7px; top: 18px; bottom: 18px; width: 2px; background: #E4DED7; }
+.pih-card { position: relative; border: 1px solid #E4DED7; border-radius: 12px; padding: 14px 16px; background: #fff; min-width: 0; }
+.pih-card::before { content: ""; position: absolute; left: -21px; top: 21px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2px solid #CFC8BF; box-sizing: border-box; }
+.pih-card--current { border-color: #B8D5C4; background: #F6FBF8; }
+.pih-card--current::before { background: #276247; border-color: #276247; }
+.pih-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pih-no { font-family: var(--font-display, inherit); font-size: 18px; font-weight: 800; color: #303536; }
+.pih-badge { display: inline-flex; align-items: center; border-radius: 6px; padding: 2px 9px; font-size: 12px; font-weight: 600; }
+.pih-view { margin-left: auto; height: 34px; }
+.pih-waiting { margin: 8px 0 0; font-size: 13px; color: #805B0D; }
+.pih-chips { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pih-chip { background: #F1EDE7; border: 1px solid #E4DED7; border-radius: 6px; padding: 2px 8px; font-size: 12.5px; color: #4C5352; }
+.pih-chip--up { background: #E8F2EC; border-color: #CFE3D6; color: #276247; font-weight: 600; }
+.pih-chip--down { background: #FBE9EC; border-color: #F1C9D0; color: #A12438; font-weight: 600; }
+.pih-label { margin: 12px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #686D6C; }
+.pih-quote { margin: 0; border-left: 3px solid #CFC8BF; padding: 2px 0 2px 12px; color: #4C5352; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pih-refused { margin: 10px 0 0; font-size: 13px; color: #A12438; overflow-wrap: anywhere; }
+.pih-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid #F1EDE7; font-size: 13px; }
+.pih-meta dt { color: #686D6C; }
+.pih-meta dd { margin: 0; font-weight: 600; color: #303536; }
+.pih-note { margin: 10px 0 0; font-size: 12.5px; color: #335A86; background: #EAF0F8; border-radius: 8px; padding: 8px 10px; }
+@media (max-width: 560px) { .pih-meta { grid-template-columns: 1fr; } .pih-view { margin-left: 0; } }
+
+/* ── Main PI details popover: icon, label, one-line date, a pointer to its button ── */
+.order-pi-details-pop { min-width: 270px; padding: 6px; border-radius: 12px; box-shadow: 0 12px 32px rgba(48,53,54,0.18); }
+.order-pi-details-pop::before { content: ""; position: absolute; top: -7px; left: 22px; width: 12px; height: 12px; background: #fff; border-left: 1px solid #E4DED7; border-top: 1px solid #E4DED7; transform: rotate(45deg); }
+.order-pi-details-pop > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 10px 12px; font-size: 14px; }
+.order-pi-details-pop > div + div { border-top: 1px solid #F1EDE7; }
+.order-pi-pop-ic { grid-row: 1 / span 2; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: #F1EDE7; color: #4C5352; }
+.order-pi-pop-ic--done { background: #E8F2EC; color: #276247; }
+.order-pi-details-pop dt { grid-column: 2; font-size: 12px; color: #686D6C; }
+.order-pi-details-pop dd { grid-column: 2; margin: 0; text-align: left; font-weight: 600; color: #303536; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.order-pi-details-pop > div { row-gap: 0; }
+
+/* ── Payment lists: a headline, then one card per payment ── */
+.order-pay-sum { background: #F7F5F1; border: 1px solid #E4DED7; border-radius: 12px; padding: 12px 14px; }
+.order-pay-sum-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }
+.order-pay-sum-total { font-family: var(--font-display, inherit); font-size: 22px; font-weight: 800; color: #303536; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.order-pay-sum-context { font-size: 13px; color: #686D6C; }
+.order-pay-sum-bar { height: 8px; border-radius: 999px; background: #E7E1D9; overflow: hidden; margin-top: 10px; }
+.order-pay-sum-bar i { display: block; height: 100%; background: #276247; border-radius: 999px; }
+.order-pay-list { gap: 8px; }
+.order-pay-list-row { grid-template-columns: minmax(120px, 1.1fr) minmax(0, 2fr) auto; align-items: center; gap: 8px 16px; padding: 12px 14px; border-radius: 12px; }
+.order-pay-list-amount { font-family: var(--font-display, inherit); font-size: 17px; font-weight: 800; }
+.order-pay-list-facts { gap: 4px 24px; }
+.order-pay-list-fact dt { font-size: 11px; letter-spacing: 0.08em; }
+.order-pay-list-fact dd { font-size: 14px; font-weight: 500; margin-top: 2px; }
+.order-pay-mode { display: inline-block; background: #F1EDE7; border: 1px solid #E4DED7; border-radius: 6px; padding: 0 8px; font-size: 13px; font-weight: 600; color: #4C5352; }
+.order-pay-list-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+.order-pay-list-link { height: 32px; padding: 0 12px; font-size: 13px; font-weight: 600; }
+.order-pay-list-cash { grid-column: 1 / -1; border-top: 1px solid #F1EDE7; padding-top: 8px; }
+@media (max-width: 620px) {
+  .order-pay-list-row { grid-template-columns: minmax(0, 1fr); }
+  .order-pay-list-actions { justify-content: flex-start; }
+}
+.order-pay-detail-back { align-self: flex-start; margin: -4px 0 4px -8px; }
+
+/* ── Shipping and billing details: who first, then two address cards ── */
+.order-addr-who { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; background: #F7F5F1; border: 1px solid #E4DED7; border-radius: 12px; padding: 12px 14px; }
+.order-addr-client { margin: 0; font-family: var(--font-display, inherit); font-size: 16px; font-weight: 800; color: #303536; margin-right: 4px; }
+.order-addr-pill { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4C5352; background: #fff; border: 1px solid #E4DED7; border-radius: 999px; padding: 3px 10px; }
+.order-addr-pill a { color: #963B27; font-weight: 600; text-decoration: none; }
+.order-addr-pill a:hover { text-decoration: underline; }
+.order-addr-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.order-addr-grid > .order-addr-block + .order-addr-block { margin-top: 0; padding-top: 14px; border-top-color: #E4DED7; }
+.order-addr-grid > .order-addr-block--empty { border-top-style: dashed; }
+.order-addr-block { border: 1px solid #E4DED7; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; background: #fff; }
+.order-addr-block--empty { background: #FBFAF8; border-style: dashed; }
+.order-addr-head { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #686D6C; }
+.order-addr-same { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; background: #EAF0F8; color: #335A86; border-radius: 6px; padding: 1px 8px; }
+.order-addr-copy { margin-left: auto; height: 28px; padding: 0 8px; font-size: 13px; }
+.order-addr-name { margin: 0; font-weight: 700; color: #303536; overflow-wrap: anywhere; }
+.order-addr-lines { margin: 0; display: grid; gap: 3px; font-size: 13.5px; }
+.order-addr-line { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; }
+.order-addr-line dt { color: #686D6C; }
+.order-addr-line dd { margin: 0; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
+.order-addr-address { margin: 0; font-size: 13.5px; line-height: 1.55; color: #303536; overflow-wrap: anywhere; white-space: pre-wrap; }
+.order-addr-missing, .order-addr-none { color: #686D6C; margin: 0; }
+@media (max-width: 620px) { .order-addr-grid { grid-template-columns: minmax(0, 1fr); } }
+.order-addr-head { min-height: 28px; }

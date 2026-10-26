@@ -80,20 +80,145 @@ export const VERSION_STATUS_LABEL: Record<PiVersionRow['status'], string> = {
   superseded: 'Replaced',
 }
 
-const TONE: Record<PiVersionRow['status'], { bg: string; fg: string }> = {
-  approved: { bg: colors.greenTint, fg: '#276247' },
-  pending: { bg: colors.amberTint, fg: '#805B0D' },
-  admin_approved: { bg: colors.amberTint, fg: '#805B0D' },
-  rejected: { bg: colors.redTint, fg: '#A12438' },
-  superseded: { bg: colors.raised, fg: colors.secondary },
+/** What a version changed, as separate short lines (each is a chip on its card). Empty for the original PI. */
+export function versionChanges(v: PiVersionRow): string[] {
+  if (v.version_number === 1) return []
+  const lines = v.proposal?.change_summary
+  if (Array.isArray(lines) && lines.length > 0) return lines.filter(l => typeof l === 'string' && l.trim() !== '')
+  return [v.source_kind === 'workbook' ? 'New workbook uploaded' : 'Edited in the app']
 }
 
 /** The one-line account of what a version is, for its card. */
 export function versionSummary(v: PiVersionRow): string {
   if (v.version_number === 1) return 'Original PI'
-  const lines = v.proposal?.change_summary
-  if (Array.isArray(lines) && lines.length > 0) return lines.join(' · ')
-  return v.source_kind === 'workbook' ? 'New workbook uploaded' : 'Edited in the app'
+  return versionChanges(v).join(' · ')
+}
+
+export type PiChangeChip = { text: string; direction: 'up' | 'down' | 'none' }
+
+/** A grand-total line that says it went up or down is coloured as such; every other line is neutral. */
+export function changeChip(text: string): PiChangeChip {
+  if (/^Grand total\s*\+/i.test(text)) return { text, direction: 'up' }
+  if (/^Grand total\s*[−-]/i.test(text)) return { text, direction: 'down' }
+  return { text, direction: 'none' }
+}
+
+export type PiHistoryCard = {
+  id: string
+  versionNumber: number
+  version: PiVersionRow
+  status: PiVersionRow['status']
+  statusLabel: string
+  isCurrent: boolean
+  chips: PiChangeChip[]
+  /** Why the version was made; only for V2 onwards. */
+  reason: string | null
+  /** Why it was refused, when it was. */
+  rejection: string | null
+  /** The 'edited in the app, no workbook of its own' note, for the version in force. */
+  editedNote: string | null
+  uploaded: { by: string | null; when: string }
+  decided: { by: string | null; when: string } | null
+  /** What the version is waiting for, when it is undecided. */
+  waiting: string | null
+}
+
+/**
+ * THE POPUP'S CARDS, NEWEST FIRST (owner, 2026-10-26: it was oldest first). The
+ * version in force leads, then what has been tried since and what it replaced.
+ * Nothing is re-derived: every field is the row's own, worded here once.
+ */
+export function piHistoryCards(versions: readonly PiVersionRow[], names: Record<string, string>): PiHistoryCard[] {
+  const nameOf = (id: string | null) => (id && names[id] ? names[id] : null)
+  return [...versions]
+    .sort((a, b) => b.version_number - a.version_number)
+    .map(v => {
+      const decided = !!v.decided_at && v.status !== 'pending'
+      return {
+        id: v.id,
+        versionNumber: v.version_number,
+        version: v,
+        status: v.status,
+        statusLabel: VERSION_STATUS_LABEL[v.status],
+        isCurrent: v.status === 'approved',
+        chips: versionChanges(v).map(changeChip),
+        reason: v.version_number > 1 && v.revision_reason ? v.revision_reason : null,
+        rejection: v.status === 'rejected' ? (v.operations_reason ?? v.decision_reason ?? null) : null,
+        editedNote: v.source_kind === 'edit' && v.status === 'approved' ? PI_EDITED_VERSION_WORKBOOK_NOTE(v.version_number) : null,
+        uploaded: { by: nameOf(v.uploaded_by), when: when(v.uploaded_at) },
+        decided: decided ? { by: nameOf(v.decided_by), when: when(v.decided_at) } : null,
+        waiting: v.status === 'pending' ? 'Waiting for an Admin to decide'
+          : v.status === 'admin_approved' ? 'Waiting for Operations to accept' : null,
+      }
+    })
+}
+
+/** The popup's one headline: how many versions, and which is in force. */
+export function piHistorySubtitle(versions: readonly PiVersionRow[]): string {
+  const current = versions.find(v => v.status === 'approved')
+  const count = `${versions.length} version${versions.length === 1 ? '' : 's'}`
+  return current ? `${count} · V${current.version_number} is in force` : count
+}
+
+const BADGE_CLASS: Record<PiVersionRow['status'], string> = {
+  approved: 'boe-badge-completed',
+  pending: 'boe-badge-waiting',
+  admin_approved: 'boe-badge-waiting',
+  rejected: 'boe-badge-blocked',
+  superseded: 'boe-badge-pending',
+}
+
+/**
+ * THE VERSIONS AS A TIMELINE OF CARDS. Priority order inside a card: which
+ * version and whether it is in force; what it changed (chips); why (quote); who
+ * uploaded and decided it, and when; then the one door, View. A refusal is red.
+ */
+export function PiHistoryTimeline({ cards, isAdmin, onView }: {
+  cards: readonly PiHistoryCard[]
+  isAdmin: boolean
+  onView: (version: PiVersionRow) => void
+}) {
+  return (
+    <ol className="pih-list">
+      {cards.map(c => (
+        <li key={c.id} aria-label={`PI V${c.versionNumber}`} className={c.isCurrent ? 'pih-card pih-card--current' : 'pih-card'}>
+          <div className="pih-head">
+            <span className="pih-no">V{c.versionNumber}</span>
+            <span className={`pih-badge ${BADGE_CLASS[c.status]}`}>{c.statusLabel}</span>
+            <button type="button" className="boe-btn boe-btn-secondary pih-view" onClick={() => onView(c.version)}>
+              {isAdmin && c.status === 'pending' ? 'Review changes' : `View V${c.versionNumber}`}
+            </button>
+          </div>
+          {c.waiting && <p className="pih-waiting">{c.waiting}</p>}
+          {c.chips.length > 0 && (
+            <ul className="pih-chips" aria-label="What changed">
+              {c.chips.map(ch => (
+                <li key={ch.text} className={ch.direction === 'none' ? 'pih-chip' : `pih-chip pih-chip--${ch.direction}`}>{ch.text}</li>
+              ))}
+            </ul>
+          )}
+          {c.reason && (
+            <>
+              <p className="pih-label">Reason</p>
+              <blockquote className="pih-quote">{c.reason}</blockquote>
+            </>
+          )}
+          {c.rejection && <p className="pih-refused"><strong>Rejected:</strong> {c.rejection}</p>}
+          <dl className="pih-meta">
+            <div>
+              <dt>Uploaded by</dt>
+              <dd>{c.uploaded.by ? `${c.uploaded.by} · ` : ''}{c.uploaded.when}</dd>
+            </div>
+            <div>
+              <dt>{c.decided ? 'Decided by' : 'Decision'}</dt>
+              <dd>{c.decided ? `${c.decided.by ? `${c.decided.by} · ` : ''}${c.decided.when}` : 'Not decided yet'}</dd>
+            </div>
+          </dl>
+          {c.editedNote && <p className="pih-note">{c.editedNote}</p>}
+        </li>
+      ))}
+    </ol>
+  )
 }
 
 /** Whatever a version detail returned, in the comparison's one shape. */
@@ -117,7 +242,7 @@ export function normalizeVersionContent(detail: { source: string; content: Recor
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '')
 
-export const PI_HISTORY_INTRO = 'Every version of this Order’s PI, oldest first. Open one to see its products, figures and PDF.'
+export const PI_HISTORY_INTRO = 'Every version of this Order’s PI, newest first. Open one to see its products, figures and PDF.'
 export const PI_HISTORY_EMPTY = 'No PI versions are recorded for this Order yet.'
 export const PI_HISTORY_READ_FAILED = 'The PI versions could not be read just now. Close this and try again.'
 export const EDIT_PI_BLOCKED_NOTE =
@@ -196,9 +321,14 @@ export function PiVersionHistory({
   return (
     <>
       {open && !viewing && (
-        <OrderModalShell title={PI_VERSIONS_HISTORY_LABEL} onClose={onClose}>
+        <OrderModalShell
+          title={PI_VERSIONS_HISTORY_LABEL}
+          subtitle={versions && versions.length > 0 ? piHistorySubtitle(versions) : null}
+          footer={PI_HISTORY_INTRO}
+          wide
+          onClose={onClose}
+        >
           {/* Edit PI is on the Main PI row now; this is the record of versions. */}
-          <p className="pi-history-intro">{PI_HISTORY_INTRO}</p>
           {notice && <p role="status" className="pi-history-notice">{notice}</p>}
 
           {readError ? (
@@ -208,52 +338,7 @@ export function PiVersionHistory({
           ) : versions.length === 0 ? (
             <p className="order-status-empty">{PI_HISTORY_EMPTY}</p>
           ) : (
-            // A COMPACT STRIP PER VERSION, oldest first as before: the version
-            // and its status together, the date it was decided (or uploaded)
-            // beside them, and the existing View door at the end. Reasons and
-            // notes take a second line only when there are any.
-            <ol className="pi-version-strip">
-              {versions.map(v => {
-                const decided = !!v.decided_at && v.status !== 'pending'
-                const byDecider = v.decided_by && names[v.decided_by] ? ` by ${names[v.decided_by]}` : ''
-                const byUploader = v.uploaded_by && names[v.uploaded_by] ? ` · ${names[v.uploaded_by]}` : ''
-                return (
-                  <li key={v.id} aria-label={`PI V${v.version_number}`}
-                    className={v.status === 'approved' ? 'pi-version-row pi-version-row--current' : 'pi-version-row'}>
-                    <div className="pi-version-id">
-                      <span className="pi-version-number">V{v.version_number}</span>
-                      <span className="pi-history-pill" style={{ background: TONE[v.status].bg, color: TONE[v.status].fg }}>
-                        {VERSION_STATUS_LABEL[v.status]}
-                      </span>
-                    </div>
-                    <div className="pi-version-when">
-                      {decided ? `Decided ${when(v.decided_at)}${byDecider}` : `Uploaded ${when(v.uploaded_at)}${byUploader}`}
-                      {v.source_kind === 'edit' ? ' · edited in the app' : v.version_number > 1 ? ' · new workbook' : ''}
-                    </div>
-                    <div className="pi-version-action">
-                      <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={() => setViewing(v)}>
-                        {isAdmin && v.status === 'pending' ? 'Review changes' : `View V${v.version_number}`}
-                      </button>
-                    </div>
-                    <div className="pi-version-detail">
-                      {v.version_number > 1 && <div className="pi-history-summary">{versionSummary(v)}</div>}
-                      {v.source_kind === 'edit' && v.status === 'approved' && (
-                        <div className="order-history-meta">{PI_EDITED_VERSION_WORKBOOK_NOTE(v.version_number)}</div>
-                      )}
-                      {v.revision_reason && v.version_number > 1 && (
-                        <div className="order-history-meta">Reason: {v.revision_reason}</div>
-                      )}
-                      {decided && (
-                        <div className="order-history-meta">Uploaded {when(v.uploaded_at)}{byUploader}</div>
-                      )}
-                      {v.status === 'rejected' && (v.decision_reason || v.operations_reason) && (
-                        <div className="pi-history-rejected">Rejected: {v.operations_reason ?? v.decision_reason}</div>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
+            <PiHistoryTimeline cards={piHistoryCards(versions, names)} isAdmin={isAdmin} onView={setViewing} />
           )}
         </OrderModalShell>
       )}

@@ -17,7 +17,7 @@
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, CircleMinus, Pencil } from 'lucide-react'
+import { AlertTriangle, ChevronDown, CircleMinus, MapPin, Pencil, Phone } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
@@ -39,6 +39,8 @@ import {
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
+import { commonPayer, paymentListSummary } from '@/lib/orders/orderPaymentListSummary'
+import { addressForCopy, sameAddress, splitAddress } from '@/lib/orders/addressLines'
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import { OrderModalShell } from './OrderStatusWorkspace'
 import {
@@ -189,31 +191,61 @@ function SummaryRow({ row }: { row: OrderFactRow }) {
 }
 
 /**
- * THE CLIENT'S BILLING AND SHIPPING DETAILS, in a dialog.
+ * THE CLIENT'S BILLING AND SHIPPING DETAILS, in a dialog (redesigned 2026-10-26).
  *
- * Both parties are printed verbatim and never merged: where an order is BILLED
- * and where it is SHIPPED are different questions, and a reader checking them
- * needs both answered, including when the answer is the same. Everything is
- * ClientDetails' own — the PI's stored bill-to / ship-to columns — and an absent
- * value says `Not provided` rather than leaving a blank.
+ * WHO FIRST, THEN WHERE: a strip with the client, the place and the contact,
+ * then billing and shipping side by side. Both parties are printed from the
+ * PI's own columns and never merged — where an order is BILLED and where it is
+ * SHIPPED are different questions, including when the answer is the same, which
+ * a quiet "Same as billing" tag says. The stored address is one run of text; it
+ * is broken into labelled lines where that is safe (lib/orders/addressLines)
+ * and shown exactly as stored where it is not. Each address can be copied. An
+ * absent value says `Not provided` rather than leaving a blank.
  */
-function AddressBlock({ heading, party }: {
+function AddressBlock({ heading, party, sameAsBilling = false }: {
   heading: string
   party: { name: string | null; address: string | null }
+  sameAsBilling?: boolean
 }) {
+  const [copied, setCopied] = useState(false)
+  const lines = splitAddress(party.address)
+  const empty = !party.name && !party.address
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(addressForCopy(party.name, party.address))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch { /* no clipboard here: the text is on screen to select */ }
+  }
   return (
-    <section className="order-addr-block" aria-label={heading}>
-      <h3 className="order-addr-head">{heading}</h3>
-      <dl className="order-addr-rows">
-        <div className="order-addr-row">
-          <dt>Name</dt>
-          <dd>{party.name ?? NOT_PROVIDED}</dd>
-        </div>
-        <div className="order-addr-row">
-          <dt>Address</dt>
-          <dd className="order-addr-address">{party.address ?? NOT_PROVIDED}</dd>
-        </div>
-      </dl>
+    <section className={empty ? 'order-addr-block order-addr-block--empty' : 'order-addr-block'} aria-label={heading}>
+      <h3 className="order-addr-head">
+        <span>{heading}</span>
+        {sameAsBilling && <span className="order-addr-same">Same as billing</span>}
+        {!empty && (
+          <button type="button" className="boe-btn boe-btn-text order-addr-copy" onClick={() => { void copy() }}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
+      </h3>
+      {empty ? (
+        <p className="order-addr-none"><strong>{NOT_PROVIDED}</strong></p>
+      ) : (
+        <>
+          <p className="order-addr-name">{party.name ?? NOT_PROVIDED}</p>
+          {party.address === null ? (
+            <p className="order-addr-address order-addr-missing">{NOT_PROVIDED}</p>
+          ) : lines ? (
+            <dl className="order-addr-lines">
+              {lines.map(line => (
+                <div key={line.label} className="order-addr-line"><dt>{line.label}</dt><dd>{line.value}</dd></div>
+              ))}
+            </dl>
+          ) : (
+            <p className="order-addr-address">{party.address}</p>
+          )}
+        </>
+      )}
     </section>
   )
 }
@@ -222,18 +254,22 @@ export function OrderAddressesDialog({ client, onClose }: {
   client: ClientDetails | null
   onClose: () => void
 }) {
+  const bill = client?.billTo ?? { name: null, address: null }
+  const ship = client?.shipTo ?? { name: null, address: null }
   return (
-    <OrderModalShell title={ORDER_ADDRESSES_LINK} onClose={onClose}>
-      <section className="order-addr-block" aria-label="Client contact">
-        <h3 className="order-addr-head">Client contact</h3>
-        <dl className="order-addr-rows">
-          <div className="order-addr-row"><dt>Client</dt><dd>{client?.name ?? NOT_PROVIDED}</dd></div>
-          <div className="order-addr-row"><dt>Contact</dt><dd>{client?.phone?.label ?? client?.phoneText ?? NOT_PROVIDED}</dd></div>
-          <div className="order-addr-row"><dt>Location</dt><dd>{client?.city ?? NOT_PROVIDED}</dd></div>
-        </dl>
+    <OrderModalShell title={ORDER_ADDRESSES_LINK} wide onClose={onClose}>
+      <section className="order-addr-who" aria-label="Client contact">
+        <p className="order-addr-client">{client?.name ?? NOT_PROVIDED}</p>
+        <p className="order-addr-pill"><MapPin size={13} strokeWidth={2} aria-hidden="true" />{client?.city ?? NOT_PROVIDED}</p>
+        <p className="order-addr-pill">
+          <Phone size={13} strokeWidth={2} aria-hidden="true" />
+          {client?.phone?.label ?? client?.phoneText ?? NOT_PROVIDED}
+        </p>
       </section>
-      <AddressBlock heading="Billing details" party={client?.billTo ?? { name: null, address: null }} />
-      <AddressBlock heading="Shipping details" party={client?.shipTo ?? { name: null, address: null }} />
+      <div className="order-addr-grid">
+        <AddressBlock heading="Billing details" party={bill} />
+        <AddressBlock heading="Shipping details" party={ship} sameAsBilling={sameAddress(bill.address, ship.address)} />
+      </div>
     </OrderModalShell>
   )
 }
@@ -539,7 +575,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
  */
 export function OrderPaymentListDialog({
   kind, rows, formatDate, formatDateTime,
-  canViewDetails, openId, detail, onOpen, onBack, onClose, onEdit,
+  canViewDetails, openId, detail, onOpen, onBack, onClose, onEdit, summary,
 }: {
   kind: OrderPaymentListKind
   rows: readonly OrderPaymentListRow[]
@@ -566,6 +602,12 @@ export function OrderPaymentListDialog({
    * edit form; the database decides again.
    */
   onEdit?: ((paymentId: string) => void) | null
+  /**
+   * The Order's position, said once under the title of the VERIFIED list: the
+   * share of the Total before GST those payments make up, as words and as a
+   * bar. Absent: the header states the count and the sum only.
+   */
+  summary?: { context: string; percent: number | null } | null
 }) {
   // BOTH CONDITIONS, NOT EITHER. An openId without the capability draws the
   // list, so a state left over from anything cannot become a detail view.
@@ -641,8 +683,8 @@ export function OrderPaymentListDialog({
     ] : []
 
     return (
-      <OrderModalShell title={PAYMENT_DETAIL_TITLE} onClose={onClose}>
-        <button type="button" className="boe-btn boe-btn-ghost order-pay-detail-back" onClick={onBack}>
+      <OrderModalShell title={PAYMENT_DETAIL_TITLE} subtitle={customerDisplayName(open.client)} wide onClose={onClose}>
+        <button type="button" className="boe-btn boe-btn-text order-pay-detail-back" onClick={onBack}>
           {PAYMENT_DETAIL_BACK}
         </button>
 
@@ -682,13 +724,36 @@ export function OrderPaymentListDialog({
     )
   }
 
+  const { count, totalPaise } = paymentListSummary(rows)
+  const payer = commonPayer(rows)
+  const subtitle = [payer, `${count} payment${count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
+
   return (
-    <OrderModalShell title={PAYMENT_LIST_TITLE[kind]} onClose={onClose}>
+    <OrderModalShell
+      title={PAYMENT_LIST_TITLE[kind]}
+      subtitle={rows.length > 0 ? subtitle : null}
+      footer={rows.length > 0 ? paymentListCaption(canViewDetails) : null}
+      wide
+      onClose={onClose}
+    >
       {rows.length === 0 ? (
         /* AN EMPTY SET IS AN ANSWER, and it is given rather than withheld. */
         <p className="order-pay-list-empty">{PAYMENT_LIST_EMPTY[kind]}</p>
       ) : (
         <>
+          {/* THE HEADLINE: the sum of this Order's shares, then — for the verified list — where that stands against the Total before GST. */}
+          <div className="order-pay-sum">
+            <div className="order-pay-sum-row">
+              <span className="order-pay-sum-total">{formatMoney((totalPaise / 100).toFixed(2))}</span>
+              {summary?.context && <span className="order-pay-sum-context">{summary.context}</span>}
+            </div>
+            {summary?.percent != null && (
+              <div className="order-pay-sum-bar" aria-hidden="true">
+                <i style={{ width: `${Math.max(0, Math.min(100, summary.percent))}%` }} />
+              </div>
+            )}
+          </div>
+
           <ul className="order-pay-list">
             {rows.map(row => (
               <li key={row.id} className="order-pay-list-row">
@@ -710,12 +775,15 @@ export function OrderPaymentListDialog({
                   </div>
                   <div className="order-pay-list-fact">
                     <dt>Mode</dt>
-                    <dd>{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '\u2014'}</dd>
+                    <dd><span className="order-pay-mode">{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '\u2014'}</span></dd>
                   </div>
-                  <div className="order-pay-list-fact">
-                    <dt>Client</dt>
-                    <dd>{customerDisplayName(row.client)}</dd>
-                  </div>
+                  {/* THE PAYER, ONLY WHERE IT IS NOT THE ONE THE HEADER NAMED. */}
+                  {(!payer || (row.client ?? '').trim() !== payer) && (
+                    <div className="order-pay-list-fact">
+                      <dt>Client</dt>
+                      <dd>{customerDisplayName(row.client)}</dd>
+                    </div>
+                  )}
                   {/* THE STATUS, ONLY WHERE IT DISTINGUISHES ANYTHING. Every
                       row in the verified list is verified and captioning each
                       one so says nothing; a row awaiting Finance may be
@@ -728,37 +796,34 @@ export function OrderPaymentListDialog({
                     </div>
                   )}
                 </dl>
+                {/* THE DOORS: View details (Finance entry) and Edit (an administrator). */}
+                <div className="order-pay-list-actions">
+                  {canViewDetails && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-secondary order-pay-list-link"
+                      onClick={() => onOpen(row.id)}
+                    >
+                      {PAYMENT_DETAIL_VIEW}
+                    </button>
+                  )}
+                  {onEdit && isCorrectablePayment(row.status) && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-text order-pay-list-link"
+                      onClick={() => onEdit(row.id)}
+                    >
+                      {EDIT_PAYMENT_LABEL}
+                    </button>
+                  )}
+                </div>
                 {/* WHERE THE CASH IS (20270413000000): PNB, Paytm and Canara
                     payments travel until they reach the company; Accept is
                     offered here to the person it was handed to. */}
-                {isTrackedPaymentMode(row.mode) && <PaymentCashLine paymentId={row.id} />}
-                {/* THE DOOR TO FINANCE'S OWN RECORD, and it opens HERE rather
-                    than in the Finance module. Drawn on the SAME capability
-                    that used to decide whether the Finance record link existed:
-                    a reader without it gets the list and no control, which is
-                    exactly what they got before. */}
-                {canViewDetails && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-pay-list-link"
-                    onClick={() => onOpen(row.id)}
-                  >
-                    {PAYMENT_DETAIL_VIEW}
-                  </button>
-                )}
-                {onEdit && isCorrectablePayment(row.status) && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-pay-list-link"
-                    onClick={() => onEdit(row.id)}
-                  >
-                    {EDIT_PAYMENT_LABEL}
-                  </button>
-                )}
+                {isTrackedPaymentMode(row.mode) && <div className="order-pay-list-cash"><PaymentCashLine paymentId={row.id} /></div>}
               </li>
             ))}
           </ul>
-          <p className="order-pay-list-note">{paymentListCaption(canViewDetails)}</p>
         </>
       )}
     </OrderModalShell>

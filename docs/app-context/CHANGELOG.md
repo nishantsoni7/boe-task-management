@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-26 — Orders: four popups redesigned on the BOE One theme (PR pending) · no migration
+- **Owner request.** Redesign the Confirmed Order page's popups after analysing what each is for; layouts approved from an HTML proposal, built and checked one by one.
+- **Shared shell.** `OrderModalShell` takes `subtitle` and `footer`; the dialog head, body and a pinned footnote strip are restyled once (Manrope title, 12px corners, deeper shadow), so every dialog that uses it follows.
+- **1 PI history.** Timeline of version cards, **newest first** (was oldest first), the version in force tinted green: version + status + View, what changed as chips (a grand total that moved is green / red), the reason as a quote, uploader and decider with dates, and the "edited in the app" note. `piHistoryCards`, `piHistorySubtitle`, `versionChanges` in `PiVersionsPanel.tsx`.
+- **2 Main PI details popover.** Icon rows, each date and time on one line (`popoverWhen`), a pointer to the Details button.
+- **3 Verified / Awaiting payment lists and the payment detail.** A headline (sum of this Order's shares, count, and for the verified list the percentage and bar), one card per payment (amount, date, mode chip, View details, Edit), the payer named once in the subtitle and on a row only when it differs, the allocation footnote pinned. `orderPaymentListSummary.ts` holds the sums (the list builder still computes nothing).
+- **4 Shipping and billing details.** A client strip (name, place, contact) then billing and shipping side by side; the portal's one-run address is split into labelled lines where safe (`addressLines.ts`, shown as stored otherwise); Copy per address; "Same as billing"; an absent address is a dashed card. The phone number is plain text: the content-area files may carry no links (an architecture test).
+- **Not changed.** No query, schema or permission. Not seen with real data or at phone width; each popup was rendered from static markup in a browser.
+
 ## 2026-10-26 — Orders: Pendencies and Payment swap places; wider Commercial breakdown (PR pending) · no migration
 - **Owner request.** The Fabric & Finish card is called **Pendencies** (it still holds the Fabric and Finish approvals and Pending from client) and becomes the top band's third column; **Payment** takes its old place beside Documents. The Commercial breakdown column is about 20% wider (360px -> 432px max, 300 -> 360px min); the left side gives that width up.
 - **How.** `PENDENCIES_TITLE` is the card's heading and label (the update dialog keeps `FABRIC_FINISH_TITLE`); page.tsx builds `pendenciesCard` (passed to `OrderSummaryPanel pendenciesSlot`) and `paymentCard` (drawn first in `OrderDocumentsRow`). CSS only otherwise; no query or permission.

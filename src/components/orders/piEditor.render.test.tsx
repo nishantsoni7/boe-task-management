@@ -15,7 +15,10 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { diffPi, normalizePi, type PiContent } from '@/lib/orders/piEdit'
 import { EDIT_PI_PROPOSE_NOTE, EDIT_PI_WORKBOOK_NOTE, PiDiffView } from './PiEditor'
-import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, VERSION_STATUS_LABEL, isOpenRevision, normalizeVersionContent, versionSummary, type PiVersionRow } from './PiVersionsPanel'
+import {
+  EDIT_PI_BLOCKED_NOTE, PiHistoryTimeline, PiVersionHistory, VERSION_STATUS_LABEL, changeChip, isOpenRevision, normalizeVersionContent,
+  piHistoryCards, piHistorySubtitle, versionChanges, versionSummary, type PiVersionRow,
+} from './PiVersionsPanel'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const content = (over: { name?: string; qty?: number; rate?: number; city?: string; extra?: boolean } = {}): PiContent => ({
@@ -127,17 +130,75 @@ describe('PI history — the versions popup that replaced the standalone strip',
     assert.doesNotMatch(html, /Edit PI/)
     assert.doesNotMatch(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open hasOpenRevision />), /Edit PI/, 'not even for somebody allowed to propose')
   })
-  test('each version is one compact strip: version and status together, the decision date beside them, View at the end', () => {
-    const source = readFileSync('src/components/orders/PiVersionsPanel.tsx', 'utf8')
-    assert.ok(source.includes('className="pi-version-strip"'))
-    const row = source.slice(source.indexOf('<li key={v.id}'), source.indexOf('</li>', source.indexOf('<li key={v.id}')))
-    assert.ok(row.indexOf('pi-version-id') < row.indexOf('pi-version-when') && row.indexOf('pi-version-when') < row.indexOf('pi-version-action'))
-    assert.ok(row.slice(row.indexOf('pi-version-id'), row.indexOf('pi-version-when')).includes('VERSION_STATUS_LABEL'), 'the version and its status are in one group')
-    assert.ok(row.includes('View V') && row.includes('Review changes'), 'the existing doors are kept')
-    const css = readFileSync('src/app/globals.css', 'utf8')
-    assert.match(css, /\.pi-version-row \{[^}]*grid-template-areas: 'id when action' 'detail detail detail';/)
-    assert.match(css, /@media \(max-width: 560px\) \{\s*\.pi-version-row \{[^}]*'id action' 'when when' 'detail detail'/, 'the metadata drops beneath on a phone')
-    assert.doesNotMatch(css, /\.pi-history-intro \{[^}]*flex: 1 1 240px/, 'no flex-basis that becomes a 240px-tall gap in a column')
+  describe('the version cards (owner, 2026-10-26)', () => {
+    const row = (over: Partial<PiVersionRow>): PiVersionRow => ({
+      id: 'v' + (over.version_number ?? 1), version_number: 1, status: 'superseded', source_kind: 'workbook',
+      uploaded_by: 'u1', uploaded_at: '2026-10-19T08:00:00Z', decided_by: 'u2', decided_at: '2026-10-20T08:00:00Z',
+      revision_reason: null, decision_reason: null, operations_reason: null, proposal: null, ...over,
+    })
+    const NAMES = { u1: 'Namrata', u2: 'Nishant Soni' }
+    const V1 = row({})
+    const V2 = row({
+      version_number: 2, status: 'approved', source_kind: 'edit', uploaded_by: 'u2', uploaded_at: '2026-10-25T08:00:00Z',
+      decided_at: '2026-10-25T08:30:00Z', revision_reason: 'Prices were revised.',
+      proposal: { change_summary: ['Changed GST and 1 more', '1 product added', 'Grand total +₹77,762'] },
+    })
+
+    test('newest first, the version in force leading, with a headline that says which one is in force', () => {
+      const cards = piHistoryCards([V1, V2], NAMES)
+      assert.deepEqual(cards.map(c => c.versionNumber), [2, 1])
+      assert.equal(cards[0].isCurrent, true)
+      assert.equal(cards[1].isCurrent, false)
+      assert.equal(piHistorySubtitle([V1, V2]), '2 versions · V2 is in force')
+      assert.equal(piHistorySubtitle([V1]), '1 version')
+    })
+
+    test('what changed is one chip per line; a grand total that moved is coloured by direction', () => {
+      assert.deepEqual(versionChanges(V2), ['Changed GST and 1 more', '1 product added', 'Grand total +₹77,762'])
+      assert.deepEqual(versionChanges(V1), [])
+      assert.equal(changeChip('Grand total +₹77,762').direction, 'up')
+      assert.equal(changeChip('Grand total −₹5,000').direction, 'down')
+      assert.equal(changeChip('1 product added').direction, 'none')
+    })
+
+    test('who and when: uploader and decider by name; an undecided version says so; a refusal gives its reason', () => {
+      const [cur, orig] = piHistoryCards([V1, V2], NAMES)
+      assert.deepEqual(cur.uploaded, { by: 'Nishant Soni', when: '25 Oct 2026' })
+      assert.deepEqual(orig.decided, { by: 'Nishant Soni', when: '20 Oct 2026' })
+      assert.equal(cur.reason, 'Prices were revised.')
+      assert.equal(orig.reason, null, 'V1 has no reason')
+      const pending = piHistoryCards([row({ version_number: 3, status: 'pending', decided_at: null, decided_by: null })], NAMES)[0]
+      assert.equal(pending.decided, null)
+      assert.equal(pending.waiting, 'Waiting for an Admin to decide')
+      const refused = piHistoryCards([row({ version_number: 3, status: 'rejected', decision_reason: 'Wrong GST' })], NAMES)[0]
+      assert.equal(refused.rejection, 'Wrong GST')
+    })
+
+    test('the card draws the head, chips, reason, meta, and the existing View / Review doors', () => {
+      const cards = piHistoryCards([V1, V2, row({ version_number: 3, status: 'pending', decided_at: null })], NAMES)
+      const html = renderToStaticMarkup(<PiHistoryTimeline cards={cards} isAdmin onView={() => {}} />)
+      assert.match(html, /<ol class="pih-list">/)
+      assert.ok(html.indexOf('PI V3') < html.indexOf('PI V2') && html.indexOf('PI V2') < html.indexOf('PI V1'))
+      assert.match(html, /pih-card pih-card--current/)
+      assert.match(html, /Review changes/, 'an admin reviews a pending version')
+      assert.match(html, /View V2/)
+      assert.match(html, /pih-chip pih-chip--up">Grand total \+₹77,762/)
+      assert.match(html, /<blockquote class="pih-quote">Prices were revised\.<\/blockquote>/)
+      assert.match(html, /Uploaded by<\/dt><dd>Nishant Soni · 25 Oct 2026/)
+      assert.match(html, /Not decided yet/)
+      assert.match(html, /no workbook of its own/i, 'the edited-in-the-app note stays on the version in force')
+      assert.equal(/Review changes/.test(renderToStaticMarkup(<PiHistoryTimeline cards={cards} isAdmin={false} onView={() => {}} />)), false)
+    })
+
+    test('the popup uses the shell with a subtitle, a footnote and the wide size; the CSS carries the timeline', () => {
+      const source = readFileSync('src/components/orders/PiVersionsPanel.tsx', 'utf8')
+      assert.ok(source.includes('<PiHistoryTimeline cards={piHistoryCards(versions, names)}'))
+      assert.ok(source.includes('subtitle={versions && versions.length > 0 ? piHistorySubtitle(versions) : null}'))
+      assert.ok(source.includes('footer={PI_HISTORY_INTRO}'))
+      const css = readFileSync('src/app/globals.css', 'utf8')
+      assert.match(css, /\.pih-card--current \{[^}]*border-color: #B8D5C4/)
+      assert.match(css, /\.order-modal-foot \{/)
+    })
   })
   test('the open-revision rule is unchanged (it now gates the Main PI row\'s Edit PI)', () => {
     assert.ok(EDIT_PI_BLOCKED_NOTE.includes('waiting for a decision'))
