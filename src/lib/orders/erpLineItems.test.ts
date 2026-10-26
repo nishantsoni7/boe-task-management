@@ -75,10 +75,10 @@ describe('ERP line items', () => {
     assert.equal(erpLineItemsFileName('0524', 'Acme'), '0524 ERP line items.xlsx')
   })
 
-  test('columns A to D are frozen even with no pictures', async () => {
+  test('header row and columns A to D are frozen even with no pictures', async () => {
     const sheet = strFromU8(unzipSync(await buildErpLineItemsWorkbook([product]))['xl/worksheets/sheet1.xml'])
     assert.equal(ERP_FROZEN_COLUMNS, 4)
-    assert.match(sheet, /<pane xSplit="4" topLeftCell="E1" activePane="topRight" state="frozen"\/>/)
+    assert.match(sheet, /<pane xSplit="4" ySplit="1" topLeftCell="E2" activePane="bottomRight" state="frozen"\/>/)
     assert.equal(/<drawing /.test(sheet), false, 'no picture, no drawing part')
   })
 })
