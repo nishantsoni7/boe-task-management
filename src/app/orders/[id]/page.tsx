@@ -31,7 +31,7 @@ import {
 } from './OrderWorkspace'
 import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
-import { isKeyActivityEvent } from '@/lib/orders/orderActivityImportance'
+import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
 import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
 import { ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
@@ -271,6 +271,7 @@ import {
   productPicturesState,
   productPicturesZipName,
 } from '@/lib/orders/productPictures'
+import { orderPaymentFacts } from '@/lib/orders/orderPaymentFacts'
 import { buildErpLineItemsWorkbook, erpLineItemsFileName } from '@/lib/orders/erpLineItems'
 import { erpPictureUrlsByRow, loadErpImages, prepareErpImage } from '@/lib/orders/erpImages'
 
@@ -3125,6 +3126,13 @@ export default function OrderDetailPage() {
                   finance={finance}
                   loaded={recordsReady}
                   onOpenList={setPaymentList}
+                  facts={orderPaymentFacts({
+                    rows: payments,
+                    orderValue: finance.orderValue,
+                    advance,
+                    formatMoney,
+                    formatDate: fmtDate,
+                  })}
                 />
                 {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
                     with the rest of the payment position, and nowhere above. */}
@@ -3631,6 +3639,7 @@ export default function OrderDetailPage() {
               detail: entry.detail,
               lines: orderEntry ? amendmentLines(orderEntry) : [],
                   important: isKeyActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+                  minor: !isMainActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
               actor: entry.actor,
               when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
               dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,

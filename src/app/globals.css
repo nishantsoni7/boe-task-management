@@ -11770,3 +11770,15 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-addr-missing, .order-addr-none { color: #686D6C; margin: 0; }
 @media (max-width: 620px) { .order-addr-grid { grid-template-columns: minmax(0, 1fr); } }
 .order-addr-head { min-height: 28px; }
+
+/* ── Payment card: supporting facts under the Balance line, so the card has no empty space ── */
+.order-pay-facts { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #F1EDE7; display: flex; flex-direction: column; }
+.order-pay-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 16px; padding: 8px 0; border-bottom: 1px solid #F3EEE9; font-size: 13.5px; flex-wrap: wrap; }
+.order-pay-fact:last-child { border-bottom: 0; }
+.order-pay-fact dt { color: #686D6C; flex: 0 0 auto; }
+.order-pay-fact dd { margin: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; gap: 1px; }
+.order-pay-fact-value { font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.order-pay-fact-detail { font-size: 12px; color: #686D6C; }
+.order-pay-fact-detail--green { color: #276247; font-weight: 600; }
+.order-pay-fact-detail--amber { color: #805B0D; font-weight: 600; }
+.order-activity-minor { margin-top: 12px; }

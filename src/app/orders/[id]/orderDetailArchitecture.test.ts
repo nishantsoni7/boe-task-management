@@ -772,8 +772,10 @@ describe('the business rules this pass must not touch', () => {
     // component from the same position, with the control added beside it.
     const figures = body.slice(body.indexOf('<PaymentSummaryFigures'))
     // Whitespace-insensitive since the card moved into the rail (2026-10-19).
-    assert.ok(/^<PaymentSummaryFigures\s+finance=\{finance\}\s+loaded=\{recordsReady\}\s+onOpenList=\{setPaymentList\}\s+\/>/.test(figures),
-      'the component is handed the position, the load flag and a door — nothing else')
+    // REVISED (owner, 2026-10-27): plus `facts`, the supporting rows that fill the card
+    // (lib/orders/orderPaymentFacts) — read from the same rows, computing no figure the card states.
+    assert.ok(/^<PaymentSummaryFigures\s+finance=\{finance\}\s+loaded=\{recordsReady\}\s+onOpenList=\{setPaymentList\}\s+facts=\{orderPaymentFacts\(\{[\s\S]*?\}\)\}\s+\/>/.test(figures),
+      'the component is handed the position, the load flag, a door and the supporting facts — nothing else')
     assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'))
   })
 
