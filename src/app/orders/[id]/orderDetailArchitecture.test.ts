@@ -52,7 +52,7 @@ describe('the page reads in one order, with no second summary', () => {
     attention: body.indexOf('<OrderAttentionBar'),
     documents: body.indexOf('<OrderDocumentsRow>'),
     products: body.indexOf('className="order-products"'),
-    payment:  body.indexOf('paymentSlot={paymentCard}'),
+    payment:  body.indexOf('{paymentCard}'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -65,10 +65,10 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     // REVISED (owner, 2026-10-26): notifications come right under the order number,
-    // ahead of the summary, and Payment is the summary band's third column. Earlier (2026-10-19): Payment sits in the rail beside Documents,
+    // ahead of the summary; Pendencies is the summary band's third column and Payment sits beside Documents. Earlier (2026-10-19): Payment sits in the rail beside Documents,
     // below Fabric & Finish and Notes, so it comes before the products.
     assert.deepEqual(order, [
-      'header', 'attention', 'summary', 'payment', 'documents', 'products',
+      'header', 'attention', 'summary', 'documents', 'payment', 'products',
       'activity',
     ])
   })
@@ -103,9 +103,12 @@ describe('the redundant surfaces are gone', () => {
   })
 
   test('Fabric & Finish is a strip ABOVE the box, and is the only place the approvals are stated', () => {
+    // REVISED (owner, 2026-10-26): the card is called Pendencies and is the summary band's third column.
+    assert.equal((page.match(/<OrderFabricFinishCard/g) ?? []).length, 1, 'built once')
+    assert.ok(body.includes('pendenciesSlot={pendenciesCard}'))
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.ok(row.indexOf('<OrderFabricFinishCard') >= 0)
-    assert.ok(row.indexOf('<OrderFabricFinishCard') < row.indexOf('<OrderDocumentsPanel'))
+    assert.equal(row.includes('<OrderFabricFinishCard'), false)
+    assert.ok(row.indexOf('{paymentCard}') >= 0 && row.indexOf('{paymentCard}') < row.indexOf('<OrderDocumentsPanel'), 'Payment sits beside Documents')
     // The Documents box does not summarise them a column away from the card
     // that states them in full.
     const panel = code(STATUS).slice(code(STATUS).indexOf('export function OrderDocumentsPanel'))
@@ -420,9 +423,9 @@ describe('no Order fact is stated twice', () => {
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
     // REVISED (owner, 2026-10-19): inside the Documents row's rail.
-    // REVISED (owner, 2026-10-26): the third column of the summary band, built once.
+    // REVISED (owner, 2026-10-26, again): beside Documents, built once.
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.equal(row.includes('PAYMENT_SECTION_TITLE'), false, 'Payment left the Documents row')
+    assert.ok(row.includes('{paymentCard}'), 'Payment is in the Documents row')
     assert.equal((page.match(/const paymentCard =/g) ?? []).length, 1)
     assert.ok(page.includes('className="order-docs-pay"') && page.includes('PAYMENT_SECTION_TITLE'))
     // ONE line is allowed to name the advance above the products: the attention

@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-26 — Orders: Pendencies and Payment swap places; wider Commercial breakdown (PR pending) · no migration
+- **Owner request.** The Fabric & Finish card is called **Pendencies** (it still holds the Fabric and Finish approvals and Pending from client) and becomes the top band's third column; **Payment** takes its old place beside Documents. The Commercial breakdown column is about 20% wider (360px -> 432px max, 300 -> 360px min); the left side gives that width up.
+- **How.** `PENDENCIES_TITLE` is the card's heading and label (the update dialog keeps `FABRIC_FINISH_TITLE`); page.tsx builds `pendenciesCard` (passed to `OrderSummaryPanel pendenciesSlot`) and `paymentCard` (drawn first in `OrderDocumentsRow`). CSS only otherwise; no query or permission.
+
 ## 2026-10-26 — Orders: Documents card without Internal order details; sample choice moves to Internal Order Details (PR pending) · no migration
 - **Owner request.** The leftover "Internal Order Details" block (it still held the Sample row) is removed from the Documents card; the card is redesigned as shown: title and Document history, Main PI with its status, download chips (Excel, ERP, Pictures ZIP, PDF), property rows for PI history ("V1 · View history") and Product pictures ("12 pictures · View"), then Design Files and Client PO as two tiles.
 - **How.** `OrderDocumentsPanel` lost its `internalDetails` and `sample` props; the sample select (editable under the same gate, same RPC) is now a row of `OrderInternalDetailsCard`, which is drawn once the PI has loaded (or when the order has no PI). Only CSS and markup changed in the card; no query or permission.

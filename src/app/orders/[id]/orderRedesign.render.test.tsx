@@ -164,3 +164,9 @@ describe('the fabric responsibility note under the fabric cost', () => {
     assert.match(css, /\.order-breakdown-line:not\(\.order-breakdown-line--final\) \.order-breakdown-note \{[^}]*color: #C26A62/)
   })
 })
+
+describe('the commercial column is about 20% wider (owner, 2026-10-26)', () => {
+  test('432px at most, 360px at least, instead of 360 / 300', () => {
+    assert.match(css, /\.order-lower \{ grid-template-columns: minmax\(0, 1fr\) minmax\(360px, 432px\); \}/)
+  })
+})

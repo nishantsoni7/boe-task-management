@@ -71,7 +71,7 @@ import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
   EVIDENCE_VIEW_LABEL,
-  FABRIC_FINISH_TITLE,
+  PENDENCIES_TITLE,
   FABRIC_FINISH_UPDATE_LABEL,
   type ApprovalStanding,
 } from '@/lib/orders/orderApprovals'
@@ -787,8 +787,8 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
   busyEvidence: string | null
 }) {
   return (
-    <section className="order-ff" aria-label={FABRIC_FINISH_TITLE}>
-      <h2 className="order-ff-title">{FABRIC_FINISH_TITLE}</h2>
+    <section className="order-ff" aria-label={PENDENCIES_TITLE}>
+      <h2 className="order-ff-title">{PENDENCIES_TITLE}</h2>
       <dl className="order-ff-items">
         {standing.kinds.map(kind => (
           <div key={kind.kind} className="order-ff-item">

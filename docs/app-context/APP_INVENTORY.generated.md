@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7e6a8228` — Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
-- Commits on this branch: 1013
+- Commit: `ec31c829` — Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details
+- Commits on this branch: 1014
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `ec31c829` 2026-10-26 Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details
 - `7e6a8228` 2026-10-26 Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
 - `6de4cc24` 2026-10-26 Confirmed Order page redesign; order numbers shown without leading zeros (#453)
 - `c164df17` 2026-10-26 Minop: sort the Incoming Minop data register, latest punch time first by default (#452)
@@ -38,7 +39,6 @@
 - `f183008c` 2026-10-23 Docs: record PR #437 merge SHA and backup in the changelog (#438)
 - `4c4d6cdc` 2026-10-23 Finance: flat, Notion-style Cash journeys and handover banner (#437)
 - `526963df` 2026-10-23 Orders: approve with cash not yet with the company, with a reason (#436)
-- `02e756bf` 2026-10-23 Finance: cash journeys until money reaches the company (#435)
 
 ## Pages by top-level area
 
