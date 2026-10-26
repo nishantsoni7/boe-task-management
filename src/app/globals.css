@@ -11712,3 +11712,14 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pih-meta dd { margin: 0; font-weight: 600; color: #303536; }
 .pih-note { margin: 10px 0 0; font-size: 12.5px; color: #335A86; background: #EAF0F8; border-radius: 8px; padding: 8px 10px; }
 @media (max-width: 560px) { .pih-meta { grid-template-columns: 1fr; } .pih-view { margin-left: 0; } }
+
+/* ── Main PI details popover: icon, label, one-line date, a pointer to its button ── */
+.order-pi-details-pop { min-width: 270px; padding: 6px; border-radius: 12px; box-shadow: 0 12px 32px rgba(48,53,54,0.18); }
+.order-pi-details-pop::before { content: ""; position: absolute; top: -7px; left: 22px; width: 12px; height: 12px; background: #fff; border-left: 1px solid #E4DED7; border-top: 1px solid #E4DED7; transform: rotate(45deg); }
+.order-pi-details-pop > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 10px 12px; font-size: 14px; }
+.order-pi-details-pop > div + div { border-top: 1px solid #F1EDE7; }
+.order-pi-pop-ic { grid-row: 1 / span 2; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: #F1EDE7; color: #4C5352; }
+.order-pi-pop-ic--done { background: #E8F2EC; color: #276247; }
+.order-pi-details-pop dt { grid-column: 2; font-size: 12px; color: #686D6C; }
+.order-pi-details-pop dd { grid-column: 2; margin: 0; text-align: left; font-weight: 600; color: #303536; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.order-pi-details-pop > div { row-gap: 0; }

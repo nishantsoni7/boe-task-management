@@ -11,6 +11,7 @@ import {
   OrderStatusStrip,
 } from './OrderRedesign'
 import { orderDatesTimeline } from '../../../lib/orders/orderDatesTimeline'
+import { popoverWhen } from './OrderStatusWorkspace'
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
@@ -168,5 +169,20 @@ describe('the fabric responsibility note under the fabric cost', () => {
 describe('the commercial column is about 20% wider (owner, 2026-10-26)', () => {
   test('432px at most, 360px at least, instead of 360 / 300', () => {
     assert.match(css, /\.order-lower \{ grid-template-columns: minmax\(0, 1fr\) minmax\(360px, 432px\); \}/)
+  })
+})
+
+describe('the Main PI details popover (owner, 2026-10-26)', () => {
+  test('a date and its time read on one line, with a dot between them', () => {
+    assert.equal(popoverWhen('25 Oct 2026, 02:18 pm'), '25 Oct 2026 · 02:18 pm')
+    assert.equal(popoverWhen('2026-09-01'), '2026-09-01', 'a plain date is left alone')
+  })
+
+  test('each row is an icon, a label and a nowrap value; the pointer and the one-line rule are in the CSS', () => {
+    assert.match(css, /\.order-pi-details-pop dd \{[^}]*white-space: nowrap/)
+    assert.match(css, /\.order-pi-details-pop::before \{/)
+    const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderStatusWorkspace.tsx'), 'utf8')
+    assert.ok(source.includes('order-pi-pop-ic'))
+    assert.ok(source.includes('{popoverWhen(uploadedAt)}'))
   })
 })
