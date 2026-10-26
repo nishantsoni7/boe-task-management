@@ -9,6 +9,7 @@
 
 import { safeFileName } from '@/lib/tasks/taskGallery'
 import { styleErpWorkbook } from './erpWorkbookStyles'
+import { ERP_IMAGE_COLUMN_CHARS, finishErpWorkbook, type ErpSheetImage } from './erpWorkbookImages'
 
 export const ERP_LINE_ITEMS_HEADERS = [
   'Item Type', 'Inventory Code', 'Item Name', 'Description', 'Quantity', 'Unit Price',
@@ -22,6 +23,8 @@ export const ERP_LINE_ITEMS_HEADERS = [
 export const ERP_LINE_ITEMS_SHEET_NAME = 'Sheet 1 - line_items_template'
 
 export type ErpProduct = {
+  /** The worksheet row of the PI product; ties the product to its pictures. */
+  row?: number
   orderProductCode?: string | null
   productName: string | null
   dimensions: string | null
@@ -66,12 +69,23 @@ export function erpLineItemsFileName(orderNumber: string | null | undefined, cli
   return `${safeFileName(lead.slice(0, 60), 'Order')} ERP line items.xlsx`
 }
 
-/** The .xlsx bytes. `xlsx` is loaded on demand so the Order page does not carry it. */
-export async function buildErpLineItemsWorkbook(products: readonly ErpProduct[]): Promise<Uint8Array> {
+/**
+ * The .xlsx bytes. `xlsx` is loaded on demand so the Order page does not carry it.
+ *
+ * `images[i]` is product i's picture, laid over the first column (Item Type)
+ * whose cells stay empty; columns A–D are frozen either way (owner, 2026-10-27).
+ */
+export async function buildErpLineItemsWorkbook(
+  products: readonly ErpProduct[],
+  images: readonly (ErpSheetImage | null)[] = [],
+): Promise<Uint8Array> {
   const XLSX = await import('xlsx')
   const sheet = XLSX.utils.aoa_to_sheet(erpLineItemRows(products))
-  sheet['!cols'] = ERP_LINE_ITEMS_HEADERS.map((h, i) => ({ wch: i === 3 ? 60 : Math.max(12, h.length + 2) }))
+  sheet['!cols'] = ERP_LINE_ITEMS_HEADERS.map((h, i) => ({
+    wch: i === 0 ? ERP_IMAGE_COLUMN_CHARS : i === 3 ? 60 : Math.max(12, h.length + 2),
+  }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, sheet, ERP_LINE_ITEMS_SHEET_NAME)
-  return styleErpWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer))
+  const styled = styleErpWorkbook(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer))
+  return finishErpWorkbook(styled, images)
 }

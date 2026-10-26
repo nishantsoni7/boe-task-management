@@ -272,6 +272,7 @@ import {
   productPicturesZipName,
 } from '@/lib/orders/productPictures'
 import { buildErpLineItemsWorkbook, erpLineItemsFileName } from '@/lib/orders/erpLineItems'
+import { erpPictureUrlsByRow, loadErpImages, prepareErpImage } from '@/lib/orders/erpImages'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2078,8 +2079,21 @@ export default function OrderDetailPage() {
   const downloadErpSheet = async () => {
     if (erpBusy || piProducts.length === 0) return
     setErpBusy(true)
+    setPicturesZipMessage(null)
     try {
-      const bytes = await buildErpLineItemsWorkbook(piProducts)
+      // EACH PRODUCT'S PICTURE goes over the sheet's first column (Item Type); a
+      // picture that cannot be fetched is left out and counted, never faked.
+      const urlByRow = erpPictureUrlsByRow(piImages.viewerItems)
+      const { images, failed } = await loadErpImages(
+        piProducts.map(p => urlByRow.get(p.row) ?? null),
+        async url => {
+          const res = await fetch(url)
+          return res.ok ? new Uint8Array(await res.arrayBuffer()) : null
+        },
+        prepareErpImage,
+      )
+      if (failed > 0) setPicturesZipMessage(`The ERP sheet was downloaded; ${failed} picture${failed === 1 ? '' : 's'} could not be added.`)
+      const bytes = await buildErpLineItemsWorkbook(piProducts, images)
       const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const href = URL.createObjectURL(blob)
       const a = document.createElement('a')
