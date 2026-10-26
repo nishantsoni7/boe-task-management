@@ -131,6 +131,34 @@ describe('the internal details card, with the general terms inside it', () => {
   })
 })
 
+describe('the sample choice lives in the internal details card, not in Documents', () => {
+  const withSample = (canEdit: boolean, value: 'sample_order' | null) => renderToStaticMarkup(
+    <OrderInternalDetailsCard
+      title="Internal Order Details"
+      rows={[]}
+      termsPoints={[]}
+      sample={{ value, canEdit, saving: false, failure: null, onChange: () => {} }}
+    />,
+  )
+
+  test('an editor draws a select; a reader sees the words', () => {
+    const editor = withSample(true, null)
+    assert.match(editor, /<select[^>]*aria-label="Sample"/)
+    assert.ok(text(editor).includes('Not a sample'))
+    const reader = withSample(false, 'sample_order')
+    assert.equal(reader.includes('<select'), false)
+    assert.ok(text(reader).includes('Sample order only'))
+  })
+
+  test('the page hands the sample to the card and the Documents card no longer draws Internal order details', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+    const status = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderStatusWorkspace.tsx'), 'utf8')
+    assert.match(page, /<OrderInternalDetailsCard[\s\S]*?sample=\{\{/)
+    assert.equal(/internalDetails=/.test(page), false)
+    assert.equal(/order-docs-internal/.test(status), false)
+  })
+})
+
 describe('the fabric responsibility note under the fabric cost', () => {
   test('is a small, subtle red line, not a pill', () => {
     assert.match(css, /\.order-breakdown-line:not\(\.order-breakdown-line--final\) \.order-breakdown-note \{[^}]*color: #C26A62/)

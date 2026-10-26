@@ -3395,13 +3395,6 @@ export default function OrderDetailPage() {
               />
             ) : undefined}
             mainPiOperations={mainPiOperations}
-            sample={{
-              value: sampleType,
-              canEdit: mayRecordApproval && order.status !== 'cancelled',
-              saving: sampleSaving,
-              failure: sampleError,
-              onChange: next => { void changeSampleType(next) },
-            }}
             supporting={docSupporting}
             changes={docChanges}
             onReviewChange={s => setDocReview(s)}
@@ -3558,14 +3551,19 @@ export default function OrderDetailPage() {
             The left column of the bottom band. Internal details were inside the
             Documents card; they are their own card now. Activity moved under the
             commercial breakdown on the right. */}
-        {piHandoff.kind === 'ready' && (
-          <>
-            <OrderInternalDetailsCard
-              title={ORDER_INTERNAL_DETAILS_TITLE}
-              rows={piInternalRows}
-              termsPoints={commercialTermsPoints(piTerms.terms)}
-            />
-          </>
+        {(handoffReady || !order.source_order_submission_id) && (
+          <OrderInternalDetailsCard
+            title={ORDER_INTERNAL_DETAILS_TITLE}
+            rows={piInternalRows}
+            termsPoints={commercialTermsPoints(piTerms.terms)}
+            sample={{
+              value: sampleType,
+              canEdit: mayRecordApproval && order.status !== 'cancelled',
+              saving: sampleSaving,
+              failure: sampleError,
+              onChange: next => { void changeSampleType(next) },
+            }}
+          />
         )}
 
         </div>

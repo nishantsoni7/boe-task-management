@@ -115,7 +115,8 @@ describe('the Documents card', () => {
       )
     const html = withVersions()
     const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
-    assert.ok(main.includes('PI history (2)'))
+    // A property row under the downloads (owner, 2026-10-26): label, then the version and the link.
+    assert.ok(main.includes('PI history') && main.includes('V1 · View history'))
     assert.equal(/Edit PI/.test(text(html)), false, 'no Edit PI anywhere in the Documents card')
     const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
     assert.ok(head.includes('Document history') && !head.includes('PI history'),
@@ -336,20 +337,21 @@ describe('the Main PI as a property list, and Internal order details (owner, 202
       middleman_commission: 'yes', middleman_recipient: 'Ramesh', middleman_commission_basis: 'amount',
       middleman_commission_amount: '50000', commission_restricted: false,
     })
-    const t = text(panel({ internalDetails: rows }))
-    assert.ok(t.includes('Internal Order Details BOE only'))
     // The four rows the owner asked for (2026-10-26), in that order; payment terms follow when stated.
+    // They are drawn by the Order page's own Internal Order Details card, NOT inside the Documents card.
     const labels = ['Fabric responsibility', 'Bill / cash percentage', 'Middleman commission', 'Middleman name', 'Payment terms']
-    for (const label of labels) assert.ok(t.includes(label), label)
     assert.deepEqual(rows.map(x => x.label), labels, 'billing terms are absent when the PI states none')
-    assert.ok(t.includes('Middleman commission ₹50,000.00') && t.includes('Middleman name Ramesh'))
-    assert.ok(t.includes('Bill 65% · Cash 35%') && t.includes('50% advance'))
+    const byKey = (k: string) => rows.find(x => x.key === k)?.value
+    assert.equal(byKey('middleman_commission'), '₹50,000.00')
+    assert.equal(byKey('middleman_name'), 'Ramesh')
+    assert.equal(byKey('billing_percentage'), 'Bill 65% · Cash 35%')
+    assert.equal(byKey('payment_terms'), '50% advance')
 
     const restricted = orderInternalDetailRows({ middleman_commission: 'yes', commission_restricted: true })
     const r = restricted.find(x => x.key === 'middleman_commission')
     assert.ok(r?.value === 'Restricted' && r.muted, 'never a value, never a false "No"')
     assert.equal(restricted.find(x => x.key === 'middleman_name')?.value, 'Restricted')
-    assert.equal(text(panel({})).includes('Internal Order Details'), false, 'not drawn without rows')
+    assert.equal(text(panel({})).includes('Internal Order Details'), false, 'the Documents card never draws it')
   })
 
   test('the page reads the commission in the existing load group, through the reader rule', () => {
