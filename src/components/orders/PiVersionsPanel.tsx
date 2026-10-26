@@ -80,14 +80,6 @@ export const VERSION_STATUS_LABEL: Record<PiVersionRow['status'], string> = {
   superseded: 'Replaced',
 }
 
-const TONE: Record<PiVersionRow['status'], { bg: string; fg: string }> = {
-  approved: { bg: colors.greenTint, fg: '#276247' },
-  pending: { bg: colors.amberTint, fg: '#805B0D' },
-  admin_approved: { bg: colors.amberTint, fg: '#805B0D' },
-  rejected: { bg: colors.redTint, fg: '#A12438' },
-  superseded: { bg: colors.raised, fg: colors.secondary },
-}
-
 /** What a version changed, as separate short lines (each is a chip on its card). Empty for the original PI. */
 export function versionChanges(v: PiVersionRow): string[] {
   if (v.version_number === 1) return []

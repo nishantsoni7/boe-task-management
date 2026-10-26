@@ -17,7 +17,7 @@
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, CircleMinus, Pencil } from 'lucide-react'
+import { AlertTriangle, ChevronDown, CircleMinus, MapPin, Pencil, Phone } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
@@ -40,6 +40,7 @@ import {
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
 import { commonPayer, paymentListSummary } from '@/lib/orders/orderPaymentListSummary'
+import { addressForCopy, sameAddress, splitAddress } from '@/lib/orders/addressLines'
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import { OrderModalShell } from './OrderStatusWorkspace'
 import {
@@ -190,31 +191,61 @@ function SummaryRow({ row }: { row: OrderFactRow }) {
 }
 
 /**
- * THE CLIENT'S BILLING AND SHIPPING DETAILS, in a dialog.
+ * THE CLIENT'S BILLING AND SHIPPING DETAILS, in a dialog (redesigned 2026-10-26).
  *
- * Both parties are printed verbatim and never merged: where an order is BILLED
- * and where it is SHIPPED are different questions, and a reader checking them
- * needs both answered, including when the answer is the same. Everything is
- * ClientDetails' own — the PI's stored bill-to / ship-to columns — and an absent
- * value says `Not provided` rather than leaving a blank.
+ * WHO FIRST, THEN WHERE: a strip with the client, the place and the contact,
+ * then billing and shipping side by side. Both parties are printed from the
+ * PI's own columns and never merged — where an order is BILLED and where it is
+ * SHIPPED are different questions, including when the answer is the same, which
+ * a quiet "Same as billing" tag says. The stored address is one run of text; it
+ * is broken into labelled lines where that is safe (lib/orders/addressLines)
+ * and shown exactly as stored where it is not. Each address can be copied. An
+ * absent value says `Not provided` rather than leaving a blank.
  */
-function AddressBlock({ heading, party }: {
+function AddressBlock({ heading, party, sameAsBilling = false }: {
   heading: string
   party: { name: string | null; address: string | null }
+  sameAsBilling?: boolean
 }) {
+  const [copied, setCopied] = useState(false)
+  const lines = splitAddress(party.address)
+  const empty = !party.name && !party.address
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(addressForCopy(party.name, party.address))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch { /* no clipboard here: the text is on screen to select */ }
+  }
   return (
-    <section className="order-addr-block" aria-label={heading}>
-      <h3 className="order-addr-head">{heading}</h3>
-      <dl className="order-addr-rows">
-        <div className="order-addr-row">
-          <dt>Name</dt>
-          <dd>{party.name ?? NOT_PROVIDED}</dd>
-        </div>
-        <div className="order-addr-row">
-          <dt>Address</dt>
-          <dd className="order-addr-address">{party.address ?? NOT_PROVIDED}</dd>
-        </div>
-      </dl>
+    <section className={empty ? 'order-addr-block order-addr-block--empty' : 'order-addr-block'} aria-label={heading}>
+      <h3 className="order-addr-head">
+        <span>{heading}</span>
+        {sameAsBilling && <span className="order-addr-same">Same as billing</span>}
+        {!empty && (
+          <button type="button" className="boe-btn boe-btn-text order-addr-copy" onClick={() => { void copy() }}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
+      </h3>
+      {empty ? (
+        <p className="order-addr-none"><strong>{NOT_PROVIDED}</strong></p>
+      ) : (
+        <>
+          <p className="order-addr-name">{party.name ?? NOT_PROVIDED}</p>
+          {party.address === null ? (
+            <p className="order-addr-address order-addr-missing">{NOT_PROVIDED}</p>
+          ) : lines ? (
+            <dl className="order-addr-lines">
+              {lines.map(line => (
+                <div key={line.label} className="order-addr-line"><dt>{line.label}</dt><dd>{line.value}</dd></div>
+              ))}
+            </dl>
+          ) : (
+            <p className="order-addr-address">{party.address}</p>
+          )}
+        </>
+      )}
     </section>
   )
 }
@@ -223,18 +254,22 @@ export function OrderAddressesDialog({ client, onClose }: {
   client: ClientDetails | null
   onClose: () => void
 }) {
+  const bill = client?.billTo ?? { name: null, address: null }
+  const ship = client?.shipTo ?? { name: null, address: null }
   return (
-    <OrderModalShell title={ORDER_ADDRESSES_LINK} onClose={onClose}>
-      <section className="order-addr-block" aria-label="Client contact">
-        <h3 className="order-addr-head">Client contact</h3>
-        <dl className="order-addr-rows">
-          <div className="order-addr-row"><dt>Client</dt><dd>{client?.name ?? NOT_PROVIDED}</dd></div>
-          <div className="order-addr-row"><dt>Contact</dt><dd>{client?.phone?.label ?? client?.phoneText ?? NOT_PROVIDED}</dd></div>
-          <div className="order-addr-row"><dt>Location</dt><dd>{client?.city ?? NOT_PROVIDED}</dd></div>
-        </dl>
+    <OrderModalShell title={ORDER_ADDRESSES_LINK} wide onClose={onClose}>
+      <section className="order-addr-who" aria-label="Client contact">
+        <p className="order-addr-client">{client?.name ?? NOT_PROVIDED}</p>
+        <p className="order-addr-pill"><MapPin size={13} strokeWidth={2} aria-hidden="true" />{client?.city ?? NOT_PROVIDED}</p>
+        <p className="order-addr-pill">
+          <Phone size={13} strokeWidth={2} aria-hidden="true" />
+          {client?.phone?.label ?? client?.phoneText ?? NOT_PROVIDED}
+        </p>
       </section>
-      <AddressBlock heading="Billing details" party={client?.billTo ?? { name: null, address: null }} />
-      <AddressBlock heading="Shipping details" party={client?.shipTo ?? { name: null, address: null }} />
+      <div className="order-addr-grid">
+        <AddressBlock heading="Billing details" party={bill} />
+        <AddressBlock heading="Shipping details" party={ship} sameAsBilling={sameAddress(bill.address, ship.address)} />
+      </div>
     </OrderModalShell>
   )
 }

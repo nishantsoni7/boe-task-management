@@ -11746,3 +11746,27 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .order-pay-list-actions { justify-content: flex-start; }
 }
 .order-pay-detail-back { align-self: flex-start; margin: -4px 0 4px -8px; }
+
+/* ── Shipping and billing details: who first, then two address cards ── */
+.order-addr-who { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; background: #F7F5F1; border: 1px solid #E4DED7; border-radius: 12px; padding: 12px 14px; }
+.order-addr-client { margin: 0; font-family: var(--font-display, inherit); font-size: 16px; font-weight: 800; color: #303536; margin-right: 4px; }
+.order-addr-pill { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #4C5352; background: #fff; border: 1px solid #E4DED7; border-radius: 999px; padding: 3px 10px; }
+.order-addr-pill a { color: #963B27; font-weight: 600; text-decoration: none; }
+.order-addr-pill a:hover { text-decoration: underline; }
+.order-addr-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.order-addr-grid > .order-addr-block + .order-addr-block { margin-top: 0; padding-top: 14px; border-top-color: #E4DED7; }
+.order-addr-grid > .order-addr-block--empty { border-top-style: dashed; }
+.order-addr-block { border: 1px solid #E4DED7; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; background: #fff; }
+.order-addr-block--empty { background: #FBFAF8; border-style: dashed; }
+.order-addr-head { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #686D6C; }
+.order-addr-same { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; background: #EAF0F8; color: #335A86; border-radius: 6px; padding: 1px 8px; }
+.order-addr-copy { margin-left: auto; height: 28px; padding: 0 8px; font-size: 13px; }
+.order-addr-name { margin: 0; font-weight: 700; color: #303536; overflow-wrap: anywhere; }
+.order-addr-lines { margin: 0; display: grid; gap: 3px; font-size: 13.5px; }
+.order-addr-line { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; }
+.order-addr-line dt { color: #686D6C; }
+.order-addr-line dd { margin: 0; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
+.order-addr-address { margin: 0; font-size: 13.5px; line-height: 1.55; color: #303536; overflow-wrap: anywhere; white-space: pre-wrap; }
+.order-addr-missing, .order-addr-none { color: #686D6C; margin: 0; }
+@media (max-width: 620px) { .order-addr-grid { grid-template-columns: minmax(0, 1fr); } }
+.order-addr-head { min-height: 28px; }

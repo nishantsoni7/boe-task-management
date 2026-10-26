@@ -183,15 +183,16 @@ describe('the Order Summary panel: group 1, client and value', () => {
       shipTo: { name: null, address: '9 Dock Lane, Nashik' },
     }} />)
     const body = text(html)
-    assert.ok(body.includes('Billing details Name Acme Billing Address 1 Bill Road, Jaipur'))
-    assert.ok(body.includes('Shipping details Name Not provided Address 9 Dock Lane, Nashik'))
+    assert.ok(body.includes('Billing details Copy Acme Billing 1 Bill Road, Jaipur'))
+    assert.ok(body.includes('Shipping details Copy Not provided 9 Dock Lane, Nashik'))
     assert.match(html, /role="dialog"/)
   })
 
   test('with no client read the dialog still opens and says Not provided', () => {
     const body = text(renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={null} />))
-    // Contact (client, contact, location) and the billing and shipping blocks (name, address each).
-    assert.equal((body.match(/Not provided/g) ?? []).length, 7)
+    // The client strip (name, place, contact) and the two empty address cards.
+    assert.equal((body.match(/Not provided/g) ?? []).length, 5)
+    assert.equal(body.includes('Copy'), false, 'nothing to copy from an empty card')
   })
 
   test('the rows are in the agreed order', () => {
@@ -1251,5 +1252,37 @@ describe('the payment list header and rows (owner, 2026-10-26)', () => {
     const html = dialog([payment({})], 'verified')
     assert.equal((html.match(/class="order-modal-foot"/g) ?? []).length, 1)
     assert.ok(text(html.slice(html.indexOf('order-modal-foot'))).includes("Amounts are this Order's allocated share"))
+  })
+})
+
+describe('the shipping and billing dialog (owner, 2026-10-26)', () => {
+  const dialogFor = (client: Parameters<typeof OrderAddressesDialog>[0]['client']) =>
+    renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={client} />)
+  const PORTAL = 'Building No./Flat No.: 160 Name Of Premises/Building: Tiverton Bungalow Road/Street: Coonoor Road City/Town/Village: Ooty State: Tamil Nadu PIN Code: 643001'
+
+  test('who first (client, place, contact), then billing and shipping side by side', () => {
+    const html = dialogFor({
+      name: 'Hotel Alankar', city: 'Ooty', phone: { label: '+91 98765 43210', tel: '+919876543210' }, phoneText: null,
+      billTo: { name: 'Hotel Alankar', address: PORTAL }, shipTo: { name: null, address: null },
+    })
+    assert.ok(html.indexOf('order-addr-who') < html.indexOf('order-addr-grid'))
+    assert.ok(text(html).includes('+91 98765 43210'))
+    assert.equal(/href=/.test(html), false, 'the content area carries no links')
+    assert.ok(html.indexOf('Billing details') < html.indexOf('Shipping details'))
+  })
+
+  test('the portal text is broken into labelled lines; text that is not that shape is shown as stored', () => {
+    const split = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: PORTAL }, shipTo: { name: null, address: '9 Dock Lane, Nashik' } })
+    const t = text(split)
+    assert.ok(t.includes('Flat / building 160') && t.includes('Road Coonoor Road') && t.includes('PIN 643001'))
+    assert.ok(t.includes('9 Dock Lane, Nashik'), 'shown exactly as stored')
+  })
+
+  test('an absent shipping address is a quiet dashed card; an identical one says Same as billing', () => {
+    const none = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: '1 Road' }, shipTo: { name: null, address: null } })
+    assert.match(none, /order-addr-block order-addr-block--empty/)
+    const same = dialogFor({ name: 'A', city: null, phone: null, phoneText: null, billTo: { name: 'A', address: '1 Road' }, shipTo: { name: 'A', address: '1  road' } })
+    assert.ok(text(same).includes('Same as billing'))
+    assert.equal(text(none).includes('Same as billing'), false)
   })
 })
