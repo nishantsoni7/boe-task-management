@@ -401,3 +401,9 @@ Read first, in this order:
 6. Tests to run: `npx tsx --test "src/lib/orders/*.test.ts" "src/lib/pi/*.test.ts" "src/lib/permissions/*.test.ts" "src/app/orders/**/*.test.ts*" "src/lib/finance/*.test.ts"`, then full `npm test` with the offline env prefix; SQL suites for the area from `supabase/tests`.
 7. If adding a migration: put `order_submission` in the file name when it writes PI tables; add it to every ledger-pin test (grep the previous highest filename in `src/**/*.test.ts`); timestamp above everything in flight; forward-only; self-assert and EXECUTE the assertions on a disposable DB (text-only tests have passed while an apply aborted).
 8. Release order: apply migration -> deploy -> verify (Vercel deploy via the GitHub deployments API + grep the bundle for new strings). `main` is protected (PR + Vercel check; merge = production deploy). Ask the owner before merging or applying.
+
+## Confirmed Order page layout (2026-10-26)
+- Reading order: header (number + client name, Change Status / Edit PI / ⋯; no Amend button, no status chip) → attention strip (notifications) → status strip (`OrderStatusStrip`: ERP alignment, order status, order type) → Order summary (client, sales, dates timeline) → Documents + Fabric & Finish/Payment → products → lower band: left Internal order details + General terms, right Commercial breakdown then Activity. Components: `[id]/OrderRedesign.tsx`; rules: `lib/orders/orderDatesTimeline.ts`.
+- **Order numbers are stored four-digit and displayed without zeros** via `displayOrderNumber()`; never use its output in a query or comparison. Search by '539' works because it is a substring of '0539'.
+- Update documents has no *Upload new PI* (Edit PI only); Design Files / Client PO stay. A confirm-to-upload gap over 7 days is flagged.
+- Traps: the header test slices the page between `order-command-header` and `</header>`; the status strip is the only place the order status is drawn.

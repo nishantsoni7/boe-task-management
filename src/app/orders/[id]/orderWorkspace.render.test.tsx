@@ -191,7 +191,8 @@ describe('the Order Summary panel: group 1, client and value', () => {
 
   test('with no client read the dialog still opens and says Not provided', () => {
     const body = text(renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={null} />))
-    assert.equal((body.match(/Not provided/g) ?? []).length, 4)
+    // Contact (client, contact, location) and the billing and shipping blocks (name, address each).
+    assert.equal((body.match(/Not provided/g) ?? []).length, 7)
   })
 
   test('the rows are in the agreed order', () => {
@@ -244,67 +245,19 @@ describe('the Order Summary panel: group 1, client and value', () => {
 })
 
 describe('the Order Summary panel: group 2, sales and production', () => {
-  test('an ALIGNED order shows the state, the date and who aligned it', () => {
-    const body = text(summaryMarkup())
-    assert.ok(body.includes('Sales and production'))
-    assert.ok(body.includes('Aligned for Production'))
-    assert.ok(body.includes('Aligned by Nishant Soni'))
-    assert.ok(body.includes('21 Sep 2026'))
-  })
-
-  test('the production state is a LABELLED ROW whose value is a badge', () => {
+  test('production and ERP status are NOT in the Sales group any more — the status strip states them', () => {
     const html = summaryMarkup()
-    assert.ok(html.includes('order-sum-badge'))
-    assert.ok(text(html).includes('Production Aligned for Production'),
-      'it leads the group as a row, under its own label')
-    // A reader who cannot tell green from amber still reads the state.
-    assert.ok(text(html).includes('Aligned for Production'))
-  })
-
-  test('the three rows are in the agreed order', () => {
-    const body = text(summaryMarkup())
-    const at = (s: string) => body.indexOf(s)
-    assert.ok(at('Production Aligned') < at('Lead source'))
-    assert.ok(at('Lead source') < at('Salesperson'))
-  })
-
-  test('an UNALIGNED order shows the state and NO alignment metadata', () => {
-    const html = summaryMarkup({
-      productionAligned: false,
-      fact: { productionAligned: false, productionLabel: 'Not Aligned for Production', productionLine: null },
-    })
     const body = text(html)
-    assert.ok(body.includes('Not Aligned for Production'))
-    // No empty date and no empty actor — the row is absent, not blank.
+    assert.ok(body.includes('Sales and production'))
+    assert.equal(html.includes('order-sum-badge'), false)
+    assert.equal(html.includes('order-sum-status'), false)
     assert.equal(html.includes('order-sum-production-line'), false)
-    assert.equal(/aligned by/i.test(body), false)
-    assert.equal(/aligned on/i.test(body), false)
   })
 
-  test('the one short line the page hands over is drawn under the status — whatever the state — and nothing else', () => {
-    // The page passes the handoff's SUMMARY (where production stands now), not
-    // its history, so the summary can draw it for an unaligned Order too.
-    const html = summaryMarkup({
-      productionAligned: false,
-      fact: {
-        productionAligned: false,
-        productionLabel: 'Not Aligned',
-        productionLine: 'Awaiting production alignment.',
-      },
-    })
-    assert.match(html, /<p class="order-sum-production-line">Awaiting production alignment\.<\/p>/)
-    const none = summaryMarkup({
-      productionAligned: false,
-      fact: { productionAligned: false, productionLabel: 'Not Aligned', productionLine: null },
-    })
-    assert.equal(/order-sum-production-line/.test(none), false, 'no empty line when there is none')
-  })
-
-  test('the status leads the group: label, large badge, then the line — before the label/value rows', () => {
-    const html = summaryMarkup()
-    const group = html.slice(html.indexOf('aria-label="Sales and production"'))
-    assert.ok(group.indexOf('order-sum-status') < group.indexOf('order-sum-rows'))
-    assert.ok(group.indexOf('order-sum-badge') < group.indexOf('Lead source'))
+  test('the two rows are in the agreed order', () => {
+    const body = text(summaryMarkup())
+    assert.ok(body.indexOf('Lead source') > 0)
+    assert.ok(body.indexOf('Lead source') < body.indexOf('Salesperson'))
   })
 
   test('the lead source and the salesperson are shown, under their existing labels', () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -713,7 +714,7 @@ export default function AllOrdersPage() {
               const overdue = isOverdue(o.due_date, o.status)
               const updateLabel = unreadUpdateLabel(unread.get(o.id) ?? 0)
               // The stored four-digit number (0526), as every Orders screen shows it.
-              const number = o.display_number
+              const number = displayOrderNumber(o.display_number)
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
                   <div className="orders-list-card-top">
@@ -817,7 +818,7 @@ export default function AllOrdersPage() {
                           onClick={e => e.stopPropagation()}
                           onFocus={() => router.prefetch(`/orders/${o.id}`)}
                         >
-                          {o.display_number}
+                          {displayOrderNumber(o.display_number)}
                         </Link>
                         {updateLabel && (
                           <span className="order-update-badge" title={updateLabel}>

@@ -35,6 +35,7 @@
 // ledger, and read from there — see ./paymentClassification.ts. This module says
 // WHICH RECORD; that one says HOW MUCH.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import type { createClient } from '@/lib/supabase/client'
 
 // ── The projection ───────────────────────────────────────────────────────────
@@ -256,7 +257,7 @@ export function orderNumberDisplay(
   if (destination === undefined) return { value: DESTINATION_LOADING, muted: true }
   if (destination && destination.kind === 'confirmed_order') {
     return destination.orderNumber
-      ? { value: destination.orderNumber, muted: false }
+      ? { value: displayOrderNumber(destination.orderNumber), muted: false }
       : { value: DESTINATION_NOT_VISIBLE, muted: true }
   }
   if (destination && destination.kind === 'mixed' && destination.orderCount > 0) {

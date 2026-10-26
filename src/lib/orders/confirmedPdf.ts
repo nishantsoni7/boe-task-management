@@ -37,6 +37,7 @@
 // changes no figure, and it is a one-line fix the day a licensed font lands in
 // the repository — see toPdfText.
 
+import { displayOrderNumber } from '@/lib/orderNumbering'
 import { persistedCommercial, persistedProducts } from './draftsView'
 import type { PersistedItem, PersistedProduct } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
@@ -283,7 +284,7 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   // responsibility sentence below stays: it tells the client who supplies fabric.
 
   return {
-    orderNumber: toPdfText(input.orderNumber),
+    orderNumber: toPdfText(displayOrderNumber(input.orderNumber)),
     clientName: toPdfText(clean(sub.client_name) || clean(sub.bill_to_name) || 'Not provided'),
     // THE CITY IS PART OF THE BILLING BLOCK. It is a separate column rather
     // than a line inside the address, so the block states it whether or not

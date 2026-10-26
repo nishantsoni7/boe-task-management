@@ -64,10 +64,11 @@ describe('the page reads in one order, with no second summary', () => {
 
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
-    // REVISED (owner, 2026-10-19): Payment sits in the rail beside Documents,
+    // REVISED (owner, 2026-10-26): notifications come right under the order number,
+    // ahead of the summary. Earlier (2026-10-19): Payment sits in the rail beside Documents,
     // below Fabric & Finish and Notes, so it comes before the products.
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'documents', 'payment', 'products',
+      'header', 'attention', 'summary', 'documents', 'payment', 'products',
       'activity',
     ])
   })
@@ -257,7 +258,8 @@ describe('the redundant surfaces are gone', () => {
   test('its three facts are STILL DRAWN — in the summary panel, from the same builder', () => {
     // The salesperson, the lead source and production. Each is something the
     // attention strip can raise a gap in, so none of them may be invisible.
-    assert.ok(body.includes('<OrderSummaryPanel view={summaryView}'))
+    assert.ok(body.includes('<OrderSummaryPanel'))
+    assert.ok(body.includes('view={summaryView}'))
     assert.ok(page.includes('facts: recordFacts'),
       'the panel is handed orderRecordFacts own output')
     const ws = read('src/lib/orders/orderWorkspace.ts')
@@ -350,21 +352,23 @@ describe('the redundant surfaces are gone', () => {
 // ══ 3. One fact, one place ════════════════════════════════════════════════════
 
 describe('no Order fact is stated twice', () => {
-  test('the command header carries the number, the status and the actions — and no other fact', () => {
-    const header = body.slice(body.indexOf('className="order-command-header"'), body.indexOf('<OrderSummary'))
+  test('the command header carries the number, the client name and the actions — and no other fact', () => {
+    const header = body.slice(body.indexOf('className="order-command-header"'), body.indexOf('</header>'))
     // The number IS the identity and the status is what every reader arrives
     // asking; both are stated here and nowhere else on the page.
     assert.ok(header.includes('order-command-title'))
-    assert.ok(header.includes('<OrderStatusPill'))
+    assert.ok(header.includes('order-command-client'))
+    assert.equal(header.includes('<OrderStatusPill'), false, 'the status moved to the status strip')
     // Everything else is a fact belonging to the band or the dates below.
-    for (const forbidden of ['order-command-client', 'production', 'Confirmed ', 'Requested by',
+    for (const forbidden of ['production', 'Confirmed ', 'Requested by',
                              'confirm_date', 'due_date', 'lead_source']) {
       assert.equal(header.includes(forbidden), false, `${forbidden} must not be in the command header`)
     }
   })
 
-  test('the status is stated ONCE — in the header, never again in the band', () => {
-    assert.equal((body.match(/<OrderStatusPill/g) ?? []).length, 1)
+  test('the status is stated ONCE — in the status strip, never again in the band', () => {
+    assert.equal((body.match(/<OrderStatusStrip/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderStatusPill/g) ?? []).length, 0)
     const ws = code('src/lib/orders/orderWorkspace.ts')
     const facts = ws.slice(ws.indexOf('export function orderSummaryFacts'),
                            ws.indexOf('export function orderImportantDates'))
@@ -525,8 +529,12 @@ describe('no Order fact is stated twice', () => {
     // Commercial working on the right. Payment moved up beside Documents.
     const left = lower.slice(main, aside)
     const right = lower.slice(aside)
-    assert.ok(left.includes('<OrderActivityList'), 'Activity belongs in the left column')
+    // REVISED (owner, 2026-10-26): Internal order details and General terms on the left;
+    // the Commercial working with Activity beneath it on the right.
+    assert.ok(left.includes('<OrderInternalDetailsCard'), 'Internal order details belong in the left column')
+    assert.ok(left.includes('<OrderGeneralTermsCard'), 'General terms belong in the left column')
     assert.ok(right.includes('<OrderCommercialBreakdown'), 'the Commercial working is on the right')
+    assert.ok(right.indexOf('<OrderCommercialBreakdown') < right.indexOf('<OrderActivityList'), 'Activity sits beneath the Commercial working')
     assert.ok(!lower.includes('PAYMENT_SECTION_TITLE'), 'Payment is no longer in the lower workspace')
   })
 })
