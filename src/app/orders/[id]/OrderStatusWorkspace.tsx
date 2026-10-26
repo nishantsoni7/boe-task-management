@@ -16,21 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Lock, Upload, X } from 'lucide-react'
-import {
-  SAMPLE_FIELD_LABEL,
-  SAMPLE_NONE_LABEL,
-  SAMPLE_TYPES,
-  SAMPLE_TYPE_LABEL,
-  SAMPLE_TYPE_OPTION_LABEL,
-  readSampleType,
-  type SampleType,
-} from '@/lib/orders/sampleType'
-import {
-  ORDER_INTERNAL_DETAILS_NOTE,
-  ORDER_INTERNAL_DETAILS_TITLE,
-  type OrderInternalDetailRow,
-} from '@/lib/orders/orderInternalDetailsView'
+import { Download, ExternalLink, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -300,18 +286,8 @@ export function OrderDocumentsPanel({
   mainPiOperations, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf, piVersions, pictures, onDownloadFile, internalDetails = [], sample,
+  onOpenPdf, piVersions, pictures, onDownloadFile,
 }: {
-  /** The sample choice (20270320000000): shown in Internal order details, editable when allowed. */
-  sample?: {
-    value: SampleType | null
-    canEdit: boolean
-    saving: boolean
-    failure: string | null
-    onChange: (next: SampleType | null) => void
-  }
-  /** The PI's Internal order details (fabric, commission, billing, payment terms). Empty: not drawn. */
-  internalDetails?: readonly OrderInternalDetailRow[]
   /** The approved PI's product pictures: count, view and one-file download. */
   pictures?: ProductPicturesBlockProps
   /** Saves a Design Files / Client PO file under its own name. */
@@ -593,7 +569,7 @@ export function OrderDocumentsPanel({
                 {piStatus}
                 <PiDetails uploadedAt={mainPi.uploadedAt} approvedAt={mainPi.approvedAt} />
               </div>
-              <div className="order-pi-links">{piHistoryLink}</div>
+              <div className="order-pi-links" />
             </div>
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
@@ -659,6 +635,15 @@ export function OrderDocumentsPanel({
                 )}
               </div>
             </div>
+            {/* PI HISTORY, AS A PROPERTY ROW under the downloads (owner, 2026-10-26). */}
+            {piVersions && (
+              <div className="order-doc-prop">
+                <span className="order-doc-prop-label">{PI_VERSIONS_HISTORY_LABEL}</span>
+                <button type="button" className="order-doc-prop-link" onClick={piVersions.onOpen} aria-haspopup="dialog">
+                  {`V${mainPi.version.versionNumber}`} · View history <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </section>
         )}
         {picturesBlock}
@@ -706,51 +691,6 @@ export function OrderDocumentsPanel({
         )}
         {mergedAbsence && <p className="order-doc-note order-docs-absence">{mergedAbsence}</p>}
         </div>
-
-        {/* ── INTERNAL ORDER DETAILS: what Sales filled on the PI, as a
-            property list. The dates, salesperson and lead source are in the
-            Order's summary already, so they are not repeated here. ── */}
-        {(internalDetails.length > 0 || sample) && (
-          <section className="order-docs-internal" aria-label={ORDER_INTERNAL_DETAILS_TITLE}>
-            <p className="order-doc-row-head">
-              <span className="order-doc-row-title">{ORDER_INTERNAL_DETAILS_TITLE}</span>
-              <span className="pi-detail-internal-tag">
-                <Lock size={10} strokeWidth={2.2} aria-hidden="true" />
-                {ORDER_INTERNAL_DETAILS_NOTE}
-              </span>
-            </p>
-            <dl className="order-pi-props">
-              {internalDetails.map(d => (
-                <div key={d.key} className="order-pi-prop">
-                  <dt>{d.label}</dt>
-                  <dd className={d.muted ? 'order-pi-prop--muted' : undefined}>{d.value}</dd>
-                </div>
-              ))}
-              {sample && (
-                <div className="order-pi-prop order-pi-prop--sample">
-                  <dt>{SAMPLE_FIELD_LABEL}</dt>
-                  <dd className={!sample.value && !sample.canEdit ? 'order-pi-prop--muted' : undefined}>
-                    {sample.canEdit ? (
-                      <>
-                        <select
-                          className="pi-form-input order-sample-select"
-                          aria-label={SAMPLE_FIELD_LABEL}
-                          value={sample.value ?? ''}
-                          disabled={sample.saving}
-                          onChange={e => sample.onChange(readSampleType(e.target.value))}
-                        >
-                          <option value="">{SAMPLE_NONE_LABEL}</option>
-                          {SAMPLE_TYPES.map(t => <option key={t} value={t}>{SAMPLE_TYPE_OPTION_LABEL[t]}</option>)}
-                        </select>
-                        {sample.failure && <span className="order-doc-unavailable" role="alert">{sample.failure}</span>}
-                      </>
-                    ) : (sample.value ? SAMPLE_TYPE_LABEL[sample.value] : SAMPLE_NONE_LABEL)}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </section>
-        )}
       </div>
       {fileError &&<p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
     </section>
@@ -802,23 +742,20 @@ export type ProductPicturesBlockProps = {
  */
 function ProductPicturesBlock({ state, onView, message }: ProductPicturesBlockProps) {
   const usable = state.kind === 'ready'
+  const warn = state.kind === 'missing' || state.kind === 'unreadable'
   return (
-    <div className="order-doc-pictures" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
-      <ImageIcon size={14} strokeWidth={2} aria-hidden="true" className="order-doc-pictures-icon" />
-      <div className="order-doc-pictures-main">
-        <p className="order-doc-pictures-title">{PRODUCT_PICTURES_TITLE}</p>
-        <p className={state.kind === 'missing' || state.kind === 'unreadable' ? 'order-doc-pictures-line order-doc-pictures-line--warn' : 'order-doc-pictures-line'}>
-          {productPicturesLine(state)}
-        </p>
-        {message && <p className="order-doc-note" role="status">{message}</p>}
-      </div>
-      {usable && (
-        <div className="order-doc-pictures-actions">
-          <button type="button" className="boe-btn boe-btn-secondary order-dl-btn" onClick={onView} aria-haspopup="dialog">
-            View
-          </button>
-        </div>
-      )}
+    <div className="order-doc-pictures order-doc-prop" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
+      <span className="order-doc-prop-label">{PRODUCT_PICTURES_TITLE}</span>
+      <span className={warn ? 'order-doc-prop-value order-doc-pictures-line--warn' : 'order-doc-prop-value'}>
+        {productPicturesLine(state)}
+        {usable && (
+          <>
+            {' · '}
+            <button type="button" className="order-doc-prop-link" onClick={onView} aria-haspopup="dialog">View</button>
+          </>
+        )}
+      </span>
+      {message && <p className="order-doc-note order-doc-prop-note" role="status">{message}</p>}
     </div>
   )
 }

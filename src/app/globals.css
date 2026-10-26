@@ -11628,3 +11628,30 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .order-activity-card .order-activity-item { grid-template-columns: 16px minmax(0, 1fr); row-gap: 4px; }
   .order-activity-card .order-activity-by, .order-activity-card .order-activity-when { grid-column: 2; }
 }
+
+/* ── Documents card as designed (owner, 2026-10-26): chips, property rows, two tiles ── */
+.order-docs .order-dl-label, .order-docs .order-dl-spacer { display: none; }
+.order-docs .order-dl-btn, .order-docs .order-dl-btn--key, .order-docs .order-dl-btn--quiet {
+  height: 38px; min-height: 38px; padding: 0 16px; font-size: 14px; font-weight: 500; border-radius: 10px;
+  background: #fff; color: #303536; border: 1px solid #ECE7E0;
+}
+.order-docs .order-dl-btn--key:hover:not(:disabled), .order-docs .order-dl-btn:hover:not(:disabled) { background: #FAF7F4; }
+.order-docs .order-dl-row { gap: 10px; }
+.order-doc-prop { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 11px 0; border-bottom: 1px solid #F3EEE9; font-size: 14px; }
+.order-doc-prop-label { color: #6B7573; }
+.order-doc-prop-value { font-weight: 600; text-align: right; }
+.order-doc-prop-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: #303536; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.order-doc-prop-link:hover { color: #C2410C; }
+.order-doc-prop-note { flex-basis: 100%; margin: 0; }
+.order-docs-main .order-doc-pictures.order-doc-prop { margin: 0; border: 0; border-bottom: 1px solid #F3EEE9; border-radius: 0; background: transparent; padding: 11px 0; }
+.order-docs-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; border-top: 0; margin-top: 14px; }
+.order-docs-side .order-doc-section, .order-docs-side .order-doc-section + .order-doc-section { background: #FAF7F4; border: 0; border-radius: 12px; padding: 14px 16px; }
+.order-docs-absence { grid-column: 1 / -1; }
+@media (max-width: 640px) { .order-docs-side { grid-template-columns: minmax(0, 1fr); } }
+.order-info-row--sample dd { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.order-docs .order-docs-main .order-doc-pictures.order-doc-prop { margin: 0 20px; padding: 11px 0; border: 0; border-bottom: 1px solid #F3EEE9; background: transparent; }
+.order-docs .order-docs-side { margin: 14px 20px 20px; }
+.order-docs .order-docs-side .order-doc-section { display: block; }
+.order-docs .order-docs-side .order-doc-section .order-doc-row-head { margin: 0 0 4px; }
+.order-docs .order-doc-prop { border-bottom: 1px solid #F3EEE9; }
+.order-docs .order-doc-section--primary .order-doc-prop:last-child { border-bottom: 1px solid #F3EEE9; }

@@ -8,6 +8,15 @@
 // sample type); the day arithmetic is lib/orders/orderDatesTimeline.
 
 import { FlaskConical, Package } from 'lucide-react'
+import {
+  SAMPLE_FIELD_LABEL,
+  SAMPLE_NONE_LABEL,
+  SAMPLE_TYPES,
+  SAMPLE_TYPE_LABEL,
+  SAMPLE_TYPE_OPTION_LABEL,
+  readSampleType,
+  type SampleType,
+} from '@/lib/orders/sampleType'
 import { STATUS_PILL_TONE } from './OrderWorkspace'
 import {
   dueCountdownLabel,
@@ -153,10 +162,18 @@ export const GENERAL_TERMS_EMPTY = 'No general terms are recorded on the PI.'
  * middleman rows already say "Restricted" to a reader who may not see the
  * commission. Nothing is resolved differently here.
  */
-export function OrderInternalDetailsCard({ title, rows, termsPoints }: {
+export function OrderInternalDetailsCard({ title, rows, termsPoints, sample }: {
   title: string
   rows: readonly { key: string; label: string; value: string; muted: boolean }[]
   termsPoints: readonly string[]
+  /** The sample choice (20270320000000): a row of this card, editable when allowed. */
+  sample?: {
+    value: SampleType | null
+    canEdit: boolean
+    saving: boolean
+    failure: string | null
+    onChange: (next: SampleType | null) => void
+  }
 }) {
   return (
     <section className="order-info-card" aria-label={title}>
@@ -168,6 +185,28 @@ export function OrderInternalDetailsCard({ title, rows, termsPoints }: {
             <dd className={r.muted ? 'is-muted' : undefined}>{r.value}</dd>
           </div>
         ))}
+        {sample && (
+          <div className="order-info-row order-info-row--sample">
+            <dt>{SAMPLE_FIELD_LABEL}</dt>
+            <dd className={!sample.value && !sample.canEdit ? 'is-muted' : undefined}>
+              {sample.canEdit ? (
+                <>
+                  <select
+                    className="pi-form-input order-sample-select"
+                    aria-label={SAMPLE_FIELD_LABEL}
+                    value={sample.value ?? ''}
+                    disabled={sample.saving}
+                    onChange={e => sample.onChange(readSampleType(e.target.value))}
+                  >
+                    <option value="">{SAMPLE_NONE_LABEL}</option>
+                    {SAMPLE_TYPES.map(t => <option key={t} value={t}>{SAMPLE_TYPE_OPTION_LABEL[t]}</option>)}
+                  </select>
+                  {sample.failure && <span className="order-doc-unavailable" role="alert">{sample.failure}</span>}
+                </>
+              ) : (sample.value ? SAMPLE_TYPE_LABEL[sample.value] : SAMPLE_NONE_LABEL)}
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="order-info-sub" role="group" aria-label={GENERAL_TERMS_TITLE}>
         <h3 className="order-info-card-head"><span>{GENERAL_TERMS_TITLE}</span></h3>

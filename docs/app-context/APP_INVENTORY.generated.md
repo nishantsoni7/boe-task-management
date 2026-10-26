@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `6de4cc24` — Confirmed Order page redesign; order numbers shown without leading zeros (#453)
-- Commits on this branch: 1012
+- Commit: `7e6a8228` — Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
+- Commits on this branch: 1013
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7e6a8228` 2026-10-26 Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
 - `6de4cc24` 2026-10-26 Confirmed Order page redesign; order numbers shown without leading zeros (#453)
 - `c164df17` 2026-10-26 Minop: sort the Incoming Minop data register, latest punch time first by default (#452)
 - `1f4ede54` 2026-10-25 Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
@@ -38,7 +39,6 @@
 - `4c4d6cdc` 2026-10-23 Finance: flat, Notion-style Cash journeys and handover banner (#437)
 - `526963df` 2026-10-23 Orders: approve with cash not yet with the company, with a reason (#436)
 - `02e756bf` 2026-10-23 Finance: cash journeys until money reaches the company (#435)
-- `a8192a78` 2026-10-23 PI line numbers: Reorder renumbers, Line number field removed (#433)
 
 ## Pages by top-level area
 
