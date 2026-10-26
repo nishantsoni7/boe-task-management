@@ -41,3 +41,50 @@ export function isKeyActivityEvent(input: {
   if (input.source === 'order' && input.eventType) return KEY_ORDER_EVENT_TYPES.has(input.eventType)
   return KEY_PI_LABEL.test(input.label.trim())
 }
+
+// ── WHICH EVENTS THE ACTIVITY SECTION SHOWS (owner, 2026-10-27) ──────────────
+//
+// "Only the main activity": what was modified, updated, approved or rejected —
+// not every step of bookkeeping (an order number reserved, product codes
+// assigned, payments moved, a reviewer assigned, a document generated). The
+// minor events are NOT deleted: the full trail is still recorded, and the
+// section offers it behind "Show minor events".
+//
+// An event is MAIN when it is one of the Order's decisions or changes:
+//   · created, status changed, cancelled
+//   · a PI approved, rejected, revised, replaced, corrected
+//   · the Order, its client details, schedule or terms amended
+//   · production alignment, operations' acceptance / refusal / withdrawal
+//   · a payment verified or rejected, an advance hold or exception
+//   · a document or fabric / finish approval accepted, rejected or amended
+
+/** Order-side events that are bookkeeping, whatever else their name says. */
+const MINOR_ORDER_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'note_added',
+  'payment_linked',
+  'payment_unlinked',
+  'operations_handoff_recorded',
+  'operations_reviewer_assigned',
+  'operations_reviewer_unassigned',
+  'factory_focus_selected',
+  'factory_focus_removed',
+])
+
+/** A type that names a decision or a change reads as main. */
+const MAIN_ORDER_TYPE_PATTERN = /(_accepted|_rejected|_refused|_amended|_approved|_withdrawn|_clarification|_realigned|_cancel|_decided|_changed|_updated|approval)/
+
+/** The source PI's trail is worded: these words mark a decision or a change. */
+const MAIN_PI_LABEL_PATTERN = /(approved|rejected|refused|replaced|updated|amended|changes requested|correction requested|verified|exception|confirmed order created)/i
+
+export function isMainActivityEvent(input: {
+  source: 'order' | 'pi'
+  label: string
+  eventType?: string | null
+}): boolean {
+  if (input.source === 'order' && input.eventType) {
+    const type = input.eventType
+    if (MINOR_ORDER_EVENT_TYPES.has(type)) return false
+    return KEY_ORDER_EVENT_TYPES.has(type) || MAIN_ORDER_TYPE_PATTERN.test(type)
+  }
+  return MAIN_PI_LABEL_PATTERN.test(input.label.trim())
+}

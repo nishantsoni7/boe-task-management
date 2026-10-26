@@ -39,6 +39,7 @@ import {
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
+import type { PaymentFact } from '@/lib/orders/orderPaymentFacts'
 import { commonPayer, paymentListSummary } from '@/lib/orders/orderPaymentListSummary'
 import { addressForCopy, sameAddress, splitAddress } from '@/lib/orders/addressLines'
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
@@ -400,8 +401,10 @@ export const ADD_PAYMENT_ACTION_LABEL = 'Add payment'
  * percentages money, and no amount, percentage or status rule changed in this
  * pass.
  */
-export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
+export function PaymentSummaryFigures({ finance, loaded, onOpenList, facts = [] }: {
   finance: OrderFinancePosition
+  /** Supporting facts under the Balance line (lib/orders/orderPaymentFacts); none: nothing is drawn. */
+  facts?: readonly PaymentFact[]
   /** False while the payment reads are still in flight. */
   loaded: boolean
   /**
@@ -533,6 +536,21 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
         </span>
         <span className="order-pay-balance-hint">against verified</span>
       </div>
+
+      {/* THE FACTS A READER ASKS NEXT, all from rows and readiness the page already holds. */}
+      {facts.length > 0 && (
+        <dl className="order-pay-facts">
+          {facts.map(fact => (
+            <div key={fact.key} className="order-pay-fact">
+              <dt>{fact.label}</dt>
+              <dd>
+                <span className={`order-pay-fact-value order-pay-fact-value--${fact.tone}`}>{fact.value}</span>
+                {fact.detail && <span className={`order-pay-fact-detail order-pay-fact-detail--${fact.tone}`}>{fact.detail}</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </>
   )
 }
@@ -857,9 +875,16 @@ export type OrderActivityItem = {
    * decisions …). Listed in the navigation beside the trail.
    */
   important?: boolean
+  /**
+   * Bookkeeping rather than a decision or a change (an order number reserved,
+   * product codes assigned …): left out of the list unless the reader asks.
+   */
+  minor?: boolean
 }
 
 export const ACTIVITY_TITLE = 'Activity'
+export const ACTIVITY_SHOW_MINOR = (count: number) => `Show ${count} minor event${count === 1 ? '' : 's'}`
+export const ACTIVITY_HIDE_MINOR = 'Hide minor events'
 export const ACTIVITY_NAV_TITLE = 'Key events'
 export const ACTIVITY_EMPTY = 'No activity recorded yet.'
 
@@ -893,8 +918,12 @@ export function activityTitle(label: string): string {
  * are laid out. The latest five show until the reader asks for the rest; a key
  * event further back opens the rest and scrolls to itself.
  */
-export function OrderActivityList({ items }: { items: readonly OrderActivityItem[] }) {
+export function OrderActivityList({ items: allItems }: { items: readonly OrderActivityItem[] }) {
   const [expanded, setExpanded] = useState(false)
+  // ONLY THE MAIN ACTIVITY by default (owner, 2026-10-27); the rest is one click away.
+  const [showMinor, setShowMinor] = useState(false)
+  const minorCount = allItems.filter(i => i.minor).length
+  const items = showMinor ? allItems : allItems.filter(i => !i.minor)
   // A key event further back than the window opens the rest first, then scrolls.
   const pendingRef = useRef<string | null>(null)
   const { shown, hidden } = activityWindow(items.length, expanded)
@@ -947,7 +976,7 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
         )}
       </div>
       {items.length === 0 ? (
-        <div className="order-activity-empty">{ACTIVITY_EMPTY}</div>
+        <div className="order-activity-empty">{minorCount > 0 ? 'No main activity yet.' : ACTIVITY_EMPTY}</div>
       ) : (
         <div className={keyEvents.length > 0 ? 'order-activity-layout order-activity-layout--nav' : 'order-activity-layout'}>
           <div className="order-activity-main">
@@ -1030,6 +1059,11 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
             </nav>
           )}
         </div>
+      )}
+      {minorCount > 0 && (
+        <button type="button" className="order-inline-link order-activity-minor" aria-pressed={showMinor} onClick={() => setShowMinor(v => !v)}>
+          {showMinor ? ACTIVITY_HIDE_MINOR : ACTIVITY_SHOW_MINOR(minorCount)}
+        </button>
       )}
     </section>
   )

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { isKeyActivityEvent } from './orderActivityImportance'
+import { isKeyActivityEvent, isMainActivityEvent } from './orderActivityImportance'
 import { describeMiddlemanParts } from './piInternalDetails'
 import { orderInternalDetailRows } from './orderInternalDetailsView'
 
@@ -47,5 +47,40 @@ describe('the middleman answer split for the Order page', () => {
     assert.equal(rows[1].value, 'Bill 70% · Cash 30%')
     const withTerms = orderInternalDetailRows({ billing_terms: 'On dispatch', payment_terms: '50% advance', commission_restricted: false })
     assert.deepEqual(withTerms.slice(4).map(r => r.key), ['billing_terms', 'payment_terms'])
+  })
+})
+
+describe('which events the Activity section shows (owner, 2026-10-27)', () => {
+  const order = (eventType: string) => isMainActivityEvent({ source: 'order', label: 'x', eventType })
+  const pi = (label: string) => isMainActivityEvent({ source: 'pi', label })
+
+  test('decisions and changes on the Order are main', () => {
+    for (const t of ['created', 'order_created_from_pi_submission', 'status_changed', 'order_amended', 'order_client_details_amended',
+      'pi_revision_proposed', 'pi_revision_approved', 'pi_revision_rejected', 'production_alignment_changed', 'payment_verified',
+      'payment_rejected', 'order_advance_hold_opened', 'operations_handoff_accepted', 'operations_handoff_clarification_needed',
+      'operations_handoff_acceptance_withdrawn', 'operations_handoff_realigned', 'document_submission_operations_accepted',
+      'document_submission_rejected', 'order_approval_recorded']) {
+      assert.equal(order(t), true, t)
+    }
+  })
+
+  test('bookkeeping on the Order is minor, however it is worded', () => {
+    for (const t of ['note_added', 'payment_linked', 'payment_unlinked', 'operations_handoff_recorded', 'operations_reviewer_assigned',
+      'operations_reviewer_unassigned', 'factory_focus_selected', 'factory_focus_removed', 'document_generation_started',
+      'document_generation_ready', 'document_uploaded']) {
+      assert.equal(order(t), false, t)
+    }
+  })
+
+  test('the source PI trail: approvals, rejections, updates and amendments are main; numbering and moves are minor', () => {
+    for (const l of ['PI approved', 'Revised PI uploaded'.replace('uploaded', 'approved'), 'Revised PI rejected', 'Rejected', 'Changes requested',
+      'PI replaced', 'Payment verified by Finance', 'Payment rejected by Finance', 'Client details updated', 'Schedule and terms amended by admin',
+      'Product details updated', 'Correction requested', 'Correction refused', 'Confirmed Order created', 'Advance exception approved']) {
+      assert.equal(pi(l), true, l)
+    }
+    for (const l of ['Draft created', 'Submitted for approval', 'Order number reserved', 'Order number assigned', 'Revised PI carries the Order number',
+      'Payments moved onto the Order', 'Payment attached', 'Order product codes assigned']) {
+      assert.equal(pi(l), false, l)
+    }
   })
 })

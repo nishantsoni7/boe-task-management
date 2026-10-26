@@ -5,18 +5,17 @@
 
 ## Snapshot
 
-- Commit: `a94aa005` — Payment list dialog: headline strip, one card per payment, payer named once, footnote pinned
-- Commits on this branch: 1018
+- Commit: `bba1a5c8` — ERP sheet: product pictures over Item Type, columns A to D frozen
+- Commits on this branch: 1017
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
-- Test files: 655   Next.js 16.2.6, React 19.2.4
+- Test files: 657   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a94aa005` 2026-10-26 Payment list dialog: headline strip, one card per payment, payer named once, footnote pinned
-- `73b07866` 2026-10-26 Main PI details popover: icon rows, dates on one line, pointer
-- `8d4689c5` 2026-10-26 PI history popup: timeline of version cards, newest first; shared dialog shell gains subtitle and footer
+- `bba1a5c8` 2026-10-26 ERP sheet: product pictures over Item Type, columns A to D frozen
+- `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
 - `2ddfadea` 2026-10-26 Orders page: Pendencies card in the top band, Payment beside Documents, wider Commercial breakdown (#456)
 - `7ef7f67a` 2026-10-26 Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details (#455)
 - `7e6a8228` 2026-10-26 Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
@@ -39,6 +38,7 @@
 - `a4f3abc0` 2026-10-24 Finance: accepting a cash handover confirms its payments
 - `8409355d` 2026-10-24 Docs: record PR #439 merge SHA and backup
 - `b0db6adf` 2026-10-24 Docs: 20270415000000 applied to production
+- `e1616454` 2026-10-24 Finance: lock a payment once it is in a cash handover
 
 ## Pages by top-level area
 
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 82 source, 135 test
+- `src/lib/orders` — 85 source, 137 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

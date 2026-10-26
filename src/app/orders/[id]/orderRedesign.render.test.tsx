@@ -12,6 +12,7 @@ import {
 } from './OrderRedesign'
 import { orderDatesTimeline } from '../../../lib/orders/orderDatesTimeline'
 import { popoverWhen } from './OrderStatusWorkspace'
+import { OrderActivityList, type OrderActivityItem } from './OrderWorkspace'
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
@@ -184,5 +185,41 @@ describe('the Main PI details popover (owner, 2026-10-26)', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderStatusWorkspace.tsx'), 'utf8')
     assert.ok(source.includes('order-pi-pop-ic'))
     assert.ok(source.includes('{popoverWhen(uploadedAt)}'))
+  })
+})
+
+describe('the Activity list shows only the main activity (owner, 2026-10-27)', () => {
+  const entry = (key: string, label: string, minor = false): OrderActivityItem => ({
+    key, label, detail: null, lines: [], actor: 'Nishant Soni', when: '26 Oct 2026, 05:56 pm',
+    dot: <span className="order-activity-dot" />, fromPi: false, minor,
+  })
+  const items = [
+    entry('a', 'PI approved'),
+    entry('b', 'Order product codes assigned', true),
+    entry('c', 'Payments moved onto the Order', true),
+    entry('d', 'Order amended'),
+  ]
+
+  test('minor events are left out, and the count says how many are behind the toggle', () => {
+    const html = renderToStaticMarkup(<OrderActivityList items={items} />)
+    const body = text(html)
+    assert.ok(body.includes('PI approved') && body.includes('Order amended'))
+    assert.equal(body.includes('Order product codes assigned'), false)
+    assert.equal(body.includes('Payments moved onto the Order'), false)
+    assert.ok(body.includes('2 events'))
+    assert.ok(body.includes('Show 2 minor events'))
+    assert.match(html, /aria-pressed="false"/)
+  })
+
+  test('no minor events, no toggle; only minor events says there is no main activity yet', () => {
+    assert.equal(text(renderToStaticMarkup(<OrderActivityList items={[entry('a', 'PI approved')]} />)).includes('minor event'), false)
+    const onlyMinor = text(renderToStaticMarkup(<OrderActivityList items={[entry('b', 'Order product codes assigned', true)]} />))
+    assert.ok(onlyMinor.includes('No main activity yet.'))
+    assert.ok(onlyMinor.includes('Show 1 minor event'))
+  })
+
+  test('the page marks each entry minor by the importance rule', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+    assert.ok(page.includes('minor: !isMainActivityEvent('))
   })
 })
