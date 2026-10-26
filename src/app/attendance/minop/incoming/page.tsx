@@ -53,6 +53,14 @@ function ist(iso: string | null): string {
   return Number.isFinite(ms) ? IST_FORMAT.format(new Date(ms)) : iso
 }
 
+const SORT_OPTIONS = [
+  { value: 'punch_time:desc', label: 'Punch time: latest first' },
+  { value: 'punch_time:asc', label: 'Punch time: oldest first' },
+  { value: 'received:desc', label: 'Received: latest first' },
+  { value: 'received:asc', label: 'Received: oldest first' },
+] as const
+type SortChoice = typeof SORT_OPTIONS[number]['value']
+
 function punchTime(row: IncomingRegisterRow): { main: string; note: string | null } {
   if (row.punchTimeRaw === null) return { main: '—', note: null }
   if (row.punchTimeHasZone) return { main: ist(row.punchTimeInstant), note: null }
@@ -118,6 +126,7 @@ export default function IncomingMinopDataPage() {
   const [q, setQ] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [sort, setSort] = useState<SortChoice>('punch_time:desc')
   const [page, setPage] = useState(1)
 
   const router = useRouter()
@@ -129,9 +138,12 @@ export default function IncomingMinopDataPage() {
     if (q.trim()) params.set('q', q.trim())
     if (from) params.set('from', from)
     if (to) params.set('to', to)
+    const [sortField, sortDir] = sort.split(':')
+    params.set('sort', sortField)
+    params.set('dir', sortDir)
     for (const [k, v] of Object.entries(extra)) params.set(k, v)
     return params.toString()
-  }, [q, from, to])
+  }, [q, from, to, sort])
 
   const load = useCallback(async () => {
     if (!token) return
@@ -277,6 +289,13 @@ export default function IncomingMinopDataPage() {
             <span>to</span>
             <input type="date" className={ui.input} value={to} min={from || undefined}
               onChange={e => { setTo(e.target.value); setPage(1) }} />
+          </label>
+          <label className={styles.date}>
+            <span>Sort by</span>
+            <select className={ui.input} value={sort}
+              onChange={e => { setSort(e.target.value as SortChoice); setPage(1) }}>
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </label>
           {filtered && (
             <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { readAllMinopDeliveries } from '@/lib/minop/incomingQuery'
-import { buildIncomingRows, filterIncomingRows, sortIncomingRows, isIstDate } from '@/lib/minop/incomingRegister'
+import { buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, isIstDate } from '@/lib/minop/incomingRegister'
 
 const PAGE_SIZE = 50
 
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
   const all = buildIncomingRows(read.deliveries)
   const filtered = sortIncomingRows(
     filterIncomingRows(all, { q: params.get('q') ?? '', from: from ?? undefined, to: to ?? undefined }),
+    parseIncomingSort(params.get('sort'), params.get('dir')),
   )
   const start = (page - 1) * PAGE_SIZE
 

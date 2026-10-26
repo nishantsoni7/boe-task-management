@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  buildIncomingRows, filterIncomingRows, sortIncomingRows, redactRawBody, redactSecrets,
+  buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, redactRawBody, redactSecrets,
   type MinopDeliveryRow,
 } from './incomingRegister'
 import { buildIncomingCsv, buildRawPayloadExport, csvCell, formatIst, INCOMING_CSV_COLUMNS } from './incomingCsv'
@@ -199,9 +199,29 @@ describe('filters, search and order', () => {
     assert.deepEqual(filterIncomingRows(rows, { to: '2026-09-28' }), [])
   })
 
-  test('unreadable messages are not hidden by an empty filter, and are newest-first', () => {
-    const sorted = sortIncomingRows(filterIncomingRows(rows, {}))
+  test('unreadable messages are not hidden by an empty filter, and sort newest-received-first on request', () => {
+    const sorted = sortIncomingRows(filterIncomingRows(rows, {}), { field: 'received', dir: 'desc' })
     assert.deepEqual(sorted.map(r => r.deliveryId), ['d3', 'd2', 'd1'])
+    assert.deepEqual(
+      sortIncomingRows(rows, { field: 'received', dir: 'asc' }).map(r => r.deliveryId), ['d1', 'd2', 'd3'])
+  })
+
+  test('the default order is latest punch time first, and punches with no time go last', () => {
+    const punches = buildIncomingRows([
+      delivery('a', '2026-09-30T10:00:00+00:00', { trans: [txn({ txnId: '1', txnDateTime: '2026-09-24 15:23:14' })] }),
+      delivery('b', '2026-09-29T10:00:00+00:00', { trans: [txn({ txnId: '2', txnDateTime: '2026-09-28 12:46:52' })] }),
+      delivery('c', '2026-09-28T10:00:00+00:00', '{broken'),
+      delivery('d', '2026-09-27T10:00:00+00:00', { trans: [txn({ txnId: '3', txnDateTime: '2026-09-24 17:53:20' })] }),
+    ])
+    assert.deepEqual(sortIncomingRows(punches).map(r => r.deliveryId), ['b', 'd', 'a', 'c'])
+    assert.deepEqual(
+      sortIncomingRows(punches, { field: 'punch_time', dir: 'asc' }).map(r => r.deliveryId), ['a', 'd', 'b', 'c'])
+  })
+
+  test('parseIncomingSort falls back to latest punch time first for anything unrecognised', () => {
+    assert.deepEqual(parseIncomingSort(null, null), { field: 'punch_time', dir: 'desc' })
+    assert.deepEqual(parseIncomingSort('nonsense', 'sideways'), { field: 'punch_time', dir: 'desc' })
+    assert.deepEqual(parseIncomingSort('received', 'asc'), { field: 'received', dir: 'asc' })
   })
 })
 

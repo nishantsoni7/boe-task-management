@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-26 — Minop: sort the Incoming Minop data register, latest punch time first by default (PR pending) · no migration
+- **Owner request.** Option to sort the incoming data; by default the latest punch time on top.
+- **What.** `sortIncomingRows(rows, sort)` in `src/lib/minop/incomingRegister.ts` takes `{field: 'punch_time'|'received', dir}`; default `punch_time` desc. `GET /api/attendance/minop-incoming` and `.../export` accept `?sort=&dir=` (unknown values fall back to the default, via `parseIncomingSort`), so the sort covers all pages and both downloads. Page: a "Sort by" dropdown. A punch time sent without a zone is read as IST only to order it; rows with no usable punch time (unreadable messages) always sort last.
+- **Changed behaviour.** The register and exports previously opened newest-received first; they now open latest punch time first. "Received: latest first" restores the old order.
+- **Proof.** `incomingRegister.test.ts` 28 pass; tsc clean. Not seen on screen.
+
 ## 2026-10-25 — Minop: answer Transaction Data with a per-transaction acknowledgement (PR pending) · no migration
 - **Why.** Minop's Developer Dashboard documents the Transaction Data reply as `{"transStatus":[{"txnId":21,"status":1}]}`. The path-token receiver answered every message with `{"status":1}`, which names no transaction. Production showed the symptom: 196 stored copies of 14 distinct punches (each re-sent ~14 times), every Minop transaction `IsSync = False`, nothing new delivered since 13 Oct.
 - **What.** `minopSuccessReply()` in `src/lib/minop/pathTokenWebhook.ts`: a `trans[]` body gets a `transStatus` entry per transaction (txnId echoed in the type sent; entries without a txnId are skipped); any other body (Say Hello) still gets `{"status":1}`. Failures are unchanged (500 when not stored, 400 invalid JSON, empty 404 for a wrong token).

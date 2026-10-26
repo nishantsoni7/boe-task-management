@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `01c6e8c2` — Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
-- Commits on this branch: 1009
+- Commit: `1f4ede54` — Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
+- Commits on this branch: 1010
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1f4ede54` 2026-10-25 Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
 - `01c6e8c2` 2026-10-25 Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
 - `9767b1d7` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
 - `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
@@ -38,7 +39,6 @@
 - `a8192a78` 2026-10-23 PI line numbers: Reorder renumbers, Line number field removed (#433)
 - `0be7c6f0` 2026-10-23 PI detail: stop the right half going blank beside the details column (#431)
 - `c5b5a935` 2026-10-23 PI product codes: contiguous BE0001 numbering in drafts, insert in the middle (#432)
-- `3ccb3bf9` 2026-10-23 Orders dashboard: PI review lists first for approvers (#430)
 
 ## Pages by top-level area
 
