@@ -191,7 +191,8 @@ describe('the Order Summary panel: group 1, client and value', () => {
 
   test('with no client read the dialog still opens and says Not provided', () => {
     const body = text(renderToStaticMarkup(<OrderAddressesDialog onClose={() => {}} client={null} />))
-    assert.equal((body.match(/Not provided/g) ?? []).length, 4)
+    // Contact (client, contact, location) and the billing and shipping blocks (name, address each).
+    assert.equal((body.match(/Not provided/g) ?? []).length, 7)
   })
 
   test('the rows are in the agreed order', () => {

@@ -140,3 +140,52 @@ export function OrderDatesTimelineCard({ title, confirm, upload, approved, due, 
     </section>
   )
 }
+
+export const GENERAL_TERMS_TITLE = 'General terms'
+export const GENERAL_TERMS_EMPTY = 'No general terms are recorded on the PI.'
+
+/**
+ * WHAT SALES FILLED ON THE PI, as a card of its own on the Order (it used to be
+ * a block inside the Documents card). The rows are the shared builder's:
+ * fabric responsibility, billing percentage, the middleman answer, billing and
+ * payment terms. The middleman row already says "Restricted" to a reader who may
+ * not see the commission; nothing is resolved differently here.
+ */
+export function OrderInternalDetailsCard({ title, tag, rows }: {
+  title: string
+  tag: string
+  rows: readonly { key: string; label: string; value: string; muted: boolean }[]
+}) {
+  return (
+    <section className="order-info-card" aria-label={title}>
+      <h3 className="order-info-card-head">
+        <span>{title}</span>
+        <span className="order-info-card-tag">{tag}</span>
+      </h3>
+      <dl className="order-info-rows">
+        {rows.map(r => (
+          <div key={r.key} className="order-info-row">
+            <dt>{r.label}</dt>
+            <dd className={r.muted ? 'is-muted' : undefined}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+/** The PI's own terms note, one point to a line, word for word. */
+export function OrderGeneralTermsCard({ points }: { points: readonly string[] }) {
+  return (
+    <section className="order-info-card" aria-label={GENERAL_TERMS_TITLE}>
+      <h3 className="order-info-card-head"><span>{GENERAL_TERMS_TITLE}</span></h3>
+      {points.length === 0 ? (
+        <p className="order-info-empty">{GENERAL_TERMS_EMPTY}</p>
+      ) : (
+        <ul className="order-info-terms">
+          {points.map((p, i) => <li key={i}>{p}</li>)}
+        </ul>
+      )}
+    </section>
+  )
+}

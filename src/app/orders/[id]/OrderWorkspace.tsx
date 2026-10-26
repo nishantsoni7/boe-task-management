@@ -238,6 +238,14 @@ export function OrderAddressesDialog({ client, onClose }: {
 }) {
   return (
     <OrderModalShell title={ORDER_ADDRESSES_LINK} onClose={onClose}>
+      <section className="order-addr-block" aria-label="Client contact">
+        <h3 className="order-addr-head">Client contact</h3>
+        <dl className="order-addr-rows">
+          <div className="order-addr-row"><dt>Client</dt><dd>{client?.name ?? NOT_PROVIDED}</dd></div>
+          <div className="order-addr-row"><dt>Contact</dt><dd>{client?.phone?.label ?? client?.phoneText ?? NOT_PROVIDED}</dd></div>
+          <div className="order-addr-row"><dt>Location</dt><dd>{client?.city ?? NOT_PROVIDED}</dd></div>
+        </dl>
+      </section>
       <AddressBlock heading="Billing details" party={client?.billTo ?? { name: null, address: null }} />
       <AddressBlock heading="Shipping details" party={client?.shipTo ?? { name: null, address: null }} />
     </OrderModalShell>

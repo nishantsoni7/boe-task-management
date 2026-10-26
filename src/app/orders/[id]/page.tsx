@@ -29,8 +29,10 @@ import {
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
-import { OrderDatesTimelineCard, OrderStatusStrip } from './OrderRedesign'
+import { OrderDatesTimelineCard, OrderGeneralTermsCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
+import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
+import { ORDER_INTERNAL_DETAILS_NOTE, ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
 import {
   PAYMENT_DETAIL_COLUMNS,
@@ -770,6 +772,8 @@ export default function OrderDetailPage() {
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
   // The PI's Internal order details, as rows for the Documents card.
   const [piInternalRows, setPiInternalRows] = useState<OrderInternalDetailRow[]>([])
+  // The PI's own wording on the fabric and the general terms, read with the handoff row.
+  const [piTerms, setPiTerms] = useState<{ fabric: string | null; terms: string | null }>({ fabric: null, terms: null })
   // What the source PI says about sampling, for the Order's effective choice.
   const [piSample, setPiSample] = useState<{ sampleType: string | null; reason: string | null } | null>(null)
   const [sampleSaving, setSampleSaving] = useState(false)
@@ -1218,6 +1222,7 @@ export default function OrderDetailPage() {
       !commissionRes.error && !commissionReadable.error && commissionReadable.data === true,
     )))
     setPiSample({ sampleType: row.sample_type ?? null, reason: row.advance_exception_reason_code ?? null })
+    setPiTerms({ fabric: row.fabric_responsibility ?? null, terms: row.commercial_terms_note ?? null })
     setHandoffReady(true)
   }
 
@@ -2549,12 +2554,20 @@ export default function OrderDetailPage() {
   // the two apart rather than captioning both "Order value".
   const orderValueAmended = piHandoff.kind === 'ready' && order.total_value != null && piGrandTotal != null
     && Number(order.total_value) !== piGrandTotal
-  const commercialLines = piHandoff.kind === 'ready'
+  const commercialLinesBase = piHandoff.kind === 'ready'
     ? orderCommercialLines(piHandoff.commercialRows, orderValueAmended ? { orderValue: formatInr(Number(order.total_value)) } : null)
     : orderStoredCommercialLines({
         productValue: fmtAmount(order.total_product_value),
         orderValue: fmtAmount(order.total_value),
       })
+
+  // WHO PROVIDES THE FABRIC, said once under the fabric cost, in the PI's own sentence
+  // (and only when the PI answered boe or client — no answer says nothing).
+  const fabricStatement = piTerms.fabric === 'boe' || piTerms.fabric === 'client'
+    ? fabricResponsibilityStatement(piTerms.fabric)
+    : null
+  const commercialLines = commercialLinesBase.map(line =>
+    line.key === 'fabric' && fabricStatement ? { ...line, note: fabricStatement } : line)
 
   /**
    * THE THREE THAT ARE NOT THE HEADLINE.
@@ -3274,7 +3287,6 @@ export default function OrderDetailPage() {
               />
             ) : undefined}
             mainPiOperations={mainPiOperations}
-            internalDetails={piInternalRows}
             sample={{
               value: sampleType,
               canEdit: mayRecordApproval && order.status !== 'cancelled',
@@ -3536,35 +3548,19 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
-            understood before the history that produced it. */}
-        {!recordsReady ? (
-          <SectionSkeleton rows={3} label="Loading activity" />
-        ) : (
-          /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
-             PI's, interleaved newest first. Every entry is worded HERE,
-             exactly as before; the list only decides how many are on screen —
-             the latest five until it is expanded. */
-          <OrderActivityList items={history.map((entry): OrderActivityItem => {
-            const orderEntry = entry.source === 'order'
-              ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-              : null
-            return {
-              key: entry.key,
-              label: entry.label,
-              detail: entry.detail,
-              lines: orderEntry ? amendmentLines(orderEntry) : [],
-              actor: entry.actor,
-              when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
-              dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
-              fromPi: entry.source === 'pi',
-              // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
-              // of their oldest unread update, captured on open before those
-              // rows were marked read, so everything at or after it is what
-              // they have not seen. Null — the ordinary case — marks nothing.
-              isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
-            }
-          })} />
+        {/* ══ INTERNAL ORDER DETAILS AND GENERAL TERMS ══
+            The left column of the bottom band. Internal details were inside the
+            Documents card; they are their own card now. Activity moved under the
+            commercial breakdown on the right. */}
+        {piHandoff.kind === 'ready' && (
+          <>
+            <OrderInternalDetailsCard
+              title={ORDER_INTERNAL_DETAILS_TITLE}
+              tag={ORDER_INTERNAL_DETAILS_NOTE}
+              rows={piInternalRows}
+            />
+            <OrderGeneralTermsCard points={commercialTermsPoints(piTerms.terms)} />
+          </>
         )}
 
         </div>
@@ -3589,6 +3585,38 @@ export default function OrderDetailPage() {
                 <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
               )}
             </div>
+
+            {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
+                understood before the history that produced it. */}
+            {!recordsReady ? (
+              <SectionSkeleton rows={3} label="Loading activity" />
+            ) : (
+              /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
+                 PI's, interleaved newest first. Every entry is worded HERE,
+                 exactly as before; the list only decides how many are on screen —
+                 the latest five until it is expanded. */
+              <OrderActivityList items={history.map((entry): OrderActivityItem => {
+                const orderEntry = entry.source === 'order'
+                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+                  : null
+                return {
+                  key: entry.key,
+                  label: entry.label,
+                  detail: entry.detail,
+                  lines: orderEntry ? amendmentLines(orderEntry) : [],
+                  actor: entry.actor,
+                  when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
+                  dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
+                  fromPi: entry.source === 'pi',
+                  // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
+                  // of their oldest unread update, captured on open before those
+                  // rows were marked read, so everything at or after it is what
+                  // they have not seen. Null — the ordinary case — marks nothing.
+                  isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
+                }
+              })} />
+            )}
+
           </div>
         </aside>
 

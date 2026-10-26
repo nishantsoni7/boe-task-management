@@ -11539,3 +11539,17 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-timeline-foot strong { color: #303536; }
 .order-timeline-foot strong.is-late { color: #B42318; }
 @media (max-width: 640px) { .order-command-number { font-size: 36px; } .order-command-client { font-size: 17px; margin-left: 12px; padding-left: 12px; } }
+
+/* ── Bottom band: internal details, general terms, fabric note ── */
+.order-info-card { background: #fff; border: 1px solid #ECE7E0; border-radius: 12px; padding: 16px 18px; }
+.order-info-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 15px; font-weight: 700; color: #303536; }
+.order-info-card-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7573; }
+.order-info-rows { margin: 0; }
+.order-info-row { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #F3EEE9; font-size: 13.5px; }
+.order-info-row:last-child { border-bottom: 0; }
+.order-info-row dt { color: #6B7573; flex: 0 0 auto; }
+.order-info-row dd { margin: 0; font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.order-info-row dd.is-muted { color: #6B7573; font-weight: 500; }
+.order-info-terms { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6; color: #4a4f50; }
+.order-info-empty { margin: 0; font-size: 13px; color: #6B7573; }
+.order-breakdown-line:not(.order-breakdown-line--final) .order-breakdown-note { background: transparent; border-radius: 0; padding: 0; color: #C26A62; font-size: 11px; font-style: normal; font-weight: 500; }

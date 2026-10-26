@@ -529,8 +529,12 @@ describe('no Order fact is stated twice', () => {
     // Commercial working on the right. Payment moved up beside Documents.
     const left = lower.slice(main, aside)
     const right = lower.slice(aside)
-    assert.ok(left.includes('<OrderActivityList'), 'Activity belongs in the left column')
+    // REVISED (owner, 2026-10-26): Internal order details and General terms on the left;
+    // the Commercial working with Activity beneath it on the right.
+    assert.ok(left.includes('<OrderInternalDetailsCard'), 'Internal order details belong in the left column')
+    assert.ok(left.includes('<OrderGeneralTermsCard'), 'General terms belong in the left column')
     assert.ok(right.includes('<OrderCommercialBreakdown'), 'the Commercial working is on the right')
+    assert.ok(right.indexOf('<OrderCommercialBreakdown') < right.indexOf('<OrderActivityList'), 'Activity sits beneath the Commercial working')
     assert.ok(!lower.includes('PAYMENT_SECTION_TITLE'), 'Payment is no longer in the lower workspace')
   })
 })

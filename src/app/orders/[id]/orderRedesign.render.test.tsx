@@ -1,0 +1,130 @@
+// The redesigned top band and bottom cards of the Confirmed Order page.
+
+import { test, describe } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { renderToStaticMarkup } from 'react-dom/server'
+import {
+  OrderDatesTimelineCard,
+  OrderGeneralTermsCard,
+  OrderInternalDetailsCard,
+  OrderStatusStrip,
+} from './OrderRedesign'
+import { orderDatesTimeline } from '../../../lib/orders/orderDatesTimeline'
+
+const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+
+const strip = (isSample: boolean, fullNote: string | null = null) => renderToStaticMarkup(
+  <OrderStatusStrip
+    erp={{ label: 'Not Aligned', tone: 'amber', line: 'Awaiting production alignment.' }}
+    production={{ label: 'Running', tone: 'blue' }}
+    isSample={isSample}
+    sampleLabel={isSample ? 'Sample order only' : null}
+    fullNote={fullNote}
+  />,
+)
+
+describe('the status strip', () => {
+  test('states ERP, production and the order type', () => {
+    const body = text(strip(false))
+    for (const s of ['ERP', 'Not Aligned', 'Awaiting production alignment.', 'Production', 'Running', 'Order type', 'Full order']) {
+      assert.ok(body.includes(s), s)
+    }
+  })
+
+  test('a sample order is loud (red, pulsing dot); a full order is not', () => {
+    const sample = strip(true)
+    assert.ok(sample.includes('order-stage--sample'))
+    assert.ok(sample.includes('order-sample-dot'))
+    assert.ok(text(sample).includes('Sample order'))
+    const full = strip(false)
+    assert.equal(full.includes('order-sample-dot'), false)
+    assert.equal(full.includes('order-stage--sample'), false)
+  })
+
+  test('sampling-first is noted on a full order, quietly', () => {
+    assert.ok(text(strip(false, 'sampling first')).includes('Full order · sampling first'))
+  })
+
+  test('the pulse stops for readers who ask for reduced motion', () => {
+    assert.match(css, /prefers-reduced-motion: reduce\) \{ \.order-sample-dot \{ animation: none; \} \}/)
+  })
+})
+
+const timelineMarkup = (over: { confirm?: string | null; uploadedAt?: string | null; approved?: string | null; due?: string | null } = {}) => {
+  const timeline = orderDatesTimeline({
+    confirmDate: over.confirm === undefined ? '2026-09-26' : over.confirm,
+    uploadedAt: over.uploadedAt === undefined ? '2026-10-26T12:24:00Z' : over.uploadedAt,
+    dueDate: over.due === undefined ? '2026-11-12' : over.due,
+    now: new Date('2026-10-26T12:00:00Z'),
+  })
+  return renderToStaticMarkup(
+    <OrderDatesTimelineCard
+      title="Important dates"
+      confirm="26 Sep 2026"
+      upload="26 Oct 2026, 5:54 pm"
+      approved={over.approved === undefined ? null : over.approved}
+      due="12 Nov 2026"
+      timeline={timeline}
+      overdue={false}
+    />,
+  )
+}
+
+describe('the dates timeline', () => {
+  test('lists the four dates in order, with an approval that has not happened saying Awaiting', () => {
+    const body = text(timelineMarkup())
+    const at = (s: string) => body.indexOf(s)
+    assert.ok(at('Confirmed') < at('PI uploaded by salesperson'))
+    assert.ok(at('PI uploaded by salesperson') < at('Approved by admin team'))
+    assert.ok(at('Approved by admin team') < at('Due date'))
+    assert.ok(body.includes('Awaiting'))
+  })
+
+  test('flags a late upload and counts down to the due date', () => {
+    const html = timelineMarkup()
+    assert.ok(text(html).includes('30 days after the confirm date'))
+    assert.ok(html.includes('order-timeline-stop--flag'))
+    assert.ok(text(html).includes('17 days left'))
+    assert.ok(text(html).includes('Uploaded today'))
+  })
+
+  test('a prompt upload is not flagged', () => {
+    const html = timelineMarkup({ confirm: '2026-10-25' })
+    assert.equal(html.includes('order-timeline-flag'), false)
+    assert.equal(html.includes('order-timeline-stop--flag'), false)
+  })
+})
+
+describe('the internal details and general terms cards', () => {
+  test('internal details list their rows and say they are internal', () => {
+    const html = renderToStaticMarkup(
+      <OrderInternalDetailsCard
+        title="Internal order details"
+        tag="BOE only"
+        rows={[
+          { key: 'fabric_responsibility', label: 'Fabric responsibility', value: 'Fabric will be provided by BOE', muted: false },
+          { key: 'middleman_commission', label: 'Middleman commission', value: 'Restricted', muted: true },
+        ]}
+      />,
+    )
+    const body = text(html)
+    for (const s of ['Internal order details', 'BOE only', 'Fabric responsibility', 'Fabric will be provided by BOE', 'Middleman commission', 'Restricted']) {
+      assert.ok(body.includes(s), s)
+    }
+    assert.equal((html.match(/is-muted/g) ?? []).length, 1)
+  })
+
+  test('general terms print the PI points, or say there are none', () => {
+    assert.ok(text(renderToStaticMarkup(<OrderGeneralTermsCard points={['Prices are ex-factory.', 'GST extra.']} />)).includes('Prices are ex-factory. GST extra.'))
+    assert.ok(text(renderToStaticMarkup(<OrderGeneralTermsCard points={[]} />)).includes('No general terms are recorded on the PI.'))
+  })
+})
+
+describe('the fabric responsibility note under the fabric cost', () => {
+  test('is a small, subtle red line, not a pill', () => {
+    assert.match(css, /\.order-breakdown-line:not\(\.order-breakdown-line--final\) \.order-breakdown-note \{[^}]*color: #C26A62/)
+  })
+})
