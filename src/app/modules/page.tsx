@@ -24,7 +24,7 @@ import { buildQuickActions, QuickActionList } from '@/components/layout/QuickAct
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
 import Link from 'next/link'
-import { Armchair, ArrowRight, ArrowUpRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
+import { Armchair, ArrowRight, ArrowUpRight, ChevronRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import {
   IDLE_MODULE_ORDER_EDIT,
@@ -1004,6 +1004,12 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
             events, and not drawn while the tile does not navigate. */}
         {variant === 'essential' && !editing && (
           <ArrowUpRight className={styles.cardArrow} aria-hidden="true" focusable="false" />
+        )}
+
+        {/* Compact tiles on a phone only (CSS shows it below 480px): the list
+            row's cue that it opens something. Decoration, like the arrow. */}
+        {variant === 'compact' && !editing && (
+          <ChevronRight className={styles.cardChevron} aria-hidden="true" focusable="false" />
         )}
       </div>
     </div>

@@ -145,8 +145,15 @@ Modules launcher (`src/app/modules/page.tsx`):
   (Review Workflow), image_editor, exhibition_leads, inventory, plus personal pages (my credits etc.) and the latest
   announcement banner (module 10).
 - Unread badge counts via `useUnreadCountState('task'|'finance'|'order')`, only when the person may open that module.
-- Mobile (<640 px): 2-column icon+title grid (~118 px cards); breakpoint-dependent values live in
-  `src/app/modules/modules.module.css` because inline `style` beats media queries.
+- Phone layout (2026-10-27 redesign), measured on the launcher's own width with container queries in
+  `src/app/modules/modules.module.css`: up to 719 px the Essentials are ONE row of equal tiles (icon over name,
+  ~100 px, `grid-auto-flow: column` so 1-2 Essentials share the width); up to 479 px "All modules" is ONE rounded
+  white surface of 52 px rows (32 px icon chip, 15 px name, chevron) split by hairlines. The chevron
+  (`styles.cardChevron`, compact tiles only, not in edit mode) is `display: none` at every other size. Edit order
+  uses the same list (dashed hairlines; the held card gets its own ink edge). The announcement row stays hidden on a
+  phone. Desktop/tablet (>= 480 px compact, >= 720 px Essentials) are unchanged. Layout values live in the CSS
+  module because inline `style` beats media queries. Pinned by `moduleCardSurface.test.ts` (PHONE_LIST /
+  PHONE_ESSENTIALS) and the dimension list in `src/lib/modules/moduleOrderStorage.test.ts`.
 
 Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", counters. Primary data is one
 React Query entry `['tasks','assigned-to',<effective uid>,'dashboard-active']`. Refresh uses `manualRefreshKey` only

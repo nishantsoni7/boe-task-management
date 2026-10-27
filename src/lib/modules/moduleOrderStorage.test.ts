@@ -371,7 +371,8 @@ describe('normal mode', () => {
     // workspace redesign then split the launcher into three 112px Essentials
     // (a 76px full-width row on a phone) and compact 100px tiles, up to five
     // across. The refinement after it settled on 104px Essentials (72px on a
-    // phone), 88px compact tiles, and one 60px row per module on a phone.
+    // phone), 88px compact tiles, and one 60px row per module on a phone. The
+    // phone redesign then made those rows 52px inside one grouped list.
     //
     // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
     // promise that it owns no card dimension. The card's own shape is pinned by
@@ -383,7 +384,7 @@ describe('normal mode', () => {
       'min-height: 88px',
       'min-height: 104px',
       'min-height: 72px',
-      'min-height: 60px',
+      'min-height: 52px',
       'width: 40px',
       'width: 44px',
       '@media (max-width: 767px)',
