@@ -72,6 +72,12 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   // Factory Focus (20270221000000): the selection and — permanently — the reason it was removed.
   factory_focus_selected:           'Selected for Factory Focus',
   factory_focus_removed:            'Removed from Factory Focus',
+  // Approvals (20270421000000): Fabric, Finish and each pendency are ONE category.
+  order_approval_recorded:          'Approval recorded',
+  order_pendency_added:             'Pendency added',
+  order_pendency_approved:          'Pendency approved',
+  order_pendency_reopened:          'Pendency reopened',
+  order_pendency_removed:           'Pendency removed',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -88,6 +94,9 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   order_advance_exception_voided:   'red',
   factory_focus_selected:           'green',
   factory_focus_removed:            'amber',
+  order_approval_recorded:          'green',
+  order_pendency_approved:          'green',
+  order_pendency_reopened:          'amber',
 }
 
 const text = (value: unknown): string | null =>
@@ -137,6 +146,18 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     }
     case 'order_workbook_replaced':
       return text(p.reason)
+    case 'order_approval_recorded': {
+      const kind = p.kind === 'fabric' ? 'Fabric' : p.kind === 'finish' ? 'Finish' : null
+      const status = p.status === 'fully_approved' ? 'Fully Approved'
+        : p.status === 'partially_approved' ? 'Partially Approved'
+          : p.status === 'not_approved' ? 'Not Approved' : null
+      return [kind, status].filter(Boolean).join(' → ') || null
+    }
+    case 'order_pendency_added':
+    case 'order_pendency_approved':
+    case 'order_pendency_reopened':
+    case 'order_pendency_removed':
+      return text(p.label)
     case 'factory_focus_selected':
       return [monthOf(p.selected_month), text(p.note)].filter(Boolean).join(' · ') || null
     case 'factory_focus_removed':

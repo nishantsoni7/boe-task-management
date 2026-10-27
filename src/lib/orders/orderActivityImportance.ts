@@ -71,7 +71,7 @@ const MINOR_ORDER_EVENT_TYPES: ReadonlySet<string> = new Set([
 ])
 
 /** A type that names a decision or a change reads as main. */
-const MAIN_ORDER_TYPE_PATTERN = /(_accepted|_rejected|_refused|_amended|_approved|_withdrawn|_clarification|_realigned|_cancel|_decided|_changed|_updated|approval)/
+const MAIN_ORDER_TYPE_PATTERN = /(_accepted|_rejected|_refused|_amended|_approved|_withdrawn|_clarification|_realigned|_cancel|_decided|_changed|_updated|_reopened|approval)/
 
 /** The source PI's trail is worded: these words mark a decision or a change. */
 const MAIN_PI_LABEL_PATTERN = /(approved|rejected|refused|replaced|updated|amended|changes requested|correction requested|verified|exception|confirmed order created)/i

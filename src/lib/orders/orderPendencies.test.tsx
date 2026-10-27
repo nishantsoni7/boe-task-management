@@ -43,8 +43,8 @@ describe('addPendencyDraft', () => {
 describe('splitPendencies / describePendencyError', () => {
   test('splits open from cleared', () => {
     const rows = [
-      { id: '1', label: 'a', created_at: 't', cleared_at: null },
-      { id: '2', label: 'b', created_at: 't', cleared_at: 'x' },
+      { id: '1', label: 'a', created_at: 't', cleared_at: null, evidence_path: null },
+      { id: '2', label: 'b', created_at: 't', cleared_at: 'x', evidence_path: null },
     ]
     assert.equal(splitPendencies(rows).open.length, 1)
     assert.equal(splitPendencies(rows).cleared.length, 1)

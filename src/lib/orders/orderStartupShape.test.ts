@@ -383,7 +383,9 @@ describe('no Order screen waits more than it must', () => {
       // undecided handoffs (the three numbers are taken from it), and those links plus the PI Drafts count are read
       // after the page has drawn (loadQueueCounts), not beside the first group. Same definitions, fewer requests,
       // and the startup wait count is unchanged (the test above still requires two).
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 4, [DETAIL]: 44,
+      // ALL 4 -> 6 (20270421000000): the Pendencies column's two reads (order_approval_current and the open
+      // order_pendencies), issued INSIDE the page's existing Promise.all via loadPendencies — more reads, no more waits.
+      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 6, [DETAIL]: 44,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
