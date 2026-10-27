@@ -162,6 +162,28 @@ export async function POST(req: NextRequest) {
       const f = describePiEditFailure(error)
       return fail(f.status, f.code, f.message)
     }
+
+    // AN APPROVER'S OWN REVISION IS NOT SENT BACK TO THE APPROVERS (owner,
+    // 2026-10-27). Someone who holds orders.approve_order has just made the
+    // change; asking them to approve their own proposal is a second click with
+    // no second opinion. The approval is recorded as theirs, through the same
+    // RPC and the same transaction an Approve click uses, so the version is in
+    // force at once and Operations is handed it for production. If anything
+    // refuses, the version stays pending exactly as before.
+    const versionId = (data as { version_id?: string } | null)?.version_id
+    if (versionId) {
+      const { data: mayApprove } = await service.rpc('user_holds_permission', {
+        p_user_id: user.id, p_module_key: 'orders', p_action_key: 'approve_order',
+      })
+      if (mayApprove === true) {
+        const approved = await service.rpc('approve_order_pi_revision', {
+          p_version_id: versionId, p_actor_id: user.id, p_payload: proposal.payload,
+        })
+        if (!approved.error) {
+          return NextResponse.json({ ok: true, mode, ...(data as object), status: 'approved', auto_approved: true, change_summary: proposal.change_summary })
+        }
+      }
+    }
     return NextResponse.json({ ok: true, mode, ...(data as object), change_summary: proposal.change_summary })
   }
 

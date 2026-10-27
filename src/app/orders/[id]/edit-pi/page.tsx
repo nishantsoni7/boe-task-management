@@ -114,11 +114,14 @@ export default function EditOrderPiPage() {
           mode="propose"
           submissionId={ready.submissionId}
           orderId={ready.order.id}
+          orderNumber={ready.order.display_number}
           backHref={orderHref}
           context={[`Order ${displayOrderNumber(ready.order.display_number)}`.trim(), ready.order.client_name].filter(Boolean).join(' · ')}
           onDone={outcome => {
             // The proposal's one notification, as the modal used to send it.
             if (outcome === 'proposed') void notifyPiSubmission({ event: 'pi_revision_proposed', submissionId: ready.submissionId })
+            // An approver's own revision is already approved: Operations is told, not an Admin.
+            if (outcome === 'in_force') void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: ready.submissionId })
             router.push(editPiReturnHref(orderHref, outcome))
           }}
           attachments={{

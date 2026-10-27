@@ -119,8 +119,8 @@ describe('the Documents card', () => {
     assert.ok(main.includes('PI history') && main.includes('V1 · View history'))
     assert.equal(/Edit PI/.test(text(html)), false, 'no Edit PI anywhere in the Documents card')
     const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
-    assert.ok(head.includes('Document history') && !head.includes('PI history'),
-      'the two histories are named apart, each in its own place')
+    assert.ok(!head.includes('Document history') && !head.includes('PI history'),
+      'the card header is the title alone: no Document history link (owner, 2026-10-27)')
 
     const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
     // The header carries it, with the same handler and the same gate as before.
@@ -191,8 +191,8 @@ describe('the Documents card', () => {
     assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('· ZIP'), false)
   })
 
-  test('one Update documents control, supplied by the page; none for a reader who may not submit', () => {
-    assert.ok(text(card([accepted], viewer(), { updateMenu: <button type="button">Update documents</button> })).includes('Update documents'))
+  test('no Update documents control on the card (owner, 2026-10-27), even when a page supplies one', () => {
+    assert.equal(text(card([accepted], viewer(), { updateMenu: <button type="button">Update documents</button> })).includes('Update documents'), false)
     assert.equal(text(card([accepted], viewer({ canSubmit: false }))).includes('Update documents'), false)
     // No per-row upload buttons.
     assert.equal(/Upload Design Files|Upload Client PO|Upload New PI/.test(text(card([accepted]))), false)

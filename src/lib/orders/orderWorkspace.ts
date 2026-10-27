@@ -100,6 +100,11 @@ export type OrderAttentionInput = {
     versionNumber: number
     status: 'awaiting' | 'clarification_needed'
     unassigned: boolean
+    /**
+     * Flagged: why Operations cannot accept, in words (clarificationLine).
+     * Awaiting after a response: the remarks sent back to them.
+     */
+    reasonLine?: string | null
   } | null
   /** Production was aligned before this PI version was approved. */
   alignmentPredatesVersion?: number | null
@@ -229,8 +234,9 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
         ? `PI V${r.versionNumber} flagged by operations`
         : `PI V${r.versionNumber} awaiting operations review`,
       detail: r.status === 'clarification_needed'
-        ? 'Operations needs a clarification before it can accept this PI.'
-        : 'Operations has not accepted this PI version yet.',
+        ? (r.reasonLine ?? 'Operations needs a clarification before it can accept this PI.')
+        // A resubmitted version carries the answer to Operations' objection.
+        : (r.reasonLine ?? 'Operations has not accepted this PI version yet.'),
     })
   }
   if (input.pendingChangeRequests > 0) {

@@ -26,7 +26,7 @@ describe('where Edit PI lives', () => {
 
   test('it hands back one known word, and nothing else is read', () => {
     assert.equal(editPiReturnHref('/orders/o-1', 'proposed'), '/orders/o-1?edit_pi=proposed')
-    for (const word of ['proposed', 'dates', 'saved', 'applied'] as const) {
+    for (const word of ['proposed', 'in_force', 'dates', 'saved', 'applied'] as const) {
       assert.equal(readEditPiOutcome(word), word)
       assert.ok(EDIT_PI_OUTCOME_NOTICE[word].length > 0)
     }
@@ -60,5 +60,13 @@ describe('the original Excel', () => {
       'an async download must not open a popup that the browser can block')
     assert.ok(page.includes('fileError={piDownloadError ?? docError}'),
       'a failed download must be reported beside the button')
+  })
+})
+
+describe('an approver\'s own revision', () => {
+  test('is already in force, so the notice says Operations is next — not that an Admin must approve', () => {
+    assert.match(EDIT_PI_OUTCOME_NOTICE.in_force, /in force/)
+    assert.match(EDIT_PI_OUTCOME_NOTICE.in_force, /Operations/)
+    assert.doesNotMatch(EDIT_PI_OUTCOME_NOTICE.in_force, /Admin approval/)
   })
 })

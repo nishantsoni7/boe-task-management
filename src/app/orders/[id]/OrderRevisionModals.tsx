@@ -73,6 +73,12 @@ import {
   WITHDRAW_CONFIRM,
   WITHDRAW_DIALOG_TITLE,
   validateHandoffDecision,
+  validateHandoffResponse,
+  RESPOND_CONFIRM_LABEL,
+  RESPOND_DIALOG_TITLE,
+  RESPOND_NOTE,
+  RESPOND_REMARKS_LABEL,
+  RESPOND_REMARKS_PLACEHOLDER,
   type OperationsHandoffStatus,
 } from '@/lib/orders/operationsHandoff'
 
@@ -391,6 +397,58 @@ export function OperationsHandoffDecisionModal({
         disabled={touched && !ready}
         destructive={!accepting}
         saveLabel={realign ? REALIGN_DIALOG_TITLE : accepting ? ACCEPT_FOR_PRODUCTION_LABEL : withdrawing ? WITHDRAW_ACCEPTANCE_LABEL : CANNOT_ACCEPT_LABEL}
+      />
+    </OrderModal>
+  )
+}
+
+/**
+ * THE PI OWNER'S (OR AN ADMINISTRATOR'S) ANSWER TO OPERATIONS' OBJECTION
+ * (20270422000000): remarks only, the same PI version goes back to the
+ * operations reviewer. respond_order_handoff_clarification() re-derives who may
+ * and whether the version is still flagged; this dialog only collects the words.
+ */
+export function RespondToOperationsModal({
+  orderNumber, versionLabel, objection, saving, failure, onClose, onConfirm,
+}: {
+  orderNumber: string
+  versionLabel: string
+  /** Operations' own words, shown above the box so the answer is written to them. */
+  objection: string | null
+  saving: boolean
+  failure: string | null
+  onClose: () => void
+  onConfirm: (remark: string) => void
+}) {
+  const [text, setText] = useState('')
+  const [touched, setTouched] = useState(false)
+  const check = validateHandoffResponse(text)
+  return (
+    <OrderModal title={RESPOND_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose}>
+      <OrderModalNotice tone="info">{RESPOND_NOTE}</OrderModalNotice>
+      {objection && <OrderModalNotice tone="warning">Operations said: “{objection}”</OrderModalNotice>}
+      <OrderField label={RESPOND_REMARKS_LABEL} error={touched && !check.ok ? check.message : undefined}>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={RESPOND_REMARKS_PLACEHOLDER}
+          maxLength={OPERATIONS_HANDOFF_REASON_MAX_LENGTH}
+          disabled={saving}
+          rows={4}
+          style={TEXTAREA}
+        />
+      </OrderField>
+      {failure && <OrderModalError message={failure} />}
+      <OrderModalActions
+        onClose={onClose}
+        onSave={() => {
+          setTouched(true)
+          if (!check.ok || saving) return
+          onConfirm(check.remark)
+        }}
+        saving={saving}
+        disabled={touched && !check.ok}
+        saveLabel={RESPOND_CONFIRM_LABEL}
       />
     </OrderModal>
   )

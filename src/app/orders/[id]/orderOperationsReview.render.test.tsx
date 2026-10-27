@@ -345,7 +345,8 @@ describe('the page draws ONE production decision', () => {
     assert.ok(body.indexOf('<OperationsReviewActions') < body.indexOf('<OrderDocumentsRow>'))
     assert.match(page, /const operationsReviewOpen = attention\.some\(item => item\.key === 'operations_review'\)/)
     assert.match(body, /id=\{operationsReviewOpen \? OPERATIONS_REVIEW_ANCHOR : undefined\}/)
-    assert.match(body, /actions=\{operationsDecisionOffered \?/)
+    // The owner's "Respond and resubmit" rides on the same strip item (20270422000000).
+    assert.match(body, /actions=\{operationsDecisionOffered \|\| respondOffered \?/)
   })
 
   test('the strip opens the SAME dialog the card did, clearing the last failure first', () => {

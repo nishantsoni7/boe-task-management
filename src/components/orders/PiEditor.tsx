@@ -49,7 +49,7 @@ import {
   type PiEditState,
 } from '@/lib/orders/piEdit'
 import type { EditPiOutcome } from '@/lib/orders/editPiPage'
-import { formatBoeItemCode, formatPiLineCode } from '@/lib/orders/orderProductCodes'
+import { formatBoeItemCode, formatOrderOperationalNumber, formatPiLineCode, piLineNumber } from '@/lib/orders/orderProductCodes'
 import { PiImageRegenerate } from './PiImageRegenerate'
 
 export const EDIT_PI_LABEL = 'Edit PI'
@@ -108,10 +108,12 @@ function Section({ id, title, summary, children, aside }: {
 }
 
 export function PiEditor({
-  supabase, mode, submissionId, orderId, backHref, context, onDone, attachments,
+  supabase, mode, submissionId, orderId, orderNumber = null, backHref, context, onDone, attachments,
 }: {
   supabase: SupabaseClient
   mode: Mode
+  /** The Order's stored number ('0537'), in propose mode: product codes are shown under it. */
+  orderNumber?: string | null
   submissionId: string
   /** The Order, in propose mode. */
   orderId: string | null
@@ -286,7 +288,9 @@ export function PiEditor({
       if (!res.ok) { setFailure(body.message ?? 'The PI could not be saved just now.'); setReviewing(false); return }
       dirtyRef.current = false
       // 20270122000000: a dates-only edit is not a new PI version.
-      onDone(mode === 'propose' ? (body.dates_amended ? 'dates' : 'proposed') : 'applied')
+      onDone(mode === 'propose'
+        ? (body.dates_amended ? 'dates' : body.auto_approved ? 'in_force' : 'proposed')
+        : 'applied')
     } finally { setBusy(null) }
   }
 
@@ -427,6 +431,12 @@ export function PiEditor({
                 // A PI that is not yet an Order is numbered by where the line stands, so the
                 // code shown moves as lines are removed, added or inserted. An Order's own
                 // numbers are permanent: a stored one is shown as it is, a new one waits.
+                const orderCode = (it: typeof item): string | null => {
+                  if (mode !== 'propose') return null
+                  const seq = piLineNumber(it.item_sequence)
+                  const operational = formatOrderOperationalNumber(orderNumber)
+                  return operational !== null && seq !== null && seq > 0 ? `${operational}-${formatBoeItemCode(seq)}` : null
+                }
                 const lineCode = mode === 'apply'
                   ? (item.removed ? null : formatBoeItemCode(state.items.slice(0, n + 1).filter(i => !i.removed).length))
                   : formatPiLineCode(item.item_sequence)
@@ -479,8 +489,16 @@ export function PiEditor({
                         <div className="pi-edit-grid pi-edit-grid--product">
                           <label className="pi-edit-field pi-edit-field--wide"><span>Name *</span>
                             <input value={item.product_name} maxLength={300} className="boe-input" onChange={e => setItem(item.key, { product_name: e.target.value })} /></label>
-                          <label className="pi-edit-field"><span>Code</span>
-                            <input value={item.source_product_code} maxLength={100} className="boe-input" onChange={e => setItem(item.key, { source_product_code: e.target.value })} /></label>
+                          {orderCode(item) !== null ? (
+                            /* AN ORDER'S CODE IS ITS OWN (owner, 2026-10-27): 537-BE0001, never
+                               the workbook's cell (538-B001 on a sheet whose order number was
+                               typed one ahead). Read-only; the stored workbook code is kept. */
+                            <label className="pi-edit-field"><span>Code</span>
+                              <input value={orderCode(item) ?? ''} readOnly className="boe-input" /></label>
+                          ) : (
+                            <label className="pi-edit-field"><span>Code</span>
+                              <input value={item.source_product_code} maxLength={100} className="boe-input" onChange={e => setItem(item.key, { source_product_code: e.target.value })} /></label>
+                          )}
                           <label className="pi-edit-field"><span>Quantity *</span>
                             <input inputMode="decimal" value={item.quantity} className="boe-input" onChange={e => setItem(item.key, { quantity: e.target.value })} /></label>
                           <label className="pi-edit-field"><span>Price per piece (₹) *</span>

@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Check, Download, ExternalLink, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { Check, Download, ExternalLink, FileSpreadsheet, FileText, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -58,7 +58,6 @@ import {
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
   DOC_ACCEPTED_LABEL,
-  DOCUMENTS_HISTORY_LABEL,
   DOCUMENTS_HISTORY_PI_FILES_TITLE,
   DOCUMENTS_HISTORY_TITLE,
   DOC_NOT_ATTACHED,
@@ -294,9 +293,9 @@ type PiChange = {
  */
 export function OrderDocumentsPanel({
   mainPi, clientPo,
-  onDownload, onHistory,
+  onDownload,
   downloading,
-  mainPiOperations, updateMenu,
+  mainPiOperations,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
   onOpenPdf, piVersions, pictures, onDownloadFile,
@@ -325,6 +324,8 @@ export function OrderDocumentsPanel({
     label: string
     tone: StatusTone
     line: string | null
+    /** Operations cannot accept this version: said in the top notification, not here. */
+    flagged?: boolean
   } | null
   /** Retired (2026-10-20): the PDF is in the Download toolbar. Still accepted so older callers type-check. */
   mainPiMenu?: React.ReactNode
@@ -404,24 +405,20 @@ export function OrderDocumentsPanel({
 
   // THE ONE STATUS ON THE MAIN PI ROW. Accepted by Operations (or an Order with
   // no handoff at all) is simply Current; anything short of that says so.
-  const piStatus = mainPiOperations && mainPiOperations.tone !== 'green'
-    ? <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
-    : <StatusPill label={DOCUMENT_CURRENT_LABEL} tone="green" />
+  // A PI Operations cannot accept carries NO badge here (owner, 2026-10-27): the
+  // notification at the top of the page says so, with the reason.
+  const piStatus = mainPiOperations?.flagged
+    ? null
+    : mainPiOperations && mainPiOperations.tone !== 'green'
+      ? <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
+      : <StatusPill label={DOCUMENT_CURRENT_LABEL} tone="green" />
 
   return (
     <section className="order-docs" aria-label={DOCUMENTS_TITLE} id="documents">
+      {/* THE HEADER IS THE TITLE ALONE (owner, 2026-10-27): the Document history
+          link and the Update documents menu are gone from this card. */}
       <div className="order-docs-head">
         <h2 className="order-docs-title">{DOCUMENTS_TITLE}</h2>
-        <div className="order-docs-head-actions">
-          {/* THE HISTORY IS OFFERED WHETHER OR NOT A PI IS IN FORCE: an Order
-              whose only version is a pending revision has a history worth
-              reading, and that is exactly when a reader asks for it. */}
-          <button type="button" className="order-docs-link" onClick={onHistory}>
-            <History size={13} strokeWidth={2} aria-hidden="true" />
-            {DOCUMENTS_HISTORY_LABEL}
-          </button>
-          {updateMenu}
-        </div>
       </div>
 
       {/* ── WHAT IS CHANGING — only when something is ── */}

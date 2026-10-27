@@ -19,7 +19,7 @@ export function draftEditPiPageHref(submissionId: string): string {
 }
 
 /** What the editor tells the record page when it returns. */
-export type EditPiOutcome = 'proposed' | 'dates' | 'saved' | 'applied'
+export type EditPiOutcome = 'proposed' | 'in_force' | 'dates' | 'saved' | 'applied'
 
 export const EDIT_PI_OUTCOME_PARAM = 'edit_pi'
 
@@ -27,13 +27,14 @@ export function editPiReturnHref(base: string, outcome: EditPiOutcome): string {
   return `${base}?${EDIT_PI_OUTCOME_PARAM}=${outcome}`
 }
 
-/** Reads the outcome back, accepting only the four known words. */
+/** Reads the outcome back, accepting only the five known words. */
 export function readEditPiOutcome(value: string | null | undefined): EditPiOutcome | null {
-  return value === 'proposed' || value === 'dates' || value === 'saved' || value === 'applied' ? value : null
+  return value === 'proposed' || value === 'in_force' || value === 'dates' || value === 'saved' || value === 'applied' ? value : null
 }
 
 export const EDIT_PI_OUTCOME_NOTICE: Record<EditPiOutcome, string> = {
   proposed: 'Your changes were sent for Admin approval as a new PI version. The current PI stays in force until then.',
+  in_force: 'Your changes are approved and the new PI version is in force. Operations will now review it for production.',
   dates: 'The dates were updated. They did not need a new PI version.',
   saved: 'Your edit was saved. Open Edit PI to continue it.',
   applied: 'The PI was updated.',

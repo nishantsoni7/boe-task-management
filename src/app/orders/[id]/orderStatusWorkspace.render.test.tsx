@@ -144,14 +144,14 @@ describe('the Main PI card', () => {
     assert.equal((card().match(/order-status-chip/g) ?? []).length, 1)
   })
 
-  test('the original Excel is one labelled download; History is in the card header', () => {
+  test('the original Excel is one labelled download; the card header carries no History link', () => {
     const html = card()
     // The workbook Sales uploaded is DOWNLOADED as the file it is — a browser
     // cannot "view" an .xlsx, so the old View / icon-only Download pair is one button.
     // Since 2026-10-20 the button reads "Excel"; the full name is its tooltip.
     assert.ok(text(html).includes('Excel') && html.includes(MAIN_PI_ORIGINAL_EXCEL_LABEL))
     assert.equal(text(html).includes(DOC_VIEW_PI_LABEL), false)
-    assert.ok(text(docs()).includes(DOCUMENTS_HISTORY_LABEL))
+    assert.equal(text(docs()).includes(DOCUMENTS_HISTORY_LABEL), false)
   })
 
   test('the Main PI ⋯ menu is retired: the PDF is in the Download toolbar (owner, 2026-10-20)', () => {
