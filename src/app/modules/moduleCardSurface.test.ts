@@ -327,14 +327,14 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
   })
 
-  test('a one-column grid keeps the icon BESIDE the name, at full size', () => {
-    // The phone is one column of full-width rows, so there is no reason left
-    // to stack the icon over a shrunken name.
-    const at = CSS.indexOf('@container (max-width: 479px)')
-    assert.notEqual(at, -1, 'the one-column block exists')
-    const narrow = CSS.slice(at, CSS.indexOf('@media (max-width: 767px)'))
-    assert.equal(/flex-direction:\s*column/.test(narrow), false, 'no stacked tile')
-    const size = narrow.match(/\.cardCompact \.title\s*\{[^}]*font-size:\s*([\d.]+)px/)
+  test('a phone list row keeps the icon BESIDE the name, at full size', () => {
+    // The phone list is one row per module: icon chip, name, chevron. The icon
+    // is never stacked over a shrunken name. (The Essentials tiles ARE stacked,
+    // and live in their own container block.)
+    assert.notEqual(PHONE_LIST, '', 'the 479px list block exists')
+    assert.equal(/\.cardCompact \.cardBody\s*\{[^}]*flex-direction:\s*column/.test(PHONE_LIST), false,
+      'no stacked compact row')
+    const size = PHONE_LIST.match(/\.cardCompact \.title\s*\{[^}]*font-size:\s*([\d.]+)px/)
     assert.ok(size && Number(size[1]) >= 14, 'the name is not shrunk to fit')
   })
 
@@ -350,8 +350,8 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
 })
 
 // ── The phone ────────────────────────────────────────────────────────────────
-describe('a phone gets full-width Essentials and one full-width row per module', () => {
-  test('Essentials are one column until the launcher is 720px wide', () => {
+describe('a phone gets one row of Essentials tiles and a grouped list of modules', () => {
+  test('Essentials are one column on a tablet, until the launcher is 720px wide', () => {
     assert.match(baseRule('.essentialsGrid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
     const at = CSS.indexOf('@container (min-width: 720px)')
     assert.match(CSS.slice(at, CSS.indexOf('}', at)),
@@ -368,11 +368,36 @@ describe('a phone gets full-width Essentials and one full-width row per module',
   })
 
   test('one compact column until the launcher is 480px wide', () => {
-    // Two across a 390px phone left ~165px tiles; one column keeps names whole
-    // and full-size instead.
     assert.match(baseRule('.grid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
-    const one = CSS.match(/@container \(max-width: 479px\)[\s\S]*?\.cardCompact\s*\{[^}]*min-height:\s*(\d+)px/)
-    assert.ok(one && Number(one[1]) >= 56, 'a one-column row is still a generous tap target')
+    const row = PHONE_LIST.match(/\.grid > \.cardCompact\s*\{[^}]*min-height:\s*(\d+)px/)
+    assert.ok(row && Number(row[1]) >= 48, 'a list row is still a tap target of at least 48px')
+  })
+
+  test('the compact phone rows are ONE grouped surface with hairline dividers', () => {
+    assert.match(PHONE_LIST, /\.grid\s*\{[^}]*background:\s*#fff[^}]*border:\s*1px solid #E4DED7[^}]*border-radius:\s*14px/)
+    assert.match(PHONE_LIST, /\.grid > \.cardCompact\s*\{[^}]*border:\s*0;[^}]*border-top:\s*1px solid/)
+    assert.match(PHONE_LIST, /\.grid > \.cardCompact:first-child\s*\{[^}]*border-top:\s*0/)
+  })
+
+  test('the chevron is phone-only decoration, hidden at every other size', () => {
+    assert.match(baseRule('.cardChevron'), /display:\s*none/)
+    assert.match(PHONE_LIST, /\.cardChevron\s*\{[^}]*display:\s*block/)
+    assert.match(CARD, /variant === 'compact' && !editing && \(\s*<ChevronRight className=\{styles\.cardChevron\} aria-hidden="true"/)
+  })
+
+  test('Essentials share ONE row of icon-over-name tiles on a phone', () => {
+    assert.notEqual(PHONE_ESSENTIALS, '', 'the 719px Essentials block exists')
+    assert.match(PHONE_ESSENTIALS, /\.essentialsGrid\s*\{[^}]*grid-auto-flow:\s*column/,
+      'fewer than three Essentials still share the width')
+    assert.match(PHONE_ESSENTIALS, /\.cardEssential \.cardBody\s*\{[^}]*flex-direction:\s*column/)
+    const tile = PHONE_ESSENTIALS.match(/\.cardEssential\s*\{[^}]*min-height:\s*(\d+)px/)
+    assert.ok(tile && Number(tile[1]) >= 88, 'an Essentials tile is a generous tap target')
+    assert.match(PHONE_ESSENTIALS, /\.cardArrow\s*\{\s*display:\s*none/)
+  })
+
+  test('arranging keeps the dashed edge and the lifted card inside the list', () => {
+    assert.match(PHONE_LIST, /\.grid > \.cardEditing\s*\{[^}]*border-top-style:\s*dashed/)
+    assert.match(PHONE_LIST, /\.grid > \.cardDragging[^{]*\{[^}]*border:\s*1px solid #303536/)
   })
 
   test('there is no hover lift on a touch screen', () => {
@@ -770,6 +795,18 @@ describe('this page has no dark variant, and adds none', () => {
       'and the 2px lift — motion and nothing else — is dropped')
   })
 })
+
+/** The container block that turns the compact grid into the phone list. */
+const PHONE_LIST = (() => {
+  const at = CSS.indexOf('@container (max-width: 479px) {\n  .sectionTitle')
+  return at === -1 ? '' : CSS.slice(at, CSS.indexOf('\n}\n', at))
+})()
+
+/** The container block that turns Essentials into one row of tiles. */
+const PHONE_ESSENTIALS = (() => {
+  const at = CSS.indexOf('@container (max-width: 719px) {\n  .essentialsGrid')
+  return at === -1 ? '' : CSS.slice(at, CSS.indexOf('\n}\n', at))
+})()
 
 /** `className={styles.x}`, written once so a rename is a single edit. */
 function styleClass(name: string): string {
