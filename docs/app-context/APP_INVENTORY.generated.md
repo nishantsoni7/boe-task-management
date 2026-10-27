@@ -5,15 +5,19 @@
 
 ## Snapshot
 
-- Commit: `a038b118` — ERP sheet: freeze the header row (#459)
-- Commits on this branch: 1018
+- Commit: `e2646db2` — Test: account for migration 20270421000000 in both migration ledgers
+- Commits on this branch: 1022
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 369 (first `20260530_create_positions.sql`, latest `20270421000000_order_pendency_approvals.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 786   Enums: 0
-- Test files: 658   Next.js 16.2.6, React 19.2.4
+- Test files: 659   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
+- `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
+- `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
+- `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 - `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
 - `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
 - `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
@@ -35,10 +39,6 @@
 - `c97e0d52` 2026-10-24 Docs: record PR #442 merge SHA and backup
 - `73c4a13c` 2026-10-24 Docs: 20270417000000 applied to production
 - `d10064a8` 2026-10-24 Finance: accepting a cash handover never approves a payment
-- `4d043236` 2026-10-24 Docs: 20270416000000 applied to production
-- `a4f3abc0` 2026-10-24 Finance: accepting a cash handover confirms its payments
-- `8409355d` 2026-10-24 Docs: record PR #439 merge SHA and backup
-- `b0db6adf` 2026-10-24 Docs: 20270415000000 applied to production
 
 ## Pages by top-level area
 
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 87 source, 138 test
+- `src/lib/orders` — 88 source, 139 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test

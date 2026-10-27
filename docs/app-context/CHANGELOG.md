@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-27 — Orders: dates timeline no longer shows approval before upload (PR pending) · no migration
+- **The defect.** On an Order revised after its first approval, the timeline took the PI upload from the version now in force (V2, uploaded 25 Oct) and the approval from the first "PI approved" event (V1, 20 Oct), so "Approved" appeared before "PI uploaded". Same cause for the confirm-to-upload gap banner and the "Uploaded N days ago" line.
+- **The fix.** Both dates come from the FIRST PI version (`firstPiMilestones`, `lib/orders/orderPiMilestones.ts`): V1's upload, V1's decision (the first "PI approved" event only if V1 carries none). Later revisions keep their own history in PI history and Activity.
+- **Proof.** `orderPiMilestones.test.ts`; the page is pinned to use it. Not seen on the live Order.
+
 ## 2026-10-27 — Orders: Pendencies column, approving with an ERP screenshot, Activity categories (PR pending) · migration 20270421000000 APPLIED 2026-10-27
 - **Owner request.** A Pendencies column on Confirmed Orders (Approved / Not Approved, click for a popup of what is outstanding); a proper approval route (update the ERP, upload the screenshot on the Order, select Approved); every approval one Activity category, apart from Edit PI and Payments.
 - **Column.** Approved only when Fabric and Finish are Fully Approved and no pendency is open; otherwise Not Approved with a popup (`PendenciesPopup.tsx`, rules in `pendencyOverview.ts`) that links to the Order's Pendencies card. Two reads beside the list (`order_approval_current` view, open `order_pendencies`); a failed read shows a dash.
