@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f6f75031` — Modules: phone redesign — Essentials tile row and one grouped module list
-- Commits on this branch: 1028
+- Commit: `eb76f3ea` — Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
+- Commits on this branch: 1029
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 371 (first `20260530_create_positions.sql`, latest `20270423000000_finance_bank_line_sync.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 788   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
 - `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
@@ -38,7 +39,6 @@
 - `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
 - `a1a772a1` 2026-10-24 Finance: Bank Statements - suggested order and Add to Confirmed Payments (#447)
 - `446380cf` 2026-10-24 Docs: changelog and task dossier for row colours
-- `fcc43067` 2026-10-24 Assigned By Me: separate Important and For Approval row colours
 
 ## Pages by top-level area
 

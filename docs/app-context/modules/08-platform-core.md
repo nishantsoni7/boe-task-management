@@ -157,8 +157,11 @@ Modules launcher (`src/app/modules/page.tsx`):
 - Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
   over a grid of equal tiles (`repeat(auto-fit, minmax(140px, 1fr))`, 52 px, icon in a 32 px neutral chip); one
   action spans the row, the featured Add Exhibition Lead always takes its own row. The sidebar copy is unchanged.
-  "Attendance request" is offered only when `participatesInPayroll(profile)` (`users.payroll_active`), so members
-  switched out of Attendance & Payroll (owners, non-salaried accounts) do not see it.
+  "Attendance request" is offered only when the signed-in member takes part in Attendance & Payroll
+  (`users.payroll_active`), so members switched out (owners, non-salaried accounts) do not see it. The launcher reads
+  that column itself (`['payroll-participation', userId]`, `select('payroll_active, is_deleted')` on the own row):
+  the shared `usePermissionContext` profile does NOT select `payroll_active`, so testing it there always read
+  "included" (the #467 defect). Until the read lands the button is held back; if it fails the button is offered.
 - "Other open handovers (n)" (HandoverBanner) is restyled ON THIS PAGE ONLY as a white 44 px row with a chevron,
   via `:global(.boe-app-shell):has(.launcher)` rules in `modules.module.css`; Finance is unchanged.
 - Pending approvals (`src/app/modules/PendingApprovals.tsx`, helpers `src/lib/attendance/pendingApprovals.ts`):

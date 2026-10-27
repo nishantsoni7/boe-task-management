@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Modules: "Attendance request" now really hides for members excluded from payroll (PR pending) · no migration
+- **Defect in #467.** The gate tested `participatesInPayroll(profile)`, but the launcher's profile (`usePermissionContext`) never selects `payroll_active`, so the value was always missing and read as "included". The owner excluded themself on Payroll → Participation and still saw the button.
+- **Fix.** The launcher reads `payroll_active, is_deleted` for the signed-in row in its own small query and gates on that. The shared profile column list is untouched. A new test pins that the column is actually read, not just tested.
+
 ## 2026-10-27 — Modules launcher: Pending approvals, Quick Actions tiles, Attendance request only for payroll members (PR pending) · no migration
 - **Owner request.** Redesign the phone Quick Actions; remove "Attendance request" for the owner and Nitish (not employees); give the owner a list of attendance requests waiting for approval, decided from Home.
 - **Attendance request** is offered only when `users.payroll_active` is true (`participatesInPayroll`). Anyone not on payroll must be switched out on the Payroll screen for the button to go; the request route is unchanged.

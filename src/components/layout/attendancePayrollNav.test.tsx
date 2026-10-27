@@ -410,7 +410,24 @@ describe('the "Attendance request" shortcut on the Modules page', () => {
   test('is not offered to somebody switched out of Attendance & Payroll', () => {
     // users.payroll_active is the one participation switch; an owner or a
     // non-salaried account has no tracked attendance for a request to excuse.
-    assert.match(LAUNCHER, /profile\.is_active !== false\s*&& participatesInPayroll\(profile\)/)
+    assert.match(LAUNCHER, /profile\.is_active !== false\s*&& takesPartInPayroll/)
     assert.match(LAUNCHER, /import \{ participatesInPayroll \} from '@\/lib\/payroll\/participation'/)
+  })
+
+  test('THE SWITCH IS ACTUALLY READ — not assumed from a profile that never selects it', () => {
+    // The first version tested participatesInPayroll(profile), but the shared
+    // profile's column list has no payroll_active, so the value was always
+    // missing (= included) and the button never went away. Pin both facts: the
+    // shared list still lacks the column, and the launcher reads it itself.
+    const CONTEXT = read('src/hooks/queries/usePermissionContext.ts')
+    const cols = CONTEXT.match(/const PROFILE_COLUMNS = '([^']*)'/)
+    assert.ok(cols, 'the shared profile column list exists')
+    if (!cols[1].includes('payroll_active')) {
+      assert.match(LAUNCHER, /\.from\('users'\)\s*\.select\('payroll_active, is_deleted'\)\s*\.eq\('id', userId!\)/,
+        'the launcher must read payroll_active for the signed-in row')
+      assert.match(LAUNCHER, /participatesInPayroll\(participationRead\.data\)/)
+    }
+    assert.equal(/participatesInPayroll\(profile\)/.test(LAUNCHER), false,
+      'the shared profile has no payroll_active to test')
   })
 })
