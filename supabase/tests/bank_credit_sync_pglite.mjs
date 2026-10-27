@@ -85,7 +85,7 @@ insert into grants values ('${U.reconcile}','reconcile'),('${U.reconcile}','crea
 await db.exec(extract(mig('20270329000000_finance_bank_statements.sql'), 'assert_bank_reconcile_door'))
 await db.exec(extract(mig('20270329000000_finance_bank_statements.sql'), 'link_bank_line_to_payment'))
 await db.exec(mig('20270419000000_finance_bank_add_confirmed_payment.sql'))
-await db.exec(mig('20270423000000_finance_bank_credit_sync.sql'))
+await db.exec(mig('20270423000000_finance_bank_line_sync.sql'))
 
 const as = id => db.exec(`select set_config('request.jwt.claim.sub', '${id ?? ''}', false)`)
 const q = async (sql, params) => (await db.query(sql, params)).rows
