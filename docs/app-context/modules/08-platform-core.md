@@ -154,6 +154,20 @@ Modules launcher (`src/app/modules/page.tsx`):
   phone. Desktop/tablet (>= 480 px compact, >= 720 px Essentials) are unchanged. Layout values live in the CSS
   module because inline `style` beats media queries. Pinned by `moduleCardSurface.test.ts` (PHONE_LIST /
   PHONE_ESSENTIALS) and the dimension list in `src/lib/modules/moduleOrderStorage.test.ts`.
+- Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
+  over a grid of equal tiles (`repeat(auto-fit, minmax(140px, 1fr))`, 52 px, icon in a 32 px neutral chip); one
+  action spans the row, the featured Add Exhibition Lead always takes its own row. The sidebar copy is unchanged.
+  "Attendance request" is offered only when `participatesInPayroll(profile)` (`users.payroll_active`), so members
+  switched out of Attendance & Payroll (owners, non-salaried accounts) do not see it.
+- "Other open handovers (n)" (HandoverBanner) is restyled ON THIS PAGE ONLY as a white 44 px row with a chevron,
+  via `:global(.boe-app-shell):has(.launcher)` rules in `modules.module.css`; Finance is unchanged.
+- Pending approvals (`src/app/modules/PendingApprovals.tsx`, helpers `src/lib/attendance/pendingApprovals.ts`):
+  for the signed-in ADMIN only (`profile.role === 'admin'`, not while previewing), above the Essentials at every
+  width. Reads `/api/attendance-requests?scope=queue&status=pending` (React Query key
+  `['attendance-requests','home-pending',userId]`), drops the admin's own requests, lists the oldest 5 (initials,
+  name, type + `requestSummary`) with "See all n requests" -> `/attendance/requests`. A row opens the same
+  `RequestReviewDrawer` as the queue and decides through `/api/attendance-requests/[id]/decision`; no rule moved.
+  Nothing waiting = no section; a failed read shows "Try again". Pinned by `src/app/modules/pendingApprovals.test.ts`.
 
 Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", counters. Primary data is one
 React Query entry `['tasks','assigned-to',<effective uid>,'dashboard-active']`. Refresh uses `manualRefreshKey` only

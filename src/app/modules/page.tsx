@@ -47,6 +47,8 @@ import {
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import { HandoverBanner } from '@/components/finance/HandoverBanner'
+import { participatesInPayroll } from '@/lib/payroll/participation'
+import { PendingApprovals } from './PendingApprovals'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -316,7 +318,20 @@ export default function BoeOsHomePage() {
   // real profile, not the display subject, and is off while previewing somebody
   // else (a request sent then would be the admin's, not the viewed employee's).
   // It is not module access — see QuickActionGates.
+  //
+  // AND ONLY FOR SOMEBODY WHOSE ATTENDANCE IS TRACKED. `users.payroll_active` is
+  // the one switch for "takes part in Attendance & Payroll" (see
+  // src/lib/payroll/participation.ts); a member switched out of it — an owner,
+  // a non-salaried account — has no attendance for a request to excuse, so the
+  // button is not offered. The request route itself is unchanged.
   const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false
+    && participatesInPayroll(profile)
+
+  // PENDING APPROVALS: attendance requests waiting for a decision, decided from
+  // here. Deciding is admin-only (the route checks the real caller's role), so
+  // this reads the SIGNED-IN profile, never the display subject, and is off
+  // while previewing somebody else. See ./PendingApprovals.tsx.
+  const showPendingApprovals = !viewMode && !!userId && profile?.role === 'admin'
 
   // ONE LIST, BOTH PLACEMENTS. The gate above is the only authorization
   // decision; buildQuickActions turns the flags into the definitions that the
@@ -871,6 +886,12 @@ export default function BoeOsHomePage() {
                 <LatestAnnouncement latest={myAnnouncements[0]} />
               </div>
             )}
+
+            {/* ── Pending approvals ──
+                Attendance requests waiting for this admin, above the modules
+                because acting on them is the reason to open the launcher. Not
+                drawn when nothing is waiting, nor while arranging. */}
+            {!editingOrder && showPendingApprovals && userId && <PendingApprovals userId={userId} />}
 
             {!editingOrder && essentialModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-essentials-heading">
