@@ -1007,8 +1007,8 @@ describe('the activity trail', () => {
     assert.ok(body.includes('1 Sep 2026, 10:00 am'))
     assert.ok(body.includes('Running → On Hold'))
     assert.ok(body.includes('Due date: 1 Oct → 8 Oct'))
-    assert.ok(!body.includes(' PI '), 'an Order event is not marked as the PI\'s')
-    assert.ok(text(renderToStaticMarkup(<OrderActivityList items={[event(2)]} />)).includes(' PI '))
+    assert.ok(!html.includes('order-activity-pi'), 'an Order event is not marked as the PI\'s')
+    assert.ok(renderToStaticMarkup(<OrderActivityList items={[event(2)]} />).includes('order-activity-pi'))
   })
 
   test('an empty trail says so', () => {

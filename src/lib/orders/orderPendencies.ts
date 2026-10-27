@@ -7,6 +7,8 @@
  * so before a round trip.
  */
 
+import { EVIDENCE_MAX_BYTES, EVIDENCE_MIME_TYPES } from '@/lib/orders/orderApprovals'
+
 export const PENDENCY_MAX_LENGTH = 200
 export const PENDENCY_MAX_PER_CALL = 20
 
@@ -18,9 +20,37 @@ export type PersistedPendency = {
   label: string
   created_at: string
   cleared_at: string | null
+  /** The ERP screenshot the approval stood on; null while open, and on one cleared before screenshots were required. */
+  evidence_path: string | null
+  /** Who approved it, resolved by the read; null while open. */
+  approver?: { full_name: string | null } | null
 }
 
-export const ORDER_PENDENCY_SELECT = 'id, label, created_at, cleared_at'
+export const ORDER_PENDENCY_SELECT =
+  'id, label, created_at, cleared_at, evidence_path, approver:users!cleared_by(full_name)'
+
+/** Said where a pendency was approved without a screenshot (before 20270421000000). */
+export const PENDENCY_NO_PROOF_NOTE = 'Approved before screenshots were required'
+
+/**
+ * Where a pendency's screenshot goes: orders/<order>/pendency/<unique>.<ext>.
+ * The prefix is what the storage policy and approve_order_pendency() check, so
+ * a pendency proof can never be filed against another Order or as Fabric proof.
+ */
+export function pendencyEvidencePath(input: { orderId: string; objectId: string; fileName: string }): string {
+  const dot = input.fileName.lastIndexOf('.')
+  const raw = dot > 0 ? input.fileName.slice(dot + 1).toLowerCase() : ''
+  const extension = /^[a-z0-9]{1,8}$/.test(raw) ? raw : 'png'
+  return `orders/${input.orderId}/pendency/${input.objectId}.${extension}`
+}
+
+/** One sentence when the chosen screenshot cannot be used, or null when it can. */
+export function checkPendencyScreenshot(file: { size: number; type: string } | null): string | null {
+  if (!file || file.size <= 0) return 'An ERP screenshot is required to approve.'
+  if (!EVIDENCE_MIME_TYPES.includes(file.type)) return 'The screenshot must be a PNG, JPEG or WebP image.'
+  if (file.size > EVIDENCE_MAX_BYTES) return 'The screenshot must be 5 MB or smaller.'
+  return null
+}
 
 /** Trim and collapse inner whitespace, exactly as add_order_pendencies does. */
 export function cleanPendencyLabel(raw: string): string {
@@ -60,7 +90,10 @@ export function describePendencyError(message: string | null | undefined): strin
   const m = message ?? ''
   if (m.includes('ORDER_PENDENCY_FORBIDDEN')) return 'You do not have permission to change pendencies on this Order.'
   if (m.includes('ORDER_PENDENCY_ORDER_CANCELLED')) return 'This Order is cancelled.'
-  if (m.includes('ORDER_PENDENCY_NOT_OPEN')) return 'Only an open pendency can be removed.'
+  if (m.includes('ORDER_PENDENCY_NOT_OPEN')) return 'That pendency is not open any more. Refresh to see where it stands.'
+  if (m.includes('ORDER_PENDENCY_EVIDENCE_REQUIRED')) return 'An ERP screenshot is required to approve.'
+  if (m.includes('ORDER_PENDENCY_EVIDENCE_REUSED')) return 'That screenshot is already filed against another approval. Choose a different one.'
+  if (m.includes('ORDER_PENDENCY_EVIDENCE_PATH') || m.includes('ORDER_PENDENCY_EVIDENCE_MISSING')) return 'The screenshot did not finish uploading. Try again.'
   if (m.includes('ORDER_PENDENCY_TOO_LONG')) return `Keep each pendency under ${PENDENCY_MAX_LENGTH} characters.`
   return 'The pendency could not be saved. Try again.'
 }

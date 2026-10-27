@@ -43,6 +43,7 @@ import type { PaymentFact } from '@/lib/orders/orderPaymentFacts'
 import { commonPayer, paymentListSummary } from '@/lib/orders/orderPaymentListSummary'
 import { addressForCopy, sameAddress, splitAddress } from '@/lib/orders/addressLines'
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { ACTIVITY_FILTERS, type ActivityCategory } from '@/lib/orders/orderActivityCategory'
 import { OrderModalShell } from './OrderStatusWorkspace'
 import {
   activityToggleLabel,
@@ -880,6 +881,8 @@ export type OrderActivityItem = {
    * product codes assigned …): left out of the list unless the reader asks.
    */
   minor?: boolean
+  /** Approvals, Payments or PI edits (owner, 2026-10-27); absent or 'other' appears under All only. */
+  category?: ActivityCategory
 }
 
 export const ACTIVITY_TITLE = 'Activity'
@@ -922,8 +925,13 @@ export function OrderActivityList({ items: allItems }: { items: readonly OrderAc
   const [expanded, setExpanded] = useState(false)
   // ONLY THE MAIN ACTIVITY by default (owner, 2026-10-27); the rest is one click away.
   const [showMinor, setShowMinor] = useState(false)
+  // WHICH KIND OF EVENT (owner, 2026-10-27): Approvals, Payments and PI edits are
+  // listed apart. A chosen category shows ALL of its events, minor ones included.
+  const [filter, setFilter] = useState<(typeof ACTIVITY_FILTERS)[number]['key']>('all')
   const minorCount = allItems.filter(i => i.minor).length
-  const items = showMinor ? allItems : allItems.filter(i => !i.minor)
+  const items = filter !== 'all'
+    ? allItems.filter(i => i.category === filter)
+    : showMinor ? allItems : allItems.filter(i => !i.minor)
   // A key event further back than the window opens the rest first, then scrolls.
   const pendingRef = useRef<string | null>(null)
   const { shown, hidden } = activityWindow(items.length, expanded)
@@ -975,8 +983,21 @@ export function OrderActivityList({ items: allItems }: { items: readonly OrderAc
           </span>
         )}
       </div>
+      <div role="group" aria-label="Activity category" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '0 0 10px' }}>
+        {ACTIVITY_FILTERS.map(f => (
+          <button key={f.key} type="button" aria-pressed={filter === f.key}
+            className={filter === f.key ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
+            style={{ padding: '4px 12px', fontSize: '12px' }}
+            onClick={() => { setFilter(f.key); setExpanded(false) }}>
+            {f.label}
+          </button>
+        ))}
+      </div>
       {items.length === 0 ? (
-        <div className="order-activity-empty">{minorCount > 0 ? 'No main activity yet.' : ACTIVITY_EMPTY}</div>
+        <div className="order-activity-empty">
+          {filter !== 'all' ? `No ${ACTIVITY_FILTERS.find(f => f.key === filter)?.label.toLowerCase()} activity yet.`
+            : minorCount > 0 ? 'No main activity yet.' : ACTIVITY_EMPTY}
+        </div>
       ) : (
         <div className={keyEvents.length > 0 ? 'order-activity-layout order-activity-layout--nav' : 'order-activity-layout'}>
           <div className="order-activity-main">
@@ -1060,7 +1081,7 @@ export function OrderActivityList({ items: allItems }: { items: readonly OrderAc
           )}
         </div>
       )}
-      {minorCount > 0 && (
+      {minorCount > 0 && filter === 'all' && (
         <button type="button" className="order-inline-link order-activity-minor" aria-pressed={showMinor} onClick={() => setShowMinor(v => !v)}>
           {showMinor ? ACTIVITY_HIDE_MINOR : ACTIVITY_SHOW_MINOR(minorCount)}
         </button>
