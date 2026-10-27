@@ -221,7 +221,7 @@ const LINE_COLUMNS =
   'id, account, seq, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, ' +
   'bank_line_payment_links(id, payment_id, amount, unlinked_at), bank_line_expense_links(id, expense_id, amount, unlinked_at)'
 
-/** Every line of one account in one month (a month is a few hundred lines at most). */
+/** Every line of one account in one month (a month is a few hundred lines at most), newest first. */
 export async function loadMonthLines(supabase: SupabaseClient, account: BankAccountKey, month: string): Promise<BankLine[]> {
   const { from, to } = monthBounds(month)
   const { data, error } = await supabase
@@ -230,8 +230,8 @@ export async function loadMonthLines(supabase: SupabaseClient, account: BankAcco
     .eq('account', account)
     .gte('line_date', from)
     .lte('line_date', to)
-    .order('line_date', { ascending: true })
-    .order('seq', { ascending: true })
+    .order('line_date', { ascending: false })
+    .order('seq', { ascending: false })
     .range(0, 1999)
   if (error) throw new Error('Bank lines could not be read.')
   return ((data ?? []) as unknown as BankLine[]).map(l => ({
