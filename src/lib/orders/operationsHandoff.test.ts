@@ -363,6 +363,11 @@ describe('the attention strip and the dashboard', () => {
     const flagged = orderAttentionItems({ ...quiet, operationsReview: { versionNumber: 1, status: 'clarification_needed', unassigned: false } })
     assert.equal(flagged[0].label, 'PI V1 flagged by operations: clarification needed')
     assert.equal(flagged[0].tone, 'red')
+    // THE REASON IS SAID IN THE TOP NOTIFICATION (owner, 2026-10-27), not on the Documents card.
+    assert.equal(flagged[0].detail, 'Operations needs a clarification before it can accept this PI.')
+    const reason = 'Nitish Bansal cannot accept PI V1 yet. Reason: Need thumbnail image. It can be accepted once this is settled, or a revised PI brings a new version.'
+    const withReason = orderAttentionItems({ ...quiet, operationsReview: { versionNumber: 1, status: 'clarification_needed', unassigned: false, reasonLine: reason } })
+    assert.equal(withReason[0].detail, reason)
     assert.deepEqual(orderAttentionItems({ ...quiet, alignmentPredatesVersion: 2 }).map(i => i.label), ['Production was aligned before PI V2'])
   })
   test('ONE line about production: the handoff item replaces "Production not aligned" on a handoff Order', () => {

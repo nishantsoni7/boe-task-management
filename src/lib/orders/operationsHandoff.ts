@@ -223,6 +223,12 @@ export type OperationsHandoffView =
       unassignedHint: string | null
       /** The decision, when there is one. */
       decision: OperationsHandoffDecisionLine | null
+      /**
+       * The answer to Operations' latest objection, while the version waits for
+       * them again: who, when, what. Null once they flag it anew (the answer is
+       * then older than the objection) and for a version never flagged.
+       */
+      response: { by: string | null; at: string | null; text: string } | null
       /** A withdrawn acceptance: what had been accepted, kept on record. */
       withdrawn: { acceptedBy: string | null; acceptedAt: string | null; by: string | null; at: string | null; reason: string | null } | null
       /** The revised workbook's reason, for V2+; null for V1. */
@@ -405,6 +411,8 @@ export function describeOperationsHandoff(input: {
   realignment?: HandoffRealignment | null
   /** A held Order whose advance is covered again (advanceHoldCovered), for the held line. */
   holdCovered?: boolean
+  /** The newest answer to Operations' objection on this handoff, from the Order's history (latestHandoffAnswer). */
+  answer?: HandoffAnswer | null
 }): OperationsHandoffView {
   const { live, namesById, formatWhen } = input
   if (!live) {
@@ -487,6 +495,9 @@ export function describeOperationsHandoff(input: {
     unassignedReason: unassigned ? (live.unassigned_reason ?? 'no_reviewer') : null,
     unassignedHint: unassigned ? UNASSIGNED_REASON_HINT[live.unassigned_reason ?? 'no_reviewer'] : null,
     decision,
+    response: live.status === 'awaiting' && input.answer && answeredAfterObjection(live.clarification_at, input.answer.atIso)
+      ? { by: input.answer.by, at: formatWhen(input.answer.atIso), text: input.answer.text }
+      : null,
     withdrawn,
     revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
     priorAcceptedNotice,
@@ -538,6 +549,71 @@ export type DecisionCheck =
   | { ok: true; reason: string | null }
   | { ok: false; message: string }
 
+// ── Responding to an objection, remarks only (20270422000000) ────────────────
+
+export const RESPOND_DIALOG_TITLE = 'Respond to Operations'
+export const RESPOND_BUTTON_LABEL = 'Respond and resubmit'
+export const RESPOND_CONFIRM_LABEL = 'Resubmit to Operations'
+export const RESPOND_NOTE =
+  'Your remarks go to the operations reviewer with this same PI version; nothing in the PI changes. If the PI itself must change, use Edit PI instead.'
+export const RESPOND_REMARKS_LABEL = 'Your remarks'
+export const RESPOND_REMARKS_PLACEHOLDER = 'What was settled, or what Operations should know'
+export const RESPOND_REMARKS_REQUIRED = 'Write your remarks for Operations before resubmitting.'
+
+/** What the history says about an answer to Operations' objection. */
+export type HandoffAnswer = { by: string | null; atIso: string; text: string }
+
+/** True when the answer is not older than the objection it answers. */
+export function answeredAfterObjection(objectionAtIso: string | null, answerAtIso: string): boolean {
+  return !objectionAtIso || Date.parse(answerAtIso) >= Date.parse(objectionAtIso)
+}
+
+/**
+ * The newest "responded to Operations" entry for THIS handoff, read from the
+ * Order's history rows the page already holds. The answer is stored on the
+ * handoff row too, but the page's handoff read is a fixed column list pinned
+ * to the order_page_bundle RPC, so it does not select those columns — which
+ * also means the page works before the migration is applied.
+ */
+export function latestHandoffAnswer(
+  entries: readonly { event_type: string; payload: Record<string, unknown>; created_at: string; actor_name?: string }[],
+  handoffId: string,
+): HandoffAnswer | null {
+  let best: HandoffAnswer | null = null
+  for (const e of entries) {
+    if (e.event_type !== 'operations_handoff_clarification_answered') continue
+    if (e.payload?.handoff_id !== handoffId || typeof e.payload?.response !== 'string' || e.payload.response === '') continue
+    if (!best || Date.parse(e.created_at) > Date.parse(best.atIso)) {
+      best = { by: e.actor_name ?? null, atIso: e.created_at, text: e.payload.response }
+    }
+  }
+  return best
+}
+
+/**
+ * Whether the page offers "Respond and resubmit": the flagged version in force,
+ * to whoever may revise this PI (the page's `mayRespond` is the owner-or-admin
+ * rule), never under View As. The database asks can_propose_order_pi_edit() again.
+ */
+export function canRespondToHandoff(input: {
+  handoff: { status: OperationsHandoffStatus; superseded_at: string | null } | null
+  orderStatus: string
+  mayRespond: boolean
+  viewingAs: boolean
+}): boolean {
+  return !!input.handoff && input.handoff.status === 'clarification_needed' && input.handoff.superseded_at === null
+    && input.orderStatus !== 'cancelled' && input.mayRespond && !input.viewingAs
+}
+
+export type ResponseCheck = { ok: true; remark: string } | { ok: false; message: string }
+
+export function validateHandoffResponse(raw: string): ResponseCheck {
+  const remark = raw.trim()
+  if (remark === '') return { ok: false, message: RESPOND_REMARKS_REQUIRED }
+  if (remark.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) return { ok: false, message: OPERATIONS_HANDOFF_REASON_TOO_LONG }
+  return { ok: true, remark }
+}
+
 export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: string): DecisionCheck {
   const reason = raw.trim() === '' ? null : raw.trim()
   if (reason !== null && reason.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) {
@@ -579,6 +655,14 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   }
   if (m.includes('Only an administrator can recover')) {
     return 'Only an active administrator can recover a production alignment.'
+  }
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_RESPONSE_REQUIRED')) return RESPOND_REMARKS_REQUIRED
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_RESPONSE_TOO_LONG')) return OPERATIONS_HANDOFF_REASON_TOO_LONG
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_NOT_FLAGGED')) {
+    return 'Operations is not waiting for a response on this PI any more. Refresh the page.'
+  }
+  if (m.includes('Only the person who owns this PI')) {
+    return 'Only the person who owns this PI, or an administrator, can respond to Operations.'
   }
   if (m.includes('ORDER_OPERATIONS_HANDOFF_STALE') || m.includes('ORDER_OPERATIONS_HANDOFF_SUPERSEDED')) {
     return 'A newer PI version has been approved since this page loaded. Refresh to review the current one.'
@@ -684,6 +768,7 @@ export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_reviewer_unassigned:           'Operations reviewer unassigned',
   operations_handoff_accepted:              'Accepted for production by operations',
   operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
+  operations_handoff_clarification_answered: 'Responded to Operations and resubmitted',
   operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
   operations_handoff_realigned:             'Operations aligned production again',
   operations_handoff_realigned_by_admin:    'Administrator recovered the production alignment',
@@ -695,6 +780,7 @@ export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone
   operations_reviewer_unassigned:           'amber',
   operations_handoff_accepted:              'green',
   operations_handoff_clarification_needed:  'red',
+  operations_handoff_clarification_answered: 'amber',
   operations_handoff_acceptance_withdrawn:  'red',
   operations_handoff_realigned:             'green',
   operations_handoff_realigned_by_admin:    'amber',

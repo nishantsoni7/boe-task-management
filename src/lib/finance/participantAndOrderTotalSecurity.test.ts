@@ -1137,6 +1137,8 @@ describe('the applied migrations are frozen', () => {
       // Customize image learning: attempts, house rules, approved examples. APPLIED 2026-10-25.
       '20270420000000_orders_customize_image_learning.sql',
       '20270421000000_order_pendency_approvals.sql',
+      // Operations handoff: respond to a clarification request with remarks and resubmit. NOT APPLIED.
+      '20270422000000_order_handoff_clarification_response.sql',
     ])
   })
 
@@ -1525,6 +1527,8 @@ describe('the applied migrations are frozen', () => {
       // Customize image learning: attempts, house rules, approved examples. APPLIED 2026-10-25.
       '20270420000000_orders_customize_image_learning.sql',
       '20270421000000_order_pendency_approvals.sql',
+      // Operations handoff: respond to a clarification request with remarks and resubmit. NOT APPLIED.
+      '20270422000000_order_handoff_clarification_response.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

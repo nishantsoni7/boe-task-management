@@ -31,6 +31,7 @@ import {
 } from './OrderWorkspace'
 import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
+import { firstPiMilestones } from '@/lib/orders/orderPiMilestones'
 import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
 import { activityCategory } from '@/lib/orders/orderActivityCategory'
 import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
@@ -158,7 +159,6 @@ import {
   canDecideRevisionOperations,
   canReapproveRevision,
   describeRevisionOperationsFailure,
-  piVersionLabel,
   type RevisionDifferences,
 } from '@/lib/orders/orderPiVersions'
 import {
@@ -197,6 +197,7 @@ import {
 import {
   ApproveRevisionModal,
   OperationsHandoffDecisionModal,
+  RespondToOperationsModal,
   ProductionRecoveryModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
@@ -208,6 +209,9 @@ import {
   ORDER_OPERATIONS_HANDOFF_COLUMNS,
   WITHDRAW_ACCEPTANCE_LABEL,
   describeHandoffFailure,
+  canRespondToHandoff,
+  latestHandoffAnswer,
+  RESPOND_BUTTON_LABEL,
   describeOperationsHandoff,
   latestRealignment,
   splitOperationsHandoffs,
@@ -961,6 +965,7 @@ export default function OrderDetailPage() {
   // versions themselves. The dialog holds which answer is being given.
   const [handoffs,      setHandoffs]      = useState<PersistedOperationsHandoff[]>([])
   const [handoffDialog, setHandoffDialog] = useState<OperationsHandoffStatus | null>(null)
+  const [respondOpen, setRespondOpen] = useState(false)
   // An administrator's recovery of a held Order no reviewer can realign (review R1).
   const [recoverOpen, setRecoverOpen] = useState(false)
   const [handoffBusy,   setHandoffBusy]   = useState(false)
@@ -1781,7 +1786,7 @@ export default function OrderDetailPage() {
         .upload(path, file, { contentType: WORKBOOK_UPLOAD_MIME })
       if (uploadError) { setRevisionError(describePiRevisionFailure(uploadError, 'propose')); return }
 
-      const { error } = await supabase.rpc('propose_order_pi_revision', {
+      const { data: proposed, error } = await supabase.rpc('propose_order_pi_revision', {
         p_order_id: order.id,
         p_workbook_path: path,
         p_workbook_name: file.name,
@@ -1790,9 +1795,44 @@ export default function OrderDetailPage() {
       if (error) { setRevisionError(describePiRevisionFailure(error, 'propose')); return }
       setRevisionDialog(null)
       void notifyPiSubmission({ event: 'pi_revision_proposed', submissionId: order.source_order_submission_id })
+      // AN APPROVER'S OWN REVISION IS NOT SENT BACK TO THE APPROVERS: whoever may
+      // approve a revised PI approves theirs at once, through the same route the
+      // Approve button uses. If the route refuses, or needs the lines matched,
+      // the version stays pending and the usual Approve button is still there.
+      const versionId = (proposed as { version_id?: string } | null)?.version_id
+      if (mayDecideRevision && versionId) {
+        const { ok } = await requestPiRevisionApproval(versionId)
+        if (ok) void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
+      }
       await loadOrder()
     } finally {
       setRevisionBusy(false)
+    }
+  }
+
+  /**
+   * Answer Operations' objection with remarks only and resubmit the same PI
+   * version (20270422000000). The RPC re-derives who may (the PI's owner or an
+   * administrator) and that the version is still flagged.
+   */
+  const respondToHandoff = async (remark: string) => {
+    const live = splitOperationsHandoffs(handoffs).live
+    if (!order || handoffBusy || !live) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('respond_order_handoff_clarification', {
+        p_handoff_id: live.id,
+        p_remark: remark,
+      })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setRespondOpen(false)
+      if (profile?.id && profile.full_name) {
+        setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
+      }
+      await Promise.all([reloadHandoffs(), reloadOrderRow()])
+    } finally {
+      setHandoffBusy(false)
     }
   }
 
@@ -2392,6 +2432,8 @@ export default function OrderDetailPage() {
     viewerId: viewAsUserId ? null : (profile?.id ?? null),
     viewingAs: !!viewAsUserId,
     orderStatus: order.status,
+    // The answer to Operations' objection, from the history already loaded.
+    answer: operationsSplit.live ? latestHandoffAnswer(activity, operationsSplit.live.id) : null,
     productionAligned: order.production_alignment === 'aligned',
     productionAlignedAt: order.production_aligned_at ?? null,
     // WHY the version in force was revised: the approved version's own
@@ -2763,14 +2805,18 @@ export default function OrderDetailPage() {
         // problem is said: nobody assigned, or the reviewer can no longer act.
         line: operationsView.status === 'awaiting'
           ? (operationsView.unassigned ? operationsView.reviewerLine : null)
-          // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
-          // Activity at the foot of the page (clarification_reason, required by
-          // decide_order_operations_handoff).
-          : operationsView.status === 'clarification_needed' && operationsView.decision
-            ? clarificationLine(operationsView.versionLabel, operationsView.decision)
-            : null,
+          : null,
+        // WHY OPERATIONS COULD NOT ACCEPT is said ONCE, in the notification at
+        // the top of the page (owner, 2026-10-27) — not on the Documents card.
+        flagged: operationsView.status === 'clarification_needed',
       }
     : null
+  const operationsClarificationLine = operationsView?.kind === 'recorded'
+    && operationsView.status === 'clarification_needed' && operationsView.decision
+    ? clarificationLine(operationsView.versionLabel, operationsView.decision)
+    : operationsView?.kind === 'recorded' && operationsView.status === 'awaiting' && operationsView.response
+      ? `${operationsView.response.by ?? 'The PI owner'} responded${operationsView.response.at ? ` on ${operationsView.response.at}` : ''}: “${operationsView.response.text}”`
+      : null
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -2851,14 +2897,14 @@ export default function OrderDetailPage() {
    * sat below the payment section and is gone. They are the same facts from the
    * same columns; only where they are drawn changed.
    */
-  // The upload and approval moments, as ISO, for the dates timeline.
-  const currentPiVersion = piHistory.current
-    ? piVersions.find(v => piVersionLabel(v.version_number) === piHistory.current!.label)
-    : undefined
-  const piApprovedAtIso = history.find(e => e.label === 'PI approved')?.createdAtIso ?? currentPiVersion?.decided_at ?? null
+  // The upload and approval moments for the dates timeline, BOTH from the FIRST PI
+  // version: the version in force may be a later revision, uploaded after the first
+  // approval, and mixing the two put "approved" before "uploaded".
+  const firstApprovalEventAt = [...history].reverse().find(e => e.label === 'PI approved')?.createdAtIso ?? null
+  const { uploadedAt: piFirstUploadedAtIso, approvedAt: piApprovedAtIso } = firstPiMilestones(piVersions, firstApprovalEventAt)
   const datesTimeline = orderDatesTimeline({
     confirmDate: order.confirm_date,
-    uploadedAt: currentPiVersion?.uploaded_at ?? null,
+    uploadedAt: piFirstUploadedAtIso,
     dueDate: order.due_date,
   })
 
@@ -2897,7 +2943,10 @@ export default function OrderDetailPage() {
     // or flagged — and the one warning a quiet "Not aligned" cannot carry:
     // production aligned against an EARLIER version than the one now in force.
     operationsReview: operationsView?.kind === 'recorded' && operationsView.status !== 'accepted'
-      ? { versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned }
+      ? {
+          versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned,
+          reasonLine: operationsClarificationLine,
+        }
       : null,
     alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning
       ? operationsView.versionNumber
@@ -2920,6 +2969,14 @@ export default function OrderDetailPage() {
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
   const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
     && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered || operationsRecoverOffered
+  // THE OWNER'S (OR AN ADMINISTRATOR'S) ANSWER to a flagged version, on the same
+  // notification: remarks only, same PI version, back to the reviewer.
+  const respondOffered = operationsReviewOpen && canRespondToHandoff({
+    handoff: splitOperationsHandoffs(handoffs).live,
+    orderStatus: order.status,
+    mayRespond: mayProposeRevision,
+    viewingAs: !!viewAsUserId,
+  })
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
   // only decides where each one sits. The cleanup gate is the existing one,
@@ -3273,18 +3330,28 @@ export default function OrderDetailPage() {
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
-          actions={operationsDecisionOffered ? (
-            <OperationsReviewActions
-              view={operationsView}
-              busy={handoffBusy}
-              onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
-              onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
-              acceptBlockedReason={advanceAttentionLabel(advance)}
-              heldForAdvance={!!advance?.hold}
-              realignOffered={operationsRealignOffered}
-              recoverOffered={operationsRecoverOffered}
-              onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
-            />
+          actions={operationsDecisionOffered || respondOffered ? (
+            <>
+              {operationsDecisionOffered && (
+                <OperationsReviewActions
+                  view={operationsView}
+                  busy={handoffBusy}
+                  onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
+                  onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+                  acceptBlockedReason={advanceAttentionLabel(advance)}
+                  heldForAdvance={!!advance?.hold}
+                  realignOffered={operationsRealignOffered}
+                  recoverOffered={operationsRecoverOffered}
+                  onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
+                />
+              )}
+              {respondOffered && (
+                <button type="button" className="boe-btn boe-btn-primary" disabled={handoffBusy}
+                  onClick={() => { setHandoffError(null); setRespondOpen(true) }}>
+                  {RESPOND_BUTTON_LABEL}
+                </button>
+              )}
+            </>
           ) : undefined}
         />
 
@@ -3340,7 +3407,7 @@ export default function OrderDetailPage() {
             <OrderDatesTimelineCard
               title={SUMMARY_GROUP_TITLE.dates}
               confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
-              upload={currentPiVersion?.uploaded_at ? fmtDateTime(currentPiVersion.uploaded_at) : piUploadedAt}
+              upload={piFirstUploadedAtIso ? fmtDateTime(piFirstUploadedAtIso) : piUploadedAt}
               approved={piApprovedAtIso ? fmtDateTime(piApprovedAtIso) : null}
               due={order.due_date ? fmtDate(order.due_date) : null}
               timeline={datesTimeline}
@@ -3931,6 +3998,17 @@ export default function OrderDetailPage() {
           onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}
           onConfirm={reason => decideHandoff(handoffDialog, reason)}
           alsoAccepts={initialDocumentsAwaiting}
+        />
+      )}
+      {respondOpen && operationsView?.kind === 'recorded' && (
+        <RespondToOperationsModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          objection={operationsView.decision?.note ?? null}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setRespondOpen(false) }}
+          onConfirm={remark => respondToHandoff(remark)}
         />
       )}
       {recoverOpen && operationsView?.kind === 'recorded' && (
