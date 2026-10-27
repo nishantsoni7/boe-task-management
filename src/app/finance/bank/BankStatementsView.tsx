@@ -3,16 +3,20 @@
 // ── /finance/bank — Bank Statements ─────────────────────────────────────────
 //
 // THREE JOBS, ONE SCREEN:
-//   Money in            every credit of the month, with what it is: Linked to a
-//                       recorded payment, an Old order, Not customer money, or
-//                       Unlinked (nobody has said yet).
+//   Money in            every credit of the month and whether it is Synced into
+//                       Confirmed Payments, Not Synced (with the reason), or
+//                       does not need it (an Old order, Not customer money).
 //   Not in the bank     recorded payments of the month no bank credit has been
 //                       linked to — the other direction of the same check.
 //   Money out           the debits, so the balances can be seen to add up.
 //
-// THE PAGE NEVER LINKS, VERIFIES OR APPROVES ANYTHING BY ITSELF. It suggests,
-// with reasons; a person presses Link. Linking is a note beside a payment and
-// leaves its verification flow untouched.
+// SYNC: uploading a statement adds each new customer credit to Confirmed Payments
+// (sync_bank_credits, which reuses the Add to Confirmed rules and refuses
+// duplicates); "Check sync" repeats it for the month and lists what could not be
+// synced. LINKING an existing payment to a credit is NOT done here: it is done in
+// Confirmed Payments. This page never verifies or approves anything itself; the
+// database verifies only for an admin / verify_own_payment holder, as it does for
+// the Add to Confirmed button.
 //
 // WHO: finance.reconcile (protected; admins hold it through the admin branch).
 // The database refuses everyone else regardless of what this page draws.
@@ -37,7 +41,6 @@ import { toPaise } from '@/lib/finance/bankMoney'
 import type { UserProfile } from '@/lib/types'
 import { FinanceEmpty, FinanceStatusCards, FilterChip } from '@/app/finance/components/FinanceListParts'
 import {
-  STATUS_LABEL,
   STATUS_TONE,
   activeLinks,
   analyseLine,
@@ -45,6 +48,7 @@ import {
   linkedTotal,
   loadCandidateExpenses,
   loadCandidatePayments,
+  loadImportSyncableIds,
   loadMonthLines,
   loadPayerHistory,
   loadStoredRange,
@@ -53,12 +57,16 @@ import {
   monthsBetween,
   rpcMessage,
   statusLabelFor,
+  syncBankCredits,
+  syncState,
+  SYNC_NOT_YET,
   type BankExpense,
   type BankLine,
   type BankPayment,
   type LineWithSuggestions,
+  type SyncResult,
 } from './bankStatementsModel'
-import { orderSuggestionLabel, type PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
+import type { PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
 import { BankLineModal } from './bankLineModal'
 import { BankAddConfirmedModal } from './bankAddConfirmedModal'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
@@ -66,7 +74,22 @@ import { BankUploadModal } from './bankUploadModal'
 
 const PAGE_SIZE = 50
 
-type CardKey = 'all' | 'unlinked' | 'suggested' | 'linked' | 'old_order' | 'not_customer'
+type CardKey = 'all' | 'not_synced' | 'synced' | 'old_order' | 'not_customer'
+const CARD_LABEL: Record<CardKey, string> = {
+  all: 'All credits', not_synced: 'Not synced', synced: 'Synced', old_order: 'Old orders', not_customer: 'Not customer money',
+}
+const SYNC_PILL: Record<'synced' | 'not_synced' | 'not_needed', { tone: 'full' | 'over' | 'neutral'; label: string }> = {
+  synced: { tone: 'full', label: 'Synced' },
+  not_synced: { tone: 'over', label: 'Not Synced' },
+  not_needed: { tone: 'neutral', label: 'Not needed' },
+}
+
+/** The card a credit is counted under. A credit marked, or looking like, non-customer money counts as Not customer money. */
+function bucket(a: LineWithSuggestions): Exclude<CardKey, 'all'> {
+  if (a.status === 'old_order') return 'old_order'
+  if (a.status === 'not_customer' || a.nonCustomer) return 'not_customer'
+  return syncState(a) === 'synced' ? 'synced' : 'not_synced'
+}
 type OutCardKey = 'all' | 'unexplained' | 'suggested' | 'linked' | 'not_expense'
 type Tab = 'in' | 'payments' | 'out'
 
@@ -113,6 +136,10 @@ export function BankStatementsView() {
   const [opened, setOpened] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncReport, setSyncReport] = useState<SyncResult | null>(null)
+  // Bumped when a sync finishes after an upload, so the month is read again.
+  const [syncTick, setSyncTick] = useState(0)
 
   // ── who is this, and may they be here ──
   useEffect(() => {
@@ -184,7 +211,7 @@ export function BankStatementsView() {
     if (!caps.canReconcileBank || range === undefined) return
     const startFetch = () => { void loadMonth() }
     startFetch()
-  }, [caps.canReconcileBank, range, loadMonth])
+  }, [caps.canReconcileBank, range, loadMonth, syncTick])
 
   // ── derived ──
   const credits = useMemo(() => lines.filter(l => l.deposit > 0), [lines])
@@ -192,24 +219,17 @@ export function BankStatementsView() {
   const analysed = useMemo<LineWithSuggestions[]>(() => credits.map(l => analyseLine(l, payments, [], history)), [credits, payments, history])
 
   const counts = useMemo(() => {
-    const c = { all: analysed.length, unlinked: 0, suggested: 0, linked: 0, old_order: 0, not_customer: 0 }
-    for (const a of analysed) {
-      if (a.status === 'unlinked' || a.status === 'partly') {
-        c.unlinked++
-        if (a.suggestions.length > 0) c.suggested++
-      } else if (a.status === 'linked') c.linked++
-      else if (a.status === 'old_order') c.old_order++
-      else c.not_customer++
-    }
+    const c = { all: analysed.length, not_synced: 0, synced: 0, old_order: 0, not_customer: 0 }
+    for (const a of analysed) c[bucket(a)]++
     return c
   }, [analysed])
 
   const money = useMemo(() => {
-    let unlinked = 0
+    let notSynced = 0
     for (const a of analysed) {
-      if (a.status === 'unlinked' || a.status === 'partly') unlinked += toPaise(a.line.deposit) - toPaise(linkedTotal(a.line))
+      if (bucket(a) === 'not_synced') notSynced += toPaise(a.line.deposit)
     }
-    return unlinked / 100
+    return notSynced / 100
   }, [analysed])
 
   const notInBank = useMemo(() => {
@@ -221,11 +241,7 @@ export function BankStatementsView() {
   const qDigits = q.replace(/[,₹\s]/g, '')
   const shownIn = useMemo(() => {
     return analysed.filter(a => {
-      if (card === 'unlinked' && !(a.status === 'unlinked' || a.status === 'partly')) return false
-      if (card === 'suggested' && !((a.status === 'unlinked' || a.status === 'partly') && a.suggestions.length > 0)) return false
-      if (card === 'linked' && a.status !== 'linked') return false
-      if (card === 'old_order' && a.status !== 'old_order') return false
-      if (card === 'not_customer' && a.status !== 'not_customer') return false
+      if (card !== 'all' && bucket(a) !== card) return false
       if (!q) return true
       return a.line.narration.toLowerCase().includes(q) ||
         (a.line.bank_ref ?? '').toLowerCase().includes(q) ||
@@ -295,6 +311,38 @@ export function BankStatementsView() {
     void loadMonth()
   }
 
+  const notSynced = useMemo(() => analysed.filter(a => bucket(a) === 'not_synced'), [analysed])
+
+  // Check sync: try every Not Synced credit of the month again, then list what is still not.
+  const checkSync = async () => {
+    setSyncing(true)
+    try {
+      const r = notSynced.length > 0
+        ? await syncBankCredits(supabase, notSynced.map(a => a.line.id))
+        : { created: 0, linkedExisting: 0, alreadySynced: 0, failed: [] }
+      await loadMonth()
+      setSyncReport(r)
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'The credits could not be synced.', 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  // After an upload: sync the credits that upload added (not the older ones).
+  const syncUpload = async (importId: string, message: string) => {
+    try {
+      const r = await syncBankCredits(supabase, await loadImportSyncableIds(supabase, importId))
+      const parts = [`${r.created} added to Confirmed Payments`]
+      if (r.linkedExisting > 0) parts.push(`${r.linkedExisting} linked to a payment already recorded`)
+      if (r.failed.length > 0) parts.push(`${r.failed.length} not synced`)
+      show(`${message}. ${parts.join(', ')}.`, r.failed.length > 0 ? 'error' : 'success')
+    } catch (e) {
+      show(`${message}. Sync did not finish: ${e instanceof Error ? e.message : 'try Check sync'}.`, 'error')
+    }
+    setSyncTick(t => t + 1)
+  }
+
   const months = range ? monthsBetween(monthOf(range.first), monthOf(range.last)) : []
 
   const handleSignOut = async () => {
@@ -325,7 +373,7 @@ export function BankStatementsView() {
     <FinanceLayout
       profile={profile}
       title="Bank Statements"
-      subtitle="Match the money that reached the bank to the payments recorded"
+      subtitle="Every credit that reaches the bank, synced into Confirmed Payments"
       onSignOut={handleSignOut}
       onRefresh={async () => { await loadRange(account); await loadMonth() }}
       actions={<button className="boe-btn boe-btn-primary" onClick={() => setUploading(true)}>Upload statement</button>}
@@ -384,12 +432,11 @@ export function BankStatementsView() {
             active={tab === 'in' ? card : 'all'}
             onSelect={k => { setTab('in'); setCard(k) }}
             cards={[
-              { key: 'all', label: 'All credits', count: loading ? null : counts.all },
-              { key: 'unlinked', label: 'Unlinked', tone: 'zero', count: loading ? null : counts.unlinked },
-              { key: 'suggested', label: 'Has a suggestion', tone: 'partial', count: loading ? null : counts.suggested },
-              { key: 'linked', label: 'Linked', tone: 'full', count: loading ? null : counts.linked },
-              { key: 'old_order', label: 'Old orders', tone: 'neutral', count: loading ? null : counts.old_order },
-              { key: 'not_customer', label: 'Not customer money', tone: 'neutral', count: loading ? null : counts.not_customer },
+              { key: 'all', label: CARD_LABEL.all, count: loading ? null : counts.all },
+              { key: 'not_synced', label: CARD_LABEL.not_synced, tone: 'over', count: loading ? null : counts.not_synced },
+              { key: 'synced', label: CARD_LABEL.synced, tone: 'full', count: loading ? null : counts.synced },
+              { key: 'old_order', label: CARD_LABEL.old_order, tone: 'neutral', count: loading ? null : counts.old_order },
+              { key: 'not_customer', label: CARD_LABEL.not_customer, tone: 'neutral', count: loading ? null : counts.not_customer },
             ]}
           />
           )}
@@ -401,9 +448,9 @@ export function BankStatementsView() {
               )}
             </p>
           )}
-          {tab !== 'out' && !loading && counts.unlinked > 0 && (
+          {tab !== 'out' && !loading && counts.not_synced > 0 && (
             <p className="bank-unlinked-note">
-              <strong>{formatMoney(money)}</strong> reached {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} without a payment, an old order or a reason attached.
+              <strong>{formatMoney(money)}</strong> reached {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} and is not in Confirmed Payments yet.
             </p>
           )}
 
@@ -430,8 +477,11 @@ export function BankStatementsView() {
                     aria-label="Search"
                   />
                 </div>
+                {tab === 'in' && caps.canCreatePaymentRecord && (
+                  <button className="boe-btn boe-btn-ghost" disabled={syncing || loading} onClick={checkSync}>{syncing ? 'Checking…' : 'Check sync'}</button>
+                )}
                 {tab === 'in' && card !== 'all' && (
-                  <FilterChip label={`Showing: ${card === 'suggested' ? 'Has a suggestion' : card === 'unlinked' ? 'Unlinked' : card === 'linked' ? 'Linked' : card === 'old_order' ? 'Old orders' : 'Not customer money'}`} isSet icon="tag">
+                  <FilterChip label={`Showing: ${CARD_LABEL[card]}`} isSet icon="tag">
                     <button className="boe-btn boe-btn-ghost" onClick={() => setCard('all')}>Show all credits</button>
                   </FilterChip>
                 )}
@@ -455,8 +505,8 @@ export function BankStatementsView() {
                       <th style={{ width: 104 }}>Date</th>
                       <th>Received from</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
-                      <th style={{ width: 170 }}>Status</th>
-                      <th style={{ width: 240 }}>Linked to / suggestion</th>
+                      <th style={{ width: 170 }}>Synced</th>
+                      <th style={{ width: 240 }}>Confirmed payment</th>
                       {caps.canCreatePaymentRecord && <th style={{ width: 150 }} aria-label="Add to Confirmed Payments" />}
                     </tr></thead>
                     <tbody>
@@ -469,7 +519,7 @@ export function BankStatementsView() {
                             <span className="fin-sub">{a.line.narration}</span>
                           </td>
                           <td className="fin-num"><span className="fin-amount">{formatMoney(a.line.deposit)}</span></td>
-                          <td><span className={`fin-pill fin-pill--${STATUS_TONE[a.status]}`}>{STATUS_LABEL[a.status]}</span></td>
+                          <td><span className={`fin-pill fin-pill--${SYNC_PILL[syncState(a)].tone}`}>{SYNC_PILL[syncState(a)].label}</span></td>
                           <td><LinkedCell a={a} payments={payments} /></td>
                           {caps.canCreatePaymentRecord && (
                             <td onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
@@ -597,15 +647,45 @@ export function BankStatementsView() {
         <BankUploadModal
           supabase={supabase}
           onClose={() => setUploading(false)}
-          onImported={(acct, m, message) => {
+          onImported={(acct, m, message, importId) => {
             setUploading(false)
-            show(message)
             setAccount(acct)
             setCard('all')
             setTab('in')
             void loadRange(acct, m)
+            if (importId && caps.canCreatePaymentRecord) void syncUpload(importId, message)
+            else show(importId ? `${message}. Not synced: adding payments needs Finance create access.` : message)
           }}
         />
+      )}
+
+      {syncReport && (
+        <FinanceModal title={`Sync check — ${month ? monthLabel(month) : ''}`} onClose={() => setSyncReport(null)} width="640px">
+          <p style={{ margin: 0, fontSize: 14 }}>
+            {syncReport.created} added to Confirmed Payments
+            {syncReport.linkedExisting > 0 && <>, {syncReport.linkedExisting} linked to a payment already recorded</>}
+            {' '}· {notSynced.length === 0 ? 'every customer credit of this month is synced.' : <strong>{notSynced.length} not synced:</strong>}
+          </p>
+          {notSynced.length > 0 && (
+            <ul className="bank-checks">
+              {notSynced.map(a => (
+                <li key={a.line.id} className="bank-row">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fin-primary-text">{formatBankDate(a.line.line_date)} · {payerFromNarration(a.line.narration) ?? a.line.narration} · {formatMoney(a.line.deposit)}</div>
+                    <div className="fin-sub" style={{ color: '#A12438' }}>{a.line.sync_error ?? SYNC_NOT_YET}</div>
+                  </div>
+                  <button className="boe-btn boe-btn-ghost" onClick={() => { setSyncReport(null); setAdding(a.line.id) }}>Add to Confirmed</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="fin-muted" style={{ margin: 0, fontSize: 12 }}>
+            A credit that may already be recorded is never added on its own. Link it to the existing payment in Confirmed Payments, or add it here if it is a different payment.
+          </p>
+          <div className="bank-actions">
+            <button className="boe-btn boe-btn-primary" onClick={() => setSyncReport(null)}>Close</button>
+          </div>
+        </FinanceModal>
       )}
 
       <Toast toast={toast} onDismiss={dismiss} />
@@ -614,12 +694,12 @@ export function BankStatementsView() {
 }
 
 /**
- * A credit nobody has explained yet, with no strong or likely recorded payment
- * to link instead. The database re-checks everything (including duplicates).
+ * A customer credit that is not in Confirmed Payments yet. The database
+ * re-checks everything (including duplicates), and a possible duplicate asks for
+ * confirmation in the modal.
  */
 function canAddToConfirmed(a: LineWithSuggestions): boolean {
-  if (a.status !== 'unlinked' || a.nonCustomer) return false
-  return !a.suggestions.some(s => s.confidence !== 'possible')
+  return syncState(a) === 'not_synced'
 }
 
 function DebitCell({ a, expenses }: { a: LineWithSuggestions; expenses: BankExpense[] }) {
@@ -674,25 +754,6 @@ function LinkedCell({ a, payments }: { a: LineWithSuggestions; payments: BankPay
   if (a.status === 'not_customer') {
     return <span className="fin-muted">{a.line.note ?? ''}</span>
   }
-  if (a.suggestions.length > 0) {
-    const s = a.suggestions[0]
-    const p = byId.get(s.paymentId)
-    return (
-      <>
-        <span className="fin-primary-text">{p?.client_name ?? 'Suspense payment'}</span>
-        <span className="fin-sub">{s.confidence === 'strong' ? 'Strong match' : s.confidence === 'likely' ? 'Likely match' : 'Possible match'} · {p?.human_payment_id}</span>
-      </>
-    )
-  }
   if (a.nonCustomer) return <span className="fin-muted">Looks like: {a.nonCustomer.reason}</span>
-  if (a.orderSuggestions.length > 0) {
-    const s = a.orderSuggestions[0]
-    return (
-      <>
-        <span className="fin-primary-text">Suggested: {orderSuggestionLabel(s)}</span>
-        <span className="fin-sub">Earlier {s.latest.humanPaymentId ?? 'payment'} from this payer{s.times > 1 ? ` (${s.times} times)` : ''}</span>
-      </>
-    )
-  }
-  return <span className="fin-muted">No suggestion</span>
+  return <span className="fin-sub" style={{ color: '#A12438' }}>{a.line.sync_error ?? SYNC_NOT_YET}</span>
 }

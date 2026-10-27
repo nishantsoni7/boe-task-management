@@ -48,7 +48,7 @@ type Failure = { ok: false; message: string }
 export function BankUploadModal({ supabase, onClose, onImported }: {
   supabase: SupabaseClient
   onClose: () => void
-  onImported: (account: BankAccountKey, month: string, message: string) => void
+  onImported: (account: BankAccountKey, month: string, message: string, importId: string | null) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -108,8 +108,9 @@ export function BankUploadModal({ supabase, onClose, onImported }: {
     })
     setBusy(null)
     if (err) { setError(rpcMessage(err, 'The statement could not be imported.')); return }
-    const added = (data as { new_lines?: number } | null)?.new_lines ?? 0
-    onImported(account, monthOf(parsed.statement.periodTo), `${added} new line${added === 1 ? '' : 's'} imported into ${BANK_ACCOUNT_LABEL[account]}`)
+    const result = data as { new_lines?: number; import_id?: string } | null
+    const added = result?.new_lines ?? 0
+    onImported(account, monthOf(parsed.statement.periodTo), `${added} new line${added === 1 ? '' : 's'} imported into ${BANK_ACCOUNT_LABEL[account]}`, result?.import_id ?? null)
   }
 
   const s = parsed?.statement
