@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `e5e7b07f` — Bank Statements: list the newest line first
-- Commits on this branch: 1024
+- Commit: `0d217a58` — Bank Statements: sync credits into Confirmed Payments
+- Commits on this branch: 1025
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
-- Migrations: 371 (first `20260530_create_positions.sql`, latest `20270423000000_finance_bank_credit_sync.sql`)
+- Migrations: 371 (first `20260530_create_positions.sql`, latest `20270423000000_finance_bank_line_sync.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 788   Enums: 0
 - Test files: 660   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0d217a58` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
 - `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
 - `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
@@ -38,7 +39,6 @@
 - `a475918d` 2026-10-24 Docs: record PR #444 merge SHA and backup
 - `1e5e1e52` 2026-10-24 Docs: 20270418000000 applied to production
 - `1442083a` 2026-10-24 Finance: "Not received" is final; handovers carry whole payments only
-- `c97e0d52` 2026-10-24 Docs: record PR #442 merge SHA and backup
 
 ## Pages by top-level area
 
@@ -398,7 +398,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270420000000_orders_customize_image_learning.sql`
 - `20270421000000_order_pendency_approvals.sql`
 - `20270422000000_order_handoff_clarification_response.sql`
-- `20270423000000_finance_bank_credit_sync.sql`
+- `20270423000000_finance_bank_line_sync.sql`
 
 ## All SQL function names
 
