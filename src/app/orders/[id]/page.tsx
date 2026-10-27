@@ -31,6 +31,7 @@ import {
 } from './OrderWorkspace'
 import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
+import { firstPiMilestones } from '@/lib/orders/orderPiMilestones'
 import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
 import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
 import { ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
@@ -157,7 +158,6 @@ import {
   canDecideRevisionOperations,
   canReapproveRevision,
   describeRevisionOperationsFailure,
-  piVersionLabel,
   type RevisionDifferences,
 } from '@/lib/orders/orderPiVersions'
 import {
@@ -2850,14 +2850,14 @@ export default function OrderDetailPage() {
    * sat below the payment section and is gone. They are the same facts from the
    * same columns; only where they are drawn changed.
    */
-  // The upload and approval moments, as ISO, for the dates timeline.
-  const currentPiVersion = piHistory.current
-    ? piVersions.find(v => piVersionLabel(v.version_number) === piHistory.current!.label)
-    : undefined
-  const piApprovedAtIso = history.find(e => e.label === 'PI approved')?.createdAtIso ?? currentPiVersion?.decided_at ?? null
+  // The upload and approval moments for the dates timeline, BOTH from the FIRST PI
+  // version: the version in force may be a later revision, uploaded after the first
+  // approval, and mixing the two put "approved" before "uploaded".
+  const firstApprovalEventAt = [...history].reverse().find(e => e.label === 'PI approved')?.createdAtIso ?? null
+  const { uploadedAt: piFirstUploadedAtIso, approvedAt: piApprovedAtIso } = firstPiMilestones(piVersions, firstApprovalEventAt)
   const datesTimeline = orderDatesTimeline({
     confirmDate: order.confirm_date,
-    uploadedAt: currentPiVersion?.uploaded_at ?? null,
+    uploadedAt: piFirstUploadedAtIso,
     dueDate: order.due_date,
   })
 
@@ -3339,7 +3339,7 @@ export default function OrderDetailPage() {
             <OrderDatesTimelineCard
               title={SUMMARY_GROUP_TITLE.dates}
               confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
-              upload={currentPiVersion?.uploaded_at ? fmtDateTime(currentPiVersion.uploaded_at) : piUploadedAt}
+              upload={piFirstUploadedAtIso ? fmtDateTime(piFirstUploadedAtIso) : piUploadedAt}
               approved={piApprovedAtIso ? fmtDateTime(piApprovedAtIso) : null}
               due={order.due_date ? fmtDate(order.due_date) : null}
               timeline={datesTimeline}

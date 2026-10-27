@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-27 — Orders: dates timeline no longer shows approval before upload (PR pending) · no migration
+- **The defect.** On an Order revised after its first approval, the timeline took the PI upload from the version now in force (V2, uploaded 25 Oct) and the approval from the first "PI approved" event (V1, 20 Oct), so "Approved" appeared before "PI uploaded". Same cause for the confirm-to-upload gap banner and the "Uploaded N days ago" line.
+- **The fix.** Both dates come from the FIRST PI version (`firstPiMilestones`, `lib/orders/orderPiMilestones.ts`): V1's upload, V1's decision (the first "PI approved" event only if V1 carries none). Later revisions keep their own history in PI history and Activity.
+- **Proof.** `orderPiMilestones.test.ts`; the page is pinned to use it. Not seen on the live Order.
+
 ## 2026-10-27 — Orders: ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (PR pending) · no migration
 - **ERP sheet.** Each product's representative picture (else its first) is laid over the first column, **Item Type**, whose cells stay empty; columns A–D (Item Type, Inventory Code, Item Name, Description) are frozen. The 23 header words and their order are unchanged. Pictures are fetched from the URLs the page already signed, redrawn at 110px (JPEG) in the browser and patched into the .xlsx like the cell styles (`erpWorkbookImages.ts`, `erpImages.ts`); one that cannot be fetched is left out and counted in the message. Checked by opening a generated sheet with openpyxl (freeze pane E1, picture anchored on A2). **Unverified:** that the ERP's upload accepts a sheet whose Item Type cell is empty but carries a picture, and how Excel itself draws it. Only columns are frozen, not the header row.
 - **Payment card.** Under Balance it now states Order value (incl. GST), the 40% advance requirement with met / short / approved-below, the last verified payment (amount, date, mode) and verified money by mode (`orderPaymentFacts.ts`; read from rows and readiness the page already holds, nothing new queried; a fact with nothing to say is left out).

@@ -223,3 +223,11 @@ describe('the Activity list shows only the main activity (owner, 2026-10-27)', (
     assert.ok(page.includes('minor: !isMainActivityEvent('))
   })
 })
+
+describe('the dates timeline takes both PI dates from the first version (owner, 2026-10-27)', () => {
+  test('the page asks firstPiMilestones for the upload and the approval, never the version in force', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+    assert.ok(page.includes('firstPiMilestones(piVersions, firstApprovalEventAt)'))
+    assert.equal(page.includes('currentPiVersion'), false, 'a later revision must not supply the upload date')
+  })
+})

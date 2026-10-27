@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `bba1a5c8` — ERP sheet: product pictures over Item Type, columns A to D frozen
+- Commit: `a0c899cb` — ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
 - Commits on this branch: 1017
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 368 (first `20260530_create_positions.sql`, latest `20270420000000_orders_customize_image_learning.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 784   Enums: 0
-- Test files: 657   Next.js 16.2.6, React 19.2.4
+- Test files: 658   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `bba1a5c8` 2026-10-26 ERP sheet: product pictures over Item Type, columns A to D frozen
+- `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
 - `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
 - `2ddfadea` 2026-10-26 Orders page: Pendencies card in the top band, Payment beside Documents, wider Commercial breakdown (#456)
 - `7ef7f67a` 2026-10-26 Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details (#455)
@@ -144,7 +144,7 @@
 - `src/lib/modules` — 1 source, 2 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 85 source, 137 test
+- `src/lib/orders` — 86 source, 138 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 19 source, 32 test
 - `src/lib/pi` — 7 source, 5 test
