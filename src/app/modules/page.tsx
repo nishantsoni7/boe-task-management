@@ -324,8 +324,34 @@ export default function BoeOsHomePage() {
   // src/lib/payroll/participation.ts); a member switched out of it — an owner,
   // a non-salaried account — has no attendance for a request to excuse, so the
   // button is not offered. The request route itself is unchanged.
+  //
+  // READ HERE, NOT FROM `profile`. The shared profile (usePermissionContext)
+  // selects a fixed column list without payroll_active, so the field was
+  // always missing there and a missing value means "included" — the button
+  // never went away. This is one primary-key read of the signed-in row, which
+  // `authenticated` may select (20260813000000). Until it lands the button is
+  // held back rather than flashed; if it fails the button is offered, as it was
+  // before this rule existed.
+  const participationRead = useQuery({
+    queryKey: ['payroll-participation', userId],
+    enabled: !!userId && !viewMode,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('payroll_active, is_deleted')
+        .eq('id', userId!)
+        .single()
+      if (error) throw error
+      return data as { payroll_active: boolean | null; is_deleted: boolean | null }
+    },
+    staleTime: PERMISSION_STALE_MS,
+    gcTime: PERMISSION_GC_MS,
+  })
+  const takesPartInPayroll = participationRead.data
+    ? participatesInPayroll(participationRead.data)
+    : participationRead.isError
   const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false
-    && participatesInPayroll(profile)
+    && takesPartInPayroll
 
   // PENDING APPROVALS: attendance requests waiting for a decision, decided from
   // here. Deciding is admin-only (the route checks the real caller's role), so
