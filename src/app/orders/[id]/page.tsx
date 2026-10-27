@@ -33,6 +33,7 @@ import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } fr
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { firstPiMilestones } from '@/lib/orders/orderPiMilestones'
 import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
+import { activityCategory } from '@/lib/orders/orderActivityCategory'
 import { commercialTermsPoints, fabricResponsibilityStatement } from '@/lib/orders/piTerms'
 import { ORDER_INTERNAL_DETAILS_TITLE } from '@/lib/orders/orderInternalDetailsView'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
@@ -3640,6 +3641,7 @@ export default function OrderDetailPage() {
               lines: orderEntry ? amendmentLines(orderEntry) : [],
                   important: isKeyActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
                   minor: !isMainActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+              category: activityCategory({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
               actor: entry.actor,
               when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
               dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,

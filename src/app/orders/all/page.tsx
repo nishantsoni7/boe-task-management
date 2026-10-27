@@ -36,6 +36,11 @@ import {
   orderListSubtotal,
 } from '@/lib/orders/orderListValue'
 import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
+import {
+  PENDENCY_COLUMN_LABEL, buildPendencyOverviews,
+  type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
+} from '@/lib/orders/pendencyOverview'
+import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -286,6 +291,14 @@ export default function AllOrdersPage() {
    */
   const [awaitingOps, setAwaitingOps] = useState<Map<string, string | null>>(new Map())
   const opsFilter = listState.ops
+  /**
+   * THE PENDENCIES COLUMN (owner, 2026-10-27): the newest Fabric / Finish status
+   * per Order and every open pendency, two reads beside the list. Until they
+   * land, or if either fails, the column shows a dash — never a status nobody
+   * checked.
+   */
+  const [pendencyReads, setPendencyReads] = useState<{ approvals: CurrentApprovalRow[]; open: OpenPendencyRow[] } | null>(null)
+  const [pendencyPopup, setPendencyPopup] = useState<string | null>(null)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -367,6 +380,25 @@ export default function AllOrdersPage() {
     setUnread(unreadUpdateCounts((data ?? []) as UnreadUpdateRow[]))
   }
 
+  const loadPendencies = async () => {
+    const [approvals, open] = await Promise.all([
+      supabase.from('order_approval_current').select('order_id, approval_kind, status'),
+      supabase.from('order_pendencies').select('order_id, label').is('cleared_at', null).order('created_at', { ascending: true }),
+    ])
+    if (approvals.error || open.error) { setPendencyReads(null); return }
+    setPendencyReads({
+      approvals: (approvals.data ?? []) as CurrentApprovalRow[],
+      open: (open.data ?? []) as OpenPendencyRow[],
+    })
+  }
+
+  const pendencyOverviews = useMemo(
+    () => pendencyReads
+      ? buildPendencyOverviews(orders.map(o => o.id), pendencyReads.approvals, pendencyReads.open)
+      : new Map<string, OrderPendencyOverview>(),
+    [orders, pendencyReads],
+  )
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -388,6 +420,7 @@ export default function AllOrdersPage() {
         // two, and a third round trip in series would delay the whole table
         // for a decoration.
         loadUnread(),
+        loadPendencies(),
         // The operations queue, only when it was asked for. Beside the
         // others, so the filtered list costs no extra wait.
         opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
@@ -729,6 +762,10 @@ export default function AllOrdersPage() {
                     <FactoryBadge alignment={o.production_alignment} />
                   </div>
                   <div className="orders-list-card-meta">
+                    <span>{PENDENCY_COLUMN_LABEL}</span>
+                    <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
+                  </div>
+                  <div className="orders-list-card-meta">
                     <span style={{ color: overdue ? colors.red : undefined, fontWeight: overdue ? 600 : undefined }}>
                       Due {fmtDate(o.due_date)}{overdue ? ' · overdue' : ''}
                     </span>
@@ -757,13 +794,14 @@ export default function AllOrdersPage() {
                     Order here reads Running; the status cards still filter).
                     Every column is LEFT-aligned; only the markers sit at the
                     right edge of the Project code cell. */}
-                <col style={{ width: '16%' }} />{/* Project code + update badge | markers */}
-                <col style={{ width: '22%' }} />{/* Client, lead source under it */}
-                <col style={{ width: '13%' }} />{/* Product Value (the Subtotal) */}
-                <col style={{ width: '16%' }} />{/* Factory Status */}
-                <col style={{ width: '13%' }} />{/* Sales person */}
-                <col style={{ width: '10%' }} />{/* Confirmed */}
-                <col style={{ width: '10%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '14%' }} />{/* Project code + update badge | markers */}
+                <col style={{ width: '19%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '12%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '14%' }} />{/* Factory Status */}
+                <col style={{ width: '12%' }} />{/* Pendencies (owner, 2026-10-27) */}
+                <col style={{ width: '11%' }} />{/* Sales person */}
+                <col style={{ width: '9%' }} />{/* Confirmed */}
+                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
@@ -771,6 +809,7 @@ export default function AllOrdersPage() {
                   <th>Client</th>
                   <th>Product Value</th>
                   <th>Factory Status</th>
+                  <th>Pendencies</th>
                   <th>Sales Person</th>
                   <th>Confirmed</th>
                   <th>Due</th>
@@ -840,6 +879,9 @@ export default function AllOrdersPage() {
                       <td>
                         <FactoryBadge alignment={o.production_alignment} />
                       </td>
+                      <td>
+                        <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
+                      </td>
                       <td><FinancePerson name={o.assigned_to_name} /></td>
                       <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
                       <td>
@@ -854,6 +896,19 @@ export default function AllOrdersPage() {
           </div>
           </>
         )}
+        {pendencyPopup && pendencyOverviews.get(pendencyPopup) && (() => {
+          const o = orders.find(x => x.id === pendencyPopup)
+          const overview = pendencyOverviews.get(pendencyPopup)
+          if (!o || !overview) return null
+          return (
+            <PendenciesPopup
+              orderNumber={displayOrderNumber(o.display_number)}
+              overview={overview}
+              orderHref={`${orderHref(o.id)}#order-pendencies`}
+              onClose={() => setPendencyPopup(null)}
+            />
+          )
+        })()}
       </div>
     </OrdersLayout>
   )

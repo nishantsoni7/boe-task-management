@@ -73,11 +73,11 @@ describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
     assert.deepEqual(factoryStatus(null), { aligned: false, label: 'Not Aligned' })
   })
 
-  test('the table: Project code, Client, Product Value, Factory Status, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
+  test('the table: Project code, Client, Product Value, Factory Status, Pendencies, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
     const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
     const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'))
     const cols = [...head.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
-    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Factory Status', 'Sales Person', 'Confirmed', 'Due'])
+    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Factory Status', 'Pendencies', 'Sales Person', 'Confirmed', 'Due'])
     assert.equal(page.includes('requested_by_name} />'), false, 'no Requested by cell')
     assert.ok(page.includes('production_alignment'))
     // Symbols only, named by tooltip and accessible label.

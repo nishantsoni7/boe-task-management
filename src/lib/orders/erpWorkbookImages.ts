@@ -63,11 +63,11 @@ function anchorXml(image: ErpSheetImage, sheetRow: number, index: number): strin
 }
 
 /**
- * Freezes columns A–D and lays each picture over column A of its worksheet row.
+ * Freezes the header row and columns A–D, and lays each picture over column A of its worksheet row.
  *
  * `images[i]` belongs to product i, which sits on worksheet row i + 2 (row 1 is
  * the header); a null leaves that row without a picture. A workbook with no
- * pictures still gets its columns frozen.
+ * pictures still gets its header and columns frozen.
  */
 export function finishErpWorkbook(xlsx: Uint8Array, images: readonly (ErpSheetImage | null)[]): Uint8Array {
   const files: Record<string, Uint8Array> = unzipSync(xlsx)
@@ -76,9 +76,9 @@ export function finishErpWorkbook(xlsx: Uint8Array, images: readonly (ErpSheetIm
 
   let sheet = strFromU8(files[sheetPath])
 
-  // FROZEN COLUMNS. The first cell of the scrolling part is E1.
-  const pane = `<sheetView workbookViewId="0"><pane xSplit="${ERP_FROZEN_COLUMNS}" topLeftCell="E1" activePane="topRight" state="frozen"/>`
-    + '<selection pane="topRight" activeCell="E1" sqref="E1"/></sheetView>'
+  // FROZEN HEADER ROW + COLUMNS. The first cell of the scrolling part is E2.
+  const pane = `<sheetView workbookViewId="0"><pane xSplit="${ERP_FROZEN_COLUMNS}" ySplit="1" topLeftCell="E2" activePane="bottomRight" state="frozen"/>`
+    + '<selection pane="topRight"/><selection pane="bottomLeft"/><selection pane="bottomRight" activeCell="E2" sqref="E2"/></sheetView>'
   sheet = sheet.replace(/<sheetView workbookViewId="0"\s*\/>/, pane)
 
   const placed = images
