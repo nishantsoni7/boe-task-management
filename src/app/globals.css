@@ -5156,43 +5156,71 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
 }
 
 /* ── Page copy (<= 767px) ──
-   ONE COMPACT PILL ABOVE THE MODULES, not a labelled section. It used to carry
-   an uppercase QUICK ACTIONS heading, a full-width button and a divider — three
-   layers of chrome for one action, and the widest thing on the first screen a
-   phone shows. Now it is a single outlined pill, as wide as its label, with
-   its amber mark: findable in one glance, and smaller than any module card
-   below it. The 14px gap is the only separation. */
+   A LABELLED ROW OF EQUAL TILES, in the Modules launcher's own language: the
+   quiet grey section label it uses for "Your essentials", then one tile per
+   action sharing the width — white, the #E4DED7 hairline, 12px corners, the
+   icon in a neutral chip and the label beside it. It used to be stacked pills
+   of whatever width their labels gave them, which read as a different app
+   from the cards beneath. One action takes the whole row; two sit side by
+   side; a third wraps. The featured action (Add Exhibition Lead) always takes
+   a row of its own. */
 .boe-quick-actions-page {
   display: none;
-  margin-bottom: 14px;
+  margin-bottom: 20px;
 }
 
-/* The heading stays in the document for assistive technology — the section is
-   still named — but is not drawn: the button's own label says the same. */
 .boe-quick-actions-page-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: clip;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+  margin: 0 0 8px 4px;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #686D6C;
 }
 
 .boe-quick-actions-page .boe-quick-action-list {
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
 }
 
 .boe-quick-actions-page .boe-quick-action {
-  width: auto;
-  min-height: 44px;
-  padding: 0 16px 0 14px;
-  font-size: 13.5px;
+  width: 100%;
+  min-height: 52px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-size: 14px;
   font-weight: 600;
-  border-radius: 999px;
+  line-height: 1.25;
+  text-align: left;
+  color: #303536;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* The icon in a neutral chip — the module rows' icon box, smaller. The
+   padding sits inside the svg's own box, so the 16px glyph is centred in a
+   32px chip without a wrapper element. */
+.boe-quick-actions-page .boe-quick-action:not(.boe-quick-action-featured) svg {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #F1EEE9;
+  color: var(--boe-brand-ink);
+}
+
+.boe-quick-actions-page .boe-quick-action:active:not(:disabled) {
+  background: #F1EEE9;
+  border-color: #CFC8BF;
+}
+
+.boe-quick-actions-page .boe-quick-action-featured {
+  grid-column: 1 / -1;
 }
 
 /* ── THE FEATURED ACTION (Add Exhibition Lead) ──

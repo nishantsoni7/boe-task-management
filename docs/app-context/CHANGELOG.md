@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-27 — Modules launcher: Pending approvals, Quick Actions tiles, Attendance request only for payroll members (PR pending) · no migration
+- **Owner request.** Redesign the phone Quick Actions; remove "Attendance request" for the owner and Nitish (not employees); give the owner a list of attendance requests waiting for approval, decided from Home.
+- **Attendance request** is offered only when `users.payroll_active` is true (`participatesInPayroll`). Anyone not on payroll must be switched out on the Payroll screen for the button to go; the request route is unchanged.
+- **Pending approvals** (admins only, not while previewing): up to 5 pending requests (not the admin's own) above the Essentials; a row opens the existing review panel; Approve / Reject (with note) use the existing decision route. Hidden when nothing waits; "See all n" opens `/attendance/requests`.
+- **Quick Actions (phone)** become a labelled grid of equal tiles; "Other open handovers" becomes a quiet row with a chevron on this page only.
+- **Proof.** tsc, eslint, the launcher, Quick Actions, attendance-request and payroll suites, `next build`; a mockup from the real stylesheets at 320 and 390 px with one, two and featured actions. Not seen signed in; the payroll switch for the owner and Nitish was not read (no production read access from here).
+
 ## 2026-10-27 — Modules launcher: phone redesign (PR pending) · no migration
 - **Owner request.** The phone Modules page looked unprofessional; redesign it Notion-style with less scrolling and better visibility. Desktop unchanged.
 - **Essentials.** Up to 719 px, Task / Order / Finance are one row of three equal tiles (icon over name, ~100 px) instead of three stacked 72 px rows; with fewer Essentials the tiles share the width. The label eases from 13 px to 12 px on a 320 px phone so "Management" is never split.

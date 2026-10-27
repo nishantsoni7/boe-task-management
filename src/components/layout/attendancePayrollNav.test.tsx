@@ -406,4 +406,11 @@ describe('the "Attendance request" shortcut on the Modules page', () => {
   test('is offered to the signed-in active person only, and not while viewing as somebody else', () => {
     assert.match(LAUNCHER, /const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false/)
   })
+
+  test('is not offered to somebody switched out of Attendance & Payroll', () => {
+    // users.payroll_active is the one participation switch; an owner or a
+    // non-salaried account has no tracked attendance for a request to excuse.
+    assert.match(LAUNCHER, /profile\.is_active !== false\s*&& participatesInPayroll\(profile\)/)
+    assert.match(LAUNCHER, /import \{ participatesInPayroll \} from '@\/lib\/payroll\/participation'/)
+  })
 })
