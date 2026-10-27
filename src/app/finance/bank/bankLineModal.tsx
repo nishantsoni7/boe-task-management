@@ -2,17 +2,17 @@
 
 // ── One bank credit: what it is, and what to do with it ─────────────────────
 //
-// Suggestions are computed by the page (lib/finance/bankMatching) and shown here
-// with their reasons. LINKING IS A PERSON'S ACT: nothing in this file links on
-// its own, and linking never verifies, rejects or edits the payment — it is a
-// note beside it. The payment keeps its own approval flow.
+// What this credit is, whether it is Synced into Confirmed Payments, and the
+// marks that say it is not customer money. LINKING TO AN EXISTING PAYMENT IS NOT
+// DONE HERE: it is done in Confirmed Payments. Nothing in this file verifies,
+// rejects or edits a payment.
 
 import { useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL, NON_CUSTOMER_KIND_LABEL, type NonCustomerKind } from '@/lib/finance/bankStatement'
-import { payerFromNarration, type PaymentSuggestion } from '@/lib/finance/bankMatching'
+import { payerFromNarration } from '@/lib/finance/bankMatching'
 import { toPaise } from '@/lib/finance/bankMoney'
 import {
   PAYMENT_STATUS_LABEL,
@@ -21,6 +21,7 @@ import {
   formatBankDate,
   linkedTotal,
   rpcMessage,
+  SYNC_NOT_YET,
   statusLabelFor,
   type BankExpense,
   type BankPayment,
@@ -39,10 +40,8 @@ type Props = {
   onChanged: (message: string, close?: boolean) => void
 }
 
-const CONFIDENCE_LABEL = { strong: 'Strong match', likely: 'Likely match', possible: 'Possible match' } as const
-
 export function BankLineModal({ supabase, item, payments, expenses, onClose, onChanged }: Props) {
-  const { line, status, suggestions, nonCustomer } = item
+  const { line, status, nonCustomer } = item
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'none' | 'old' | 'other'>('none')
@@ -50,7 +49,6 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
   const [orderRef, setOrderRef] = useState('')
   const [kind, setKind] = useState<NonCustomerKind>(nonCustomer?.kind ?? 'other')
   const [note, setNote] = useState('')
-  const [search, setSearch] = useState('')
 
   const paymentById = useMemo(() => new Map(payments.map(p => [p.id, p])), [payments])
   const links = activeLinks(line)
@@ -67,14 +65,6 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
     onChanged(doneMessage, close)
   }
 
-  const link = (paymentId: string) =>
-    run('link:' + paymentId, 'Linked', true, () =>
-      supabase.rpc('link_bank_line_to_payment', { p_line_id: line.id, p_payment_id: paymentId }))
-
-  const unlink = (linkId: string) =>
-    run('unlink:' + linkId, 'Unlinked', false, () =>
-      supabase.rpc('unlink_bank_line_payment', { p_link_id: linkId }))
-
   const saveOld = () =>
     run('old', 'Marked as an old order', true, () =>
       supabase.rpc('classify_bank_line', {
@@ -89,18 +79,6 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
 
   const clear = () =>
     run('clear', 'Mark removed', false, () => supabase.rpc('clear_bank_line_classification', { p_line_id: line.id }))
-
-  const searchHits = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return []
-    const suggested = new Set(suggestions.map(s => s.paymentId))
-    return payments
-      .filter(p => p.remaining > 0 && !suggested.has(p.id) &&
-        ((p.client_name ?? '').toLowerCase().includes(q) ||
-          (p.human_payment_id ?? '').toLowerCase().includes(q) ||
-          String(p.amount).includes(q.replace(/[,₹\s]/g, ''))))
-      .slice(0, 6)
-  }, [search, payments, suggestions])
 
   return (
     <FinanceModal title={isCredit ? 'Bank credit' : 'Bank debit'} onClose={onClose} width="640px">
@@ -138,12 +116,10 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
                     {p?.human_payment_id ?? 'Payment'} · {formatMoney(l.amount)}{p ? ` · ${PAYMENT_STATUS_LABEL[p.status] ?? p.status}` : ''}
                   </div>
                 </div>
-                <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={() => unlink(l.id)}>
-                  {busy === 'unlink:' + l.id ? 'Unlinking…' : 'Unlink'}
-                </button>
               </div>
             )
           })}
+          <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>Synced. To change the link, open the payment in Confirmed Payments.</p>
           {status === 'partly' && (
             <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
               {formatMoney(remaining)} of this credit is not linked to any payment yet.
@@ -170,7 +146,7 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
         </section>
       )}
 
-      {/* ── suggestions and search ── */}
+      {/* ── sync state, and what else it can be ── */}
       {isCredit && (status === 'unlinked' || status === 'partly') && (
         <>
           {nonCustomer && (
@@ -185,33 +161,13 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
             </section>
           )}
 
-          <section className="bank-section">
-            <h3>{suggestions.length > 0 ? 'Suggested payments' : 'No recorded payment matches this credit'}</h3>
-            {suggestions.map(s => (
-              <SuggestionCard key={s.paymentId} s={s} p={paymentById.get(s.paymentId)} busy={busy} onLink={() => link(s.paymentId)} />
-            ))}
-            <label className="bank-field">
-              <span>Find another payment</span>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Client, payment ID or amount"
-                className="boe-input"
-              />
-            </label>
-            {searchHits.map(p => (
-              <div key={p.id} className="bank-row">
-                <div style={{ minWidth: 0 }}>
-                  <div className="fin-primary-text">{p.client_name ?? 'Suspense payment (no client)'}</div>
-                  <div className="fin-sub">{p.human_payment_id} · {formatMoney(p.remaining)} · {formatBankDate(p.payment_date)}</div>
-                </div>
-                <button className="boe-btn boe-btn-primary" disabled={busy !== null} onClick={() => link(p.id)}>
-                  {busy === 'link:' + p.id ? 'Linking…' : 'Link'}
-                </button>
-              </div>
-            ))}
-            {search.trim() && searchHits.length === 0 && <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>No unlinked payment found.</p>}
-          </section>
+          {!nonCustomer && (
+            <section className="bank-section">
+              <h3>Not synced</h3>
+              <div style={{ color: '#A12438' }}>{line.sync_error ?? SYNC_NOT_YET}</div>
+              <div className="fin-muted" style={{ fontSize: 12 }}>Use Add to Confirmed on the row, or Check sync for the month. Linking to an existing payment is done in Confirmed Payments.</div>
+            </section>
+          )}
 
           <section className="bank-section">
             <h3>Or say what this is</h3>
@@ -255,34 +211,5 @@ export function BankLineModal({ supabase, item, payments, expenses, onClose, onC
         </>
       )}
     </FinanceModal>
-  )
-}
-
-function SuggestionCard({ s, p, busy, onLink }: {
-  s: PaymentSuggestion
-  p: BankPayment | undefined
-  busy: string | null
-  onLink: () => void
-}) {
-  if (!p) return null
-  return (
-    <div className={`bank-suggest bank-suggest--${s.confidence}`}>
-      <div className="bank-suggest-head">
-        <div style={{ minWidth: 0 }}>
-          <div className="fin-primary-text">{p.client_name ?? 'Suspense payment (no client)'}</div>
-          <div className="fin-sub">
-            {p.human_payment_id} · {formatMoney(p.remaining)} · recorded {formatBankDate(p.payment_date)} · {BANK_ACCOUNT_LABEL[p.payment_mode as 'hdfc' | 'hdfc_sec'] ?? p.payment_mode} · {PAYMENT_STATUS_LABEL[p.status] ?? p.status}
-          </div>
-        </div>
-        <button className="boe-btn boe-btn-primary" disabled={busy !== null} onClick={onLink}>
-          {busy === 'link:' + p.id ? 'Linking…' : 'Link'}
-        </button>
-      </div>
-      <div className="bank-suggest-why">
-        <strong>{CONFIDENCE_LABEL[s.confidence]}</strong>
-        {s.reasons.length > 0 && <> — {s.reasons.join(' · ')}</>}
-        {s.warnings.map(w => <div key={w} className="bank-warn">{w}</div>)}
-      </div>
-    </div>
   )
 }

@@ -1139,6 +1139,8 @@ describe('the applied migrations are frozen', () => {
       '20270421000000_order_pendency_approvals.sql',
       // Operations handoff: respond to a clarification request with remarks and resubmit. NOT APPLIED.
       '20270422000000_order_handoff_clarification_response.sql',
+      // Bank Statements: sync bank credits into Confirmed Payments. NOT APPLIED.
+      '20270423000000_finance_bank_credit_sync.sql',
     ])
   })
 
@@ -1529,6 +1531,8 @@ describe('the applied migrations are frozen', () => {
       '20270421000000_order_pendency_approvals.sql',
       // Operations handoff: respond to a clarification request with remarks and resubmit. NOT APPLIED.
       '20270422000000_order_handoff_clarification_response.sql',
+      // Bank Statements: sync bank credits into Confirmed Payments. NOT APPLIED.
+      '20270423000000_finance_bank_credit_sync.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

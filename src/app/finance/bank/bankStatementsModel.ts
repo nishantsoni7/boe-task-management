@@ -51,6 +51,8 @@ export type BankLine = {
   debit_kind: DebitKind | null
   debit_payee: string | null
   note: string | null
+  /** Why the last sync of this credit failed; null once it succeeds. */
+  sync_error: string | null
   bank_line_payment_links: BankLink[]
   bank_line_expense_links: BankLink[]
 }
@@ -218,7 +220,7 @@ export async function loadStoredRange(supabase: SupabaseClient, account: BankAcc
 }
 
 const LINE_COLUMNS =
-  'id, account, seq, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, ' +
+  'id, account, seq, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, sync_error, ' +
   'bank_line_payment_links(id, payment_id, amount, unlinked_at), bank_line_expense_links(id, expense_id, amount, unlinked_at)'
 
 /** Every line of one account in one month (a month is a few hundred lines at most), newest first. */
@@ -242,6 +244,61 @@ export async function loadMonthLines(supabase: SupabaseClient, account: BankAcco
     bank_line_payment_links: (l.bank_line_payment_links ?? []).map(k => ({ ...k, amount: num(k.amount) })),
     bank_line_expense_links: (l.bank_line_expense_links ?? []).map(k => ({ ...k, amount: num(k.amount) })),
   }))
+}
+
+// ── Sync: every customer credit should be a payment in Confirmed Payments ───
+
+/**
+ * Synced = the credit is linked to a payment. Not needed = marked (or looking
+ * like) money that is not a customer's. Everything else is Not Synced, with the
+ * reason the last attempt gave, if there was one.
+ */
+export type SyncState = 'synced' | 'not_synced' | 'not_needed'
+
+export function syncState(a: LineWithSuggestions): SyncState {
+  if (a.line.deposit <= 0) return 'not_needed'
+  if (activeLinks(a.line).length > 0) return 'synced'
+  if (a.status === 'old_order' || a.status === 'not_customer' || a.nonCustomer) return 'not_needed'
+  return 'not_synced'
+}
+
+export const SYNC_NOT_YET = 'Not added to Confirmed Payments yet'
+
+export type SyncResult = {
+  created: number
+  linkedExisting: number
+  alreadySynced: number
+  failed: { lineId: string; reason: string }[]
+}
+
+/** Runs sync_bank_credits over the lines, 200 at a time (its limit). */
+export async function syncBankCredits(supabase: SupabaseClient, lineIds: string[]): Promise<SyncResult> {
+  const out: SyncResult = { created: 0, linkedExisting: 0, alreadySynced: 0, failed: [] }
+  for (let i = 0; i < lineIds.length; i += 200) {
+    const { data, error } = await supabase.rpc('sync_bank_credits', { p_line_ids: lineIds.slice(i, i + 200) })
+    if (error) throw new Error(rpcMessage(error, 'The credits could not be synced.'))
+    const r = data as { created?: number; linked_existing?: number; already_synced?: number; failed?: { line_id: string; reason: string }[] } | null
+    out.created += Number(r?.created) || 0
+    out.linkedExisting += Number(r?.linked_existing) || 0
+    out.alreadySynced += Number(r?.already_synced) || 0
+    out.failed.push(...(r?.failed ?? []).map(f => ({ lineId: f.line_id, reason: f.reason })))
+  }
+  return out
+}
+
+/** The customer credits of one import: unmarked, and not looking like non-customer money. */
+export async function loadImportSyncableIds(supabase: SupabaseClient, importId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('bank_statement_lines')
+    .select('id, narration')
+    .eq('import_id', importId)
+    .gt('deposit', 0)
+    .is('classification', null)
+    .range(0, 1999)
+  if (error) throw new Error('The imported credits could not be read.')
+  return ((data ?? []) as { id: string; narration: string }[])
+    .filter(l => !suggestNonCustomerKind(l.narration))
+    .map(l => l.id)
 }
 
 type PaymentRow = {
