@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Notifications: phone alerts (Web Push), lock-screen banners without opening the app (PR pending) · migration 20270425000000 NOT applied
+- **Owner request.** Important things are missed until the app is opened; wanted notifications on the phone (iPhone, Windows) like other apps.
+- **What.** Account Settings > Phone alerts turns alerts on for a device (iPhone: from the Home Screen app, iOS 16.4+) and mutes categories. A trigger on `notifications` asks `POST /api/push/dispatch` (pg_net) to send a generic banner ("Finance update"); tapping opens the same record as the inbox row. Service worker `public/sw.js` has no cache or fetch handler.
+- **Inert until configured:** no Vault secrets / Vercel env vars = no behaviour change. Owner steps are in the notifications dossier section 8d. Adds the `web-push` dependency.
+- **Rollback.** Drop trigger `notifications_push_dispatch`, its function, then the two tables.
+- **Proof.** tsc, new `push.test.ts` (13), notification suites, finance ledger suite; migration rehearsed in a rolled-back transaction on the linked database (inert without secrets, queues exactly one call with them, skips `task_assigned` and recipients with no device; zero residue afterwards). NOT verified: a real push to a real phone, `permissions:check` (needs env), full `npm test`.
+
 ## 2026-10-28 — My Tasks: plain action icons, pinned tasks under Important, drag-and-drop order (PR pending) · migration `20270424000000` APPLIED 2026-10-28
 - **Owner request.** Action icons without borders (the pin shows its border only once pinned); a pinned task rises to just under the Important ones; drag a row to set your own order.
 - **Sort** (`sortMyTasks`, `src/lib/tasks/taskOrder.ts`): Important (starred, not completed), then Today's Focus pins, then the rest; inside each group the person's saved order, tasks never placed after it in the old order. Pin limit stays 3.
