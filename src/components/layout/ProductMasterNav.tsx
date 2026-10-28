@@ -52,9 +52,10 @@ export function ProductMasterNav({
         <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
           <Package size={15} strokeWidth={1.8} />
         </span>
-        <span style={{ whiteSpace: 'nowrap' }}>Product Master</span>
-        <CountBadge value={totalCount} suffix="active" style={{ marginLeft: 'auto' }} />
+        <span className="boe-rail-label" style={{ whiteSpace: 'nowrap' }}>Product Master</span>
+        <CountBadge value={totalCount} suffix="active" className="boe-nav-count" style={{ marginLeft: 'auto' }} />
         <ChevronRight
+          className="boe-rail-label"
           size={12}
           strokeWidth={2}
           aria-hidden="true"
@@ -67,7 +68,9 @@ export function ProductMasterNav({
       </button>
 
       {expanded && categories.length > 0 && (
-        <div style={{
+        // The category list has no icon to stand in for it, so the rail drops it
+        // while collapsed and shows it again when the menu opens.
+        <div className="boe-rail-ghost" style={{
           marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px',
           borderLeft: '1px solid #E4DED7',
         }}>
@@ -101,10 +104,10 @@ export function ProductMasterNav({
 }
 
 function CountBadge({
-  value, suffix, style,
-}: { value: number; suffix?: string; style?: React.CSSProperties }) {
+  value, suffix, className, style,
+}: { value: number; suffix?: string; className?: string; style?: React.CSSProperties }) {
   return (
-    <span style={{
+    <span className={className} style={{
       fontSize: '12px', fontWeight: 600, color: '#595D5B',
       fontFamily: 'var(--font-body)',
       background: '#E4DED7', borderRadius: '999px',

@@ -13,6 +13,7 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
 import { useUnreadAssetNotifications } from '@/hooks/queries/useUnreadNotifications'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 export type AssetsView =
   // All users
@@ -115,6 +116,9 @@ export function AssetsLayout({
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const unreadAssets = useUnreadAssetNotifications()
 
   // Management is for people who act on OTHER people's records. An ordinary
@@ -147,18 +151,19 @@ export function AssetsLayout({
       <button
         className={`boe-nav-item${active ? ' active' : ''}`}
         onClick={() => handleNav(view)}
+        title={label}
         style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
       >
         <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
           {icon}
         </span>
-        {label}
+        <span className="boe-rail-label">{label}</span>
       </button>
     )
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -173,12 +178,13 @@ export function AssetsLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Assets &amp; Access</div>
             </div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             style={{
@@ -197,7 +203,7 @@ export function AssetsLayout({
 
         {/* Nav — self-entry (all users) */}
         <div className="boe-sidebar-section">
-          <div style={{
+          <div className="boe-rail-ghost" style={{
             fontSize: '12px', fontWeight: 700, color: '#686D6C',
             textTransform: 'uppercase', letterSpacing: '0.06em',
             padding: '4px 10px 6px',
@@ -220,7 +226,7 @@ export function AssetsLayout({
           {/* Management section — permission-gated, not role-gated */}
           {managementNav.length > 0 && (
             <>
-              <div style={{
+              <div className="boe-rail-ghost" style={{
                 fontSize: '12px', fontWeight: 700, color: '#686D6C',
                 textTransform: 'uppercase', letterSpacing: '0.06em',
                 padding: '14px 10px 6px',
@@ -235,11 +241,14 @@ export function AssetsLayout({
         </div>
 
         {/* Bottom profile */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/assets-access"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/assets-access"
+          />
+        </div>
 
       </aside>
 

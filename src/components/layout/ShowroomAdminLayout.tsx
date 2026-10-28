@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { ProductMasterNav } from '@/components/layout/ProductMasterNav'
 import { ProductLookup } from '@/components/layout/ProductLookup'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import { useShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
 import { isProductRoute, productCategoryHref, resolveParentClick } from '@/lib/showroom/productNav'
 
@@ -38,6 +39,9 @@ export function ShowroomAdminLayout({
 }: ShowroomAdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
@@ -90,7 +94,7 @@ export function ShowroomAdminLayout({
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -105,7 +109,7 @@ export function ShowroomAdminLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">Showroom QR</div>
               <div className="boe-sidebar-brand-sub">BOE One</div>
             </div>
@@ -113,6 +117,7 @@ export function ShowroomAdminLayout({
           <button
             onClick={() => navTo('/modules')}
             title="BOE One Home"
+            className="boe-rail-label"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -169,11 +174,14 @@ export function ShowroomAdminLayout({
         </div>
 
         {/* Bottom: profile + account settings + view as + sign out */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/showroom-admin"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/showroom-admin"
+          />
+        </div>
       </aside>
 
       {/* Main content */}
@@ -237,12 +245,13 @@ function NavItem({
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
+      title={label}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
       <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
-      {label}
+      <span className="boe-rail-label">{label}</span>
     </button>
   )
 }

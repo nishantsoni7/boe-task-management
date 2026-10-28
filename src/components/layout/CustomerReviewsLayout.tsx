@@ -9,6 +9,7 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
 import { useUnreadReviewNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useCustomReviewPendingCount } from '@/hooks/queries/useCustomReviewPendingCount'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 // The Review Workflow module shell.
 //
@@ -91,6 +92,9 @@ export function CustomerReviewsLayout({
   profile, title, subtitle, actions, canVerify, onSignOut, children,
 }: CustomerReviewsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -117,7 +121,7 @@ export function CustomerReviewsLayout({
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -134,7 +138,7 @@ export function CustomerReviewsLayout({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Review Workflow</div>
             </div>
@@ -142,6 +146,7 @@ export function CustomerReviewsLayout({
           <button
             onClick={() => router.push('/modules')}
             title="BOE One Home"
+            className="boe-rail-label"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -165,17 +170,19 @@ export function CustomerReviewsLayout({
                 key={item.path}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 onClick={() => navTo(item)}
+                title={item.label}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
                 <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
-                {item.label}
+                <span className="boe-rail-label">{item.label}</span>
                 {/* The same neutral volume badge Finance's sidebar uses. Hidden
                     at zero and while unknown: the queue's own empty state already
                     says there is nothing waiting. */}
                 {typeof count === 'number' && count > 0 && (
                   <span
+                    className="boe-nav-count"
                     aria-label={`${count} waiting for approval`}
                     style={{
                       marginLeft: 'auto', flexShrink: 0,
@@ -202,11 +209,14 @@ export function CustomerReviewsLayout({
           )}
         </div>
 
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/customer-reviews"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/customer-reviews"
+          />
+        </div>
 
       </aside>
 

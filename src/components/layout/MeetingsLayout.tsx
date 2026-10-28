@@ -8,6 +8,7 @@ import {
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 // The Meetings module shell.
 //
@@ -74,6 +75,9 @@ export function MeetingsLayout({
   profile, title, subtitle, actions, onSignOut, children,
 }: MeetingsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -97,7 +101,7 @@ export function MeetingsLayout({
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -112,12 +116,13 @@ export function MeetingsLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Meetings</div>
             </div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             style={{
@@ -143,23 +148,27 @@ export function MeetingsLayout({
                 key={`${item.path}-${item.due ?? ''}`}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 onClick={() => navTo(item)}
+                title={item.label}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
                 <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
-                {item.label}
+                <span className="boe-rail-label">{item.label}</span>
               </button>
             )
           })}
         </div>
 
         {/* Bottom profile section */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/meetings"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/meetings"
+          />
+        </div>
 
       </aside>
 

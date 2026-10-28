@@ -19,6 +19,7 @@ import { activeFinanceNav, type FinanceNavKey } from '@/lib/navigation/moduleNav
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import { HandoverBanner } from '@/components/finance/HandoverBanner'
 import { UnclosedFundsCard } from '@/components/finance/UnclosedFundsCard'
 import { HandoverModal } from '@/components/finance/HandoverModal'
@@ -94,7 +95,10 @@ export function FinanceLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
-  const router   = useRouter()
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
+  const router  = useRouter()
   const pathname = usePathname()
   // While a page is still loading it has no profile of its own yet; the
   // session-scoped context already holds the same row (it is the one the module
@@ -215,7 +219,7 @@ export function FinanceLayout({
   const activeKey = activeFinanceNav(pathname)
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -230,7 +234,7 @@ export function FinanceLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Finance</div>
             </div>
@@ -256,9 +260,9 @@ export function FinanceLayout({
                    the same fact twice, once as a number and once as the
                    page's own empty state. */
                 typeof item.alertBadge === 'number' && item.alertBadge > 0 ? (
-                  <span className="boe-handover-nav-count" aria-label={`${item.alertBadge} open`}>{item.alertBadge}</span>
+                  <span className="boe-handover-nav-count boe-nav-count" aria-label={`${item.alertBadge} open`}>{item.alertBadge}</span>
                 ) : typeof item.badge === 'number' && item.badge > 0 ? (
-                  <span style={{
+                  <span className="boe-nav-count" style={{
                     marginLeft: 'auto', flexShrink: 0,
                     fontSize: '12px', fontWeight: 700, color: '#4C5352',
                     background: '#E4DED7', borderRadius: '999px',
@@ -284,7 +288,7 @@ export function FinanceLayout({
         {/* ── Notification alert block — same pulsing indicator as Task Management,
             shown only when Finance has unread notifications. ── */}
         {unreadFinance > 0 && (
-          <div style={{ padding: '0 10px 14px' }}>
+          <div className="boe-rail-hide" style={{ padding: '0 10px 14px' }}>
             <button
               onClick={() => navTo('/finance/notifications')}
               className="boe-notif-alert"
@@ -311,11 +315,14 @@ export function FinanceLayout({
         )}
 
         {/* Bottom profile section */}
-        <ViewModeSidebarSection
-          profile={profile ?? sessionProfile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/finance"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile ?? sessionProfile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/finance"
+          />
+        </div>
 
       </aside>
 
