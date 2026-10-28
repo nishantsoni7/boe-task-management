@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `b6e616dd` — Backups: pg_dump step for the tables the service role cannot read
-- Commits on this branch: 1041
+- Commit: `1209de81` — Backups: fix the pg_dump step found on the first live runs
+- Commits on this branch: 1042
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
-- Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
+- Migrations: 375 (first `20260530_create_positions.sql`, latest `20270427000000_vendor_area_and_filters.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
 - Test files: 665   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b6e616dd` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
+- `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
+- `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
 - `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
@@ -38,7 +39,6 @@
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
 - `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 - `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
-- `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
 
 ## Pages by top-level area
 
@@ -159,7 +159,7 @@
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
-- `src/lib/vendors` — 6 source, 1 test
+- `src/lib/vendors` — 7 source, 1 test
 
 ## Environment variable names read by the code
 
@@ -384,7 +384,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270329000000_finance_bank_statements.sql`
 - `20270330000000_finance_bank_money_out.sql`
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
@@ -414,6 +413,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270424000000_user_task_order.sql`
 - `20270425000000_phone_push_notifications.sql`
 - `20270426000000_vendor_management.sql`
+- `20270427000000_vendor_area_and_filters.sql`
 
 ## All SQL function names
 

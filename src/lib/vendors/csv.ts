@@ -15,6 +15,7 @@ export const VENDOR_CSV_COLUMNS: Column[] = [
   { header: 'Can do', cell: v => csvCell(labelsOf(CAPABILITIES, v.capabilities)) },
   { header: 'Products', cell: v => csvCell(labelOf(PRODUCT_FOCUS, v.product_focus)) },
   { header: 'Team size', cell: v => csvCell(v.team_size) },
+  { header: 'Area', cell: v => csvCell(v.area) },
   { header: 'Visits', cell: v => csvCell(String(v.visit_count)) },
   { header: 'Last visit (IST)', cell: v => csvCell(v.last_visit_at ? formatIst(v.last_visit_at) : '') },
   { header: 'Last visited by', cell: v => csvCell(v.last_visited_by) },

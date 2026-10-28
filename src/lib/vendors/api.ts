@@ -67,6 +67,8 @@ export type VendorFilter = {
   statuses?: string[]
   capabilities?: string[]
   products?: string[]
+  team_sizes?: string[]
+  areas?: string[]
   awaiting_visit?: boolean
   archived?: boolean
   sort?: 'last_visit' | 'oldest_visit' | 'name' | 'newest'
@@ -100,6 +102,7 @@ export type VendorInput = {
   capabilities: string[]
   product_focus: string
   team_size: string
+  area: string
   notes: string
   /** Only when creating: 'potential' | 'contacted' (a name is enough) or 'prospect' (the default). */
   status?: 'potential' | 'contacted' | 'prospect'
