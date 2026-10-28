@@ -1,6 +1,6 @@
 # 23. Vendors (outsourcing vendor base and visit log)
 
-Written 2026-10-28 from the build, on branch `feat/vendor-management`. Migration `20270424000000` is **NOT APPLIED** to production at the time of writing; the module is invisible to everyone until it is applied and a person is granted `view`.
+Written 2026-10-28 from the build, on branch `feat/vendor-management`. Migration `20270425000000` is **NOT APPLIED** to production at the time of writing; the module is invisible to everyone until it is applied and a person is granted `view`.
 
 ## 1. Purpose & users
 
@@ -24,7 +24,7 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management`. Migration
 
 Layout guard `src/app/vendors/layout.tsx`: signed-in check with `/login?redirect=`, then `ModuleGuard('vendors')`. Shell `src/components/layout/VendorsLayout.tsx`. Library `src/lib/vendors/` (constants, api, validation, photos, csv). Hook `src/hooks/useVendors.ts`. Launcher card in `src/app/modules/page.tsx`.
 
-## 4. Database (`20270424000000_vendor_management.sql`)
+## 4. Database (`20270425000000_vendor_management.sql`)
 
 - `vendors` (profile; `submission_id` unique idempotency key; unique **active** `phone_e164`; archive fields all-or-none), `vendor_visits` (append-only by trigger; `visited_at` is server time; `location_source` gps|unavailable; `distance_m` computed from the vendor's address point; `follow_up_needed` requires a date), `vendor_visit_photos` (path unique — one photograph, one visit; kind factory|person|product|other).
 - Tables are read-only to the browser (`vendors_can_read()` select policies + RESTRICTIVE `module_entry_open('vendors')`); no write policy exists. All writes are SECURITY DEFINER functions reading `auth.uid()`: `save_vendor`, `log_vendor_visit`, `set_vendor_status`, `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (all typed words must match; returns `status_counts` for the tabs), `get_vendor`, `vendor_activity` (Admin), `vendors_my_access`.
@@ -59,4 +59,4 @@ GPS automatic; camera capture attribute on photo inputs (gallery still possible 
 
 ## 9. Recheck before changing
 
-`supabase migration list --linked` shows `20270424000000` with a non-empty remote before calling it applied; re-run `node supabase/tests/vendor_management_pglite.mjs <pglite dir>`; grep `vendor_list` for a newer migration that re-issues it (the latest definition wins).
+`supabase migration list --linked` shows `20270425000000` with a non-empty remote before calling it applied; re-run `node supabase/tests/vendor_management_pglite.mjs <pglite dir>`; grep `vendor_list` for a newer migration that re-issues it (the latest definition wins).

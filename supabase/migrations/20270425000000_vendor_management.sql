@@ -1,4 +1,4 @@
--- 20270424000000_vendor_management.sql
+-- 20270425000000_vendor_management.sql
 --
 -- Vendor Management: a vendor base for outsourced manufacturing, and a visit log
 -- that proves and records every visit to a vendor's factory.

@@ -6,7 +6,7 @@ import { CAPABILITIES, CATEGORIES, VENDOR_STATUSES, VISIT_OUTCOMES, VISIT_PURPOS
 import { vendorsCsv } from './csv'
 import { EMPTY_VENDOR, EMPTY_VISIT, validateVendor, validateVisit, vendorPayload } from './validation'
 
-const MIGRATION = readFileSync('supabase/migrations/20270424000000_vendor_management.sql', 'utf8')
+const MIGRATION = readFileSync('supabase/migrations/20270425000000_vendor_management.sql', 'utf8')
 
 const goodVendor = {
   ...EMPTY_VENDOR, company_name: 'Sharma Wood Works', contact_name: 'Ramesh', phone: '98765 43210',
