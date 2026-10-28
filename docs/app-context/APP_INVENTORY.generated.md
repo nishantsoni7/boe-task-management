@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `55b1b0af` — Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
-- Commits on this branch: 1046
+- Commit: `ebf9eb69` — Sidebar rail: no vertical movement anywhere, fluid open and close
+- Commits on this branch: 1047
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 813   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `ebf9eb69` 2026-10-29 Sidebar rail: no vertical movement anywhere, fluid open and close
 - `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
 - `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
@@ -38,7 +39,6 @@
 - `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
 - `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
-- `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
 
 ## Pages by top-level area
 

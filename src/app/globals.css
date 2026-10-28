@@ -11795,9 +11795,11 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    THE THREE RULES THAT KEEP THE MOTION CLEAN
    1. Nothing inside changes height between the two states. Text never wraps
       (white-space: nowrap on the whole rail), rows have one fixed height, and
-      what the open menu adds (captions, sub-lists, the notification card) is
-      laid out in both states and only faded (.boe-rail-ghost / .boe-rail-hide).
-      So no icon ever moves vertically.
+      what the open menu adds (captions, sub-lists, a search box) is laid out
+      in both states and only faded or reduced to a stand-in (.boe-rail-ghost,
+      .boe-rail-tree, .boe-rail-search). The notification card
+      (.boe-rail-hide) is shown only when pinned. So no icon ever moves
+      vertically.
    2. Only the panel's width animates; everything else is opacity or transform
       on the same curve and clock, so the parts arrive together.
    3. A count badge keeps one size in both states. It rides the panel's moving
@@ -11826,6 +11828,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   }
   .boe-rail > .boe-main-content { margin-left: 64px; }
   .boe-rail.boe-rail-pinned > .boe-main-content { margin-left: 260px; }
+  /* No scrollbar on the rail: in a 64px strip it ate 15px, pushed the badges
+     onto the icons and read as clutter. A long menu still scrolls by wheel. */
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar { scrollbar-width: none; }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar::-webkit-scrollbar { display: none; }
 
   .boe-rail > .boe-sidebar:hover,
   .boe-rail > .boe-sidebar:has(:focus-visible),
@@ -11873,25 +11879,26 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 
   .boe-rail-pin { display: flex; }
 
-  /* -- What the open menu adds: laid out always, faded in ------------------- */
-  .boe-rail > .boe-sidebar .boe-rail-label,
-  .boe-rail > .boe-sidebar .boe-rail-ghost,
-  .boe-rail > .boe-sidebar .boe-rail-hide {
+  /* -- What the open menu adds ------------------------------------------------
+     Laid out in both states, so nothing below it ever moves. While closed it
+     either fades away (labels, captions: they leave plain spacing) or shows a
+     quiet stand-in that belongs in a rail: an open sub-list becomes a guide
+     line under its parent's icon, a search box keeps its box and icon. */
+  .boe-rail > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *) {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease, transform 0.12s ease;
   }
   .boe-rail > .boe-sidebar .boe-rail-label { transform: translateX(-4px); }
-  .boe-rail > .boe-sidebar .boe-rail-ghost,
-  .boe-rail > .boe-sidebar .boe-rail-hide {
+  .boe-rail > .boe-sidebar .boe-rail-ghost {
     visibility: hidden;
     transition: opacity 0.12s ease, visibility 0s linear 0.12s;
   }
 
-  .boe-rail > .boe-sidebar:hover :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
-  .boe-rail > .boe-sidebar:has(:focus-visible) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
-  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
-  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide) {
+  .boe-rail > .boe-sidebar:hover :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *),
+  .boe-rail > .boe-sidebar:has(:focus-visible) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *),
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *),
+  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *) {
     opacity: 1;
     visibility: visible;
     transform: none;
@@ -11901,7 +11908,50 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
                 transform 0.4s var(--boe-rail-ease) calc(var(--boe-rail-open-delay) + 0.08s),
                 visibility 0s;
   }
-  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide) { transition: none; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-tree .boe-nav-item > *) { transition: none; }
+
+  /* The big notification card is for the pinned menu only: the bell's badge
+     already carries the count, and a card that appeared on hover would push
+     everything under it down. */
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar .boe-rail-hide { display: none; }
+
+  /* Sub-list (.boe-rail-tree). Its left rule moves onto the icon line
+     (10 + 21px), rows still start at 39px, and rows are a compact 30px. While
+     closed the rows' text fades and the active row shows as a terracotta tick
+     on the line, so the rail reads "My Tasks, and you are inside it" instead
+     of showing a blank gap. */
+  .boe-rail > .boe-sidebar .boe-rail-tree { margin-left: 21px !important; padding-left: 7px !important; }
+  .boe-rail > .boe-sidebar .boe-rail-tree .boe-nav-item { height: 30px; padding-left: 8px !important; }
+  .boe-rail > .boe-sidebar .boe-rail-tree .boe-nav-item::after {
+    content: '';
+    position: absolute;
+    left: -9px;
+    top: 50%;
+    width: 3px;
+    height: 14px;
+    margin-top: -7px;
+    border-radius: 2px;
+    background: var(--boe-brand);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-tree .boe-nav-item { background: transparent; }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-tree .boe-nav-item.active::before { opacity: 0; }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-tree .boe-nav-item.active::after {
+    opacity: 1;
+    transition: opacity 0.2s ease var(--boe-rail-close-delay);
+  }
+
+  /* Search box in a menu (.boe-rail-search): the box and its icon stay, on
+     the 32px line; the typed text, the placeholder and the clear button fade
+     with the labels. */
+  .boe-rail > .boe-sidebar .boe-rail-search { padding-left: 0 !important; padding-right: 0 !important; }
+  .boe-rail > .boe-sidebar .boe-rail-search > div > svg:first-child { left: 15px !important; }
+  .boe-rail > .boe-sidebar .boe-rail-search input { padding-left: 34px !important; transition: color 0.12s ease; }
+  .boe-rail > .boe-sidebar .boe-rail-search input::placeholder { transition: color 0.12s ease; }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-search input,
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-search input::placeholder { color: transparent; }
+  .boe-rail:not(.boe-rail-pinned) > .boe-sidebar:not(:hover):not(:has(:focus-visible)):not(:has([aria-haspopup][aria-expanded="true"])) .boe-rail-search > div > :not(svg):not(input) { opacity: 0; pointer-events: none; }
 
   /* -- Count badges ----------------------------------------------------------
      One size, one place in the row's box (right end, centred), in both states.
@@ -11961,6 +12011,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-rail > .boe-sidebar,
   .boe-rail > .boe-sidebar .boe-rail-label,
   .boe-rail > .boe-sidebar .boe-rail-ghost,
-  .boe-rail > .boe-sidebar .boe-rail-hide,
+  .boe-rail > .boe-sidebar .boe-rail-tree .boe-nav-item > *,
   .boe-rail > .boe-sidebar .boe-nav-count { transition: none !important; }
 }
