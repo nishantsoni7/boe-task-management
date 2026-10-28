@@ -8,6 +8,7 @@ import { MapPin } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
+import { useVendorAreas } from '@/lib/vendors/useVendorAreas'
 import { newSubmissionId } from '@/lib/exhibitionLeads/draft'
 import { VENDORS_KEY, saveVendor } from '@/lib/vendors/api'
 import { useDeviceLocation } from '@/lib/vendors/useDeviceLocation'
@@ -24,6 +25,7 @@ type Stage = 'potential' | 'contacted'
 
 export default function AddPotentialVendorScreen() {
   const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const areas = useVendorAreas(supabase, !!profile)
   const router = useRouter()
   const qc = useQueryClient()
   const [form, setForm] = useState(EMPTY_VENDOR)
@@ -77,7 +79,7 @@ export default function AddPotentialVendorScreen() {
             ]} />
           </Field>
 
-          <VendorFields relaxed value={form} errors={errors} onChange={patch => setForm(f => ({ ...f, ...patch }))} />
+          <VendorFields relaxed areas={areas} value={form} errors={errors} onChange={patch => setForm(f => ({ ...f, ...patch }))} />
 
           <Field label="Location">
             <div className={s.locationBox}>

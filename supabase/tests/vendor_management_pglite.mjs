@@ -80,6 +80,7 @@ await db.exec(extract(mig('20270305000000_exhibition_leads.sql'), 'normalize_lea
 
 // The migration under test, whole.
 await db.exec(mig('20270426000000_vendor_management.sql'))
+await db.exec(mig('20270427000000_vendor_area_and_filters.sql'))
 await db.exec(`
   grant select on all tables in schema public to authenticated;
   grant all on all tables in schema storage to authenticated;
@@ -442,5 +443,41 @@ const act3 = await rpc(U.admin, 'vendor_activity', null, null)
 assert.ok(act3.awaiting_site_visit.some(w => w.company_name === 'Chauhan Wood' && w.days_waiting === 0), 'a vendor that met us but was never visited is on the chase list')
 assert.ok(!act3.awaiting_site_visit.some(w => w.company_name === 'Rathore Furniture'), 'once visited it leaves the list')
 ok('activity separates proven visits from meetings at our factory and entered-later records, and lists vendors awaiting a site visit')
+
+
+// ── Area, team-size and area filters (20270427000000) ─────────────────────
+await rpc(U.dhruv, 'save_vendor', sub(), null, vendorBody({ company_name: 'Basni Chairs', phone: '+919870000001', area: 'Basni', team_size: '3-5', capabilities: ['raw_pieces'] }))
+const a2 = await rpc(U.dhruv, 'save_vendor', sub(), null, vendorBody({ company_name: 'Boranada Finishers', phone: '+919870000002', area: 'Boranada', team_size: '16-20', capabilities: ['finishing_only'] }))
+const a3 = await rpc(U.dhruv, 'save_vendor', sub(), null, vendorBody({ company_name: 'Second Basni Unit', phone: '+919870000003', area: '  basni  ', team_size: '3-5', capabilities: ['finished_pieces'] }))
+let ar = await rpc(U.dhruv, 'get_vendor', a3.id)
+assert.equal(ar.vendor.area, 'Basni', 'typing "basni" reuses the existing spelling "Basni"')
+list = await rpc(U.dhruv, 'vendor_list', {})
+assert.deepEqual(list.areas, ['Basni', 'Boranada'], 'the areas in use, once each')
+assert.ok(list.rows.find(r => r.company_name === 'Basni Chairs').area === 'Basni')
+ok('an area keeps one spelling and the list returns the areas in use')
+
+list = await rpc(U.dhruv, 'vendor_list', { areas: ['Basni'] })
+assert.deepEqual(list.rows.map(r => r.company_name).sort(), ['Basni Chairs', 'Second Basni Unit'])
+list = await rpc(U.dhruv, 'vendor_list', { areas: ['Boranada'] })
+assert.equal(list.total, 1)
+list = await rpc(U.dhruv, 'vendor_list', { team_sizes: ['3-5'] })
+assert.equal(list.total, 2)
+list = await rpc(U.dhruv, 'vendor_list', { team_sizes: ['3-5', '16-20'] })
+assert.equal(list.total, 3)
+list = await rpc(U.dhruv, 'vendor_list', { areas: ['Basni'], team_sizes: ['3-5'], capabilities: ['finished_pieces'] })
+assert.equal(list.total, 1); assert.equal(list.rows[0].company_name, 'Second Basni Unit')
+list = await rpc(U.dhruv, 'vendor_list', { q: 'boranada' })
+assert.equal(list.total, 1, 'the area is searchable')
+ok('filters combine: area, team size and capability narrow together; search finds by area')
+
+// Editing keeps or changes the area; archived vendors' areas no longer appear in the list of areas.
+await rpc(U.dhruv, 'save_vendor', sub(), a2.id, vendorBody({ company_name: 'Boranada Finishers', phone: '+919870000002', area: 'Mandore', team_size: '16-20', capabilities: ['finishing_only'] }))
+list = await rpc(U.dhruv, 'vendor_list', {})
+assert.deepEqual(list.areas, ['Basni', 'Mandore'])
+await rpc(U.admin, 'archive_vendor', a2.id, 'test cleanup')
+list = await rpc(U.dhruv, 'vendor_list', {})
+assert.deepEqual(list.areas, ['Basni'], 'an archived vendor no longer contributes an area')
+await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), vendorBody({ company_name: 'Long Area', phone: '+919870000004', area: 'x'.repeat(81) })], /VENDOR_INVALID: Area is too long/)
+ok('edit changes the area; archived vendors drop out of the areas; an over-long area is refused')
 
 console.log(`all ${checks} checks passed`)

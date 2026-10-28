@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `1209de81` — Backups: fix the pg_dump step found on the first live runs
-- Commits on this branch: 1042
+- Commit: `c1780ab0` — Orders: Payment plan - how much more the client must pay before a dispatch
+- Commits on this branch: 1043
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 164
-- Migrations: 375 (first `20260530_create_positions.sql`, latest `20270428000000_order_payment_plan.sql`)
+- Migrations: 376 (first `20260530_create_positions.sql`, latest `20270428000000_order_payment_plan.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 818   Enums: 0
 - Test files: 668   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c1780ab0` 2026-10-28 Orders: Payment plan - how much more the client must pay before a dispatch
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
@@ -38,7 +39,6 @@
 - `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
 - `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
-- `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
 
 ## Pages by top-level area
 
@@ -159,7 +159,7 @@
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
-- `src/lib/vendors` — 6 source, 1 test
+- `src/lib/vendors` — 7 source, 1 test
 
 ## Environment variable names read by the code
 
@@ -388,7 +388,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270330000000_finance_bank_money_out.sql`
 - `20270331000000_finance_admin_may_delete_confirmed_payment.sql`
 - `20270401000000_operations_dashboard.sql`
 - `20270402000000_operations_dashboard_order_details.sql`
@@ -417,6 +416,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270424000000_user_task_order.sql`
 - `20270425000000_phone_push_notifications.sql`
 - `20270426000000_vendor_management.sql`
+- `20270427000000_vendor_area_and_filters.sql`
 - `20270428000000_order_payment_plan.sql`
 
 ## All SQL function names

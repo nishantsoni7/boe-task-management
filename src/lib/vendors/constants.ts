@@ -82,6 +82,7 @@ export type VendorSummary = {
   capabilities: string[]
   product_focus: string | null
   team_size: string | null
+  area: string | null
   created_at: string
   archived: boolean
   visit_count: number
@@ -93,7 +94,7 @@ export type VendorSummary = {
   days_since_visit: number | null
 }
 
-export type VendorPage = { total: number; awaiting_count: number; status_counts: Record<string, number>; rows: VendorSummary[] }
+export type VendorPage = { total: number; awaiting_count: number; status_counts: Record<string, number>; areas: string[]; rows: VendorSummary[] }
 
 export type Vendor = {
   id: string
@@ -106,6 +107,7 @@ export type Vendor = {
   capabilities: string[]
   product_focus: string | null
   team_size: string | null
+  area: string | null
   notes: string | null
   status: string
   profile_complete: boolean

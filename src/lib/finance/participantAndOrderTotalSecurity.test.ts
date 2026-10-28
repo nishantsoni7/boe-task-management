@@ -1147,6 +1147,8 @@ describe('the applied migrations are frozen', () => {
       '20270425000000_phone_push_notifications.sql',
       // Vendor Management: vendors, append-only visits, visit photographs. APPLIED 2026-10-28.
       '20270426000000_vendor_management.sql',
+      // Vendors: Area, and the team-size / area filters. NOT APPLIED.
+      '20270427000000_vendor_area_and_filters.sql',
       '20270428000000_order_payment_plan.sql',
     ])
   })
@@ -1546,6 +1548,8 @@ describe('the applied migrations are frozen', () => {
       '20270425000000_phone_push_notifications.sql',
       // Vendor Management: vendors, append-only visits, visit photographs. APPLIED 2026-10-28.
       '20270426000000_vendor_management.sql',
+      // Vendors: Area, and the team-size / area filters. NOT APPLIED.
+      '20270427000000_vendor_area_and_filters.sql',
       '20270428000000_order_payment_plan.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been

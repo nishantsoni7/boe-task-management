@@ -94,7 +94,7 @@ describe('error messages', () => {
 describe('CSV export', () => {
   const row: VendorSummary = {
     id: 'x', company_name: '=cmd|calc', contact_name: 'Ramesh', phone: '+919876543210',
-    status: 'approved', capabilities: ['raw_pieces', 'finishing_only'], product_focus: 'chairs_and_other', team_size: '21+',
+    status: 'approved', capabilities: ['raw_pieces', 'finishing_only'], product_focus: 'chairs_and_other', team_size: '21+', area: 'Basni',
     created_at: '2026-10-01T00:00:00Z', archived: false, visit_count: 3, site_visit_count: 3, inbound_count: 0,
     awaiting_site_visit: false, last_visit_at: null, last_visited_by: 'Dhruv', days_since_visit: null,
   }
@@ -106,12 +106,16 @@ describe('CSV export', () => {
   test('a formula typed as a company name cannot run in Excel', () => {
     assert.ok(!csv.split('\r\n')[1].startsWith('=cmd'))
   })
+  test('the area is a column of its own', () => {
+    assert.ok(csv.split('\r\n')[0].includes('Area'))
+    assert.ok(csv.includes('Basni'))
+  })
   test('labels, not slugs', () => {
     assert.ok(csv.includes('Approved'))
     assert.ok(csv.includes('Raw manufacturing, Only finishing'))
   })
   test('a potential vendor with no number exports an empty cell, not a crash', () => {
-    const out = vendorsCsv([{ ...row, phone: null, contact_name: null, status: 'potential', product_focus: null, team_size: null }])
+    const out = vendorsCsv([{ ...row, phone: null, contact_name: null, status: 'potential', product_focus: null, team_size: null, area: null }])
     assert.ok(out.includes('Potential'))
   })
 })
@@ -160,5 +164,29 @@ describe('the migration keeps its promises', () => {
   test('nobody is granted the module by default', () => {
     assert.ok(!/department_permissions/.test(MIGRATION.replace(/--.*$/gm, '')), 'no department rule')
     assert.ok(/select pm\.id, pa\.id, false/.test(MIGRATION), 'default_allowed is false')
+  })
+})
+
+describe('the area-and-filters migration (20270427000000)', () => {
+  const AREA = readFileSync('supabase/migrations/20270427000000_vendor_area_and_filters.sql', 'utf8')
+  const code = AREA.replace(/--.*$/gm, '')
+  test('adds the area column and nothing else to the table', () => {
+    assert.ok(/alter table public\.vendors\s+add column if not exists area text check/.test(code))
+    assert.ok(!/drop /.test(code), 'it removes nothing')
+  })
+  test('re-issues exactly the three functions it changes, each with its grant and no anon access', () => {
+    for (const fn of ['save_vendor', 'vendor_list', 'get_vendor']) {
+      assert.ok(code.includes(`create or replace function public.${fn}(`), `${fn} is re-issued`)
+      assert.ok(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon;`).test(code), `${fn} revoked from anon`)
+      assert.ok(new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to authenticated;`).test(code), `${fn} granted`)
+    }
+    assert.equal((code.match(/create or replace function/g) ?? []).length, 3)
+  })
+  test('filters on team size and area, and returns the areas in use', () => {
+    assert.ok(code.includes("p_filter -> 'team_sizes'") && code.includes("p_filter -> 'areas'"))
+    assert.ok(code.includes("'areas', coalesce("))
+  })
+  test('an area keeps one spelling (an existing one is reused, ignoring case)', () => {
+    assert.ok(/lower\(x\.area\) = lower\(v_area\)/.test(code))
   })
 })
