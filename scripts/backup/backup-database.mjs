@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import zlib from 'node:zlib'
-import { BACKUP_ROOT, MAIN_REPO, encryptFile, ensureDir, loadEnvFile, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, MAIN_REPO, countCopyRows, encryptFile, ensureDir, loadEnvFile, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
 
 const noStorage = process.argv.includes('--no-storage')
 const plain = process.argv.includes('--plain')
@@ -91,8 +91,18 @@ for (const t of tables) {
 // major version, 17 today). Use an image that is already on this machine to avoid a download.
 // Anything that goes wrong here is a warning, not a backup failure: the tables simply stay
 // listed as NOT COVERED (Supabase platform backups still hold them).
-// finance_received_payments is a view over exported tables, so it is rebuilt, not dumped.
-const VIEWS = new Set(['finance_received_payments'])
+// finance_received_payments and finance_payment_destinations are VIEWS over tables that are exported
+// (orders, order_submissions, users, finance_payment_requests, finance_payment_allocations,
+// finance_payment_allocation_intents), so they are rebuilt from those, not dumped. A view fed to pg_dump -t
+// has no CREATE TABLE, which would make the whole step look failed. Checked against production 2026-10-28.
+const VIEWS = new Set(['finance_received_payments', 'finance_payment_destinations'])
+// The views are not "uncovered": their data lives in the exported tables above. Say so instead of crying wolf.
+const viewsHere = (manifest.unreadable ?? []).filter((t) => VIEWS.has(t))
+if (viewsHere.length) {
+  manifest.viewsRebuilt = viewsHere
+  manifest.unreadable = manifest.unreadable.filter((t) => !VIEWS.has(t))
+  log(`views rebuilt from exported tables (not dumped): ${viewsHere.join(', ')}`)
+}
 const toDump = (manifest.unreadable ?? []).filter((t) => !VIEWS.has(t))
 if (toDump.length) {
   const dbUrl = env.BACKUP_DATABASE_URL
@@ -109,10 +119,7 @@ if (toDump.length) {
       log(`pg_dump FAILED, tables stay NOT COVERED: ${(r.stderr || '').toString().replace(dbUrl, '<url>').trim().split('\n').slice(-2).join(' | ') || 'missing ' + missing.join(', ')}`)
     } else {
       // Row counts from the COPY blocks, so the manifest records what was captured.
-      const rows = Object.fromEntries(toDump.map((t) => {
-        const m = text.match(new RegExp(`COPY public\\.${t} \\([^)]*\\) FROM stdin;\\n([\\s\\S]*?)\\n\\\\\\.\\n`))
-        return [t, m ? (m[1] === '' ? 0 : m[1].split('\n').length) : 0]
-      }))
+      const rows = Object.fromEntries(toDump.map((t) => [t, countCopyRows(text, t) ?? 0]))
       const gz = path.join(outDir, 'pg-dump-restricted-tables.sql.gz')
       fs.writeFileSync(gz, zlib.gzipSync(sql))
       const sha = sha256File(gz)

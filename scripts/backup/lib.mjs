@@ -93,3 +93,16 @@ export function writeStatus(name, data) {
 export function readStatus(name) {
   try { return JSON.parse(fs.readFileSync(path.join(BACKUP_ROOT, 'status', `${name}.json`), 'utf8')) } catch { return null }
 }
+
+// Rows that a pg_dump holds for one table: the lines between its "COPY public.<table> (...) FROM stdin;" line and the
+// terminating "\\." line. Line-based on purpose: an empty table's block is only those two lines, and a pattern that
+// searches for the terminator can run on into the NEXT table's data and report rows that are not there.
+// Returns null when the dump has no COPY block for the table at all.
+export function countCopyRows(sql, table) {
+  const lines = sql.split('\n')
+  const start = lines.findIndex((l) => l.startsWith(`COPY public.${table} (`))
+  if (start < 0) return null
+  let n = 0
+  for (let i = start + 1; i < lines.length && lines[i] !== '\\.'; i++) n++
+  return n
+}
