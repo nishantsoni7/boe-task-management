@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `a2cf4f27` — Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center
-- Commits on this branch: 1044
+- Commit: `38e9a13d` — Merge remote-tracking branch 'origin/main' into feat/vendor-access-levels
+- Commits on this branch: 1046
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 813   Enums: 0
-- Test files: 665   Next.js 16.2.6, React 19.2.4
+- Test files: 666   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `38e9a13d` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-access-levels
 - `a2cf4f27` 2026-10-28 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center
+- `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
@@ -37,8 +39,6 @@
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
 - `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
 - `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
-- `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
-- `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
 
 ## Pages by top-level area
 

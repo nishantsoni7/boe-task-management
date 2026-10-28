@@ -222,7 +222,13 @@ describe('source contracts', () => {
   })
 
   test('and on the home screen, for recipients without Finance access', () => {
-    assert.match(MODULES, /<HandoverBanner \/>/)
+    // The banner now lives in the launcher's right-hand attention panel, which
+    // the page mounts for everybody; its Finance group opens on handovers alone,
+    // whatever the person's Finance access.
+    const PANEL = readFileSync(join(process.cwd(), 'src/app/modules/AttentionPanel.tsx'), 'utf8')
+    assert.match(PANEL, /<HandoverBanner \/>/)
+    assert.match(PANEL, /const showFinance = hasHandovers \|\| showFinanceRow/)
+    assert.match(MODULES, /<AttentionPanel/)
   })
 
   test('the banner has no dismiss control', () => {
