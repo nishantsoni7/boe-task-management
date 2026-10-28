@@ -109,14 +109,9 @@ create table public.vendors (
   submission_id       uuid not null unique,
   company_name        text not null check (length(btrim(company_name)) between 1 and 160),
   contact_name        text check (contact_name is null or length(btrim(contact_name)) between 1 and 120),
-  contact_designation text check (contact_designation is null or length(contact_designation) <= 80),
   phone_e164          text check (phone_e164 is null or phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
-  alt_phone_e164      text check (alt_phone_e164 is null or alt_phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
-  email               text check (email is null or (length(email) <= 120 and email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$')),
   address             text check (address is null or length(btrim(address)) between 5 and 500),
   city                text check (city is null or length(btrim(city)) between 1 and 80),
-  state               text check (state is null or length(state) <= 80),
-  pincode             text check (pincode is null or pincode ~ '^[0-9]{6}$'),
   latitude            numeric(9,6) check (latitude is null or latitude between -90 and 90),
   longitude           numeric(9,6) check (longitude is null or longitude between -180 and 180),
   -- What the vendor can do: raw/semi-finished pieces, complete finished furniture, or finishing only.
@@ -127,9 +122,7 @@ create table public.vendors (
                       check (categories <@ array['sofa_upholstery','chairs','tables','beds','storage_cabinets',
                                                  'outdoor','metal_fabrication','wood_carving_turning',
                                                  'polishing_finishing','other']),
-  materials           text check (materials is null or length(materials) <= 300),
   headcount           integer check (headcount is null or headcount between 0 and 5000),
-  monthly_capacity    text check (monthly_capacity is null or length(monthly_capacity) <= 200),
   -- Who recommended this vendor, or how we heard of them (the reference being followed up).
   referred_by         text check (referred_by is null or length(referred_by) <= 200),
   notes               text check (notes is null or length(notes) <= 2000),
@@ -177,11 +170,7 @@ create table public.vendor_visits (
   visited_at             timestamptz not null default now(),
   kind                   text not null default 'site_visit' check (kind in ('site_visit', 'vendor_at_our_factory')),
   entered_later          boolean not null default false,
-  purpose                text not null
-                         check (purpose in ('first_meeting','factory_inspection','sample_review',
-                                            'price_negotiation','follow_up','other')),
   person_met             text not null check (length(btrim(person_met)) between 1 and 120),
-  person_met_designation text check (person_met_designation is null or length(person_met_designation) <= 80),
   discussion             text not null check (length(btrim(discussion)) between 3 and 2000),
   outcome                text not null
                          check (outcome in ('interested','follow_up_needed','sample_requested',
@@ -493,21 +482,14 @@ declare
   v_relaxed boolean;
   v_company text;
   v_contact text;
-  v_desig   text;
   v_phone   text;
-  v_alt     text;
-  v_email   text;
   v_address text;
   v_city    text;
-  v_state   text;
-  v_pin     text;
   v_lat     numeric;
   v_lng     numeric;
   v_caps    text[];
   v_cats    text[];
-  v_mat     text;
   v_head    integer;
-  v_cap     text;
   v_ref     text;
   v_notes   text;
 begin
@@ -537,23 +519,11 @@ begin
 
   v_company := public.vendor_txt(p, 'company_name', 160, 'Company name', true);
   v_contact := public.vendor_txt(p, 'contact_name', 120, 'Contact person', not v_relaxed);
-  v_desig   := public.vendor_txt(p, 'contact_designation', 80, 'Designation');
-  v_email   := lower(public.vendor_txt(p, 'email', 120, 'Email'));
-  if v_email is not null and v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
-    raise exception 'VENDOR_INVALID: Email does not look right' using errcode = '22023';
-  end if;
   v_address := public.vendor_txt(p, 'address', 500, 'Address', not v_relaxed);
   if v_address is not null and length(v_address) < 5 then
     raise exception 'VENDOR_INVALID: Address is too short; give the exact address of the factory' using errcode = '22023';
   end if;
   v_city    := public.vendor_txt(p, 'city', 80, 'City', not v_relaxed);
-  v_state   := public.vendor_txt(p, 'state', 80, 'State');
-  v_pin     := public.vendor_txt(p, 'pincode', 6, 'Pincode');
-  if v_pin is not null and v_pin !~ '^[0-9]{6}$' then
-    raise exception 'VENDOR_INVALID: Pincode must be 6 digits' using errcode = '22023';
-  end if;
-  v_mat     := public.vendor_txt(p, 'materials', 300, 'Materials');
-  v_cap     := public.vendor_txt(p, 'monthly_capacity', 200, 'Monthly capacity');
   v_ref     := public.vendor_txt(p, 'referred_by', 200, 'Who recommended them');
   v_notes   := public.vendor_txt(p, 'notes', 2000, 'Notes');
   v_caps    := public.vendor_arr(p, 'capabilities', array['raw_pieces','finished_pieces','finishing_only'],
@@ -572,11 +542,6 @@ begin
     if v_phone is null then
       raise exception 'VENDOR_INVALID: Mobile number does not look right' using errcode = '22023';
     end if;
-  end if;
-  v_alt := case when nullif(btrim(coalesce(p ->> 'alt_phone', '')), '') is null then null
-                else public.normalize_lead_phone(p ->> 'alt_phone') end;
-  if nullif(btrim(coalesce(p ->> 'alt_phone', '')), '') is not null and v_alt is null then
-    raise exception 'VENDOR_INVALID: Second number does not look right' using errcode = '22023';
   end if;
 
   if nullif(btrim(coalesce(p ->> 'headcount', '')), '') is not null then
@@ -619,13 +584,11 @@ begin
     end if;
     begin
       insert into public.vendors
-        (submission_id, company_name, contact_name, contact_designation, phone_e164, alt_phone_e164, email,
-         address, city, state, pincode, latitude, longitude, capabilities, categories, materials,
-         headcount, monthly_capacity, referred_by, notes, status, created_by, updated_by)
+        (submission_id, company_name, contact_name, phone_e164, address, city, latitude, longitude,
+         capabilities, categories, headcount, referred_by, notes, status, created_by, updated_by)
       values
-        (p_submission_id, v_company, v_contact, v_desig, v_phone, v_alt, v_email,
-         v_address, v_city, v_state, v_pin, v_lat, v_lng, v_caps, v_cats, v_mat,
-         v_head, v_cap, v_ref, v_notes, v_stage, v_uid, v_uid)
+        (p_submission_id, v_company, v_contact, v_phone, v_address, v_city, v_lat, v_lng,
+         v_caps, v_cats, v_head, v_ref, v_notes, v_stage, v_uid, v_uid)
       returning * into v_row;
     exception when unique_violation then
       select * into v_row from public.vendors where phone_e164 = v_phone and archived_at is null;
@@ -647,13 +610,10 @@ begin
     raise exception 'VENDOR_DUPLICATE_PHONE: another vendor already uses this mobile number' using errcode = '23505';
   end if;
   update public.vendors set
-    company_name = v_company, contact_name = v_contact, contact_designation = v_desig,
-    phone_e164 = v_phone, alt_phone_e164 = v_alt, email = v_email,
-    address = v_address, city = v_city, state = v_state, pincode = v_pin,
+    company_name = v_company, contact_name = v_contact, phone_e164 = v_phone, address = v_address, city = v_city,
     -- A location sent with the edit moves the pin; an edit without one leaves it.
     latitude = coalesce(v_lat, latitude), longitude = coalesce(v_lng, longitude),
-    capabilities = v_caps, categories = v_cats, materials = v_mat,
-    headcount = v_head, monthly_capacity = v_cap, referred_by = v_ref, notes = v_notes,
+    capabilities = v_caps, categories = v_cats, headcount = v_head, referred_by = v_ref, notes = v_notes,
     updated_by = v_uid
   where id = p_vendor_id;
   return jsonb_build_object('status', 'saved', 'id', p_vendor_id, 'company_name', v_company);
@@ -668,7 +628,7 @@ grant execute on function public.save_vendor(uuid, uuid, jsonb) to authenticated
 --   entered_later     true for something that already happened, typed in afterwards (needs visited_on, and the
 --                     catch-up window must be open); no photographs or location are required or kept
 --   visited_on        the day it happened (entered_later only; not in the future, at most 120 days back)
---   purpose, person_met, person_met_designation, discussion, outcome, next_follow_up_on
+--   person_met, discussion, outcome, next_follow_up_on
 --   latitude, longitude, accuracy_m   (a live site visit only)
 --   photos            [{path, kind}]
 -- A LIVE site visit needs at least one photograph, and a vendor's first live site visit a factory photograph.
@@ -690,9 +650,7 @@ declare
   v_later    boolean;
   v_on       date;
   v_when     timestamptz := now();
-  v_purpose  text;
   v_person   text;
-  v_desig    text;
   v_disc     text;
   v_outcome  text;
   v_follow   date;
@@ -760,16 +718,11 @@ begin
     v_when := least(now(), ((v_on + time '12:00') at time zone 'Asia/Kolkata'));
   end if;
 
-  v_purpose := public.vendor_txt(p, 'purpose', 40, 'Purpose of the visit', true);
-  if v_purpose not in ('first_meeting','factory_inspection','sample_review','price_negotiation','follow_up','other') then
-    raise exception 'VENDOR_INVALID: Purpose of the visit is not on the list' using errcode = '22023';
-  end if;
   v_outcome := public.vendor_txt(p, 'outcome', 40, 'Outcome', true);
   if v_outcome not in ('interested','follow_up_needed','sample_requested','approved_to_start','not_suitable') then
     raise exception 'VENDOR_INVALID: Outcome is not on the list' using errcode = '22023';
   end if;
   v_person := public.vendor_txt(p, 'person_met', 120, 'Person met', true);
-  v_desig  := public.vendor_txt(p, 'person_met_designation', 80, 'Designation of the person met');
   v_disc   := public.vendor_txt(p, 'discussion', 2000, 'What was discussed', true);
   if length(v_disc) < 3 then
     raise exception 'VENDOR_INVALID: What was discussed is too short' using errcode = '22023';
@@ -851,10 +804,10 @@ begin
   end if;
 
   insert into public.vendor_visits
-    (submission_id, vendor_id, visited_by, visited_at, kind, entered_later, purpose, person_met, person_met_designation,
+    (submission_id, vendor_id, visited_by, visited_at, kind, entered_later, person_met,
      discussion, outcome, next_follow_up_on, location_source, latitude, longitude, accuracy_m, distance_m)
   values
-    (p_submission_id, p_vendor_id, v_uid, v_when, v_kind, v_later, v_purpose, v_person, v_desig,
+    (p_submission_id, p_vendor_id, v_uid, v_when, v_kind, v_later, v_person,
      v_disc, v_outcome, v_follow, v_source, v_lat, v_lng, v_acc, v_dist)
   returning id into v_visit;
 
@@ -1055,6 +1008,7 @@ declare
   v_today    date := (now() at time zone 'Asia/Kolkata')::date;
   v_total    integer;
   v_counts   jsonb;
+  v_wait     integer;
   v_terms    text[];
   v_rows     jsonb;
 begin
@@ -1072,14 +1026,14 @@ begin
     v_cats := array(select jsonb_array_elements_text(p_filter -> 'categories'));
   end if;
 
-  -- Every word typed must be found somewhere in the vendor (company, person, phone, city, address, materials,
+  -- Every word typed must be found somewhere in the vendor (company, person, phone, city, address,
   -- product types, who recommended them): "teak jodhpur" finds a Jodhpur vendor that works in teak, in any order.
   if v_q is not null then
     v_terms := regexp_split_to_array(v_q, '\s+');
   end if;
 
   with pre as (
-    select v.id, v.company_name, v.contact_name, v.phone_e164, v.city, v.state, v.status, v.referred_by,
+    select v.id, v.company_name, v.contact_name, v.phone_e164, v.city, v.status, v.referred_by,
            v.capabilities, v.categories, v.headcount, v.created_at, v.archived_at,
            (select count(*) from public.vendor_visits x where x.vendor_id = v.id) as visit_count,
            (select count(*) from public.vendor_visits x where x.vendor_id = v.id and x.kind = 'site_visit') as site_visit_count,
@@ -1092,7 +1046,7 @@ begin
        and (v_terms is null or not exists (
               select 1 from unnest(v_terms) t
                where position(t in lower(concat_ws(' ', v.company_name, v.contact_name, v.phone_e164,
-                       v.city, v.state, v.address, v.materials, v.referred_by, array_to_string(v.categories, ' ')))) = 0))
+                       v.city, v.address, v.referred_by, array_to_string(v.categories, ' ')))) = 0))
        and (v_caps is null or v.capabilities && v_caps)
        and (v_cats is null or v.categories && v_cats)
        and (v_city is null or lower(v.city) = v_city)
@@ -1105,11 +1059,12 @@ begin
        and (not v_await or (pre.inbound_count > 0 and pre.site_visit_count = 0))
   )
   select (select count(*) from base),
+         (select count(*) from pre where pre.inbound_count > 0 and pre.site_visit_count = 0),
          coalesce((select jsonb_object_agg(c.status, c.n) from (select status, count(*) as n from pre group by status) c), '{}'::jsonb),
          coalesce((
            select jsonb_agg(jsonb_build_object(
                     'id', b.id, 'company_name', b.company_name, 'contact_name', b.contact_name,
-                    'phone', b.phone_e164, 'city', b.city, 'state', b.state, 'status', b.status,
+                    'phone', b.phone_e164, 'city', b.city, 'status', b.status,
                     'referred_by', b.referred_by,
                     'capabilities', b.capabilities, 'categories', b.categories, 'headcount', b.headcount,
                     'created_at', b.created_at, 'archived', b.archived_at is not null,
@@ -1133,9 +1088,9 @@ begin
                     created_at desc
                   limit v_limit offset v_offset) b
          ), '[]'::jsonb)
-    into v_total, v_counts, v_rows;
+    into v_total, v_wait, v_counts, v_rows;
 
-  return jsonb_build_object('total', v_total, 'status_counts', v_counts, 'rows', v_rows);
+  return jsonb_build_object('total', v_total, 'awaiting_count', v_wait, 'status_counts', v_counts, 'rows', v_rows);
 end;
 $$;
 revoke all on function public.vendor_list(jsonb) from public, anon;
@@ -1161,13 +1116,10 @@ begin
   return jsonb_build_object(
     'vendor', jsonb_build_object(
       'id', v_vendor.id, 'company_name', v_vendor.company_name, 'contact_name', v_vendor.contact_name,
-      'contact_designation', v_vendor.contact_designation, 'phone', v_vendor.phone_e164,
-      'alt_phone', v_vendor.alt_phone_e164, 'email', v_vendor.email, 'address', v_vendor.address,
-      'city', v_vendor.city, 'state', v_vendor.state, 'pincode', v_vendor.pincode,
+      'phone', v_vendor.phone_e164, 'address', v_vendor.address, 'city', v_vendor.city,
       'latitude', v_vendor.latitude, 'longitude', v_vendor.longitude,
       'capabilities', v_vendor.capabilities, 'categories', v_vendor.categories,
-      'materials', v_vendor.materials, 'headcount', v_vendor.headcount,
-      'monthly_capacity', v_vendor.monthly_capacity, 'referred_by', v_vendor.referred_by,
+      'headcount', v_vendor.headcount, 'referred_by', v_vendor.referred_by,
       'notes', v_vendor.notes, 'status', v_vendor.status,
       'created_at', v_vendor.created_at,
       'created_by_name', (select u.full_name from public.users u where u.id = v_vendor.created_by),
@@ -1182,8 +1134,8 @@ begin
       select jsonb_agg(jsonb_build_object(
                'id', x.id, 'visited_at', x.visited_at, 'visited_by', x.visited_by,
                'visited_by_name', u.full_name, 'kind', x.kind, 'entered_later', x.entered_later,
-               'recorded_at', x.created_at, 'purpose', x.purpose,
-               'person_met', x.person_met, 'person_met_designation', x.person_met_designation,
+               'recorded_at', x.created_at,
+               'person_met', x.person_met,
                'discussion', x.discussion, 'outcome', x.outcome, 'next_follow_up_on', x.next_follow_up_on,
                'location_source', x.location_source, 'latitude', x.latitude, 'longitude', x.longitude,
                'accuracy_m', x.accuracy_m, 'distance_m', x.distance_m,

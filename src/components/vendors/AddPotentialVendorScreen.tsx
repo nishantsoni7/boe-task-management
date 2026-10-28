@@ -9,14 +9,12 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
 import { newSubmissionId } from '@/lib/exhibitionLeads/draft'
 import { VENDORS_KEY, saveVendor } from '@/lib/vendors/api'
-import { CATEGORIES } from '@/lib/vendors/constants'
 import { EMPTY_VENDOR, validateVendor, vendorPayload } from '@/lib/vendors/validation'
-import { Chips, Field } from './VendorBits'
+import VendorFields from './VendorFields'
 import s from './vendors.module.css'
 
-// A vendor we have heard about but not visited. Twenty seconds on a phone: the name and who recommended them
-// are what matter; everything else can be filled in later, when someone meets or visits them. A visit to
-// their factory later registers them properly.
+// A vendor we have heard about but not visited. A name and who recommended them are enough; the rest can wait
+// until someone meets or visits them. A visit to their factory later registers them properly.
 
 type Stage = 'potential' | 'contacted'
 
@@ -39,7 +37,7 @@ export default function AddPotentialVendorScreen() {
     const e = validateVendor(form, true)
     setErrors(e)
     setDuplicate(null)
-    if (Object.keys(e).length > 0) { setProblem('Some details need attention — they are marked in red.'); return }
+    if (Object.keys(e).length > 0) { setProblem('Some details need attention.'); return }
     setBusy(true)
     setProblem(null)
     try {
@@ -57,62 +55,32 @@ export default function AddPotentialVendorScreen() {
     }
   }
 
-  const cls = (k: keyof typeof errors) => `${s.input}${errors[k] ? ` ${s.invalid}` : ''}`
-
   return (
-    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Add a Potential Vendor"
-                   subtitle="Someone we have heard about, not visited yet">
+    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Add vendor">
       <div className={s.wrap}>
-        <div className={s.card}>
-          <Field label="Company / workshop name" required error={errors.company_name} htmlFor="p-name">
-            <input id="p-name" className={cls('company_name')} value={form.company_name} maxLength={160} autoComplete="off"
-                   onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))} />
-          </Field>
-          <Field label="Who recommended them?" htmlFor="p-ref"
-                 hint="The person or company that gave us this reference — so it can be followed up">
-            <input id="p-ref" className={s.input} value={form.referred_by} maxLength={200} autoComplete="off"
-                   onChange={e => setForm(f => ({ ...f, referred_by: e.target.value }))} />
-          </Field>
-          <div className={s.grid2}>
-            <Field label="Contact person" htmlFor="p-contact">
-              <input id="p-contact" className={s.input} value={form.contact_name} maxLength={120} autoComplete="off"
-                     onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} />
-            </Field>
-            <Field label="Mobile number" error={errors.phone} htmlFor="p-phone" hint="If you have it">
-              <input id="p-phone" className={cls('phone')} value={form.phone} inputMode="tel" autoComplete="off"
-                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-            </Field>
-            <Field label="City" htmlFor="p-city">
-              <input id="p-city" className={s.input} value={form.city} maxLength={80}
-                     onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
-            </Field>
+        <section className={s.section}>
+          <div className={s.segmented} role="radiogroup" aria-label="Where are we with them">
+            {([['potential', 'Not contacted yet'], ['contacted', 'Already spoken to']] as const).map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={stage === v}
+                      className={`${s.segment}${stage === v ? ` ${s.segmentOn}` : ''}`} onClick={() => setStage(v)}>{label}</button>
+            ))}
           </div>
-          <Field label="What do they make?">
-            <Chips multiple label="What they make" options={CATEGORIES} value={form.categories}
-                   onChange={v => setForm(f => ({ ...f, categories: v as string[] }))} />
-          </Field>
-          <Field label="Where are we with them?">
-            <Chips label="Stage" value={stage} onChange={v => setStage(v as Stage)} options={[
-              { value: 'potential', label: 'Not contacted yet' },
-              { value: 'contacted', label: 'Already spoken to' },
-            ]} />
-          </Field>
-          <Field label="Notes" htmlFor="p-notes">
-            <textarea id="p-notes" className={s.textarea} value={form.notes} maxLength={2000}
-                      onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-          </Field>
+          <div className={s.hint}>For a vendor we have heard about but not visited. A name is enough; the rest can wait until their factory is visited.</div>
+        </section>
 
-          {duplicate && (
-            <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
-              We already have <strong>{duplicate.name}</strong> in the list.{' '}
-              <Link className={s.linkBtn} href={`/vendors/${duplicate.id}`}>Open it</Link>
-            </div>
-          )}
-          {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Add vendor'}</button>
-            <Link className={s.secondary} href="/vendors">Cancel</Link>
+        <section className={s.section}>
+          <VendorFields relaxed value={form} errors={errors} onChange={patch => setForm(f => ({ ...f, ...patch }))} />
+        </section>
+
+        {duplicate && (
+          <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
+            <strong>{duplicate.name}</strong> is already in the list. <Link className={s.linkBtn} href={`/vendors/${duplicate.id}`}>Open it</Link>
           </div>
+        )}
+        {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
+        <div className={s.submitBar}>
+          <Link className={s.secondary} href="/vendors">Cancel</Link>
+          <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Add vendor'}</button>
         </div>
       </div>
     </VendorsLayout>

@@ -38,11 +38,9 @@ export default function VendorEditScreen() {
   if (v && !loaded) {
     setLoaded(true)
     setValue({
-      company_name: v.company_name, contact_name: v.contact_name ?? '', contact_designation: v.contact_designation ?? '',
-      phone: v.phone ?? '', alt_phone: v.alt_phone ?? '', email: v.email ?? '', address: v.address ?? '', city: v.city ?? '',
-      state: v.state ?? '', pincode: v.pincode ?? '', capabilities: v.capabilities, categories: v.categories,
-      materials: v.materials ?? '', headcount: v.headcount === null ? '' : String(v.headcount),
-      monthly_capacity: v.monthly_capacity ?? '', referred_by: v.referred_by ?? '', notes: v.notes ?? '',
+      company_name: v.company_name, contact_name: v.contact_name ?? '', phone: v.phone ?? '', address: v.address ?? '',
+      city: v.city ?? '', capabilities: v.capabilities, categories: v.categories,
+      headcount: v.headcount === null ? '' : String(v.headcount), referred_by: v.referred_by ?? '', notes: v.notes ?? '',
     })
   }
 
@@ -72,14 +70,16 @@ export default function VendorEditScreen() {
       <div className={s.wrap}>
         {detail.error && <div className={`${s.banner} ${s.bannerErr}`} role="alert">This vendor is not available.</div>}
         {detail.data && (
-          <div className={s.card}>
-            <VendorFields relaxed={relaxed} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
+          <>
+            <section className={s.section}>
+              <VendorFields relaxed={relaxed} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
+            </section>
             {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save changes'}</button>
+            <div className={s.submitBar}>
               <Link className={s.secondary} href={`/vendors/${id}`}>Cancel</Link>
+              <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save changes'}</button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </VendorsLayout>

@@ -15,8 +15,8 @@ import {
   type LogVisitResult, type VendorInput, type VisitInput,
 } from '@/lib/vendors/api'
 import {
-  AT_SITE_METRES, MAX_PHOTOS_PER_VISIT, PHOTO_KINDS, PRE_VISIT_STATUSES, VISIT_KINDS, VISIT_OUTCOMES, VISIT_PURPOSES,
-  labelOf, type PhotoKind, type VisitKind,
+  AT_SITE_METRES, MAX_PHOTOS_PER_VISIT, PRE_VISIT_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
+  type PhotoKind, type VisitKind,
 } from '@/lib/vendors/constants'
 import { shrinkPhoto, uploadVendorPhoto } from '@/lib/vendors/photos'
 import {
@@ -27,12 +27,12 @@ import { Chips, Field } from './VendorBits'
 import VendorFields from './VendorFields'
 import s from './vendors.module.css'
 
-// Log a meeting with a vendor. One screen, top to bottom:
-//   what happened   we went to their factory (the proof event) / they came to ours
-//   which vendor    an existing one, or a new one
-//   the details     purpose, person met, what was discussed, outcome
-//   photographs     required for a live visit to their factory, optional otherwise
-//   location        captured automatically, for a live visit to their factory only
+// Log a meeting with a vendor — one flat page, top to bottom:
+//   what happened     we went to their factory (the proof event) / they came to ours
+//   vendor            an existing one, or a new one
+//   the meeting       who, what was said, the outcome
+//   photographs       required for a live visit to their factory, optional otherwise
+//   location          captured automatically, for a live visit to their factory only
 // A visit that already happened (before this system existed) can be typed in without proof while the owner's
 // catch-up window is open; it is always shown as "Added later".
 // Saving uploads the photographs, creates the vendor if it is new, completes the profile if a site visit is
@@ -47,9 +47,9 @@ type Where =
 
 type Picked = { id: string; name: string; siteVisitCount: number }
 
-const DRAFT_KEY = 'vendors:visit-draft:v2'
+const DRAFT_KEY = 'vendors:visit-draft:v3'
 type Draft = {
-  v: 2; kind: VisitKind; later: boolean; mode: 'existing' | 'new'; picked: Picked | null
+  v: 3; kind: VisitKind; later: boolean; mode: 'existing' | 'new'; picked: Picked | null
   vendor: VendorInput; visit: VisitDraft
 }
 
@@ -128,7 +128,7 @@ export default function LogVisitScreen() {
 
   const results = useQuery({
     queryKey: [VENDORS_KEY, 'pick', search.trim()],
-    queryFn: () => fetchVendorPage(supabase, { q: search.trim(), limit: 8 }),
+    queryFn: () => fetchVendorPage(supabase, { q: search.trim(), limit: 6 }),
     enabled: mode === 'existing' && !picked && search.trim().length >= 2 && !!profile,
   })
 
@@ -145,13 +145,10 @@ export default function LogVisitScreen() {
   if (chosenVendor && completionLoadedFor !== chosenVendor.id) {
     setCompletionLoadedFor(chosenVendor.id)
     setCompletion({
-      company_name: chosenVendor.company_name, contact_name: chosenVendor.contact_name ?? '',
-      contact_designation: chosenVendor.contact_designation ?? '', phone: chosenVendor.phone ?? '',
-      alt_phone: chosenVendor.alt_phone ?? '', email: chosenVendor.email ?? '', address: chosenVendor.address ?? '',
-      city: chosenVendor.city ?? '', state: chosenVendor.state ?? '', pincode: chosenVendor.pincode ?? '',
-      capabilities: chosenVendor.capabilities, categories: chosenVendor.categories, materials: chosenVendor.materials ?? '',
-      headcount: chosenVendor.headcount === null ? '' : String(chosenVendor.headcount),
-      monthly_capacity: chosenVendor.monthly_capacity ?? '', referred_by: chosenVendor.referred_by ?? '', notes: chosenVendor.notes ?? '',
+      company_name: chosenVendor.company_name, contact_name: chosenVendor.contact_name ?? '', phone: chosenVendor.phone ?? '',
+      address: chosenVendor.address ?? '', city: chosenVendor.city ?? '', capabilities: chosenVendor.capabilities,
+      categories: chosenVendor.categories, headcount: chosenVendor.headcount === null ? '' : String(chosenVendor.headcount),
+      referred_by: chosenVendor.referred_by ?? '', notes: chosenVendor.notes ?? '',
     })
   }
 
@@ -170,7 +167,7 @@ export default function LogVisitScreen() {
         const raw = window.localStorage.getItem(DRAFT_KEY)
         if (raw && !presetId) {
           const d = JSON.parse(raw) as Draft
-          if (d && d.v === 2 && (d.visit?.discussion || d.vendor?.company_name || d.picked)) {
+          if (d && d.v === 3 && (d.visit?.discussion || d.vendor?.company_name || d.picked)) {
             setKind(d.kind); setLater(d.later); setMode(d.mode); setPicked(d.picked)
             setVendor({ ...EMPTY_VENDOR, ...d.vendor }); setVisit({ ...EMPTY_VISIT, ...d.visit })
             setRestored(true)
@@ -185,7 +182,7 @@ export default function LogVisitScreen() {
     try {
       const empty = !visit.discussion && !visit.person_met && !vendor.company_name && !picked
       if (empty) window.localStorage.removeItem(DRAFT_KEY)
-      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 2, kind, later, mode, picked, vendor, visit } satisfies Draft))
+      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 3, kind, later, mode, picked, vendor, visit } satisfies Draft))
     } catch { /* storage unavailable — the form still works */ }
   }, [kind, later, mode, picked, vendor, visit, done])
 
@@ -198,15 +195,19 @@ export default function LogVisitScreen() {
     ? chosen.data.visits.filter(x => x.kind === 'site_visit' && !x.entered_later).length
     : (picked?.siteVisitCount ?? 0)
   const needsFactoryPhoto = isNewVendor || liveSiteVisits === 0
-  const photoNeeded = live
 
-  const checks = [
-    { label: 'Vendor', ok: isNewVendor ? !!(vendor.company_name.trim() && (newVendorRelaxed || (vendor.phone.trim() && vendor.address.trim() && vendor.contact_name.trim() && vendor.capabilities.length))) : !!picked },
-    ...(registering ? [{ label: 'Vendor details', ok: Object.keys(validateVendor(completion, false)).length === 0 }] : []),
-    { label: 'Visit details', ok: !!(visit.purpose && visit.person_met.trim() && visit.discussion.trim().length >= 3 && visit.outcome && (!effectiveLater || visit.visited_on)) },
-    ...(photoNeeded ? [{ label: 'Photos', ok: photos.length > 0 && (!needsFactoryPhoto || photos.some(p => p.kind === 'factory')) }] : []),
-  ]
-  const doneCount = checks.filter(c => c.ok).length
+  // What is still missing: the first item is shown beside the Save button.
+  const missing: string[] = []
+  if (isNewVendor) {
+    if (Object.keys(validateVendor(vendor, newVendorRelaxed)).length > 0) missing.push('Fill in the vendor’s details')
+  } else if (!picked) missing.push('Choose the vendor')
+  if (registering && Object.keys(validateVendor(completion, false)).length > 0) missing.push('Complete the vendor’s details')
+  if (!visit.person_met.trim()) missing.push('Who did you meet?')
+  if (visit.discussion.trim().length < 3) missing.push('Add a note about the meeting')
+  if (!visit.outcome) missing.push('Choose the outcome')
+  if (effectiveLater && !visit.visited_on) missing.push('Choose the day it happened')
+  if (live && photos.length === 0) missing.push(needsFactoryPhoto ? 'Take a photo of the factory' : 'Take a photo')
+  else if (live && needsFactoryPhoto && !photos.some(p => p.kind === 'factory')) missing.push('Take a photo of the factory')
 
   async function addPhotos(photoKind: PhotoKind, files: FileList | null) {
     if (!files || files.length === 0) return
@@ -284,14 +285,13 @@ export default function LogVisitScreen() {
         uploaded.push({ path, kind: p.kind })
       }
 
-      setBusy('Recording the visit…')
+      setBusy('Saving…')
       const input: VisitInput = {
         ...visit,
         kind,
         entered_later: effectiveLater,
         visited_on: effectiveLater ? visit.visited_on : '',
         person_met: visit.person_met.trim(),
-        person_met_designation: visit.person_met_designation.trim(),
         discussion: visit.discussion.trim(),
         photos: uploaded,
         latitude: live && where.state === 'ok' ? where.latitude : null,
@@ -315,17 +315,17 @@ export default function LogVisitScreen() {
     return (
       <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Saved">
         <div className={s.wrap}>
-          <div className={s.card}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <CheckCircle2 size={26} color="#1D6B34" aria-hidden="true" />
+          <div className={s.section}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <CheckCircle2 size={20} color="#2A6B3D" aria-hidden="true" />
               <h2 className={s.cardTitle}>
-                {done.kind === 'vendor_at_our_factory' ? `Your meeting with ${done.name} is recorded` : `Your visit to ${done.name} is recorded`}
+                {done.kind === 'vendor_at_our_factory' ? `Meeting with ${done.name} recorded` : `Visit to ${done.name} recorded`}
               </h2>
             </div>
             {done.entered_later
-              ? <div className={`${s.banner} ${s.bannerWarn}`}>Recorded as “Added later”: it shows no photographs or location, and does not count as a proven visit.</div>
+              ? <div className={`${s.banner} ${s.bannerWarn}`}>Saved as “Added later”: no photographs or location, so it does not count as a proven visit.</div>
               : done.kind === 'vendor_at_our_factory'
-                ? <div className={`${s.banner} ${s.bannerWarn}`}>Nobody has visited their factory yet. A site visit registers {done.name} properly — it now appears on the “awaiting site visit” list.</div>
+                ? <div className={`${s.banner} ${s.bannerWarn}`}>Nobody has visited their factory yet. A site visit registers {done.name} properly; it now shows on the “awaiting a site visit” list.</div>
                 : done.location_source === 'gps'
                   ? <div className={`${s.banner} ${near || done.distance_m == null ? s.bannerOk : s.bannerWarn}`}>
                       {done.distance_m == null
@@ -335,11 +335,9 @@ export default function LogVisitScreen() {
                           : `Location recorded — ${(done.distance_m / 1000).toFixed(1)} km from the vendor's address.`}
                     </div>
                   : <div className={`${s.banner} ${s.bannerWarn}`}>No location was recorded for this visit.</div>}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Link className={s.primary} href={`/vendors/${done.vendor_id}`}>See the vendor</Link>
-              <button className={s.secondary} type="button" onClick={() => window.location.assign('/vendors/visit')}>
-                Log another
-              </button>
+              <button className={s.secondary} type="button" onClick={() => window.location.assign('/vendors/visit')}>Log another</button>
             </div>
           </div>
         </div>
@@ -347,16 +345,21 @@ export default function LogVisitScreen() {
     )
   }
 
-  const photoCount = (k: PhotoKind) => photos.filter(p => p.kind === k).length
-  const slotKinds: PhotoKind[] = ['factory', 'person', 'product']
   const today = istToday()
+  const photoButton = (photoKind: PhotoKind, label: string, camera: boolean) => (
+    <label className={s.secondary} style={{ cursor: 'pointer' }}>
+      <Camera size={15} aria-hidden="true" /> {label}
+      <input className={s.hiddenFile} type="file" accept="image/*" {...(camera ? { capture: 'environment' as const } : {})} multiple
+             onChange={e => { void addPhotos(photoKind, e.target.files); e.target.value = '' }} />
+    </label>
+  )
 
   return (
-    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Log a Visit" subtitle="Record who you met, where, and what you saw">
+    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Log a visit">
       <div className={s.wrap}>
         {restored && (
           <div className={`${s.banner} ${s.bannerOk}`} role="status">
-            Your unfinished entry was restored. Photographs need to be added again.
+            Your unfinished entry was restored (photographs need adding again).{' '}
             <button type="button" className={s.linkBtn} onClick={() => {
               try { window.localStorage.removeItem(DRAFT_KEY) } catch { /* nothing to clear */ }
               window.location.assign('/vendors/visit')
@@ -364,68 +367,54 @@ export default function LogVisitScreen() {
           </div>
         )}
 
-        {/* 0. What happened */}
-        <section className={s.card} aria-labelledby="h-kind">
-          <h2 id="h-kind" className={s.cardTitle}>What happened?</h2>
-          <div className={s.kindTabs} role="radiogroup" aria-label="What happened">
+        {/* What happened */}
+        <section className={s.section}>
+          <div className={s.segmented} role="radiogroup" aria-label="What happened">
             {VISIT_KINDS.map(o => (
               <button key={o.value} type="button" role="radio" aria-checked={kind === o.value}
-                      className={`${s.kindTab}${kind === o.value ? ` ${s.kindTabOn}` : ''}`} onClick={() => setKind(o.value)}>
-                <span className={s.kindTitle}>{o.label}</span>
-                <span className={s.kindHint}>{o.value === 'site_visit' ? 'Photos and location required' : 'No photos or location needed'}</span>
+                      className={`${s.segment}${kind === o.value ? ` ${s.segmentOn}` : ''}`} onClick={() => setKind(o.value)}>
+                {o.label}
               </button>
             ))}
           </div>
-          {kind === 'vendor_at_our_factory' && (
-            <div className={s.hint}>A vendor who comes to us is recorded here. They are registered only when someone from our team visits their factory.</div>
-          )}
-
-          {pastEntriesOpen ? (
+          <div className={s.hint}>
+            {kind === 'site_visit'
+              ? 'Photographs and your location are saved with a visit to their factory.'
+              : 'A vendor who comes to us needs no photographs. They are registered when someone from our team visits their factory.'}
+          </div>
+          {pastEntriesOpen && (
             <div className={later ? s.laterBox : undefined}>
               <label className={s.switchRow}>
                 <input type="checkbox" checked={later} onChange={e => setLater(e.target.checked)} />
-                This already happened (I am entering it now)
+                This already happened
               </label>
               {later && (
                 <>
                   <div className={s.hint}>
-                    It will be saved as “Added later”: no photographs or location are needed, and it does not count as a proven visit.
-                    {pastEntriesUntil ? ` Past entries can be added until ${new Date(`${pastEntriesUntil}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}.` : ''}
+                    Saved as “Added later”: no photographs or location needed, and it does not count as a proven visit.
+                    {pastEntriesUntil ? ` Open until ${new Date(`${pastEntriesUntil}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}.` : ''}
                   </div>
                   <Field label="Day it happened" required error={visitErrors.visited_on} htmlFor="x-on">
                     <input id="x-on" type="date" className={`${s.input}${visitErrors.visited_on ? ` ${s.invalid}` : ''}`}
-                           min={istAddDays(today, -120)} max={today} value={visit.visited_on}
+                           min={istAddDays(today, -120)} max={today} value={visit.visited_on} style={{ maxWidth: 200 }}
                            onChange={e => setVisit(d => ({ ...d, visited_on: e.target.value }))} />
                   </Field>
                 </>
               )}
             </div>
-          ) : null}
+          )}
         </section>
 
-        {/* 1. Which vendor */}
-        <section className={s.card} aria-labelledby="h-vendor">
-          <h2 id="h-vendor" className={s.cardTitle}>Which vendor?</h2>
-          <div className={s.chips}>
-            <button type="button" className={`${s.chip}${mode === 'existing' ? ` ${s.chipOn}` : ''}`} onClick={() => setMode('existing')}>
-              A vendor already in the list
-            </button>
-            <button type="button" className={`${s.chip}${mode === 'new' ? ` ${s.chipOn}` : ''}`}
-                    onClick={() => { setMode('new'); setPicked(null) }}>
-              A new vendor
-            </button>
-          </div>
-
+        {/* Vendor */}
+        <section className={s.section} aria-labelledby="h-vendor">
+          <h2 id="h-vendor" className={s.sectionTitle}>Vendor</h2>
           {mode === 'existing' && picked && (
             <div className={s.chosen}>
               <div>
                 <div className={s.rowName}>{picked.name}</div>
-                <div className={s.muted}>
-                  {chosenVendor ? labelOf([{ value: 'potential', label: 'Potential' }, { value: 'contacted', label: 'Contacted' }, { value: 'prospect', label: 'Registered' }], PRE_VISIT_STATUSES.some(p => p === chosenVendor.status) ? chosenVendor.status : 'prospect') : ''}
-                  {chosen.data ? ` · ${chosen.data.visits.length} earlier meeting${chosen.data.visits.length === 1 ? '' : 's'}` : ''}
-                </div>
+                {chosen.data && <div className={s.muted}>{chosen.data.visits.length} earlier meeting{chosen.data.visits.length === 1 ? '' : 's'}</div>}
               </div>
-              {!presetId && <button type="button" className={s.secondary} onClick={() => { setPicked(null); setCompletionLoadedFor(null) }}>Change</button>}
+              {!presetId && <button type="button" className={s.linkBtn} onClick={() => { setPicked(null); setCompletionLoadedFor(null) }}>Change</button>}
             </div>
           )}
           {mode === 'existing' && !picked && (
@@ -433,9 +422,8 @@ export default function LogVisitScreen() {
               <div className={s.searchWrap}>
                 <Search size={16} className={s.searchIcon} aria-hidden="true" />
                 <input className={`${s.input} ${s.searchInput}`} value={search} onChange={e => setSearch(e.target.value)}
-                       placeholder="Search by company, person, phone or city" aria-label="Search vendors" autoComplete="off" />
+                       placeholder="Search by name, person, phone or city" aria-label="Search vendors" autoComplete="off" />
               </div>
-              {results.isFetching && <div className={s.muted}>Searching…</div>}
               {results.data?.rows.map(r => (
                 <button key={r.id} type="button" className={s.pickItem}
                         onClick={() => {
@@ -446,146 +434,111 @@ export default function LogVisitScreen() {
                   <span className={s.rowMeta}>{[r.contact_name, r.city].filter(Boolean).join(' · ') || 'No contact details yet'}</span>
                 </button>
               ))}
-              {results.data && results.data.rows.length === 0 && (
-                <div className={s.muted}>No vendor found. Check the spelling, or choose “A new vendor”.</div>
-              )}
+              {results.data && results.data.rows.length === 0 && <div className={s.muted} style={{ padding: '8px 0' }}>No vendor found.</div>}
+              {results.isFetching && <div className={s.muted} style={{ padding: '8px 0' }}>Searching…</div>}
+              <div><button type="button" className={s.linkBtn} onClick={() => { setMode('new'); setPicked(null) }}>+ New vendor</button></div>
             </div>
           )}
-
           {isNewVendor && (
             <>
               {duplicate && (
                 <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
-                  This vendor is already in the list: <strong>{duplicate.name}</strong>. Log the meeting against that vendor instead.
-                  <div style={{ marginTop: 8 }}>
-                    <button type="button" className={s.secondary} onClick={() => {
-                      setPicked({ id: duplicate.id, name: duplicate.name, siteVisitCount: 0 })
-                      setMode('existing'); setDuplicate(null)
-                    }}>Use {duplicate.name}</button>
-                  </div>
+                  <strong>{duplicate.name}</strong> is already in the list.{' '}
+                  <button type="button" className={s.linkBtn} onClick={() => {
+                    setPicked({ id: duplicate.id, name: duplicate.name, siteVisitCount: 0 })
+                    setMode('existing'); setDuplicate(null)
+                  }}>Use it</button>
                 </div>
               )}
-              {newVendorRelaxed && <div className={s.hint}>Only the company name is needed for now; the rest can be filled in when their factory is visited.</div>}
               <VendorFields relaxed={newVendorRelaxed} value={vendor} errors={vendorErrors}
                             onChange={patch => setVendor(v => ({ ...v, ...patch }))} />
+              <div><button type="button" className={s.linkBtn} onClick={() => setMode('existing')}>← Pick an existing vendor</button></div>
             </>
           )}
         </section>
 
-        {/* 1b. Registering a vendor we only knew by name */}
+        {/* Registering a vendor we only knew by name */}
         {registering && (
-          <section className={s.card} aria-labelledby="h-complete">
-            <h2 id="h-complete" className={s.cardTitle}>Complete the vendor’s details</h2>
-            <div className={s.hint}>This visit registers the vendor, so its profile needs to be complete. Fill in what you saw.</div>
+          <section className={s.section} aria-labelledby="h-complete">
+            <h2 id="h-complete" className={s.sectionTitle}>Complete the vendor’s details</h2>
+            <div className={s.hint}>This visit registers the vendor, so its profile needs to be complete.</div>
             <VendorFields value={completion} errors={completionErrors} onChange={patch => setCompletion(v => ({ ...v, ...patch }))} />
           </section>
         )}
 
-        {/* 2. The meeting */}
-        <section className={s.card} aria-labelledby="h-visit">
-          <h2 id="h-visit" className={s.cardTitle}>The meeting</h2>
-          <Field label="Purpose" required error={visitErrors.purpose}>
-            <Chips label="Purpose" options={VISIT_PURPOSES} value={visit.purpose} onChange={v => setVisit(d => ({ ...d, purpose: v as string }))} />
-          </Field>
-          <div className={s.grid2}>
-            <Field label="Person you met" required error={visitErrors.person_met} htmlFor="x-person">
+        {/* The meeting */}
+        <section className={s.section} aria-labelledby="h-visit">
+          <h2 id="h-visit" className={s.sectionTitle}>Meeting</h2>
+          <div className={s.formStack}>
+            <Field label="Person met" required error={visitErrors.person_met} htmlFor="x-person">
               <input id="x-person" className={`${s.input}${visitErrors.person_met ? ` ${s.invalid}` : ''}`} value={visit.person_met}
-                     maxLength={120} onChange={e => setVisit(d => ({ ...d, person_met: e.target.value }))} />
+                     maxLength={120} autoComplete="off" onChange={e => setVisit(d => ({ ...d, person_met: e.target.value }))} />
             </Field>
-            <Field label="Their designation" htmlFor="x-desig">
-              <input id="x-desig" className={s.input} value={visit.person_met_designation} maxLength={80}
-                     onChange={e => setVisit(d => ({ ...d, person_met_designation: e.target.value }))} />
+            <Field label="Notes" required error={visitErrors.discussion} htmlFor="x-disc" hint="What they make, quality, capacity, rates, timelines">
+              <textarea id="x-disc" rows={4} className={`${s.textarea}${visitErrors.discussion ? ` ${s.invalid}` : ''}`} value={visit.discussion}
+                        maxLength={2000} onChange={e => setVisit(d => ({ ...d, discussion: e.target.value }))} />
             </Field>
+            <Field label="Outcome" required error={visitErrors.outcome}>
+              <Chips label="Outcome" options={VISIT_OUTCOMES} value={visit.outcome} onChange={v => setVisit(d => ({ ...d, outcome: v as string }))} />
+            </Field>
+            {visit.outcome !== 'not_suitable' && visit.outcome !== 'approved_to_start' && (
+              <Field label="Follow up on" required={visit.outcome === 'follow_up_needed'} error={visitErrors.next_follow_up_on} htmlFor="x-next">
+                <input id="x-next" type="date" className={`${s.input}${visitErrors.next_follow_up_on ? ` ${s.invalid}` : ''}`}
+                       min={today} value={visit.next_follow_up_on} style={{ maxWidth: 200 }}
+                       onChange={e => setVisit(d => ({ ...d, next_follow_up_on: e.target.value }))} />
+              </Field>
+            )}
           </div>
-          <Field label="What was discussed / what you saw" required error={visitErrors.discussion} htmlFor="x-disc"
-                 hint="Products they make, quality, capacity, rates, timelines, anything useful later">
-            <textarea id="x-disc" className={`${s.textarea}${visitErrors.discussion ? ` ${s.invalid}` : ''}`} value={visit.discussion}
-                      maxLength={2000} onChange={e => setVisit(d => ({ ...d, discussion: e.target.value }))} />
-          </Field>
-          <Field label="Outcome" required error={visitErrors.outcome}>
-            <Chips label="Outcome" options={VISIT_OUTCOMES} value={visit.outcome} onChange={v => setVisit(d => ({ ...d, outcome: v as string }))} />
-          </Field>
-          {visit.outcome !== 'not_suitable' && visit.outcome !== 'approved_to_start' && (
-            <Field label="Next follow-up date" required={visit.outcome === 'follow_up_needed'} error={visitErrors.next_follow_up_on} htmlFor="x-next">
-              <input id="x-next" type="date" className={`${s.input}${visitErrors.next_follow_up_on ? ` ${s.invalid}` : ''}`}
-                     min={today} value={visit.next_follow_up_on} onChange={e => setVisit(d => ({ ...d, next_follow_up_on: e.target.value }))} />
-            </Field>
-          )}
         </section>
 
-        {/* 3. Photographs */}
-        <section className={s.card} aria-labelledby="h-photos">
-          <h2 id="h-photos" className={s.cardTitle}>Photographs{photoNeeded ? '' : ' (optional)'}</h2>
-          <div className={s.muted}>
-            {photoNeeded
-              ? (needsFactoryPhoto ? 'This is the first visit to their factory: a photograph of the factory is required. ' : 'At least one photograph is required. ') + 'Take them now, at the vendor.'
-              : effectiveLater ? 'Photographs are not needed for a visit that already happened, but add any you have.'
-                : 'Photographs are not needed for a meeting at our factory, but add one if it helps (samples they brought, for example).'}
-          </div>
+        {/* Photographs */}
+        <section className={s.section} aria-labelledby="h-photos">
+          <h2 id="h-photos" className={s.sectionTitle}>Photos{live ? '' : ' (optional)'}</h2>
           {visitErrors.photos && <div className={s.err} role="alert">{visitErrors.photos}</div>}
-          <div className={s.photoSlots}>
-            {slotKinds.map(pk => (
-              <div key={pk} className={s.photoSlot}>
-                <div className={s.photoSlotHead}>
-                  <strong>{labelOf(PHOTO_KINDS, pk)}{pk === 'factory' && photoNeeded && needsFactoryPhoto && <span className={s.req}>*</span>}</strong>
-                  <label className={s.secondary} style={{ cursor: 'pointer' }}>
-                    <Camera size={16} aria-hidden="true" /> {photoNeeded ? 'Take photo' : 'Add photo'}
-                    <input className={s.hiddenFile} type="file" accept="image/*" {...(photoNeeded ? { capture: 'environment' as const } : {})} multiple
-                           onChange={e => { void addPhotos(pk, e.target.files); e.target.value = '' }} />
-                  </label>
-                </div>
-                {photoCount(pk) > 0 && (
-                  <div className={s.thumbs}>
-                    {photos.filter(p => p.kind === pk).map(p => (
-                      <div key={p.key} className={s.thumb}>
-                        {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
-                        <img src={p.preview} alt={`${labelOf(PHOTO_KINDS, pk)} photograph`} />
-                        <button type="button" className={s.thumbX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          <div className={s.photoRow}>
+            {live
+              ? (<>
+                  {photoButton('factory', needsFactoryPhoto ? 'Factory photo *' : 'Factory photo', true)}
+                  {photoButton('person', 'Other photo', true)}
+                </>)
+              : photoButton('other', 'Add photos', false)}
+            {photos.map(p => (
+              <div key={p.key} className={s.thumb}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
+                <img src={p.preview} alt="Photograph to upload" />
+                <button type="button" className={s.thumbX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
               </div>
             ))}
           </div>
+          {live && (
+            <div className={s.hint}>
+              {needsFactoryPhoto ? 'This is the first visit to their factory, so a photograph of the factory is required. ' : ''}
+              Take photos now, at the vendor.
+            </div>
+          )}
         </section>
 
-        {/* 4. Location (a live visit to their factory only) */}
+        {/* Location (a live visit to their factory only) */}
         {live && (
-          <section className={s.card} aria-labelledby="h-where">
-            <h2 id="h-where" className={s.cardTitle}>Location</h2>
-            {where.state === 'asking' && <div className={s.muted}><MapPin size={14} aria-hidden="true" /> Finding your location…</div>}
-            {where.state === 'ok' && (
-              <div className={`${s.banner} ${s.bannerOk}`}>
-                <MapPin size={14} aria-hidden="true" /> Location captured (accurate to about {where.accuracy} m). It is saved with the visit.
-              </div>
-            )}
+          <div className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <MapPin size={14} aria-hidden="true" />
+            {where.state === 'asking' && 'Finding your location…'}
+            {where.state === 'ok' && `Location captured (about ${where.accuracy} m). Saved with the visit.`}
             {where.state === 'unavailable' && (
-              <div className={`${s.banner} ${s.bannerWarn}`}>
-                {where.reason} The visit can still be saved, but it will be marked “no location”.
-                <div style={{ marginTop: 8 }}><button type="button" className={s.secondary} onClick={locate}>Try again</button></div>
-              </div>
+              <>
+                <span style={{ color: '#8A5A00' }}>{where.reason} The visit will be marked “no location”.</span>
+                <button type="button" className={s.linkBtn} onClick={locate}>Try again</button>
+              </>
             )}
-          </section>
+          </div>
         )}
 
         {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
         <div className={s.submitBar}>
-          <ul className={s.checklist} aria-label="What is left to fill in">
-            {checks.map(c => (
-              <li key={c.label} className={c.ok ? s.checkOk : s.checkTodo}>
-                <span aria-hidden="true">{c.ok ? '✓' : '○'}</span> {c.label}
-              </li>
-            ))}
-            {live && (
-              <li className={where.state === 'ok' ? s.checkOk : s.checkWarn}>
-                <span aria-hidden="true">{where.state === 'ok' ? '✓' : '!'}</span> Location
-              </li>
-            )}
-          </ul>
-          <button type="button" className={s.primary} disabled={!!busy} onClick={() => void save()}>
-            {busy ?? (doneCount === checks.length ? 'Save' : `Save (${doneCount} of ${checks.length} ready)`)}
-          </button>
+          <span className={`${s.submitHint}${missing.length === 0 ? ` ${s.submitHintOk}` : ''}`}>
+            {missing.length === 0 ? 'Ready to save' : missing[0]}
+          </span>
+          <button type="button" className={s.primary} disabled={!!busy} onClick={() => void save()}>{busy ?? 'Save'}</button>
         </div>
       </div>
     </VendorsLayout>

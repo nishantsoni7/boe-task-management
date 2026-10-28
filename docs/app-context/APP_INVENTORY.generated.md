@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e9d53b1c` — Vendors: potential vendors, meetings at our factory, and past visits entered afterwards
-- Commits on this branch: 1037
+- Commit: `2c32ded6` — Merge remote-tracking branch 'origin/main' into feat/vendor-management
+- Commits on this branch: 1042
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,6 +14,11 @@
 
 ## Latest 25 commits
 
+- `2c32ded6` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
+- `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
+- `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
+- `6e6c5993` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
+- `240a1c7c` 2026-10-28 Docs: migration 20270424000000 (user_task_order) applied to production
 - `e9d53b1c` 2026-10-28 Vendors: potential vendors, meetings at our factory, and past visits entered afterwards
 - `d84778e6` 2026-10-28 Vendors migration: revoke write privileges from the browser roles (defence in depth)
 - `8582748c` 2026-10-28 Test: account for the Vendors module in the gated-module and launcher-card pins
@@ -34,11 +39,6 @@
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
 - `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 - `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
-- `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
-- `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
-- `2ddfadea` 2026-10-26 Orders page: Pendencies card in the top band, Payment beside Documents, wider Commercial breakdown (#456)
-- `7ef7f67a` 2026-10-26 Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details (#455)
-- `7e6a8228` 2026-10-26 Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
 
 ## Pages by top-level area
 

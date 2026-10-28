@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { classifyVendorError } from './api'
 import {
-  CAPABILITIES, CATEGORIES, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES, VISIT_PURPOSES,
+  CAPABILITIES, CATEGORIES, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
   labelOf, labelsOf, type VendorSummary,
 } from './constants'
 import { vendorsCsv } from './csv'
@@ -36,19 +36,17 @@ describe('vendor form validation', () => {
     assert.ok(validateVendor({ ...goodVendor, phone: '12345' }).phone)
     assert.ok(validateVendor({ ...goodVendor, phone: '5876543210' }).phone, 'an Indian mobile starts 6-9')
     assert.equal(validateVendor({ ...goodVendor, phone: '+971 50 123 4567' }).phone, undefined)
-    assert.ok(validateVendor({ ...goodVendor, alt_phone: '123' }).alt_phone)
   })
   test('payload carries full phone numbers and trimmed text; no number stays empty', () => {
-    const p = vendorPayload({ ...goodVendor, company_name: '  Sharma  ', alt_phone: '' })
+    const p = vendorPayload({ ...goodVendor, company_name: '  Sharma  ' })
     assert.equal(p.phone, '+919876543210')
     assert.equal(p.company_name, 'Sharma')
-    assert.equal(p.alt_phone, '')
     assert.equal(vendorPayload({ ...EMPTY_VENDOR, company_name: 'X' }).phone, '')
   })
 })
 
 describe('visit validation', () => {
-  const visit = { ...EMPTY_VISIT, purpose: 'first_meeting', person_met: 'Ramesh', discussion: 'Saw the workshop', outcome: 'interested' }
+  const visit = { ...EMPTY_VISIT, person_met: 'Ramesh', discussion: 'Saw the workshop', outcome: 'interested' }
   const ctx = (over: Partial<VisitContext> = {}): VisitContext => ({
     kind: 'site_visit', enteredLater: false, photoKinds: ['factory'], needsFactoryPhoto: true, today: '2026-10-28', ...over,
   })
@@ -95,7 +93,7 @@ describe('error messages', () => {
 
 describe('CSV export', () => {
   const row: VendorSummary = {
-    id: 'x', company_name: '=cmd|calc', contact_name: 'Ramesh', phone: '+919876543210', city: 'Jodhpur', state: 'Rajasthan',
+    id: 'x', company_name: '=cmd|calc', contact_name: 'Ramesh', phone: '+919876543210', city: 'Jodhpur',
     status: 'approved', referred_by: null, capabilities: ['raw_pieces', 'finishing_only'], categories: ['chairs'], headcount: 35,
     created_at: '2026-10-01T00:00:00Z', archived: false, visit_count: 3, site_visit_count: 3, inbound_count: 0,
     awaiting_site_visit: false, last_visit_at: null, last_visited_by: 'Dhruv', days_since_visit: null,
@@ -125,7 +123,7 @@ describe('vocabularies match the database CHECKs', () => {
     for (const c of CATEGORIES) assert.ok(MIGRATION.includes(`'${c.value}'`), `${c.value} is in the migration`)
   })
   test('stages, kinds, purposes and outcomes', () => {
-    for (const o of [...VENDOR_STATUSES, ...VISIT_KINDS, ...VISIT_PURPOSES, ...VISIT_OUTCOMES]) {
+    for (const o of [...VENDOR_STATUSES, ...VISIT_KINDS, ...VISIT_OUTCOMES]) {
       assert.ok(MIGRATION.includes(`'${o.value}'`), `${o.value} is in the migration`)
     }
   })

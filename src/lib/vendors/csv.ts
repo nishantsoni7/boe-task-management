@@ -13,7 +13,6 @@ export const VENDOR_CSV_COLUMNS: Column[] = [
   { header: 'Mobile', cell: v => (v.phone ? phoneCell(v.phone) : '') },
   { header: 'Recommended by', cell: v => csvCell(v.referred_by) },
   { header: 'City', cell: v => csvCell(v.city) },
-  { header: 'State', cell: v => csvCell(v.state) },
   { header: 'Status', cell: v => csvCell(labelOf(VENDOR_STATUSES, v.status)) },
   { header: 'Can do', cell: v => csvCell(labelsOf(CAPABILITIES, v.capabilities)) },
   { header: 'Product types', cell: v => csvCell(labelsOf(CATEGORIES, v.categories)) },

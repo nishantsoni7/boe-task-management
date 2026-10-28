@@ -96,19 +96,12 @@ export const setPastEntriesUntil = (s: Supabase, until: string) =>
 export type VendorInput = {
   company_name: string
   contact_name: string
-  contact_designation: string
   phone: string
-  alt_phone: string
-  email: string
   address: string
   city: string
-  state: string
-  pincode: string
   capabilities: string[]
   categories: string[]
-  materials: string
   headcount: string
-  monthly_capacity: string
   referred_by: string
   notes: string
   /** Only when creating: 'potential' | 'contacted' (a name is enough) or 'prospect' (the default). */
@@ -127,9 +120,7 @@ export type VisitInput = {
   /** A visit that already happened, typed in afterwards (no photographs or location). */
   entered_later: boolean
   visited_on: string
-  purpose: string
   person_met: string
-  person_met_designation: string
   discussion: string
   outcome: string
   next_follow_up_on: string

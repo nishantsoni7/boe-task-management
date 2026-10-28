@@ -13,7 +13,7 @@ import {
   VENDORS_KEY, archiveVendor, fetchVendor, restoreVendor, setVendorStatus,
 } from '@/lib/vendors/api'
 import {
-  AT_SITE_METRES, CAPABILITIES, CATEGORIES, PHOTO_KINDS, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES, VISIT_PURPOSES,
+  AT_SITE_METRES, CAPABILITIES, CATEGORIES, PHOTO_KINDS, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
   labelOf, labelsOf, type Visit, type VisitPhoto,
 } from '@/lib/vendors/constants'
 import { signedVendorPhotoUrl } from '@/lib/vendors/photos'
@@ -63,7 +63,7 @@ export default function VendorDetailScreen() {
 
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title={v?.company_name ?? 'Vendor'}
-                   subtitle={v ? ([v.city, v.state].filter(Boolean).join(', ') || undefined) : undefined}
+                   subtitle={v?.city ?? undefined}
                    actions={v && !v.archived ? (
                      <>
                        <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
@@ -91,7 +91,7 @@ export default function VendorDetailScreen() {
                   <span className={`${s.avatar} ${s.avatarLg}`} aria-hidden="true">{(v.company_name.trim()[0] ?? '?').toUpperCase()}</span>
                   <div className={s.rowMain}>
                     <div className={s.heroName}>{v.company_name}</div>
-                    <div className={s.rowMeta}>{v.contact_name ? `${v.contact_name}${v.contact_designation ? `, ${v.contact_designation}` : ''}` : 'No contact person yet'}</div>
+                    <div className={s.rowMeta}>{v.contact_name ?? 'No contact person yet'}</div>
                   </div>
                 </div>
                 {(isAdmin || PRE_VISIT_STATUSES.some(p => p === v.status)) && !v.archived ? (
@@ -177,18 +177,14 @@ export default function VendorDetailScreen() {
             {tab === 'profile' && (
               <section className={s.card} aria-label="Profile">
                 <dl className={s.facts}>
-                  <Fact label="Contact person">{v.contact_name ? `${v.contact_name}${v.contact_designation ? `, ${v.contact_designation}` : ''}` : 'Not known yet'}</Fact>
+                  <Fact label="Contact person">{v.contact_name ?? 'Not known yet'}</Fact>
                   {v.referred_by && <Fact label="Recommended by">{v.referred_by}</Fact>}
                   <Fact label="Mobile">
                     {v.phone ? <a href={telHref(v.phone)}>{formatPhone(v.phone)}</a> : 'Not known yet'}
-                    {v.alt_phone && <><br /><a href={telHref(v.alt_phone)}>{formatPhone(v.alt_phone)}</a></>}
                   </Fact>
-                  {v.email && <Fact label="Email"><a href={`mailto:${v.email}`}>{v.email}</a></Fact>}
-                  <Fact label="Address">{v.address ? `${v.address}\n` : ''}{[v.city, v.state].filter(Boolean).join(', ') || (v.address ? '' : 'Not known yet')}{v.pincode ? ` ${v.pincode}` : ''}</Fact>
+                  <Fact label="Address">{v.address ? `${v.address}\n` : ''}{v.city ?? (v.address ? '' : 'Not known yet')}</Fact>
                   <Fact label="Can do">{v.capabilities.length > 0 ? labelsOf(CAPABILITIES, v.capabilities) : 'Not known yet'}</Fact>
                   {v.categories.length > 0 && <Fact label="Product types">{labelsOf(CATEGORIES, v.categories)}</Fact>}
-                  {v.materials && <Fact label="Materials">{v.materials}</Fact>}
-                  {v.monthly_capacity && <Fact label="Monthly capacity">{v.monthly_capacity}</Fact>}
                   {v.notes && <Fact label="Notes">{v.notes}</Fact>}
                   <Fact label="Added">{formatDay(v.created_at)}{v.created_by_name ? ` by ${v.created_by_name}` : ''}</Fact>
                   <Fact label="Last visit">{last ? `${daysAgoText(daysSince)} · ${formatWhen(last.visited_at)}` : 'Never visited'}</Fact>
@@ -248,7 +244,6 @@ function VisitCard({ visit: x }: { visit: Visit }) {
       </div>
       <div className={s.rowBadges}>
         <span className={`${s.badge} ${x.kind === 'site_visit' ? s.badgeDark : s.badgeSoft}`}>{labelOf(VISIT_KINDS, x.kind)}</span>
-        <span className={s.badge}>{labelOf(VISIT_PURPOSES, x.purpose)}</span>
         <span className={s.badge}>{labelOf(VISIT_OUTCOMES, x.outcome)}</span>
         {x.entered_later
           ? <span className={`${s.badge} ${s.badgeWarn}`}>Added later · no proof</span>
@@ -266,7 +261,7 @@ function VisitCard({ visit: x }: { visit: Visit }) {
         )}
       </div>
       <div className={s.rowMeta}>
-        <strong>Met:</strong> {x.person_met}{x.person_met_designation ? `, ${x.person_met_designation}` : ''}
+        <strong>Met:</strong> {x.person_met}
       </div>
       <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, color: '#303536', overflowWrap: 'anywhere' }}>{x.discussion}</div>
       {x.next_follow_up_on && <div className={s.rowMeta}><strong>Next follow-up:</strong> {formatDay(x.next_follow_up_on)}</div>}

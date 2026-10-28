@@ -24,12 +24,16 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 
 **Entered later** (`entered_later = true`): something that already happened before the system existed, typed in afterwards with the day it happened (not future, ≤120 days back). No photographs or location are kept, it is labelled "Added later · no proof", never counts as "at the vendor", and never replaces the live proof (the first live site visit still needs a factory photograph). Allowed only while `vendor_settings.past_entries_until` is not past; Admin sets it (`set_vendor_past_entries_until`), default applied-date + 14.
 
+**Deliberately small.** After the owner's review (2026-10-28) the model keeps only what is needed. Vendor: company, contact person, mobile, city, address, what they do (raw pieces / finished / finishing only), products (for search), number of people, who recommended them, notes. Meeting: kind, person met, notes, outcome, follow-up date, photographs, location. Removed on purpose: vendor designation, second phone, email, state, pincode, materials, monthly capacity, visit purpose, designation of the person met (anything extra goes in Notes). Do not re-add a field without asking what it is for.
+
+**Design language** (`vendors.module.css`): Notion-like. 14px body, 12.5px secondary, weights 400 / 500 only (600 for the vendor's name), flat sections with small uppercase titles instead of boxed cards, hairline borders, the accent colour only for the primary action, a label-and-control "property row" on desktop that stacks on a phone. The list has four stage tabs that always fit (All / Potential / Contacted / Registered) and everything else behind one Filter button; no horizontal scroll at 375 px.
+
 ## 4. Pages (`src/app/vendors/`)
 
 | Route | Screen | Who |
 |---|---|---|
 | `/vendors` | `VendorListScreen` — status tabs with counts (+ "Met us · awaiting site visit"), multi-word search, filters, sort, paging; all state in the URL | module users |
-| `/vendors/new` | `AddPotentialVendorScreen` — name + who recommended them, 20-second form | module users |
+| `/vendors/new` | `AddPotentialVendorScreen` — company, who recommended them, contact, mobile, city; the rest under "More details" | module users |
 | `/vendors/visit` (`?vendor=<id>&kind=`) | `LogVisitScreen` — what happened, which vendor, completes the profile if a site visit registers a name-only vendor, details, photos, GPS, "already happened" switch | module users |
 | `/vendors/[id]` | `VendorDetailScreen` — hero (call / WhatsApp / map / log), stage track, tabs Visits · Profile · Photos | module users (archived: Admin) |
 | `/vendors/[id]/edit` | `VendorEditScreen` (relaxed while potential/contacted) | module users |
@@ -40,7 +44,7 @@ Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')
 ## 5. Database (`20270426000000_vendor_management.sql`)
 
 - `vendors`, `vendor_visits` (append-only by trigger; `visited_at` server time for live records, noon of the chosen day for entered-later ones), `vendor_visit_photos` (path unique), `vendor_settings` (one row, no browser access). Tables read-only to the browser: write privileges revoked **and** no write policy; `vendors_can_read()` select policies + RESTRICTIVE `module_entry_open('vendors')`.
-- Writes (SECURITY DEFINER, `auth.uid()`): `save_vendor` (create / update; stage-aware validation; duplicate by mobile, or by name+city when there is no mobile), `log_vendor_visit`, `set_vendor_status`, `set_vendor_past_entries_until` (Admin), `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (every typed word must match company / person / phone / city / address / materials / recommender; `status_counts` for tabs; `awaiting_visit` filter), `get_vendor`, `vendor_activity` (Admin), `vendors_my_access` (is_admin, window), `vendor_profile_complete` (internal).
+- Writes (SECURITY DEFINER, `auth.uid()`): `save_vendor` (create / update; stage-aware validation; duplicate by mobile, or by name+city when there is no mobile), `log_vendor_visit`, `set_vendor_status`, `set_vendor_past_entries_until` (Admin), `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (every typed word must match company / person / phone / city / address / products / recommender; `status_counts` for the tabs and `awaiting_count` for the notice; `awaiting_visit` filter), `get_vendor`, `vendor_activity` (Admin), `vendors_my_access` (is_admin, window), `vendor_profile_complete` (internal).
 - Private bucket `vendor-visit-photos` (5 MB, JPEG), path `{uploader uuid}/{uuid}.jpg`. Registration inside the migration (`app_modules`, `permission_modules`, `view` action, Admin role row); default allowed: nobody. Mirrors `registerModule('vendors')` in `src/lib/permissions/modules.ts`; `ENGINE_GATED_MODULE_KEYS` (13 now) and `enforcement.ts` carry the key.
 
 ## 6. Business rules to remember

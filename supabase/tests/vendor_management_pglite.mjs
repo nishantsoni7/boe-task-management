@@ -104,10 +104,9 @@ const rpc = async (uid, fn, ...args) => {
 
 const sub = () => crypto.randomUUID()
 const vendorBody = (over = {}) => ({
-  company_name: 'Sharma Wood Works', contact_name: 'Ramesh Sharma', contact_designation: 'Owner',
-  phone: '+919876543210', address: 'Plot 14, Basni Industrial Area, Phase 2', city: 'Jodhpur', state: 'Rajasthan',
-  pincode: '342005', capabilities: ['raw_pieces', 'finishing_only'], categories: ['chairs', 'tables'],
-  materials: 'Sheesham, mango wood', headcount: '35', monthly_capacity: '200 chairs a month', ...over,
+  company_name: 'Sharma Wood Works', contact_name: 'Ramesh Sharma',
+  phone: '+919876543210', address: 'Plot 14, Basni Industrial Area, Phase 2', city: 'Jodhpur',
+  capabilities: ['raw_pieces', 'finishing_only'], categories: ['chairs', 'tables'], headcount: '35', ...over,
 })
 const photoPath = uid => `${uid}/${crypto.randomUUID()}.jpg`
 async function upload(uid, path) {
@@ -115,7 +114,7 @@ async function upload(uid, path) {
 }
 function visitBody(photos, over = {}) {
   return {
-    purpose: "first_meeting", person_met: "Ramesh Sharma", discussion: "Saw the workshop; they make solid wood chairs.",
+    person_met: "Ramesh Sharma", discussion: "Saw the workshop; they make solid wood chairs.",
     outcome: "interested", latitude: 26.2389, longitude: 73.0243, accuracy_m: 18, photos, ...over,
   }
 }
@@ -190,12 +189,12 @@ ok('first visit saved, the vendor\'s address point is pinned from its GPS, and a
 const pF2 = photoPath(U.dhruv)
 await upload(U.dhruv, pF2)
 const near = await rpc(U.dhruv, 'log_vendor_visit', sub(), vendorId, visitBody([{ path: pF2, kind: 'product' }],
-  { purpose: 'follow_up', latitude: 26.2392, longitude: 73.0246, outcome: 'sample_requested' }))
+  { latitude: 26.2392, longitude: 73.0246, outcome: 'sample_requested' }))
 assert.ok(near.distance_m > 0 && near.distance_m < 100, 'about 45 m away, got ' + near.distance_m)
 const pF3 = photoPath(U.dhruv)
 await upload(U.dhruv, pF3)
 const far = await rpc(U.dhruv, 'log_vendor_visit', sub(), vendorId, visitBody([{ path: pF3, kind: 'factory' }],
-  { purpose: 'follow_up', latitude: 26.9124, longitude: 75.7873, outcome: 'interested' }))
+  { latitude: 26.9124, longitude: 75.7873, outcome: 'interested' }))
 assert.ok(far.distance_m > 250000, 'Jaipur is ~270 km from Jodhpur, got ' + far.distance_m)
 const pF4 = photoPath(U.dhruv)
 await upload(U.dhruv, pF4)
@@ -223,14 +222,14 @@ await assert.rejects(() => db.query(`delete from public.vendor_visit_photos`), /
 ok('a visit and its photographs cannot be edited or deleted, even by a superuser')
 
 // ── Reading ────────────────────────────────────────────────────────────────
-await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Kumar Upholstery', contact_name: 'Anil Kumar', phone: '+919822222222', city: 'Jaipur', state: 'Rajasthan', capabilities: ['finished_pieces'], categories: ['sofa_upholstery'], materials: 'Fabric, foam, teak frames', headcount: '12' }))
-await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Metal Craft', contact_name: 'Sohan', phone: '+919833333333', city: 'Jodhpur', capabilities: ['raw_pieces'], categories: ['metal_fabrication'], materials: 'MS, iron' }))
+await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Kumar Upholstery', contact_name: 'Anil Kumar', phone: '+919822222222', city: 'Jaipur', capabilities: ['finished_pieces'], categories: ['sofa_upholstery'], headcount: '12' }))
+await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Metal Craft', contact_name: 'Sohan', phone: '+919833333333', city: 'Jodhpur', capabilities: ['raw_pieces'], categories: ['metal_fabrication'] }))
 
 let list = await rpc(U.dhruv, 'vendor_list', { q: 'jodhpur' })
 assert.equal(list.total, 2)
-list = await rpc(U.dhruv, 'vendor_list', { q: 'teak jaipur' })
+list = await rpc(U.dhruv, 'vendor_list', { q: 'upholstery jaipur' })
 assert.equal(list.total, 1); assert.equal(list.rows[0].company_name, 'Kumar Upholstery')
-list = await rpc(U.dhruv, 'vendor_list', { q: 'jaipur teak' })
+list = await rpc(U.dhruv, 'vendor_list', { q: 'jaipur upholstery' })
 assert.equal(list.total, 1)
 list = await rpc(U.dhruv, 'vendor_list', { q: '98765' })
 assert.equal(list.total, 1)
@@ -361,7 +360,7 @@ await fails(U.admin, "select public.set_vendor_status($1::uuid, 'approved')", [p
 ok('a person moves a vendor between potential and contacted; prospect and beyond are the owner\'s, and need a complete profile')
 
 // They came to us.
-const inbound = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, { kind: 'vendor_at_our_factory', purpose: 'first_meeting',
+const inbound = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, { kind: 'vendor_at_our_factory',
   person_met: 'Mahesh Rathore', discussion: 'Visited our factory, brought samples of two chairs.', outcome: 'interested' })
 assert.equal(inbound.status, 'logged'); assert.equal(inbound.location_source, 'not_applicable'); assert.equal(inbound.kind, 'vendor_at_our_factory')
 pv = await rpc(U.dhruv, 'get_vendor', pot.id)
@@ -370,6 +369,8 @@ assert.equal(pv.vendor.awaiting_site_visit, true)
 assert.equal(pv.visits[0].kind, 'vendor_at_our_factory'); assert.equal(pv.visits[0].photos.length, 0)
 l = await rpc(U.dhruv, 'vendor_list', { awaiting_visit: true })
 assert.equal(l.total, 1); assert.equal(l.rows[0].awaiting_site_visit, true); assert.equal(l.rows[0].inbound_count, 1); assert.equal(l.rows[0].site_visit_count, 0)
+assert.equal(l.awaiting_count, 1, 'the list reports how many are awaiting a site visit, whatever filter is on')
+assert.equal((await rpc(U.dhruv, 'vendor_list', {})).awaiting_count, 1)
 ok('a meeting at our factory needs no photographs or location, moves the vendor to contacted and flags it as awaiting a site visit')
 
 // Registering: a site visit needs a complete profile and a factory photograph.
@@ -378,7 +379,7 @@ await upload(U.dhruv, sPhoto)
 await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }])], /complete the vendor's details/)
 await rpc(U.dhruv, 'save_vendor', sub(), pot.id, vendorBody({ company_name: 'Rathore Furniture', phone: '+919844444444', referred_by: 'Sanjay at Oak Studio' }))
 await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'person' }])], /first visit to the factory needs/)
-const reg = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }], { purpose: 'factory_inspection' }))
+const reg = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }], {}))
 assert.equal(reg.status, 'logged')
 pv = await rpc(U.dhruv, 'get_vendor', pot.id)
 assert.equal(pv.vendor.status, 'prospect', 'the site visit registers the vendor'); assert.equal(pv.vendor.awaiting_site_visit, false)
@@ -388,7 +389,7 @@ ok('a site visit needs the complete profile and a factory photograph, then regis
 
 // A visit that already happened.
 const lateVendor = await rpc(U.dhruv, 'save_vendor', sub(), null, vendorBody({ company_name: 'Old Visit Works', phone: '+919855555555' }))
-const lateBody = (over = {}) => ({ kind: 'site_visit', entered_later: true, visited_on: istDay(3), purpose: 'first_meeting',
+const lateBody = (over = {}) => ({ kind: 'site_visit', entered_later: true, visited_on: istDay(3),
   person_met: 'Old Contact', discussion: 'Visited three days ago, saw the unit.', outcome: 'interested', ...over })
 const late = await rpc(U.dhruv, 'log_vendor_visit', sub(), lateVendor.id, lateBody())
 assert.equal(late.status, 'logged'); assert.equal(late.entered_later, true); assert.equal(late.location_source, 'not_applicable')
@@ -432,7 +433,7 @@ const dh = act2.by_person.find(p => p.name === 'Dhruv')
 assert.equal(dh.at_our_factory, 1); assert.equal(dh.entered_later, 2)
 await rpc(U.dhruv, 'save_vendor', sub(), null, quick({ company_name: 'Chauhan Wood' }))
 const chauhan = (await rpc(U.dhruv, 'vendor_list', { q: 'chauhan' })).rows[0]
-await rpc(U.dhruv, 'log_vendor_visit', sub(), chauhan.id, { kind: 'vendor_at_our_factory', purpose: 'first_meeting', person_met: 'Chauhan', discussion: 'Came to the office', outcome: 'interested' })
+await rpc(U.dhruv, 'log_vendor_visit', sub(), chauhan.id, { kind: 'vendor_at_our_factory', person_met: 'Chauhan', discussion: 'Came to the office', outcome: 'interested' })
 const act3 = await rpc(U.admin, 'vendor_activity', null, null)
 assert.ok(act3.awaiting_site_visit.some(w => w.company_name === 'Chauhan Wood' && w.days_waiting === 0), 'a vendor that met us but was never visited is on the chase list')
 assert.ok(!act3.awaiting_site_visit.some(w => w.company_name === 'Rathore Furniture'), 'once visited it leaves the list')

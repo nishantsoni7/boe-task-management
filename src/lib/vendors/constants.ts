@@ -43,15 +43,6 @@ export const VISIT_KINDS = [
 
 export type VisitKind = (typeof VISIT_KINDS)[number]['value']
 
-export const VISIT_PURPOSES = [
-  { value: 'first_meeting', label: 'First meeting' },
-  { value: 'factory_inspection', label: 'Factory inspection' },
-  { value: 'sample_review', label: 'Sample review' },
-  { value: 'price_negotiation', label: 'Price negotiation' },
-  { value: 'follow_up', label: 'Follow-up visit' },
-  { value: 'other', label: 'Other' },
-] as const
-
 export const VISIT_OUTCOMES = [
   { value: 'interested', label: 'Interested' },
   { value: 'follow_up_needed', label: 'Follow-up needed' },
@@ -87,7 +78,6 @@ export type VendorSummary = {
   contact_name: string | null
   phone: string | null
   city: string | null
-  state: string | null
   status: string
   referred_by: string | null
   capabilities: string[]
@@ -104,27 +94,20 @@ export type VendorSummary = {
   days_since_visit: number | null
 }
 
-export type VendorPage = { total: number; status_counts: Record<string, number>; rows: VendorSummary[] }
+export type VendorPage = { total: number; awaiting_count: number; status_counts: Record<string, number>; rows: VendorSummary[] }
 
 export type Vendor = {
   id: string
   company_name: string
   contact_name: string | null
-  contact_designation: string | null
   phone: string | null
-  alt_phone: string | null
-  email: string | null
   address: string | null
   city: string | null
-  state: string | null
-  pincode: string | null
   latitude: number | null
   longitude: number | null
   capabilities: string[]
   categories: string[]
-  materials: string | null
   headcount: number | null
-  monthly_capacity: string | null
   referred_by: string | null
   notes: string | null
   status: string
@@ -147,9 +130,7 @@ export type Visit = {
   kind: VisitKind
   entered_later: boolean
   recorded_at: string
-  purpose: string
   person_met: string
-  person_met_designation: string | null
   discussion: string
   outcome: string
   next_follow_up_on: string | null

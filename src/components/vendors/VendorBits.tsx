@@ -21,9 +21,9 @@ export function formatDay(iso: string): string {
 
 export function daysAgoText(days: number | null | undefined): string {
   if (days === null || days === undefined) return 'Never visited'
-  if (days <= 0) return 'Visited today'
-  if (days === 1) return 'Visited yesterday'
-  return `Visited ${days} days ago`
+  if (days <= 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return `${days} days ago`
 }
 
 export const mapsHref = (lat: number, lng: number) => `https://www.google.com/maps?q=${lat},${lng}`
@@ -70,6 +70,7 @@ export function Chips({
   )
 }
 
+/** A label and its control: side by side on a wide screen (a property row), stacked on a phone. */
 export function Field({
   label, required, hint, error, children, htmlFor,
 }: {
@@ -83,9 +84,11 @@ export function Field({
   return (
     <div className={s.field}>
       <label className={s.label} htmlFor={htmlFor}>{label}{required && <span className={s.req} aria-hidden="true">*</span>}</label>
-      {children}
-      {hint && !error && <div className={s.hint}>{hint}</div>}
-      {error && <div className={s.err} role="alert">{error}</div>}
+      <div className={s.fieldBody}>
+        {children}
+        {hint && !error && <div className={s.hint}>{hint}</div>}
+        {error && <div className={s.err} role="alert">{error}</div>}
+      </div>
     </div>
   )
 }
@@ -102,18 +105,5 @@ export function Highlight({ text, q }: { text: string; q: string }) {
     <>
       {parts.map((part, i) => (i % 2 === 1 ? <mark key={i} className={s.mark}>{part}</mark> : <span key={i}>{part}</span>))}
     </>
-  )
-}
-
-/** How recently a vendor was seen: a coloured dot and a plain sentence. */
-export function Freshness({ days, visits, by }: { days: number | null; visits: number; by: string | null }) {
-  const tone = days === null ? s.dotBad : days <= 14 ? s.dotGood : days <= 30 ? s.dotWarn : s.dotBad
-  return (
-    <div className={s.fresh}>
-      <span className={`${s.dot} ${tone}`} aria-hidden="true" />
-      <span>
-        {daysAgoText(days)}{by ? ` by ${by}` : ''} · {visits} visit{visits === 1 ? '' : 's'}
-      </span>
-    </div>
   )
 }
