@@ -4,6 +4,7 @@ import {
   sortMyTasks,
   reorderAfterDrop,
   taskGroup,
+  dragTargetIndex,
   normalizeStoredTaskOrder,
   TASK_ORDER_MAX,
 } from './taskOrder'
@@ -57,6 +58,17 @@ test('saved order is capped at the database limit', () => {
   const ids = Array.from({ length: TASK_ORDER_MAX + 5 }, (_, i) => `id${i}`)
   const out = reorderAfterDrop(ids, 'id0', 'id1', () => 2)
   assert.equal(out?.length, TASK_ORDER_MAX)
+})
+
+test('drag target follows the dragged row centre, inside its group only', () => {
+  const mids = [24, 78, 132, 186, 240]
+  assert.equal(dragTargetIndex(mids, 2, 0, 4, 132), 2)
+  assert.equal(dragTargetIndex(mids, 2, 0, 4, 190), 3)
+  assert.equal(dragTargetIndex(mids, 2, 0, 4, 500), 4)
+  assert.equal(dragTargetIndex(mids, 2, 0, 4, -50), 0)
+  // a group of rows 1..3 cannot be left, however far the row is pulled
+  assert.equal(dragTargetIndex(mids, 2, 1, 3, 500), 3)
+  assert.equal(dragTargetIndex(mids, 2, 1, 3, -50), 1)
 })
 
 test('stored order is read defensively', () => {

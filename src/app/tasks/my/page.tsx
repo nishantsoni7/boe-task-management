@@ -33,11 +33,12 @@ import {
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Pin,
-  Paperclip, X, CircleCheckBig, SendHorizontal, GripVertical,
+  Paperclip, X, CircleCheckBig, SendHorizontal, GripVertical, ArrowUpToLine,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useTaskOrder, taskOrderKey, TASK_ORDER_TABLE } from '@/hooks/queries/useTaskOrder'
 import { sortMyTasks, reorderAfterDrop, taskGroup } from '@/lib/tasks/taskOrder'
+import { useRowDragSort } from '@/hooks/useRowDragSort'
 import { useToast, Toast } from '@/components/ui/toast'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
@@ -131,7 +132,7 @@ const LIST_PARAMS = {
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
-  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy, drag, dropTarget,
+  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy, drag, onMoveTop, rowRef,
 }: {
   task: Task
   accentColor: string
@@ -148,14 +149,10 @@ function TaskCard({
   onSubmit?: () => void
   actionBusy?: boolean
   /** Desktop drag-to-reorder wiring; absent = the row is not draggable (View As, phone). */
-  drag?: {
-    onDragStart: (e: React.DragEvent) => void
-    onDragOver: (e: React.DragEvent) => void
-    onDrop: (e: React.DragEvent) => void
-    onDragEnd: () => void
-  }
-  /** This row is where the dragged task would land. */
-  dropTarget?: boolean
+  drag?: { onPointerDown: (e: React.PointerEvent) => void }
+  /** Jump to the top of this task's group; absent when it already is there. */
+  onMoveTop?: () => void
+  rowRef?: (el: HTMLDivElement | null) => void
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -293,11 +290,8 @@ function TaskCard({
 
   return (
     <div
-      draggable={!!drag}
-      onDragStart={drag?.onDragStart}
-      onDragOver={drag?.onDragOver}
-      onDrop={drag?.onDrop}
-      onDragEnd={drag?.onDragEnd}
+      ref={rowRef}
+      data-task-row={task.id}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
@@ -309,7 +303,7 @@ function TaskCard({
         background: cardBackground,
         border: cardBorder,
         borderRadius: '8px',
-        boxShadow: dropTarget ? `0 -2px 0 0 ${colors.brand}` : hovered
+        boxShadow: hovered
           ? '0 2px 8px rgba(0,0,0,0.09)'
           : isImportant
             ? '0 1px 4px rgba(183,137,42,0.08)'
@@ -325,8 +319,21 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px',
       }}>
         {drag && (
-          <span title="Drag to reorder" aria-label="Drag to reorder" style={{ display: 'flex', cursor: 'grab', color: colors.muted, opacity: 0.55 }}>
-            <GripVertical size={12} />
+          // A bigger target than the icon, and touch-action none so a finger can
+          // drag it without the page scrolling instead.
+          <span
+            title="Drag to reorder"
+            aria-label="Drag to reorder"
+            onPointerDown={drag.onPointerDown}
+            onClick={e => e.stopPropagation()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '18px', height: '36px', margin: '0 -3px',
+              cursor: 'grab', touchAction: 'none',
+              color: colors.muted, opacity: hovered ? 0.9 : 0.5,
+            }}
+          >
+            <GripVertical size={14} />
           </span>
         )}
         {task.is_urgent
@@ -351,6 +358,22 @@ function TaskCard({
           <span style={{ fontSize: '12px', fontWeight: 700, color: '#92710A', background: 'rgba(183,137,42,0.12)', borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
             Today&apos;s Focus
           </span>
+        )}
+        {onMoveTop && (
+          <button
+            onClick={e => { e.stopPropagation(); onMoveTop() }}
+            title="Move to top"
+            aria-label="Move to top"
+            tabIndex={hovered ? 0 : -1}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '22px', height: '22px', flexShrink: 0, marginLeft: 'auto',
+              background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer',
+              color: colors.muted, opacity: hovered ? 0.9 : 0, transition: 'opacity 0.12s',
+            }}
+          >
+            <ArrowUpToLine size={13} />
+          </button>
         )}
       </div>
 
@@ -1620,24 +1643,19 @@ function MyTasksContent() {
 
   // Drag to reorder. The saved order is the WHOLE active list in its sorted
   // order, so a move made in one tab or filter lands correctly in every other.
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [dropId, setDropId] = useState<string | null>(null)
   const fullSorted = useMemo(
     () => sortMyTasks(buckets.all, top3Data?.pinnedIds, savedTaskOrder),
     [buckets, top3Data?.pinnedIds, savedTaskOrder],
   )
 
-  const handleDrop = async (toId: string) => {
-    const fromId = dragId
-    setDragId(null)
-    setDropId(null)
-    if (!fromId || !userId || viewAsUserId) return
-    const byId = new Map(fullSorted.map(t => [t.id, t]))
-    const groupOf = (id: string) => {
-      const t = byId.get(id)
-      return t ? taskGroup(t, !!top3Data?.pinnedIds?.has(id)) : undefined
-    }
-    const next = reorderAfterDrop(fullSorted.map(t => t.id), fromId, toId, groupOf)
+  const groupOfTask = (id: string) => {
+    const t = fullSorted.find(x => x.id === id)
+    return t ? taskGroup(t, !!top3Data?.pinnedIds?.has(id)) : undefined
+  }
+
+  const handleMove = async (fromId: string, toId: string) => {
+    if (!userId || viewAsUserId) return
+    const next = reorderAfterDrop(fullSorted.map(t => t.id), fromId, toId, groupOfTask)
     if (!next) return
     const previous = savedTaskOrder ?? null
     queryClient.setQueryData(taskOrderKey(userId), next)
@@ -1645,10 +1663,29 @@ function MyTasksContent() {
       .from(TASK_ORDER_TABLE)
       .upsert({ user_id: userId, task_ids: next }, { onConflict: 'user_id' })
     if (error) {
-      console.error('[handleDrop] failed:', error.message, error)
+      console.error('[handleMove] failed:', error.message, error)
       queryClient.setQueryData(taskOrderKey(userId), previous)
       showToast('Could not save the new order', 'error')
     }
+  }
+
+  const { rowRef, begin: beginDrag } = useRowDragSort({
+    getIds: () => visibleTasks.map(t => t.id),
+    groupOf: groupOfTask,
+    onMove: (fromId, toId) => { void handleMove(fromId, toId) },
+  })
+
+  // First task of the same group, then bring the moved row into view: a long
+  // list should not make the person hunt for where it went.
+  const handleMoveTop = (task: Task) => {
+    const g = groupOfTask(task.id)
+    const first = fullSorted.find(t => groupOfTask(t.id) === g)
+    if (!first || first.id === task.id) return
+    void handleMove(task.id, first.id)
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-task-row="${task.id}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
   }
 
   function handleTabChange(key: TabKey | null) {
@@ -1963,13 +2000,14 @@ function MyTasksContent() {
                     onSubmit={!viewAsUserId && canSubmitForApproval(task, userId) ? () => handleQuickSubmit(task) : undefined}
                     actionBusy={quickActionTaskId === task.id}
                     isMobile={isMobile}
-                    dropTarget={!!dragId && dropId === task.id && dragId !== task.id}
-                    drag={!isMobile && !viewAsUserId && !!userId && activeTab !== 'completed' ? {
-                      onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', task.id); setDragId(task.id) },
-                      onDragOver: e => { if (dragId) { e.preventDefault(); if (dropId !== task.id) setDropId(task.id) } },
-                      onDrop: e => { e.preventDefault(); void handleDrop(task.id) },
-                      onDragEnd: () => { setDragId(null); setDropId(null) },
-                    } : undefined}
+                    rowRef={rowRef(task.id)}
+                    drag={!isMobile && !viewAsUserId && !!userId && activeTab !== 'completed'
+                      ? { onPointerDown: e => beginDrag(task.id, e) } : undefined}
+                    onMoveTop={
+                      !isMobile && !viewAsUserId && !!userId && activeTab !== 'completed' &&
+                      fullSorted.find(t => groupOfTask(t.id) === groupOfTask(task.id))?.id !== task.id
+                        ? () => handleMoveTop(task) : undefined
+                    }
                     isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
                     onPin={
                       // Read-only while it waits on someone else: pinning it to

@@ -116,7 +116,7 @@ Statuses and transitions:
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
 - My Tasks row order (Oct 2026, migration `20270424000000` APPLIED 2026-10-28): Important, then Today's Focus pins, then the rest; within a group the person's drag order from
   `user_task_order` (one row per user, `task_ids uuid[]`, upsert; owner-only RLS; display preference, grants nothing). Pure rules: `src/lib/tasks/taskOrder.ts`; hook
-  `useTaskOrder`. Desktop only, native drag; no cross-group drops; the saved array is the whole active list so it holds in every tab. Action icons are borderless; the pin
+  `useTaskOrder`. Desktop only; pointer-driven drag (`useRowDragSort`: live reorder via transforms, edge auto-scroll, Escape cancels, committed once on release) plus a hover "Move to top" button; no cross-group drops; the saved array is the whole active list so it holds in every tab. Action icons are borderless; the pin
   has its gold border only when pinned.
 - Creation (`taskCreateFlow.ts`): similar-task warning when >= 3 of the new title's words longer than 3 characters appear in an existing open task's title of the
   assignee (`findSimilarTitle`); candidates are primed when the assignee is chosen and reused for 60 s (`DUPLICATE_CANDIDATES_MAX_AGE_MS`). Awaited on click: similar check,
