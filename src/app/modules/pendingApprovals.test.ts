@@ -19,7 +19,8 @@ import { actionableRequests, initialsOf, PENDING_APPROVALS_SHOWN } from '@/lib/a
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const PAGE = read('src/app/modules/page.tsx')
 const CARD = read('src/app/modules/PendingApprovals.tsx')
-const CSS = read('src/app/modules/modules.module.css')
+const PANEL = read('src/app/modules/AttentionPanel.tsx')
+const CSS = read('src/app/modules/attentionPanel.module.css')
 
 const row = (id: string, employee_id: string, status: AttendanceRequestRow['status'] = 'pending') =>
   ({ id, employee_id, status })
@@ -53,7 +54,10 @@ describe('initials for the avatar chip', () => {
 describe('who sees it, and what it may do', () => {
   test('ADMINS ONLY, by the signed-in profile, never while previewing', () => {
     assert.match(PAGE, /const showPendingApprovals = !viewMode && !!userId && profile\?\.role === 'admin'/)
-    assert.match(PAGE, /showAttendance=\{showPendingApprovals\}/)
+    assert.match(PAGE, /showAttendance: showPendingApprovals,/)
+    // The queue is not even asked for unless that gate passed.
+    assert.match(CARD, /enabled: enabled && !!userId,/)
+    assert.match(PANEL, /usePendingApprovalQueue\(userId, showAttendance\)/)
   })
 
   test('it uses the existing queue and decision routes, which keep every rule', () => {
@@ -64,21 +68,25 @@ describe('who sees it, and what it may do', () => {
     assert.equal(/\.from\('attendance_requests'\)/.test(CARD), false)
   })
 
-  test('it sits in the right-hand attention panel, beside the modules', () => {
+  test("it is part of the For you panel's Waiting on you list, beside the modules", () => {
     assert.ok(PAGE.indexOf('<AttentionPanel') > PAGE.indexOf('modules-essentials-heading'))
     assert.equal(PAGE.includes('<PendingApprovals'), false)
-    assert.equal(PAGE.includes('<HandoverBanner'), false)
+    assert.match(PANEL, /<PendingApprovals userId=\{userId\} \/>/)
   })
 
-  test('with nothing waiting, no section is drawn', () => {
+  test('with nothing waiting, no row is drawn', () => {
     assert.match(CARD, /if \(rows\.length === 0\) \{/)
+  })
+
+  test('each request says how long it has waited and has a Review button', () => {
+    assert.match(CARD, /asked \$\{timeAgo\(r\.submitted_at\)\}/)
+    assert.match(CARD, />\s*Review\s*</)
   })
 })
 
-describe('the card is styled like the launcher', () => {
-  test('one grouped white surface with hairline rows and a real tap target', () => {
-    assert.match(CSS, /\.approvalsList \{[^}]*background: #fff;[^}]*border: 1px solid #E4DED7;[^}]*border-radius: 14px;/)
-    const h = CSS.match(/\.approvalRow \{[^}]*min-height: (\d+)px;/)
-    assert.ok(h && Number(h[1]) >= 48)
+describe('the rows are styled as actions', () => {
+  test('a real tap target for Review', () => {
+    const h = CSS.match(/\.actionButton \{[^}]*height: (\d+)px;/)
+    assert.ok(h && Number(h[1]) >= 36, 'Review is at least 36px tall')
   })
 })
