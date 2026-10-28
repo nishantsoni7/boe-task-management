@@ -77,7 +77,7 @@ const CAP_SHORT: Record<string, string> = { raw_pieces: 'Raw', finished_pieces: 
 const CAP_TONE: Record<string, string> = { raw_pieces: s.tagRaw, finished_pieces: s.tagFull, finishing_only: s.tagFinish }
 
 export default function VendorListScreen() {
-  const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canCreate, canEdit, canExport, loading, signOut } = useVendors()
   const qc = useQueryClient()
   const { state, setState, resetState } = useListUrlState(PARAMS, { pageKey: 'page' })
   const [input, setInput, flush] = useUrlSearchInput(state.q, q => setState({ q }))
@@ -170,7 +170,7 @@ export default function VendorListScreen() {
     }
   }
 
-  const header = (
+  const header = !canCreate ? undefined : (
     <>
       <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors/new"><UserPlus size={15} aria-hidden="true" /> Add vendor</Link>
       <Link className={`${s.primary} ${s.hideOnPhone}`} href="/vendors/visit"><Plus size={15} aria-hidden="true" /> Log visit</Link>
@@ -243,12 +243,14 @@ export default function VendorListScreen() {
           {anyFilter && (
             <button type="button" className={s.linkBtn} style={{ marginLeft: 10 }} onClick={() => { setInput(''); resetState() }}>Clear all</button>
           )}
-          {isAdmin && (
+          {(canExport || isAdmin) && (
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
-              <button type="button" className={s.linkBtn} onClick={() => void exportCsv()} disabled={exporting}>{exporting ? 'Preparing…' : 'Export CSV'}</button>
-              <button type="button" className={s.linkBtn} onClick={() => setState({ archived: archived ? '0' : '1' })}>
-                {archived ? 'Back to active' : 'Show archived'}
-              </button>
+              {canExport && <button type="button" className={s.linkBtn} onClick={() => void exportCsv()} disabled={exporting}>{exporting ? 'Preparing…' : 'Export CSV'}</button>}
+              {isAdmin && (
+                <button type="button" className={s.linkBtn} onClick={() => setState({ archived: archived ? '0' : '1' })}>
+                  {archived ? 'Back to active' : 'Show archived'}
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -263,11 +265,11 @@ export default function VendorListScreen() {
             <EmptyArt />
             <div className={s.emptyTitle}>{anyFilter ? 'No vendor matches' : archived ? 'No archived vendors' : 'No vendors yet'}</div>
             <div className={s.muted}>
-              {anyFilter ? 'Try fewer words, or clear the filters.' : archived ? 'Archived vendors appear here.' : 'Add a vendor you have heard about, or log your first visit.'}
+              {anyFilter ? 'Try fewer words, or clear the filters.' : archived ? 'Archived vendors appear here.' : canCreate ? 'Add a vendor you have heard about, or log your first visit.' : 'Nothing has been added yet.'}
             </div>
             {anyFilter
               ? <button type="button" className={s.secondary} onClick={() => { setInput(''); resetState() }}>Clear search and filters</button>
-              : !archived && (
+              : !archived && canCreate && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                   <Link className={s.primary} href="/vendors/new"><UserPlus size={15} aria-hidden="true" /> Add vendor</Link>
                   <Link className={s.secondary} href="/vendors/visit"><Plus size={15} aria-hidden="true" /> Log visit</Link>
@@ -303,7 +305,7 @@ export default function VendorListScreen() {
                }
              }}>
           {rows.map(r => (
-            <VendorRow key={r.id} v={r} q={state.q} canEditStage={!archived && (isAdmin || PRE.includes(r.status))}
+            <VendorRow key={r.id} v={r} q={state.q} canEditStage={!archived && canEdit && (isAdmin || PRE.includes(r.status))}
                        isAdmin={isAdmin} onTouch={prefetch} onStage={changeStage} />
           ))}
         </div>

@@ -59,7 +59,7 @@ type Draft = {
 }
 
 export default function LogVisitScreen() {
-  const { supabase, profile, isAdmin, pastEntriesOpen, pastEntriesUntil, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canCreate, pastEntriesOpen, pastEntriesUntil, loading, signOut } = useVendors()
   const params = useSearchParams()
   const areas = useVendorAreas(supabase, !!profile)
   const qc = useQueryClient()
@@ -177,6 +177,18 @@ export default function LogVisitScreen() {
   }, [kind, later, mode, picked, vendor, visit, done])
 
   if (loading || !profile) return <LoadingScreen />
+  if (!canCreate) {
+    return (
+      <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Vendors">
+        <div className={s.wrapWide}>
+          <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
+            Your access level can view vendors but cannot log visits. Ask an administrator for Contributor access.
+          </div>
+        </div>
+      </VendorsLayout>
+    )
+  }
+
 
   const isNewVendor = mode === 'new'
   // A vendor met at our factory may stay a name; one that is visited is registered, so it needs everything.

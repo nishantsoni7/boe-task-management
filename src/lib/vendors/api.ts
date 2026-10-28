@@ -88,7 +88,16 @@ export const fetchActivity = (s: Supabase, from: string | null, to: string | nul
 export const fetchMyAccess = (s: Supabase) =>
   call<VendorAccess>(() => s.rpc('vendors_my_access'))
 
-export type VendorAccess = { is_admin: boolean; past_entries_until: string | null; past_entries_open: boolean }
+export type VendorAccess = {
+  /** May DECIDE: the Admin role, or vendors.approve (later stages, archive, the past-entries date). */
+  is_admin: boolean
+  can_create: boolean
+  can_edit: boolean
+  can_export: boolean
+  can_see_activity: boolean
+  past_entries_until: string | null
+  past_entries_open: boolean
+}
 
 export const setPastEntriesUntil = (s: Supabase, until: string) =>
   call<{ past_entries_until: string; past_entries_open: boolean }>(() => s.rpc('set_vendor_past_entries_until', { p_until: until }))

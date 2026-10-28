@@ -421,11 +421,21 @@ registerModule({
   displayName: 'Vendors',
   description: 'Outsourcing vendor base and a log of every vendor visit, with photographs and location.',
   actions: [
-    // One action. `view` opens the module, adds vendors, edits profiles and logs visits; Admin (role) also sees
-    // the Visit Activity screen and changes a vendor's status or archives it. Rows are written only by
-    // SECURITY DEFINER functions that read auth.uid(), so there is no separate create/edit grant to drift out
-    // of step. Registered by 20270426000000; off for everybody until an administrator grants it to a person.
+    // view: open the module and read every vendor, visit, photograph and note (Viewer). Read-only.
+    // Registered by 20270426000000; off for everybody until an administrator grants it to a person.
     { actionKey: 'view', displayName: 'View' },
+    // create: add a vendor and log a visit. edit: change a vendor's profile and move it between Potential and
+    // Contacted (Contributor). Registered by 20270429000000, which also gave both to everyone who then held view.
+    { actionKey: 'create', displayName: 'Create' },
+    { actionKey: 'edit', displayName: 'Edit' },
+    // approve: decide the later stages (prospect, under evaluation, approved, on hold, rejected), archive and
+    // restore a vendor, set the date until which past visits may be entered, and see Visit Activity (Manager).
+    { actionKey: 'approve', displayName: 'Approve' },
+    // export: download the vendor list as a file (Manager).
+    { actionKey: 'export', displayName: 'Export' },
+    // view_all: see the Visit Activity screen without being able to decide anything. Protected, so a preset
+    // never hands it out: it is granted per person (Custom), e.g. to a colleague who oversees the team.
+    { actionKey: 'view_all', displayName: 'View Visit Activity' },
   ],
 })
 
