@@ -42,7 +42,7 @@ export function PiFormatNavLink({ onNavigate, quiet = false }: {
       <span aria-hidden="true" style={{ color: '#686D6C', display: 'flex', alignItems: 'center' }}>
         <Download size={quiet ? 14 : 15} strokeWidth={1.8} />
       </span>
-      {PI_FORMAT_ACTION.label}
+      <span className="boe-rail-label">{PI_FORMAT_ACTION.label}</span>
     </a>
   )
 }

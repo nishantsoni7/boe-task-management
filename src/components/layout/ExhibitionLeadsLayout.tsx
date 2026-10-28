@@ -7,6 +7,7 @@ import { BarChart3, CalendarDays, Home, ListChecks, Plus, Users } from 'lucide-r
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import a from '@/components/exhibitionLeads/addLead.module.css'
 import { useExhibitions } from '@/hooks/useExhibitionLeads'
 import { createClient } from '@/lib/supabase/client'
@@ -45,13 +46,16 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
   const supabase = useMemo(() => createClient(), [])
   const { exhibitions, isLoading: exhibitionsLoading, error: exhibitionsError } = useExhibitions(supabase, true)
   const addAllowed = showAddLeadEntry(intakeState(exhibitionsLoading || exhibitionsError ? undefined : exhibitions))
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
   const pathname = usePathname()
   // Adding a lead is the module's main job: on every other page a phone shows a big red bar to start one.
   const showAddBar = addAllowed && !pathname.startsWith(`${BASE}/add`)
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
       <div
         className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
         onClick={() => setSidebarOpen(false)}
@@ -61,7 +65,7 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Exhibition Leads</div>
             </div>
@@ -70,6 +74,7 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             aria-label="BOE One Home"
+            className="boe-rail-label"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -93,6 +98,7 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
                 key={item.href}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
+                title={item.label}
                 onClick={() => { setSidebarOpen(false); router.push(item.href) }}
                 style={primary
                   ? { background: '#B9472E', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 12px', marginBottom: '10px', boxShadow: '0 2px 6px rgba(185,71,46,0.30)' }
@@ -101,17 +107,20 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
                 <span style={{ color: primary ? '#fff' : '#B9472E', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
-                {item.label}
+                <span className="boe-rail-label">{item.label}</span>
               </button>
             )
           })}
         </div>
 
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref={`/account?returnTo=${BASE}/add`}
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref={`/account?returnTo=${BASE}/add`}
+          />
+        </div>
       </aside>
 
       <div className="boe-main-content">

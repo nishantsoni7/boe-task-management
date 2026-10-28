@@ -107,7 +107,7 @@ export function ProductLookup({ onOpenProduct, enabled }: ProductLookupProps) {
   const showPanel = open && shouldRunLookup(term)
 
   return (
-    <div ref={boxRef} style={{ position: 'relative', padding: '0 4px 8px' }}>
+    <div ref={boxRef} className="boe-rail-ghost" style={{ position: 'relative', padding: '0 4px 8px' }}>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <Search
           size={13}

@@ -34,12 +34,13 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
       className={`boe-nav-item${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
       onClick={onNavigate}
+      title={label}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
     >
       <span aria-hidden="true" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
-      {label}
+      <span className="boe-rail-label">{label}</span>
       {trailing}
     </Link>
   )
@@ -51,7 +52,7 @@ export function ShellHomeLink() {
       href="/modules"
       title="BOE One Home"
       aria-label="BOE One Home"
-      className="boe-shell-home"
+      className="boe-shell-home boe-rail-label"
     >
       <Home size={14} strokeWidth={2} aria-hidden="true" />
     </Link>

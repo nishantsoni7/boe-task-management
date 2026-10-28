@@ -10,6 +10,7 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 // ─── Tab types (single source of truth) ──────────────────────────────────────
 
@@ -60,6 +61,9 @@ export function SamplesLayout({
 }: SamplesLayoutProps) {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const { triggerRefresh } = useRefresh()
 
   const handleRefresh = useCallback(() => {
@@ -78,7 +82,7 @@ export function SamplesLayout({
   }, [])
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* ── Sidebar ── */}
       <aside className="boe-sidebar">
@@ -86,11 +90,12 @@ export function SamplesLayout({
         {/* Brand */}
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="boe-rail-label" style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE One</div>
             <div className="boe-sidebar-brand-sub">Sample Tracking</div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             style={{
@@ -118,14 +123,15 @@ export function SamplesLayout({
                 key={tab.key}
                 className={`boe-nav-item${isActive ? ' active' : ''}`}
                 onClick={() => onTabSelect(tab.key)}
+                title={tab.label}
                 style={{ fontWeight: isActive ? 600 : 400, marginBottom: i < TABS.length - 1 ? '2px' : 0 }}
               >
                 <span style={{ color: isActive ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
-                {tab.label}
+                <span className="boe-rail-label">{tab.label}</span>
                 {count > 0 && (
-                  <span style={{
+                  <span className="boe-nav-count" style={{
                     marginLeft: 'auto',
                     fontSize: '12px', fontWeight: 600, color: '#595D5B',
                     background: '#E4DED7', borderRadius: '999px',
@@ -141,7 +147,7 @@ export function SamplesLayout({
 
         {/* Notification block */}
         {unreadCount > 0 ? (
-          <div style={{ padding: '0 10px 14px' }}>
+          <div className="boe-rail-hide" style={{ padding: '0 10px 14px' }}>
             <button
               onClick={() => router.push('/samples/notifications')}
               className="boe-notif-alert"
@@ -165,20 +171,24 @@ export function SamplesLayout({
             <button
               onClick={() => router.push('/samples/notifications')}
               className={`boe-nav-item${activeSection === 'notifications' ? ' active' : ''}`}
+              title="Notifications"
               style={{ color: activeSection === 'notifications' ? '#303536' : '#686D6C', fontSize: '12.5px', gap: '8px' }}
             >
               <Bell size={14} strokeWidth={1.8} />
-              Notifications
+              <span className="boe-rail-label">Notifications</span>
             </button>
           </div>
         )}
 
         {/* Profile + sign out */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/samples"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/samples"
+          />
+        </div>
       </aside>
 
       {/* ── Main content ── */}

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `2c32ded6` — Merge remote-tracking branch 'origin/main' into feat/vendor-management
-- Commits on this branch: 1042
+- Commit: `af411456` — Vendors: Notion-style redesign and a much smaller set of fields
+- Commits on this branch: 1043
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `af411456` 2026-10-28 Vendors: Notion-style redesign and a much smaller set of fields
 - `2c32ded6` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
@@ -38,7 +39,6 @@
 - `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
 - `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
-- `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
 
 ## Pages by top-level area
 

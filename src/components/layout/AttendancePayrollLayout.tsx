@@ -42,6 +42,7 @@ import {
   isAttendancePayrollNavItemActive,
   notificationsPathFor,
 } from './attendancePayrollNav'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import styles from './attendancePayrollShell.module.css'
 
 type AttendancePayrollLayoutProps = {
@@ -70,6 +71,9 @@ export function AttendancePayrollLayout({
   const sidebarOpen = drawerOpenedAt === pathname
   const setSidebarOpen = (open: boolean) => setDrawerOpenedAt(open ? pathname : null)
   const [refreshing,  setRefreshing]  = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const { triggerRefresh } = useRefresh()
 
   const handleRefresh = useCallback(() => {
@@ -121,7 +125,7 @@ export function AttendancePayrollLayout({
   const notificationsHref = notificationsPathFor(!!isAdmin)
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -136,12 +140,13 @@ export function AttendancePayrollLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">{ATTENDANCE_PAYROLL_MODULE_NAME}</div>
             </div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             aria-label="BOE One Home"
@@ -174,25 +179,29 @@ export function AttendancePayrollLayout({
                 href={item.path}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
+                title={item.label}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
                 <span aria-hidden="true" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
-                {item.label}
+                <span className="boe-rail-label">{item.label}</span>
               </Link>
             )
           })}
         </nav>
 
         {/* Bottom profile section */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          // Back to the page they left, rather than to whichever half of the
-          // module the old two shells happened to name.
-          accountSettingsHref={`/account?returnTo=${encodeURIComponent(pathname)}`}
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            // Back to the page they left, rather than to whichever half of the
+            // module the old two shells happened to name.
+            accountSettingsHref={`/account?returnTo=${encodeURIComponent(pathname)}`}
+          />
+        </div>
 
       </aside>
 

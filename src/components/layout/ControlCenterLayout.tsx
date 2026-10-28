@@ -14,6 +14,7 @@ import {
   MAIN_PATH, NAV_HUBS, activeHub, hubHref, isSectionActive, resolveControlCenterTab,
   type ControlCenterTab, type HubId, type NavHub,
 } from '@/lib/controlCenter/navModel'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import cc from '@/components/controlCenter/controlCenter.module.css'
 
 // The map itself (hubs, sections, search keywords, which one is active) lives in
@@ -117,7 +118,10 @@ type ControlCenterLayoutProps = {
 export function ControlCenterLayout({ profile, onSignOut, children }: ControlCenterLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [finding, setFinding] = useState(false)
-  const router   = useRouter()
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
+  const router  = useRouter()
   const pathname = usePathname()
 
   const closeSidebar = () => setSidebarOpen(false)
@@ -144,7 +148,7 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
   }, [])
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`} onClick={closeSidebar} />
@@ -155,12 +159,13 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             <BoeBrandIcon />
-            <div style={{ minWidth: 0 }}>
+            <div className="boe-rail-label" style={{ minWidth: 0 }}>
               <div className="boe-sidebar-brand-name">Control Center</div>
               <div className="boe-sidebar-brand-sub">BOE One</div>
             </div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={goHome}
             title="BOE One Home"
             aria-label="BOE One Home"
@@ -176,10 +181,10 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
           </button>
         </div>
 
-        <button className={cc.navFind} onClick={openFind} aria-label="Find anything" aria-keyshortcuts="Control+K Meta+K">
+        <button className={cc.navFind} onClick={openFind} aria-label="Find anything" title="Find anything" aria-keyshortcuts="Control+K Meta+K">
           <Search size={13} strokeWidth={2} />
-          <span className={cc.navFindText}>Find anything…</span>
-          <span className={cc.kbd}>Ctrl K</span>
+          <span className={`${cc.navFindText} boe-rail-label`}>Find anything…</span>
+          <span className={`${cc.kbd} boe-rail-label`}>Ctrl K</span>
         </button>
 
         {/* Navigation. The active tab is read from the URL inside a Suspense
@@ -189,11 +194,14 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
           <ControlCenterNavWithTab pathname={pathname} onNavigate={closeSidebar} />
         </Suspense>
 
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/admin/control-center"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/admin/control-center"
+          />
+        </div>
       </aside>
 
       {/* Main content */}
@@ -379,6 +387,7 @@ function NavItem({
       onClick={onNavigate}
       className={`boe-nav-item${active ? ' active' : ''}${danger ? ` ${cc.navDanger}` : ''}`}
       aria-current={active ? 'page' : undefined}
+      title={label}
       style={{
         fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none',
         color: danger && !active ? '#A12438' : undefined,
@@ -387,7 +396,7 @@ function NavItem({
       <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
-      {label}
+      <span className="boe-rail-label">{label}</span>
     </Link>
   )
 }

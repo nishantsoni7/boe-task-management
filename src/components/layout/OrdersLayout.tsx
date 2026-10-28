@@ -15,6 +15,7 @@ import { activeOrdersNav, type OrdersNavKey } from '@/lib/navigation/moduleNav'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
 import { PiFormatNavLink } from '@/components/orders/PiFormatLink'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 type OrdersLayoutProps = {
   profile: UserProfile | null
@@ -50,6 +51,9 @@ export function OrdersLayout({
 }: OrdersLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router   = useRouter()
   const pathname = usePathname()
   // While a page is still loading it has no profile of its own yet; the
@@ -141,7 +145,7 @@ export function OrdersLayout({
   ]
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -156,7 +160,7 @@ export function OrdersLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Orders</div>
             </div>
@@ -194,7 +198,7 @@ export function OrdersLayout({
             why the bell never appeared for Orders notifications even though the
             sidebar "Notifications" badge above already worked. ── */}
         {unreadOrders > 0 && (
-          <div style={{ padding: '0 10px 14px' }}>
+          <div className="boe-rail-hide" style={{ padding: '0 10px 14px' }}>
             <button
               onClick={() => navTo('/orders/notifications')}
               className="boe-notif-alert"
@@ -228,7 +232,8 @@ export function OrdersLayout({
               not among the destinations above, never lit, smaller and muted.
               The same action as the button on the PI Drafts heading. */}
           <div className="boe-sidebar-resources" role="group" aria-label="Resources">
-            <div className="boe-sidebar-resources-label">Resources</div>
+            <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+            <div className="boe-sidebar-resources-label boe-rail-ghost">Resources</div>
             <PiFormatNavLink quiet onNavigate={() => setSidebarOpen(false)} />
             {canTrain && (
               <ShellNavLink
