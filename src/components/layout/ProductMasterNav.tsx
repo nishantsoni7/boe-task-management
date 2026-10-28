@@ -68,9 +68,9 @@ export function ProductMasterNav({
       </button>
 
       {expanded && categories.length > 0 && (
-        // The category list has no icon to stand in for it, so the rail drops it
-        // while collapsed and shows it again when the menu opens.
-        <div className="boe-rail-ghost" style={{
+        // The category list has no icons, so the closed rail shows it as a guide
+        // line under Product Master (with a tick on the selected category).
+        <div className="boe-rail-tree" style={{
           marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px',
           borderLeft: '1px solid #E4DED7',
         }}>

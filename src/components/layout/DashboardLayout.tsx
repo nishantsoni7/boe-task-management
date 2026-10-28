@@ -590,7 +590,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
 // ─── NavGroup ─────────────────────────────────────────────────────────────────
 function NavGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="boe-rail-ghost" style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
+    <div className="boe-rail-tree" style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
       {children}
     </div>
   )

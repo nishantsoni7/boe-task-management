@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `97d88dc1` — Modules page: "For you" panel, action first and every update previewed (#483)
-- Commits on this branch: 1047
+- Commit: `1e2aa1f2` — Sidebar rail: a clean closed rail with no gaps or scrollbar
+- Commits on this branch: 1048
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 164
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 813   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `97d88dc1` 2026-10-29 Modules page: "For you" panel, action first and every update previewed (#483)
+- `1e2aa1f2` 2026-10-29 Sidebar rail: a clean closed rail with no gaps or scrollbar
+- `ebf9eb69` 2026-10-29 Sidebar rail: no vertical movement anywhere, fluid open and close
 - `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
 - `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
@@ -38,7 +39,6 @@
 - `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
 - `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
-- `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
 
 ## Pages by top-level area
 
