@@ -46,9 +46,8 @@ import {
 } from './ModuleOrderControls'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
-import { HandoverBanner } from '@/components/finance/HandoverBanner'
 import { participatesInPayroll } from '@/lib/payroll/participation'
-import { PendingApprovals } from './PendingApprovals'
+import { AttentionPanel } from './AttentionPanel'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -893,11 +892,11 @@ export default function BoeOsHomePage() {
               moment edit mode closes. */}
           {!editingOrder && <QuickActionList actions={quickActions} variant="page" />}
 
-          {/* Cash handed to this person (or by them) that nobody has accepted yet.
-              Not dismissible; renders nothing when there is none. It is here as
-              well as in Finance because a recipient need not have Finance access. */}
-          {!editingOrder && <HandoverBanner />}
-
+          {/* The modules on the left, "Needs your attention" on the right (open
+              cash handovers, unread Finance and Order notifications, attendance
+              approvals). Beside the tiles rather than above them so the notices
+              do not push the modules down; on a phone it falls below them. */}
+          <div className={styles.launcherShell}>
           {/* ── The launcher ──
               `.launcher` is the size container every column count below is
               measured against — the width the launcher actually gets, not the
@@ -921,12 +920,6 @@ export default function BoeOsHomePage() {
                 <LatestAnnouncement latest={myAnnouncements[0]} />
               </div>
             )}
-
-            {/* ── Pending approvals ──
-                Attendance requests waiting for this admin, above the modules
-                because acting on them is the reason to open the launcher. Not
-                drawn when nothing is waiting, nor while arranging. */}
-            {!editingOrder && showPendingApprovals && userId && <PendingApprovals userId={userId} />}
 
             {!editingOrder && essentialModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-essentials-heading">
@@ -967,6 +960,19 @@ export default function BoeOsHomePage() {
                 </div>
               </section>
             )}
+          </div>
+
+          {/* Not while arranging: that screen belongs to Save, Cancel and the
+              cards. Every gate is the page's own, passed in as data: a null
+              count means the person cannot open that module. */}
+          {!editingOrder && (
+            <AttentionPanel
+              userId={userId}
+              financeUnread={mayOpenFinance ? financeCount.count : null}
+              ordersUnread={mayOpenOrders ? orderCount.count : null}
+              showAttendance={showPendingApprovals}
+            />
+          )}
           </div>
 
           {/* The save confirmation. The launcher's existing toast, in the place

@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `1209de81` — Backups: fix the pg_dump step found on the first live runs
-- Commits on this branch: 1042
+- Commit: `ee033fb4` — Sidebar rail: badges no longer clipped, one smooth spring motion
+- Commits on this branch: 1044
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 375 (first `20260530_create_positions.sql`, latest `20270427000000_vendor_area_and_filters.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
-- Test files: 665   Next.js 16.2.6, React 19.2.4
+- Test files: 666   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
+- `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
@@ -37,8 +39,6 @@
 - `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
 - `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
-- `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
-- `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
 
 ## Pages by top-level area
 

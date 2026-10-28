@@ -888,6 +888,108 @@
   margin-top: 14px;
 }
 
+/* ── Needs your attention (the right-hand column) ───────────────────────────
+   The modules (.launcher, the size container) on the left and this column on
+   the right while there is room; on a tablet or phone it follows the tiles.
+
+   With nothing to show the aside renders no markup, `:empty` hides it, and
+   the tiles keep the whole width instead of leaving a blank strip. Each group uses the same white grouped surface as the approvals
+   list, so the launcher reads as one system. */
+.launcherShell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 28px;
+  row-gap: 28px;
+}
+
+/* The modules take every spare pixel; the column keeps ~320px beside them and,
+   when the shell is too narrow for both (under ~990px), wraps beneath and
+   takes the full width. Flex-wrap rather than a viewport query, so the
+   stylesheet's columns still follow container widths only. */
+.launcherShell > .launcher {
+  flex: 999 1 640px;
+  min-width: 0;
+}
+
+.attention {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  flex: 1 1 320px;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  color: #303536;
+}
+
+.attention:empty {
+  display: none;
+}
+
+.attentionGroup {
+  min-width: 0;
+}
+
+.attentionTitle {
+  margin: 0 0 10px;
+  font-family: var(--boe-font-heading);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: #303536;
+}
+
+.attentionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 14px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.16s ease;
+}
+
+.attentionRow:hover,
+.attentionRow:active {
+  background: #FBFAF8;
+}
+
+.attentionRow:focus-visible {
+  outline: 2px solid #303536;
+  outline-offset: -2px;
+}
+
+.attentionRowLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.attentionRow .approvalsCount {
+  margin-left: 0;
+  vertical-align: baseline;
+}
+
+/* The handover cards keep their own look; the stack's outer spacing is handed
+   to the group. */
+.attentionRow + .attentionHandovers {
+  margin-top: 10px;
+}
+
+.attentionHandovers :global(.boe-handover-stack) {
+  margin-bottom: 0;
+}
+
+
 /* ── Personal card order: the controls and the handle ───────────────────────
    The "Edit order" work, unchanged in behaviour. The controls sit in the app
    header's own `.boe-header-actions` slot, which supplies the position, the
