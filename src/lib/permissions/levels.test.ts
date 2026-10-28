@@ -251,6 +251,11 @@ describe('Manager never receives a protected action', () => {
     // active admins. The commission has its own table precisely so that no
     // wider Orders authority reaches it; a preset must not either.
     //
+    // And by two more in 20270428000000: `orders.view_payment_plan` and
+    // `orders.edit_payment_plan`, the client-payment sheet on a Confirmed Order.
+    // It shows what each client owes and records dispatch history, so it is
+    // granted per person in Control Center and never by a preset.
+    //
     // And by one more in 20270220000000: `assets_access.manage_asset_catalogue`,
     // which defines the categories and products every company asset is filed
     // under. It carries no asset authority, and a "Manager" preset must not be
@@ -258,9 +263,9 @@ describe('Manager never receives a protected action', () => {
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
-      'dispatch', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
-      'mark_lost', 'receive', 'reconcile', 'reimburse', 'verify', 'verify_own_payment', 'view_all', 'view_pi_commission',
-      'view_quotations', 'view_team',
+      'dispatch', 'edit_payment_plan', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
+      'mark_lost', 'receive', 'reconcile', 'reimburse', 'verify', 'verify_own_payment', 'view_all', 'view_payment_plan',
+      'view_pi_commission', 'view_quotations', 'view_team',
     ])
   })
 

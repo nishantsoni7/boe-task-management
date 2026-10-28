@@ -101,7 +101,7 @@ Registered modules and actions (`src/lib/permissions/modules.ts`, verified):
 | finance | view, create, edit, delete, approve, export, manage, view_all, allocate, allocate_correct, verify_own_payment |
 | meetings | view, create, edit, delete, export, manage |
 | customer_review_requests | use, verify (no `view`; key kept because grants are written against it) |
-| orders | view, create, edit, delete, export, manage, approve_order, approve_advance_exception, align_production, view_pi_commission, view_all |
+| orders | view, create, edit, delete, export, manage, approve_order, approve_advance_exception, align_production, view_pi_commission, view_all, train_customize_image, view_payment_plan, edit_payment_plan |
 | image_editor | view, create (label "Use" via module-scoped map) |
 | exhibition_leads | view, view_all |
 | inventory | view, create, edit, delete, approve |
@@ -123,10 +123,10 @@ Levels (`levels.ts`): `no_access | viewer | contributor | manager | custom`. Vie
 Manager = + approve/export where registered; Custom = ticked actions. **PROTECTED_ACTIONS (never granted by a preset, Custom
 only):** delete, admin, manage, assign, dispatch, receive, mark_lost, close, view_quotations, manage_quotations, view_all,
 approve_order, approve_advance_exception, allocate, allocate_correct, verify_own_payment, align_production, view_pi_commission,
-verify, manage_access_records, manage_asset_catalogue, view_team. (ACCESS_CONTROL_V1.md lists a shorter set incl.
+view_payment_plan, edit_payment_plan, verify, manage_access_records, manage_asset_catalogue, view_team. (ACCESS_CONTROL_V1.md lists a shorter set incl.
 `can_be_order_assignee` - stale; that action no longer exists. The code constant is the truth.)
 `ACTION_DEPENDENCIES` (child -> parent): manage_quotations->view_quotations->view; verify_own_payment->approve; view_all->view_team->view
-(where registered); approve_order/approve_advance_exception/align_production/view_pi_commission->view; verify->use;
+(where registered); approve_order/approve_advance_exception/align_production/view_pi_commission/view_payment_plan->view; edit_payment_plan->view_payment_plan; verify->use;
 manage_access_records/manage_asset_catalogue->view. Turning a parent off turns dependents off (`dependentActionsToRemove`).
 
 Who can do what in practice: admins write overrides; the PUT route refuses (409) removal of `orders.approve_order` from the seeded

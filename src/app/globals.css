@@ -12014,3 +12014,55 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-rail > .boe-sidebar .boe-rail-tree .boe-nav-item > *,
   .boe-rail > .boe-sidebar .boe-nav-count { transition: none !important; }
 }
+
+/* ── ORDER PAYMENT PLAN (20270428000000) ─────────────────────────────────────
+   The sheet on a Confirmed Order: inputs, a lines table with this lot's
+   quantities, the summary and the lot history. */
+.opp { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); padding: 18px 20px; margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
+.opp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.opp-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--boe-text-strong); }
+.opp-sub { margin: 2px 0 0; font-size: 12.5px; color: var(--boe-text-muted); }
+.opp-downloads { display: flex; gap: 8px; }
+.opp-disabled { opacity: 0.5; pointer-events: none; }
+.opp-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.opp-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--boe-text-muted); min-width: 0; }
+.opp-field em { font-style: normal; color: var(--boe-text-placeholder); margin-left: 4px; }
+.opp-grow { flex: 1 1 220px; }
+.opp-bad { border-color: var(--boe-error) !important; }
+.opp-scroll { overflow-x: auto; }
+.opp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.opp-table th { text-align: left; font-weight: 600; color: var(--boe-text-muted); padding: 7px 8px; border-bottom: 1px solid var(--boe-border); white-space: nowrap; }
+.opp-table td { padding: 6px 8px; border-bottom: 1px solid var(--boe-border); color: var(--boe-text); vertical-align: middle; }
+.opp-table tfoot td { font-weight: 600; border-bottom: 0; color: var(--boe-text-strong); }
+.opp-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opp-name { min-width: 140px; }
+.opp-lot { background: var(--boe-brand-tint); }
+.opp-qty { width: 84px; text-align: right; padding: 4px 8px; }
+.opp-neg { color: var(--boe-error); font-weight: 600; }
+.opp-sum { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); overflow: hidden; }
+.opp-sum > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 12px; border-bottom: 1px solid var(--boe-border); font-size: 13px; }
+.opp-sum > div:last-child { border-bottom: 0; }
+.opp-sum dt { color: var(--boe-text); }
+.opp-sum dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; color: var(--boe-text-strong); }
+.opp-strong { background: var(--boe-surface-quiet); }
+.opp-strong dt, .opp-strong dd { font-weight: 700; }
+.opp-due dd { color: var(--boe-brand); }
+.opp-ok dd { color: var(--boe-success-border); }
+.opp-actions { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.opp-mark { padding-top: 10px; border-top: 1px dashed var(--boe-border); }
+.opp-hint { font-size: 12px; color: var(--boe-text-muted); align-self: center; }
+.opp-note, .opp-warn { margin: 0; font-size: 12.5px; padding: 8px 12px; border-radius: var(--boe-radius-control); }
+.opp-note { background: var(--boe-surface-quiet); color: var(--boe-text-muted); }
+.opp-warn { background: var(--boe-error-bg); border: 1px solid var(--boe-error-border); color: var(--boe-error); }
+.opp-h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--boe-text-strong); }
+.opp-lots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.opp-lot-row { border-bottom: 1px solid var(--boe-border); padding: 8px 0; }
+.opp-lot-line { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 12.5px; }
+.opp-lot-items { color: var(--boe-text-muted); flex: 1 1 200px; }
+.opp-link { background: none; border: 0; padding: 0; color: var(--boe-brand); font-size: 12.5px; cursor: pointer; text-decoration: underline; }
+.opp-fix { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; background: var(--boe-surface-quiet); padding: 12px; border-radius: var(--boe-radius-control); }
+.opp-fix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+@media (max-width: 640px) {
+  .opp { padding: 14px 12px; }
+  .opp-sum > div { flex-direction: column; gap: 2px; }
+}

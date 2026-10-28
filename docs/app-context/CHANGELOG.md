@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR pending) · migration 20270428000000 NOT applied
+- **Owner request.** One sheet per Confirmed Order: the goods being dispatched are paid in full, plus an adjustable share (50%) of the goods still to come, charges included, GST only on the billed part of what leaves.
+- **What.** "Payment plan" section on the Order page; dispatch lots (one planned, any number dispatched; "Mark as dispatched"; admin-only correction with a reason); saved pending %, billing % and advance; advance filled from Finance's verified totals when present, typed otherwise; on screen, Excel and PDF. Protected permissions `orders.view_payment_plan` and `orders.edit_payment_plan` (granted per person in Control Center; admins by role).
+- **Database.** Four closed tables and five functions; nothing in Orders, PIs or payments is written. Rollback is in the migration header.
+- **Proof.** tsc, eslint, `paymentPlan*` tests, full suite, 41-check PGlite suite; rehearsed on the linked database in a rolled-back transaction (REHEARSAL OK, zero residue afterwards). NOT seen on screen, PDF layout not viewed.
+- **Next.** Apply the migration (`db push --include-all` if earlier ones are still pending), then grant the two permissions to the right people.
+
 ## 2026-10-29 — Rail sidebar: no vertical movement anywhere, fluid open/close, a clean closed rail, Vendors joins the rail (PR pending) · no migration
 - **Owner request.** The badge numbers "danced" while the menu opened, the Control Center search box was taller in the rail than open so every icon below it jumped, and the menu had to feel like an Apple interface on every module.
 - **Why it moved.** In the narrow rail the hidden labels still took part in layout and wrapped (the "Find anything… Ctrl K" box became three lines tall); the notification card was `display: none` closed and inserted when open; badges changed font size, padding and position between states and animated `top`/`right`, so their digits re-rendered every frame.

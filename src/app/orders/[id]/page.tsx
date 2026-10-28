@@ -277,6 +277,7 @@ import {
   productPicturesZipName,
 } from '@/lib/orders/productPictures'
 import { orderPaymentFacts } from '@/lib/orders/orderPaymentFacts'
+import OrderPaymentPlan from './OrderPaymentPlan'
 import { buildErpLineItemsWorkbook, erpLineItemsFileName } from '@/lib/orders/erpLineItems'
 import { erpPictureUrlsByRow, loadErpImages, prepareErpImage } from '@/lib/orders/erpImages'
 
@@ -3550,6 +3551,15 @@ export default function OrderDetailPage() {
             )}
             {piProductsCard}
           </div>
+        )}
+
+        {/* ══ 4b. PAYMENT PLAN ══ (20270428000000) Self-loading; drawn only for holders of view_payment_plan. */}
+        {order.source_order_submission_id && ordersCaps.canViewPaymentPlan && !viewAsUserId && (
+          <OrderPaymentPlan
+            orderId={order.id}
+            canEdit={ordersCaps.canEditPaymentPlan}
+            isAdmin={actingAsAdmin}
+          />
         )}
 
         {/* ══ THE LOWER WORKSPACE ══

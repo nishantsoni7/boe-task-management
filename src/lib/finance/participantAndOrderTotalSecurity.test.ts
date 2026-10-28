@@ -1149,6 +1149,7 @@ describe('the applied migrations are frozen', () => {
       '20270426000000_vendor_management.sql',
       // Vendors: Area, and the team-size / area filters. APPLIED 2026-10-28.
       '20270427000000_vendor_area_and_filters.sql',
+      '20270428000000_order_payment_plan.sql',
       // Vendors: real access levels (view / create / edit / approve / export / view_all). NOT APPLIED.
       '20270429000000_vendor_access_levels.sql',
     ])
@@ -1551,6 +1552,7 @@ describe('the applied migrations are frozen', () => {
       '20270426000000_vendor_management.sql',
       // Vendors: Area, and the team-size / area filters. APPLIED 2026-10-28.
       '20270427000000_vendor_area_and_filters.sql',
+      '20270428000000_order_payment_plan.sql',
       // Vendors: real access levels (view / create / edit / approve / export / view_all). NOT APPLIED.
       '20270429000000_vendor_access_levels.sql',
     ])
