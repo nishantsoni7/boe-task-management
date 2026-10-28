@@ -278,8 +278,20 @@ describe('the read side excludes system types too', () => {
     const files = readdirSync(join(ROOT, dir)).filter(f => f.endsWith('.sql'))
     assert.ok(files.length > 0)
     const inserters: string[] = []
+    // The one deliberate exception: the phone-alerts trigger (20270425000000)
+    // is a READER of notifications. It never writes a row; it only asks the app,
+    // through pg_net, to send a lock-screen alert for a row a person's action
+    // already created, and the app drops every system type
+    // (src/lib/push/pushPolicy.ts). It is allowed to install a trigger and an
+    // outbound call, and nothing else.
+    const PHONE_PUSH = '20270425000000_phone_push_notifications.sql'
     for (const f of files) {
       const sql = read(join(dir, f))
+      if (f === PHONE_PUSH) {
+        assert.equal(/insert\s+into\s+(public\.)?notifications/i.test(sql), false,
+          'the phone-alerts trigger reads notifications and must never write one')
+        continue
+      }
       if (/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql)) {
         assert.fail(`${f} installs a trigger on notifications`)
       }

@@ -84,6 +84,20 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: 2678400,
   },
 
+  // The phone-alerts service worker must always be fetched fresh, or a fixed
+  // worker would not reach phones for up to a day. It caches nothing itself.
+  async headers() {
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+        ],
+      },
+    ]
+  },
+
   // Old addresses that must keep working after a page moved.
   //
   // Attendance Requests used to hold a second tab, "Payroll review", at

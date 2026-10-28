@@ -123,6 +123,19 @@ Five types, all in `FINANCE_NOTIFICATION_TYPES` and written by the handover RPCs
 
 Cash journeys (20270413000000): `receive_cash_directly` notifies the holder with `finance_handover_accepted` and `entity_id` NULL (it has no handover), so the link falls back to `/finance`; any open handover it supersedes is cancelled with `finance_handover_cancelled` to both people.
 
+## 8d. Phone alerts - Web Push (20270425000000, PR open, NOT APPLIED)
+
+A second delivery of rows already in `notifications`; it creates no rows, adds no enum value, and changes who is notified of nothing.
+
+- **Flow.** `AFTER INSERT` trigger `notifications_push_dispatch` (reader only, never writes a notification) skips digest/system types and `task_assigned`, skips recipients with no device, reads Vault secrets `push_dispatch_url` + `push_dispatch_secret` (either missing = does nothing), then `net.http_post` (pg_net, async, 3 s) to `POST /api/push/dispatch` with `Authorization: Bearer <secret>` and `{notification_id}`. Every error is swallowed so a notification is never undone by its alert.
+- **Route.** `src/app/api/push/dispatch/route.ts` checks the secret first (503 if `PUSH_DISPATCH_SECRET`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` or `VAPID_SUBJECT` is unset), then `dispatchPush` (`src/lib/push/dispatch.ts`): load the row, apply `shouldPushNotification` and the person's muted categories (`src/lib/push/pushPolicy.ts`), send with `web-push` to each device, delete a device the push service answers 404/410.
+- **Lock-screen text is generic per category** ("Finance update", "Order update" ...): no client name, amount or task title, because a locked phone is public. The tap opens `getNotificationMeta(row).href` (the same record as the inbox row) or the category inbox; only same-origin paths pass `safePushPath`.
+- **Tables.** `push_subscriptions` (one row per device, unique `endpoint`; signing in as someone else on the same phone re-points the row) and `push_preferences.muted_categories` (check-constrained to the seven categories). RLS: select-own only; all writes go through `/api/push/subscription` (POST/DELETE) and `/api/push/preferences` (GET/PUT), service role scoped to the signed-in user, refused under View As.
+- **Client.** `public/sw.js` (push + notificationclick only; NO fetch handler, NO cache, served `no-cache` via `next.config.ts` headers); `PhoneAlertsCard` on Account Settings (turn on/off this device, per-category mute; iPhone shows the Add to Home Screen steps first).
+- **Owner steps to switch on.** (1) apply the migration; (2) generate a VAPID key pair and set Vercel env `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (a mailto: address), `PUSH_DISPATCH_SECRET`; (3) insert the two Vault secrets (URL = the production domain + `/api/push/dispatch`; secret = the same value as `PUSH_DISPATCH_SECRET`). Never commit any value.
+- **Traps.** The guard test `notificationSystemActivity.test.ts` allowlists exactly this migration for a trigger on notifications and an outbound call, and asserts it never inserts a notification. Both migration ledgers in `participantAndOrderTotalSecurity.test.ts` list it. A new notification type follows the `*_NOTIFICATION_TYPES` lists automatically; if the inbox hides it, also add it to the trigger's skip list and `shouldPushNotification`. iPhone needs iOS 16.4+ and the Home Screen app. Sample Tracking (own table) is NOT covered. Not seen on a real phone.
+- **Tests.** `src/lib/push/push.test.ts`.
+
 ## 9. Known traps / gotchas / unfixed defects
 
 1. **FIXED 2026-10-19 (code only): these types are now in `ORDER_NOTIFICATION_TYPES` and filed under Orders by `getNotificationMeta` (test `hiddenOrderTypes.test.ts`). Original note:** Some written types are not in any feed list. `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and

@@ -151,7 +151,7 @@ describe('the administrator convention is preserved', () => {
 describe('registration', () => {
   test('the module is engine-gated', () => {
     assert.ok((ENGINE_GATED_MODULE_KEYS as readonly string[]).includes(IMAGE_EDITOR_MODULE_KEY))
-    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 13) // + inventory (20270313000000), vendors (20270425000000)
+    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 13) // + inventory (20270313000000), vendors (20270426000000)
   })
 
   test('the key is spelled once and shared', () => {

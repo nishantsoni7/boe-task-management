@@ -81,3 +81,23 @@ export function normalizeStoredTaskOrder(value: unknown): string[] | null {
   }
   return out.length > 0 ? out.slice(0, TASK_ORDER_MAX) : null
 }
+
+/**
+ * Where a dragged row would settle. `mids` are the rows' resting vertical
+ * midpoints (top to bottom), `from` the dragged row's index, `[lo, hi]` the
+ * rows it may move among (its own group), `center` the dragged row's current
+ * vertical centre in the same coordinates. Pure so the feel of the drag is
+ * testable without a browser.
+ */
+export function dragTargetIndex(
+  mids: readonly number[],
+  from: number,
+  lo: number,
+  hi: number,
+  center: number,
+): number {
+  let target = from
+  for (let i = from + 1; i <= hi; i++) if (center > mids[i]) target = i
+  for (let i = from - 1; i >= lo; i--) if (center < mids[i]) target = i
+  return target
+}

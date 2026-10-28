@@ -1,6 +1,6 @@
 # 23. Vendors (outsourcing vendor base, visit log, vendor pipeline)
 
-Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472). Migration `20270425000000` is **NOT APPLIED** to production at the time of writing; the module is invisible to everyone until it is applied and a person is granted `view`.
+Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472). Migration `20270426000000` is **NOT APPLIED** to production at the time of writing; the module is invisible to everyone until it is applied and a person is granted `view`.
 
 ## 1. Purpose & users
 
@@ -37,7 +37,7 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 
 Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')`); shell `src/components/layout/VendorsLayout.tsx`; library `src/lib/vendors/` (constants, api, validation, photos, csv); hook `src/hooks/useVendors.ts`; launcher card in `src/app/modules/page.tsx`.
 
-## 5. Database (`20270425000000_vendor_management.sql`)
+## 5. Database (`20270426000000_vendor_management.sql`)
 
 - `vendors`, `vendor_visits` (append-only by trigger; `visited_at` server time for live records, noon of the chosen day for entered-later ones), `vendor_visit_photos` (path unique), `vendor_settings` (one row, no browser access). Tables read-only to the browser: write privileges revoked **and** no write policy; `vendors_can_read()` select policies + RESTRICTIVE `module_entry_open('vendors')`.
 - Writes (SECURITY DEFINER, `auth.uid()`): `save_vendor` (create / update; stage-aware validation; duplicate by mobile, or by name+city when there is no mobile), `log_vendor_visit`, `set_vendor_status`, `set_vendor_past_entries_until` (Admin), `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (every typed word must match company / person / phone / city / address / materials / recommender; `status_counts` for tabs; `awaiting_visit` filter), `get_vendor`, `vendor_activity` (Admin), `vendors_my_access` (is_admin, window), `vendor_profile_complete` (internal).
@@ -58,4 +58,4 @@ Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')
 
 ## 8. Recheck before changing
 
-`supabase migration list --linked` shows `20270425000000` with a non-empty remote before calling it applied; re-run `node supabase/tests/vendor_management_pglite.mjs <pglite dir>`; grep `vendor_list` / `log_vendor_visit` for a newer migration that re-issues them (the latest definition wins).
+`supabase migration list --linked` shows `20270426000000` with a non-empty remote before calling it applied; re-run `node supabase/tests/vendor_management_pglite.mjs <pglite dir>`; grep `vendor_list` / `log_vendor_visit` for a newer migration that re-issues them (the latest definition wins).

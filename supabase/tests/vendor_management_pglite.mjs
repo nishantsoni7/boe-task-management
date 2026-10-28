@@ -1,4 +1,4 @@
-// Database regression suite for 20270425000000 (Vendor Management). Runs the REAL migration in an in-memory
+// Database regression suite for 20270426000000 (Vendor Management). Runs the REAL migration in an in-memory
 // Postgres (PGlite) against small stubs of the platform objects it depends on (users, auth.uid(),
 // module_entry_open, resolve_permission, storage). Run:
 //   node supabase/tests/vendor_management_pglite.mjs <dir with @electric-sql/pglite installed>
@@ -79,7 +79,7 @@ await db.exec(`
 await db.exec(extract(mig('20270305000000_exhibition_leads.sql'), 'normalize_lead_phone'))
 
 // The migration under test, whole.
-await db.exec(mig('20270425000000_vendor_management.sql'))
+await db.exec(mig('20270426000000_vendor_management.sql'))
 await db.exec(`
   grant select on all tables in schema public to authenticated;
   grant all on all tables in schema storage to authenticated;

@@ -9,7 +9,7 @@ import {
 import { vendorsCsv } from './csv'
 import { EMPTY_VENDOR, EMPTY_VISIT, isLiveSiteVisit, validateVendor, validateVisit, vendorPayload, type VisitContext } from './validation'
 
-const MIGRATION = readFileSync('supabase/migrations/20270425000000_vendor_management.sql', 'utf8')
+const MIGRATION = readFileSync('supabase/migrations/20270426000000_vendor_management.sql', 'utf8')
 
 const goodVendor = {
   ...EMPTY_VENDOR, company_name: 'Sharma Wood Works', contact_name: 'Ramesh', phone: '98765 43210',

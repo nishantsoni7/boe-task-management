@@ -424,7 +424,7 @@ registerModule({
     // One action. `view` opens the module, adds vendors, edits profiles and logs visits; Admin (role) also sees
     // the Visit Activity screen and changes a vendor's status or archives it. Rows are written only by
     // SECURITY DEFINER functions that read auth.uid(), so there is no separate create/edit grant to drift out
-    // of step. Registered by 20270425000000; off for everybody until an administrator grants it to a person.
+    // of step. Registered by 20270426000000; off for everybody until an administrator grants it to a person.
     { actionKey: 'view', displayName: 'View' },
   ],
 })

@@ -53,8 +53,8 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 08 | Platform core (auth, shell, launcher, dashboard, BOE One identity, Vercel) | Shipped | `modules/08-platform-core.md` | |
 | 09 | Permissions & access control | Shipped (phases up to 3E; 3F observation) | `modules/09-permissions-access-control.md` | `npm run permissions:check` must be clean; fix drift with a targeted migration, not `permissions:sync` |
 | 10 | Members, org hierarchy, positions, Control Center | Shipped | `modules/10-members-org-control-center.md` | Six hubs, action queue, test-data cleanup, `checkLastAdministrator()` on 4 routes |
-| 11 | Task Management | Shipped | `modules/11-task-management.md` | **2026-10-28 (PR open):** My Tasks — plain action icons, pinned tasks under Important, drag-and-drop personal order (`user_task_order`, migration `20270424000000` NOT applied). Dynamic task route has no `loading.tsx` ⇒ no prefetch; navigation warm-caches (#322); a quotation completed (or admin-cancelled) notifies its creator only (Oct 2026); quotation tasks have their own page, `QuotationDetailView`, where completing = **Send Quotation** with a required quote file (PR open, no SQL) |
-| 12 | Notifications | Shipped | `modules/12-notifications.md` | enum caveat; per-module categories |
+| 11 | Task Management | Shipped | `modules/11-task-management.md` | **2026-10-28 (PR #470 merged):** My Tasks — plain action icons, pinned tasks under Important, drag-and-drop personal order (`user_task_order`, migration `20270424000000` APPLIED 2026-10-28). Dynamic task route has no `loading.tsx` ⇒ no prefetch; navigation warm-caches (#322); a quotation completed (or admin-cancelled) notifies its creator only (Oct 2026); quotation tasks have their own page, `QuotationDetailView`, where completing = **Send Quotation** with a required quote file (PR open, no SQL) |
+| 12 | Notifications | Shipped | `modules/12-notifications.md` | **2026-10-28 (PR open):** phone alerts (Web Push) - lock-screen banner via a notifications trigger; Account Settings > Phone alerts; migration `20270425000000` NOT yet applied; inert until Vault secrets + Vercel env vars are set. Earlier: enum caveat; per-module categories |
 | 13 | Performance (personal vs team) | Shipped | `modules/13-performance.md` | `view` / `view_team` / `view_all` |
 | 14 | Review Workflow / Customer Reviews | Shipped | `modules/14-review-workflow.md` | Soft-deleted rows still match status predicates — always `deleted_at is null` |
 | 15 | Meetings | Shipped | `modules/15-meetings.md` | RPC module-entry bypass FIXED by `20270319000000` (applied 2026-10-18); admin permanent delete `20270326000000` (UNAPPLIED until merge) |
@@ -65,7 +65,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 20 | Sample Tracking | Shipped, thin | `modules/20-sample-tracking.md` | RLS is the only spec; `sample_notifications` table has no `create table` migration |
 | 21 | Image Editor | Shipped | `modules/21-image-editor.md` | fal.ai billed per press — never retry; `CRON_SECRET` required |
 | 22 | Announcements | Shipped | `modules/22-announcements.md` | Admin-only publishing; India date, never UTC |
-| 23 | Vendors (outsourcing vendor base, visit log with photos + GPS) | Built 2026-10-28 (PR #472), **NOT merged; 20270425000000 NOT applied**; stages potential → contacted → prospect, meetings at our factory, past entries window | `modules/23-vendors.md` | Visits append-only; module granted per person (Dhruv), nobody by default; unseen on screen |
+| 23 | Vendors (outsourcing vendor base, visit log with photos + GPS) | Built 2026-10-28 (PR #472), **NOT merged; 20270426000000 NOT applied**; stages potential → contacted → prospect, meetings at our factory, past entries window | `modules/23-vendors.md` | Visits append-only; module granted per person (Dhruv), nobody by default; unseen on screen |
 
 ## 5. Decisions recorded but NOT built (do not assume they exist)
 
