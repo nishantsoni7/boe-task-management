@@ -42,7 +42,11 @@ type QueueResponse = {
 /** Shared with nothing else on purpose: the queue page keeps its own state. */
 export const pendingApprovalsKey = (userId: string) => ['attendance-requests', 'home-pending', userId] as const
 
-export function PendingApprovals({ userId }: { userId: string }) {
+export function PendingApprovals({ userId, inPanel = false }: { userId: string; inPanel?: boolean }) {
+  // In the right-hand attention panel the block is a group of that panel (its
+  // own heading and spacing); on its own it is a launcher section, as before.
+  const sectionClass = inPanel ? styles.attentionGroup : styles.section
+  const titleClass = inPanel ? styles.attentionTitle : styles.sectionTitle
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<QueueRow | null>(null)
@@ -89,8 +93,8 @@ export function PendingApprovals({ userId }: { userId: string }) {
   // request somebody is waiting on.
   if (isError) {
     return (
-      <section className={styles.section} aria-labelledby="pending-approvals-heading">
-        <h2 id="pending-approvals-heading" className={styles.sectionTitle}>Pending approvals</h2>
+      <section className={sectionClass} aria-labelledby="pending-approvals-heading">
+        <h2 id="pending-approvals-heading" className={titleClass}>{inPanel ? 'Attendance approvals' : 'Pending approvals'}</h2>
         <div className={styles.approvalsError} role="alert">
           <span>Could not load attendance requests.</span>
           <button type="button" className={styles.approvalsRetry} onClick={() => void refetch()}>Try again</button>
@@ -108,9 +112,9 @@ export function PendingApprovals({ userId }: { userId: string }) {
   const shown = rows.slice(0, PENDING_APPROVALS_SHOWN)
 
   return (
-    <section className={styles.section} aria-labelledby="pending-approvals-heading">
-      <h2 id="pending-approvals-heading" className={styles.sectionTitle}>
-        Pending approvals <span className={styles.approvalsCount}>{rows.length}</span>
+    <section className={sectionClass} aria-labelledby="pending-approvals-heading">
+      <h2 id="pending-approvals-heading" className={titleClass}>
+        {inPanel ? 'Attendance approvals' : 'Pending approvals'} <span className={styles.approvalsCount}>{rows.length}</span>
       </h2>
       {notice && <p className={styles.approvalsNotice} role="status">{notice}</p>}
       <div className={styles.approvalsList}>

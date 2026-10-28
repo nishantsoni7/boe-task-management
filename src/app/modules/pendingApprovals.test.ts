@@ -53,7 +53,7 @@ describe('initials for the avatar chip', () => {
 describe('who sees it, and what it may do', () => {
   test('ADMINS ONLY, by the signed-in profile, never while previewing', () => {
     assert.match(PAGE, /const showPendingApprovals = !viewMode && !!userId && profile\?\.role === 'admin'/)
-    assert.match(PAGE, /\{!editingOrder && showPendingApprovals && userId && <PendingApprovals userId=\{userId\} \/>\}/)
+    assert.match(PAGE, /showAttendance=\{showPendingApprovals\}/)
   })
 
   test('it uses the existing queue and decision routes, which keep every rule', () => {
@@ -64,8 +64,10 @@ describe('who sees it, and what it may do', () => {
     assert.equal(/\.from\('attendance_requests'\)/.test(CARD), false)
   })
 
-  test('it sits above the modules', () => {
-    assert.ok(PAGE.indexOf('<PendingApprovals') < PAGE.indexOf('modules-essentials-heading'))
+  test('it sits in the right-hand attention panel, beside the modules', () => {
+    assert.ok(PAGE.indexOf('<AttentionPanel') > PAGE.indexOf('modules-essentials-heading'))
+    assert.equal(PAGE.includes('<PendingApprovals'), false)
+    assert.equal(PAGE.includes('<HandoverBanner'), false)
   })
 
   test('with nothing waiting, no section is drawn', () => {

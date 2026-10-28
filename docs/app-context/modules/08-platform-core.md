@@ -162,11 +162,21 @@ Modules launcher (`src/app/modules/page.tsx`):
   that column itself (`['payroll-participation', userId]`, `select('payroll_active, is_deleted')` on the own row):
   the shared `usePermissionContext` profile does NOT select `payroll_active`, so testing it there always read
   "included" (the #467 defect). Until the read lands the button is held back; if it fails the button is offered.
+- "Needs your attention" panel (`src/app/modules/AttentionPanel.tsx`, 2026-10-28): the notices that used to stack
+  above the tiles now sit in a column to the RIGHT of them, grouped by category: Finance (unread Finance count when
+  the person may open Finance, plus the open cash handovers via HandoverBanner, shown whatever the person's Finance
+  access), Orders (unread Orders count, only when they may open Orders), Attendance approvals (admins, below). A
+  group with nothing to show is not drawn; with every group empty the aside renders no markup (`.attention:empty`
+  is hidden) and the tiles keep the whole width. Layout: `.launcherShell` is a flex-wrap row; `.launcher` (still the
+  size container) is `flex: 999 1 640px`, `.attention` `flex: 1 1 320px`, sticky; under ~990 px of shell width the
+  panel wraps BELOW the tiles (phone). No viewport media query (a test forbids `@media (min-width`). Not drawn while
+  arranging cards. The Orders row is the unread-notification count only: there is no separate "orders awaiting your
+  approval" query yet. Pinned by `attentionPanel.test.ts`.
 - "Other open handovers (n)" (HandoverBanner) is restyled ON THIS PAGE ONLY as a white 44 px row with a chevron,
   via `:global(.boe-app-shell):has(.launcher)` rules in `modules.module.css`; Finance is unchanged.
 - Pending approvals (`src/app/modules/PendingApprovals.tsx`, helpers `src/lib/attendance/pendingApprovals.ts`):
-  for the signed-in ADMIN only (`profile.role === 'admin'`, not while previewing), above the Essentials at every
-  width. Reads `/api/attendance-requests?scope=queue&status=pending` (React Query key
+  for the signed-in ADMIN only (`profile.role === 'admin'`, not while previewing), now the "Attendance approvals"
+  group of the attention panel (`inPanel`; it is a plain launcher section if mounted without it). Reads `/api/attendance-requests?scope=queue&status=pending` (React Query key
   `['attendance-requests','home-pending',userId]`), drops the admin's own requests, lists the oldest 5 (initials,
   name, type + `requestSummary`) with "See all n requests" -> `/attendance/requests`. A row opens the same
   `RequestReviewDrawer` as the queue and decides through `/api/attendance-requests/[id]/decision`; no rule moved.
