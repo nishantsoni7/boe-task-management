@@ -59,7 +59,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     planned,
     pendingPercent: plan.pendingPercent,
     billingPercentOverride: plan.billingPercentOverride,
-    advanceOverride: plan.advanceOverride,
+    advanceAccountOverride: plan.advanceAccountOverride,
+    advanceCashOverride: plan.advanceCashOverride,
   }))
   const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-')
   const sheet = buildPaymentPlanSheet(plan, result, {

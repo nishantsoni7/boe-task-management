@@ -23,41 +23,44 @@ const raw = {
     { item_sequence: '1', product_name: 'Table', quantity: '10.00', rate: '1000.00' },
     { item_sequence: '2', product_name: 'Chair', quantity: '20.00', rate: '500.00' },
   ],
-  plan: { pending_percent: '50.00', billing_percent: null, advance_override: '10000.00', note: 'Client asked for the table first' },
+  plan: { pending_percent: '50.00', billing_percent: null, advance_account_override: null, advance_cash_override: '10000.00', note: 'Client asked for the table first' },
   lots: [
     { id: 'l1', lot_no: 1, status: 'dispatched', planned_on: null, dispatched_on: '2026-10-20', lines: [{ item_sequence: '2', quantity: '5.00' }] },
     { id: 'l2', lot_no: 2, status: 'planned', planned_on: '2026-11-01', lines: [{ item_sequence: '1', quantity: '10.00' }] },
   ],
-  finance: { verified: '1000.00', awaiting: '600.00', payment_count: 2 },
+  finance: { verified: '1000.00', awaiting: '600.00', payment_count: 2, account_verified: '1000.00', cash_verified: '0', account_awaiting: '600.00', cash_awaiting: '0' },
 }
 
 const build = () => {
   const data = parsePlanData(raw)!
   const planned = plannedQuantities(data.lots)
   const result = computePaymentPlan(inputFromData(data, {
-    planned, pendingPercent: data.pendingPercent, billingPercentOverride: null, advanceOverride: data.advanceOverride,
+    planned, pendingPercent: data.pendingPercent, billingPercentOverride: null, advanceAccountOverride: data.advanceAccountOverride, advanceCashOverride: data.advanceCashOverride,
   }))
   const sheet = buildPaymentPlanSheet(data, result, { lotLines: planned, generatedOn: '28-10-2026', plannedOn: '2026-11-01' })
   return { data, result, sheet }
 }
 
-test('the sheet carries the same figures the calculation produced', () => {
+test('the sheet carries the same figures the calculation produced, account and cash apart', () => {
   const { result, sheet } = build()
-  const byLabel = new Map(sheet.summary.map(s => [s.label, s.value]))
-  assert.equal(byLabel.get('Total required before this dispatch'), result.requiredPaise / 100)
-  assert.equal(byLabel.get('Advance received'), 10000)
+  const byLabel = new Map(sheet.summary.map(s => [s.label, s]))
+  const due = byLabel.get('Total to be paid')!
+  assert.deepEqual([due.account, due.cash, due.total], [result.split.due.account, result.split.due.cash, result.requiredPaise])
+  const got = byLabel.get('Already received')!
+  assert.deepEqual([got.account, got.cash], [100000, 1000000])
   const last = sheet.summary[sheet.summary.length - 1]
-  assert.equal(last.label, result.toCollectPaise >= 0 ? 'Still to collect from the client' : 'Surplus already paid')
-  assert.equal(last.value, Math.abs(result.toCollectPaise) / 100)
+  assert.equal(last.label, 'Balance to pay')
+  assert.equal(last.total, result.toCollectPaise)
   assert.equal(sheet.title, 'Payment plan — Order 0539')
 })
 
 test('earlier lots and the planned lot are both listed, and the note and Finance caveat travel with the sheet', () => {
   const { sheet } = build()
-  assert.deepEqual(sheet.lotRows.map(r => r[0]), ['Lot 1', 'Planned lot'])
-  assert.ok(sheet.notes.some(n => /not yet verified/.test(n)))
+  assert.deepEqual(sheet.lotRows.map(r => r[0]), ['Lot 1', 'This lot (planned)'])
+  assert.ok(sheet.notes.some(n => /not counted yet/.test(n)))
   assert.ok(sheet.notes.includes('Client asked for the table first'))
-  assert.ok(sheet.facts.some(f => f.label === 'Advance received' && /typed by you/.test(f.value)))
+  assert.ok(sheet.facts.some(f => f.label === 'Received in cash' && /typed/.test(f.value)))
+  assert.ok(sheet.facts.some(f => f.label === 'Received in account' && /confirmed payments/.test(f.value)))
 })
 
 test('the Excel keeps numbers as numbers and carries the rupee format', async () => {
@@ -68,11 +71,11 @@ test('the Excel keeps numbers as numbers and carries the rupee format', async ()
   const ws = wb.Sheets['Payment plan']
   assert.ok(ws)
   const rows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1, blankrows: false })
-  const required = rows.find(r => r[0] === 'Total required before this dispatch')
+  const required = rows.find(r => r[0] === 'Total to be paid')
   assert.ok(required)
   assert.equal(typeof required[1], 'number')
   const { result } = build()
-  assert.equal(required[1], result.requiredPaise / 100)
+  assert.deepEqual(required.slice(1, 4), [result.split.due.account / 100, result.split.due.cash / 100, result.requiredPaise / 100])
 })
 
 test('the PDF renders to a real PDF with the order number in its file name', async () => {

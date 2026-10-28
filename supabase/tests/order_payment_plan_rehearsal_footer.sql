@@ -1,4 +1,5 @@
--- Rehearsal checks for 20270428000000 (Orders Payment plan).
+-- Rehearsal checks for the Orders Payment plan (20270428000000, and since
+-- 20270430000000 the account / cash split and the 6-argument save).
 --
 -- HOW TO USE (everything is rolled back; nothing remains):
 --   node scripts/dev/rehearse-migration.mjs supabase/migrations/20270428000000_order_payment_plan.sql supabase/tests/order_payment_plan_rehearsal_footer.sql <out.sql>
@@ -33,9 +34,20 @@ begin
   if jsonb_array_length(r -> 'items') < 1 then raise exception 'REHEARSAL: no items'; end if;
   if r -> 'finance' is null then raise exception 'REHEARSAL: no finance block'; end if;
 
-  perform public.order_payment_plan_save(c.order_id, 50, null, 1234.50, 'rehearsal');
+  if r -> 'finance' -> 'account_verified' is null or r -> 'finance' -> 'cash_verified' is null then
+    raise exception 'REHEARSAL: no account / cash split';
+  end if;
+  if ((r -> 'finance' ->> 'account_verified')::numeric + (r -> 'finance' ->> 'cash_verified')::numeric)
+     <> (r -> 'finance' ->> 'verified')::numeric then
+    raise exception 'REHEARSAL: account + cash does not equal the verified total';
+  end if;
+
+  perform public.order_payment_plan_save(c.order_id, 50, null, 1234.50, 10, 'rehearsal');
   r := public.order_payment_plan_read(c.order_id);
-  if (r -> 'plan' ->> 'advance_override')::numeric <> 1234.50 then raise exception 'REHEARSAL: plan not saved'; end if;
+  if (r -> 'plan' ->> 'advance_account_override')::numeric <> 1234.50
+     or (r -> 'plan' ->> 'advance_cash_override')::numeric <> 10 then
+    raise exception 'REHEARSAL: plan not saved';
+  end if;
 
   lot := public.order_dispatch_lot_save(c.order_id,
            jsonb_build_array(jsonb_build_object('item_sequence', c.seq, 'quantity', 1)), null);

@@ -1,4 +1,5 @@
-// Database regression suite for 20270428000000 (Orders Payment plan).
+// Database regression suite for 20270428000000 (Orders Payment plan) and
+// 20270430000000 (account and cash kept apart).
 //
 // Applies the REAL migration on an in-memory Postgres (PGlite) over a small
 // stand-in for what it depends on: users, the permission tables, orders, PIs,
@@ -23,6 +24,7 @@ const require = createRequire(resolve(PGLITE_DIR) + '/')
 const { PGlite } = require('@electric-sql/pglite')
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const migration = readFileSync(`${REPO}/supabase/migrations/20270428000000_order_payment_plan.sql`, 'utf8')
+const migration2 = readFileSync(`${REPO}/supabase/migrations/20270430000000_order_payment_plan_account_cash.sql`, 'utf8')
 
 const U = {
   admin:   '00000000-0000-0000-0000-0000000000a1',
@@ -56,7 +58,7 @@ create table public.order_submissions (
   total_before_gst numeric, gst_amount numeric, grand_total numeric, billing_percentage numeric);
 create table public.orders (id uuid primary key, display_number text, status text not null default 'running', source_order_submission_id uuid references public.order_submissions(id), total_value numeric);
 create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id), item_sequence text, product_name text, quantity numeric, cost_per_piece numeric, total_amount numeric, sort_order int);
-create table public.finance_payment_requests (id uuid primary key default gen_random_uuid(), status text, deleted_at timestamptz);
+create table public.finance_payment_requests (id uuid primary key default gen_random_uuid(), status text, payment_mode text, deleted_at timestamptz);
 create table public.finance_payment_allocations (id uuid primary key default gen_random_uuid(), payment_request_id uuid references public.finance_payment_requests(id), order_id uuid, allocated_amount numeric, status text default 'active');
 
 create table public.test_grants (uid uuid, action text);
@@ -81,11 +83,11 @@ insert into public.orders values ('${ORDER}', '0539', 'running', '${PI}', 28320)
 insert into public.order_submission_items (submission_id, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order) values
   ('${PI}', '1', 'Table', 10, 1000, 10000, 1), ('${PI}', '2', 'Chair', 20, 500, 10000, 2);
 -- Finance holds: 1000 verified, 600 awaiting; a rejected one, a deleted one and a legacy one that must not count.
-insert into public.finance_payment_requests (id, status, deleted_at) values
-  ('10000000-0000-0000-0000-000000000001', 'approved_linked', null),
-  ('10000000-0000-0000-0000-000000000002', 'pending_approval', null),
-  ('10000000-0000-0000-0000-000000000003', 'rejected', null),
-  ('10000000-0000-0000-0000-000000000004', 'approved_linked', now());
+insert into public.finance_payment_requests (id, status, payment_mode, deleted_at) values
+  ('10000000-0000-0000-0000-000000000001', 'approved_linked', 'hdfc', null),
+  ('10000000-0000-0000-0000-000000000002', 'pending_approval', 'canara', null),
+  ('10000000-0000-0000-0000-000000000003', 'rejected', 'hdfc_sec', null),
+  ('10000000-0000-0000-0000-000000000004', 'approved_linked', 'pnb', now());
 insert into public.finance_payment_allocations (payment_request_id, order_id, allocated_amount, status) values
   ('10000000-0000-0000-0000-000000000001', '${ORDER}', 1000, 'active'),
   ('10000000-0000-0000-0000-000000000002', '${ORDER}', 600, 'active'),
@@ -97,6 +99,8 @@ insert into public.test_grants values ('${U.viewer}', 'view_payment_plan'), ('${
 // ── Apply the real migration (it asserts itself at the end) ──
 await db.exec(migration)
 ok('the migration applies and its own assertions pass')
+await db.exec(migration2)
+ok('the account / cash migration applies on top and its own assertions pass')
 
 const as = async (uid) => { await db.exec(`reset role; select set_config('test.uid', '${uid}', false); set role authenticated;`) }
 const asOwner = async () => { await db.exec(`reset role; select set_config('test.uid', '', false);`) }
@@ -138,27 +142,34 @@ assert.equal(Number(r.finance.verified), 1000)
 assert.equal(Number(r.finance.awaiting), 600)
 assert.equal(r.finance.payment_count, 2)
 ok('Finance comes back as totals only: rejected and deleted payments do not count')
+assert.equal(Number(r.finance.account_verified), 1000)
+assert.equal(Number(r.finance.cash_verified), 0)
+assert.equal(Number(r.finance.account_awaiting), 0)
+assert.equal(Number(r.finance.cash_awaiting), 600)
+ok('the same money is split into account (HDFC) and cash (Canara counts as cash)')
 assert.doesNotMatch(JSON.stringify(r), /10000000-0000-0000-0000-00000000000/)
 ok('no payment id leaves the database')
-await refuses(`select public.order_payment_plan_save('${ORDER}', 50, null, null, null)`, /PAYMENT_PLAN_FORBIDDEN/, 'a viewer cannot save')
+await refuses(`select public.order_payment_plan_save('${ORDER}', 50, null, null, null, null)`, /PAYMENT_PLAN_FORBIDDEN/, 'a viewer cannot save')
 await refuses(`select public.order_dispatch_lot_save('${ORDER}', '${lines(['1', 4])}'::jsonb, null)`, /PAYMENT_PLAN_FORBIDDEN/, 'a viewer cannot plan a lot')
 
 // ── Saving the inputs ──
 await as(U.editor)
-await refuses(`select public.order_payment_plan_save('${ORDER}', 101, null, null, null)`, /PAYMENT_PLAN_PERCENT_INVALID/, 'pending percentage above 100 is refused')
-await refuses(`select public.order_payment_plan_save('${ORDER}', 50.123, null, null, null)`, /PAYMENT_PLAN_PERCENT_INVALID/, 'a third decimal is refused, never rounded')
-await refuses(`select public.order_payment_plan_save('${ORDER}', 50, null, 10.005, null)`, /PAYMENT_PLAN_ADVANCE_INVALID/, 'an advance with a third decimal is refused')
-await q(`select public.order_payment_plan_save('${ORDER}', 60, 100, 15000.5, '  hello  ')`)
+await refuses(`select public.order_payment_plan_save('${ORDER}', 101, null, null, null, null)`, /PAYMENT_PLAN_PERCENT_INVALID/, 'pending percentage above 100 is refused')
+await refuses(`select public.order_payment_plan_save('${ORDER}', 50.123, null, null, null, null)`, /PAYMENT_PLAN_PERCENT_INVALID/, 'a third decimal is refused, never rounded')
+await refuses(`select public.order_payment_plan_save('${ORDER}', 50, null, 10.005, null, null)`, /PAYMENT_PLAN_ADVANCE_INVALID/, 'an advance with a third decimal is refused')
+await q(`select public.order_payment_plan_save('${ORDER}', 60, 100, 15000.5, 250, '  hello  ')`)
 let p = (await read()).plan
 assert.equal(Number(p.pending_percent), 60)
 assert.equal(Number(p.billing_percent), 100)
-assert.equal(Number(p.advance_override), 15000.5)
+assert.equal(Number(p.advance_account_override), 15000.5)
+assert.equal(Number(p.advance_cash_override), 250)
 assert.equal(p.note, 'hello')
 ok('the inputs save, are trimmed, and read back')
-await q(`select public.order_payment_plan_save('${ORDER}', 50, null, null, null)`)
+await q(`select public.order_payment_plan_save('${ORDER}', 50, null, null, null, null)`)
 p = (await read()).plan
 assert.equal(p.billing_percent, null)
-assert.equal(p.advance_override, null)
+assert.equal(p.advance_account_override, null)
+assert.equal(p.advance_cash_override, null)
 ok('clearing the billing percentage and the typed advance saves as null')
 
 // ── The planned lot ──
@@ -228,7 +239,7 @@ ok('every change left a trail, including the reasons')
 
 // ── A cancelled Order cannot be edited; deleting an Order takes its plan with it ──
 await as(U.editor)
-await refuses(`select public.order_payment_plan_save('${CANCELLED}', 50, null, null, null)`, /PAYMENT_PLAN_ORDER_CANCELLED/, 'a cancelled Order cannot be edited')
+await refuses(`select public.order_payment_plan_save('${CANCELLED}', 50, null, null, null, null)`, /PAYMENT_PLAN_ORDER_CANCELLED/, 'a cancelled Order cannot be edited')
 await asOwner()
 await db.exec(`delete from public.order_dispatch_lot_events; delete from public.orders where id = '${ORDER}'`)
 assert.equal((await q(`select count(*)::int as n from public.order_dispatch_lots`))[0].n, 0)
