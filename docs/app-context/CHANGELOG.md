@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Vendors: scan a card or name plate; clearer Products and Team size choices (PR pending) · no migration
+- **Owner request.** The Products and Team size options looked like one control, and the address needed a way to scan the vendor's card or name plate.
+- **Choices.** Products and Team size are now separate pills, one selected (filled dark), tap again to clear. The two-way switches (stage, when it happened) are unchanged.
+- **Scan.** Scan button under Address; reads the photo with the same Anthropic key as Exhibition Leads scanning and fills only empty fields (company, contact person, mobile, address, area). The photo is not stored. Needs `vendors.create`; with no key set it says to type the details.
+
 ## 2026-10-28 — Vendors: access levels (Viewer / Contributor / Manager / Custom) in Control Center (PR pending) · migration 20270429000000 NOT APPLIED (rehearsed in a rolled-back transaction on the linked database)
 - **Owner request.** Dhruv could not be set to Moderator / Manager for Vendors, and colleagues (Nitish) could not be given sight of what is happening, because the module registered a single `view` action.
 - **Levels.** Viewer = read-only. Contributor = add vendors, log visits, edit, move Potential ↔ Contacted. Manager = also later stages, archive / restore, catch-up date, Visit Activity, export. Custom: `view_all` shows Visit Activity only, with no power to decide (the way to give Nitish detailed, read-only oversight).
