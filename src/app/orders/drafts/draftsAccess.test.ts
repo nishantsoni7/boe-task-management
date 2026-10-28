@@ -1288,7 +1288,7 @@ describe('the top summary answers four questions and repeats none of them', () =
   const view = read(DETAIL_VIEW)
 
   test('three groups and a figures card, and every group in them names itself without a heading', () => {
-    // Order | Client | Sales and dates in the top card; what it is worth in its
+    // Order | Client (with the salesperson and Order type) | Dates in the top card; what it is worth in its
     // own card beside Payment status. The figures and the metadata are labelled
     // by the view model, not by the component.
     assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
@@ -1304,9 +1304,9 @@ describe('the top summary answers four questions and repeats none of them', () =
     assert.ok(sections.includes('pi-detail-figures'),
       'and the three figures fill their own card')
     // The client's own two facts sit ABOVE the dates, in the Client group, and
-    // the dates in the Sales and dates group after it.
+    // the dates (the Order page's timeline) in the Dates group after it.
     assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') > 0)
-    assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') < sections.indexOf('dates.map'),
+    assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') < sections.indexOf('<OrderDatesTimelineCard'),
       'the client’s contact and location read before the dates')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')

@@ -37,6 +37,7 @@ import {
   fabricResponsibilityLabel,
   isFabricResponsibility,
 } from './piTerms'
+import { readSampleType, type SampleType } from './sampleType'
 import { summarizePiReadiness, type PiReadiness, type PiRequirement } from './piReadiness'
 import {
   describeMiddleman,
@@ -127,19 +128,25 @@ export type OrderDetailsRow = PiInternalDetailsRow & {
  * The two 20270211000000 columns, read on their own so a database without them
  * answers "not available" instead of failing the PI's main read.
  */
-export const SALES_DETAILS_COLUMNS = 'salesperson_id, lead_source'
+export const SALES_DETAILS_COLUMNS = 'salesperson_id, lead_source, sample_type'
 
-export type SalesDetails = { available: boolean; salesperson_id: string | null; lead_source: string | null }
+export type SalesDetails = {
+  available: boolean
+  salesperson_id: string | null
+  lead_source: string | null
+  /** The PI's order type choice (20270320000000), read with the same two values. */
+  sample_type: SampleType | null
+}
 
-export const SALES_DETAILS_UNAVAILABLE: SalesDetails = { available: false, salesperson_id: null, lead_source: null }
+export const SALES_DETAILS_UNAVAILABLE: SalesDetails = { available: false, salesperson_id: null, lead_source: null, sample_type: null }
 
-/** A failed read (null) is "not available"; a row is the two values, blanks as null. */
+/** A failed read (null) is "not available"; a row is the values, blanks as null. */
 export function readSalesDetails(data: unknown): SalesDetails {
   if (!data || typeof data !== 'object') return SALES_DETAILS_UNAVAILABLE
   const d = data as Record<string, unknown>
   const id = typeof d.salesperson_id === 'string' && d.salesperson_id.trim() ? d.salesperson_id : null
   const lead = typeof d.lead_source === 'string' && d.lead_source.trim() ? d.lead_source : null
-  return { available: true, salesperson_id: id, lead_source: lead }
+  return { available: true, salesperson_id: id, lead_source: lead, sample_type: readSampleType(d.sample_type) }
 }
 
 export type OrderDetailsForm = PiInternalDetailsForm & {

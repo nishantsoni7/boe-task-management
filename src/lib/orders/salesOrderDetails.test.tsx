@@ -297,7 +297,9 @@ describe('the section states what Sales has provided', () => {
 
   test('the two new columns are read on their own, and a failure is "not available"', () => {
     assert.deepEqual(readSalesDetails(null), SALES_DETAILS_UNAVAILABLE)
-    assert.deepEqual(readSalesDetails({ salesperson_id: 'u-dhruv', lead_source: '' }), { available: true, salesperson_id: 'u-dhruv', lead_source: null })
+    assert.deepEqual(readSalesDetails({ salesperson_id: 'u-dhruv', lead_source: '' }), { available: true, salesperson_id: 'u-dhruv', lead_source: null, sample_type: null })
+    assert.equal(readSalesDetails({ salesperson_id: null, lead_source: null, sample_type: 'sample_order' }).sample_type, 'sample_order')
+    assert.equal(readSalesDetails({ salesperson_id: null, lead_source: null, sample_type: 'junk' }).sample_type, null)
   })
 })
 

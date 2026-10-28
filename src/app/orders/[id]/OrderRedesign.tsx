@@ -71,20 +71,28 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
       </div>
       <div className={`order-stage${isSample ? ' order-stage--sample' : ''}`} title={sampleLabel ?? undefined}>
         <span className="order-stage-label">{ORDER_TYPE_STAGE_LABEL}</span>
-        {isSample ? (
-          <span className="order-stage-sample">
-            <span className="order-sample-dot" aria-hidden="true" />
-            <FlaskConical size={14} strokeWidth={2.2} aria-hidden="true" />
-            {SAMPLE_ORDER_BADGE}
-          </span>
-        ) : (
-          <span className="order-stage-full">
-            <Package size={14} strokeWidth={2} aria-hidden="true" />
-            {FULL_ORDER_BADGE}{fullNote ? ` · ${fullNote}` : ''}
-          </span>
-        )}
+        <OrderTypeValue isSample={isSample} fullNote={fullNote} />
       </div>
     </section>
+  )
+}
+
+/**
+ * THE ORDER TYPE, as the Order page's strip draws it and the PI's top card
+ * repeats it: a sample order in red with a pulsing dot, a full order quiet.
+ */
+export function OrderTypeValue({ isSample, fullNote = null }: { isSample: boolean; fullNote?: string | null }) {
+  return isSample ? (
+    <span className="order-stage-sample">
+      <span className="order-sample-dot" aria-hidden="true" />
+      <FlaskConical size={14} strokeWidth={2.2} aria-hidden="true" />
+      {SAMPLE_ORDER_BADGE}
+    </span>
+  ) : (
+    <span className="order-stage-full">
+      <Package size={14} strokeWidth={2} aria-hidden="true" />
+      {FULL_ORDER_BADGE}{fullNote ? ` · ${fullNote}` : ''}
+    </span>
   )
 }
 
@@ -99,7 +107,10 @@ type DateStop = { key: string; label: string; value: string | null; tone: 'done'
  * not recorded is said so quietly; an approval that has not happened says
  * "Awaiting".
  */
-export function OrderDatesTimelineCard({ title, confirm, upload, approved, due, timeline, overdue }: {
+export function OrderDatesTimelineCard({
+  title, confirm, upload, approved, due, timeline, overdue,
+  bare = false, absent, dueNote = null,
+}: {
   title: string
   confirm: string | null
   upload: string | null
@@ -107,27 +118,36 @@ export function OrderDatesTimelineCard({ title, confirm, upload, approved, due, 
   due: string | null
   timeline: OrderDatesTimeline
   overdue: boolean
+  /** Drawn inside a card that already has its own heading and edges (the PI's top card). */
+  bare?: boolean
+  /** What to say, per stop, where a date is not recorded (the PI says "Set at submission" on a draft). */
+  absent?: Partial<Record<'confirm' | 'upload' | 'approved' | 'due', string>>
+  /** A muted line under the due date (the commitment the PI stated where it has no date). */
+  dueNote?: string | null
 }) {
   const stops: DateStop[] = [
-    { key: 'confirm', label: 'Confirmed', value: confirm, tone: 'done' },
+    // On the PI a blank confirm date is "Set at submission", not a done step.
+    { key: 'confirm', label: 'Confirmed', value: confirm, tone: confirm || !bare ? 'done' : 'waiting' },
     { key: 'upload', label: 'PI uploaded by salesperson', value: upload, tone: timeline.gapFlagged ? 'flag' : 'done' },
     { key: 'approved', label: 'Approved by admin team', value: approved, tone: approved ? 'done' : 'waiting' },
     { key: 'due', label: 'Due date', value: due, tone: 'next' },
   ]
+  const Shell = bare ? 'div' : 'section'
   return (
-    <section className="order-sum-group" aria-label={title}>
-      <h3 className="order-sum-group-head">{title}</h3>
+    <Shell className={bare ? 'order-timeline-bare' : 'order-sum-group'} aria-label={title}>
+      {!bare && <h3 className="order-sum-group-head">{title}</h3>}
       <ol className="order-timeline">
         {stops.map(s => (
           <li key={s.key} className={`order-timeline-stop order-timeline-stop--${s.tone}`}>
             <div className="order-timeline-date">
-              {s.value ?? (s.key === 'approved' ? 'Awaiting' : 'Not available')}
+              {s.value ?? absent?.[s.key as 'confirm' | 'upload' | 'approved' | 'due'] ?? (s.key === 'approved' ? 'Awaiting' : 'Not available')}
               {s.key === 'upload' && timeline.gapFlagged && timeline.uploadGapDays !== null && (
                 <span className="order-timeline-flag" role="note">{uploadGapLabel(timeline.uploadGapDays)}</span>
               )}
               {s.key === 'due' && overdue && <span className="order-timeline-flag">Overdue</span>}
             </div>
             <div className="order-timeline-label">{s.label}</div>
+            {s.key === 'due' && dueNote && <div className="order-timeline-label">{dueNote}</div>}
           </li>
         ))}
       </ol>
@@ -146,7 +166,7 @@ export function OrderDatesTimelineCard({ title, confirm, upload, approved, due, 
           </strong>
         </div>
       )}
-    </section>
+    </Shell>
   )
 }
 

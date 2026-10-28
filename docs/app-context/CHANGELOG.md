@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Orders: PI detail top card — salesperson and Order type in the centre column, dates as the Order page's timeline (PR pending) · no migration
+- **Owner request.** On a PI submitted for review, the right column held the salesperson, submitter and a plain Confirm/Due box. Salesperson details and the Order type move to the centre (Client) column; the right column is dates only, drawn as the Order page's timeline with the delay in uploading.
+- **Centre column.** Under a rule beneath the client's contact and location: Salesperson, Submitted by, Created, Order type (Full order / Full order · sampling first / red Sample order). `order_submissions.sample_type` is read with the existing salesperson/lead-source read (`SALES_DETAILS_COLUMNS`, `readSalesDetails`); a failed read still means "not available", never a failed page.
+- **Right column ("Dates").** `OrderDatesTimelineCard` (now with `bare`, `absent`, `dueNote` options) and `orderDatesTimeline`: Confirmed, PI uploaded by salesperson (`created_at`; red "N days after the confirm date" past 7 days), Approved by admin team (`approved_at`, "Awaiting"), Due date, progress bar, "Uploaded N days ago · N days left / overdue". Draft blanks keep "Set at submission"; workbook date notes and the Edit control stay. `OrderTypeValue` is shared with the Order page's status strip.
+- **Proof.** tsc, eslint, the PI detail, Order redesign, drafts-access and related source-guard suites. Not seen on screen.
+
 ## 2026-10-28 — Modules: "Attendance request" now really hides for members excluded from payroll (PR pending) · no migration
 - **Defect in #467.** The gate tested `participatesInPayroll(profile)`, but the launcher's profile (`usePermissionContext`) never selects `payroll_active`, so the value was always missing and read as "included". The owner excluded themself on Payroll → Participation and still saw the button.
 - **Fix.** The launcher reads `payroll_active, is_deleted` for the signed-in row in its own small query and gates on that. The shared profile column list is untouched. A new test pins that the column is actually read, not just tested.
