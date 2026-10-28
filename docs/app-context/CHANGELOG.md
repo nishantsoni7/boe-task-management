@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Backups: pg_dump step for the tables the service role cannot read (PR pending) · no migration
+- **Owner request.** Close the gap: five relations (`finance_payment_destinations`, `order_advance_exceptions`, `order_advance_exception_voids`, `order_advance_holds`, and the view `finance_received_payments`) were never in the export because the service role is denied them. They were covered only by Supabase's own daily backups.
+- **What.** `backup-database.mjs` step 2b: when `BACKUP_DATABASE_URL` (the Supabase session-pooler URI, with the database password) is in `backups\.env.backup` and Docker is running, the four real tables are dumped with `pg_dump` inside a container into `pg-dump-restricted-tables.sql.gz.enc` (same encryption as the rest). The view is rebuilt, not dumped. `BACKUP_PG_IMAGE` (optional) picks the image; its `pg_dump` must be at least the server's major version (production is Postgres 17.6; the image `public.ecr.aws/supabase/postgres:17.6.1.171` is already on the owner's machine, so nothing needs downloading). `verify-backups.mjs` now shows `pg_dump: …` for the covered tables.
+- **Safe by design.** Any pg_dump problem (no URL, Docker off, wrong password, a table missing from the dump) is a warning only: the tables stay listed as NOT COVERED and the daily backup still succeeds. The password is redacted from log lines.
+- **Proof.** Syntax checked; the container call proven with a fake host (clean failure, nothing printed but the host error); the row-count parsing run on a sample dump (2 rows, an empty table as 0, a missing table detected). **Not yet run against the live database** — that needs the owner to add `BACKUP_DATABASE_URL` to `backups\.env.backup`.
+
 ## 2026-10-28 — Notifications: phone alerts (Web Push), lock-screen banners without opening the app (PR pending) · migration 20270425000000 NOT applied
 - **Owner request.** Important things are missed until the app is opened; wanted notifications on the phone (iPhone, Windows) like other apps.
 - **What.** Account Settings > Phone alerts turns alerts on for a device (iPhone: from the Home Screen app, iOS 16.4+) and mutes categories. A trigger on `notifications` asks `POST /api/push/dispatch` (pg_net) to send a generic banner ("Finance update"); tapping opens the same record as the inbox row. Service worker `public/sw.js` has no cache or fetch handler.

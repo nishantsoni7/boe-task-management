@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a207a070` — Vendors: settled field set, automatic location on Add Vendor, one row layout in the visit form
-- Commits on this branch: 1051
+- Commit: `9e328d53` — Vendors: vendor base and visit log with photographs and location (#472)
+- Commits on this branch: 1040
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,31 +14,31 @@
 
 ## Latest 25 commits
 
-- `a207a070` 2026-10-28 Vendors: settled field set, automatic location on Add Vendor, one row layout in the visit form
-- `0045c928` 2026-10-28 Vendors: white page surface, calmer sidebar, aligned details
-- `7d795ddf` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
+- `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
-- `5daf3d92` 2026-10-28 Vendors: second design pass (table, inline stage, photo tiles, property pattern)
-- `76bd26b5` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
-- `af411456` 2026-10-28 Vendors: Notion-style redesign and a much smaller set of fields
 - `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
 - `2e35cd72` 2026-10-28 Sidebar: rest as an icon rail on desktop, open over the page on hover
-- `2c32ded6` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
 - `6e6c5993` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
 - `240a1c7c` 2026-10-28 Docs: migration 20270424000000 (user_task_order) applied to production
-- `e9d53b1c` 2026-10-28 Vendors: potential vendors, meetings at our factory, and past visits entered afterwards
-- `d84778e6` 2026-10-28 Vendors migration: revoke write privileges from the browser roles (defence in depth)
-- `8582748c` 2026-10-28 Test: account for the Vendors module in the gated-module and launcher-card pins
-- `7314f16e` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `8d74eecb` 2026-10-28 My Tasks: plain action icons, pinned tasks under Important, drag-and-drop personal order
-- `3f485b47` 2026-10-28 Vendors: new module - vendor base and a visit log with photographs and location
 - `64f8f76d` 2026-10-28 PI top card: salesperson and Order type in the centre column, dates as the Order page timeline
 - `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
+- `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
+- `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
+- `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
+- `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
+- `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
+- `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
+- `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
+- `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
+- `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
+- `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
+- `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
 
 ## Pages by top-level area
 
