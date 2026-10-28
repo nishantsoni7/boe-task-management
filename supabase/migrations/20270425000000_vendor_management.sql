@@ -245,7 +245,9 @@ alter table public.vendors enable row level security;
 alter table public.vendor_visits enable row level security;
 alter table public.vendor_visit_photos enable row level security;
 
--- Read-only to the browser: there is deliberately no insert / update / delete policy.
+-- Read-only to the browser, twice over: the privileges below, and no insert / update / delete policy.
+revoke all on public.vendors, public.vendor_visits, public.vendor_visit_photos from anon, authenticated, public;
+grant select on public.vendors, public.vendor_visits, public.vendor_visit_photos to authenticated;
 create policy vendors_select on public.vendors
   for select to authenticated using (public.vendors_can_read());
 create policy vendor_visits_select on public.vendor_visits
