@@ -23,7 +23,7 @@ const PERIODS = [
 ] as const
 
 export default function ActivityScreen() {
-  const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canSeeActivity, loading, signOut } = useVendors()
   const qc = useQueryClient()
   const [days, setDays] = useState<number>(30)
   const [until, setUntil] = useState('')
@@ -35,7 +35,7 @@ export default function ActivityScreen() {
   const { data, isLoading, error } = useQuery({
     queryKey: [VENDORS_KEY, 'activity', from, to],
     queryFn: () => fetchActivity(supabase, from, to),
-    enabled: !!profile && isAdmin,
+    enabled: !!profile && canSeeActivity,
   })
 
   if (loading || !profile) return <LoadingScreen />
@@ -59,8 +59,8 @@ export default function ActivityScreen() {
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Visit Activity" subtitle={`${formatDay(from)} – ${formatDay(to)}`}>
       <div className={s.wrapWide}>
-        {!isAdmin && <div className={`${s.banner} ${s.bannerErr}`} role="alert">Only an administrator can see this page.</div>}
-        {isAdmin && (
+        {!canSeeActivity && <div className={`${s.banner} ${s.bannerErr}`} role="alert">Your access level does not include the Visit Activity page.</div>}
+        {canSeeActivity && (
           <>
             <div className={s.periodRow} role="group" aria-label="Period">
               {PERIODS.map(p => (
@@ -167,7 +167,7 @@ export default function ActivityScreen() {
                   )}
                 </section>
 
-                <section className={s.card} aria-labelledby="h-window">
+                {isAdmin && <section className={s.card} aria-labelledby="h-window">
                   <h2 id="h-window" className={s.cardTitle}>Adding visits that already happened</h2>
                   <div className={s.muted}>
                     While this is open, the team can type in earlier visits without photographs or location (shown as “Added later”).
@@ -182,7 +182,7 @@ export default function ActivityScreen() {
                     {windowOpen && <button type="button" className={s.danger} disabled={windowBusy} onClick={() => void changeWindow(istAddDays(to, -1))}>Close now</button>}
                   </div>
                   {windowProblem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{windowProblem}</div>}
-                </section>
+                </section>}
               </>
             )}
           </>

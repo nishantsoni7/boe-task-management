@@ -65,7 +65,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 20 | Sample Tracking | Shipped, thin | `modules/20-sample-tracking.md` | RLS is the only spec; `sample_notifications` table has no `create table` migration |
 | 21 | Image Editor | Shipped | `modules/21-image-editor.md` | fal.ai billed per press — never retry; `CRON_SECRET` required |
 | 22 | Announcements | Shipped | `modules/22-announcements.md` | Admin-only publishing; India date, never UTC |
-| 23 | Vendors (outsourcing vendor base, visit log with photos + GPS) | Built 2026-10-28 (PR #472), **NOT merged; 20270426000000 APPLIED 2026-10-28**; stages potential → contacted → prospect, meetings at our factory, past entries window | `modules/23-vendors.md` | Visits append-only; module granted per person (Dhruv), nobody by default; unseen on screen; list filters by expertise / team size / area / registration (PR pending, 20270427 not applied) |
+| 23 | Vendors (outsourcing vendor base, visit log with photos + GPS) | Built 2026-10-28 (PR #472), **NOT merged; 20270426000000 APPLIED 2026-10-28**; stages potential → contacted → prospect, meetings at our factory, past entries window | `modules/23-vendors.md` | Visits append-only; module granted per person (Dhruv), nobody by default; unseen on screen; list filters by expertise / team size / area / registration (PR pending, 20270427 not applied); access levels view / create / edit / approve / export / view_all (PR pending, 20270429 not applied) |
 
 ## 5. Decisions recorded but NOT built (do not assume they exist)
 

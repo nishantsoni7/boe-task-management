@@ -28,7 +28,7 @@ type Tab = 'visits' | 'profile' | 'photos'
 export default function VendorDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
-  const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canCreate, canEdit, loading, signOut } = useVendors()
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<Tab>('visits')
@@ -67,8 +67,8 @@ export default function VendorDetailScreen() {
                    actions={v && !v.archived ? (
                      <>
                        <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
-                       <Link className={`${s.secondary} ${s.hideOnPhone}`} href={`/vendors/${v.id}/edit`}><Pencil size={15} aria-hidden="true" /> Edit</Link>
-                       <Link className={`${s.primary} ${s.hideOnPhone}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={15} aria-hidden="true" /> Log a Visit</Link>
+                       {canEdit && <Link className={`${s.secondary} ${s.hideOnPhone}`} href={`/vendors/${v.id}/edit`}><Pencil size={15} aria-hidden="true" /> Edit</Link>}
+                       {canCreate && <Link className={`${s.primary} ${s.hideOnPhone}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={15} aria-hidden="true" /> Log a Visit</Link>}
                      </>
                    ) : undefined}>
       <div className={s.wrapWide}>
@@ -94,7 +94,7 @@ export default function VendorDetailScreen() {
                     <div className={s.rowMeta}>{v.contact_name ?? 'No contact person yet'}</div>
                   </div>
                 </div>
-                {(isAdmin || PRE_VISIT_STATUSES.some(p => p === v.status)) && !v.archived ? (
+                {canEdit && (isAdmin || PRE_VISIT_STATUSES.some(p => p === v.status)) && !v.archived ? (
                   <select className={`${s.select} ${s.statusSelect}`} value={v.status} disabled={busy} aria-label="Vendor status"
                           onChange={e => void run(() => setVendorStatus(supabase, v.id, e.target.value))}>
                     {VENDOR_STATUSES.filter(o => isAdmin || PRE_VISIT_STATUSES.some(p => p === o.value)).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -108,7 +108,7 @@ export default function VendorDetailScreen() {
                 {v.latitude !== null && v.longitude !== null
                   ? <a className={s.actionBtn} href={mapsHref(v.latitude, v.longitude)} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>
                   : v.address && <a className={s.actionBtn} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.address)}`} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>}
-                {!v.archived && <Link className={`${s.actionBtn} ${s.actionPrimary}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={18} aria-hidden="true" /><span>Log visit</span></Link>}
+                {!v.archived && canCreate && <Link className={`${s.actionBtn} ${s.actionPrimary}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={18} aria-hidden="true" /><span>Log visit</span></Link>}
               </div>
 
               <div className={s.stageTrack} aria-label="Stage">
@@ -130,7 +130,7 @@ export default function VendorDetailScreen() {
               </div>
             </section>
 
-            {!v.archived && v.awaiting_site_visit && (
+            {!v.archived && canCreate && v.awaiting_site_visit && (
               <div className={`${s.banner} ${s.bannerWarn}`}>
                 This vendor has met us at our factory but nobody has visited theirs yet. A site visit registers them properly.
                 <div style={{ marginTop: 8 }}>
@@ -164,7 +164,7 @@ export default function VendorDetailScreen() {
                   <div className={s.emptyState}>
                     <div className={s.emptyTitle}>No visit recorded yet</div>
                     <div className={s.muted}>Every visit you log appears here with its photographs and location.</div>
-                    {!v.archived && <Link className={s.primary} href={`/vendors/visit?vendor=${v.id}`}><Plus size={16} aria-hidden="true" /> Log the first visit</Link>}
+                    {!v.archived && canCreate && <Link className={s.primary} href={`/vendors/visit?vendor=${v.id}`}><Plus size={16} aria-hidden="true" /> Log the first visit</Link>}
                   </div>
                 )}
                 <div className={s.timeline}>
@@ -190,7 +190,7 @@ export default function VendorDetailScreen() {
                   <Fact label="Last visit">{last ? `${daysAgoText(daysSince)} · ${formatWhen(last.visited_at)}` : 'Never visited'}</Fact>
                 </dl>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {!v.archived && <Link className={s.secondary} href={`/vendors/${v.id}/edit`}><Pencil size={15} aria-hidden="true" /> Edit profile</Link>}
+                  {!v.archived && canEdit && <Link className={s.secondary} href={`/vendors/${v.id}/edit`}><Pencil size={15} aria-hidden="true" /> Edit profile</Link>}
                   {isAdmin && !v.archived && (
                     <button type="button" className={s.danger} disabled={busy} onClick={() => {
                       const reason = window.prompt('Why is this vendor being archived?')

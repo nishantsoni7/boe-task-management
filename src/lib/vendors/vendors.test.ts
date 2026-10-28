@@ -167,6 +167,37 @@ describe('the migration keeps its promises', () => {
   })
 })
 
+describe('the access-levels migration (20270429000000)', () => {
+  const LEVELS = readFileSync('supabase/migrations/20270429000000_vendor_access_levels.sql', 'utf8')
+  const code = LEVELS.replace(/--.*$/gm, '')
+
+  test('registers exactly the five new actions, deny-by-default, and Admin holds them', () => {
+    assert.ok(/pa\.action_key in \('create','edit','approve','export','view_all'\)/.test(code))
+    assert.ok(/select pm\.id, pa\.id, false/.test(code), 'default_allowed is false')
+    assert.ok(/select 'admin', mpa\.module_id, mpa\.action_id, true/.test(code))
+  })
+  test('nobody loses what they do today: explicit view holders also get create and edit, and nothing stronger', () => {
+    assert.ok(/pa\.action_key in \('create', 'edit'\)/.test(code))
+    assert.ok(/pv\.action_key = 'view'/.test(code))
+    assert.ok(/this migration must not hand out approve, export or view_all/.test(code))
+  })
+  test('every write function checks the level; the helpers are not callable from the browser', () => {
+    assert.ok(/perform public\.vendors_require\(case when p_vendor_id is null then 'create' else 'edit' end\)/.test(code), 'save_vendor')
+    assert.ok(/perform public\.vendors_require\('create'\)/.test(code), 'log_vendor_visit')
+    assert.ok(/perform public\.vendors_require\('edit'\)/.test(code), 'set_vendor_status')
+    assert.ok(/revoke all on function public\.vendors_can\(text\) from public, anon, authenticated;/.test(code))
+    assert.ok(/revoke all on function public\.vendors_require\(text\) from public, anon, authenticated;/.test(code))
+  })
+  test('Visit Activity opens to Admin, approve or view_all; deciding follows approve', () => {
+    assert.ok(/not \(v_admin or public\.vendors_can\('view_all'\)\)/.test(code))
+    assert.ok(/p_is_admin := public\.vendors_can\('approve'\)/.test(code))
+  })
+  test('the screens learn what they may show from vendors_my_access, with a grant for signed-in users only', () => {
+    for (const k of ['can_create', 'can_edit', 'can_export', 'can_see_activity']) assert.ok(code.includes("'" + k + "'"), k)
+    assert.ok(/grant execute on function public\.vendors_my_access\(\) to authenticated;/.test(code))
+  })
+})
+
 describe('the area-and-filters migration (20270427000000)', () => {
   const AREA = readFileSync('supabase/migrations/20270427000000_vendor_area_and_filters.sql', 'utf8')
   const code = AREA.replace(/--.*$/gm, '')

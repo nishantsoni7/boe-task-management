@@ -21,7 +21,7 @@ export default function VendorEditScreen() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const qc = useQueryClient()
-  const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canEdit, loading, signOut } = useVendors()
   const areas = useVendorAreas(supabase, !!profile)
   const [value, setValue] = useState<VendorInput>(EMPTY_VENDOR)
   const [loaded, setLoaded] = useState(false)
@@ -46,6 +46,18 @@ export default function VendorEditScreen() {
   }
 
   if (loading || !profile || detail.isLoading) return <LoadingScreen />
+  if (!canEdit) {
+    return (
+      <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Vendors">
+        <div className={s.wrapWide}>
+          <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
+            Your access level can view vendors but cannot edit vendors. Ask an administrator for Contributor access.
+          </div>
+        </div>
+      </VendorsLayout>
+    )
+  }
+
 
   async function save() {
     const e = validateVendor(value, relaxed)

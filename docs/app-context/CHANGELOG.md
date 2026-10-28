@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Vendors: access levels (Viewer / Contributor / Manager / Custom) in Control Center (PR pending) · migration 20270429000000 NOT APPLIED (rehearsed in a rolled-back transaction on the linked database)
+- **Owner request.** Dhruv could not be set to Moderator / Manager for Vendors, and colleagues (Nitish) could not be given sight of what is happening, because the module registered a single `view` action.
+- **Levels.** Viewer = read-only. Contributor = add vendors, log visits, edit, move Potential ↔ Contacted. Manager = also later stages, archive / restore, catch-up date, Visit Activity, export. Custom: `view_all` shows Visit Activity only, with no power to decide (the way to give Nitish detailed, read-only oversight).
+- **Nobody loses access.** Everyone holding `view` when the migration applies also gets create + edit (Dhruv keeps working as today). Make him Manager in Control Center for the rest.
+- **Screens.** Buttons, nav items, the mobile log bar, export, archive and the stage selector appear only when the level allows; a Viewer opening the add / log / edit pages sees a plain notice. The database refuses the same actions regardless.
+- **Database.** One migration; no table changes. Self-assertions in the migration plus a live rehearsal: Dhruv unchanged, Viewer refused on create / visit / stage, view_all sees Activity but cannot decide, approve decides but cannot export, Admin keeps all.
+
 ## 2026-10-28 — Rail sidebar: badges no longer clipped, one smooth spring motion (PR pending) · no migration
 - **Owner request.** Count badges on the collapsed icons were still cut off, and the hover opening was not smooth; wanted an Apple-like feel on every page.
 - **Cause of the clipping.** Rows had `overflow: hidden` (to trim labels) and the collapsed badge was placed at `left: 30px` of a 44 px row, so its right half was cut. Fix: rows no longer clip (the sidebar clips labels), and the badge sits at `top: 3px; right: 3px` inside the row with a surface-coloured ring.
