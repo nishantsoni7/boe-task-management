@@ -96,6 +96,14 @@ export type OrdersCapabilities = {
    * Manufacturing's decision, not a reviewer's and not a manager's.
    */
   canAlignProduction: boolean
+  /**
+   * See the Payment plan on a Confirmed Order, and change it. Backed by the
+   * protected `view_payment_plan` / `edit_payment_plan` actions that
+   * 20270428000000 registers; the order_payment_plan_* functions ask the same
+   * question in the database. Granted per person in Control Center.
+   */
+  canViewPaymentPlan: boolean
+  canEditPaymentPlan: boolean
   canExportOrders: boolean
   canDeleteOrder: boolean
   /** Administrative control of the module. */
@@ -110,6 +118,8 @@ export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canApproveOrderSubmission: false,
   canApproveAdvanceException: false,
   canAlignProduction: false,
+  canViewPaymentPlan: false,
+  canEditPaymentPlan: false,
   canExportOrders: false,
   canDeleteOrder: false,
   canManageOrders: false,
@@ -151,6 +161,9 @@ export function deriveOrdersCapabilities(
       canApproveAdvanceException: true,
       // The same admin branch set_order_production_alignment() takes.
       canAlignProduction: true,
+      // The admin branch of actor_has_module_permission, as for alignment.
+      canViewPaymentPlan: true,
+      canEditPaymentPlan: true,
       canExportOrders: true,
       canDeleteOrder: true,
       canManageOrders: true,
@@ -171,6 +184,8 @@ export function deriveOrdersCapabilities(
     // does not imply approve_order.
     canApproveAdvanceException: withEntry('approve_advance_exception'),
     canAlignProduction: withEntry('align_production'),
+    canViewPaymentPlan: withEntry('view_payment_plan'),
+    canEditPaymentPlan: withEntry('edit_payment_plan'),
     canExportOrders: withEntry('export'),
     canDeleteOrder: withEntry('delete'),
     canManageOrders: withEntry('manage'),

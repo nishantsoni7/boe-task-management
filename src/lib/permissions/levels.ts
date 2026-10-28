@@ -169,6 +169,12 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // because the whole point of the separate table (20270122000000) is that no
   // wider Orders authority reaches it; a preset handing it out would undo that.
   'view_pi_commission',
+  // The Payment plan on a Confirmed Order shows what each client owes before a
+  // dispatch, and saving it records dispatch history. Protected: granted per
+  // person in Control Center, never by a preset such as "Full access".
+  // Registered by 20270428000000.
+  'view_payment_plan',
+  'edit_payment_plan',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -249,6 +255,10 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   align_production: 'view',
   // And again: the commission table is behind the same Orders module gate.
   view_pi_commission: 'view',
+  // The Payment plan lives on the Confirmed Order page behind module entry, and
+  // saving one without being able to see it would be a grant with nowhere to land.
+  view_payment_plan: 'view',
+  edit_payment_plan: 'view_payment_plan',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use

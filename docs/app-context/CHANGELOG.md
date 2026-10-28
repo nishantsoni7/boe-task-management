@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR pending) · migration 20270428000000 NOT applied
+- **Owner request.** One sheet per Confirmed Order: the goods being dispatched are paid in full, plus an adjustable share (50%) of the goods still to come, charges included, GST only on the billed part of what leaves.
+- **What.** "Payment plan" section on the Order page; dispatch lots (one planned, any number dispatched; "Mark as dispatched"; admin-only correction with a reason); saved pending %, billing % and advance; advance filled from Finance's verified totals when present, typed otherwise; on screen, Excel and PDF. Protected permissions `orders.view_payment_plan` and `orders.edit_payment_plan` (granted per person in Control Center; admins by role).
+- **Database.** Four closed tables and five functions; nothing in Orders, PIs or payments is written. Rollback is in the migration header.
+- **Proof.** tsc, eslint, `paymentPlan*` tests, full suite, 41-check PGlite suite. NOT rehearsed on the production database, NOT seen on screen, PDF layout not viewed.
+- **Next.** Apply the migration (`db push --include-all` if earlier ones are still pending), then grant the two permissions to the right people.
+
 ## 2026-10-28 — Backups: pg_dump step for the tables the service role cannot read (PR pending) · no migration
 - **Owner request.** Close the gap: five relations (three tables, `order_advance_exceptions`, `order_advance_exception_voids` and `order_advance_holds`, and two views, `finance_payment_destinations` and `finance_received_payments`) were never in the export because the service role is denied them. They were covered only by Supabase's own daily backups.
 - **What.** `backup-database.mjs` step 2b: when `BACKUP_DATABASE_URL` (the Supabase session-pooler URI, with the database password) is in `backups\.env.backup` and Docker is running, the three real tables are dumped with `pg_dump` inside a container into `pg-dump-restricted-tables.sql.gz.enc` (same encryption as the rest). The two views are rebuilt from exported tables, not dumped (a first live run on 2026-10-28 aborted because one of them was treated as a table; fixed). `BACKUP_PG_IMAGE` (optional) picks the image; its `pg_dump` must be at least the server's major version (production is Postgres 17.6; the image `public.ecr.aws/supabase/postgres:17.6.1.171` is already on the owner's machine, so nothing needs downloading). `verify-backups.mjs` now shows `pg_dump: …` for the covered tables.

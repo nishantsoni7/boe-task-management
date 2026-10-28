@@ -1,0 +1,104 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import {
+  computePaymentPlan,
+  inputFromData,
+  parsePlanData,
+  plannedQuantities,
+} from './paymentPlan'
+import { buildPaymentPlanSheet, paymentPlanFileName } from './paymentPlanSheet'
+import { buildPaymentPlanWorkbook } from './paymentPlanXlsx'
+import { renderPaymentPlanPdf } from './paymentPlanPdf'
+
+const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
+
+const raw = {
+  found: true, has_pi: true,
+  order: { id: 'o1', display_number: '0539', status: 'running', total_value: '28320.00', client_name: 'Acme Interiors' },
+  pi: { total_before_gst: '24000.00', gst_amount: '4320.00', grand_total: '28320.00', billing_percentage: '50.00' },
+  items: [
+    { item_sequence: '1', product_name: 'Table', quantity: '10.00', rate: '1000.00' },
+    { item_sequence: '2', product_name: 'Chair', quantity: '20.00', rate: '500.00' },
+  ],
+  plan: { pending_percent: '50.00', billing_percent: null, advance_override: '10000.00', note: 'Client asked for the table first' },
+  lots: [
+    { id: 'l1', lot_no: 1, status: 'dispatched', planned_on: null, dispatched_on: '2026-10-20', lines: [{ item_sequence: '2', quantity: '5.00' }] },
+    { id: 'l2', lot_no: 2, status: 'planned', planned_on: '2026-11-01', lines: [{ item_sequence: '1', quantity: '10.00' }] },
+  ],
+  finance: { verified: '1000.00', awaiting: '600.00', payment_count: 2 },
+}
+
+const build = () => {
+  const data = parsePlanData(raw)!
+  const planned = plannedQuantities(data.lots)
+  const result = computePaymentPlan(inputFromData(data, {
+    planned, pendingPercent: data.pendingPercent, billingPercentOverride: null, advanceOverride: data.advanceOverride,
+  }))
+  const sheet = buildPaymentPlanSheet(data, result, { lotLines: planned, generatedOn: '28-10-2026', plannedOn: '2026-11-01' })
+  return { data, result, sheet }
+}
+
+test('the sheet carries the same figures the calculation produced', () => {
+  const { result, sheet } = build()
+  const byLabel = new Map(sheet.summary.map(s => [s.label, s.value]))
+  assert.equal(byLabel.get('Total required before this dispatch'), result.requiredPaise / 100)
+  assert.equal(byLabel.get('Advance received'), 10000)
+  const last = sheet.summary[sheet.summary.length - 1]
+  assert.equal(last.label, result.toCollectPaise >= 0 ? 'Still to collect from the client' : 'Surplus already paid')
+  assert.equal(last.value, Math.abs(result.toCollectPaise) / 100)
+  assert.equal(sheet.title, 'Payment plan — Order 0539')
+})
+
+test('earlier lots and the planned lot are both listed, and the note and Finance caveat travel with the sheet', () => {
+  const { sheet } = build()
+  assert.deepEqual(sheet.lotRows.map(r => r[0]), ['Lot 1', 'Planned lot'])
+  assert.ok(sheet.notes.some(n => /not yet verified/.test(n)))
+  assert.ok(sheet.notes.includes('Client asked for the table first'))
+  assert.ok(sheet.facts.some(f => f.label === 'Advance received' && /typed by you/.test(f.value)))
+})
+
+test('the Excel keeps numbers as numbers and carries the rupee format', async () => {
+  const { sheet } = build()
+  const bytes = await buildPaymentPlanWorkbook(sheet)
+  const XLSX = await import('xlsx')
+  const wb = XLSX.read(bytes, { type: 'array' })
+  const ws = wb.Sheets['Payment plan']
+  assert.ok(ws)
+  const rows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1, blankrows: false })
+  const required = rows.find(r => r[0] === 'Total required before this dispatch')
+  assert.ok(required)
+  assert.equal(typeof required[1], 'number')
+  const { result } = build()
+  assert.equal(required[1], result.requiredPaise / 100)
+})
+
+test('the PDF renders to a real PDF with the order number in its file name', async () => {
+  const { sheet } = build()
+  const pdf = await renderPaymentPlanPdf(sheet, null)
+  assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-')
+  assert.ok(pdf.length > 1500)
+  assert.equal(paymentPlanFileName('0539', 'pdf'), 'Payment-plan-0539.pdf')
+  assert.equal(paymentPlanFileName('a/b c', 'xlsx'), 'Payment-plan-a-b-c.xlsx')
+})
+
+test('the Order page draws the section only for holders of view_payment_plan, never under View As', () => {
+  const page = read('src/app/orders/[id]/page.tsx')
+  assert.match(page, /ordersCaps\.canViewPaymentPlan && !viewAsUserId/)
+  assert.match(page, /canEdit=\{ordersCaps\.canEditPaymentPlan\}/)
+})
+
+test('the section talks only to its own five functions, and the PDF route runs as the caller', () => {
+  const ui = read('src/app/orders/[id]/OrderPaymentPlan.tsx')
+  const called = [...ui.matchAll(/supabase\.rpc\('([a-z_]+)'/g)].map(m => m[1]).sort()
+  assert.deepEqual(called, [
+    'order_dispatch_lot_admin_change', 'order_dispatch_lot_mark_dispatched', 'order_dispatch_lot_save',
+    'order_payment_plan_read', 'order_payment_plan_save',
+  ])
+  assert.doesNotMatch(ui, /\.from\('/)
+  const route = read('src/app/api/orders/[id]/payment-plan/pdf/route.ts')
+  assert.match(route, /rpc\('order_payment_plan_read'/)
+  assert.doesNotMatch(route, /adminClient|service_role|SERVICE_ROLE/)
+})

@@ -372,6 +372,12 @@ registerModule({
     // approve examples on /orders/customize-learning. Registered by
     // 20270420000000, deny-by-default; admins hold it through the admin branch.
     { actionKey: 'train_customize_image', displayName: 'Train Customize image' },
+    // Payment plan on a Confirmed Order: how much more the client must pay
+    // before a dispatch. Registered by 20270428000000, deny-by-default; admins
+    // hold both through the admin branch. Viewing and saving are separate;
+    // changing a lot after it was marked dispatched stays admin only.
+    { actionKey: 'view_payment_plan', displayName: 'View Payment plan' },
+    { actionKey: 'edit_payment_plan', displayName: 'Edit Payment plan' },
   ],
 })
 
