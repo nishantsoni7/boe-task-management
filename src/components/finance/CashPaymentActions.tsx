@@ -17,7 +17,13 @@ import type { CashPayment } from '@/lib/finance/cashJourney'
  * Each is offered only when the server said so (can_* flags) and re-checked
  * there when pressed.
  */
-export function CashPaymentActions({ payment, onHandOver, quietJourney = false }: { payment: CashPayment; onHandOver?: () => void; quietJourney?: boolean }) {
+export function CashPaymentActions({ payment, onHandOver, quietJourney = false, hideJourney = false }: {
+  payment: CashPayment
+  onHandOver?: () => void
+  quietJourney?: boolean
+  /** The caller draws the journey itself (the Cash journeys board opens it inline). */
+  hideJourney?: boolean
+}) {
   const [dialog, setDialog] = useState<'accept' | 'receive' | null>(null)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -51,9 +57,9 @@ export function CashPaymentActions({ payment, onHandOver, quietJourney = false }
           Hand over
         </button>
       )}
-      {quietJourney
+      {!hideJourney && (quietJourney
         ? <span className="boe-cj-quiet"><PaymentJourneyButton paymentId={payment.paymentId} label="Journey" /></span>
-        : <PaymentJourneyButton paymentId={payment.paymentId} label="Journey" />}
+        : <PaymentJourneyButton paymentId={payment.paymentId} label="Journey" />)}
 
       {dialog === 'accept' && payment.openHandover && (
         <FinanceModal title="Accept this cash" onClose={() => setDialog(null)} width="460px">
