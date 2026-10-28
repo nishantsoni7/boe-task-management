@@ -1152,6 +1152,7 @@ describe('the applied migrations are frozen', () => {
       '20270428000000_order_payment_plan.sql',
       // Vendors: real access levels (view / create / edit / approve / export / view_all). NOT APPLIED.
       '20270429000000_vendor_access_levels.sql',
+      '20270430000000_order_payment_plan_account_cash.sql',
     ])
   })
 
@@ -1555,6 +1556,7 @@ describe('the applied migrations are frozen', () => {
       '20270428000000_order_payment_plan.sql',
       // Vendors: real access levels (view / create / edit / approve / export / view_all). NOT APPLIED.
       '20270429000000_vendor_access_levels.sql',
+      '20270430000000_order_payment_plan_account_cash.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

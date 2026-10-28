@@ -25,7 +25,7 @@ function formatCell(cell: SheetCell, kind: SheetColumn['kind']): string {
   return cell.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
-const money = (v: number) => formatCell(v, 'money')
+const money = (paise: number | null) => (paise === null ? '—' : formatCell(paise / 100, 'money'))
 
 export async function renderPaymentPlanPdf(sheet: PaymentPlanSheet, logo?: Uint8Array | null): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
@@ -102,12 +102,19 @@ export async function renderPaymentPlanPdf(sheet: PaymentPlanSheet, logo?: Uint8
         y += 10
       }
 
-      // ── Summary ──
+      // ── Summary: Account / Cash / Total ──
+      const labelW = CONTENT_W - 3 * 92
+      const col = (i: number) => MARGIN + labelW + i * 92
+      ensure(22)
+      ;['Account', 'Cash', 'Total'].forEach((h, i) => text(h, col(i), 88, { size: 8.5, bold: true, color: GRAY, align: 'right' }))
+      y += 15
       for (const s of sheet.summary) {
         ensure(22)
-        if (s.strong) doc.rect(MARGIN, y - 4, CONTENT_W, 19).fillColor('#FDF3F0').fill()
-        text(s.label, MARGIN + 6, CONTENT_W - 130, { size: 9.5, bold: s.strong })
-        text(money(s.value), MARGIN + CONTENT_W - 124, 118, { size: 9.5, bold: s.strong, align: 'right', color: s.strong ? RED : DARK })
+        const strong = s.kind !== 'line'
+        if (strong) doc.rect(MARGIN, y - 4, CONTENT_W, 19).fillColor(s.kind === 'balance' ? '#FDF3F0' : '#F9FAFB').fill()
+        text(s.label, MARGIN + 6, labelW - 10, { size: 9, bold: strong })
+        ;[s.account, s.cash, s.total].forEach((v, i) =>
+          text(money(v), col(i), 88, { size: 9, bold: strong, align: 'right', color: s.kind === 'balance' ? RED : DARK }))
         y += 19
       }
       y += 8

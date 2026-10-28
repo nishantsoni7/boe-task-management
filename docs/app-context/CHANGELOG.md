@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR pending) · migration 20270428000000 NOT applied
+## 2026-10-29 — Orders: Payment plan on its own page, with product pictures, account and cash apart (PR #488) · migration 20270430000000
+- **Account and cash (owner, second request the same day).** The summary is now one Account / Cash / Total table in plain words: goods being sent, advance for goods still to come, GST, total to be paid, already received, balance to pay. The billed part and all GST are due in account (HDFC); the rest in cash (PNB, Paytm, Canara). Confirmed payments are split by payment mode; account and cash can each be typed. Extra paid in account is billed as goods + GST and the goods value comes off the cash balance; extra cash stays cash. Migration `20270430000000` (helper `finance_payment_mode_is_account`, two typed-advance columns, read re-issued with the split, 6-argument save) rehearsed in a rolled-back transaction on the linked database (REHEARSAL OK, zero residue).
+- **Owner request.** The plan should not sit on the Order detail page: the Order links to it, and dispatches are managed on a page of their own. Product pictures in the list.
+- **What.** New page `/orders/[id]/payment-plan` (back link to the Order; "no access" said plainly). The Order page shows a "Payment plan — Open" card after Products, for holders of `view_payment_plan` only, not under View As. The lines table gains a Picture column (representative picture per PI line). Nothing in the calculation, database or downloads changed.
+- **Proof.** tsc, eslint, full suite, `paymentPlan*` tests. Not seen on screen.
+
+## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR #479, 3909c56c) · migration 20270428000000 APPLIED 2026-10-28
 - **Owner request.** One sheet per Confirmed Order: the goods being dispatched are paid in full, plus an adjustable share (50%) of the goods still to come, charges included, GST only on the billed part of what leaves.
 - **What.** "Payment plan" section on the Order page; dispatch lots (one planned, any number dispatched; "Mark as dispatched"; admin-only correction with a reason); saved pending %, billing % and advance; advance filled from Finance's verified totals when present, typed otherwise; on screen, Excel and PDF. Protected permissions `orders.view_payment_plan` and `orders.edit_payment_plan` (granted per person in Control Center; admins by role).
 - **Database.** Four closed tables and five functions; nothing in Orders, PIs or payments is written. Rollback is in the migration header.

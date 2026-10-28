@@ -40,9 +40,11 @@ export async function buildPaymentPlanWorkbook(sheet: PaymentPlanSheet): Promise
     rows.push([])
   }
 
+  rows.push(['', 'Account', 'Cash', 'Total'])
+  const r = (paise: number | null) => (paise === null ? null : paise / 100)
   for (const s of sheet.summary) {
-    formats.set(`${rows.length},1`, MONEY_FORMAT)
-    rows.push([s.label, s.value])
+    for (const c of [1, 2, 3]) formats.set(`${rows.length},${c}`, MONEY_FORMAT)
+    rows.push([s.label, r(s.account), r(s.cash), r(s.total)])
   }
   if (sheet.notes.length > 0) {
     rows.push([])

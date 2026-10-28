@@ -1,6 +1,6 @@
 'use client'
 
-// ── PAYMENT PLAN, on the Confirmed Order page ────────────────────────────────
+// ── PAYMENT PLAN, its own page: /orders/[id]/payment-plan ───────────────────
 //
 // How much more the client must pay before a dispatch: the goods leaving in
 // full (with their share of every charge, and GST on the billed part), plus a
@@ -8,15 +8,17 @@
 // computePaymentPlan (lib/orders/paymentPlan.ts); this file only draws it and
 // saves the inputs.
 //
-// Self-loading on purpose: the Order page's startup reads are counted and
-// pinned (orderStartupShape.test.ts), and this is a section only the people
-// granted view_payment_plan ever open. One read (order_payment_plan_read), and
+// Self-loading: the Order page only links here, so its counted startup reads
+// are unchanged. One read (order_payment_plan_read), plus the product pictures
+// (read under the person's own access; no picture just shows "No image"), and
 // writes only through the order_payment_plan_* / order_dispatch_lot_* functions
 // of 20270428000000, which re-derive who may. `canEdit` and `isAdmin` decide
 // only which controls are drawn.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
+import { planItemKey } from '@/lib/orders/paymentPlan'
 import {
   PLAN_PROBLEM_TEXT,
   computePaymentPlan,
@@ -29,7 +31,7 @@ import {
   plannedQuantities,
   type PlanData,
 } from '@/lib/orders/paymentPlan'
-import { buildPaymentPlanSheet, paymentPlanFileName } from '@/lib/orders/paymentPlanSheet'
+import { buildPaymentPlanSheet, paymentPlanFileName, planSummaryRows } from '@/lib/orders/paymentPlanSheet'
 import { downloadPaymentPlanXlsx } from '@/lib/orders/paymentPlanXlsx'
 
 type Edit = {
@@ -37,7 +39,8 @@ type Edit = {
   plannedOn: string
   pending: string
   billing: string
-  advance: string
+  advanceAccount: string
+  advanceCash: string
   note: string
 }
 
@@ -50,7 +53,8 @@ function editFromData(data: PlanData): Edit {
     plannedOn: plannedLotOf(data.lots)?.plannedOn ?? '',
     pending: String(data.pendingPercent),
     billing: data.billingPercentOverride === null ? '' : String(data.billingPercentOverride),
-    advance: data.advanceOverride === null ? '' : String(data.advanceOverride),
+    advanceAccount: data.advanceAccountOverride === null ? '' : String(data.advanceAccountOverride),
+    advanceCash: data.advanceCashOverride === null ? '' : String(data.advanceCashOverride),
     note: data.note ?? '',
   }
 }
@@ -70,6 +74,10 @@ function describeError(message: string): string {
   return 'That could not be saved. Please try again.'
 }
 
+/** A typed figure changed: blank vs filled, or a different number. */
+const numberChanged = (a: string, b: string) =>
+  (a.trim() === '') !== (b.trim() === '') || (a.trim() !== '' && Number(a) !== Number(b))
+
 const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 const showDate = (iso: string | null) => {
   if (!iso) return '—'
@@ -77,10 +85,55 @@ const showDate = (iso: string | null) => {
   return y && m && d ? `${d}-${m}-${y}` : iso
 }
 
+const PICTURE_URL_TTL_SECONDS = 3600
+
+/** One representative picture URL per PI line, keyed like the plan's lines. Silent on any failure. */
+function useProductPictures(
+  supabase: ReturnType<typeof createClient>, submissionId: string | null, enabled: boolean,
+): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!enabled || !submissionId) return
+    let live = true
+    void (async () => {
+      const [items, images] = await Promise.all([
+        supabase.from('order_submission_items').select('id, item_sequence').eq('submission_id', submissionId),
+        supabase.from('order_submission_item_images').select('item_id, role, position, storage_path')
+          .eq('submission_id', submissionId).eq('role', 'representative').order('position', { ascending: true }),
+      ])
+      if (!live || items.error || images.error) return
+      const keyOf = new Map<string, string>()
+      for (const i of (items.data ?? []) as { id: string; item_sequence: string | null }[]) {
+        keyOf.set(i.id, planItemKey(i.item_sequence, i.id))
+      }
+      const pathByKey = new Map<string, string>()
+      for (const m of (images.data ?? []) as { item_id: string; storage_path: string }[]) {
+        const key = keyOf.get(m.item_id)
+        if (key && !pathByKey.has(key)) pathByKey.set(key, m.storage_path)
+      }
+      const paths = [...pathByKey.values()]
+      if (paths.length === 0) return
+      const signed = await supabase.storage.from(ORDER_FILES_BUCKET).createSignedUrls(paths, PICTURE_URL_TTL_SECONDS)
+      if (!live || signed.error) return
+      const urlByPath = new Map<string, string>()
+      for (const s of signed.data ?? []) if (s.path && s.signedUrl) urlByPath.set(s.path, s.signedUrl)
+      const out: Record<string, string> = {}
+      for (const [key, path] of pathByKey) {
+        const url = urlByPath.get(path)
+        if (url) out[key] = url
+      }
+      setUrls(out)
+    })()
+    return () => { live = false }
+  }, [supabase, submissionId, enabled])
+  return urls
+}
+
 export default function OrderPaymentPlan({
-  orderId, canEdit, isAdmin,
-}: { orderId: string; canEdit: boolean; isAdmin: boolean }) {
+  orderId, submissionId, canEdit, isAdmin,
+}: { orderId: string; submissionId: string | null; canEdit: boolean; isAdmin: boolean }) {
   const supabase = useMemo(() => createClient(), [])
+  const pictures = useProductPictures(supabase, submissionId, true)
   const [data, setData] = useState<PlanData | null | undefined>(undefined)   // undefined = loading
   const [unreadable, setUnreadable] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
@@ -124,18 +177,24 @@ export default function OrderPaymentPlan({
     }
     const pending = parseTypedNumber(edit.pending)
     const billing = parseTypedNumber(edit.billing)
-    const advance = parseTypedNumber(edit.advance)
+    const advanceAccount = parseTypedNumber(edit.advanceAccount)
+    const advanceCash = parseTypedNumber(edit.advanceCash)
     if (pending === null || Number.isNaN(pending) || pending > 100) invalid = true
     if (billing !== null && (Number.isNaN(billing) || billing > 100)) invalid = true
-    if (advance !== null && Number.isNaN(advance)) invalid = true
+    if (advanceAccount !== null && Number.isNaN(advanceAccount)) invalid = true
+    if (advanceCash !== null && Number.isNaN(advanceCash)) invalid = true
     const safe = (n: number | null) => (n === null || Number.isNaN(n) ? null : n)
     const result = computePaymentPlan(inputFromData(data, {
       planned,
       pendingPercent: safe(pending) ?? data.pendingPercent,
       billingPercentOverride: safe(billing),
-      advanceOverride: safe(advance),
+      advanceAccountOverride: safe(advanceAccount),
+      advanceCashOverride: safe(advanceCash),
     }))
-    return { planned, pending: safe(pending), billing: safe(billing), advance: safe(advance), invalid, result }
+    return {
+      planned, pending: safe(pending), billing: safe(billing),
+      advanceAccount: safe(advanceAccount), advanceCash: safe(advanceCash), invalid, result,
+    }
   }, [data, edit])
 
   const dirty = useMemo(() => {
@@ -147,14 +206,18 @@ export default function OrderPaymentPlan({
       || saved.plannedOn !== edit.plannedOn
       || Number(saved.pending) !== Number(edit.pending)
       || (saved.billing.trim() === '') !== (edit.billing.trim() === '') || (saved.billing !== '' && Number(saved.billing) !== Number(edit.billing))
-      || (saved.advance.trim() === '') !== (edit.advance.trim() === '') || (saved.advance !== '' && Number(saved.advance) !== Number(edit.advance))
+      || numberChanged(saved.advanceAccount, edit.advanceAccount)
+      || numberChanged(saved.advanceCash, edit.advanceCash)
       || saved.note.trim() !== edit.note.trim()
   }, [data, edit, parsed])
 
-  if (unreadable) return null
-  if (data === undefined) return null
-  // No PI behind this Order: nothing to plan against, so nothing to draw.
-  if (data === null || !edit || !parsed) return null
+  if (unreadable) {
+    return <p className="opp-warn" role="alert">The Payment plan could not be opened. You may not have access, or the page needs a reload.</p>
+  }
+  if (data === undefined) return <p className="opp-note" role="status">Opening the Payment plan…</p>
+  if (data === null || !edit || !parsed) {
+    return <p className="opp-note" role="status">This Order has no PI to plan against.</p>
+  }
 
   const { result } = parsed
   const set = (patch: Partial<Edit>) => { setProblem(null); setEdit({ ...edit, ...patch }) }
@@ -169,7 +232,8 @@ export default function OrderPaymentPlan({
       p_order_id: orderId,
       p_pending_percent: parsed.pending,
       p_billing_percent: parsed.billing,
-      p_advance_override: parsed.advance,
+      p_advance_account: parsed.advanceAccount,
+      p_advance_cash: parsed.advanceCash,
       p_note: edit.note.trim() === '' ? null : edit.note.trim(),
     })
     if (a.error) { setProblem(describeError(a.error.message)); setBusy(false); return }
@@ -239,11 +303,11 @@ export default function OrderPaymentPlan({
   const planned = plannedLotOf(data.lots)
   const dispatchedLots = data.lots.filter(l => l.status === 'dispatched')
   const hasPlanned = Object.keys(parsed.planned).length > 0
-  const showToCollect = result.toCollectPaise >= 0
   const percentBad = (text: string, allowBlank: boolean) => {
     const n = parseTypedNumber(text)
     return allowBlank && n === null ? false : n === null || Number.isNaN(n) || n > 100
   }
+  const typedBad = (text: string) => { const n = parseTypedNumber(text); return n !== null && Number.isNaN(n) }
   const rateText = `${(result.gstRate * 100).toFixed(2).replace(/\.?0+$/, '')}%`
   const downloadsOff = dirty || busy
 
@@ -285,15 +349,16 @@ export default function OrderPaymentPlan({
             value={edit.billing} disabled={!canEdit || busy} onChange={e => set({ billing: e.target.value })} />
         </label>
         <label className="opp-field">
-          <span>Advance received (₹)
-            <em>{data.financePaymentCount > 0
-              ? ` Finance: ${formatPaise(result.financeVerifiedPaise)} verified${result.financeAwaitingPaise > 0 ? `, ${formatPaise(result.financeAwaitingPaise)} awaiting` : ''}`
-              : ' Nothing found in Finance'}</em>
-          </span>
-          <input className={`boe-input${(() => { const n = parseTypedNumber(edit.advance); return n !== null && Number.isNaN(n) ? ' opp-bad' : '' })()}`}
-            inputMode="decimal"
-            placeholder={data.financePaymentCount > 0 ? 'Using Finance’s verified figure' : 'Type the advance received'}
-            value={edit.advance} disabled={!canEdit || busy} onChange={e => set({ advance: e.target.value })} />
+          <span>Received in account (₹) <em>Confirmed: {formatPaise(Math.round(data.financeAccountVerified * 100))}</em></span>
+          <input className={`boe-input${typedBad(edit.advanceAccount) ? ' opp-bad' : ''}`} inputMode="decimal"
+            placeholder="Blank = use confirmed payments"
+            value={edit.advanceAccount} disabled={!canEdit || busy} onChange={e => set({ advanceAccount: e.target.value })} />
+        </label>
+        <label className="opp-field">
+          <span>Received in cash (₹) <em>Confirmed: {formatPaise(Math.round(data.financeCashVerified * 100))}</em></span>
+          <input className={`boe-input${typedBad(edit.advanceCash) ? ' opp-bad' : ''}`} inputMode="decimal"
+            placeholder="Blank = use confirmed payments"
+            value={edit.advanceCash} disabled={!canEdit || busy} onChange={e => set({ advanceCash: e.target.value })} />
         </label>
       </div>
 
@@ -301,7 +366,7 @@ export default function OrderPaymentPlan({
         <table className="opp-table">
           <thead>
             <tr>
-              <th>Line</th><th>Product</th>
+              <th>Line</th><th>Picture</th><th>Product</th>
               <th className="opp-num">Rate</th>
               <th className="opp-num">Ordered</th>
               <th className="opp-num">Sent earlier</th>
@@ -318,6 +383,12 @@ export default function OrderPaymentPlan({
               return (
                 <tr key={l.itemSequence}>
                   <td>{l.itemSequence}</td>
+                  <td className="opp-pic">
+                    {pictures[l.itemSequence]
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
+                      : <span className="opp-thumb opp-thumb--none">No image</span>}
+                  </td>
                   <td className="opp-name">{l.productName ?? '—'}</td>
                   <td className="opp-num">{formatPaise(Math.round(l.rate * 100))}</td>
                   <td className="opp-num">{l.ordered}</td>
@@ -335,28 +406,38 @@ export default function OrderPaymentPlan({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={7}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
+              <td colSpan={8}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
               <td className="opp-num">{formatPaise(result.plannedPaise)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-      <dl className="opp-sum">
-        <div><dt>Total before GST on the PI (goods and all charges)</dt><dd>{formatPaise(result.totalBeforeGstPaise ?? 0)}</dd></div>
-        <div><dt>Goods leaving, with their share of charges (paid in full)</dt><dd>{formatPaise(result.dispatchAmountPaise)}</dd></div>
-        <div><dt>GST on the billed part ({result.billingPercent === null ? 'billing % not set' : `${result.billingPercent}% × ${rateText}`})</dt><dd>{formatPaise(result.gstOnDispatchPaise)}</dd></div>
-        <div><dt>{result.pendingPercent}% of goods still to come, charges included (no GST)</dt><dd>{formatPaise(result.pendingShareAmountPaise)}</dd></div>
-        <div className="opp-strong"><dt>Total required</dt><dd>{formatPaise(result.requiredPaise)}</dd></div>
-        <div>
-          <dt>Advance received ({result.advanceSource === 'typed' ? 'typed' : result.advanceSource === 'finance' ? 'from Finance, verified' : 'none yet'})</dt>
-          <dd>{formatPaise(result.advancePaise)}</dd>
-        </div>
-        <div className={`opp-strong ${showToCollect ? 'opp-due' : 'opp-ok'}`}>
-          <dt>{showToCollect ? 'Still to collect from the client' : 'Surplus already paid'}</dt>
-          <dd>{formatPaise(Math.abs(result.toCollectPaise))}</dd>
-        </div>
-      </dl>
+      <div className="opp-scroll">
+        <table className="opp-table opp-sum-table">
+          <thead>
+            <tr><th></th><th className="opp-num">Account</th><th className="opp-num">Cash</th><th className="opp-num">Total</th></tr>
+          </thead>
+          <tbody>
+            {planSummaryRows(result).map(r => (
+              <tr key={r.label} className={r.kind === 'line' ? undefined : `opp-sum-${r.kind}`}>
+                <td>{r.label}</td>
+                {[r.account, r.cash, r.total].map((v, i) => (
+                  <td key={i} className={`opp-num${v !== null && v < 0 ? ' opp-extra' : ''}`}>
+                    {v === null ? '—' : r.kind === 'balance' && v < 0 ? `${formatPaise(-v)} paid extra` : formatPaise(v)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="opp-note">
+        Account = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara).
+        The billed part ({result.billingPercent === null ? 'billing % not set' : `${result.billingPercent}%`}) and all GST ({rateText}) are paid in account; the rest in cash.
+        {(result.split.awaiting.account > 0 || result.split.awaiting.cash > 0) &&
+          ` Still being checked in Finance, not counted yet: ${formatPaise(result.split.awaiting.account)} in account, ${formatPaise(result.split.awaiting.cash)} in cash.`}
+      </p>
       {result.billingMissing && <p className="opp-warn" role="status">No billing % on the PI or here, so GST is not included yet.</p>}
 
       {canEdit && (

@@ -277,7 +277,6 @@ import {
   productPicturesZipName,
 } from '@/lib/orders/productPictures'
 import { orderPaymentFacts } from '@/lib/orders/orderPaymentFacts'
-import OrderPaymentPlan from './OrderPaymentPlan'
 import { buildErpLineItemsWorkbook, erpLineItemsFileName } from '@/lib/orders/erpLineItems'
 import { erpPictureUrlsByRow, loadErpImages, prepareErpImage } from '@/lib/orders/erpImages'
 
@@ -3553,13 +3552,16 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ 4b. PAYMENT PLAN ══ (20270428000000) Self-loading; drawn only for holders of view_payment_plan. */}
+        {/* ══ 4b. PAYMENT PLAN ══ (20270428000000) Its own page (owner, 2026-10-29); the Order only links
+            to it, drawn only for holders of view_payment_plan. */}
         {order.source_order_submission_id && ordersCaps.canViewPaymentPlan && !viewAsUserId && (
-          <OrderPaymentPlan
-            orderId={order.id}
-            canEdit={ordersCaps.canEditPaymentPlan}
-            isAdmin={actingAsAdmin}
-          />
+          <button type="button" className="opp-entry" onClick={() => router.push(`/orders/${order.id}/payment-plan`)}>
+            <span className="opp-entry-text">
+              <strong>Payment plan</strong>
+              <span>What the client must pay before the next dispatch, and the dispatch lots</span>
+            </span>
+            <span className="opp-entry-go" aria-hidden="true">Open →</span>
+          </button>
         )}
 
         {/* ══ THE LOWER WORKSPACE ══

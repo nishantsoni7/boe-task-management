@@ -7,6 +7,7 @@ import {
   gstRateOf,
   parsePlanData,
   parseTypedNumber,
+  planItemKey,
   plannedLinesPayload,
   type PlanInput,
 } from './paymentPlan'
@@ -28,7 +29,12 @@ const base: PlanInput = {
   financeVerified: 0,
   financeAwaiting: 0,
   financePaymentCount: 0,
-  advanceOverride: 10000,
+  financeAccountVerified: 0,
+  financeCashVerified: 0,
+  financeAccountAwaiting: 0,
+  financeCashAwaiting: 0,
+  advanceAccountOverride: null,
+  advanceCashOverride: 10000,
 }
 
 const paise = (rupees: number) => Math.round(rupees * 100)
@@ -111,17 +117,17 @@ test('the GST rate is the PI\'s own, 18% when it states none', () => {
 })
 
 test('surplus is negative, and the advance falls back to Finance then to none', () => {
-  const surplus = computePaymentPlan({ ...base, advanceOverride: 30000 })
+  const surplus = computePaymentPlan({ ...base, advanceCashOverride: 30000 })
   assert.equal(surplus.toCollectPaise, paise(-10920))
-  const fromFinance = computePaymentPlan({ ...base, advanceOverride: null, financeVerified: 5000, financeAwaiting: 2000, financePaymentCount: 2 })
+  const fromFinance = computePaymentPlan({ ...base, advanceCashOverride: null, financeVerified: 5000, financeCashVerified: 5000, financeAwaiting: 2000, financePaymentCount: 2 })
   assert.equal(fromFinance.advanceSource, 'finance')
   assert.equal(fromFinance.advancePaise, paise(5000))
   assert.equal(fromFinance.financeAwaitingPaise, paise(2000))
-  const none = computePaymentPlan({ ...base, advanceOverride: null })
+  const none = computePaymentPlan({ ...base, advanceCashOverride: null })
   assert.equal(none.advanceSource, 'none')
   assert.equal(none.advancePaise, 0)
   // a typed zero is a real answer, not "use Finance"
-  const typedZero = computePaymentPlan({ ...base, advanceOverride: 0, financeVerified: 5000 })
+  const typedZero = computePaymentPlan({ ...base, advanceCashOverride: 0, financeVerified: 5000, financeCashVerified: 5000 })
   assert.equal(typedZero.advanceSource, 'typed')
   assert.equal(typedZero.advancePaise, 0)
 })
@@ -131,7 +137,7 @@ test('rounding happens once per figure, half up, to the paisa', () => {
     items: [{ itemSequence: 'a', productName: null, quantity: 3, rate: 33.33 }, { itemSequence: 'b', productName: null, quantity: 1, rate: 0.01 }],
     dispatchedLots: [], planned: { a: 1 },
     totalBeforeGst: 100, gstAmount: 18, piBillingPercent: 100, billingPercentOverride: null,
-    pendingPercent: 50, financeVerified: 0, financeAwaiting: 0, financePaymentCount: 0, advanceOverride: 0,
+    pendingPercent: 50, financeVerified: 0, financeAwaiting: 0, financePaymentCount: 0, financeAccountVerified: 0, financeCashVerified: 0, financeAccountAwaiting: 0, financeCashAwaiting: 0, advanceAccountOverride: null, advanceCashOverride: 0,
   })
   // 33.33 of 100.00 goods => 33.33% of 100.00 = 33.33
   assert.equal(r.dispatchAmountPaise, 3333)
@@ -175,15 +181,71 @@ test('the database answer is read into plan data, and a missing PI reads as null
     order: { id: 'o1', display_number: '0539', status: 'running', total_value: 28320, client_name: 'Acme' },
     pi: { total_before_gst: '24000.00', gst_amount: '4320.00', grand_total: '28320.00', billing_percentage: '50.00' },
     items: [{ item_sequence: '1', product_name: 'Table', quantity: '10.00', rate: '1000.00' }],
-    plan: { pending_percent: '60.00', billing_percent: null, advance_override: '1500.00', note: 'n' },
+    plan: { pending_percent: '60.00', billing_percent: null, advance_account_override: '1500.00', advance_cash_override: null, note: 'n' },
     lots: [{ id: 'l1', lot_no: 1, status: 'planned', planned_on: null, dispatched_on: null, lines: [{ item_sequence: '1', quantity: '4.00' }] }],
     finance: { verified: '100.00', awaiting: '0', payment_count: 1 },
   })
   assert.ok(data)
   assert.equal(data.pendingPercent, 60)
-  assert.equal(data.advanceOverride, 1500)
+  assert.equal(data.advanceAccountOverride, 1500)
+  assert.equal(data.advanceCashOverride, null)
   assert.equal(data.piBillingPercent, 50)
   assert.equal(data.piDiffersFromOrder, false)
   assert.equal(data.lots[0].lines[0].quantity, 4)
   assert.equal(data.displayNumber, '0539')
+})
+
+test('a PI line is keyed by its item sequence, or its row id when it has none (as the database does)', () => {
+  assert.equal(planItemKey(' 3 ', 'id-1'), '3')
+  assert.equal(planItemKey('', 'id-1'), 'id-1')
+  assert.equal(planItemKey(null, 'id-2'), 'id-2')
+})
+
+// ── Account and cash (owner, 2026-10-29) ──
+// base: dispatch 12,000 + pending 6,000, billing 50%, GST 1,080.
+const split = (over: Partial<PlanInput>) => computePaymentPlan({ ...base, advanceCashOverride: null, ...over }).split
+
+test('the billed part and all GST are due in account; the rest is cash', () => {
+  const s = split({})
+  assert.deepEqual(s.dispatch, { account: paise(6000), cash: paise(6000), total: paise(12000) })
+  assert.deepEqual(s.pending, { account: paise(3000), cash: paise(3000), total: paise(6000) })
+  assert.deepEqual(s.gst, { account: paise(1080), cash: 0, total: paise(1080) })
+  assert.deepEqual(s.due, { account: paise(10080), cash: paise(9000), total: paise(19080) })
+})
+
+test('confirmed payments are split by where they were paid, and each side is settled on its own', () => {
+  const s = split({ financeVerified: 12000, financeAccountVerified: 4000, financeCashVerified: 8000 })
+  assert.deepEqual(s.received, { account: paise(4000), cash: paise(8000), total: paise(12000) })
+  assert.deepEqual(s.receivedSource, { account: 'finance', cash: 'finance' })
+  assert.deepEqual(s.balance, { account: paise(6080), cash: paise(1000), total: paise(7080) })
+})
+
+test('a typed figure replaces only its own side', () => {
+  const s = split({ financeAccountVerified: 4000, financeCashVerified: 8000, advanceCashOverride: 2000 })
+  assert.equal(s.received.account, paise(4000))
+  assert.equal(s.received.cash, paise(2000))
+  assert.deepEqual(s.receivedSource, { account: 'finance', cash: 'typed' })
+})
+
+test('extra paid in account is billed: its goods value comes off the cash balance, the rest is GST', () => {
+  // account due 10,080; paid 21,880 => 11,800 extra = 10,000 goods + 1,800 GST at 18%
+  const r = computePaymentPlan({ ...base, advanceCashOverride: null, advanceAccountOverride: 21880 })
+  const s = r.split
+  assert.deepEqual(s.movedFromAccount, { excessPaise: paise(11800), goodsPaise: paise(10000), gstPaise: paise(1800) })
+  assert.equal(s.balance.account, 0)
+  assert.equal(s.balance.cash, paise(-1000))                      // 9,000 cash due - 10,000 moved
+  assert.equal(r.toCollectPaise, paise(-1000))
+})
+
+test('extra cash never moves to the account side', () => {
+  const s = split({ advanceCashOverride: 20000 })
+  assert.equal(s.balance.account, paise(10080))
+  assert.equal(s.balance.cash, paise(-11000))
+  assert.equal(s.movedFromAccount.excessPaise, 0)
+})
+
+test('with no billing percentage everything is cash and there is no GST', () => {
+  const s = split({ piBillingPercent: null })
+  assert.equal(s.due.account, 0)
+  assert.equal(s.due.cash, paise(18000))
 })

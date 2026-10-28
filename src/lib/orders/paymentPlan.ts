@@ -17,6 +17,15 @@
 //   required         = A + GST + P
 //   still to collect = required - advance received  (negative = surplus)
 //
+// ACCOUNT AND CASH (owner, 2026-10-29). The billed part (billing %) of A and
+// of P is paid into the company account, together with all the GST; the rest
+// is cash. Money received is split the same way by payment mode (account =
+// HDFC PRI / HDFC SEC and legacy bank transfer, cheque, UPI; everything else,
+// Canara included, is cash). The two sides are kept apart, with one exception
+// the owner asked for: money paid into the account BEYOND what the account
+// side needs is billed as extra goods plus GST, and that goods value comes off
+// the cash balance. Extra cash never moves to the account side.
+//
 // MONEY IS INTEGER PAISE. Quantity (2 dp) x rate (2 dp) is held in units of
 // 1/10,000 rupee, so a line value is exact; only the money figures are rounded,
 // half up, to the paisa, each once.
@@ -54,8 +63,34 @@ export type PlanInput = {
   financeVerified: number
   financeAwaiting: number
   financePaymentCount: number
-  /** A typed advance; null = use Finance's verified figure. */
-  advanceOverride: number | null
+  /** The same verified / awaiting money, split by where it was paid. */
+  financeAccountVerified: number
+  financeCashVerified: number
+  financeAccountAwaiting: number
+  financeCashAwaiting: number
+  /** Typed advances, one per side; null = use Finance's verified figure for that side. */
+  advanceAccountOverride: number | null
+  advanceCashOverride: number | null
+}
+
+/** One figure on each side, in paise. total = account + cash. */
+export type PlanSide = { account: number; cash: number; total: number }
+
+export type PlanSplit = {
+  /** Goods leaving (to date + this lot) with their charges. */
+  dispatch: PlanSide
+  /** The pending share of goods still to come. */
+  pending: PlanSide
+  /** GST: account side only. */
+  gst: PlanSide
+  due: PlanSide
+  received: PlanSide
+  receivedSource: { account: 'typed' | 'finance' | 'none'; cash: 'typed' | 'finance' | 'none' }
+  /** Account money beyond the account side's need, billed as goods + GST; the goods part comes off cash. */
+  movedFromAccount: { excessPaise: number; goodsPaise: number; gstPaise: number }
+  /** account >= 0 after the move; cash is signed (negative = paid extra in cash). */
+  balance: PlanSide
+  awaiting: { account: number; cash: number }
 }
 
 export type PlanLineResult = {
@@ -109,6 +144,8 @@ export type PlanResult = {
   toCollectPaise: number
   /** Fraction of the goods leaving (dispatched to date + planned), basis points of a percent. */
   dispatchSharePercent: number
+  /** The same money, account and cash apart. */
+  split: PlanSplit
 }
 
 export const DEFAULT_PENDING_PERCENT = 50
@@ -215,10 +252,39 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
   const pendShare = divRound(pendBase * scaled(pending, 100), BIG(10000))
   const required = A + gstP + pendShare
 
-  const typed = input.advanceOverride !== null
+  // ── account and cash ──
+  const billingUnits = billing === null ? BIG(0) : scaled(billing, 100)        // 1/10,000 of the whole
+  const accountPart = (v: bigint) => divRound(v * billingUnits, BIG(10000))
+  const side = (account: bigint, cash: bigint): PlanSide =>
+    ({ account: toNumber(account), cash: toNumber(cash), total: toNumber(account + cash) })
+  const dispatchAcc = accountPart(A)
+  const pendAcc = accountPart(pendShare)
+  const dueAcc = dispatchAcc + pendAcc + gstP
+  const dueCash = (A - dispatchAcc) + (pendShare - pendAcc)
+
+  const sourceOf = (typedValue: number | null, finance: number): 'typed' | 'finance' | 'none' =>
+    typedValue !== null ? 'typed' : finance > 0 ? 'finance' : 'none'
+  const accSource = sourceOf(input.advanceAccountOverride, input.financeAccountVerified)
+  const cashSource = sourceOf(input.advanceCashOverride, input.financeCashVerified)
+  const recAcc = scaled(input.advanceAccountOverride ?? input.financeAccountVerified, 100)
+  const recCash = scaled(input.advanceCashOverride ?? input.financeCashVerified, 100)
+
+  let balAcc = dueAcc - recAcc
+  let balCash = dueCash - recCash
+  let excess = BIG(0), movedGoods = BIG(0), movedGst = BIG(0)
+  if (balAcc < BIG(0)) {
+    excess = -balAcc
+    // the extra is billed: goods + GST at the PI's rate
+    movedGoods = divRound(excess * BIG(10000), BIG(10000) + scaled(gstRate, 10000))
+    movedGst = excess - movedGoods
+    balCash -= movedGoods
+    balAcc = BIG(0)
+  }
+
+  const typed = accSource === 'typed' || cashSource === 'typed'
   const advanceSource: PlanResult['advanceSource'] =
-    typed ? 'typed' : input.financeVerified > 0 ? 'finance' : 'none'
-  const advance = typed ? scaled(input.advanceOverride, 100) : scaled(input.financeVerified, 100)
+    typed ? 'typed' : (accSource === 'finance' || cashSource === 'finance') ? 'finance' : 'none'
+  const advance = recAcc + recCash
 
   const share = orderedV > BIG(0)
     ? Number(divRound(cappedV * BIG(10000), orderedV)) / 100
@@ -248,8 +314,22 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
     financeVerifiedPaise: toNumber(scaled(input.financeVerified, 100)),
     financeAwaitingPaise: toNumber(scaled(input.financeAwaiting, 100)),
     financePaymentCount: input.financePaymentCount,
-    toCollectPaise: toNumber(required - advance),
+    toCollectPaise: toNumber(balAcc + balCash),
     dispatchSharePercent: share,
+    split: {
+      dispatch: side(dispatchAcc, A - dispatchAcc),
+      pending: side(pendAcc, pendShare - pendAcc),
+      gst: side(gstP, BIG(0)),
+      due: side(dueAcc, dueCash),
+      received: side(recAcc, recCash),
+      receivedSource: { account: accSource, cash: cashSource },
+      movedFromAccount: { excessPaise: toNumber(excess), goodsPaise: toNumber(movedGoods), gstPaise: toNumber(movedGst) },
+      balance: side(balAcc, balCash),
+      awaiting: {
+        account: toNumber(scaled(input.financeAccountAwaiting, 100)),
+        cash: toNumber(scaled(input.financeCashAwaiting, 100)),
+      },
+    },
   }
 }
 
@@ -270,11 +350,16 @@ export type PlanData = {
   piDiffersFromOrder: boolean
   pendingPercent: number
   billingPercentOverride: number | null
-  advanceOverride: number | null
+  advanceAccountOverride: number | null
+  advanceCashOverride: number | null
   note: string | null
   financeVerified: number
   financeAwaiting: number
   financePaymentCount: number
+  financeAccountVerified: number
+  financeCashVerified: number
+  financeAccountAwaiting: number
+  financeCashAwaiting: number
 }
 
 const num = (v: unknown): number | null => {
@@ -332,12 +417,23 @@ export function parsePlanData(raw: unknown): PlanData | null {
     piDiffersFromOrder: grand !== null && orderValue !== null && Math.abs(grand - orderValue) > 0.005,
     pendingPercent: num(plan.pending_percent) ?? DEFAULT_PENDING_PERCENT,
     billingPercentOverride: num(plan.billing_percent),
-    advanceOverride: num(plan.advance_override),
+    advanceAccountOverride: num(plan.advance_account_override),
+    advanceCashOverride: num(plan.advance_cash_override),
     note: plan.note === null || plan.note === undefined ? null : String(plan.note),
     financeVerified: num(fin.verified) ?? 0,
     financeAwaiting: num(fin.awaiting) ?? 0,
     financePaymentCount: num(fin.payment_count) ?? 0,
+    financeAccountVerified: num(fin.account_verified) ?? 0,
+    financeCashVerified: num(fin.cash_verified) ?? 0,
+    financeAccountAwaiting: num(fin.account_awaiting) ?? 0,
+    financeCashAwaiting: num(fin.cash_awaiting) ?? 0,
   }
+}
+
+/** A PI line's key in the plan: its item_sequence, or its row id when it has none (as order_payment_plan_read does). */
+export function planItemKey(itemSequence: string | null | undefined, itemId: string): string {
+  const s = (itemSequence ?? '').trim()
+  return s === '' ? itemId : s
 }
 
 /** The planned lot's quantities as the editor holds them. */
@@ -358,7 +454,8 @@ export function inputFromData(
     planned: Record<string, number>
     pendingPercent: number
     billingPercentOverride: number | null
-    advanceOverride: number | null
+    advanceAccountOverride: number | null
+    advanceCashOverride: number | null
   },
 ): PlanInput {
   return {
@@ -373,7 +470,12 @@ export function inputFromData(
     financeVerified: data.financeVerified,
     financeAwaiting: data.financeAwaiting,
     financePaymentCount: data.financePaymentCount,
-    advanceOverride: edit.advanceOverride,
+    financeAccountVerified: data.financeAccountVerified,
+    financeCashVerified: data.financeCashVerified,
+    financeAccountAwaiting: data.financeAccountAwaiting,
+    financeCashAwaiting: data.financeCashAwaiting,
+    advanceAccountOverride: edit.advanceAccountOverride,
+    advanceCashOverride: edit.advanceCashOverride,
   }
 }
 
