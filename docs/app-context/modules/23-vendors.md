@@ -28,6 +28,8 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 
 **Design language** (`vendors.module.css`): Notion-like. 14px body, 12.5px secondary, weights 400 / 500 only (600 for the vendor's name), flat sections with small uppercase titles instead of boxed cards, hairline borders, the accent colour only for the primary action, a label-and-control "property row" on desktop that stacks on a phone. The list has four stage tabs that always fit (All / Potential / Contacted / Registered) and everything else behind one Filter button; no horizontal scroll at 375 px.
 
+**Interaction details worth keeping** (second design pass): the list is a keyboard-driven table (sortable column headers, the stage editable in the row, ↑ ↓ between rows, Enter opens, "/" focuses the search, hover quick-call); the visit form is one flat page with a compact outcome picker, photo tiles with a clear "factory photo required" state (drag files in on a computer), Ctrl/Cmd+Enter to save, and a "draft saved on this device" note; the vendor forms show only the essential properties and offer the rest as "+ Products", "+ People", "+ Notes" … (the Notion pattern).
+
 ## 4. Pages (`src/app/vendors/`)
 
 | Route | Screen | Who |

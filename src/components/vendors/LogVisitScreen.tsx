@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, CheckCircle2, MapPin, Search } from 'lucide-react'
+import { Camera, CheckCircle2, MapPin, Plus, Search } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
@@ -23,7 +23,7 @@ import {
   EMPTY_VENDOR, EMPTY_VISIT, isLiveSiteVisit, validateVendor, validateVisit, vendorPayload,
   type FieldErrors, type VendorField, type VisitDraft, type VisitField,
 } from '@/lib/vendors/validation'
-import { Chips, Field } from './VendorBits'
+import { Field } from './VendorBits'
 import VendorFields from './VendorFields'
 import s from './vendors.module.css'
 
@@ -46,6 +46,14 @@ type Where =
   | { state: 'unavailable'; reason: string }
 
 type Picked = { id: string; name: string; siteVisitCount: number }
+
+const OUTCOME_SHORT: Record<string, string> = {
+  interested: 'Interested', follow_up_needed: 'Follow up', sample_requested: 'Sample', approved_to_start: 'Approved', not_suitable: 'Not suitable',
+}
+const OUTCOME_DOT: Record<string, string> = {
+  interested: s.dotInterested, follow_up_needed: s.dotFollow, sample_requested: s.dotSample, approved_to_start: s.dotApproved, not_suitable: s.dotNo,
+}
+const TILE_TAG: Record<string, string> = { factory: 'Factory', person: 'Other', other: '' }
 
 const DRAFT_KEY = 'vendors:visit-draft:v3'
 type Draft = {
@@ -77,6 +85,8 @@ export default function LogVisitScreen() {
   const [problem, setProblem] = useState<string | null>(null)
   const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null)
   const [done, setDone] = useState<(LogVisitResult & { name: string }) | null>(null)
+  const [dragOn, setDragOn] = useState(false)
+  const [draftSaved, setDraftSaved] = useState(false)
 
   // Idempotency keys live for the life of one entry (see the note at the top).
   const keys = useRef({ vendor: newSubmissionId(), visit: newSubmissionId(), completion: newSubmissionId() })
@@ -182,7 +192,10 @@ export default function LogVisitScreen() {
     try {
       const empty = !visit.discussion && !visit.person_met && !vendor.company_name && !picked
       if (empty) window.localStorage.removeItem(DRAFT_KEY)
-      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 3, kind, later, mode, picked, vendor, visit } satisfies Draft))
+      else {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ v: 3, kind, later, mode, picked, vendor, visit } satisfies Draft))
+        queueMicrotask(() => setDraftSaved(true))
+      }
     } catch { /* storage unavailable — the form still works */ }
   }, [kind, later, mode, picked, vendor, visit, done])
 
@@ -195,6 +208,7 @@ export default function LogVisitScreen() {
     ? chosen.data.visits.filter(x => x.kind === 'site_visit' && !x.entered_later).length
     : (picked?.siteVisitCount ?? 0)
   const needsFactoryPhoto = isNewVendor || liveSiteVisits === 0
+  const hasFactory = photos.some(p => p.kind === 'factory')
 
   // What is still missing: the first item is shown beside the Save button.
   const missing: string[] = []
@@ -346,17 +360,9 @@ export default function LogVisitScreen() {
   }
 
   const today = istToday()
-  const photoButton = (photoKind: PhotoKind, label: string, camera: boolean) => (
-    <label className={s.secondary} style={{ cursor: 'pointer' }}>
-      <Camera size={15} aria-hidden="true" /> {label}
-      <input className={s.hiddenFile} type="file" accept="image/*" {...(camera ? { capture: 'environment' as const } : {})} multiple
-             onChange={e => { void addPhotos(photoKind, e.target.files); e.target.value = '' }} />
-    </label>
-  )
-
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Log a visit">
-      <div className={s.wrap}>
+      <div className={s.wrap} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void save() } }}>
         {restored && (
           <div className={`${s.banner} ${s.bannerOk}`} role="status">
             Your unfinished entry was restored (photographs need adding again).{' '}
@@ -429,6 +435,7 @@ export default function LogVisitScreen() {
                         onClick={() => {
                           setPicked({ id: r.id, name: r.company_name, siteVisitCount: r.site_visit_count })
                           setVisit(v => ({ ...v, person_met: v.person_met || (r.contact_name ?? '') }))
+                          setTimeout(() => document.getElementById('x-disc')?.focus(), 50)
                         }}>
                   <span className={s.rowName}>{r.company_name}</span>
                   <span className={s.rowMeta}>{[r.contact_name, r.city].filter(Boolean).join(' · ') || 'No contact details yet'}</span>
@@ -479,7 +486,16 @@ export default function LogVisitScreen() {
                         maxLength={2000} onChange={e => setVisit(d => ({ ...d, discussion: e.target.value }))} />
             </Field>
             <Field label="Outcome" required error={visitErrors.outcome}>
-              <Chips label="Outcome" options={VISIT_OUTCOMES} value={visit.outcome} onChange={v => setVisit(d => ({ ...d, outcome: v as string }))} />
+              <div className={s.outcomeGrid} role="radiogroup" aria-label="Outcome">
+                {VISIT_OUTCOMES.map(o => (
+                  <button key={o.value} type="button" role="radio" aria-checked={visit.outcome === o.value}
+                          className={`${s.outcome}${visit.outcome === o.value ? ` ${s.outcomeOn}` : ''}`}
+                          onClick={() => setVisit(d => ({ ...d, outcome: o.value }))}>
+                    <span className={`${s.outcomeDot} ${OUTCOME_DOT[o.value] ?? ''}`} aria-hidden="true" />
+                    {OUTCOME_SHORT[o.value] ?? o.label}
+                  </button>
+                ))}
+              </div>
             </Field>
             {visit.outcome !== 'not_suitable' && visit.outcome !== 'approved_to_start' && (
               <Field label="Follow up on" required={visit.outcome === 'follow_up_needed'} error={visitErrors.next_follow_up_on} htmlFor="x-next">
@@ -494,28 +510,49 @@ export default function LogVisitScreen() {
         {/* Photographs */}
         <section className={s.section} aria-labelledby="h-photos">
           <h2 id="h-photos" className={s.sectionTitle}>Photos{live ? '' : ' (optional)'}</h2>
-          {visitErrors.photos && <div className={s.err} role="alert">{visitErrors.photos}</div>}
-          <div className={s.photoRow}>
-            {live
-              ? (<>
-                  {photoButton('factory', needsFactoryPhoto ? 'Factory photo *' : 'Factory photo', true)}
-                  {photoButton('person', 'Other photo', true)}
-                </>)
-              : photoButton('other', 'Add photos', false)}
-            {photos.map(p => (
-              <div key={p.key} className={s.thumb}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
-                <img src={p.preview} alt="Photograph to upload" />
-                <button type="button" className={s.thumbX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
-              </div>
-            ))}
-          </div>
           {live && (
-            <div className={s.hint}>
-              {needsFactoryPhoto ? 'This is the first visit to their factory, so a photograph of the factory is required. ' : ''}
-              Take photos now, at the vendor.
+            <div className={`${s.photoStatus}${hasFactory ? ` ${s.photoStatusOk}` : ''}`}>
+              {hasFactory ? <CheckCircle2 size={14} aria-hidden="true" /> : <Camera size={14} aria-hidden="true" />}
+              {hasFactory ? 'Factory photo added' : needsFactoryPhoto ? 'A photo of the factory is required' : 'Add photos of the visit'}
             </div>
           )}
+          {visitErrors.photos && <div className={s.err} role="alert">{visitErrors.photos}</div>}
+          <div className={`${s.tiles} ${s.tilesDrop}${dragOn ? ` ${s.tilesDropOn}` : ''}`}
+               onDragOver={e => { e.preventDefault(); setDragOn(true) }} onDragLeave={() => setDragOn(false)}
+               onDrop={e => {
+                 e.preventDefault(); setDragOn(false)
+                 void addPhotos(live ? (needsFactoryPhoto && !hasFactory ? 'factory' : 'person') : 'other', e.dataTransfer.files)
+               }}>
+            {photos.map(p => (
+              <div key={p.key} className={s.tile}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
+                <img src={p.preview} alt="Photograph to upload" />
+                {TILE_TAG[p.kind] && <span className={s.tileTag}>{TILE_TAG[p.kind]}</span>}
+                <button type="button" className={s.tileX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
+              </div>
+            ))}
+            {live ? (
+              <>
+                <label className={`${s.tileAdd}${needsFactoryPhoto && !hasFactory ? ` ${s.tileRequired}` : ''}`}>
+                  <Camera size={18} aria-hidden="true" /> Factory photo
+                  <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
+                         onChange={e => { void addPhotos('factory', e.target.files); e.target.value = '' }} />
+                </label>
+                <label className={s.tileAdd}>
+                  <Plus size={18} aria-hidden="true" /> Other photo
+                  <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
+                         onChange={e => { void addPhotos('person', e.target.files); e.target.value = '' }} />
+                </label>
+              </>
+            ) : (
+              <label className={s.tileAdd}>
+                <Plus size={18} aria-hidden="true" /> Add photo
+                <input className={s.hiddenFile} type="file" accept="image/*" multiple
+                       onChange={e => { void addPhotos('other', e.target.files); e.target.value = '' }} />
+              </label>
+            )}
+          </div>
+          {live && <div className={s.hint}>Take photos now, at the vendor. On a computer you can also drop files here.</div>}
         </section>
 
         {/* Location (a live visit to their factory only) */}
@@ -535,10 +572,16 @@ export default function LogVisitScreen() {
 
         {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
         <div className={s.submitBar}>
-          <span className={`${s.submitHint}${missing.length === 0 ? ` ${s.submitHintOk}` : ''}`}>
-            {missing.length === 0 ? 'Ready to save' : missing[0]}
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span className={`${s.submitHint}${missing.length === 0 ? ` ${s.submitHintOk}` : ''}`}>
+              {missing.length === 0 ? 'Ready to save' : missing[0]}
+            </span>
+            {draftSaved && <span className={s.draftNote}><span className={s.draftDot} aria-hidden="true" />Draft saved on this device</span>}
           </span>
-          <button type="button" className={s.primary} disabled={!!busy} onClick={() => void save()}>{busy ?? 'Save'}</button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className={`${s.kbdHint} ${s.hideOnPhone}`}><kbd className={s.kbdKey}>Ctrl</kbd> + <kbd className={s.kbdKey}>Enter</kbd></span>
+            <button type="button" className={s.primary} disabled={!!busy} onClick={() => void save()}>{busy ?? 'Save'}</button>
+          </span>
         </div>
       </div>
     </VendorsLayout>

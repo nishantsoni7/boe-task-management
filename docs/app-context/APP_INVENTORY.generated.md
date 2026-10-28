@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `af411456` — Vendors: Notion-style redesign and a much smaller set of fields
-- Commits on this branch: 1043
+- Commit: `76bd26b5` — Merge remote-tracking branch 'origin/main' into feat/vendor-management
+- Commits on this branch: 1046
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
+- `76bd26b5` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `af411456` 2026-10-28 Vendors: Notion-style redesign and a much smaller set of fields
+- `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
+- `2e35cd72` 2026-10-28 Sidebar: rest as an icon rail on desktop, open over the page on hover
 - `2c32ded6` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
@@ -36,9 +39,6 @@
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
 - `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
 - `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
-- `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
-- `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
-- `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 
 ## Pages by top-level area
 

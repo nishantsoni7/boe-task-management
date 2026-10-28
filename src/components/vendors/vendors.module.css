@@ -256,3 +256,98 @@
   .rowStage { justify-self: start; }
   .rowLast { grid-column: auto; }
 }
+
+/* ══ Second pass: table header, inline stage, tiles, property chips, motion ══ */
+
+@keyframes vendorFade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.fade { animation: vendorFade 140ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .fade { animation: none; } }
+
+/* ── List: a real table on a wide screen ─────────────────────────────── */
+.listHead { display: none; }
+.row { position: relative; transition: background 100ms; }
+.rowLink { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 1px; min-width: 0; border-radius: 4px; }
+.rowLink:focus-visible { outline: 2px solid #37352F; outline-offset: 2px; }
+.rowActions { display: none; }
+.stagePick {
+  appearance: none; -webkit-appearance: none; border: 0; cursor: pointer; font-family: inherit; font-size: 12px;
+  padding: 2px 22px 2px 8px; border-radius: 10px; color: #5E5B55; background: #ECE9E3
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238A8782' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 6px center;
+  transition: box-shadow 100ms;
+}
+.stagePick:hover { box-shadow: 0 0 0 2px rgba(55,53,47,0.12); }
+.stagePick:focus-visible { outline: 2px solid #37352F; outline-offset: 1px; }
+.stagePickGood { background-color: #E6F2E9; color: #2A6B3D; }
+.stagePickBad { background-color: #FBE9E7; color: #B33A2C; }
+.stagePickWarn { background-color: #FBF0D5; color: #8A5A00; }
+@media (min-width: 768px) {
+  .listHead {
+    display: grid; grid-template-columns: minmax(0, 3fr) 150px minmax(0, 1.6fr) 36px; gap: 12px; padding: 6px 8px; margin: 0 -8px;
+    border-bottom: 1px solid #E6E3DE; position: sticky; top: 0; z-index: 2; background: #F6F5F1;
+  }
+  .sortBtn { border: 0; background: none; padding: 2px 0; font-family: inherit; font-size: 12px; color: #8A8782; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 4px; }
+  .sortBtn:hover { color: #37352F; }
+  .sortBtnOn { color: #37352F; font-weight: 500; }
+  .headLabel { font-size: 12px; color: #8A8782; padding: 2px 0; }
+  .row { grid-template-columns: minmax(0, 3fr) 150px minmax(0, 1.6fr) 36px; }
+  .listHead + .rows { margin-top: -10px; }
+  .rowActions { display: flex; justify-content: flex-end; }
+  .callHover {
+    width: 28px; height: 28px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
+    color: #6B6B67; opacity: 0; transition: opacity 100ms, background 100ms; text-decoration: none;
+  }
+  .row:hover .callHover, .row:focus-within .callHover { opacity: 1; }
+  .callHover:hover { background: #E3DFD8; color: #37352F; }
+}
+
+/* ── Outcome: one compact control instead of a pile of chips ─────────── */
+.outcomeGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
+.outcome {
+  min-height: 36px; padding: 0 8px; border: 1px solid #E0DDD7; border-radius: 6px; background: #fff; color: #37352F;
+  font-size: 13px; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background 100ms, border-color 100ms;
+}
+.outcome:hover { background: #F7F6F3; }
+.outcomeOn { border-color: #37352F; background: #F1EFEB; font-weight: 500; box-shadow: inset 0 0 0 1px #37352F; }
+.outcomeDot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: #C9C5BD; }
+.dotInterested { background: #2E9A4F; }
+.dotFollow { background: #E0A100; }
+.dotSample { background: #3B82C4; }
+.dotApproved { background: #1D6B34; }
+.dotNo { background: #C0392B; }
+
+/* ── Photo tiles ─────────────────────────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, 92px); justify-content: start; gap: 8px; }
+.tilesDrop { border-radius: 8px; transition: background 100ms, box-shadow 100ms; }
+.tilesDropOn { background: #F7F6F3; box-shadow: 0 0 0 2px #37352F; }
+.tile { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid #E6E3DE; background: #F7F6F3; }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tileAdd {
+  aspect-ratio: 1; border-radius: 8px; border: 1px dashed #CFCBC4; background: #FBFAF8; color: #6B6B67; cursor: pointer; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; text-align: center; padding: 6px;
+  transition: background 100ms, border-color 100ms; position: relative;
+}
+.tileAdd:hover { background: #F1EFEB; border-color: #A8A59F; }
+.tileRequired { border-color: #E0A100; background: #FFFBEF; color: #8A5A00; }
+.tileTag { position: absolute; left: 4px; bottom: 4px; font-size: 10.5px; padding: 0 6px; border-radius: 8px; background: rgba(55,53,47,0.82); color: #fff; }
+.tileX { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 11px; border: 0; cursor: pointer; background: rgba(55,53,47,0.85); color: #fff; font-size: 14px; line-height: 1; }
+.photoStatus { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #8A8782; }
+.photoStatusOk { color: #2A6B3D; }
+
+/* ── Notion-style "+ add a property" ─────────────────────────────────── */
+.addProps { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.addProp {
+  border: 0; background: none; color: #8A8782; font-size: 13px; font-family: inherit; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 4px; transition: background 100ms, color 100ms;
+}
+.addProp:hover { background: #F1EFEB; color: #37352F; }
+.propRemove { border: 0; background: none; color: #A8A59F; cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; font-family: inherit; }
+.propRemove:hover { background: #F1EFEB; color: #37352F; }
+
+/* ── Small details ───────────────────────────────────────────────────── */
+.draftNote { font-size: 12px; color: #A8A59F; display: inline-flex; align-items: center; gap: 5px; }
+.draftDot { width: 6px; height: 6px; border-radius: 50%; background: #2E9A4F; }
+.kbdHint { font-size: 11.5px; color: #A8A59F; }
+.kbdKey { border: 1px solid #E0DDD7; border-radius: 4px; padding: 0 5px; background: #FBFAF8; font-family: inherit; font-size: 11px; }
+.emptyArt { width: 56px; height: 56px; color: #CFCBC4; }
