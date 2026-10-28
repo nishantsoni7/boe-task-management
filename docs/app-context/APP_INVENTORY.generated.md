@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8d74eecb` — My Tasks: plain action icons, pinned tasks under Important, drag-and-drop personal order
-- Commits on this branch: 1032
+- Commit: `088671f1` — My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
+- Commits on this branch: 1034
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 372 (first `20260530_create_positions.sql`, latest `20270424000000_user_task_order.sql`)
 - Tables ever created: 172 (dropped at some point: 7)   SQL functions: 790   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `088671f1` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
+- `240a1c7c` 2026-10-28 Docs: migration 20270424000000 (user_task_order) applied to production
 - `8d74eecb` 2026-10-28 My Tasks: plain action icons, pinned tasks under Important, drag-and-drop personal order
 - `64f8f76d` 2026-10-28 PI top card: salesperson and Order type in the centre column, dates as the Order page timeline
 - `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
@@ -37,8 +39,6 @@
 - `6de4cc24` 2026-10-26 Confirmed Order page redesign; order numbers shown without leading zeros (#453)
 - `c164df17` 2026-10-26 Minop: sort the Incoming Minop data register, latest punch time first by default (#452)
 - `1f4ede54` 2026-10-25 Minop: answer Transaction Data with a per-transaction acknowledgement (#451)
-- `01c6e8c2` 2026-10-25 Orders: Customize image learns from approved rules and examples (Phase 1) — migration 20270420000000 not applied (#450)
-- `9767b1d7` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
 
 ## Pages by top-level area
 
