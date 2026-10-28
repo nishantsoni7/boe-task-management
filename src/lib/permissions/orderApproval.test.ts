@@ -293,7 +293,7 @@ describe('the Control Centre route refuses the same change', () => {
     }
   })
 
-  test('the By Employee screen unlocks exactly that, and still locks module access', () => {
+  test('the People screen unlocks exactly that, and still locks module access', () => {
     const page = lf(readFileSync(
       join(ROOT, 'src/app/admin/control-center/permissions/page.tsx'), 'utf8'))
 
@@ -303,25 +303,20 @@ describe('the Control Centre route refuses the same change', () => {
     assert.ok(!page.includes('if (isSystemAdmin(tree)) return'),
       'the blanket early return is what made the grant impossible')
 
-    // The module-access switch stays locked; only the dialog opens.
-    assert.ok(page.includes('changeLocked={adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)}'))
-    assert.ok(page.includes('locked={adminLocked}'), 'the Visible/Hidden switch is still role-driven')
-
-    // And inside the dialog an admin is offered those actions and no levels.
-    assert.ok(page.includes('adminOnlyActions={adminLocked ? adminEditableActions(changeModalModule.moduleKey) : null}'))
-    assert.ok(page.includes('adminOnlyActions === null && ('), 'the level grid is hidden for an admin')
-    assert.ok(page.includes('adminOnlyActions === null || adminOnlyActions.includes(a.actionKey)'))
+    // The level control stays locked for an administrator; only the per-person authorities open.
+    assert.ok(page.includes('locked={adminLocked}'), 'the level control is still role-driven')
+    assert.ok(page.includes('perPersonOnly={adminLocked}'), 'an admin is offered the per-person authorities only')
+    assert.ok(page.includes('adminEditableActions(mod.moduleKey)'))
   })
 
-  test('the By Module screen points at where the grant is actually made', () => {
+  test('the Modules screen lets only per-person authorities through for an admin row', () => {
     const page = lf(readFileSync(
       join(ROOT, 'src/app/admin/control-center/permissions/modules/page.tsx'), 'utf8'))
-    // That screen only ever writes LEVELS, and a protected action is never in
-    // a level, so it signposts rather than growing a second editor.
-    assert.ok(page.includes('moduleHasAdminEditableActions(selectedKey)'))
-    assert.ok(page.includes('except Order Approval — open to set it'))
-    assert.ok(page.includes("if (!emp || emp.role === 'admin') return"),
-      'and it still writes nothing for an admin row')
+    const edits = lf(readFileSync(
+      join(ROOT, 'src/components/controlCenter/accessEdits.ts'), 'utf8'))
+    assert.ok(page.includes('perPersonOnly={locked}'))
+    assert.ok(edits.includes("if (emp.role === 'admin') diff = diff.filter(c => isAdminEditableAction(moduleKey, c.actionKey))"),
+      'the shared save must still send an admin only what an override can decide')
   })
 
   test('the PUT handler calls it, and refuses before it writes anything', () => {
@@ -330,7 +325,7 @@ describe('the Control Centre route refuses the same change', () => {
       'the extra employee read is paid for only when the change is about this action')
 
     const check = routeSource.indexOf('refusePermanentOrderApprovalRemoval(target?.employee_code, changes)')
-    const upsert = routeSource.indexOf(".from('employee_permission_overrides')")
+    const upsert = routeSource.indexOf('.upsert(')
     assert.ok(check > 0 && upsert > 0 && check < upsert,
       'a refused batch must not write part of itself first')
     assert.ok(routeSource.includes('{ status: 409 }'))

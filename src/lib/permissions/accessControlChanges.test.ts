@@ -110,12 +110,12 @@ describe('By Employee delegates to the same rule', () => {
     .replace(/\r\n/g, '\n')
 
   test('both screens import the shared rule and neither re-derives it', () => {
-    for (const src of [page, byModule]) {
-      assert.ok(src.includes("from '@/lib/permissions/accessControlChanges'"))
-    }
+    const edits = readFileSync(join(process.cwd(), 'src/components/controlCenter/accessEdits.ts'), 'utf8')
+    assert.ok(page.includes("from '@/lib/permissions/accessControlChanges'"))
+    assert.ok(byModule.includes("from '@/components/controlCenter/accessEdits'"), 'Modules saves through the shared hook')
+    assert.ok(edits.includes("from '@/lib/permissions/accessControlChanges'"))
     assert.ok(page.includes('choicesForDesired('), 'applyDesiredActions must delegate')
-    assert.ok(byModule.includes('choicesForDesired('))
-    assert.ok(byModule.includes('changesBetween('))
+    assert.ok(edits.includes('choicesForDesired(') && edits.includes('changesBetween('))
     assert.equal(byModule.includes('hasExistingOverride'), false, 'the rule lives in one place')
   })
 })

@@ -91,7 +91,7 @@ describe('Control Center actually reads permission_actions.display_name — the 
   const route = read('src/app/api/control-center/permissions/employees/[id]/route.ts')
 
   test('the employee permission GET selects display_name from permission_actions', () => {
-    assert.match(route, /permission_actions\s*\(\s*action_key,\s*display_name\s*\)/)
+    assert.match(route, /permission_actions\s*\(\s*(id,\s*)?action_key,\s*display_name\s*\)/)
   })
 
   test('none of the three action keys has a module-scoped label override that would hide the DB label', () => {

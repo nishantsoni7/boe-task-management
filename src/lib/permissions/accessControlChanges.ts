@@ -156,10 +156,10 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   receive:               'Receive',
   mark_lost:             'Mark lost',
   close:                 'Close',
-  // can_be_order_assignee is NOT here. It named Order Request assignees, and
-  // the module no longer registers it — an entry would label an option that is
-  // never offered. A grant made before the retirement is not deleted; it is
-  // simply read by nothing.
+  // Re-registered 2026-10-29 under its honest meaning (see modules.ts): the
+  // database still reads it to decide who counts as a sales candidate.
+  can_be_order_assignee: 'Count as a sales candidate for Order Visibility and the sales dashboards',
+  train_customize_image: 'Train Customize image (house rules and approved examples)',
   view_quotations:       'View quotations and quoted prices',
   manage_quotations:     'Manage quotations',
   // Assets & Access. Named in full because "manage access records" on its own

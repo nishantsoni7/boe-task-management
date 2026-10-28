@@ -91,15 +91,22 @@ export const NAV_HUBS: readonly NavHub[] = [
     label: 'Access',
     sections: [
       {
-        id: 'by-employee', label: 'By Employee', href: `${MAIN_PATH}/permissions`,
-        description: 'What one person can open and do, module by module.',
+        id: 'by-employee', label: 'People', href: `${MAIN_PATH}/permissions`,
+        description: 'What one person can open, how much they can do inside, and which decisions are theirs.',
         keywords: ['permission', 'permissions', 'access control', 'grant', 'revoke', 'can see', 'cannot see', 'level',
-          'finance access', 'orders access'],
+          'by employee', 'finance access', 'orders access', 'turn off access', 'remove access'],
       },
       {
-        id: 'by-module', label: 'By Module', href: `${MAIN_PATH}/permissions/modules`,
-        description: 'One module across everyone: who can open it, at what level.',
-        keywords: ['who can open', 'who has access', 'module access', 'module visibility', 'launcher', 'hide module'],
+        id: 'by-module', label: 'Modules', href: `${MAIN_PATH}/permissions/modules`,
+        description: 'One module across everyone: who can open it, at what level, and who holds its authorities.',
+        keywords: ['who can open', 'who has access', 'by module', 'module access', 'module visibility', 'launcher',
+          'hide module', 'team access', 'department access'],
+      },
+      {
+        id: 'authorities', label: 'Authorities', href: `${MAIN_PATH}/permissions/authorities`,
+        description: 'Every decision granted to a named person, in one list: who can approve, see everything, or move money.',
+        keywords: ['who can approve', 'approve pi', 'all payments', 'all orders', 'authority', 'authorities',
+          'decisions', 'reconcile', 'allocate', 'verify', 'team performance', 'who decides'],
       },
     ],
   },

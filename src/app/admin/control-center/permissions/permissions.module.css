@@ -1,7 +1,10 @@
-/* ── Access Control: By Employee and By Module ──
+/* ── Access: People, Modules and Authorities ──
    A directory column beside a workspace on desktop; stacked on tablet and
    phone. Everything inside the workspace uses the shared Control Center layer
-   (src/components/controlCenter/controlCenter.module.css). */
+   (src/components/controlCenter/controlCenter.module.css) and the global
+   tokens; the pieces below are the ones only these screens draw: the level
+   control, the authority chips and picker, the inline Off confirmation, the
+   module cards and the sticky save bar. */
 
 .layout {
   display: grid;
@@ -10,16 +13,16 @@
   align-items: start;
 }
 
-.workspace { min-width: 0; }
+.workspace { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 
 /* The directory (employees, or modules) */
 .panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #fff;
-  border: 1px solid #ECE7E0;
-  border-radius: 8px;
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: var(--boe-radius-panel);
   padding: 12px;
   position: sticky;
   top: 78px;
@@ -35,11 +38,11 @@
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: #686D6C;
+  color: var(--boe-text-muted);
   padding: 0 2px;
 }
 
-.panelCount { font-weight: 500; letter-spacing: 0; text-transform: none; color: #686D6C; }
+.panelCount { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--boe-text-muted); font-variant-numeric: tabular-nums; }
 
 .panelList {
   min-height: 0;
@@ -59,7 +62,7 @@
   width: 100%;
   padding: 7px 8px 7px 11px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--boe-radius-control);
   background: none;
   cursor: pointer;
   text-align: left;
@@ -67,9 +70,9 @@
   color: inherit;
 }
 
-.row:hover { background: rgba(0,0,0,0.045); }
-.rowSelected { background: rgba(185,71,46,0.07); }
-.rowSelected:hover { background: rgba(185,71,46,0.09); }
+.row:hover { background: var(--boe-surface-quiet); }
+.rowSelected { background: var(--boe-brand-tint); }
+.rowSelected:hover { background: var(--boe-brand-tint-2); }
 
 .rowSelected::before {
   content: '';
@@ -79,47 +82,206 @@
   bottom: 6px;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background: #B9472E;
+  background: var(--boe-brand);
 }
 
 .rowText { min-width: 0; flex: 1; }
-.rowName { font-size: 13px; font-weight: 600; color: #303536; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rowSub  { font-size: 12px; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowName { font-size: 13px; font-weight: 600; color: var(--boe-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowSub  { font-size: 12px; color: var(--boe-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowCount { font-size: 11.5px; color: var(--boe-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rowMuted { opacity: .6; }
+.rowIcon {
+  width: 26px; height: 26px; border-radius: 7px; background: var(--boe-surface-sunken);
+  display: grid; place-items: center; color: var(--boe-text-strong); flex-shrink: 0;
+}
 
 /* Workspace header card */
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  background: #fff;
-  border: 1px solid #ECE7E0;
-  border-radius: 8px;
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: var(--boe-radius-panel);
   padding: 14px 16px;
-  margin-bottom: 12px;
 }
 
-.headerIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.headerName { font-size: 15px; font-weight: 700; color: #303536; }
-.headerSub  { font-size: 12px; color: #686D6C; margin-top: 2px; }
-.headerStats { display: flex; gap: 22px; }
-.headerStat  { text-align: right; }
-.headerStatValue { font-size: 18px; font-weight: 700; color: #303536; line-height: 1.1; }
-.headerStatLabel { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #686D6C; margin-top: 2px; }
+.headerIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 260px; }
+.headerIcon {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--boe-surface-sunken);
+  display: grid; place-items: center; color: var(--boe-text-strong); flex-shrink: 0;
+}
+.headerName { font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: var(--boe-text); }
+.headerSub  { font-size: 12.5px; color: var(--boe-text-muted); margin-top: 2px; }
+.headerStats { display: flex; gap: 20px; flex-wrap: wrap; }
+.headerStat  { min-width: 0; }
+.headerStatValue { font-family: var(--boe-font-heading); font-size: 20px; font-weight: 700; color: var(--boe-text); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.headerStatValue small { font-size: 13px; font-weight: 500; color: var(--boe-text-muted); }
+.headerStatLabel { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--boe-text-muted); margin-top: 2px; }
+.headerRole {
+  width: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--boe-border); font-size: 12.5px; color: var(--boe-text-strong);
+}
+.headerRole b { color: var(--boe-text); }
+.headerActions { width: 100%; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 
-/* The switch cell: a real checkbox with a readable state word beside it */
-.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
-.switchLocked { cursor: default; }
-.switchWord { font-size: 12px; font-weight: 600; }
-.switchOn  { color: #276247; }
-.switchOff { color: #686D6C; }
+/* Section heading inside the workspace */
+.sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 2px; flex-wrap: wrap; }
+.sectionTitle { font-family: var(--boe-font-heading); font-size: 13.5px; font-weight: 700; color: var(--boe-text); }
+.sectionTitle small { font-weight: 500; color: var(--boe-text-muted); font-variant-numeric: tabular-nums; }
+.sectionDesc { font-size: 12px; color: var(--boe-text-muted); }
 
+/* One module on a person's sheet */
+.cards { display: flex; flex-direction: column; gap: 8px; }
+.mrow {
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: var(--boe-radius-panel);
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: start;
+}
+.mrowChanged { border-color: var(--boe-waiting-fg); box-shadow: inset 3px 0 0 var(--boe-waiting-fg); }
+.mrowName { display: flex; align-items: center; gap: 9px; font-family: var(--boe-font-heading); font-weight: 700; font-size: 13.5px; color: var(--boe-text); }
+.mrowIcon {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--boe-surface-sunken);
+  display: grid; place-items: center; color: var(--boe-text-strong); flex-shrink: 0;
+}
+.mrowDesc { font-size: 12.5px; color: var(--boe-text-strong); margin-top: 3px; max-width: 72ch; line-height: 1.45; }
+.mrowRight { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.setBy { font-size: 11.5px; color: var(--boe-text-muted); text-align: right; white-space: nowrap; }
+.mrowAuth { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
+.mrowAuthLabel { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--boe-text-muted); margin-right: 2px; }
+.mrowRelated { grid-column: 1 / -1; font-size: 12px; color: var(--boe-text-muted); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.mrowRelated a { color: var(--boe-brand-ink); text-decoration: none; }
+.mrowRelated a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.mrowWide { grid-column: 1 / -1; }
+.rowNote { font-size: 12px; color: var(--boe-text-muted); margin-top: 3px; line-height: 1.45; }
+
+/* Modules a person cannot open: a quiet list with a "Give access" select */
+.closed {
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: var(--boe-radius-panel);
+  padding: 4px 14px;
+}
+.closedRow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--boe-border); flex-wrap: wrap; }
+.closedRow:first-child { border-top: 0; }
+.closedName { font-weight: 600; font-size: 13px; color: var(--boe-text); flex: 1 1 160px; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.closedDesc { font-size: 12px; color: var(--boe-text-muted); flex: 2 1 240px; min-width: 0; }
+.closedRow select { width: auto; height: 30px; }
+
+/* Level control: one control, every state */
+.levelWrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--boe-border-strong); border-radius: var(--boe-radius-control); overflow: hidden; background: var(--boe-surface); }
+.segBtn {
+  border: none; background: none; padding: 0 11px; height: 30px; font-size: 12px; font-weight: 600;
+  color: var(--boe-text-muted); cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.segBtn + .segBtn { border-left: 1px solid var(--boe-border-strong); }
+.segBtn:hover { background: var(--boe-surface-quiet); color: var(--boe-text); }
+.segOn  { background: var(--boe-completed-bg); color: var(--boe-completed-fg); }
+.segOff { background: var(--boe-pending-bg); color: var(--boe-pending-fg); }
+.segOn:hover, .segOff:hover { color: inherit; }
+
+/* Authority chips and the add button */
+.chips { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  padding: 3px 8px 3px 9px; border-radius: 999px; background: var(--boe-working-bg); color: var(--boe-working-fg);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.chipNew { background: var(--boe-waiting-bg); color: var(--boe-waiting-fg); }
+.chipX {
+  border: none; background: none; padding: 0; width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; color: inherit; opacity: .7; font: inherit; line-height: 1;
+}
+.chipX:hover { opacity: 1; background: rgba(0,0,0,.08); }
+.chipAdd {
+  display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 3px 9px;
+  border-radius: 999px; background: none; border: 1px dashed var(--boe-border-input); color: var(--boe-text-strong);
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.chipAdd:hover { border-color: var(--boe-brand); color: var(--boe-brand-ink); }
+
+/* The inline picker (People card, Modules row, Authorities row) */
+.picker {
+  border: 1px solid var(--boe-border);
+  border-radius: 10px;
+  background: var(--boe-surface-quiet);
+  padding: 10px 12px;
+  margin-top: 4px;
+}
+.pickerHead { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 700; color: var(--boe-text); margin-bottom: 4px; }
+.pickerOpt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--boe-border); align-items: center; }
+.pickerName { font-weight: 600; font-size: 13px; color: var(--boe-text); }
+.pickerMeaning { font-size: 12px; color: var(--boe-text-strong); }
+.pickerHint { font-size: 11.5px; color: var(--boe-text-muted); margin-top: 2px; }
+.pickerPeople { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
+
+/* Turning a module Off: the confirmation sits in the row, not in a dialog */
+.confirm {
+  border: 1px solid var(--boe-warning-border);
+  background: var(--boe-waiting-bg);
+  color: var(--boe-waiting-fg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin-top: 4px;
+}
+.confirm strong { font-weight: 700; }
+
+/* Modules table cells */
+.cellPerson { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.cellPersonName { font-weight: 600; color: var(--boe-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cellPersonSub { font-size: 12px; color: var(--boe-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.groupRow td {
+  background: var(--boe-surface-quiet); font-size: 12px; font-weight: 700; color: var(--boe-text-muted);
+  letter-spacing: .04em; text-transform: uppercase; padding: 6px 12px;
+}
+.changedRow td:first-child { box-shadow: inset 3px 0 0 var(--boe-waiting-fg); }
 .unsaved {
-  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  color: #805B0D; margin-left: 8px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--boe-waiting-fg); margin-left: 8px;
 }
+
+/* Authorities register */
+.register { display: flex; flex-direction: column; gap: 16px; }
+.groupHead { display: flex; align-items: baseline; gap: 10px; padding: 0 2px; flex-wrap: wrap; }
+.groupTitle { font-family: var(--boe-font-heading); font-size: 14px; font-weight: 700; color: var(--boe-text); }
+.groupSub { font-size: 12px; color: var(--boe-text-muted); }
+.aList { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); overflow: hidden; }
+.aRow {
+  display: grid; grid-template-columns: minmax(200px, 1.1fr) minmax(220px, 1.6fr) minmax(200px, 1.4fr);
+  gap: 8px 16px; padding: 11px 14px; border-top: 1px solid var(--boe-border); align-items: start;
+}
+.aRow:first-child { border-top: 0; }
+.aName { font-family: var(--boe-font-heading); font-weight: 700; font-size: 13.5px; color: var(--boe-text); }
+.aModule { font-size: 12px; color: var(--boe-text-muted); margin-top: 2px; }
+.aMeaning { font-size: 12.5px; color: var(--boe-text-strong); line-height: 1.45; }
+.aNeeds { display: block; font-size: 11.5px; color: var(--boe-text-muted); margin-top: 3px; }
+.aHolders { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.aNone { font-size: 12px; color: var(--boe-text-muted); font-style: italic; }
+.personChip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 8px 2px 3px;
+  border-radius: 999px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); color: var(--boe-text);
+}
+.personChipRole { background: var(--boe-pending-bg); border-color: transparent; color: var(--boe-pending-fg); }
+.personChipNew { background: var(--boe-waiting-bg); border-color: transparent; color: var(--boe-waiting-fg); }
+.personChipSetting { background: var(--boe-working-bg); border-color: transparent; color: var(--boe-working-fg); padding-left: 8px; }
+.personChipX { border: none; background: none; padding: 0 0 0 2px; cursor: pointer; color: inherit; opacity: .6; font: inherit; line-height: 1; }
+.personChipX:hover { opacity: 1; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filterBtn {
+  border: 1px solid var(--boe-border-strong); background: var(--boe-surface); border-radius: 999px; padding: 4px 11px;
+  font-size: 12px; font-weight: 600; color: var(--boe-text-strong); cursor: pointer; font-family: inherit;
+}
+.filterBtnOn { background: var(--boe-text); color: var(--boe-canvas); border-color: var(--boe-text); }
 
 /* Sticky save bar under the workspace */
 .saveBar {
@@ -128,51 +290,31 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 14px;
+  flex-wrap: wrap;
   padding: 10px 14px;
-  background: #fff;
-  border: 1px solid #ECE7E0;
-  border-radius: 8px;
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: var(--boe-radius-panel);
   box-shadow: 0 -2px 12px rgba(48,53,54,.05);
 }
-.saveBarText { font-size: 12px; color: #686D6C; }
-.saveBarSpacer { flex: 1; }
-
-/* Level options inside the Change Access dialog */
-.levelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-.levelOption {
-  text-align: left; border: 1px solid #CFC8BF; border-radius: 8px;
-  padding: 9px 11px; background: #fff; cursor: pointer; font: inherit; color: inherit;
-}
-.levelOption:hover { border-color: rgba(0,0,0,.25); }
-.levelOptionActive { border-color: #303536; background: #F1EEE9; }
-.levelOptionLabel { font-size: 13px; font-weight: 700; color: #303536; margin-bottom: 2px; }
-.levelOptionDesc  { font-size: 12px; color: #686D6C; line-height: 1.35; }
-
-/* Per-action rows under Custom */
-.actionRow {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #F1EEE9;
-}
-.actionName { font-size: 13px; font-weight: 600; color: #303536; }
-.actionState { font-size: 12px; }
-
-/* Segmented Inherit / Allow / Deny */
-.segment { display: inline-flex; border: 1px solid #CFC8BF; border-radius: 6px; overflow: hidden; }
-.segmentBtn {
-  padding: 5px 11px; font-size: 12px; font-weight: 600; border: none; background: #fff;
-  color: #686D6C; cursor: pointer; font-family: inherit;
-}
-.segmentBtn + .segmentBtn { border-left: 1px solid #CFC8BF; }
-.segmentInherit { color: #303536; background: #F1EEE9; }
-.segmentAllow   { color: #276247; background: #E8F2EC; }
-.segmentDeny    { color: #A12438; background: #FDF1F3; }
-
-/* Compact level select in a By Module row */
-.levelSelect { height: 28px; padding: 0 8px; font-size: 12px; }
+.saveBarText { font-size: 12.5px; color: var(--boe-text-muted); flex: 1 1 240px; }
+.saveBarText b { color: var(--boe-text); }
+.saveBarList { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--boe-text-strong); }
+.saveBarList li { margin: 1px 0; }
 
 @media (max-width: 1023px) {
   .layout { grid-template-columns: 1fr; }
   .panel { position: static; max-height: 300px; }
-  .headerStats { width: 100%; justify-content: flex-start; }
+  .headerStats { width: 100%; }
+  .mrow { grid-template-columns: 1fr; }
+  .mrowRight { align-items: flex-start; }
+  .setBy { text-align: left; }
+  .aRow { grid-template-columns: 1fr; }
 }
+
+/* Chips may wrap their own text instead of being clipped by a narrow column */
+.chip { white-space: normal; max-width: 100%; text-align: left; line-height: 1.35; }
+.chips { min-width: 0; max-width: 100%; }
+.mrow > * { min-width: 0; }
+.mrowAuth { min-width: 0; }
+.mrowName { flex-wrap: wrap; }

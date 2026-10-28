@@ -378,6 +378,18 @@ registerModule({
     // changing a lot after it was marked dispatched stays admin only.
     { actionKey: 'view_payment_plan', displayName: 'View Payment plan' },
     { actionKey: 'edit_payment_plan', displayName: 'Edit Payment plan' },
+    // RE-REGISTERED 2026-10-29 under its honest meaning, on the owner's
+    // decision. The retirement comment above was right that no Order Request
+    // reads this key any more — but the database still does:
+    // is_eligible_order_assignee() (20260697000000) answers "is this person a
+    // SALES CANDIDATE" as active AND (team = 'sales' OR holds this grant), and
+    // Order Visibility (20270221000000) and the salesperson dashboards
+    // (20270228000000, 20270328000200) are built on that answer. Hidden, it
+    // was a grant nobody could see or change from the Control Center; the
+    // owner chose to show it for what it is. Protected (levels.ts) and
+    // Custom-only: it confers no Orders capability in the app
+    // (deriveOrdersCapabilities ignores it), only standing in the database.
+    { actionKey: 'can_be_order_assignee', displayName: 'Counts as a sales candidate' },
   ],
 })
 

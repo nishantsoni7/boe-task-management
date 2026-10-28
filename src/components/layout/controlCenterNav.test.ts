@@ -28,7 +28,9 @@ describe('Control Center navigation', () => {
   })
 
   test('every screen that has a destination is a section of a hub', () => {
-    for (const label of ['Employees', 'Departments', 'Designations', 'By Employee', 'By Module', 'Numbering',
+    // Access is three screens since 2026-10-29: People (one person), Modules
+    // (one module across everyone) and Authorities (every per-person decision).
+    for (const label of ['Employees', 'Departments', 'Designations', 'People', 'Modules', 'Authorities', 'Numbering',
       'Notifications', 'Operations Handoff', 'Order Visibility', 'Announcements', 'Task Records',
       'Test Data Cleanup', 'Data Management']) {
       assert.ok(model.includes(`label: '${label}'`), `${label} must be reachable`)

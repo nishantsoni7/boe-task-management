@@ -337,9 +337,10 @@ describe('the Access Control page uses the shared level model', () => {
   })
 
   test('it warns before clearing protected permissions', () => {
-    assert.ok(page.includes('protectedActionsClearedByPreset'))
-    assert.ok(page.includes('will remove:'))
-    assert.ok(page.includes('Remove and continue'))
+    // Since 2026-10-29 only Off removes authorities, and it names them first.
+    assert.ok(page.includes('authoritiesClearedByOff'))
+    assert.ok(page.includes('<OffConfirm'))
+    assert.ok(read('src/components/controlCenter/AccessRow.tsx').includes('Turn off and remove'))
   })
 
   test('the warning names the actions in plain words', () => {
@@ -347,6 +348,5 @@ describe('the Access Control page uses the shared level model', () => {
     // Access Control screens.
     const words = read('src/lib/permissions/accessControlChanges.ts')
     assert.ok(words.includes("assign:                'Assign assets'"))
-    assert.ok(page.includes('protectedActionWords'))
   })
 })

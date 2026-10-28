@@ -1,84 +1,53 @@
 'use client'
 
-// Access › By Module.
+// Access › Modules.
 //
-// One module across everyone: the resolver's answer per employee, the level it
-// amounts to, and where it comes from. Reads come from the read-only matrix
-// route (/api/control-center/permissions/modules/[key]/employees); every
-// change is saved through the SAME per-employee PUT By Employee uses, with the
-// per-action override choices derived by the SAME shared rule
-// (src/lib/permissions/accessControlChanges.ts). The two views therefore store
-// identical rows for identical intentions and can never disagree.
+// One module across everyone: who can open it, at what level, and who holds
+// its authorities. Reads come from the access matrix (one request for the
+// whole Access hub); every change is a pending edit over it, saved through
+// the SAME per-employee PUT People uses, with the per-action override choices
+// derived by the SAME shared rule (src/lib/permissions/accessControlChanges.ts,
+// via src/components/controlCenter/accessEdits.ts). The three screens
+// therefore store identical rows for identical intentions and can never
+// disagree.
 //
-// What this screen will not do: hand out protected permissions. Its level
-// control offers the four presets; "Custom" — individually chosen actions,
-// protected ones included — opens the person in By Employee, where each
-// action is named and confirmed.
+// The row is the same control People draws for one person: a level, and the
+// authorities as chips. A system Administrator's row is read-only except for
+// the authorities granted per person (orders.approve_order), which the shared
+// hook alone lets through to the save.
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
-import { AlertBanner, Avatar } from '@/components/ui/atoms'
-import { cc, CcBadge, CcEmpty, CcTable, CcToolbar, ActiveBadge, type CcTone } from '@/components/controlCenter/CcPrimitives'
+import { Avatar } from '@/components/ui/atoms'
+import { cc, CcBadge, CcEmpty, CcToolbar, ActiveBadge } from '@/components/controlCenter/CcPrimitives'
 import { TeamAccessCard } from '@/components/controlCenter/TeamAccessCard'
+import { ModuleIcon } from '@/components/modules/ModuleIcons'
 import {
-  ACCESS_LEVEL_LABELS,
-  PRESET_LEVELS,
-  presetAllowedActions,
-  enableModuleEntry,
-  protectedActionsClearedByPreset,
-  type AccessLevel,
-  type PresetLevel,
-} from '@/lib/permissions/levels'
-import { moduleEnforcement, ENFORCEMENT_BADGE_LABEL } from '@/lib/permissions/enforcement'
-import { isSelfServiceModule } from '@/lib/moduleAccess'
+  AuthorityChips, AuthorityPicker, LevelControl, OffConfirm, setByText,
+} from '@/components/controlCenter/AccessRow'
+import { entryActionForModule } from '@/lib/permissions/levels'
 import {
-  choicesForDesired,
-  changesBetween,
-  initialChoices,
-  effectiveMap,
-  levelOf,
-  moduleEntryAction,
-  summarizeSources,
-  protectedActionWords,
-  type PermissionSource,
-  type SourceSummary,
-} from '@/lib/permissions/accessControlChanges'
-import { moduleHasAdminEditableActions } from '@/lib/permissions/orderApproval'
+  authoritiesClearedByOff,
+  authoritiesFor,
+  desiredForLevel,
+  desiredWithAuthority,
+  detectOfferedLevel,
+  hiddenActions,
+  isModuleOfferedTo,
+  isSelfServiceModuleKey,
+  moduleWords,
+  type OfferedLevel,
+} from '@/lib/permissions/accessCatalog'
+import { useAccessMatrixEdits, blurbFor } from '@/components/controlCenter/accessEdits'
 import styles from '../permissions.module.css'
 import {
-  usePermissionModules, useModuleAccessMatrix, useDepartments,
-  NO_DEPARTMENTS, NO_PERMISSION_MODULES,
-  type ModuleMatrixEmployee,
+  useAccessMatrix, useDepartments, NO_DEPARTMENTS,
+  type AccessMatrixEmployee, type PermissionModuleRef,
 } from '@/hooks/queries/useControlCenterData'
 
-const BY_EMPLOYEE_PATH = '/admin/control-center/permissions'
 const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
-
-const LEVEL_TONE: Record<AccessLevel, CcTone> = {
-  no_access: 'gray', viewer: 'blue', contributor: 'blue', manager: 'green', custom: 'amber',
-}
-
-const SOURCE_TONE: Record<PermissionSource, CcTone> = {
-  employee_override: 'violet', department: 'blue', role: 'blue', system_default: 'gray',
-}
-
-function SourceBadge({ summary }: { summary: SourceSummary }) {
-  if (summary.kind === 'mixed') return <CcBadge tone="amber">Mixed</CcBadge>
-  return <CcBadge tone={SOURCE_TONE[summary.source]}>{summary.label.replace(' default', '')}</CcBadge>
-}
-
-/** A pending desired map per employee id. Absent means "as loaded". */
-type Pending = Map<string, Record<string, boolean>>
-
-function sameMap(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
-  for (const k of keys) if ((a[k] === true) !== (b[k] === true)) return false
-  return true
-}
 
 export default function ByModulePage() {
   return (
@@ -89,50 +58,33 @@ export default function ByModulePage() {
 }
 
 function ByModulePageInner() {
-  const supabase = useMemo(() => createClient(), [])
   const router   = useRouter()
   const pathname = usePathname()
   const moduleParam = useSearchParams().get('module')
 
-  const [token, setToken] = useState('')
+  const matrixQuery = useAccessMatrix()
+  const deptsQuery  = useDepartments()
+  const matrix = matrixQuery.data ?? null
+  const depts  = deptsQuery.data ?? NO_DEPARTMENTS
+  const edits = useAccessMatrixEdits(matrix)
 
-  const modulesQuery = usePermissionModules()
-  const deptsQuery   = useDepartments()
-  const modules = modulesQuery.data ?? NO_PERMISSION_MODULES
-  const depts   = deptsQuery.data   ?? NO_DEPARTMENTS
-
-  // Attendance and Payroll are admin-only by product decision; a matrix of
-  // grants that decide nothing would be a lie, so they are not offered here.
-  const listed = useMemo(() => modules.filter(m => !isSelfServiceModule(m.moduleKey)), [modules])
+  // Attendance and Payroll are admin-only by product decision, and Employee
+  // Records is offered on an Administrator only; a matrix of grants that decide
+  // nothing would be a lie, so they are not listed here (accessCatalog.ts).
+  const listed = useMemo(
+    () => (matrix?.modules ?? []).filter(m => !isSelfServiceModuleKey(m.moduleKey) && isModuleOfferedTo(m.moduleKey, 'member')),
+    [matrix],
+  )
   const selectedKey = moduleParam && listed.some(m => m.moduleKey === moduleParam) ? moduleParam : null
   const selected = listed.find(m => m.moduleKey === selectedKey) ?? null
 
-  const matrixQuery = useModuleAccessMatrix(selectedKey)
-  const matrix = matrixQuery.data ?? null
-
-  const [pending, setPending] = useState<Pending>(new Map())
-  const [saving, setSaving]   = useState(false)
-  const [saveError, setSaveError] = useState('')
-
   const [search, setSearch]             = useState('')
   const [deptFilter, setDeptFilter]     = useState('')
-  const [levelFilter, setLevelFilter]   = useState<'' | AccessLevel>('')
-  const [overridesOnly, setOverridesOnly] = useState(false)
   const [includeInactive, setIncludeInactive] = useState(true)
+  const [picker, setPicker] = useState<string | null>(null)
+  const [offConfirm, setOffConfirm] = useState<{ employeeId: string; cleared: string[] } | null>(null)
 
-  useEffect(() => {
-    const init = async () => {
-      // Identity is the layout's. The stored session is read only for the
-      // bearer token the save PUTs need.
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-      setToken(session.access_token)
-    }
-    init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const dirty = pending.size > 0
+  const dirty = edits.pending.size > 0
 
   useEffect(() => {
     if (!dirty) return
@@ -149,151 +101,151 @@ function ByModulePageInner() {
   function selectModule(key: string) {
     if (key === selectedKey) return
     if (dirty && !window.confirm(UNSAVED_PROMPT)) return
-    setPending(new Map())
-    setSaveError('')
+    edits.discard()
+    setPicker(null)
+    setOffConfirm(null)
     router.replace(`${pathname}?module=${key}`)
   }
 
   // ── Per-row derivation ───────────────────────────────────────────────────
 
-  const actionKeys = matrix?.module.actions.map(a => a.actionKey) ?? []
-  const entryAction = moduleEntryAction(actionKeys)
+  const actionKeys = selected?.actions.map(a => a.actionKey) ?? []
+  const entryAction = entryActionForModule(actionKeys)
+  const words = selectedKey ? moduleWords(selectedKey) : null
 
-  type RowState = {
-    emp: ModuleMatrixEmployee
-    base: Record<string, boolean>
-    desired: Record<string, boolean>
-    level: AccessLevel
-    visible: boolean
-    source: SourceSummary
-    unsaved: boolean
-    locked: boolean
-  }
+  const isOpen = (emp: AccessMatrixEmployee) =>
+    emp.role === 'admin' || (!!entryAction && edits.effectiveOf(emp.id, selectedKey ?? '')[entryAction] === true)
 
-  function rowState(emp: ModuleMatrixEmployee): RowState {
-    const initial = initialChoices(emp.actions)
-    const base = effectiveMap(emp.actions, initial)
-    const desired = pending.get(emp.id) ?? base
-    const choices = pending.has(emp.id) ? choicesForDesired(emp.actions, desired) : initial
-    return {
-      emp,
-      base,
-      desired,
-      level: levelOf(emp.actions, desired),
-      visible: desired[entryAction] === true,
-      source: summarizeSources(emp.actions, k => choices.get(k) ?? 'inherit'),
-      unsaved: pending.has(emp.id),
-      // A system Administrator's authority is users.role; an override here
-      // could neither add to it nor take it away. Same lock as By Employee.
-      locked: emp.role === 'admin',
+  function changeLevel(emp: AccessMatrixEmployee, level: OfferedLevel | 'off') {
+    if (!selectedKey) return
+    const current = edits.effectiveOf(emp.id, selectedKey)
+    if (level === 'off') {
+      const cleared = authoritiesClearedByOff(selectedKey, actionKeys, current)
+      if (cleared.length > 0) { setOffConfirm({ employeeId: emp.id, cleared }); setPicker(null); return }
     }
+    edits.setDesired(emp.id, selectedKey, desiredForLevel(selectedKey, actionKeys, level, current))
+    setOffConfirm(null)
   }
 
-  function setDesired(row: RowState, desired: Record<string, boolean>) {
-    setPending(prev => {
-      const next = new Map(prev)
-      if (sameMap(desired, row.base)) next.delete(row.emp.id)
-      else next.set(row.emp.id, desired)
-      return next
-    })
+  function confirmOff(emp: AccessMatrixEmployee) {
+    if (!selectedKey) return
+    edits.setDesired(emp.id, selectedKey, desiredForLevel(selectedKey, actionKeys, 'off', edits.effectiveOf(emp.id, selectedKey)))
+    setOffConfirm(null)
   }
 
-  function toggle(row: RowState, on: boolean) {
-    if (!on) {
-      const cleared = protectedActionsClearedByPreset('no_access', actionKeys, row.desired)
-      if (cleared.length > 0) {
-        const message =
-          `Turning off ${matrix?.module.displayName} for ${row.emp.name} will remove: ${protectedActionWords(cleared, selectedKey ?? undefined)}.\n\n` +
-          'Continue?'
-        if (!window.confirm(message)) return
-      }
-      setDesired(row, presetAllowedActions('no_access', actionKeys))
-      return
-    }
-    // Entry only: every child action keeps exactly the value it already had.
-    setDesired(row, enableModuleEntry(actionKeys, row.desired))
+  function toggleAuthority(emp: AccessMatrixEmployee, actionKey: string, on: boolean) {
+    if (!selectedKey) return
+    edits.setDesired(emp.id, selectedKey, desiredWithAuthority(selectedKey, actionKeys, actionKey, on, edits.effectiveOf(emp.id, selectedKey)))
+    if (on) setPicker(null)
   }
 
-  function chooseLevel(row: RowState, value: string) {
-    if (value === 'custom') {
-      // Individually chosen actions, protected ones included, are named and
-      // confirmed one by one in By Employee — never picked off a list here.
-      if (dirty && !window.confirm(UNSAVED_PROMPT)) return
-      router.push(`${BY_EMPLOYEE_PATH}?employee=${row.emp.id}`)
-      return
-    }
-    const level = value as PresetLevel
-    const cleared = protectedActionsClearedByPreset(level, actionKeys, row.desired)
-    if (cleared.length > 0) {
-      const message =
-        `Changing ${row.emp.name} to ${ACCESS_LEVEL_LABELS[level].label} will remove: ${protectedActionWords(cleared, selectedKey ?? undefined)}.\n\n` +
-        'These are kept only under Custom. Continue?'
-      if (!window.confirm(message)) return
-    }
-    setDesired(row, presetAllowedActions(level, actionKeys))
-  }
-
-  // ── Save ─────────────────────────────────────────────────────────────────
-
-  async function save() {
-    if (!matrix || !selectedKey || pending.size === 0) return
-    setSaving(true)
-    setSaveError('')
-    const failures: string[] = []
-    const saved: string[] = []
-    try {
-      await Promise.all([...pending.entries()].map(async ([id, desired]) => {
-        const emp = matrix.employees.find(e => e.id === id)
-        if (!emp || emp.role === 'admin') return
-        const changes = changesBetween(selectedKey, emp.actions, initialChoices(emp.actions), choicesForDesired(emp.actions, desired))
-        if (changes.length === 0) { saved.push(id); return }
-        try {
-          const res = await fetch(`/api/control-center/permissions/employees/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ changes }),
-          })
-          const json = await res.json().catch(() => null)
-          if (!res.ok) { failures.push(`${emp.name}: ${json?.error ?? 'Save failed'}`); return }
-          saved.push(id)
-        } catch {
-          failures.push(`${emp.name}: Save failed. Check your connection and try again.`)
-        }
-      }))
-      // Employees that saved leave the pending set; a failed one keeps its
-      // pending state so nothing the administrator chose is lost.
-      setPending(prev => {
-        const next = new Map(prev)
-        for (const id of saved) next.delete(id)
-        return next
-      })
-      if (failures.length > 0) setSaveError(failures.join(' · '))
-      await matrixQuery.refetch()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function discardChanges() {
-    setPending(new Map())
-    setSaveError('')
-  }
+  /** First names of the OTHER people holding an authority — the picker's "Also held by". */
+  const holdersOf = (except: string) => (actionKey: string) =>
+    (matrix?.employees ?? [])
+      .filter(e => e.id !== except && e.role !== 'admin' && edits.effectiveOf(e.id, selectedKey ?? '')[actionKey] === true)
+      .map(e => e.name.split(' ')[0])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (modulesQuery.isPending || deptsQuery.isPending) return <ControlCenterSkeleton />
+  if (matrixQuery.isPending || deptsQuery.isPending) return <ControlCenterSkeleton />
 
-  const rows = matrix ? matrix.employees.map(rowState) : []
+  const employees = matrix?.employees ?? []
   const q = search.trim().toLowerCase()
-  const visibleRows = rows.filter(r =>
-    (includeInactive || r.emp.is_active) &&
-    (!q || r.emp.name.toLowerCase().includes(q) || r.emp.email.toLowerCase().includes(q)) &&
-    (!deptFilter || r.emp.team === deptFilter) &&
-    (!levelFilter || r.level === levelFilter) &&
-    (!overridesOnly || r.emp.actions.some(a => a.source === 'employee_override')),
+  const visible = employees.filter(e =>
+    (includeInactive || e.is_active) &&
+    (!q || e.name.toLowerCase().includes(q)) &&
+    (!deptFilter || e.team === deptFilter),
   )
-  const visibleCount = rows.filter(r => r.visible).length
-  const enforcement = selectedKey ? moduleEnforcement(selectedKey) : null
+  const canOpen = visible.filter(isOpen)
+  const cannot = visible.filter(e => !isOpen(e))
+  const openCount = employees.filter(e => e.role !== 'admin' && isOpen(e)).length
+  const authoritiesGranted = selectedKey
+    ? employees.reduce((n, e) => n + authoritiesFor(selectedKey, actionKeys).filter(a => edits.effectiveOf(e.id, selectedKey)[a.actionKey] === true && (a.perPerson || e.role !== 'admin')).length, 0)
+    : 0
+  const hidden = selectedKey ? hiddenActions(selectedKey, actionKeys) : []
+  const hiddenNames = (mod: PermissionModuleRef) => hidden.map(k => mod.actions.find(a => a.actionKey === k)?.displayName ?? k)
+
+  const row = (emp: AccessMatrixEmployee) => {
+    if (!selectedKey) return null
+    const effective = edits.effectiveOf(emp.id, selectedKey)
+    const base = edits.baseOf(emp.id, selectedKey)
+    const locked = emp.role === 'admin'
+    const level = locked ? 'viewer' : detectOfferedLevel(selectedKey, actionKeys, effective)
+    const unsaved = edits.isDirty(emp.id, selectedKey)
+    const pickerOpen = picker === emp.id
+    const confirmOpen = offConfirm?.employeeId === emp.id
+    return (
+      <div key={emp.id} className={`${styles.mrow}${unsaved ? ` ${styles.mrowChanged}` : ''}`}>
+        <div className={styles.cellPerson}>
+          <Avatar name={emp.name} size={32} />
+          <div style={{ minWidth: 0 }}>
+            <div className={styles.mrowName}>
+              {emp.name}
+              {locked && <CcBadge tone="gray">Admin</CcBadge>}
+              {!emp.is_active && <ActiveBadge active={false} />}
+              {unsaved && <span className={styles.unsaved}>Unsaved</span>}
+            </div>
+            <div className={styles.rowNote} style={{ marginTop: 1 }}>{deptLabel(emp.team)}</div>
+          </div>
+        </div>
+        <div className={styles.mrowRight}>
+          <LevelControl
+            moduleKey={selectedKey}
+            moduleName={selected?.displayName ?? selectedKey}
+            personName={emp.name}
+            actionKeys={actionKeys}
+            level={level}
+            locked={locked}
+            onChange={lv => changeLevel(emp, lv)}
+          />
+          <div className={styles.setBy}>
+            {setByText(emp.modules[selectedKey] ?? [], entryAction, emp.role, { defaultOn: words?.defaultOn, unsaved })}
+          </div>
+        </div>
+        <div className={styles.mrowAuth}>
+          <span className={styles.mrowAuthLabel}>Authorities</span>
+          <AuthorityChips
+            moduleKey={selectedKey}
+            actionKeys={actionKeys}
+            effective={effective}
+            baseEffective={base}
+            locked={locked}
+            perPersonOnly={locked}
+            canAdd={isOpen(emp)}
+            pickerOpen={pickerOpen}
+            onRemove={actionKey => toggleAuthority(emp, actionKey, false)}
+            onOpenPicker={() => { setPicker(p => p === emp.id ? null : emp.id); setOffConfirm(null) }}
+          />
+        </div>
+        {pickerOpen && (
+          <div className={styles.mrowWide}>
+            <AuthorityPicker
+              moduleKey={selectedKey}
+              moduleName={selected?.displayName ?? selectedKey}
+              personName={emp.name}
+              actionKeys={actionKeys}
+              effective={effective}
+              perPersonOnly={locked}
+              holdersOf={holdersOf(emp.id)}
+              onAdd={a => toggleAuthority(emp, a.actionKey, true)}
+              onClose={() => setPicker(null)}
+            />
+          </div>
+        )}
+        {confirmOpen && (
+          <div className={styles.mrowWide}>
+            <OffConfirm
+              moduleName={selected?.displayName ?? selectedKey}
+              personName={emp.name}
+              cleared={offConfirm.cleared}
+              onConfirm={() => confirmOff(emp)}
+              onCancel={() => setOffConfirm(null)}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={styles.layout}>
@@ -306,7 +258,10 @@ function ByModulePageInner() {
         </div>
         <div className={styles.panelList}>
           {listed.map(m => {
-            const e = moduleEnforcement(m.moduleKey)
+            const keys = m.actions.map(a => a.actionKey)
+            const entry = entryActionForModule(keys)
+            const n = employees.filter(e => e.role !== 'admin' && !!entry && edits.effectiveOf(e.id, m.moduleKey)[entry] === true).length
+            const auths = employees.reduce((s, e) => s + authoritiesFor(m.moduleKey, keys).filter(a => edits.effectiveOf(e.id, m.moduleKey)[a.actionKey] === true && (a.perPerson || e.role !== 'admin')).length, 0)
             const isSelected = m.moduleKey === selectedKey
             return (
               <button
@@ -316,11 +271,11 @@ function ByModulePageInner() {
                 aria-pressed={isSelected}
                 onClick={() => selectModule(m.moduleKey)}
               >
+                <span className={styles.rowIcon}><ModuleIcon moduleKey={m.moduleKey} size={15} /></span>
                 <div className={styles.rowText}>
                   <div className={styles.rowName}>{m.displayName}</div>
                   <div className={styles.rowSub}>
-                    {m.actions.length} {m.actions.length === 1 ? 'permission' : 'permissions'}
-                    {e.state !== 'enforced' && ` · ${ENFORCEMENT_BADGE_LABEL[e.state]}`}
+                    {n} can open{auths ? ` · ${auths} ${auths === 1 ? 'authority' : 'authorities'} granted` : ''}
                   </div>
                 </div>
               </button>
@@ -332,54 +287,59 @@ function ByModulePageInner() {
         </div>
       </div>
 
-      {/* ── Matrix ───────────────────────────────────────────────────────── */}
+      {/* ── Workspace ────────────────────────────────────────────────────── */}
       <div className={styles.workspace}>
         {!selectedKey && (
           <CcEmpty
             message="Select a module to see who can open it and what each person can do."
-            hint="Levels here are the same four presets as By Employee; Custom opens the person there."
+            hint="The same control as People: Off or a level, and the authorities as chips."
           />
         )}
 
-        {selectedKey && matrixQuery.isPending && <ControlCenterSkeleton />}
-
-        {selectedKey && matrixQuery.isError && (
+        {matrixQuery.isError && (
           <div className={cc.error}>{(matrixQuery.error as Error).message}</div>
         )}
 
-        {selectedKey && matrix && selected && enforcement && (
+        {selectedKey && selected && (
           <>
             <div className={styles.header}>
-              <div style={{ minWidth: 0 }}>
-                <div className={styles.headerName}>{matrix.module.displayName}</div>
-                <div className={styles.headerSub}>
-                  {matrix.module.actions.map(a => a.displayName).join(' · ')}
+              <div className={styles.headerIdentity}>
+                <span className={styles.headerIcon}><ModuleIcon moduleKey={selectedKey} size={22} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div className={styles.headerName}>{selected.displayName}</div>
+                  <div className={styles.headerSub}>{blurbFor(selectedKey, selected.description)}</div>
                 </div>
               </div>
               <div className={styles.headerStats}>
                 <div className={styles.headerStat}>
-                  <div className={styles.headerStatValue} style={{ color: '#276247' }}>{visibleCount}</div>
-                  <div className={styles.headerStatLabel}>Visible</div>
+                  <div className={styles.headerStatValue}>{openCount}</div>
+                  <div className={styles.headerStatLabel}>Can open</div>
                 </div>
                 <div className={styles.headerStat}>
-                  <div className={styles.headerStatValue} style={{ color: '#4C5352' }}>{rows.length - visibleCount}</div>
-                  <div className={styles.headerStatLabel}>Hidden</div>
+                  <div className={styles.headerStatValue}>{authoritiesGranted}</div>
+                  <div className={styles.headerStatLabel}>Authorities granted</div>
+                </div>
+                <div className={styles.headerStat}>
+                  <div className={styles.headerStatValue}>{authoritiesFor(selectedKey, actionKeys).length}</div>
+                  <div className={styles.headerStatLabel}>Authorities available</div>
                 </div>
               </div>
+              {(hidden.length > 0 || words?.note) && (
+                <div className={styles.headerRole} style={{ display: 'block' }}>
+                  {hidden.length > 0 && (
+                    <div className={cc.muted} style={{ fontSize: 12 }}>
+                      Not offered: {hiddenNames(selected).join(', ')} — stored in the database but read by nothing.
+                    </div>
+                  )}
+                  {words?.note && <div className={styles.rowNote}>{words.note}</div>}
+                </div>
+              )}
             </div>
-
-            {enforcement.state !== 'enforced' && (
-              <div style={{ marginBottom: 12 }}>
-                <AlertBanner variant="amber">
-                  <strong>{ENFORCEMENT_BADGE_LABEL[enforcement.state]}.</strong> {enforcement.detail}
-                </AlertBanner>
-              </div>
-            )}
 
             {/* A whole team in one move; the people below are individuals and win over their team. */}
             <TeamAccessCard
               moduleKey={selectedKey}
-              moduleName={matrix.module.displayName}
+              moduleName={selected.displayName}
               onSaved={() => { void matrixQuery.refetch() }}
             />
 
@@ -388,7 +348,7 @@ function ByModulePageInner() {
                 <Search size={13} strokeWidth={2} />
                 <input
                   className={cc.control}
-                  placeholder="Search name or email"
+                  placeholder="Search name"
                   aria-label="Search employees"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
@@ -398,138 +358,45 @@ function ByModulePageInner() {
                 <option value="">All departments</option>
                 {depts.map(d => <option key={d.department_key} value={d.department_key}>{d.department_name}</option>)}
               </select>
-              <select className={cc.control} aria-label="Level" value={levelFilter} onChange={e => setLevelFilter(e.target.value as '' | AccessLevel)}>
-                <option value="">All levels</option>
-                {(['no_access', 'viewer', 'contributor', 'manager', 'custom'] as AccessLevel[]).map(l => (
-                  <option key={l} value={l}>{ACCESS_LEVEL_LABELS[l].label}</option>
-                ))}
-              </select>
-              <label className={cc.check} style={{ fontSize: 12 }}>
-                <input type="checkbox" checked={overridesOnly} onChange={e => setOverridesOnly(e.target.checked)} />
-                Overrides only
-              </label>
               <label className={cc.check} style={{ fontSize: 12 }}>
                 <input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />
                 Include inactive
               </label>
               <span className={cc.count}>
-                {visibleRows.length === rows.length ? `${rows.length} employees` : `${visibleRows.length} of ${rows.length}`}
+                {visible.length === employees.length ? `${employees.length} employees` : `${visible.length} of ${employees.length}`}
               </span>
             </CcToolbar>
 
-            {visibleRows.length === 0 ? (
+            {visible.length === 0 ? (
               <CcEmpty message="No employees match these filters." />
             ) : (
-              <CcTable>
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Department</th>
-                    <th>Access</th>
-                    <th>Level</th>
-                    <th>Source</th>
-                    <th className={cc.right}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map(row => (
-                    <tr key={row.emp.id}>
-                      <td>
-                        <div className={cc.person}>
-                          <Avatar name={row.emp.name} size={26} />
-                          <div style={{ minWidth: 0 }}>
-                            <div className={cc.personName}>
-                              {row.emp.name}
-                              {row.unsaved && <span className={styles.unsaved}>Unsaved</span>}
-                            </div>
-                            <div className={cc.personSub}>
-                              <span className={cc.cap}>{row.emp.role}</span> · {row.emp.email}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className={row.emp.team ? undefined : cc.faint}>
-                        {deptLabel(row.emp.team)}
-                        {!row.emp.is_active && <span style={{ marginLeft: 8 }}><ActiveBadge active={false} /></span>}
-                      </td>
-                      <td>
-                        {row.locked ? (
-                          <span className={`${styles.switchWord} ${styles.switchOn}`}>Visible</span>
-                        ) : (
-                          <label className={styles.switch}>
-                            <input
-                              type="checkbox"
-                              role="switch"
-                              checked={row.visible}
-                              onChange={e => toggle(row, e.target.checked)}
-                              aria-label={`Module access for ${row.emp.name}`}
-                            />
-                            <span className={`${styles.switchWord} ${row.visible ? styles.switchOn : styles.switchOff}`}>
-                              {row.visible ? 'Visible' : 'Hidden'}
-                            </span>
-                          </label>
-                        )}
-                      </td>
-                      <td>
-                        {row.locked ? (
-                          <CcBadge tone="gray">All · system role</CcBadge>
-                        ) : (
-                          <select
-                            className={`${cc.control} ${styles.levelSelect}`}
-                            aria-label={`Access level for ${row.emp.name}`}
-                            value={row.level}
-                            onChange={e => chooseLevel(row, e.target.value)}
-                          >
-                            {PRESET_LEVELS.map(l => (
-                              <option key={l} value={l}>{ACCESS_LEVEL_LABELS[l].label}</option>
-                            ))}
-                            <option value="custom">{row.level === 'custom' ? 'Custom' : 'Custom… (open By Employee)'}</option>
-                          </select>
-                        )}
-                      </td>
-                      <td>
-                        {row.locked
-                          ? <>
-                              <CcBadge tone="gray">System role</CcBadge>
-                              {/* Except for the actions that are granted per
-                                  person whatever the role says. This screen
-                                  only ever writes LEVELS, and a protected
-                                  action is never in a level, so the grant
-                                  itself is made in By Employee — which is
-                                  what the Open link goes to. */}
-                              {selectedKey && moduleHasAdminEditableActions(selectedKey) && (
-                                <span className={cc.muted} style={{ fontSize: 12, marginLeft: 6 }}>
-                                  except Order Approval — open to set it
-                                </span>
-                              )}
-                            </>
-                          : <>
-                              <SourceBadge summary={row.source} />
-                              {row.level === 'custom' && <span className={cc.muted} style={{ fontSize: 12, marginLeft: 6 }}><CcBadge tone={LEVEL_TONE.custom}>Custom</CcBadge></span>}
-                            </>}
-                      </td>
-                      <td className={cc.right}>
-                        <Link href={`${BY_EMPLOYEE_PATH}?employee=${row.emp.id}`} className={cc.linkBtn}>Open</Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </CcTable>
+              <div className={styles.cards}>
+                <div className={styles.sectionHead}><span className={styles.sectionTitle}>Can open <small>{canOpen.length}</small></span></div>
+                {canOpen.map(row)}
+                {cannot.length > 0 && (
+                  <>
+                    <div className={styles.sectionHead}><span className={styles.sectionTitle}>Cannot open <small>{cannot.length}</small></span></div>
+                    {cannot.map(row)}
+                  </>
+                )}
+              </div>
             )}
 
             <div className={styles.saveBar}>
-              <span className={styles.saveBarText}>
+              <div className={styles.saveBarText}>
                 {dirty
-                  ? `${pending.size} ${pending.size === 1 ? 'employee' : 'employees'} changed · not saved yet`
+                  ? <>
+                      <b>{edits.changes().length} {edits.changes().length === 1 ? 'change' : 'changes'}</b> · not saved yet
+                      <ul className={styles.saveBarList}>{edits.changes().map(c => <li key={`${c.employeeId}:${c.moduleKey}`}>{c.text}</li>)}</ul>
+                    </>
                   : 'No unsaved changes'}
-              </span>
-              {saveError && <span className={cc.error} style={{ marginTop: 0 }}>{saveError}</span>}
-              <span className={styles.saveBarSpacer} />
-              <button className="boe-btn boe-btn-ghost" onClick={discardChanges} disabled={!dirty || saving}>
+              </div>
+              {edits.saveError && <span className={cc.error} style={{ marginTop: 0 }}>{edits.saveError}</span>}
+              <button className="boe-btn boe-btn-ghost" onClick={() => { edits.discard(); setOffConfirm(null) }} disabled={!dirty || edits.saving}>
                 Discard
               </button>
-              <button className="boe-btn boe-btn-primary" onClick={save} disabled={!dirty || saving}>
-                {saving ? 'Saving…' : 'Save Changes'}
+              <button className="boe-btn boe-btn-primary" onClick={() => void edits.save(() => matrixQuery.refetch())} disabled={!dirty || edits.saving}>
+                {edits.saving ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </>

@@ -1,5 +1,17 @@
 'use client'
 
+// Access › People.
+//
+// One person, every module: what they can open, how much they can do inside,
+// and which decisions are theirs. A module is ONE control (Off, or a level)
+// plus the authorities held as chips; nothing on this screen is offered that
+// the app does not read (src/lib/permissions/accessCatalog.ts). Reads come
+// from the per-employee tree route; every change is saved through the same
+// per-employee PUT the Modules and Authorities screens use, with the
+// per-action override choices derived by the same shared rule
+// (src/lib/permissions/accessControlChanges.ts), so the three screens store
+// identical rows for identical intentions.
+
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -8,42 +20,41 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { AlertBanner, Avatar } from '@/components/ui/atoms'
-import { cc, CcBadge, CcDialog, CcEmpty, CcTable, type CcTone } from '@/components/controlCenter/CcPrimitives'
+import { cc, CcBadge, CcEmpty } from '@/components/controlCenter/CcPrimitives'
+import { ModuleIcon } from '@/components/modules/ModuleIcons'
 import {
-  moduleEnforcement,
-  type EnforcementState,
-} from '@/lib/permissions/enforcement'
-import {
-  ACCESS_LEVELS,
-  ACCESS_LEVEL_LABELS,
-  presetAllowedActions,
-  enableModuleEntry,
-  entryActionForModule,
-  detectAccessLevel as detectLevelForActions,
-  protectedActionsClearedByPreset,
-  actionDependencyChain,
-  dependentActionsToRemove,
-  type AccessLevel,
-  type PresetLevel,
-} from '@/lib/permissions/levels'
+  AuthorityChips, AuthorityPicker, LevelControl, OffConfirm, setByText,
+} from '@/components/controlCenter/AccessRow'
+import { entryActionForModule } from '@/lib/permissions/levels'
 import {
   choicesForDesired,
-  protectedActionWords,
-  SOURCE_LABEL,
   type OverrideChoice,
   type PermissionSource,
 } from '@/lib/permissions/accessControlChanges'
 import {
   adminEditableActions,
   isAdminEditableAction,
-  moduleHasAdminEditableActions,
 } from '@/lib/permissions/orderApproval'
+import {
+  authoritiesClearedByOff,
+  authoritiesFor,
+  desiredForLevel,
+  desiredWithAuthority,
+  detectOfferedLevel,
+  heldAuthorities,
+  isModuleOfferedTo,
+  isSelfServiceModuleKey,
+  levelLabel,
+  levelSentence,
+  moduleWords,
+  offeredLevels,
+  type OfferedLevel,
+} from '@/lib/permissions/accessCatalog'
+import { describeChange } from '@/components/controlCenter/accessEdits'
+import {
+  useAdminMembers, useDepartments, useInvalidateAccessMatrix, NO_MEMBERS, NO_DEPARTMENTS,
+} from '@/hooks/queries/useControlCenterData'
 import styles from './permissions.module.css'
-import { useAdminMembers, useDepartments, NO_MEMBERS, NO_DEPARTMENTS } from '@/hooks/queries/useControlCenterData'
-
-// Which modules the engine actually decides now lives in one shared place —
-// src/lib/permissions/enforcement.ts — because the launcher, the route guards
-// and this screen must not each keep their own opinion.
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -53,6 +64,8 @@ type ActionState = {
   allowed: boolean
   source: PermissionSource
   sourceLabel: string
+  grantedBy: { id: string; name: string | null } | null
+  grantedAt: string | null
 }
 
 type ModuleState = {
@@ -70,7 +83,8 @@ type EmployeePermissionTree = {
  * A system Administrator's authority comes from users.role, not from anything
  * on this screen. Every module guard, RPC and policy in the app short-circuits
  * on role = 'admin', so an override written here could neither add to that nor
- * take anything away — it would just look as though it had.
+ * take anything away — with the exception of the per-person authorities that
+ * have a permission-only door in the database (ADMIN_EDITABLE_ACTIONS).
  *
  * This is checked against the SELECTED employee, not the signed-in one, so it
  * protects every admin rather than only the person doing the editing.
@@ -79,37 +93,16 @@ function isSystemAdmin(tree: EmployeePermissionTree | null): boolean {
   return tree?.employee.role === 'admin'
 }
 
-/**
- * Attendance and Payroll are two permission modules wearing one name.
- *
- * The launcher shows them as a single "Attendance & Payroll" card, and their
- * MANAGEMENT surface is admin-only by an explicit product decision that no grant
- * on this screen can change — see SELF_SERVICE_MODULE_KEYS and
- * resolveManagementAccess in src/lib/moduleAccess.ts. Rendering two editable
- * rows of Viewer/Contributor/Manager controls would therefore be a lie: every
- * switch would save a row that decides nothing.
- *
- * So the two modules are collapsed into one read-only row that says what is
- * actually true, and nothing on this page writes an attendance or payroll
- * override.
- */
-const SELF_SERVICE_MODULE_KEYS = ['attendance', 'payroll'] as const
-const COMBINED_ATTENDANCE_PAYROLL_LABEL = 'Attendance & Payroll'
-
-function isSelfServiceModuleKey(moduleKey: string): boolean {
-  return (SELF_SERVICE_MODULE_KEYS as readonly string[]).includes(moduleKey)
+const ROLE_HINT: Record<string, string> = {
+  member: 'Member grants nothing by itself. The modules below are what decide.',
+  manager: 'Manager still grants four things by itself that no row below shows: the All Tasks page, creating attendance-only employees, reading every EOD log, and recording fabric/finish approvals on orders.',
+  admin: 'Administrator opens every module and the Control Center. Only the authorities granted per person can be given or taken away here.',
 }
-
-// The level vocabulary lives in src/lib/permissions/levels.ts, shared with the
-// API, the tests and the capability helpers. The copy that used to sit here
-// carried a sixth "Admin" level that granted EVERY action; it is gone, and
-// PROTECTED_ACTIONS in levels.ts is what keeps it gone.
-const LEVELS = ACCESS_LEVELS.map(key => ({ key, ...ACCESS_LEVEL_LABELS[key] }))
 
 // Override choices are keyed "moduleKey:actionKey" because one tree holds
 // every module. The write rule itself — which choice each action gets for a
-// desired state — is the shared one in accessControlChanges.ts, so By Module
-// cannot store something different for the same intention.
+// desired state — is the shared one in accessControlChanges.ts, so Modules
+// and Authorities cannot store something different for the same intention.
 function overrideKey(moduleKey: string, actionKey: string) {
   return `${moduleKey}:${actionKey}`
 }
@@ -130,32 +123,32 @@ function effectiveMapForModule(mod: ModuleState, overrides: Map<string, Override
   return map
 }
 
-function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>): AccessLevel {
-  return detectLevelForActions(mod.actions.map(a => a.actionKey), effective)
+function baseMapForModule(mod: ModuleState): Record<string, boolean> {
+  const map: Record<string, boolean> = {}
+  for (const action of mod.actions) map[action.actionKey] = action.allowed
+  return map
 }
 
 // THE PARENT GATE, as this screen reports it.
 //
-// Visible/Hidden is effective `view` and nothing else — the same single fact
-// the launcher card and every route guard read (canAccessManagementModule in
+// Open/Off is effective `view` and nothing else — the same single fact the
+// launcher card and every route guard read (canAccessManagementModule in
 // src/lib/permissions/moduleVisibility.ts). The screen and the running app
-// therefore cannot disagree about whether a module is on. A leftover child
-// grant does NOT make a module Visible; the stored child actions are kept,
-// shown under Custom, and come back the moment view does.
+// therefore cannot disagree about whether a module is on.
 const MODULE_ENTRY_ACTION = 'view'
 
 /**
- * ONE module expresses entry with a different key, and the switch has to follow
- * it or it is a control that decides nothing. Customer Review Outreach
- * registers `use` and `verify` and NO `view`. entryActionForModule reads the
- * module's OWN registered actions, so this screen, enableModuleEntry and the
- * module guard cannot drift; `view` remains the answer for every other module.
+ * ONE module expresses entry with a different key, and the control has to
+ * follow it or it is a control that decides nothing. Review Workflow registers
+ * `use` and `verify` and NO `view`. entryActionForModule reads the module's
+ * OWN registered actions, so this screen, the catalogue and the module guard
+ * cannot drift; `view` remains the answer for every other module.
  */
 function entryActionFor(mod: ModuleState): string {
   return entryActionForModule(mod.actions.map(a => a.actionKey)) ?? MODULE_ENTRY_ACTION
 }
 
-/** Visible/Hidden including any unsaved change the administrator has made. */
+/** Open or Off including any unsaved change the administrator has made. */
 function moduleIsAccessible(mod: ModuleState, overrides: Map<string, OverrideChoice>): boolean {
   return effectiveMapForModule(mod, overrides)[entryActionFor(mod)] === true
 }
@@ -167,290 +160,9 @@ function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>,
   })
 }
 
-// ── Source summary ───────────────────────────────────────────────────────────
-// Plain-language explanation of *where* a module's current access is coming
-// from, separate from the per-action source labels (EffectiveBadge) that stay
-// in place under Custom. A coarser, module-level rollup.
+const keysOf = (mod: ModuleState) => mod.actions.map(a => a.actionKey)
 
-type SourceSummary = { kind: 'single'; source: PermissionSource; label: string } | { kind: 'mixed' }
-
-// A pending choice of allow/deny always reads as an employee override, matching
-// how EffectiveBadge treats unsaved picks. Reverting an existing override back
-// to 'inherit' can't be resolved to a real source without a save round-trip, so
-// it is 'unknown' and folds into "mixed".
-function effectiveSourceForAction(action: ActionState, choice: OverrideChoice): PermissionSource | 'unknown' {
-  if (choice !== 'inherit') return 'employee_override'
-  if (action.source !== 'employee_override') return action.source
-  return 'unknown'
-}
-
-function summarizeSource(mod: ModuleState, getChoice: (actionKey: string) => OverrideChoice): SourceSummary {
-  const sources = mod.actions.map(a => effectiveSourceForAction(a, getChoice(a.actionKey)))
-  const unique = new Set(sources)
-  const only = sources[0]
-  if (unique.size === 1 && only !== 'unknown') {
-    return { kind: 'single', source: only, label: SOURCE_LABEL[only] }
-  }
-  return { kind: 'mixed' }
-}
-
-const SOURCE_TONE: Record<PermissionSource, CcTone> = {
-  employee_override: 'violet',
-  department: 'blue',
-  role: 'blue',
-  system_default: 'gray',
-}
-
-function SourceBadge({ summary }: { summary: SourceSummary }) {
-  if (summary.kind === 'mixed') return <CcBadge tone="amber">Mixed</CcBadge>
-  return <CcBadge tone={SOURCE_TONE[summary.source]}>{summary.label.replace(' default', '')}</CcBadge>
-}
-
-// ── Badges ───────────────────────────────────────────────────────────────────
-
-// The banner colour follows the badge: green only when every action really is
-// enforced, so "Partly active" cannot read as a green light.
-const ENFORCEMENT_BANNER_VARIANT: Record<EnforcementState, 'green' | 'amber'> = {
-  enforced:  'green',
-  partial:   'amber',
-  prepared:  'amber',
-  role_only: 'amber',
-}
-
-// THERE IS NO ENFORCEMENT BADGE ON AN EMPLOYEE'S MODULE ROW. Deliberately.
-// "Active", "Partly active", "Prepared" and "Not used" describe how far a
-// MODULE'S CODE has been cut over to the engine — a fact about the product,
-// identical for every employee. Beside a per-employee switch it read as a
-// statement about that person's access. It stays in the Change Access dialog,
-// which is where "ticking Approve does nothing yet" is worth knowing.
-
-const LEVEL_TONE: Record<AccessLevel, CcTone> = {
-  no_access:   'gray',
-  viewer:      'blue',
-  contributor: 'blue',
-  manager:     'green',
-  custom:      'amber',
-}
-
-function AccessLevelBadge({ level }: { level: AccessLevel }) {
-  return <CcBadge tone={LEVEL_TONE[level]}>{ACCESS_LEVEL_LABELS[level].label}</CcBadge>
-}
-
-function EffectiveBadge({ choice, action }: { choice: OverrideChoice; action: ActionState }) {
-  if (choice === 'inherit') {
-    if (action.source !== 'employee_override') {
-      return (
-        <span className={styles.actionState} style={{ color: action.allowed ? '#276247' : '#A12438' }}>
-          {action.allowed ? 'Allowed' : 'Denied'}
-          <span className={cc.muted}> · Inherited from {action.sourceLabel}</span>
-        </span>
-      )
-    }
-    return <span className={`${styles.actionState} ${cc.muted}`}>Will inherit (recalculated on save)</span>
-  }
-  const allowed = choice === 'allow'
-  return (
-    <span className={styles.actionState} style={{ color: allowed ? '#276247' : '#A12438' }}>
-      {allowed ? 'Allowed' : 'Denied'}
-      <span className={cc.muted}> · Employee Override</span>
-    </span>
-  )
-}
-
-function OverrideControl({
-  value, onChange,
-}: {
-  value: OverrideChoice
-  onChange: (v: OverrideChoice) => void
-}) {
-  const OPTIONS: { key: OverrideChoice; label: string; active: string }[] = [
-    { key: 'inherit', label: 'Inherit', active: styles.segmentInherit },
-    { key: 'allow',   label: 'Allow',   active: styles.segmentAllow },
-    { key: 'deny',    label: 'Deny',    active: styles.segmentDeny },
-  ]
-  return (
-    <div className={styles.segment} role="radiogroup">
-      {OPTIONS.map(opt => (
-        <button
-          key={opt.key}
-          type="button"
-          role="radio"
-          aria-checked={value === opt.key}
-          onClick={() => onChange(opt.key)}
-          className={`${styles.segmentBtn}${value === opt.key ? ` ${opt.active}` : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ── Change Access dialog ─────────────────────────────────────────────────────
-
-function ChangeAccessModal({
-  mod, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose, adminOnlyActions,
-}: {
-  mod: ModuleState
-  currentLevel: AccessLevel
-  getChoice: (actionKey: string) => OverrideChoice
-  onChangeAction: (actionKey: string, choice: OverrideChoice) => void
-  onApplyLevel: (level: PresetLevel) => void
-  onClose: () => void
-  /**
-   * Non-null when the employee is a system Administrator: the ONLY actions
-   * this dialog may offer, because every other one on this module is decided
-   * by their role and a control for it would decide nothing.
-   *
-   * The levels are hidden entirely in that case. A level is a statement about
-   * a whole module — "this person is a Manager here" — and on an
-   * administrator it would be a statement the engine does not get to make.
-   */
-  adminOnlyActions: readonly string[] | null
-}) {
-  const [mode, setMode] = useState<AccessLevel>(currentLevel)
-  // A standard level the administrator has chosen but not yet confirmed,
-  // because applying it would take protected permissions away.
-  const [pendingLevel, setPendingLevel] = useState<PresetLevel | null>(null)
-
-  // What this module currently grants, folding in unsaved choices — the same
-  // view the level detector sees.
-  const currentlyAllowed: Record<string, boolean> = {}
-  for (const action of mod.actions) {
-    const choice = getChoice(action.actionKey)
-    currentlyAllowed[action.actionKey] = choice === 'inherit' ? action.allowed : choice === 'allow'
-  }
-
-  const actionKeys = mod.actions.map(a => a.actionKey)
-
-  function applyLevel(level: PresetLevel) {
-    onApplyLevel(level)
-    onClose()
-  }
-
-  function pick(level: AccessLevel) {
-    setMode(level)
-    if (level === 'custom') return
-
-    // A standard level clears every protected permission. Say which, and wait.
-    // Silently keeping them would be worse (the administrator would believe
-    // they had reduced someone to Viewer), and silently dropping them worse
-    // still.
-    const cleared = protectedActionsClearedByPreset(level, actionKeys, currentlyAllowed)
-    if (cleared.length > 0) {
-      setPendingLevel(level)
-      return
-    }
-    applyLevel(level)
-  }
-
-  const sourceSummary = summarizeSource(mod, getChoice)
-  const enforcement = moduleEnforcement(mod.moduleKey)
-
-  return (
-    <CcDialog
-      title={mod.displayName}
-      subtitle="Choose a level, or set individual permissions under Custom."
-      onClose={onClose}
-      footer={<button className="boe-btn boe-btn-primary" onClick={onClose}>Done</button>}
-    >
-      <div style={{ marginBottom: 14 }}>
-        <AlertBanner variant={ENFORCEMENT_BANNER_VARIANT[moduleEnforcement(mod.moduleKey).state]}>
-          {moduleEnforcement(mod.moduleKey).detail}
-        </AlertBanner>
-      </div>
-
-      <div className={cc.note} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 600 }}>Current access</span>
-        <AccessLevelBadge level={currentLevel} />
-        <SourceBadge summary={sourceSummary} />
-        <span className={cc.muted} style={{ fontSize: 12 }}>
-          {sourceSummary.kind === 'single' ? `Source: ${sourceSummary.label}` : 'Some permissions are customized'}
-          {enforcement.state === 'partial' && ' · Only the enforced actions decide anything today'}
-        </span>
-      </div>
-
-      {pendingLevel && (
-        <div className={cc.note} style={{ marginBottom: 16, borderColor: '#F0C36D', background: '#FAF0DA' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#805B0D', marginBottom: 6 }}>
-            Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
-            {protectedActionWords(
-              protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
-              mod.moduleKey,
-            )}
-          </div>
-          <div className={cc.muted} style={{ fontSize: 12, marginBottom: 10 }}>
-            These are kept only under Custom. Choose Custom instead if this person
-            should keep them.
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="boe-btn boe-btn-danger"
-              onClick={() => { const l = pendingLevel; setPendingLevel(null); applyLevel(l) }}
-            >
-              Remove and continue
-            </button>
-            <button
-              className="boe-btn boe-btn-ghost"
-              onClick={() => { setPendingLevel(null); setMode(currentLevel) }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {adminOnlyActions === null && (
-        <div className={styles.levelGrid} role="radiogroup" aria-label="Access level">
-          {LEVELS.map(l => {
-            const active = mode === l.key
-            return (
-              <button
-                key={l.key}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => pick(l.key)}
-                className={`${styles.levelOption}${active ? ` ${styles.levelOptionActive}` : ''}`}
-              >
-                <div className={styles.levelOptionLabel}>{l.label}</div>
-                <div className={styles.levelOptionDesc}>{l.description}</div>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {adminOnlyActions !== null && (
-        <div className={cc.note} style={{ marginBottom: 4 }}>
-          This person is a system Administrator, so their level here is not the
-          engine&apos;s to set. These are the permissions on this module that are
-          granted per person regardless of the system role — and so are the only
-          ones that change anything for them.
-        </div>
-      )}
-
-      {(mode === 'custom' || adminOnlyActions !== null) && (
-        <div style={{ marginTop: 16 }}>
-          {mod.actions
-            .filter(a => adminOnlyActions === null || adminOnlyActions.includes(a.actionKey))
-            .map(action => {
-              const choice = getChoice(action.actionKey)
-              return (
-                <div key={action.actionKey} className={styles.actionRow}>
-                  <div style={{ minWidth: 160 }}>
-                    <div className={styles.actionName}>{action.displayName}</div>
-                    <EffectiveBadge choice={choice} action={action} />
-                  </div>
-                  <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
-                </div>
-              )
-            })}
-        </div>
-      )}
-    </CcDialog>
-  )
-}
+const DATE_FMT = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
 
 // ── Employee directory (left column) ────────────────────────────────────────
 
@@ -482,7 +194,7 @@ function EmployeePanel({
         <input
           className={cc.control}
           style={{ width: '100%' }}
-          placeholder="Search name, department or role"
+          placeholder="Search name, department or title"
           aria-label="Search employees"
           value={search}
           onChange={e => onSearchChange(e.target.value)}
@@ -505,9 +217,12 @@ function EmployeePanel({
             >
               <Avatar name={m.full_name} size={28} />
               <div className={styles.rowText}>
-                <div className={styles.rowName}>{m.full_name}</div>
+                <div className={styles.rowName}>
+                  {m.full_name}
+                  {m.role === 'admin' && <span style={{ marginLeft: 6 }}><CcBadge tone="gray">Admin</CcBadge></span>}
+                </div>
                 <div className={styles.rowSub}>
-                  {deptLabel(m.team)} · <span className={cc.cap}>{m.role}</span>{m.is_active ? '' : ' · Inactive'}
+                  {deptLabel(m.team)}{m.position ? ` · ${m.position}` : ''}{m.is_active ? '' : ' · Inactive'}
                 </div>
               </div>
             </button>
@@ -520,10 +235,27 @@ function EmployeePanel({
 
 // ── Workspace header (selected employee summary) ────────────────────────────
 
-function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; overrides: Map<string, OverrideChoice> }) {
-  const editable = tree.modules.filter(mod => !isSelfServiceModuleKey(mod.moduleKey))
-  const accessible = editable.filter(mod => moduleIsAccessible(mod, overrides)).length
-  const noAccess = editable.length - accessible
+function WorkspaceHeader({
+  tree, overrides, position, offered, onRemoveAll,
+}: {
+  tree: EmployeePermissionTree
+  overrides: Map<string, OverrideChoice>
+  position: string | null
+  offered: ModuleState[]
+  onRemoveAll: () => void
+}) {
+  const admin = isSystemAdmin(tree)
+  const accessible = admin ? offered.length : offered.filter(mod => moduleIsAccessible(mod, overrides)).length
+  const authorities = offered.reduce((n, mod) => {
+    const held = heldAuthorities(mod.moduleKey, keysOf(mod), effectiveMapForModule(mod, overrides))
+    return n + (admin ? held.filter(a => a.perPerson).length : held.length)
+  }, 0)
+  const latest = offered.flatMap(mod => mod.actions)
+    .filter(a => a.source === 'employee_override' && a.grantedAt)
+    .sort((a, b) => (b.grantedAt ?? '').localeCompare(a.grantedAt ?? ''))[0]
+  const lastChange = latest?.grantedAt
+    ? `${DATE_FMT.format(new Date(latest.grantedAt))}${latest.grantedBy?.name ? ` · ${latest.grantedBy.name.split(' ')[0]}` : ''}`
+    : '—'
 
   return (
     <div className={styles.header}>
@@ -531,95 +263,46 @@ function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; ov
         <Avatar name={tree.employee.name} size={40} />
         <div style={{ minWidth: 0 }}>
           <div className={styles.headerName}>{tree.employee.name}</div>
-          <div className={styles.headerSub}>
-            {tree.employee.department ?? '—'} · <span className={cc.cap}>{tree.employee.role}</span>
-          </div>
+          <div className={styles.headerSub}>{tree.employee.department ?? '—'}{position ? ` · ${position}` : ''}</div>
         </div>
       </div>
       <div className={styles.headerStats}>
         <div className={styles.headerStat}>
-          <div className={styles.headerStatValue} style={{ color: '#276247' }}>{accessible}</div>
-          <div className={styles.headerStatLabel}>Visible</div>
+          <div className={styles.headerStatValue}>{accessible}<small> / {offered.length}</small></div>
+          <div className={styles.headerStatLabel}>Can open</div>
         </div>
         <div className={styles.headerStat}>
-          <div className={styles.headerStatValue} style={{ color: '#4C5352' }}>{noAccess}</div>
-          <div className={styles.headerStatLabel}>Hidden</div>
+          <div className={styles.headerStatValue}>{authorities}</div>
+          <div className={styles.headerStatLabel}>Authorities</div>
+        </div>
+        <div className={styles.headerStat}>
+          <div className={styles.headerStatValue} style={{ fontSize: 14, paddingTop: 4 }}>{lastChange}</div>
+          <div className={styles.headerStatLabel}>Last change</div>
         </div>
       </div>
+      <div className={styles.headerRole}>
+        <span><b>System role</b></span>
+        <CcBadge tone={admin ? 'gray' : 'blue'}>{admin ? 'Administrator' : tree.employee.role === 'manager' ? 'Manager' : 'Member'}</CcBadge>
+        <span className={cc.muted}>{ROLE_HINT[tree.employee.role] ?? ''}</span>
+        <Link href="/admin/control-center/people" className={cc.linkBtn}>Change in Employees <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} /></Link>
+      </div>
+      {!admin && (
+        <div className={styles.headerActions}>
+          <button type="button" className="boe-btn boe-btn-ghost" onClick={onRemoveAll}>Remove all access</button>
+        </div>
+      )}
     </div>
-  )
-}
-
-// ── Module row ───────────────────────────────────────────────────────────────
-
-function ModuleRow({
-  mod, level, accessible, unsaved, locked, changeLocked, source, onToggle, open, onOpen,
-}: {
-  mod: ModuleState
-  level: AccessLevel
-  accessible: boolean
-  unsaved: boolean
-  /**
-   * True for a system Administrator — module ACCESS comes from their role, so
-   * the switch is read-only for them on every module without exception.
-   */
-  locked: boolean
-  /**
-   * Whether the Change level dialog is closed too. Separate from `locked`
-   * because a module may hold an action that IS editable on an administrator
-   * even though their module access is not — see adminEditableActions.
-   */
-  changeLocked: boolean
-  source: SourceSummary
-  onToggle: (on: boolean) => void
-  open: boolean
-  onOpen: () => void
-}) {
-  return (
-    <tr style={open ? { background: '#FBFAF8' } : undefined}>
-      <td>
-        <span style={{ fontWeight: 600 }}>{mod.displayName}</span>
-        {unsaved && <span className={styles.unsaved}>Unsaved</span>}
-      </td>
-      <td>
-        {/* ONE control, two halves. The switch says whether the module is on;
-            the level beside it says how much. Both write the same per-action
-            state, so there is no second setting to reconcile. */}
-        <label className={`${styles.switch}${locked ? ` ${styles.switchLocked}` : ''}`}>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={accessible}
-            disabled={locked}
-            onChange={e => onToggle(e.target.checked)}
-            aria-label={`Module access for ${mod.displayName}`}
-          />
-          <span className={`${styles.switchWord} ${accessible ? styles.switchOn : styles.switchOff}`}>
-            {accessible ? 'Visible' : 'Hidden'}
-          </span>
-        </label>
-      </td>
-      <td>{level === 'no_access' ? <span className={cc.faint}>—</span> : <AccessLevelBadge level={level} />}</td>
-      <td><SourceBadge summary={source} /></td>
-      <td className={cc.right}>
-        <button
-          type="button"
-          className={cc.linkBtn}
-          onClick={onOpen}
-          disabled={changeLocked}
-          aria-haspopup="dialog"
-          aria-label={`Change access level for ${mod.displayName}`}
-        >
-          {accessible ? 'Change level' : 'Choose level'}
-        </button>
-      </td>
-    </tr>
   )
 }
 
 // ── Attendance & Payroll ─────────────────────────────────────────────────────
 //
-// One row, deliberately read-only. See SELF_SERVICE_MODULE_KEYS.
+// One quiet row, deliberately read-only. Attendance and Payroll are two
+// permission modules wearing one name: the launcher shows them as a single
+// card, and their MANAGEMENT surface is admin-only by an explicit product
+// decision that no grant on this screen can change — see
+// SELF_SERVICE_MODULE_KEYS and resolveManagementAccess in src/lib/moduleAccess.ts.
+// Nothing on this page writes an attendance or payroll override.
 
 function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
   // An inert override would decide nothing today, but an administrator should
@@ -632,26 +315,23 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
   )
 
   return (
-    <tr>
-      <td>
-        <span style={{ fontWeight: 600 }}>{COMBINED_ATTENDANCE_PAYROLL_LABEL}</span>
-        <div className={cc.muted} style={{ fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>
-          Employees can view their own attendance and payroll and raise issues.
-          {' '}Management access is restricted to system administrators.
+    <div className={styles.mrow}>
+      <div>
+        <div className={styles.mrowName}><span className={styles.mrowIcon}><ModuleIcon moduleKey="attendance_payroll" size={17} /></span>Attendance &amp; Payroll</div>
+        <div className={styles.mrowDesc}>
+          Self-service: employees can view their own attendance and payroll and raise issues.
+          {' '}Management access is restricted to system administrators and cannot be granted here.
         </div>
         {strayOverrides.length > 0 && (
-          <div className={cc.note} style={{ marginTop: 8, fontSize: 12, color: '#805B0D', borderColor: '#F0C36D', background: '#FAF0DA', padding: '6px 10px' }}>
+          <div className={styles.rowNote} style={{ color: '#805B0D' }}>
             <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
             These grant nothing — management access is admin-only — and have been
             left exactly as they are.
           </div>
         )}
-      </td>
-      <td><CcBadge tone="blue">Self-service</CcBadge></td>
-      <td><span className={cc.faint}>—</span></td>
-      <td><CcBadge tone="gray">System role</CcBadge></td>
-      <td className={cc.right}><span className={cc.faint}>Admin only</span></td>
-    </tr>
+      </div>
+      <div className={styles.mrowRight}><CcBadge tone="blue">Self-service · own record</CcBadge></div>
+    </div>
   )
 }
 
@@ -670,6 +350,7 @@ function PermissionsPageInner() {
   const router   = useRouter()
   const pathname = usePathname()
   const employeeParam = useSearchParams().get('employee')
+  const invalidateMatrix = useInvalidateAccessMatrix()
 
   const [token,   setToken]   = useState('')
 
@@ -691,7 +372,10 @@ function PermissionsPageInner() {
   const [overrides,      setOverrides]      = useState<Map<string, OverrideChoice>>(new Map())
   const [initialOverrides, setInitialOverrides] = useState<Map<string, OverrideChoice>>(new Map())
 
-  const [changeModalModuleKey, setChangeModalModuleKey] = useState<string | null>(null)
+  const [pickerModuleKey, setPickerModuleKey] = useState<string | null>(null)
+  const [offConfirm, setOffConfirm] = useState<{ moduleKey: string; cleared: string[] } | null>(null)
+  const [removeAllConfirm, setRemoveAllConfirm] = useState<string[] | null>(null)
+  const [showClosed, setShowClosed] = useState(false)
 
   const [saving,   setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -736,6 +420,7 @@ function PermissionsPageInner() {
       m.full_name?.toLowerCase().includes(q) ||
       m.email?.toLowerCase().includes(q) ||
       deptLabel(m.team).toLowerCase().includes(q) ||
+      m.position?.toLowerCase().includes(q) ||
       m.role?.toLowerCase().includes(q)
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -744,9 +429,6 @@ function PermissionsPageInner() {
   // ── Load an employee's permission tree ──────────────────────────────────
   //
   // THE ONLY READ OF THE TREE ROUTE, and it happens when an employee is opened.
-  // The directory used to prefetch up to twenty trees on load to draw a
-  // decorative "x of y modules" beside each name; that counter is gone, and the
-  // workspace header states the same two numbers for the person who is open.
   const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
 
   async function selectEmployee(id: string) {
@@ -759,10 +441,12 @@ function PermissionsPageInner() {
     // employee's stored permissions are untouched by walking away.
     setSelectedEmployeeId(id)
     setSaveError('')
-    setChangeModalModuleKey(null)
-    // The selection is in the URL so it can be linked to (By Module's "Open"
-    // lands here) and survives a refresh. Replaced, not pushed: walking a
-    // directory is not a history of pages.
+    setPickerModuleKey(null)
+    setOffConfirm(null)
+    setRemoveAllConfirm(null)
+    // The selection is in the URL so it can be linked to (Modules' rows and
+    // the employee dialog land here) and survives a refresh. Replaced, not
+    // pushed: walking a directory is not a history of pages.
     router.replace(`${pathname}?employee=${id}`)
     await loadTree(id)
   }
@@ -788,51 +472,25 @@ function PermissionsPageInner() {
       }
       setInitialOverrides(initial)
       setOverrides(new Map(initial))
-      setChangeModalModuleKey(null)
+      setPickerModuleKey(null)
+      setOffConfirm(null)
     } finally {
       setTreeLoading(false)
     }
   }
 
-  function changeOverride(moduleKey: string, actionKey: string, choice: OverrideChoice) {
-    setOverrides(prev => {
-      const next = new Map(prev)
-      const mod = tree?.modules.find(item => item.moduleKey === moduleKey)
-      next.set(overrideKey(moduleKey, actionKey), choice)
-      if (!mod || choice === 'inherit') return next
-
-      const actionKeys = mod.actions.map(action => action.actionKey)
-      const effective = effectiveMapForModule(mod, prev)
-
-      if (choice === 'allow') {
-        for (const dependency of actionDependencyChain(actionKey)) {
-          if (actionKeys.includes(dependency) && effective[dependency] !== true) {
-            next.set(overrideKey(moduleKey, dependency), 'allow')
-          }
-        }
-      } else {
-        for (const dependent of dependentActionsToRemove(actionKey, actionKeys)) {
-          next.set(overrideKey(moduleKey, dependent), 'deny')
-        }
-      }
-
-      return next
-    })
-  }
-
   // The ONE place per-action override state is written.
   //
   // `deriveDesired` receives the module's current effective map — including any
-  // unsaved edits — and returns the intended one. Splitting "what do we want"
-  // from "how is it stored" is what lets the level buttons and the Module access
-  // switch share a write path while holding genuinely different intentions: a
-  // level states every action, the switch states only `view`.
+  // unsaved edits — and returns the intended one. The level control, the
+  // authority chips and the Off confirmation all go through here, so there is
+  // one write path and no second setting to reconcile. How each action's
+  // choice is decided is the shared rule in accessControlChanges.ts
+  // (choicesForDesired), which Modules and Authorities use too.
   //
   // The current map is read from `prev` INSIDE the updater rather than from the
   // `overrides` closure, so two edits applied in the same tick cannot read a
-  // stale map and undo one another. How each action's choice is decided is the
-  // shared rule in accessControlChanges.ts (choicesForDesired), which By Module
-  // uses too.
+  // stale map and undo one another.
   function applyDesiredActions(
     mod: ModuleState,
     deriveDesired: (current: Record<string, boolean>) => Record<string, boolean>,
@@ -847,51 +505,41 @@ function PermissionsPageInner() {
     })
   }
 
-  // Picking a standard level. A preset is a COMPLETE statement about the module,
-  // so it ignores what is currently held — that is the whole point of choosing
-  // "Viewer", and it is why moving somebody down to it revokes what they had.
-  function applyAccessLevel(mod: ModuleState, level: PresetLevel) {
-    const actionKeys = mod.actions.map(a => a.actionKey)
-    applyDesiredActions(mod, () => presetAllowedActions(level, actionKeys))
+  /**
+   * The level control. A level writes only the offered standard actions and
+   * KEEPS every authority (the owner's decision of 2026-10-29). Off is the one
+   * complete statement — every registered action false — and because that
+   * removes things it names them and waits.
+   */
+  function changeLevel(mod: ModuleState, level: OfferedLevel | 'off') {
+    const actionKeys = keysOf(mod)
+    if (level === 'off') {
+      const cleared = authoritiesClearedByOff(mod.moduleKey, actionKeys, effectiveMapForModule(mod, overrides))
+      if (cleared.length > 0) { setOffConfirm({ moduleKey: mod.moduleKey, cleared }); setPickerModuleKey(null); return }
+    }
+    applyDesiredActions(mod, current => desiredForLevel(mod.moduleKey, actionKeys, level, current))
+    setOffConfirm(null)
   }
 
-  /**
-   * Module access, on or off. The switch is NOT a second authority; it is a
-   * shortcut into the same per-action override state the level selector
-   * writes:
-   *
-   *   Off  →  no_access            (every action for this module set to deny)
-   *   On   →  enableModuleEntry    (`view` true, every other action untouched)
-   *
-   * THE TWO DIRECTIONS ARE NOT SYMMETRICAL, on purpose. OFF is a complete
-   * statement, so it applies the no_access preset, and because that removes
-   * things it asks first and names them. ON is the smallest possible statement
-   * — let this person in — and says nothing about what they may do once
-   * inside. It used to apply the Viewer preset, which wrote an explicit deny
-   * over every child action the employee held; that is what erased Aditya's
-   * Sample Tracking dispatch, receive and mark_lost in production. There is
-   * deliberately NO confirmation on ON: it removes nothing.
-   */
-  function toggleModuleAccess(mod: ModuleState, on: boolean) {
-    const actionKeys = mod.actions.map(a => a.actionKey)
+  function confirmOff(mod: ModuleState) {
+    applyDesiredActions(mod, current => desiredForLevel(mod.moduleKey, keysOf(mod), 'off', current))
+    setOffConfirm(null)
+  }
 
-    if (!on) {
-      const effective = effectiveMapForModule(mod, overrides)
-      const cleared = protectedActionsClearedByPreset('no_access', actionKeys, effective)
-      if (cleared.length > 0) {
-        const message =
-          `Turning off ${mod.displayName} will remove: ${protectedActionWords(cleared, mod.moduleKey)}.\n\n` +
-          'Continue?'
-        if (!window.confirm(message)) return
-      }
-      applyAccessLevel(mod, 'no_access')
-      return
-    }
+  function addAuthority(mod: ModuleState, actionKey: string) {
+    applyDesiredActions(mod, current => desiredWithAuthority(mod.moduleKey, keysOf(mod), actionKey, true, current))
+    setPickerModuleKey(null)
+  }
 
-    // Entry only. Every child action keeps exactly the value it already had, so
-    // an employee holding protected actions comes back as Custom rather than
-    // being flattened to Viewer.
-    applyDesiredActions(mod, current => enableModuleEntry(actionKeys, current))
+  function removeAuthority(mod: ModuleState, actionKey: string) {
+    applyDesiredActions(mod, current => desiredWithAuthority(mod.moduleKey, keysOf(mod), actionKey, false, current))
+  }
+
+  function removeAll(offered: ModuleState[]) {
+    const cleared = offered.flatMap(mod => authoritiesClearedByOff(mod.moduleKey, keysOf(mod), effectiveMapForModule(mod, overrides)))
+    if (cleared.length > 0 && removeAllConfirm === null) { setRemoveAllConfirm(cleared); return }
+    for (const mod of offered) applyDesiredActions(mod, current => desiredForLevel(mod.moduleKey, keysOf(mod), 'off', current))
+    setRemoveAllConfirm(null)
   }
 
   // A plain computation, not useMemo: it is one pass over a Map of a few dozen
@@ -903,10 +551,6 @@ function PermissionsPageInner() {
     if (initialOverrides.get(key) !== choice) { hasPendingChanges = true; break }
   }
   const dirty = hasPendingChanges
-
-  const changedModuleCount = tree
-    ? tree.modules.filter(mod => moduleIsDirty(mod, overrides, initialOverrides)).length
-    : 0
 
   // Refresh, tab close and browser Back. The listener is attached only while
   // there is something to lose and removed the moment the screen goes clean, so
@@ -933,6 +577,8 @@ function PermissionsPageInner() {
   function discardChanges() {
     setOverrides(new Map(initialOverrides))
     setSaveError('')
+    setOffConfirm(null)
+    setRemoveAllConfirm(null)
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────
@@ -945,7 +591,7 @@ function PermissionsPageInner() {
       for (const action of mod.actions) {
         // A system Administrator's authority comes from users.role for every
         // action EXCEPT the ones with a permission-only door in the database
-        // (today: orders.approve_order). The grid is disabled for the rest,
+        // (today: orders.approve_order). The controls are locked for the rest,
         // and this is the second gate: nothing else is even put in the
         // request, so a bypassed UI still sends only what can take effect.
         if (admin && !isAdminEditableAction(mod.moduleKey, action.actionKey)) continue
@@ -973,6 +619,8 @@ function PermissionsPageInner() {
       if (!res.ok) { setSaveError(json.error ?? 'Save failed'); return }
 
       await loadTree(selectedEmployeeId)
+      // Modules and Authorities read the matrix; the next look must be fresh.
+      await invalidateMatrix()
     } finally {
       setSaving(false)
     }
@@ -982,142 +630,241 @@ function PermissionsPageInner() {
 
   if (loading) return <ControlCenterSkeleton />
 
-  const changeModalModule = changeModalModuleKey
-    ? tree?.modules.find(m => m.moduleKey === changeModalModuleKey) ?? null
-    : null
-
   const adminLocked = isSystemAdmin(tree)
   const selfServiceModules = tree?.modules.filter(m => isSelfServiceModuleKey(m.moduleKey)) ?? []
-  const editableModules = tree?.modules.filter(m => !isSelfServiceModuleKey(m.moduleKey)) ?? []
+  // Attendance & Payroll are never granted here; Employee Records only on an
+  // Administrator (the owner's decision of 2026-10-29). See accessCatalog.ts.
+  const offeredModules = tree?.modules.filter(m => isModuleOfferedTo(m.moduleKey, tree.employee.role)) ?? []
+  const openModules = adminLocked ? offeredModules : offeredModules.filter(mod => moduleIsAccessible(mod, overrides))
+  const closedModules = adminLocked ? [] : offeredModules.filter(mod => !moduleIsAccessible(mod, overrides))
+  const selectedMember = members.find(m => m.id === selectedEmployeeId) ?? null
+
+  const changeList = tree
+    ? offeredModules
+        .filter(mod => moduleIsDirty(mod, overrides, initialOverrides))
+        .map(mod => describeChange(mod.moduleKey, mod.displayName, keysOf(mod), baseMapForModule(mod), effectiveMapForModule(mod, overrides)))
+    : []
+  const changedModuleCount = changeList.length
 
   return (
-    <>
-      <div className={styles.layout}>
+    <div className={styles.layout}>
 
-        <EmployeePanel
-          search={search}
-          onSearchChange={setSearch}
-          results={searchResults}
-          selectedEmployeeId={selectedEmployeeId}
-          onSelect={selectEmployee}
-          deptLabel={deptLabel}
-        />
+      <EmployeePanel
+        search={search}
+        onSearchChange={setSearch}
+        results={searchResults}
+        selectedEmployeeId={selectedEmployeeId}
+        onSelect={selectEmployee}
+        deptLabel={deptLabel}
+      />
 
-        <div className={styles.workspace}>
-          {!selectedEmployeeId && (
-            <CcEmpty
-              message="Select an employee to see and change what they can access."
-              hint="Or look at one module across everyone under Access › By Module."
+      <div className={styles.workspace}>
+        {!selectedEmployeeId && (
+          <CcEmpty
+            message="Select an employee to see and change what they can access."
+            hint="Or look at one module across everyone under Access › Modules, or every decision under Authorities."
+          />
+        )}
+
+        {selectedEmployeeId && treeLoading && <ControlCenterSkeleton />}
+
+        {selectedEmployeeId && !treeLoading && treeError && (
+          <div className={cc.error}>{treeError}</div>
+        )}
+
+        {selectedEmployeeId && !treeLoading && tree && (
+          <>
+            <WorkspaceHeader
+              tree={tree}
+              overrides={overrides}
+              position={selectedMember?.position ?? null}
+              offered={offeredModules}
+              onRemoveAll={() => removeAll(offeredModules)}
             />
-          )}
 
-          {selectedEmployeeId && treeLoading && <ControlCenterSkeleton />}
+            {removeAllConfirm && (
+              <OffConfirm
+                moduleName="every module"
+                personName={tree.employee.name}
+                cleared={removeAllConfirm}
+                onConfirm={() => removeAll(offeredModules)}
+                onCancel={() => setRemoveAllConfirm(null)}
+              />
+            )}
 
-          {selectedEmployeeId && !treeLoading && treeError && (
-            <div className={cc.error}>{treeError}</div>
-          )}
+            {adminLocked && (
+              <AlertBanner variant="amber">
+                <strong>System Administrator.</strong> Module access is controlled by
+                this person&apos;s system role, not by the settings below. An override
+                saved here could neither add to their authority nor reduce it,
+                except for the authorities granted per person (such as
+                Approve PI / Confirm Order), which can be given to, and taken back
+                from, an administrator like anybody else.
+              </AlertBanner>
+            )}
 
-          {selectedEmployeeId && !treeLoading && tree && (
-            <>
-              <WorkspaceHeader tree={tree} overrides={overrides} />
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionTitle}>Can open <small>{openModules.length}</small></span>
+              <span className={styles.sectionDesc}>One control per module: Off, or how much they can do. Authorities are the decisions this person holds.</span>
+            </div>
 
-              {adminLocked && (
-                <div style={{ marginBottom: 12 }}>
-                  <AlertBanner variant="amber">
-                    <strong>System Administrator.</strong> Module access is controlled by
-                    this person&apos;s system role, not by the settings below. An override
-                    saved here could neither add to their authority nor reduce it —
-                    with one exception. <strong>Order Approval</strong> (under Order
-                    Management → Change level → Custom) is granted per person and
-                    never by the system role, so it can be given to, and taken back
-                    from, an administrator like anybody else.
-                  </AlertBanner>
-                </div>
-              )}
-
-              <CcTable>
-                <thead>
-                  <tr>
-                    <th>Module</th>
-                    <th>Access</th>
-                    <th>Level</th>
-                    <th>Source</th>
-                    <th className={cc.right}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {editableModules.map(mod => {
-                    const effective = effectiveMapForModule(mod, overrides)
-                    const level = detectAccessLevel(mod, effective)
-                    const accessible = moduleIsAccessible(mod, overrides)
-                    const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
-                    const source = summarizeSource(mod, actionKey => overrides.get(overrideKey(mod.moduleKey, actionKey)) ?? 'inherit')
-                    return (
-                      <ModuleRow
-                        key={mod.moduleKey}
-                        mod={mod}
+            <div className={styles.cards}>
+              {openModules.map(mod => {
+                const actionKeys = keysOf(mod)
+                const effective = effectiveMapForModule(mod, overrides)
+                const base = baseMapForModule(mod)
+                const level = adminLocked ? 'viewer' : detectOfferedLevel(mod.moduleKey, actionKeys, effective)
+                const words = moduleWords(mod.moduleKey)
+                const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
+                const hasAuthorities = authoritiesFor(mod.moduleKey, actionKeys).some(a => !adminLocked || a.perPerson)
+                return (
+                  <div key={mod.moduleKey} className={`${styles.mrow}${unsaved ? ` ${styles.mrowChanged}` : ''}`}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className={styles.mrowName}>
+                        <span className={styles.mrowIcon}><ModuleIcon moduleKey={mod.moduleKey} size={17} /></span>
+                        {mod.displayName}
+                        {unsaved && <span className={styles.unsaved}>Unsaved</span>}
+                      </div>
+                      <div className={styles.mrowDesc}>
+                        {adminLocked ? 'Everything, by role.' : levelSentence(mod.moduleKey, actionKeys, level)}
+                      </div>
+                      {words?.note && <div className={styles.rowNote}>{words.note}</div>}
+                    </div>
+                    <div className={styles.mrowRight}>
+                      <LevelControl
+                        moduleKey={mod.moduleKey}
+                        moduleName={mod.displayName}
+                        personName={tree.employee.name}
+                        actionKeys={actionKeys}
                         level={level}
-                        accessible={accessible}
-                        unsaved={unsaved}
                         locked={adminLocked}
-                        changeLocked={adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)}
-                        source={source}
-                        onToggle={on => toggleModuleAccess(mod, on)}
-                        open={changeModalModuleKey === mod.moduleKey}
-                        onOpen={() => {
-                          if (adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)) return
-                          setChangeModalModuleKey(mod.moduleKey)
-                        }}
+                        onChange={lv => changeLevel(mod, lv)}
                       />
-                    )
-                  })}
-                  {/* Attendance & Payroll is one row, and it is not editable —
-                      see SELF_SERVICE_MODULE_KEYS above. It is rendered from the
-                      two underlying modules but writes neither. */}
-                  {selfServiceModules.length > 0 && (
-                  <AttendancePayrollCard modules={selfServiceModules} />
-                  )}
-                </tbody>
-              </CcTable>
+                      <div className={styles.setBy}>
+                        {setByText(mod.actions, entryActionFor(mod), tree.employee.role, { defaultOn: words?.defaultOn, unsaved })}
+                      </div>
+                    </div>
+                    {hasAuthorities && (
+                      <div className={styles.mrowAuth}>
+                        <span className={styles.mrowAuthLabel}>Authorities</span>
+                        <AuthorityChips
+                          moduleKey={mod.moduleKey}
+                          actionKeys={actionKeys}
+                          effective={effective}
+                          baseEffective={base}
+                          locked={adminLocked}
+                          perPersonOnly={adminLocked}
+                          canAdd
+                          pickerOpen={pickerModuleKey === mod.moduleKey}
+                          onRemove={actionKey => removeAuthority(mod, actionKey)}
+                          onOpenPicker={() => { setPickerModuleKey(k => k === mod.moduleKey ? null : mod.moduleKey); setOffConfirm(null) }}
+                        />
+                        {adminLocked && heldAuthorities(mod.moduleKey, actionKeys, effective).filter(a => a.perPerson).length === 0 && adminEditableActions(mod.moduleKey).length > 0 && (
+                          <span className={cc.muted} style={{ fontSize: 12 }}>Granted per person, Administrators included.</span>
+                        )}
+                      </div>
+                    )}
+                    {words?.related && !adminLocked && (
+                      <div className={styles.mrowRelated}>
+                        {words.related.map(r => (
+                          <span key={r.href}>{r.label}: <Link href={r.href}>{r.where}</Link></span>
+                        ))}
+                      </div>
+                    )}
+                    {pickerModuleKey === mod.moduleKey && (
+                      <div className={styles.mrowWide}>
+                        <AuthorityPicker
+                          moduleKey={mod.moduleKey}
+                          moduleName={mod.displayName}
+                          personName={tree.employee.name}
+                          actionKeys={actionKeys}
+                          effective={effective}
+                          perPersonOnly={adminLocked}
+                          onAdd={a => addAuthority(mod, a.actionKey)}
+                          onClose={() => setPickerModuleKey(null)}
+                        />
+                      </div>
+                    )}
+                    {offConfirm?.moduleKey === mod.moduleKey && (
+                      <div className={styles.mrowWide}>
+                        <OffConfirm
+                          moduleName={mod.displayName}
+                          personName={tree.employee.name}
+                          cleared={offConfirm.cleared}
+                          onConfirm={() => confirmOff(mod)}
+                          onCancel={() => setOffConfirm(null)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
-              <div className={cc.muted} style={{ fontSize: 12, marginTop: 8 }}>
-                Visible means this person can open the module. The level says how much they can do inside it; Custom keeps individually chosen permissions.
-                {' '}<Link href="/admin/control-center/permissions/modules" className={cc.linkBtn}>See one module across everyone <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} /></Link>
-              </div>
+              {/* Attendance & Payroll is one row, and it is not editable. It is
+                  rendered from the two underlying modules but writes neither. */}
+              {selfServiceModules.length > 0 && (
+                <AttendancePayrollCard modules={selfServiceModules} />
+              )}
+            </div>
 
-              {/* ── Save bar ──────────────────────────────────────────────── */}
-              <div className={styles.saveBar}>
-                <span className={styles.saveBarText}>
-                  {dirty
-                    ? `${changedModuleCount} ${changedModuleCount === 1 ? 'module' : 'modules'} changed · not saved yet`
-                    : 'No unsaved changes'}
-                </span>
-                {saveError && <span className={cc.error} style={{ marginTop: 0 }}>{saveError}</span>}
-                <span className={styles.saveBarSpacer} />
-                <button className="boe-btn boe-btn-ghost" onClick={discardChanges} disabled={!dirty || saving}>
-                  Discard
-                </button>
-                <button className="boe-btn boe-btn-primary" onClick={save} disabled={!dirty || saving}>
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
+            {closedModules.length > 0 && (
+              <>
+                <div className={styles.sectionHead}>
+                  <span className={styles.sectionTitle}>Cannot open <small>{closedModules.length}</small></span>
+                  <button type="button" className={cc.linkBtn} onClick={() => setShowClosed(s => !s)}>
+                    {showClosed ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {showClosed && (
+                  <div className={styles.closed}>
+                    {closedModules.map(mod => {
+                      const actionKeys = keysOf(mod)
+                      const levels = offeredLevels(mod.moduleKey, actionKeys)
+                      return (
+                        <div key={mod.moduleKey} className={styles.closedRow}>
+                          <span className={styles.closedName}>
+                            <span className={styles.rowIcon}><ModuleIcon moduleKey={mod.moduleKey} size={15} /></span>
+                            {mod.displayName}
+                          </span>
+                          <span className={styles.closedDesc}>{moduleWords(mod.moduleKey)?.blurb ?? ''}</span>
+                          <select
+                            className={cc.control}
+                            value=""
+                            aria-label={`Give access to ${mod.displayName}`}
+                            onChange={e => { if (e.target.value) changeLevel(mod, e.target.value as OfferedLevel) }}
+                          >
+                            <option value="">Give access…</option>
+                            {levels.map(l => <option key={l} value={l}>{levelLabel(mod.moduleKey, actionKeys, l)}</option>)}
+                          </select>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── Save bar ──────────────────────────────────────────────── */}
+            <div className={styles.saveBar}>
+              <div className={styles.saveBarText}>
+                {dirty
+                  ? <>
+                      <b>{changedModuleCount} {changedModuleCount === 1 ? 'module' : 'modules'} changed</b> · not saved yet
+                      <ul className={styles.saveBarList}>{changeList.map(t => <li key={t}>{t}</li>)}</ul>
+                    </>
+                  : 'No unsaved changes'}
               </div>
-            </>
-          )}
-        </div>
+              {saveError && <span className={cc.error} style={{ marginTop: 0 }}>{saveError}</span>}
+              <button className="boe-btn boe-btn-ghost" onClick={discardChanges} disabled={!dirty || saving}>
+                Discard
+              </button>
+              <button className="boe-btn boe-btn-primary" onClick={save} disabled={!dirty || saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
-
-      {/* ── Change Access dialog ───────────────────────────────────────────── */}
-      {changeModalModule && (
-        <ChangeAccessModal
-          mod={changeModalModule}
-          currentLevel={detectAccessLevel(changeModalModule, effectiveMapForModule(changeModalModule, overrides))}
-          getChoice={actionKey => overrides.get(overrideKey(changeModalModule.moduleKey, actionKey)) ?? 'inherit'}
-          onChangeAction={(actionKey, choice) => changeOverride(changeModalModule.moduleKey, actionKey, choice)}
-          onApplyLevel={level => applyAccessLevel(changeModalModule, level)}
-          onClose={() => setChangeModalModuleKey(null)}
-          adminOnlyActions={adminLocked ? adminEditableActions(changeModalModule.moduleKey) : null}
-        />
-      )}
-    </>
+    </div>
   )
 }

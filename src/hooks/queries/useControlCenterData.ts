@@ -173,12 +173,14 @@ export function useControlCenterCache() {
   }), [queryClient, userId])
 }
 
-// ── Access Control reads ─────────────────────────────────────────────────────
+// ── Access reads ─────────────────────────────────────────────────────────────
 //
-// The registered modules (for the By Module list) and the per-module access
-// matrix. Both are admin-gated GETs with the same bearer-token auth as above;
-// the matrix is refetched after a save so a level shown is always the
-// resolver's answer, never a guess.
+// The registered modules and the access matrix — every employee across every
+// active module, with who set each override and when. Both are admin-gated
+// GETs with the same bearer-token auth as above; the matrix is one request
+// for the whole Access hub (Modules and Authorities read it) and is
+// invalidated after a save so a level shown is always the resolver's answer,
+// never a guess.
 
 
 export type PermissionModuleRef = {
@@ -188,24 +190,29 @@ export type PermissionModuleRef = {
   actions: { actionKey: string; displayName: string }[]
 }
 
-export type ModuleMatrixEmployee = {
+/** One action as the matrix reports it: the resolver's answer plus provenance. */
+export type MatrixAction = ResolvedAction & {
+  /** Set only when the effective value comes from an active employee override. */
+  grantedBy: { id: string; name: string | null } | null
+  grantedAt: string | null
+}
+
+export type AccessMatrixEmployee = {
   id: string
   name: string
-  email: string
   role: string
   team: string | null
   is_active: boolean
-  actions: ResolvedAction[]
+  modules: Record<string, MatrixAction[]>
 }
 
-export type ModuleMatrix = {
-  module: { moduleKey: string; displayName: string; actions: { actionKey: string; displayName: string }[] }
-  employees: ModuleMatrixEmployee[]
+export type AccessMatrix = {
+  modules: PermissionModuleRef[]
+  employees: AccessMatrixEmployee[]
 }
 
 export const permissionModulesKey = (userId: string) => ['control-center', 'permission-modules', userId] as const
-export const moduleMatrixKey = (userId: string, moduleKey: string) =>
-  ['control-center', 'module-matrix', userId, moduleKey] as const
+export const accessMatrixKey = (userId: string) => ['control-center', 'access-matrix', userId] as const
 
 export const NO_PERMISSION_MODULES: PermissionModuleRef[] = []
 
@@ -254,12 +261,19 @@ export function useModuleTeamAccess(moduleKey: string | null) {
   })
 }
 
-export function useModuleAccessMatrix(moduleKey: string | null) {
+/** Everyone across every module — Control Center › Access › Modules and › Authorities. */
+export function useAccessMatrix() {
   const { userId } = useControlCenterSession()
-  return useQuery<ModuleMatrix>({
-    queryKey: moduleMatrixKey(userId, moduleKey ?? ''),
-    enabled: !!moduleKey,
-    queryFn: () => adminGetJson<ModuleMatrix>(`/api/control-center/permissions/modules/${moduleKey}/employees`),
+  return useQuery<AccessMatrix>({
+    queryKey: accessMatrixKey(userId),
+    queryFn: () => adminGetJson<AccessMatrix>('/api/control-center/permissions/matrix'),
     staleTime: CONTROL_CENTER_STALE_MS,
   })
+}
+
+/** After a save: the next read of the matrix is the resolver's fresh answer. */
+export function useInvalidateAccessMatrix() {
+  const { userId } = useControlCenterSession()
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: accessMatrixKey(userId) })
 }

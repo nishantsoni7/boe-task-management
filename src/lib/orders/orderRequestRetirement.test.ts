@@ -571,12 +571,18 @@ describe('a retired route lands somewhere sensible', () => {
 // ══ 5. Access Control no longer offers the retired actions ════════════════════
 
 describe('Access Control no longer shows the retired options', () => {
-  test('the Orders module registers neither approve nor can_be_order_assignee', () => {
+  // `approve` stays unregistered: it meant "convert an Order Request" and
+  // nothing reads it. `can_be_order_assignee` is DIFFERENT — the owner
+  // re-registered it on 2026-10-29 under the meaning the database still gives
+  // it (is_eligible_order_assignee: sales-candidate standing for Order
+  // Visibility and the salesperson dashboards). It is never offered under its
+  // old "assignee" wording.
+  test('the Orders module registers no approve action; the candidate key is back under its honest name', () => {
     const modules = read('src/lib/permissions/modules.ts')
     const orders = modules.slice(modules.indexOf("moduleKey: 'orders'"))
       .slice(0, modules.slice(modules.indexOf("moduleKey: 'orders'")).indexOf('})'))
     assert.equal(/actionKey: 'approve'\s*,/.test(orders), false)
-    assert.equal(orders.includes("actionKey: 'can_be_order_assignee'"), false)
+    assert.ok(orders.includes("actionKey: 'can_be_order_assignee', displayName: 'Counts as a sales candidate'"))
     // The live review authority is still there.
     assert.ok(orders.includes("actionKey: 'approve_order'"))
   })
@@ -584,13 +590,15 @@ describe('Access Control no longer shows the retired options', () => {
   test('the permissions screen has no label for an option it cannot offer', () => {
     const page = read('src/app/admin/control-center/permissions/page.tsx')
     assert.equal(page.includes("can_be_order_assignee: 'Be an order assignee'"), false)
+    const words = read('src/lib/permissions/accessControlChanges.ts')
+    assert.equal(/can_be_order_assignee:\s*'Be an order assignee'/.test(words), false)
   })
 
-  test('the enforcement register no longer claims either action is enforced', () => {
+  test('the enforcement register claims the candidate key and never approve', () => {
     const enforcement = read('src/lib/permissions/enforcement.ts')
     const orders = enforcement.slice(enforcement.indexOf('orders: {'))
       .slice(0, enforcement.slice(enforcement.indexOf('orders: {')).indexOf('},'))
-    assert.equal(orders.includes("'can_be_order_assignee'"), false)
+    assert.ok(orders.includes("'can_be_order_assignee'"))
     assert.equal(/'approve'/.test(orders), false)
     assert.ok(orders.includes("'approve_order'"))
   })
