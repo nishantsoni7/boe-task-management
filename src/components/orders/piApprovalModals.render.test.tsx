@@ -30,7 +30,6 @@ import {
 } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import {
   ORDER_CONFIRMATION_LABEL,
-  ORDER_CONFIRMATION_MESSAGE,
   matchWorkbookSalesperson,
   salespersonSelectorNote,
   validateOrderConfirmation,
