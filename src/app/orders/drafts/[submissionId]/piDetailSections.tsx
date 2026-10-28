@@ -24,6 +24,9 @@ import {
   ThumbsUp, Undo2, Upload, User,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
+import { OrderDatesTimelineCard, OrderTypeValue, ORDER_TYPE_STAGE_LABEL } from '@/app/orders/[id]/OrderRedesign'
+import type { OrderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
+import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
@@ -146,7 +149,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
 /** The three groups' own labels. */
 export const TOP_ORDER_LABEL = 'Order'
 export const TOP_CLIENT_LABEL = 'Client'
-export const TOP_SALES_LABEL = 'Sales and dates'
+export const TOP_DATES_LABEL = 'Dates'
 
 /**
  * THE PI AT A GLANCE, in ONE card of three groups read left to right:
@@ -157,9 +160,10 @@ export const TOP_SALES_LABEL = 'Sales and dates'
  *                    one already allotted), with the status badge and where the
  *                    PI stands with management;
  *   CLIENT           the client's name — which opens the contact dialog — then
- *                    the client's own contact and location, and nothing of BOE's;
- *   SALES AND DATES  the salesperson, who submitted it and when it was created,
- *                    and the two internal dates.
+ *                    the client's own contact and location; under a rule, BOE's
+ *                    side: the salesperson, who submitted it, and the Order type;
+ *   DATES            Confirmed, PI uploaded, Approved and Due as the Order
+ *                    page's timeline, with the delay in uploading flagged.
  *
  * Three columns with a hairline between them on a wide column; stacked in that
  * same reading order, a rule above each, on a phone — the `pi-detail-top`
@@ -180,6 +184,7 @@ export function PiTopCard({
   client, onOpenClient, workbookName,
   canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
   dates, dateNotes = [],
+  sampleType, timeline, overdue, uploadedOn, approvedOn,
 }: {
   reservation: ReservationView
   /** The Confirmed Order's number, once there is one and this viewer can read it. */
@@ -211,12 +216,23 @@ export function PiTopCard({
   dates: readonly DateSummary[]
   /** Where the app's dates and the uploaded workbook's disagree, said under the dates. */
   dateNotes?: readonly string[]
+  /** The PI's order type choice; null = a full order. */
+  sampleType: SampleType | null
+  /** The Order page's own day arithmetic over confirm, upload and due. */
+  timeline: OrderDatesTimeline
+  overdue: boolean
+  /** When the PI was first uploaded, already formatted, or null. */
+  uploadedOn: string | null
+  /** When management approved it, already formatted, or null while it is awaited. */
+  approvedOn: string | null
 }) {
   const number = reservation.number
   const headline = orderHeadline({ reservation, confirmedNumber, draftReference })
   // SELECTION, NOT RESOLUTION: buildClientDetails already decided which stored
   // number is the client's and whether it can be dialled.
   const contact = clientContactText(client)
+  const confirmDate = dates.find(d => d.key === 'confirmed')
+  const dueDate = dates.find(d => d.key === 'due')
   return (
     <PiCard>
       {/* ── What is still missing, and the way to fix it ── */}
@@ -391,59 +407,78 @@ export function PiTopCard({
                 <span className="pi-detail-summary-file-name">{workbookName}</span>
               </span>
             )}
+
+            {/* ── BOE'S SIDE, under a rule: who the PI is from and what kind of
+                Order it is. The submitter is NOT the salesperson — two labels,
+                two people. ── */}
+            <div className="pi-detail-sales-block">
+              <div className="pi-detail-context-who">
+                <span className="pi-detail-context-who-label">{WORKBOOK_SALESPERSON_LABEL}</span>
+                {context.salesperson ? (
+                  <span className="pi-detail-context-name">{context.salesperson}</span>
+                ) : (
+                  <span className="pi-detail-context-absent">{context.salespersonAbsent}</span>
+                )}
+              </div>
+
+              <div className="pi-detail-context-meta">
+                {context.submittedAt ? (
+                  <div className="pi-detail-context-note">
+                    {SUBMITTED_BY_LABEL}{' '}
+                    <span className="pi-detail-context-meta-name">{context.submittedBy ?? 'A colleague'}</span>
+                    <span className="pi-detail-context-when"> · {context.submittedAt}</span>
+                  </div>
+                ) : (
+                  <div className="pi-detail-context-note">{NOT_SUBMITTED_TEXT}</div>
+                )}
+                {context.createdOn && (
+                  <div className="pi-detail-context-note">
+                    {CREATED_LABEL}{' '}
+                    <span className="pi-detail-context-meta-name">{context.createdOn}</span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="pi-detail-ordertype"
+                title={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : undefined}
+              >
+                <span className="pi-detail-context-who-label">{ORDER_TYPE_STAGE_LABEL}</span>
+                <OrderTypeValue
+                  isSample={sampleType === 'sample_order'}
+                  fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
+                />
+              </div>
+            </div>
           </section>
 
-          {/* ══ SALES AND DATES ══ who the PI is from, then when it moves. The
-              submitter is NOT the salesperson — two labels, two people. */}
-          <section className="pi-detail-context-cell" aria-label={TOP_SALES_LABEL}>
+          {/* ══ DATES ══ the Order page's timeline, and nothing else: Confirmed,
+              PI uploaded (flagged when it came late), Approved, Due. */}
+          <section className="pi-detail-context-cell" aria-label={TOP_DATES_LABEL}>
             <div className="pi-detail-context-label">
               <Clock size={12} strokeWidth={2.2} aria-hidden="true" />
-              {TOP_SALES_LABEL}
+              {TOP_DATES_LABEL}
             </div>
 
-            <div className="pi-detail-context-who">
-              <span className="pi-detail-context-who-label">{WORKBOOK_SALESPERSON_LABEL}</span>
-              {context.salesperson ? (
-                <span className="pi-detail-context-name">{context.salesperson}</span>
-              ) : (
-                <span className="pi-detail-context-absent">{context.salespersonAbsent}</span>
-              )}
-            </div>
-
-            <div className="pi-detail-context-meta">
-              {context.submittedAt ? (
-                <div className="pi-detail-context-note">
-                  {SUBMITTED_BY_LABEL}{' '}
-                  <span className="pi-detail-context-meta-name">{context.submittedBy ?? 'A colleague'}</span>
-                  <span className="pi-detail-context-when"> · {context.submittedAt}</span>
-                </div>
-              ) : (
-                <div className="pi-detail-context-note">{NOT_SUBMITTED_TEXT}</div>
-              )}
-              {context.createdOn && (
-                <div className="pi-detail-context-note">
-                  {CREATED_LABEL}{' '}
-                  <span className="pi-detail-context-meta-name">{context.createdOn}</span>
-                </div>
-              )}
-            </div>
-
-            {/* The two internal dates, in a band of their own. Never printed on
-                the client PI. */}
+            {/* The internal dates, never printed on the client PI. */}
             <section className="pi-detail-dates" aria-label="Order dates">
-              <div className="pi-detail-dates-grid">
-                {dates.map(date => (
-                  <div key={date.key} className="pi-detail-date">
-                    <div className="pi-detail-date-label">{date.label}</div>
-                    {date.value ? (
-                      <div className="pi-detail-date-value">{date.value}</div>
-                    ) : (
-                      <div className={date.pending ? 'pi-detail-date-pending' : 'pi-detail-date-absent'}>{date.absent}</div>
-                    )}
-                    {date.note && <div className="pi-detail-date-note">{date.note}</div>}
-                  </div>
-                ))}
-              </div>
+              <OrderDatesTimelineCard
+                bare
+                title="Order dates"
+                confirm={confirmDate?.value ?? null}
+                upload={uploadedOn}
+                approved={approvedOn}
+                due={dueDate?.value ?? null}
+                timeline={timeline}
+                overdue={overdue}
+                absent={{
+                  confirm: confirmDate?.absent,
+                  due: dueDate?.absent,
+                  // A draft has not been uploaded for approval yet; the stored upload date is always there.
+                  upload: 'Not available',
+                }}
+                dueNote={dueDate?.note ?? null}
+              />
               {dateNotes.map(note => (
                 <p key={note} className="pi-detail-dates-workbook">{note}</p>
               ))}

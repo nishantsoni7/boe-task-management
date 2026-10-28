@@ -109,6 +109,7 @@ import {
   type OrderDetailsRow,
   type SalesDetails,
 } from '@/lib/orders/salesOrderDetails'
+import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { AmountMaskRegion, AmountsToggle, useAmountsHidden } from '@/components/orders/AmountMask'
 import {
   PiCompletionFacts,
@@ -2177,6 +2178,15 @@ function PiDraftDetailPageInner() {
     beforeSubmission: submission.status === 'draft' || submission.status === 'needs_changes',
   })
 
+  // THE DATES TIMELINE, the Order page's own arithmetic over the stored dates:
+  // confirm and due are the app dates; the upload is when this PI first reached
+  // the app; approval is the final approval, awaited until it happens.
+  const datesTimeline = orderDatesTimeline({
+    confirmDate: submission.order_confirmation_date,
+    uploadedAt: submission.created_at,
+    dueDate: submission.due_date,
+  })
+
   /**
    * The commercial rows, built ONCE and shared.
    *
@@ -2526,7 +2536,7 @@ function PiDraftDetailPageInner() {
         )}
 
         {/* ── 1. The top card ──
-            Order | Client | Sales and dates: three groups in one card on a
+            Order | Client | Dates: three groups in one card on a
             wide column, stacked in that order on a phone, and the first thing
             under any save banner. Edit PI is in the header, top right. */}
         <PiTopCard
@@ -2568,6 +2578,11 @@ function PiDraftDetailPageInner() {
              confirmed app dates (order_confirmation_date, due_date); where the
              workbook disagrees, it is said under them. Never on a client document. */
           dateNotes={workbookDateNotes(submission)}
+          sampleType={salesDetails.sample_type}
+          timeline={datesTimeline}
+          overdue={datesTimeline.daysToDue !== null && datesTimeline.daysToDue < 0}
+          uploadedOn={submission.created_at ? formatSavedAt(submission.created_at) : null}
+          approvedOn={submission.approved_at ? formatSavedAt(submission.approved_at) : null}
         />
         {/* Edit PI is a page now (/orders/drafts/[submissionId]/edit-pi); it
             returns here, and this page reads the draft afresh on arrival. */}

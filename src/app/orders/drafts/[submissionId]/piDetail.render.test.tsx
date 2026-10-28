@@ -43,7 +43,7 @@ import {
   PiTopCard,
   TOP_CLIENT_LABEL,
   TOP_ORDER_LABEL,
-  TOP_SALES_LABEL,
+  TOP_DATES_LABEL,
   PiLowerGrid,
   PiPaymentStatusCard,
   PiPaymentStatusCardView,
@@ -89,6 +89,7 @@ import {
 } from './piDetailView'
 // The top card labels the PI workbook's name, not the Order's assigned salesperson (#259).
 import { WORKBOOK_SALESPERSON_LABEL as SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
+import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { RESERVE_ACTION_LABEL, type ReservationView } from '@/lib/orders/orderNumberReservation'
 import {
   APPROVED_ORDER_HEADING,
@@ -422,9 +423,15 @@ type TopOver = {
   missingSummary?: string | null
   workbookName?: string | null
   dateNotes?: readonly string[]
+  sampleType?: 'sampling_needed' | 'sample_order' | null
+  confirmDate?: string | null
+  uploadedAt?: string | null
+  dueDate?: string | null
+  overdue?: boolean
+  approvedOn?: string | null
 }
 
-/** THE TOP CARD: Order | Client | Sales and dates. */
+/** THE TOP CARD: Order | Client | Dates. */
 const topHtml = (over: TopOver = {}) => {
   const status = over.status ?? 'submitted'
   return renderToStaticMarkup(
@@ -456,6 +463,16 @@ const topHtml = (over: TopOver = {}) => {
       missingSummary={over.missingSummary ?? null}
       dates={over.dates ?? buildDateSummary({ confirmed: over.confirmed === undefined ? '31 Jan 2026' : over.confirmed })}
       dateNotes={over.dateNotes}
+      sampleType={over.sampleType ?? null}
+      timeline={orderDatesTimeline({
+        confirmDate: over.confirmDate === undefined ? '2026-01-31' : over.confirmDate,
+        uploadedAt: over.uploadedAt === undefined ? '2026-02-03T05:00:00Z' : over.uploadedAt,
+        dueDate: over.dueDate === undefined ? '2026-03-25' : over.dueDate,
+        now: new Date('2026-02-10T05:00:00Z'),
+      })}
+      overdue={over.overdue ?? false}
+      uploadedOn={over.uploadedAt === null ? null : '03 Feb 2026, 10:30 am'}
+      approvedOn={over.approvedOn ?? null}
     />,
   )
 }
@@ -468,17 +485,29 @@ const groupOf = (html: string, label: string): string => {
   const next = html.indexOf('class="pi-detail-context-cell"', start)
   return html.slice(start, next === -1 ? undefined : next)
 }
-/** The Client group alone — the client, and nothing of BOE's. */
-const clientHtml = (over: TopOver = {}) => groupOf(topHtml(over), TOP_CLIENT_LABEL)
+/** The client's own part of the Client group — the client, and nothing of BOE's
+ *  (BOE's side sits under a rule in the same column: salesperson, Order type). */
+const clientHtml = (over: TopOver = {}) => {
+  const group = groupOf(topHtml(over), TOP_CLIENT_LABEL)
+  const boe = group.indexOf('class="pi-detail-sales-block"')
+  return boe === -1 ? group : group.slice(0, boe)
+}
+/** BOE's side of the Client column: salesperson, submitter and Order type. */
+const salesBlockHtml = (over: TopOver = {}) => {
+  const group = groupOf(topHtml(over), TOP_CLIENT_LABEL)
+  const boe = group.indexOf('class="pi-detail-sales-block"')
+  assert.notEqual(boe, -1, 'the salesperson block is in the Client column')
+  return group.slice(boe)
+}
 
 describe('the context row puts the reserved number beside where review stands', () => {
-  test('one card, three groups: Order, then Client, then Sales and dates', () => {
+  test('one card, three groups: Order, then Client, then Dates', () => {
     const html = contextHtml()
     assert.ok(html.includes('class="pi-detail-top-grid"'))
     assert.equal((html.match(/class="pi-detail-context-cell"/g) ?? []).length, 3)
     const at = (label: string) => html.indexOf(`aria-label="${label}"`)
     assert.ok(at(TOP_ORDER_LABEL) > 0 && at(TOP_ORDER_LABEL) < at(TOP_CLIENT_LABEL)
-      && at(TOP_CLIENT_LABEL) < at(TOP_SALES_LABEL),
+      && at(TOP_CLIENT_LABEL) < at(TOP_DATES_LABEL),
       'the reading order, which is also the order they stack in on a phone')
     const t = text(html)
     assert.ok(t.indexOf('Reserved number 0521') < t.indexOf('Kalyan Interiors')
@@ -542,14 +571,44 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.ok(!t.includes('BOE allots the Order number when this PI is approved'), 'the pre-approval explanation is gone')
   })
 
-  test('THE SALESPERSON LEADS the Sales and dates group', () => {
-    const sales = groupOf(contextHtml(), TOP_SALES_LABEL)
+  test('THE SALESPERSON AND ORDER TYPE are in the CENTRE column, under the client; the right column is dates only', () => {
+    const sales = salesBlockHtml()
     const t = text(sales)
     assert.ok(t.includes(SALESPERSON_LABEL), 'the small label says whose name this is')
     assert.ok(t.includes('Dhruv Mehta'), 'and the name the PI itself carries is shown')
-    assert.ok(sales.includes('class="pi-detail-context-name"'), 'at the group’s headline weight')
+    assert.ok(sales.includes('class="pi-detail-context-name"'), 'at the headline weight')
     assert.ok(t.indexOf('Dhruv Mehta') < t.indexOf(SUBMITTED_BY_LABEL), 'then who submitted it')
-    assert.ok(t.indexOf(SUBMITTED_BY_LABEL) < t.indexOf('Confirm date'), 'then the dates')
+    assert.ok(t.indexOf(SUBMITTED_BY_LABEL) < t.indexOf('Order type'), 'then the Order type')
+    const dates = text(groupOf(contextHtml(), TOP_DATES_LABEL))
+    for (const notThere of ['Dhruv Mehta', SALESPERSON_LABEL, SUBMITTED_BY_LABEL, 'Order type', CREATED_LABEL]) {
+      assert.ok(!dates.includes(notThere), `${notThere} is not in the dates column`)
+    }
+  })
+
+  test('ORDER TYPE: a full order is quiet; sampling first says so; a sample order is the red badge', () => {
+    assert.ok(text(salesBlockHtml()).includes('Full order'))
+    assert.ok(!text(salesBlockHtml()).includes('sampling first'))
+    assert.ok(text(salesBlockHtml({ sampleType: 'sampling_needed' })).includes('Full order · sampling first'))
+    const sample = salesBlockHtml({ sampleType: 'sample_order' })
+    assert.ok(text(sample).includes('Sample order') && !text(sample).includes('Full order'))
+    assert.ok(sample.includes('class="order-stage-sample"') && sample.includes('class="order-sample-dot"'))
+  })
+
+  test('THE DATES ARE THE ORDER PAGE’S TIMELINE: confirmed, uploaded, approved, due, with the delay and the countdown', () => {
+    const dates = buildDateSummary({ confirmed: '31 Jan 2026', due: '25 Mar 2026' })
+    const html = groupOf(contextHtml({ dates, confirmDate: '2026-01-01', uploadedAt: '2026-01-20T05:00:00Z' }), TOP_DATES_LABEL)
+    assert.ok(html.includes('class="order-timeline"'))
+    const t = text(html)
+    const order = ['Confirmed', 'PI uploaded by salesperson', 'Approved by admin team', 'Due date'].map(s => t.indexOf(s))
+    assert.ok(order.every(i => i >= 0) && order.every((v, i) => i === 0 || order[i - 1] < v), 'the four stops, in order')
+    assert.ok(t.includes('31 Jan 2026') && t.includes('25 Mar 2026'), 'the confirm and due dates as the page words them')
+    assert.ok(t.includes('Awaiting'), 'an approval that has not happened is awaited')
+    assert.ok(t.includes('19 days after the confirm date'), 'a late upload is flagged with the delay')
+    assert.ok(html.includes('class="order-timeline-bar"'), 'and how far today is between upload and due')
+    assert.ok(/Uploaded \d+ days? ago/.test(t) && /days left/.test(t))
+    assert.ok(!text(groupOf(contextHtml({ dates }), TOP_DATES_LABEL)).includes('days after the confirm date'),
+      'an upload within the week is not flagged')
+    assert.ok(text(groupOf(contextHtml({ approvedOn: '05 Feb 2026, 11:00 am' }), TOP_DATES_LABEL)).includes('05 Feb 2026, 11:00 am'))
   })
 
   test('the SUBMITTER is named separately — never borrowed from the salesperson', () => {
@@ -1475,15 +1534,15 @@ describe('the client dialog answers billing and shipping separately', () => {
 describe('the overview states the two dates it has, large, and pauses the one it does not', () => {
   test('the confirm date is shown as a date', () => {
     const html = text(topHtml({ confirmed: '31 Jan 2026' }))
-    assert.ok(html.includes('Confirm date'))
+    assert.ok(html.includes('Confirmed'))
     assert.ok(html.includes('31 Jan 2026'))
   })
 
-  test('the dates band holds the two schedule dates and nothing else', () => {
+  test('the dates band holds the four timeline stops and nothing else', () => {
     const html = topHtml()
     const band = html.slice(html.indexOf('class="pi-detail-dates"'))
-    const labels = [...band.matchAll(/class="pi-detail-date-label">([^<]+)</g)].map(m => m[1])
-    assert.deepEqual(labels, ['Confirm date', 'Due date'])
+    const labels = [...band.matchAll(/class="order-timeline-label">([^<]+)</g)].map(m => m[1])
+    assert.deepEqual(labels, ['Confirmed', 'PI uploaded by salesperson', 'Approved by admin team', 'Due date'])
     const t = text(html)
     assert.ok(!t.includes('Dispatch'))
     assert.ok(!t.includes('weeks from date of confirmation'))
@@ -1519,7 +1578,7 @@ describe('the overview states the two dates it has, large, and pauses the one it
 
   test('a confirm date the PI never gave says so rather than showing a dash', () => {
     const html = text(topHtml({ confirmed: null }))
-    assert.ok(html.includes('Confirm date'))
+    assert.ok(html.includes('Confirmed'))
     assert.ok(!html.includes('—'))
   })
 
@@ -1528,13 +1587,12 @@ describe('the overview states the two dates it has, large, and pauses the one it
     assert.deepEqual(dates.map(d => d.absent), [DATE_SET_AT_SUBMISSION, DATE_SET_AT_SUBMISSION])
     assert.ok(dates.every(d => d.pending))
     const html = topHtml({ status: 'draft', dates })
-    assert.equal((html.match(/class="pi-detail-date-pending"/g) ?? []).length, 2)
+    const datesGroup = text(groupOf(html, TOP_DATES_LABEL))
+    assert.equal((datesGroup.match(/Set at submission/g) ?? []).length, 2, 'the confirm and due stops')
     assert.ok(!html.includes('pi-detail-date-absent'), 'not the warm "missing" treatment')
     const t = text(html)
     assert.ok(!t.includes('Not provided') && !t.includes('Not set'))
-    assert.ok(!/Needed|required|warning/i.test(text(groupOf(html, TOP_SALES_LABEL))))
-    const css = pageCss()
-    assert.ok(/\.pi-detail-date-pending \{[^}]*color: #686D6C/.test(css), 'muted grey, not amber')
+    assert.ok(!/Needed|required|warning/i.test(datesGroup))
   })
 
   test('once submitted, a date the record lacks is said as before', () => {
@@ -1545,16 +1603,6 @@ describe('the overview states the two dates it has, large, and pauses the one it
     assert.ok(given.every(d => !d.pending), 'a real date is a date at every stage')
   })
 
-  test('the date VALUES carry the weight — materially larger and heavier than their labels', () => {
-    const css = pageCss()
-    const size = (cls: string) => Number(new RegExp(`\\.${cls} \\{[^}]*font-size: ([\\d.]+)px`).exec(css)?.[1])
-    const weight = (cls: string) => Number(new RegExp(`\\.${cls} \\{[^}]*font-weight: (\\d+)`).exec(css)?.[1])
-    assert.ok(size('pi-detail-date-value') >= 20, 'a date reads at a glance')
-    assert.ok(size('pi-detail-date-value') >= size('pi-detail-date-label') * 1.6,
-      'the value, not the label, is what grew')
-    assert.ok(weight('pi-detail-date-value') >= 700)
-    assert.ok(size('pi-detail-date-note') <= 12, 'the commitment stays secondary')
-  })
 })
 
 describe('the overview drops what the old one spent space on', () => {

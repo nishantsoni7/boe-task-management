@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `eb76f3ea` — Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
-- Commits on this branch: 1029
+- Commit: `7122417b` — Modules: read payroll participation so Attendance request really hides
+- Commits on this branch: 1030
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 160
 - Migrations: 371 (first `20260530_create_positions.sql`, latest `20270423000000_finance_bank_line_sync.sql`)
 - Tables ever created: 171 (dropped at some point: 7)   SQL functions: 788   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
@@ -38,7 +39,6 @@
 - `9767b1d7` 2026-10-25 Orders: Customize image in Edit PI (regenerate a product picture from the customization) (#449)
 - `688a4f4b` 2026-10-24 Completed task lists: drop description, widen date column (#448)
 - `a1a772a1` 2026-10-24 Finance: Bank Statements - suggested order and Add to Confirmed Payments (#447)
-- `446380cf` 2026-10-24 Docs: changelog and task dossier for row colours
 
 ## Pages by top-level area
 
