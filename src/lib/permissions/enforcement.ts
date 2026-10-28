@@ -65,9 +65,13 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
 
   // RLS via can_view_meeting() / can_edit_meeting() (20260814000000), the
   // import and template routes, and src/lib/permissions/meetings.ts.
+  //
+  // CORRECTED 2026-10-29: `export` is registered but read by nothing — no
+  // route, policy or capability consults it — so the module is partial.
   meetings: {
-    state: 'enforced',
-    detail: 'Every action is enforced — in the database and in the screen.',
+    state: 'partial',
+    enforcedActions: ['view', 'create', 'edit', 'delete', 'manage'],
+    detail: 'Opening the module, create, edit, delete and manage (every meeting; complete or reopen) are enforced in the database and in the screen. Export decides nothing.',
   },
 
   // Both actions this module registers are enforced in the database before they
@@ -125,9 +129,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // Every read is the table RLS (RESTRICTIVE module_entry_open('vendors') plus vendors_can_read()) or a
   // SECURITY DEFINER function that calls vendors_actor(); every write is one of those functions, and the
   // tables refuse direct writes. Entry: src/app/vendors/layout.tsx via ModuleGuard.
+  // CORRECTED 2026-10-29: since 20270429000000 the later stages, archive and
+  // restore, the back-dating limit and Visit Activity follow `approve` (and
+  // `view_all` for the read-only report), not the Admin role. `export` only
+  // decides whether the download button is drawn; no function checks it.
   vendors: {
-    state: 'enforced',
-    detail: 'View is enforced in the screen and in the database. Status change, archive/restore and the Visit Activity report are Admin only, enforced in the functions. A visit is append-only (trigger).',
+    state: 'partial',
+    enforcedActions: ['view', 'create', 'edit', 'approve', 'view_all'],
+    detail: 'View, Create, Edit and Approve (later stages, archive/restore, back-dating, Visit Activity) are enforced in the database functions; View Visit Activity is enforced in the report function. Export only shows the download button. A visit is append-only (trigger).',
   },
 
   // Every read is the table RLS (RESTRICTIVE module_entry_open('inventory') plus per-table policies) or a
@@ -190,12 +199,31 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // submit_order_submission() both require it. Edit still follows the
   // ownership rules on a PI Draft, so this entry cannot claim edit is enforced
   // module-wide.
+  //
+  // CORRECTED 2026-10-29 against the code (docs/app-context/modules/09):
+  //   create                     create / submit / revise a PI (20270115, 20270212, 20270227)
+  //   approve_advance_exception  the advance-exception doors (20270227 and earlier)
+  //   align_production           align_order_for_production (20261119, 20261229)
+  //   view_pi_commission         the commission policies (20270122)
+  //   train_customize_image      can_train_customize_image() (20270420)
+  //   can_be_order_assignee      is_eligible_order_assignee(): who counts as a
+  //                              sales candidate for Order Visibility and the
+  //                              salesperson dashboards (20260697, 20270221).
+  //                              Re-registered under that honest meaning on the
+  //                              owner's decision of 2026-10-29.
+  //   delete                     is NOT enforced: its only reader was
+  //                              admin_delete_order_request, which the retired
+  //                              Order Request workflow no longer reaches. PI
+  //                              deletion is ownership + status + the admin role
+  //                              (src/lib/orders/submissionDeletion.ts).
   orders: {
     state: 'partial',
     enforcedActions: [
-      'view', 'view_all', 'approve_order', 'manage', 'delete',
+      'view', 'create', 'view_all', 'approve_order', 'approve_advance_exception', 'align_production',
+      'view_pi_commission', 'manage', 'train_customize_image', 'view_payment_plan', 'edit_payment_plan',
+      'can_be_order_assignee',
     ],
-    detail: 'Opening the module, seeing all company orders, reviewing and approving PI submissions, managing and deleting are enforced. Edit still follows the ownership rules on a PI Draft.',
+    detail: 'Opening the module, creating and submitting PIs, seeing all company orders, PI review, advance exceptions, production alignment, commission sight, amend/cancel, the Payment plan, Customize-image training and sales-candidate standing are enforced. Edit follows PI ownership; Export and Delete decide nothing.',
   },
 
   // Cut over by the same migration:
@@ -219,10 +247,22 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // app_modules.visibility_type. Note the split this creates and keep it
   // straight — `view` is MODULE ENTRY, and which payment records a person then
   // sees is still decided by the ownership policies plus 'view_all'.
+  // CORRECTED 2026-10-29 against the code: the money authorities registered
+  // after this entry was written are all read by the database —
+  //   allocate / allocate_correct   20260918000000 → 20270407000000
+  //   verify_own_payment            20270120000000
+  //   reconcile                     20270329000000, 20270330000000
+  //   reimburse                     can_record_expense_reimbursement (20270403000000)
+  //   create                        record an expense / add a bank credit as a
+  //                                 Confirmed Payment (20270205120000, 20270419000000)
+  // Edit and Export are still read by nothing.
   finance: {
     state: 'partial',
-    enforcedActions: ['view', 'approve', 'manage', 'delete', 'view_all'],
-    detail: 'Opening the module, approve, correct/reverse, delete and seeing all company payments are enforced. Which records you see, and create and edit, still follow record ownership.',
+    enforcedActions: [
+      'view', 'create', 'approve', 'manage', 'delete', 'view_all',
+      'allocate', 'allocate_correct', 'verify_own_payment', 'reconcile', 'reimburse',
+    ],
+    detail: 'Opening the module, recording, verification, correction, deleting unapproved requests, company-wide sight, allocation, own-payment verification, bank reconciliation and reimbursement are enforced. Which records you see still follows ownership; Edit and Export decide nothing.',
   },
 
   // The quotation actions are enforced in the app — the navigation, the

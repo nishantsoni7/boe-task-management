@@ -129,7 +129,7 @@ export async function GET(
       id, module_key, display_name,
       module_permission_actions (
         default_allowed,
-        permission_actions ( action_key, display_name )
+        permission_actions ( id, action_key, display_name )
       )
     `)
     .eq('is_active', true)
@@ -138,6 +138,28 @@ export async function GET(
   if (modulesError) return NextResponse.json({ error: modulesError.message }, { status: 500 })
 
   const effectiveByModule = await getEffectivePermissionsForUser(svc, userId)
+
+  // WHO SET IT, AND WHEN. The override rows already carry granted_by and
+  // granted_at; the Access screens show "Set by Nishant · 12 Oct" in place of
+  // a Source badge, so the row has to say it. Active rows only — a revoked
+  // override is not what the person holds. The granter's name comes from the
+  // safe profile columns (select('*') on users is refused).
+  const { data: overrideRows, error: overridesError } = await svc
+    .from('employee_permission_overrides')
+    .select('module_id, action_id, allowed, granted_by, granted_at')
+    .eq('user_id', userId)
+    .is('revoked_at', null)
+  if (overridesError) return NextResponse.json({ error: overridesError.message }, { status: 500 })
+
+  const overrideByKey = new Map(
+    (overrideRows ?? []).map((row) => [`${row.module_id}:${row.action_id}`, row]),
+  )
+  const granterIds = Array.from(new Set((overrideRows ?? []).map((r) => r.granted_by).filter((id): id is string => !!id)))
+  const granterName = new Map<string, string>()
+  if (granterIds.length > 0) {
+    const { data: granters } = await svc.from('users').select('id, full_name').in('id', granterIds)
+    for (const g of granters ?? []) granterName.set(g.id, g.full_name)
+  }
 
   const modules = (moduleRows ?? []).map((mod) => {
     const effective = effectiveByModule.get(mod.module_key) ?? []
@@ -148,19 +170,24 @@ export async function GET(
       displayName: mod.display_name,
       actions: mod.module_permission_actions
         .map((link) => ({
-          action: link.permission_actions as unknown as PermissionActionRef | null,
+          action: link.permission_actions as unknown as (PermissionActionRef & { id: string }) | null,
           defaultAllowed: link.default_allowed,
         }))
-        .filter((link): link is { action: PermissionActionRef; defaultAllowed: boolean } => link.action !== null)
+        .filter((link): link is { action: PermissionActionRef & { id: string }; defaultAllowed: boolean } => link.action !== null)
         .map(({ action, defaultAllowed }) => {
           const resolved = effectiveByAction.get(action.action_key)
           const source = resolved?.source ?? 'system_default'
+          const override = source === 'employee_override' ? overrideByKey.get(`${mod.id}:${action.id}`) : undefined
           return {
             actionKey: action.action_key,
             displayName: actionDisplayLabel(action, mod.module_key),
             allowed: resolved?.allowed ?? defaultAllowed,
             source,
             sourceLabel: sourceLabel(source),
+            grantedBy: override?.granted_by
+              ? { id: override.granted_by, name: granterName.get(override.granted_by) ?? null }
+              : null,
+            grantedAt: override?.granted_at ?? null,
           }
         })
         .sort((a, b) => a.displayName.localeCompare(b.displayName)),

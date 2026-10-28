@@ -37,7 +37,7 @@ Pages (`src/app/admin/control-center/**`, all under one layout that is the admin
 - Employee-facing: `/announcements`, `/announcements/[id]`.
 
 Six hubs (`src/lib/controlCenter/navModel.ts`, one registry read by the sidebar, the section tabs and Find-anything): Home - People
-(Employees, Departments, Designations) - Access (By Employee, By Module) - Order Setup (Numbering, Notifications, Operations Handoff,
+(Employees, Departments, Designations) - Access (People, Modules, Authorities) - Order Setup (Numbering, Notifications, Operations Handoff,
 Order Visibility) - Announcements - Records & Data (Test Data Cleanup, Data Management, Task Records). `FindAnything.tsx` searches labels +
 keywords; every query word must match (`score`).
 

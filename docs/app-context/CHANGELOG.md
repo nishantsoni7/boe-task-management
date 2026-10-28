@@ -17,6 +17,17 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, eslint, full suite, `paymentPlan*` tests. Not seen on screen.
 
 ## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR #479, 3909c56c) · migration 20270428000000 APPLIED 2026-10-28
+
+## 2026-10-29 — Control Center › Access redesigned: People, Modules, Authorities (PR pending) · no migration
+- **Owner request.** The Access screens looked messy; make it obvious where to go, what each permission means and how to give limited, full or no access.
+- **What.** Access is three screens: **People** (one person, one control per module: Off or a level, plus the authorities they hold as chips, "Set by X · date"), **Modules** (one module across everyone, same row, team rule inline) and **Authorities** (every per-person decision with its holders; links the Order Setup settings). Same Manrope/Inter, tokens and launcher icons as the rest of BOE One (icons now drawn once in `src/components/modules/ModuleIcons.tsx`).
+- **Rules (owner decisions 2026-10-29).** Only controls that change behaviour are offered, from the new catalogue `src/lib/permissions/accessCatalog.ts` (reads the enforcement map); stored-but-unread keys are hidden, grants untouched. A level change KEEPS authorities; only Off removes everything and names what goes. Orders and Meetings offer Off/Viewer/Contributor (Export is unread); Finance, Inventory, Vendors keep Manager. Employee Records is offered on Administrators only. `orders.can_be_order_assignee` re-registered as "Counts as a sales candidate" (protected; the database still reads it in `is_eligible_order_assignee`). `orders.train_customize_image` is now protected.
+- **Enforcement map corrected** (Finance +6 authorities, Orders +4/−delete, Meetings and Vendors now partial, Vendors no longer "Admin only").
+- **API.** New `GET /api/control-center/permissions/matrix` (everyone × every module, with granted-by/at); the per-employee read also returns granted-by/at. The per-module matrix route is removed. Writes unchanged (per-employee PUT).
+- **Not done (separate changes by decision).** Manager-role retirement, Showroom second gate, "Copy access from…". 
+- **Proof.** tsc (only the unrelated missing `web-push` module in the shared node_modules), eslint 0, permission + Control Center + launcher tests green except 3 Finance tests that also fail on untouched main (uiEnforcement x2, orderRequestRetirement x1). NOT seen on screen; `permissions:check` not run (no .env.local in the worktree).
+
+## 2026-10-28 — Orders: Payment plan — how much more the client must pay before a dispatch (PR pending) · migration 20270428000000 NOT applied
 - **Owner request.** One sheet per Confirmed Order: the goods being dispatched are paid in full, plus an adjustable share (50%) of the goods still to come, charges included, GST only on the billed part of what leaves.
 - **What.** "Payment plan" section on the Order page; dispatch lots (one planned, any number dispatched; "Mark as dispatched"; admin-only correction with a reason); saved pending %, billing % and advance; advance filled from Finance's verified totals when present, typed otherwise; on screen, Excel and PDF. Protected permissions `orders.view_payment_plan` and `orders.edit_payment_plan` (granted per person in Control Center; admins by role).
 - **Database.** Four closed tables and five functions; nothing in Orders, PIs or payments is written. Rollback is in the migration header.

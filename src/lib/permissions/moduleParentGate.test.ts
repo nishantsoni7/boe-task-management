@@ -673,8 +673,8 @@ describe('Control Center employee cards', () => {
     assert.ok(page.includes("const MODULE_ENTRY_ACTION = 'view'"))
     assert.ok(page.includes('function moduleIsAccessible('))
     assert.ok(
-      page.includes('const accessible = moduleIsAccessible(mod, overrides)'),
-      'the card must not derive Visible from "any action is allowed"',
+      page.includes('moduleIsAccessible(mod, overrides)'),
+      'the card must not derive Open from "any action is allowed"',
     )
   })
 
@@ -699,20 +699,20 @@ describe('Control Center employee cards', () => {
   })
 
   test('action-enforcement information is kept inside the modal', () => {
-    assert.ok(
-      page.includes('ENFORCEMENT_BANNER_VARIANT[moduleEnforcement(mod.moduleKey).state]'),
-      'the Change Access modal must still say whether an action does anything',
-    )
-    assert.ok(page.includes('moduleEnforcement(mod.moduleKey).detail'))
+    // Since 2026-10-29 an action that does nothing is not offered at all; the Modules screen
+    // says which are withheld, from the catalogue that reads the enforcement map.
+    const modules = read('src/app/admin/control-center/permissions/modules/page.tsx')
+    assert.ok(modules.includes('hiddenActions('))
+    assert.ok(modules.includes('read by nothing'))
   })
 
   test('the protected-permission warning is untouched', () => {
-    assert.ok(page.includes('protectedActionsClearedByPreset'))
-    assert.ok(page.includes('protectedActionWords'))
+    assert.ok(page.includes('authoritiesClearedByOff'))
   })
 
   test('turning a module off still writes no_access across every action', () => {
-    assert.ok(page.includes("applyAccessLevel(mod, 'no_access')"))
+    assert.ok(page.includes("desiredForLevel(mod.moduleKey, keysOf(mod), 'off', current)"))
+    assert.ok(read('src/lib/permissions/accessCatalog.ts').includes('for (const a of moduleActionKeys) map[a] = false'))
   })
 })
 

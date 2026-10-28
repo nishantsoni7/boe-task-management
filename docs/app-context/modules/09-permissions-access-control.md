@@ -49,6 +49,12 @@ API routes (all re-verify the caller as an ACTIVE, non-deleted admin from the be
 | `/api/admin/user-permissions` | GET | View As support (legacy Sample Tracking path; reads centralized resolver) |
 | `/api/view-as/subject` | GET | resolves a previewed employee's permissions server-side (module 08) |
 
+### 3a. Access screens since 2026-10-29 (PR pending; supersedes the By Employee / By Module description above)
+- `/admin/control-center/permissions` = **People**, `/permissions/modules` = **Modules**, `/permissions/authorities` = **Authorities**. Shared pieces: `accessCatalog.ts` (what is offered and its words; reads `enforcement.ts`), `AccessRow.tsx`, `accessEdits.ts` (pending edits, one PUT per employee through `choicesForDesired`/`changesBetween`).
+- Routes: `GET /api/control-center/permissions/matrix` (replaces `/modules/[key]/employees`), per-employee GET/PUT (GET now returns grantedBy/grantedAt).
+- Rules: a level writes only offered standard actions and keeps authorities; Off writes every registered action false after naming lost authorities; giving an authority pulls in its dependency chain and module entry.
+- Corrected facts: see the CHANGELOG entry; hidden (unread) keys per module are listed by `hiddenActions()` and asserted in `accessCatalog.test.ts`.
+
 ## 4. Database
 
 Tables (all from `20260660_create_permission_engine.sql` unless noted): `permission_modules` (module_key unique,

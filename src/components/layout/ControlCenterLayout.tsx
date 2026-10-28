@@ -74,12 +74,16 @@ const PATH_HEADINGS: Record<string, Heading> = {
     subtitle: 'Job titles available on employee records.',
   },
   [`${MAIN_PATH}/permissions`]: {
-    group: 'Access', title: 'By Employee',
-    subtitle: 'Manage what each employee can access, module by module',
+    group: 'Access', title: 'People',
+    subtitle: 'What one person can open, how much they can do inside, and which decisions are theirs.',
   },
   [`${MAIN_PATH}/permissions/modules`]: {
-    group: 'Access', title: 'By Module',
-    subtitle: 'One module across everyone — who can open it, at what level, and why',
+    group: 'Access', title: 'Modules',
+    subtitle: 'One module across everyone: who can open it, at what level, and who holds its authorities.',
+  },
+  [`${MAIN_PATH}/permissions/authorities`]: {
+    group: 'Access', title: 'Authorities',
+    subtitle: 'Every decision granted to a named person, in one list. Start here for “who can…?” questions.',
   },
   [`${MAIN_PATH}/test-data-cleanup`]: {
     group: 'Records & Data', title: 'Test Data Cleanup',

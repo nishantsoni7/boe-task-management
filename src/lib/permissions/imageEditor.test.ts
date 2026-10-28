@@ -215,7 +215,10 @@ describe('the Control Center label', () => {
   test('the page prints the resolved label without re-deriving it', () => {
     const page = readFileSync(join(process.cwd(),
       'src/app/admin/control-center/permissions/page.tsx'), 'utf8')
-    assert.ok(page.includes('{action.displayName}'), 'the toggle renders the resolved label')
+    // The label now comes from the catalogue (levelLabel / levelSentence), which reads the
+    // module's own registered actions; the page does not hard-code any module's wording.
+    assert.ok(page.includes('levelSentence('), 'the row renders the catalogue sentence')
+    assert.equal(/'Use'/.test(page), false, 'no module-specific label is hard-coded on the page')
   })
 })
 

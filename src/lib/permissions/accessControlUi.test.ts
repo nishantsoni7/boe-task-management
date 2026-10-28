@@ -1,11 +1,13 @@
 /**
- * The Access Control workspace, as one administrator workflow.
+ * The Access workspace (People, Modules, Authorities) as one administrator
+ * workflow.
  *
- * Source-shape assertions over the real page, plus behavioural assertions on
- * the shared level model that the page delegates to. They pin the four things
- * finished in Prompt 6 — the module on/off toggle, the combined Attendance &
- * Payroll row, unsaved-change protection, and the system-Admin lockout — and
- * the boundaries V1 must not cross.
+ * Source-shape assertions over the real screens, plus behavioural assertions
+ * on the shared catalogue they delegate to. They pin what the screens must
+ * never stop doing: one control per module, Off removing everything only
+ * after naming it, a level keeping authorities, the self-service row, the
+ * system-Admin lockout, unsaved-change protection, and a directory that
+ * shows everybody.
  *
  * Repository files only. No DB, no browser.
  *
@@ -17,452 +19,198 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import './modules'
+import { getRegisteredModule } from './registry'
+import { isProtectedAction } from './levels'
 import {
-  ACCESS_LEVELS,
-  PRESET_LEVELS,
-  presetAllowedActions,
-  enableModuleEntry,
-  detectAccessLevel,
-  protectedActionsClearedByPreset,
-  isProtectedAction,
-  normalizeGrantedActions,
-} from './levels'
+  authoritiesClearedByOff,
+  desiredForLevel,
+  desiredWithAuthority,
+  detectOfferedLevel,
+  isModuleOfferedTo,
+} from './accessCatalog'
 import { moduleEnforcement } from './enforcement'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
-const page = read('src/app/admin/control-center/permissions/page.tsx')
+const people = read('src/app/admin/control-center/permissions/page.tsx')
+const modulesPage = read('src/app/admin/control-center/permissions/modules/page.tsx')
+const authoritiesPage = read('src/app/admin/control-center/permissions/authorities/page.tsx')
+const edits = read('src/components/controlCenter/accessEdits.ts')
+const row = read('src/components/controlCenter/AccessRow.tsx')
+const keys = (m: string) => getRegisteredModule(m)!.actions.map(a => a.actionKey)
 
-const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
-const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-const granted = (m: Record<string, boolean>) => Object.keys(m).filter(k => m[k]).sort()
-
-// ── PART 1: the module on/off toggle ────────────────────────────────────────
-
-describe('module access is one control, not two', () => {
-  test('Off maps to No Access', () => {
-    assert.deepEqual(granted(presetAllowedActions('no_access', ASSETS)), [])
-    assert.ok(page.includes("applyAccessLevel(mod, 'no_access')"))
+describe('a module is one control', () => {
+  test('Off states every registered action false, so nothing hidden can wake up later', () => {
+    const next = desiredForLevel('assets_access', keys('assets_access'), 'off', { view: true, assign: true, manage: true })
+    for (const a of keys('assets_access')) assert.equal(next[a], false, a)
   })
 
-  test('On grants entry and PRESERVES every child action', () => {
-    // Was "On from No Access maps to Viewer", and the page really did apply the
-    // Viewer preset — which wrote an explicit deny over every child action the
-    // employee held. That erased Aditya's Sample Tracking dispatch, receive and
-    // mark_lost in production on 2026-08-15, with no warning, because the
-    // destructive-action confirmation only ever ran on the OFF path.
-    //
-    // The ON path had been unreachable for anyone holding a child action, since
-    // a module counted as "on" whenever ANY action was allowed. Once module
-    // entry correctly became `view` alone, that same employee rendered as OFF
-    // and the path went live.
-    assert.ok(
-      page.includes('applyDesiredActions(mod, current => enableModuleEntry(actionKeys, current))'),
-      'enabling a module must preserve child actions, not apply a preset',
-    )
-    assert.equal(
-      page.includes("applyAccessLevel(mod, 'viewer')"),
-      false,
-      'the Viewer preset must never be applied by the checkbox again',
-    )
-    // Behavioural counterpart in levels.test.ts; asserted here too so the two
-    // halves of the fix cannot drift apart.
+  test('a level keeps every authority the person holds', () => {
+    const held = { view: true, create: true, manage: true, assign: true }
+    const next = desiredForLevel('assets_access', keys('assets_access'), 'viewer', held)
+    assert.equal(next.view, true)
+    assert.equal(next.create, false)
+    assert.equal(next.manage, true)
+    assert.equal(next.assign, true)
+    assert.equal(detectOfferedLevel('assets_access', keys('assets_access'), next), 'viewer')
+  })
+
+  test('Off asks first and names the authorities it removes', () => {
+    const held = { view: true, manage: true, assign: true }
     assert.deepEqual(
-      enableModuleEntry(ASSETS, { view: false, manage: true, assign: true }),
-      { view: true, create: false, edit: false, delete: false, manage: true, assign: true },
+      authoritiesClearedByOff('assets_access', keys('assets_access'), held).sort(),
+      ['Hand out assets', 'Return, transfer or write off assets'],
     )
-  })
-
-  test('enabling a module needs no confirmation, because it removes nothing', () => {
-    const toggle = page.slice(
-      page.indexOf('function toggleModuleAccess'),
-      page.indexOf('// A plain computation, not useMemo'),
-    )
-    const onBranch = toggle.slice(toggle.indexOf('// Entry only.'))
-    assert.ok(onBranch.includes('applyDesiredActions'))
-    assert.equal(onBranch.includes('window.confirm'), false, 'the ON path must not prompt')
-    // The OFF path still does.
-    assert.ok(toggle.includes('window.confirm(message)'))
-    assert.ok(toggle.includes("protectedActionsClearedByPreset('no_access', actionKeys, effective)"))
-  })
-
-  test('picking a level explicitly still replaces the whole module state', () => {
-    // The distinction the fix turns on: a preset is a complete statement, the
-    // checkbox is not. Both still flow through one write path.
-    assert.ok(page.includes('function applyAccessLevel'))
-    assert.ok(page.includes('applyDesiredActions(mod, () => presetAllowedActions(level, actionKeys))'))
-    assert.ok(page.includes('onApplyLevel={level => applyAccessLevel(changeModalModule, level)}'))
-    assert.deepEqual(granted(presetAllowedActions('viewer', ASSETS)), ['view'])
-  })
-
-  test('the toggle writes the same per-action state the level selector does', () => {
-    // Both go through applyDesiredActions; there is no separate visibility field.
-    assert.ok(page.includes('function toggleModuleAccess'))
-    assert.ok(page.includes('function applyDesiredActions'))
-    assert.equal(/setVisible|visibilityBoolean|moduleVisible/.test(page), false)
-    assert.equal(
-      /visibility_type|allowed_user_ids/.test(page),
-      false,
-      'the page must not write app_modules visibility',
-    )
-  })
-
-  test('toggle and level can never diverge — the level is derived from the state', () => {
-    // On is defined as "at least view", which is exactly what makes a module
-    // accessible, and the level is read back out of the same map.
-    //
-    // The screen now says that literally. It used to define On as "any action
-    // of this module is allowed", which agreed with the sentence above for
-    // every PRESET — a preset always includes view when it grants anything —
-    // but disagreed for a Custom grant that had lost its view. That gap is what
-    // let a module read Hidden and still count as accessible; see
-    // moduleParentGate.test.ts.
-    for (const level of PRESET_LEVELS) {
-      const map = presetAllowedActions(level, ASSETS)
-      const accessible = map['view'] === true
-      const detected = detectAccessLevel(ASSETS, map)
-      assert.equal(
-        accessible,
-        detected !== 'no_access',
-        `${level}: accessible=${accessible} but level=${detected}`,
-      )
+    for (const src of [people, modulesPage]) {
+      assert.ok(src.includes('authoritiesClearedByOff('), 'both screens must ask before Off')
+      assert.ok(src.includes('<OffConfirm'))
     }
-    assert.ok(page.includes('const accessible = moduleIsAccessible(mod, overrides)'))
-    assert.ok(page.includes("const MODULE_ENTRY_ACTION = 'view'"))
+    assert.ok(row.includes('Turn off and remove') && row.includes('Keep as is'))
+    assert.equal(/window\.confirm\(message\)/.test(people), false, 'the Off confirmation is inline, not a browser dialog')
   })
 
-  test('turning Off protected Custom access asks first and names what goes', () => {
-    const aditya = { view: true, create: true, edit: true, manage: true, assign: true, delete: false }
-    assert.deepEqual(
-      protectedActionsClearedByPreset('no_access', ASSETS, aditya).sort(),
-      ['assign', 'manage'],
-    )
-    assert.ok(page.includes("protectedActionsClearedByPreset('no_access', actionKeys, effective)"))
-    assert.ok(page.includes('will remove:'))
-    assert.ok(page.includes('window.confirm(message)'))
-    // The pending change is applied only after confirmation.
-    assert.ok(page.includes('if (!window.confirm(message)) return'))
+  test('giving a first authority opens the module, so a chip never sits on a closed door', () => {
+    const next = desiredWithAuthority('finance', keys('finance'), 'reconcile', true, {})
+    assert.equal(next.view, true)
+    assert.equal(next.view_all, true)
   })
 
-  test('the wording is plain', () => {
-    assert.ok(page.includes('Module access'))
-    assert.ok(page.includes("{accessible ? 'Visible' : 'Hidden'}"))
-    assert.equal(page.includes('Module Visibility'), false, 'no second setting by that name')
+  test('the Open/Off decision is the module entry action and nothing else', () => {
+    assert.ok(people.includes("const MODULE_ENTRY_ACTION = 'view'"))
+    assert.ok(people.includes('entryActionForModule('))
+    assert.ok(people.includes('moduleIsAccessible(mod, overrides)'))
+    assert.equal(/setVisible|visibilityBoolean|moduleVisible/.test(people + modulesPage), false)
+    assert.equal(/visibility_type|allowed_user_ids/.test(people + modulesPage + authoritiesPage), false,
+      'the screens must not write app_modules visibility')
+  })
+
+  test('one shared write rule for all three screens', () => {
+    assert.ok(people.includes('choicesForDesired('))
+    assert.ok(edits.includes('choicesForDesired(') && edits.includes('changesBetween('))
+    assert.ok(modulesPage.includes("from '@/components/controlCenter/accessEdits'"))
+    assert.ok(authoritiesPage.includes("from '@/components/controlCenter/accessEdits'"))
   })
 })
-
-// ── PART 2: Attendance & Payroll ────────────────────────────────────────────
 
 describe('Attendance & Payroll is one self-service row', () => {
-  test('the two modules are separated out and rendered once', () => {
-    assert.ok(page.includes('const SELF_SERVICE_MODULE_KEYS = [\'attendance\', \'payroll\'] as const'))
-    assert.ok(page.includes('selfServiceModules.length > 0 && (\n                  <AttendancePayrollCard'))
-    assert.ok(page.includes('editableModules.map(mod =>'))
-    assert.ok(page.includes("const COMBINED_ATTENDANCE_PAYROLL_LABEL = 'Attendance & Payroll'"))
+  test('the two modules are separated out and rendered once, with no controls', () => {
+    assert.ok(people.includes('isSelfServiceModuleKey(m.moduleKey)'))
+    assert.ok(people.includes('<AttendancePayrollCard modules={selfServiceModules} />'))
+    const start = people.indexOf('function AttendancePayrollCard')
+    const card = people.slice(start, people.indexOf('// ── Page ──', start))
+    assert.equal(/LevelControl|AuthorityChips|onChange|onClick/.test(card), false)
+    assert.ok(card.includes('Self-service'))
+    assert.ok(card.includes('Management access is restricted to system administrators'))
+    assert.ok(card.includes('Unused permissions on record'))
   })
 
-  test('it carries no editable management controls', () => {
-    const start = page.indexOf('function AttendancePayrollCard')
-    const end = page.indexOf('// ── Page ──', start)
-    const card = page.slice(start, end > start ? end : undefined)
-    assert.equal(card.includes('onToggle'), false)
-    assert.equal(card.includes('AccessLevelBadge'), false)
-    assert.equal(card.includes('onOpen'), false)
-    assert.equal(/Viewer|Contributor|Manager|Custom/.test(card), false)
+  test('they are never offered on any screen, and enforcement calls them not-used', () => {
+    for (const m of ['attendance', 'payroll']) {
+      assert.equal(isModuleOfferedTo(m, 'admin'), false)
+      assert.equal(moduleEnforcement(m).state, 'role_only')
+    }
+    assert.ok(modulesPage.includes('isSelfServiceModuleKey(m.moduleKey)'))
   })
 
-  test('the self-service wording is present and accurate', () => {
-    assert.ok(page.includes('Self-service'))
-    assert.ok(page.includes('Employees can view their own attendance and payroll and raise issues.'))
-    assert.ok(page.includes('Management access is restricted to system administrators.'))
-  })
-
-  test('inert Attendance/Payroll overrides are surfaced, not activated', () => {
-    assert.ok(page.includes('Unused permissions on record'))
-    assert.ok(page.includes('left exactly as they are'))
-  })
-
-  test('the enforcement label does not call them Enforced', () => {
-    assert.equal(moduleEnforcement('attendance').state, 'role_only')
-    assert.equal(moduleEnforcement('payroll').state, 'role_only')
+  test('Employee Records is withheld from non-admin grants', () => {
+    assert.equal(isModuleOfferedTo('employee_records', 'member'), false)
+    assert.ok(people.includes('isModuleOfferedTo(m.moduleKey, tree.employee.role)'))
   })
 })
-
-// ── PART 3: unsaved-change protection ───────────────────────────────────────
 
 describe('unsaved changes are protected', () => {
-  test('switching employee with pending edits asks first', () => {
-    assert.ok(page.includes("const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'"))
-    assert.ok(page.includes('if (dirty && !window.confirm(UNSAVED_PROMPT)) return'))
+  test('People and Modules ask before walking away from edits', () => {
+    for (const src of [people, modulesPage]) {
+      assert.ok(src.includes("'You have unsaved access changes. Leave without saving?'"))
+      assert.ok(src.includes('window.confirm(UNSAVED_PROMPT)'))
+      assert.ok(src.includes("window.addEventListener('beforeunload', warn)"))
+      assert.ok(src.includes("window.removeEventListener('beforeunload', warn)"))
+    }
+    assert.ok(authoritiesPage.includes("window.addEventListener('beforeunload', warn)"))
   })
 
-  test('Stay keeps the employee and the pending changes', () => {
-    // The guard returns BEFORE setSelectedEmployeeId / loadTree, so nothing
-    // about the current selection or the override map is touched.
-    const start = page.indexOf('async function selectEmployee')
-    const body = page.slice(start, page.indexOf('async function loadTree', start))
-    const guardAt = body.indexOf('window.confirm(UNSAVED_PROMPT)')
-    assert.ok(guardAt > -1)
-    assert.ok(guardAt < body.indexOf('setSelectedEmployeeId(id)'))
-    assert.ok(guardAt < body.indexOf('loadTree(id)'))
+  test('re-selecting the same person never prompts, and the guard precedes the load', () => {
+    assert.ok(people.includes('if (id === selectedEmployeeId) return'))
+    const body = people.slice(people.indexOf('async function selectEmployee'), people.indexOf('async function loadTree'))
+    assert.ok(body.indexOf('window.confirm(UNSAVED_PROMPT)') < body.indexOf('loadTree(id)'))
+    assert.equal(body.includes("method: 'PUT'"), false, 'leaving sends nothing')
   })
 
-  test('discarding sends no request', () => {
-    const start = page.indexOf('async function selectEmployee')
-    const body = page.slice(start, page.indexOf('async function loadTree', start))
-    assert.equal(body.includes('method: \'PUT\''), false)
-    assert.equal(body.includes('fetch('), false)
+  test('Save is disabled when clean and while saving, and a failure keeps the edits', () => {
+    for (const src of [people, modulesPage, authoritiesPage]) assert.ok(/disabled=\{!dirty \|\| (edits\.)?saving\}/.test(src))
+    const fail = people.indexOf("setSaveError(json.error ?? 'Save failed'); return")
+    assert.ok(fail > 0 && fail < people.indexOf('await loadTree(selectedEmployeeId)', fail))
+    assert.ok(edits.includes('if (savedEmployees.has(employeeId) || !byEmployee.has(employeeId)) next.delete(key)'),
+      'only employees that saved leave the pending set')
   })
 
-  test('refresh and close are covered, and only while dirty', () => {
-    assert.ok(page.includes("window.addEventListener('beforeunload', warn)"))
-    assert.ok(page.includes('if (!dirty) return'), 'the listener must not outlive the pending changes')
-    assert.ok(page.includes("window.removeEventListener('beforeunload', warn)"))
-  })
-
-  test('it uses the browser prompt rather than a bespoke modal', () => {
-    assert.equal(/UnsavedChangesModal|LeaveConfirmModal/.test(page), false)
-  })
-
-  test('re-selecting the same employee never prompts', () => {
-    assert.ok(page.includes('if (id === selectedEmployeeId) return'))
+  test('the save bar lists what will change', () => {
+    for (const src of [people, modulesPage, authoritiesPage]) assert.ok(src.includes('saveBarList'))
   })
 })
 
-// ── PART 4: system Admin protection ─────────────────────────────────────────
-
 describe('a system Administrator cannot be edited here', () => {
-  test('it is decided from the SELECTED employee, not the signed-in one', () => {
-    assert.ok(page.includes('function isSystemAdmin(tree: EmployeePermissionTree | null)'))
-    assert.ok(page.includes("return tree?.employee.role === 'admin'"))
-    assert.ok(page.includes('const adminLocked = isSystemAdmin(tree)'))
-  })
-
-  test('the explanation is shown', () => {
-    assert.ok(page.includes('System Administrator.'))
-    assert.ok(page.includes("this person&apos;s system role"))
-  })
-
-  test('toggles are disabled, and the dialog opens only where it can decide something', () => {
-    // MODULE ACCESS is still role-driven for an administrator on every module
-    // without exception, so the Visible/Hidden switch stays locked.
-    assert.ok(page.includes('locked={adminLocked}'))
-    assert.ok(page.includes('disabled={locked}'))
-
-    // The DIALOG is a separate lock since 20261224000000 §4, because Orders
-    // now holds an action an override really can decide for an administrator
-    // (approve_order). Everywhere else the dialog is still shut.
-    assert.ok(page.includes('changeLocked={adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)}'))
-    assert.ok(page.includes('disabled={changeLocked}'))
-    assert.ok(page.includes('if (adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)) return'))
-  })
-
-  test('a PUT for a system Admin can carry only what an override can decide', () => {
-    // The blanket refusal became a per-action filter when approve_order got a
-    // permission-only door: refusing the whole employee would have made the
-    // one grant that DOES work impossible to set. The property being defended
-    // is unchanged — nothing that decides nothing may be sent.
-    const start = page.indexOf('async function save()')
-    const body = page.slice(start, page.indexOf('// ── Render', start))
-    const guardAt = body.indexOf('if (admin && !isAdminEditableAction(mod.moduleKey, action.actionKey)) continue')
-    assert.ok(guardAt > -1, 'save must filter a system admin down to the editable actions')
-    assert.ok(guardAt < body.indexOf('fetch('), 'the filter must precede the request')
-    assert.ok(!body.includes('if (isSystemAdmin(tree)) return'),
-      'the blanket refusal is what made the Order Approval grant unreachable')
+  test('it is decided from the SELECTED employee, and the controls lock', () => {
+    assert.ok(people.includes("return tree?.employee.role === 'admin'"))
+    assert.ok(people.includes('locked={adminLocked}'))
+    assert.ok(row.includes('Everything · by role'))
   })
 
   test('the Control Center itself remains admin-only', () => {
-    // The gate moved from each section into the segment layout, which Next
-    // keeps mounted across every Control Center route — so the decision is
-    // made once, from the shared permission context, and this page no longer
-    // carries a copy of it. Same rule, new owner.
     const layout = read('src/app/admin/control-center/layout.tsx')
-    assert.ok(layout.includes('usePermissionContext()'), 'identity comes from the shared resolution')
-    assert.ok(layout.includes("if (userId === null) { router.replace('/login'); return }"))
+    assert.ok(layout.includes('usePermissionContext()'))
     assert.ok(layout.includes("if (role !== 'admin') { router.replace('/dashboard'); return }"))
-    assert.ok(layout.includes('exitViewMode()'), 'View As is exited, never carried into the Control Center')
-    assert.ok(layout.includes('if (!allowed'), 'children render in no state but admitted')
-    assert.equal(page.includes("from('users')"), false, 'the page must not re-read the profile the layout resolved')
+    assert.ok(layout.includes('exitViewMode()'))
+    assert.equal(people.includes("from('users')"), false, 'the page must not re-read the profile the layout resolved')
   })
 })
 
-// ── PART 7: whole-workflow accuracy ─────────────────────────────────────────
+describe('only protected, enforced actions are authorities', () => {
+  test('every authority is protected', () => {
+    for (const a of ['view_all', 'approve_order', 'reconcile', 'assign', 'verify', 'can_be_order_assignee', 'train_customize_image']) {
+      assert.ok(isProtectedAction(a), a)
+    }
+  })
+})
 
-describe('the finished workflow holds its boundaries', () => {
-  test('exactly five levels, and none of them is editor or admin', () => {
-    assert.deepEqual([...ACCESS_LEVELS], ['no_access', 'viewer', 'contributor', 'manager', 'custom'])
-    assert.equal(page.includes("'editor'"), false)
-    assert.equal(page.includes("key: 'admin'"), false)
+describe('the Access directory shows everybody', () => {
+  test('the People list is never silently truncated, and only deleted accounts are excluded', () => {
+    const block = people.slice(people.indexOf('const searchResults = useMemo'), people.indexOf('}, [search, members, depts])'))
+    assert.ok(!/\.slice\(0,\s*\d+\)/.test(block))
+    assert.ok(block.includes('if (!q) return pool'))
+    assert.ok(block.includes('members.filter(m => !m.is_deleted)'))
+    assert.ok(!/is_active/.test(block), 'an inactive account must stay assignable')
+    assert.ok(!/['"`]%?(test|dummy|sample)%?['"`]/i.test(block), 'no account is excluded for its name')
   })
 
-  test('protected actions are reachable only through Custom', () => {
-    for (const keys of [ASSETS, FINANCE]) {
-      for (const level of PRESET_LEVELS) {
-        for (const action of granted(presetAllowedActions(level, keys))) {
-          assert.equal(isProtectedAction(action), false, `${level} granted ${action}`)
-        }
+  test('the panel says how many people it shows', () => {
+    assert.ok(/results\.length === 1 \? 'employee' : 'employees'/.test(people))
+  })
+
+  test('no permission tree is fetched until an employee is opened', () => {
+    const treeRoute = '/api/control-center/permissions/employees/${'
+    assert.equal(people.split(treeRoute).length - 1, 2, 'one GET in loadTree, one PUT in save')
+  })
+
+  test('directory and departments come from the shared Control Center queries', () => {
+    assert.ok(people.includes('const membersQuery = useAdminMembers()'))
+    assert.equal(people.includes("fetch('/api/admin-members'"), false)
+  })
+})
+
+describe('V1 boundaries', () => {
+  test('no role templates, bulk copy or history were introduced', () => {
+    for (const src of [people, modulesPage, authoritiesPage]) {
+      for (const forbidden of ['RoleTemplate', 'roleTemplate', 'bulkCopy', 'copyAccessFrom', 'AccessHistory', 'exportPermissions']) {
+        assert.equal(src.includes(forbidden), false, forbidden)
       }
     }
   })
 
-  test('Custom automatically includes View', () => {
-    assert.deepEqual(normalizeGrantedActions(['manage'], FINANCE).sort(), ['manage', 'view'])
-    assert.deepEqual(normalizeGrantedActions(['assign'], ASSETS).sort(), ['assign', 'view'])
-  })
-
-  test('existing protected grants load as Custom and are not rewritten', () => {
-    const dhruvFinance = Object.fromEntries(FINANCE.map(a => [a, true]))
-    assert.equal(detectAccessLevel(FINANCE, dhruvFinance), 'custom')
-    const aditya = { view: true, create: true, edit: true, manage: true, assign: true, delete: false }
-    assert.equal(detectAccessLevel(ASSETS, aditya), 'custom')
-    assert.equal(aditya.assign, true, 'detection must not mutate')
-  })
-
-  test('Save is disabled when clean and while saving', () => {
-    assert.ok(page.includes('disabled={!dirty || saving}'))
-  })
-
-  test('a failed save keeps the pending state', () => {
-    const start = page.indexOf('async function save()')
-    const body = page.slice(start, page.indexOf('// ── Render', start))
-    assert.ok(body.includes("setSaveError(json.error ?? 'Save failed'); return"))
-    // No reload and no override reset on the failure path.
-    const failAt = body.indexOf("setSaveError(json.error ?? 'Save failed')")
-    const reloadAt = body.indexOf('await loadTree(selectedEmployeeId)')
-    assert.ok(failAt < reloadAt, 'the failure path must return before reloading')
-  })
-
-  test('a successful save reloads the effective state', () => {
-    assert.ok(page.includes('await loadTree(selectedEmployeeId)'))
-  })
-
-  test('loading fails closed', () => {
-    // The tree's own loading state is a pane-local skeleton now, not the
-    // 100vh LoadingScreen; the structure is unchanged — nothing editable
-    // renders until the tree has arrived.
-    assert.ok(page.includes('treeLoading && <ControlCenterSkeleton'))
-    assert.ok(page.includes('!treeLoading && tree && ('))
-  })
-
-  test('no separate Module Visibility workflow remains', () => {
-    const layout = read('src/components/layout/ControlCenterLayout.tsx')
-    assert.equal(layout.includes('label="Module Visibility"'), false)
-  })
-
-  test('no V2 feature was introduced', () => {
-    for (const forbidden of [
-      'RoleTemplate', 'roleTemplate', 'bulkCopy', 'copyAccessFrom',
-      'DepartmentPermission', 'scopeEditor', 'AccessHistory', 'exportPermissions',
-    ]) {
-      assert.equal(page.includes(forbidden), false, `V1 must not contain ${forbidden}`)
-    }
-  })
-})
-
-// ── PART 6: the employee directory shows everybody ──────────────────────────
-//
-// THE DEFECT THIS PART EXISTS TO PIN. A real, active Sales account that could
-// sign in was absent from Access Control, so nobody could grant it anything.
-// The account was fine; the panel was showing the first twenty people by name
-// and silently dropping the rest — no counter, no "and 40 more", nothing. An
-// administrator scanning for a name late in the alphabet concluded the account
-// did not exist.
-//
-// A directory that hides people is worse than a long one. These assertions are
-// about ABSENCE of a cap, which is exactly the kind of thing that gets quietly
-// reintroduced by somebody optimising a list render.
-
-describe('the Access Control employee directory', () => {
-  const picker = read('src/app/admin/control-center/ModuleMemberPicker.tsx')
-
-  test('the search results are never silently truncated', () => {
-    const block = page.slice(page.indexOf('const searchResults = useMemo'))
-      .slice(0, page.slice(page.indexOf('const searchResults = useMemo')).indexOf('}, [search, members, depts])'))
-    assert.ok(!/\.slice\(0,\s*\d+\)/.test(block),
-      'the employee list must not cap itself; the panel scrolls and the search box narrows')
-    assert.ok(block.includes('if (!q) return pool'),
-      'with no search term the whole directory is returned')
-  })
-
-  test('only soft-deleted accounts are excluded', () => {
-    const block = page.slice(page.indexOf('const searchResults = useMemo'))
-      .slice(0, page.slice(page.indexOf('const searchResults = useMemo')).indexOf('}, [search, members, depts])'))
-    assert.ok(block.includes('members.filter(m => !m.is_deleted)'))
-    assert.ok(!/is_active/.test(block),
-      'an inactive account must stay assignable — hiding it here is how somebody becomes unreachable')
-  })
-
-  test('no account is excluded for what its name or email contains', () => {
-    // Comments are stripped first — block AND line — because the code
-    // legitimately DOCUMENTS that it does not filter on these words, and a
-    // search over raw text would fail on the sentence promising the very thing
-    // it verifies.
-    const codeOnly = (source: string) =>
-      source.replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
-
-    for (const source of [page, picker, read('src/app/api/admin-members/route.ts')]) {
-      assert.ok(!/['"`]%?(test|dummy|sample)%?['"`]/i.test(codeOnly(source)),
-        'an account that can authenticate can hold permissions, whatever it is called')
-      assert.ok(!/not\.ilike|notIlike/.test(codeOnly(source)))
-    }
-  })
-
-  test('the directory read itself is admin-gated and unfiltered', () => {
-    const route = read('src/app/api/admin-members/route.ts')
-    assert.ok(route.includes("callerProfile?.role !== 'admin'"), 'admin only')
-    assert.ok(route.includes("'Forbidden'"))
-    assert.ok(route.includes(".or('is_deleted.eq.false,is_deleted.is.null')"),
-      'soft-deleted accounts are excluded at the source, and nothing else is')
-    assert.ok(route.includes('SUPABASE_SERVICE_ROLE_KEY'),
-      'the service role is used behind the admin check, so RLS on public.users cannot hide a colleague')
-  })
-
-  test('no permission tree is fetched until an employee is opened', () => {
-    // The directory used to prefetch up to twenty trees on load — six backend
-    // calls each — to draw a decorative "x of y". That counter is gone, and the
-    // ONLY GET of the tree route is the one loadTree makes for the employee
-    // the administrator actually selected. The list itself stays complete.
-    assert.equal(page.includes('COUNT_PREFETCH_LIMIT'), false)
-    assert.equal(page.includes('countPrefetchTargets'), false)
-    assert.equal(page.includes('moduleCounts'), false)
-    assert.equal(page.includes('requestedCountIds'), false)
-    const treeRoute = '/api/control-center/permissions/employees/${'
-    assert.equal(page.split(treeRoute).length - 1, 2, 'one GET in loadTree, one PUT in save, nothing else')
-    const loadTreeBody = page.slice(page.indexOf('async function loadTree('), page.indexOf('function changeOverride('))
-    assert.ok(loadTreeBody.includes(treeRoute + 'id}'), 'the GET is the selected employee\'s own')
-    const saveBody = page.slice(page.indexOf('async function save()'), page.indexOf('// ── Render'))
-    assert.ok(saveBody.includes(treeRoute + 'selectedEmployeeId}'))
-  })
-
-  test('the directory and departments come from the shared Control Center queries', () => {
-    // Fetched once per stale window and reused by every section, instead of a
-    // fresh useState copy on every mount of every page.
-    assert.ok(page.includes("from '@/hooks/queries/useControlCenterData'"))
-    assert.ok(page.includes('const membersQuery = useAdminMembers()'))
-    assert.ok(page.includes('const deptsQuery   = useDepartments()'))
-    assert.equal(page.includes("fetch('/api/admin-members'"), false, 'no page-local copy of the directory read')
-    assert.equal(page.includes("fetch('/api/control-center/departments'"), false)
-  })
-
-  test('the panel says how many people it is showing', () => {
-    assert.ok(/results\.length === 1 \? 'employee' : 'employees'/.test(page),
-      'so a complete list is visibly complete')
-  })
-
-  test('the module member picker states what its cap is holding back', () => {
-    // The cap is right there — it is a picker, not a directory — but a silent
-    // one leaves a missing colleague indistinguishable from a missing account.
-    assert.ok(picker.includes('const hidden = matched.length - matches.length'))
-    assert.ok(picker.includes('type to narrow the list'))
-    assert.ok(picker.includes('matched.slice(0, MAX_VISIBLE)'),
-      'the cap applies to what is drawn, after the full match set is known')
-  })
-
-  test('the picker still admits only active, non-deleted people', () => {
-    // Custom visibility grants module access, so a deactivated account must not
-    // be handed one. This is an eligibility rule, not a display cap.
-    const cc = read('src/app/admin/control-center/page.tsx')
-    assert.ok(cc.includes('.filter(m => !m.is_deleted && m.is_active)'))
+  test('the three screens are tabs of the Access hub, and the old By-Module route is gone', () => {
+    const model = read('src/lib/controlCenter/navModel.ts')
+    for (const href of ['/permissions`', '/permissions/modules`', '/permissions/authorities`']) assert.ok(model.includes(href), href)
+    assert.throws(() => read('src/app/api/control-center/permissions/modules/[key]/employees/route.ts'))
   })
 })

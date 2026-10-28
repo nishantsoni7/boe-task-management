@@ -57,29 +57,39 @@ describe('the enforcement claims themselves', () => {
   })
 
   test('isActionEnforced is per-action on a partial module', () => {
-    for (const action of ['view', 'view_all', 'approve_order', 'manage', 'delete']) {
+    // Corrected 2026-10-29 against the migrations and source (see the entry's
+    // comment): every per-person Orders authority the database reads is listed,
+    // and `delete` is not — its only reader was the retired Order Request
+    // function. `approve` is not registered any more; `can_be_order_assignee`
+    // is registered again under its honest meaning (sales-candidate standing,
+    // is_eligible_order_assignee) and IS read by the database.
+    for (const action of [
+      'view', 'create', 'view_all', 'approve_order', 'approve_advance_exception', 'align_production',
+      'view_pi_commission', 'manage', 'train_customize_image', 'view_payment_plan', 'edit_payment_plan',
+      'can_be_order_assignee',
+    ]) {
       assert.equal(isActionEnforced('orders', action), true, `orders.${action} is enforced`)
     }
-    // Edit stays on the ownership rules, and the module has no protected export
-    // path. `approve` and `can_be_order_assignee` are not enforced because they
-    // are not REGISTERED any more — the Order Request workflow they authorized
-    // is retired (20261007000000), so claiming enforcement would be describing
-    // an authority nobody can exercise.
-    for (const action of ['edit', 'export', 'approve', 'can_be_order_assignee']) {
+    for (const action of ['edit', 'export', 'delete', 'approve']) {
       assert.equal(isActionEnforced('orders', action), false, `orders.${action} is not enforced`)
     }
   })
 
-  test('Finance enforces module entry plus the three protected actions', () => {
+  test('Finance enforces module entry, recording, and every money authority', () => {
     // 'view' joined this list when src/app/finance/layout.tsx stopped reading
     // app_modules.visibility_type. Read it precisely: it is MODULE ENTRY, and
     // it says nothing about which payment records a person can then see —
-    // that is still the ownership policies plus 'view_all'.
-    for (const action of ['view', 'approve', 'manage', 'delete', 'view_all']) {
+    // that is still the ownership policies plus 'view_all'. `create` is read by
+    // the expense and bank-credit doors (20270205120000, 20270419000000); the
+    // five protected money authorities by their own functions.
+    for (const action of [
+      'view', 'create', 'approve', 'manage', 'delete', 'view_all',
+      'allocate', 'allocate_correct', 'verify_own_payment', 'reconcile', 'reimburse',
+    ]) {
       assert.equal(isActionEnforced('finance', action), true, `finance.${action} is enforced`)
     }
-    for (const action of ['create', 'edit', 'export']) {
-      assert.equal(isActionEnforced('finance', action), false, `finance.${action} must stay ownership-based`)
+    for (const action of ['edit', 'export']) {
+      assert.equal(isActionEnforced('finance', action), false, `finance.${action} decides nothing`)
     }
   })
 
@@ -87,9 +97,11 @@ describe('the enforcement claims themselves', () => {
     for (const action of ['view', 'create', 'edit', 'delete', 'manage', 'assign']) {
       assert.equal(isActionEnforced('assets_access', action), true)
     }
-    for (const action of ['view', 'create', 'edit', 'delete', 'export', 'manage']) {
+    // Meetings is partial since 2026-10-29: `export` is read by nothing.
+    for (const action of ['view', 'create', 'edit', 'delete', 'manage']) {
       assert.equal(isActionEnforced('meetings', action), true)
     }
+    assert.equal(isActionEnforced('meetings', 'export'), false)
   })
 
   test('Attendance and Payroll are reported as not used, not as prepared', () => {
@@ -151,12 +163,13 @@ describe('the claims still match the code', () => {
     assert.equal(isActionEnforced('orders', 'edit'), false)
   })
 
-  test('Meetings is "enforced" because its layout and capabilities both resolve', () => {
+  test('Meetings is "partial": its layout and capabilities resolve, but nothing reads export', () => {
     const guard = read('src/app/meetings/layout.tsx')
     assert.ok(guard.includes('hasPermission'), 'the Meetings guard no longer resolves permissions')
     const caps = read('src/lib/permissions/meetings.ts')
     assert.ok(caps.includes('deriveMeetingsCapabilities'))
-    assert.equal(moduleEnforcement('meetings').state, 'enforced')
+    assert.equal(caps.includes("'export'"), false, 'if Meetings starts reading export, promote the entry to enforced')
+    assert.equal(moduleEnforcement('meetings').state, 'partial')
   })
 
   test('Assets is "enforced" because the module gates on derived capabilities', () => {
@@ -225,9 +238,10 @@ describe('the claims still match the code', () => {
 
   test('the Access Control screen reads this file, not a local set', () => {
     const page = read('src/app/admin/control-center/permissions/page.tsx')
+    const catalog = read('src/lib/permissions/accessCatalog.ts')
     assert.ok(
-      page.includes("from '@/lib/permissions/enforcement'"),
-      'the permissions page must not keep its own enforcement list',
+      catalog.includes("from './enforcement'") && page.includes("from '@/lib/permissions/accessCatalog'"),
+      'the permissions page must read enforcement through the catalogue, not keep its own list',
     )
     assert.equal(
       page.includes('ENFORCED_MODULE_KEYS = new Set'),

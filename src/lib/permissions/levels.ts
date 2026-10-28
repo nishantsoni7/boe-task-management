@@ -204,6 +204,16 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // `view_all` is already on this list and is what widens this one to the whole
   // company rather than the caller's own department.
   'view_team',
+  // Teaching Customize image: house rules and approved examples shape what the
+  // AI produces on every PI. Registered deny-by-default (20270420000000) and
+  // reachable only through Custom, but it was missing from this set, so a
+  // preset applied over it cleared it without the confirmation every other
+  // per-person authority gets. Added 2026-10-29.
+  'train_customize_image',
+  // Standing as a SALES CANDIDATE for Order Visibility and the salesperson
+  // dashboards (is_eligible_order_assignee, 20260697000000). Re-registered on
+  // the owner's decision of 2026-10-29; granted per person, never by a preset.
+  'can_be_order_assignee',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -259,6 +269,11 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // saving one without being able to see it would be a grant with nowhere to land.
   view_payment_plan: 'view',
   edit_payment_plan: 'view_payment_plan',
+  // /orders/customize-learning sits behind the Orders module gate.
+  train_customize_image: 'view',
+  // A sales candidate's standing is exercised on the Orders dashboards, which
+  // the person must be able to open.
+  can_be_order_assignee: 'view',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use
