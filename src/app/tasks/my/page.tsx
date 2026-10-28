@@ -33,9 +33,11 @@ import {
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Pin,
-  Paperclip, X, CircleCheckBig, SendHorizontal,
+  Paperclip, X, CircleCheckBig, SendHorizontal, GripVertical,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
+import { useTaskOrder, taskOrderKey, TASK_ORDER_TABLE } from '@/hooks/queries/useTaskOrder'
+import { sortMyTasks, reorderAfterDrop, taskGroup } from '@/lib/tasks/taskOrder'
 import { useToast, Toast } from '@/components/ui/toast'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
@@ -129,7 +131,7 @@ const LIST_PARAMS = {
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
-  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy,
+  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy, drag, dropTarget,
 }: {
   task: Task
   accentColor: string
@@ -145,6 +147,15 @@ function TaskCard({
   onComplete?: () => void
   onSubmit?: () => void
   actionBusy?: boolean
+  /** Desktop drag-to-reorder wiring; absent = the row is not draggable (View As, phone). */
+  drag?: {
+    onDragStart: (e: React.DragEvent) => void
+    onDragOver: (e: React.DragEvent) => void
+    onDrop: (e: React.DragEvent) => void
+    onDragEnd: () => void
+  }
+  /** This row is where the dragged task would land. */
+  dropTarget?: boolean
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -246,8 +257,7 @@ function TaskCard({
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     width: '36px', height: '36px', borderRadius: '6px',
-                    background: onComplete ? `${colors.green}12` : `${colors.brand}12`,
-                    border: `1px solid ${onComplete ? colors.green + '35' : colors.brand + '35'}`,
+                    background: 'transparent', border: 'none',
                     cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
                     color: onComplete ? colors.green : colors.brand,
                     opacity: actionBusy ? 0.55 : 1,
@@ -283,6 +293,11 @@ function TaskCard({
 
   return (
     <div
+      draggable={!!drag}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDrop={drag?.onDrop}
+      onDragEnd={drag?.onDragEnd}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
@@ -294,7 +309,7 @@ function TaskCard({
         background: cardBackground,
         border: cardBorder,
         borderRadius: '8px',
-        boxShadow: hovered
+        boxShadow: dropTarget ? `0 -2px 0 0 ${colors.brand}` : hovered
           ? '0 2px 8px rgba(0,0,0,0.09)'
           : isImportant
             ? '0 1px 4px rgba(183,137,42,0.08)'
@@ -307,8 +322,13 @@ function TaskCard({
     >
       {/* Star indicator */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px',
       }}>
+        {drag && (
+          <span title="Drag to reorder" aria-label="Drag to reorder" style={{ display: 'flex', cursor: 'grab', color: colors.muted, opacity: 0.55 }}>
+            <GripVertical size={12} />
+          </span>
+        )}
         {task.is_urgent
           ? <Star size={11} fill="#B7892A" color="#B7892A" />
           : <div style={{ width: '11px' }} />
@@ -410,8 +430,7 @@ function TaskCard({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
-              background: onComplete ? `${colors.green}12` : `${colors.brand}12`,
-              border: `1px solid ${onComplete ? colors.green + '35' : colors.brand + '35'}`,
+              background: 'transparent', border: 'none',
               cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
               color: onComplete ? colors.green : colors.brand,
               opacity: actionBusy ? 0.55 : 1,
@@ -430,10 +449,8 @@ function TaskCard({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
-              background: isPinned
-                ? 'rgba(183,137,42,0.10)'
-                : hoveredPin ? 'rgba(51,90,134,0.10)' : 'transparent',
-              border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : hoveredPin ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
+              background: isPinned ? 'rgba(183,137,42,0.10)' : 'transparent',
+              border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : 'transparent'}`,
               cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
               color: isPinned ? '#805B0D' : hoveredPin ? '#963B27' : colors.muted,
             }}
@@ -451,8 +468,7 @@ function TaskCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '26px', height: '26px', borderRadius: '6px',
-                background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
-                border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
+                background: 'transparent', border: '1px solid transparent',
                 cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
                 color: hoveredEdit ? '#963B27' : colors.muted,
               }}
@@ -467,8 +483,7 @@ function TaskCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: '26px', height: '26px', borderRadius: '6px',
-                background: hoveredDel ? `${colors.red}10` : 'transparent',
-                border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`,
+                background: 'transparent', border: '1px solid transparent',
                 cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
                 color: hoveredDel ? colors.red : colors.muted,
               }}
@@ -1217,6 +1232,7 @@ function MyTasksContent() {
   // the server anything.
   const { data: allTasksRaw = [], isPending: tasksPending, isLoading: tasksLoading } = useMyTasks(userId || null)
   const { data: top3Data } = useTopTasks(userId || null)
+  const { data: savedTaskOrder } = useTaskOrder(userId || null)
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
@@ -1599,8 +1615,41 @@ function MyTasksContent() {
     }
     if (filterStatus)   tasks = tasks.filter(t => t.status === filterStatus)
     if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
-    return tasks
-  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
+    return sortMyTasks(tasks, top3Data?.pinnedIds, savedTaskOrder)
+  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy, top3Data?.pinnedIds, savedTaskOrder])
+
+  // Drag to reorder. The saved order is the WHOLE active list in its sorted
+  // order, so a move made in one tab or filter lands correctly in every other.
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropId, setDropId] = useState<string | null>(null)
+  const fullSorted = useMemo(
+    () => sortMyTasks(buckets.all, top3Data?.pinnedIds, savedTaskOrder),
+    [buckets, top3Data?.pinnedIds, savedTaskOrder],
+  )
+
+  const handleDrop = async (toId: string) => {
+    const fromId = dragId
+    setDragId(null)
+    setDropId(null)
+    if (!fromId || !userId || viewAsUserId) return
+    const byId = new Map(fullSorted.map(t => [t.id, t]))
+    const groupOf = (id: string) => {
+      const t = byId.get(id)
+      return t ? taskGroup(t, !!top3Data?.pinnedIds?.has(id)) : undefined
+    }
+    const next = reorderAfterDrop(fullSorted.map(t => t.id), fromId, toId, groupOf)
+    if (!next) return
+    const previous = savedTaskOrder ?? null
+    queryClient.setQueryData(taskOrderKey(userId), next)
+    const { error } = await supabase
+      .from(TASK_ORDER_TABLE)
+      .upsert({ user_id: userId, task_ids: next }, { onConflict: 'user_id' })
+    if (error) {
+      console.error('[handleDrop] failed:', error.message, error)
+      queryClient.setQueryData(taskOrderKey(userId), previous)
+      showToast('Could not save the new order', 'error')
+    }
+  }
 
   function handleTabChange(key: TabKey | null) {
     setSelectedTask(null)
@@ -1914,6 +1963,13 @@ function MyTasksContent() {
                     onSubmit={!viewAsUserId && canSubmitForApproval(task, userId) ? () => handleQuickSubmit(task) : undefined}
                     actionBusy={quickActionTaskId === task.id}
                     isMobile={isMobile}
+                    dropTarget={!!dragId && dropId === task.id && dragId !== task.id}
+                    drag={!isMobile && !viewAsUserId && !!userId && activeTab !== 'completed' ? {
+                      onDragStart: e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', task.id); setDragId(task.id) },
+                      onDragOver: e => { if (dragId) { e.preventDefault(); if (dropId !== task.id) setDropId(task.id) } },
+                      onDrop: e => { e.preventDefault(); void handleDrop(task.id) },
+                      onDragEnd: () => { setDragId(null); setDropId(null) },
+                    } : undefined}
                     isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
                     onPin={
                       // Read-only while it waits on someone else: pinning it to

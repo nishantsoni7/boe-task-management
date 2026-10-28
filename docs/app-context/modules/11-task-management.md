@@ -114,6 +114,10 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
+- My Tasks row order (Oct 2026, migration `20270424000000` NOT APPLIED): Important, then Today's Focus pins, then the rest; within a group the person's drag order from
+  `user_task_order` (one row per user, `task_ids uuid[]`, upsert; owner-only RLS; display preference, grants nothing). Pure rules: `src/lib/tasks/taskOrder.ts`; hook
+  `useTaskOrder`. Desktop only, native drag; no cross-group drops; the saved array is the whole active list so it holds in every tab. Action icons are borderless; the pin
+  has its gold border only when pinned.
 - Creation (`taskCreateFlow.ts`): similar-task warning when >= 3 of the new title's words longer than 3 characters appear in an existing open task's title of the
   assignee (`findSimilarTitle`); candidates are primed when the assignee is chosen and reused for 60 s (`DUPLICATE_CANDIDATES_MAX_AGE_MS`). Awaited on click: similar check,
   attachment preparation, insert, `created` activity row; the assignment notification runs afterwards and reports its own outcome. Double clicks create one task (synchronous
