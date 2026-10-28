@@ -167,13 +167,15 @@ describe('the wiring', () => {
   })
 
   test('the Modules page shows the latest announcement and the bell, but not while previewing somebody else', () => {
-    // The launcher's redesign (#218) shows the latest announcement beside the
-    // greeting instead of the unread banner; it reads the same query.
+    // Since 2026-10-29 the newest UNREAD announcement is the first card of the
+    // launcher's For you panel (no row above the tiles); it reads the same
+    // query, and the bell is unchanged.
     const page = read('src/app/modules/page.tsx')
+    const panel = read('src/app/modules/AttentionPanel.tsx')
     assert.match(page, /const showAnnouncements = !viewMode && !!userId/)
     assert.match(page, /useMyAnnouncements\(userId, showAnnouncements\)/)
-    assert.match(page, /\{!editingOrder && showAnnouncements && myAnnouncements\.length > 0 && \(/)
-    assert.match(page, /<LatestAnnouncement latest=\{myAnnouncements\[0\]\} \/>/)
+    assert.match(page, /latestAnnouncement: showAnnouncements \? myAnnouncements\[0\] \?\? null : null,/)
+    assert.match(panel, /\{s\.announcement && <AnnouncementCard latest=\{s\.announcement\} \/>\}/)
     assert.match(page, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
   })
 
