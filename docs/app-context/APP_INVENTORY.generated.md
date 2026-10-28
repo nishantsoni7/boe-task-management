@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `a0cd2a3c` — Payment plan: account and cash kept apart, in one plain table
+- Commit: `6b1a5a1c` — Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 - Commits on this branch: 1053
 - Pages (`page.tsx`): 154   API routes (`route.ts`): 165
 - Migrations: 378 (first `20260530_create_positions.sql`, latest `20270430000000_order_payment_plan_account_cash.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 821   Enums: 0
-- Test files: 671   Next.js 16.2.6, React 19.2.4
+- Test files: 672   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a0cd2a3c` 2026-10-29 Payment plan: account and cash kept apart, in one plain table
-- `f45ea656` 2026-10-29 Orders: Payment plan on its own page, with product pictures
+- `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
+- `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 - `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
@@ -139,7 +139,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 50 source, 64 test
+- `src/lib/finance` — 51 source, 65 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test

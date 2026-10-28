@@ -10,6 +10,7 @@ import { notificationKeys } from '@/lib/notificationCache'
 import { handoverErrorMessage, isHandoverFeatureMissing } from '@/lib/finance/handover'
 import { readOrderCashCheck, type OrderCashCheck } from '@/lib/orders/orderCashCheck'
 import {
+  TRACKED_PAYMENT_MODES,
   readCashPayments,
   readJourney,
   readUnclosedFunds,
@@ -17,6 +18,11 @@ import {
   type PaymentJourney,
   type UnclosedFunds,
 } from '@/lib/finance/cashJourney'
+import {
+  TRACKED_RECORDS_LIMIT,
+  readTrackedPaymentRecords,
+  type TrackedPaymentRecord,
+} from '@/lib/finance/cashJourneyBoard'
 
 // ── Cash journeys (20270413000000) ───────────────────────────────────────────
 //
@@ -45,6 +51,35 @@ export function useUnclosedFunds(enabled = true) {
     },
     staleTime: 20_000,
     refetchInterval: 60_000,
+  })
+}
+
+/**
+ * The payment records behind the journeys (the Cash journeys board): who
+ * recorded each tracked payment, whether Finance verified it, and the Order it
+ * names. Read under the reader's own RLS, so an administrator sees every
+ * tracked payment and everybody else sees their own. Newest first, bounded;
+ * the board says so when the bound is reached.
+ */
+export function useTrackedPaymentRecords(enabled = true) {
+  const { data: userId } = useSignedInUserId()
+  const { viewMode } = useDisplaySubject()
+  return useQuery<TrackedPaymentRecord[]>({
+    queryKey: [...CASH_JOURNEYS_KEY, 'records', userId ?? null],
+    enabled: enabled && !!userId && !viewMode,
+    queryFn: async () => {
+      const { data, error } = await createClient()
+        .from('finance_payment_requests')
+        .select('id, human_payment_id, client_name, amount, payment_mode, payment_date, status, created_at, order_number, submitted_by_user:users!submitted_by(full_name)')
+        .is('deleted_at', null)
+        .neq('status', 'rejected')
+        .in('payment_mode', [...TRACKED_PAYMENT_MODES])
+        .order('created_at', { ascending: false })
+        .limit(TRACKED_RECORDS_LIMIT)
+      if (error) throw new Error(error.message)
+      return readTrackedPaymentRecords(data)
+    },
+    staleTime: 30_000,
   })
 }
 

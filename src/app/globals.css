@@ -8726,74 +8726,107 @@ tr:hover .boe-payment-id-copy,
   .boe-handover-more-btn { width: 44px; height: 44px; }
 }
 
-/* Cash journeys page: underline tabs, one summary line, flat grouped rows. */
-.boe-cj-tabs {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #E4DED7;
+/* Cash journeys board (2026-10-29): four figures (the Finance .fin-stat cards),
+   one .fin-board, rows that say where the money is in words, an inline trail,
+   and the handover log. Colour is never the only signal: every age and every
+   flag also carries its sentence. */
+.boe-cj-note { margin: -6px 0 14px; font-size: 12px; color: #686D6C; }
+.boe-cj-stat--alert .fin-stat-value { color: #A12438; }
+.boe-cj-board { margin-bottom: 16px; }
+.boe-cj-viewhead {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px;
+  padding: 10px 14px; border-bottom: 1px solid #ECE7E0; background: #FAF8F5;
+  font-size: 12.5px; line-height: 1.4; color: #686D6C;
 }
-.boe-cj-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: -1px;
-  padding: 8px 2px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  color: #686D6C;
-  cursor: pointer;
+.boe-cj-viewhead strong { font-size: 13px; font-weight: 600; color: #303536; }
+.boe-cj-viewhead-filter { color: #303536; }
+.boe-cj-viewhead-count { margin-left: auto; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.boe-cj-link {
+  background: none; border: none; padding: 0; font: inherit; font-weight: 600;
+  color: #963B27; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
 }
-.boe-cj-tab:hover { color: #303536; }
-.boe-cj-tab[aria-selected='true'] { color: #303536; font-weight: 600; border-bottom-color: #B9472E; }
-.boe-cj-count {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #EEECE8;
-  font-size: 12px;
-  font-weight: 600;
-  color: #4C5352;
+.boe-cj-warning { padding: 8px 14px; border-bottom: 1px solid #ECE7E0; background: #FAF0DA; font-size: 12.5px; color: #805B0D; }
+.boe-cj-loading, .boe-cj-error-wrap { padding: 20px 14px; font-size: 13px; color: #686D6C; }
+
+/* One person's group: name, count, oldest age, total. */
+.boe-cj-group {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+  padding: 8px 14px; background: #FAF8F5; border-top: 1px solid #ECE7E0; border-bottom: 1px solid #ECE7E0;
+  font-size: 12.5px; color: #686D6C;
 }
-.boe-cj-summary {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
+.boe-cj-viewhead + section > .boe-cj-group, .boe-cj-warning + section > .boe-cj-group { border-top: 0; }
+.boe-cj-group h2 { margin: 0; font-size: 13px; font-weight: 600; color: #303536; }
+.boe-cj-group-total { margin-left: auto; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
+
+/* The rows. */
+.boe-cj-rows { list-style: none; margin: 0; padding: 0; }
+.boe-cj-row { border-bottom: 1px solid #ECE7E0; }
+.boe-cj-rows > .boe-cj-row:last-child { border-bottom: 0; }
+.boe-cj-main {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.3fr) 112px minmax(104px, 0.8fr) minmax(150px, 1fr) minmax(230px, 1.6fr) 136px max-content;
+  gap: 6px 14px; align-items: center; padding: 10px 14px; min-height: 58px; cursor: pointer;
 }
-.boe-cj-summary strong { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.boe-cj-summary span { font-size: 13px; color: #4C5352; }
-.boe-cj-group { margin-bottom: 18px; }
-.boe-cj-group-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 8px;
-  font-size: 12.5px;
-  color: #686D6C;
+.boe-cj-main:hover, .boe-cj-row.is-open > .boe-cj-main { background: #FAF8F5; }
+.boe-cj-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: #303536; }
+.boe-cj-cell > * { min-width: 0; }
+.boe-cj-sub { font-size: 12px; color: #8F9392; overflow-wrap: anywhere; }
+.boe-cj-client { font-size: 13px; color: #303536; overflow-wrap: anywhere; }
+.boe-cj-id .boe-payment-id { background: none; border: 0; padding: 0; gap: 4px; }
+.boe-cj-id .boe-payment-id-text { font-size: 13px; font-weight: 600; color: #303536; }
+.boe-cj-id .boe-payment-id-copy { opacity: 0; }
+.boe-cj-row:hover .boe-cj-id .boe-payment-id-copy, .boe-cj-id .boe-payment-id-copy:focus-visible { opacity: 1; }
+@media (hover: none) { .boe-cj-id .boe-payment-id-copy { opacity: 1; } }
+.boe-cj-amount { text-align: right; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.boe-cj-age--fresh { color: #686D6C; }
+.boe-cj-age--late { color: #8A3410; font-weight: 600; }
+.boe-cj-age--overdue { color: #B42332; font-weight: 600; }
+.boe-cj-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.boe-cj-state--company { color: #1B4A35; }
+.boe-cj-verify { align-items: flex-start; }
+.boe-cj-actions { flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.boe-cj-actions .boe-btn { min-height: 30px; }
+.boe-cj-toggle {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12.5px; color: #686D6C; cursor: pointer; white-space: nowrap;
 }
-.boe-cj-group-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: #303536; }
-.boe-cj-group-head .boe-cj-group-total { margin-left: auto; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
-.boe-cj-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #E4DED7; }
-.boe-cj-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 6px 8px;
-  border-bottom: 1px solid #F1EEE9;
-  border-radius: 4px;
+.boe-cj-toggle:hover { background: #F3F0EB; color: #303536; }
+.boe-cj-row.is-open .boe-cj-toggle { color: #303536; }
+
+/* What is wrong, in words, under the row. */
+.boe-cj-flags { list-style: none; margin: 0; padding: 0 14px 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.boe-cj-flag { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.boe-cj-flag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.boe-cj-flag--overdue { color: #B42332; }
+.boe-cj-flag--late { color: #8A3410; }
+.boe-cj-flag--note { color: #805B0D; }
+
+/* The inline trail. */
+.boe-cj-trail { padding: 10px 14px 14px; background: #FBFAF8; border-top: 1px dashed #E4DED7; }
+.boe-cj-steps { list-style: none; margin: 2px 0 0 6px; padding: 0 0 0 16px; border-left: 2px solid #E4DED7; }
+.boe-cj-step { position: relative; padding: 0 0 12px 0; font-size: 13px; color: #303536; }
+.boe-cj-step:last-child { padding-bottom: 0; }
+.boe-cj-step::before {
+  content: ''; position: absolute; left: -23px; top: 4px; width: 10px; height: 10px; border-radius: 50%;
+  background: #8C8379; border: 2px solid #FFFFFF; box-shadow: 0 0 0 1px #E4DED7;
 }
-.boe-cj-row:hover, .boe-cj-row:focus-within { background: #FBFAF8; }
-.boe-cj-row-main { flex: 1 1 200px; min-width: 0; }
-.boe-cj-row-title { font-size: 14px; line-height: 1.3; }
-.boe-cj-row-sub { font-size: 12.5px; color: #686D6C; }
-.boe-cj-row-amount { flex: 0 0 auto; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.boe-cj-row-status { flex: 1 1 200px; min-width: 0; }
+.boe-cj-step--good::before { background: #276247; }
+.boe-cj-step--bad::before { background: #B42332; }
+.boe-cj-step--open::before { background: #C48A1A; }
+.boe-cj-quote { font-size: 12.5px; color: #4C5352; margin-top: 2px; }
+.boe-cj-exception {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: #FBE9EC; border: 1px solid #E9B9C1; font-size: 13px; line-height: 1.45; color: #7A1523; overflow-wrap: anywhere;
+}
+
+/* The handover log inside the board. */
+.boe-cj-log { padding: 12px 14px 14px; }
+.boe-cj-log-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+.boe-cj-log .boe-handover-stack { margin-bottom: 0; }
+.boe-cj-pager { display: flex; gap: 8px; justify-content: center; align-items: center; padding: 14px 0 0; font-size: 13px; }
+
+/* Kept for CashPaymentActions' quiet journey button and the custodian footer. */
 .boe-cj-row .boe-cj-quiet { opacity: 0; transition: opacity 0.12s; }
 .boe-cj-row:hover .boe-cj-quiet, .boe-cj-row:focus-within .boe-cj-quiet { opacity: 1; }
 @media (hover: none) { .boe-cj-row .boe-cj-quiet { opacity: 1; } }
@@ -8804,14 +8837,14 @@ tr:hover .boe-payment-id-copy,
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 24px;
+  margin-top: 8px;
   padding: 10px 8px;
   border-top: 1px solid #E4DED7;
   font-size: 13px;
   color: #4C5352;
 }
 .boe-cj-footer strong { color: #303536; font-weight: 600; }
-.boe-cj-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: #EEECE8; }
+.boe-cj-seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 8px; background: #EEECE8; }
 .boe-cj-seg button {
   padding: 4px 12px;
   border: none;
@@ -8823,11 +8856,29 @@ tr:hover .boe-payment-id-copy,
   cursor: pointer;
 }
 .boe-cj-seg button[aria-selected='true'] { background: #FFFFFF; color: #303536; font-weight: 600; box-shadow: 0 1px 2px rgba(48, 53, 54, 0.12); }
-@media (max-width: 640px) {
-  .boe-cj-row { flex-wrap: wrap; row-gap: 4px; }
-  .boe-cj-row-main { flex: 1 1 calc(100% - 90px); }
-  .boe-cj-row-status { flex: 1 1 100%; order: 3; }
-  .boe-cj-row > :last-child { order: 4; }
+
+/* Narrow screens: each row becomes a short card, the trail stays underneath. */
+@media (max-width: 1100px) {
+  .boe-cj-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "id amount"
+      "route recorded"
+      "where where"
+      "verify verify"
+      "actions actions";
+    gap: 8px 12px;
+  }
+  .boe-cj-id { grid-area: id; }
+  .boe-cj-amount { grid-area: amount; }
+  .boe-cj-route { grid-area: route; }
+  .boe-cj-recorded { grid-area: recorded; align-items: flex-end; text-align: right; }
+  .boe-cj-where { grid-area: where; }
+  .boe-cj-verify { grid-area: verify; }
+  .boe-cj-actions { grid-area: actions; justify-content: flex-start; }
+  .boe-cj-actions .boe-btn { min-height: 40px; }
+  .boe-cj-toggle { height: 40px; }
+  .boe-cj-viewhead-count { margin-left: 0; }
 }
 
 /* The sidebar's nav item for open handovers: a count that cannot read as decoration. */
