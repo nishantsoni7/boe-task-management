@@ -1143,6 +1143,8 @@ describe('the applied migrations are frozen', () => {
       '20270423000000_finance_bank_line_sync.sql',
       // My Tasks: personal drag-and-drop order. APPLIED 2026-10-28.
       '20270424000000_user_task_order.sql',
+      // Phone alerts (Web Push): device table, mute settings, notifications trigger. NOT APPLIED.
+      '20270425000000_phone_push_notifications.sql',
     ])
   })
 
@@ -1537,6 +1539,8 @@ describe('the applied migrations are frozen', () => {
       '20270423000000_finance_bank_line_sync.sql',
       // My Tasks: personal drag-and-drop order. APPLIED 2026-10-28.
       '20270424000000_user_task_order.sql',
+      // Phone alerts (Web Push): device table, mute settings, notifications trigger. NOT APPLIED.
+      '20270425000000_phone_push_notifications.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
