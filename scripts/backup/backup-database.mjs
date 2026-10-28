@@ -1,6 +1,7 @@
 // Read-only export of the live Supabase project: every public table (JSONL.gz, encrypted),
 // auth users (no passwords), the REST schema snapshot, and a mirror of all Storage buckets.
-// Uses the service-role key from .env.local over HTTPS — needs no Docker, psql or pg_dump.
+// Uses the service-role key from .env.local over HTTPS — needs no Docker, psql or pg_dump,
+// except for the few tables the service role cannot read (optional pg_dump step, see 2b).
 // Writes only to the backup folder; never prints row data.
 //   node backup-database.mjs                 tables + auth + storage
 //   node backup-database.mjs --no-storage    skip the (large) storage mirror
@@ -8,6 +9,7 @@
 //   BOE_ENV_FILE=<path> overrides the .env.local location
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import zlib from 'node:zlib'
 import { BACKUP_ROOT, MAIN_REPO, encryptFile, ensureDir, loadEnvFile, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
 
@@ -83,6 +85,46 @@ for (const t of tables) {
   }
 }
 
+// 2b ── tables the service role is deliberately denied: direct pg_dump ───────────
+// Needs BACKUP_DATABASE_URL (Supabase session-pooler URI) in the env file and Docker running.
+// BACKUP_PG_IMAGE picks the Docker image (default postgres:17; its pg_dump must be at least the server's
+// major version, 17 today). Use an image that is already on this machine to avoid a download.
+// Anything that goes wrong here is a warning, not a backup failure: the tables simply stay
+// listed as NOT COVERED (Supabase platform backups still hold them).
+// finance_received_payments is a view over exported tables, so it is rebuilt, not dumped.
+const VIEWS = new Set(['finance_received_payments'])
+const toDump = (manifest.unreadable ?? []).filter((t) => !VIEWS.has(t))
+if (toDump.length) {
+  const dbUrl = env.BACKUP_DATABASE_URL
+  if (!dbUrl) log(`pg_dump skipped: BACKUP_DATABASE_URL is not set in ${envFile}`)
+  else {
+    const image = env.BACKUP_PG_IMAGE || 'postgres:17'
+    const args = ['run', '--rm', '-e', 'BACKUP_DATABASE_URL', '--entrypoint', 'sh', image, '-c',
+      `pg_dump --no-owner --no-privileges ${toDump.map((t) => `-t public.${t}`).join(' ')} "$BACKUP_DATABASE_URL"`]
+    const r = spawnSync('docker', args, { env: { ...process.env, BACKUP_DATABASE_URL: dbUrl }, maxBuffer: 1024 * 1024 * 1024 })
+    const sql = r.stdout || Buffer.alloc(0)
+    const text = sql.toString('utf8')
+    const missing = toDump.filter((t) => !text.includes(`CREATE TABLE public.${t} `))
+    if (r.status !== 0 || missing.length) {
+      log(`pg_dump FAILED, tables stay NOT COVERED: ${(r.stderr || '').toString().replace(dbUrl, '<url>').trim().split('\n').slice(-2).join(' | ') || 'missing ' + missing.join(', ')}`)
+    } else {
+      // Row counts from the COPY blocks, so the manifest records what was captured.
+      const rows = Object.fromEntries(toDump.map((t) => {
+        const m = text.match(new RegExp(`COPY public\\.${t} \\([^)]*\\) FROM stdin;\\n([\\s\\S]*?)\\n\\\\\\.\\n`))
+        return [t, m ? (m[1] === '' ? 0 : m[1].split('\n').length) : 0]
+      }))
+      const gz = path.join(outDir, 'pg-dump-restricted-tables.sql.gz')
+      fs.writeFileSync(gz, zlib.gzipSync(sql))
+      const sha = sha256File(gz)
+      if (!plain) { encryptFile(gz, gz + '.enc'); fs.rmSync(gz) }
+      manifest.pgDump = { tables: rows, sha256OfGz: sha, file: path.basename(gz) + (plain ? '' : '.enc') }
+      for (const t of toDump) manifest.tables[t] = { rows: rows[t], viaPgDump: true }
+      manifest.unreadable = manifest.unreadable.filter((t) => !toDump.includes(t))
+      log(`pg_dump OK (${image}): ${toDump.map((t) => `${t} (${rows[t]} rows)`).join(', ')}`)
+    }
+  }
+}
+
 // 3 ── auth users (profile data only; Supabase never exposes password hashes) ──
 try {
   const users = []
@@ -140,7 +182,7 @@ manifest.totalRows = Object.values(manifest.tables).reduce((n, t) => n + (t.rows
 fs.writeFileSync(path.join(outDir, 'MANIFEST.json'), JSON.stringify(manifest, null, 2))
 prune(path.join(BACKUP_ROOT, 'database'), /^\d/, 14)
 const ok = manifest.errors.length === 0 && Object.keys(manifest.tables).length > 0
-writeStatus('database', { ok, snapshot: ts, tables: Object.keys(manifest.tables).length, totalRows: manifest.totalRows, errors: manifest.errors.length, unreadable: manifest.unreadable ?? [], project: projectRef })
+writeStatus('database', { ok, snapshot: ts, tables: Object.keys(manifest.tables).length, totalRows: manifest.totalRows, errors: manifest.errors.length, unreadable: manifest.unreadable ?? [], viaPgDump: Object.keys(manifest.pgDump?.tables ?? {}), project: projectRef })
 if (manifest.unreadable?.length) log(`NOT COVERED (permission denied for the service role): ${manifest.unreadable.join(', ')} - rely on Supabase platform backups for these`)
 log(`database backup ${ok ? 'OK' : 'FINISHED WITH ' + manifest.errors.length + ' ERROR(S)'} — ${Object.keys(manifest.tables).length} tables, ${manifest.totalRows} rows -> ${outDir}`)
 if (!ok) { console.error(manifest.errors.slice(0, 15).join('\n')); process.exitCode = 1 }
