@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0ba1415f` — Vendors: a list that shows what each vendor is, with filters for it
-- Commits on this branch: 1043
+- Commit: `a2cf4f27` — Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center
+- Commits on this branch: 1044
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 813   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a2cf4f27` 2026-10-28 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
@@ -38,7 +39,6 @@
 - `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
 - `6322a52f` 2026-10-27 Docs: migration 20270421000000 applied to production
 - `65640861` 2026-10-27 Changelog: migration was rehearsed in a rolled-back transaction
-- `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 
 ## Pages by top-level area
 
