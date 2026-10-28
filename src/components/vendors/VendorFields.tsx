@@ -12,9 +12,12 @@ type Props = {
   value: VendorInput
   errors: FieldErrors<VendorField>
   onChange: (patch: Partial<VendorInput>) => void
+  /** A potential / contacted vendor: only the name is required, so the other fields lose their red stars. */
+  relaxed?: boolean
 }
 
-export default function VendorFields({ value, errors, onChange }: Props) {
+export default function VendorFields({ value, errors, onChange, relaxed = false }: Props) {
+  const need = !relaxed
   const cls = (k: VendorField) => `${s.input}${errors[k] ? ` ${s.invalid}` : ''}`
   return (
     <>
@@ -23,7 +26,7 @@ export default function VendorFields({ value, errors, onChange }: Props) {
           <input id="v-company" className={cls('company_name')} value={value.company_name} maxLength={160}
                  autoComplete="off" onChange={e => onChange({ company_name: e.target.value })} />
         </Field>
-        <Field label="Contact person" required error={errors.contact_name} htmlFor="v-contact">
+        <Field label="Contact person" required={need} error={errors.contact_name} htmlFor="v-contact">
           <input id="v-contact" className={cls('contact_name')} value={value.contact_name} maxLength={120}
                  autoComplete="off" onChange={e => onChange({ contact_name: e.target.value })} />
         </Field>
@@ -31,7 +34,7 @@ export default function VendorFields({ value, errors, onChange }: Props) {
           <input id="v-desig" className={s.input} value={value.contact_designation} maxLength={80}
                  onChange={e => onChange({ contact_designation: e.target.value })} />
         </Field>
-        <Field label="Mobile number" required error={errors.phone} htmlFor="v-phone" hint="+91 is added for a 10-digit number">
+        <Field label="Mobile number" required={need} error={errors.phone} htmlFor="v-phone" hint="+91 is added for a 10-digit number">
           <input id="v-phone" className={cls('phone')} value={value.phone} inputMode="tel" autoComplete="off"
                  onChange={e => onChange({ phone: e.target.value })} />
         </Field>
@@ -45,13 +48,13 @@ export default function VendorFields({ value, errors, onChange }: Props) {
         </Field>
       </div>
 
-      <Field label="Exact address of the factory" required error={errors.address} htmlFor="v-address"
+      <Field label="Exact address of the factory" required={need} error={errors.address} htmlFor="v-address"
              hint="Plot / building, road, landmark — as someone would need it to find the place">
         <textarea id="v-address" className={`${s.textarea}${errors.address ? ` ${s.invalid}` : ''}`} value={value.address}
                   maxLength={500} onChange={e => onChange({ address: e.target.value })} />
       </Field>
       <div className={s.grid2}>
-        <Field label="City" required error={errors.city} htmlFor="v-city">
+        <Field label="City" required={need} error={errors.city} htmlFor="v-city">
           <input id="v-city" className={cls('city')} value={value.city} maxLength={80}
                  onChange={e => onChange({ city: e.target.value })} />
         </Field>
@@ -65,7 +68,7 @@ export default function VendorFields({ value, errors, onChange }: Props) {
         </Field>
       </div>
 
-      <Field label="What can this vendor do?" required error={errors.capabilities}>
+      <Field label="What can this vendor do?" required={need} error={errors.capabilities}>
         <Chips multiple label="What this vendor can do" options={CAPABILITIES} value={value.capabilities}
                onChange={v => onChange({ capabilities: v as string[] })} />
       </Field>
@@ -87,6 +90,11 @@ export default function VendorFields({ value, errors, onChange }: Props) {
                  onChange={e => onChange({ monthly_capacity: e.target.value })} />
         </Field>
       </div>
+      <Field label="Who recommended them / how we heard of them" htmlFor="v-ref"
+             hint="Name the person or company that gave us this reference, so it can be followed up">
+        <input id="v-ref" className={s.input} value={value.referred_by} maxLength={200}
+               onChange={e => onChange({ referred_by: e.target.value })} />
+      </Field>
       <Field label="Notes about the vendor" htmlFor="v-notes">
         <textarea id="v-notes" className={s.textarea} value={value.notes} maxLength={2000}
                   onChange={e => onChange({ notes: e.target.value })} />

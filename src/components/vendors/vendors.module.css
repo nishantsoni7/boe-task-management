@@ -281,3 +281,23 @@
 @media (max-width: 767px) {
   .submitBar { margin: 0 -4px; bottom: calc(0px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* ── Stages and meetings at our factory ───────────────────────────────── */
+.tabAlert { border-color: #E0A100; }
+.tabAlert.tabOn { background: #8A5A00; border-color: #8A5A00; }
+.kindTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kindTab {
+  min-height: 64px; padding: 10px 12px; border-radius: 12px; border: 2px solid #CFC8BF; background: #fff; cursor: pointer;
+  font-family: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; color: #303536;
+}
+.kindTabOn { border-color: #303536; background: #F4F1EC; }
+.kindTitle { font-size: 15px; font-weight: 800; }
+.kindHint { font-size: 12px; color: #686D6C; }
+.laterBox { border: 1px dashed #E0A100; background: #FFF9EA; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.switchRow { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; cursor: pointer; min-height: 44px; }
+.switchRow input { width: 22px; height: 22px; accent-color: #303536; flex: 0 0 auto; }
+.stageTrack { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; font-weight: 700; color: #686D6C; }
+.stageStep { padding: 3px 10px; border-radius: 12px; background: #EFEBE5; }
+.stageDone { background: #E3F1E6; color: #1D6B34; }
+.stageNow { background: #303536; color: #fff; }
+.badgeDark { background: #303536; color: #fff; }

@@ -170,7 +170,7 @@ ok('invalid phone, empty capability, short address and unknown product type are 
 await fails(U.dhruv, `select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, visitBody([])], /at least one photograph/)
 const pPerson = photoPath(U.dhruv)
 await upload(U.dhruv, pPerson)
-await fails(U.dhruv, `select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, visitBody([{ path: pPerson, kind: 'person' }])], /first visit needs at least one photograph of the factory/)
+await fails(U.dhruv, `select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, visitBody([{ path: pPerson, kind: 'person' }])], /first visit to the factory needs at least one photograph of the factory/)
 await fails(U.dhruv, `select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, visitBody([{ path: photoPath(U.dhruv), kind: 'factory' }])], /has not finished uploading/)
 await fails(U.dhruv, `select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, visitBody([{ path: photoPath(U.other), kind: 'factory' }])], /photograph is not valid/)
 ok('a visit needs a photograph, a factory photograph the first time, uploaded, from the caller\'s own folder')
@@ -264,7 +264,7 @@ assert.equal(list.total, 0)
 assert.equal(list.status_counts.prospect, 1, 'counts follow the search')
 ok('status tabs: counts under the current search, filter applied after the counts')
 
-await fails(U.dhruv, `select public.set_vendor_status($1::uuid, 'rejected')`, [vendorId], /Admin only/)
+await fails(U.dhruv, `select public.set_vendor_status($1::uuid, 'rejected')`, [vendorId], /only an administrator/)
 await fails(U.dhruv, `select public.archive_vendor($1::uuid, 'no longer needed')`, [vendorId], /Admin only/)
 await fails(U.dhruv, `select public.vendor_list('{"archived": true}'::jsonb)`, [], /Admin only/)
 await fails(U.dhruv, `select public.vendor_activity(null, null)`, [], /Admin only/)
@@ -327,5 +327,115 @@ assert.equal(readOrphanOther.rows[0].a, false, 'an unattached upload is visible 
 const readNobody = await as(U.nobody, `select public.vendor_photo_readable($1, $2) a`, [pFactory, U.dhruv])
 assert.equal(readNobody.rows[0].a, false)
 ok('photograph upload is limited to your own folder and uuid names; reading follows module access')
+
+
+// ── Stages, meetings at our factory, past entries ─────────────────────────
+const istDay = back => new Date(Date.now() + 5.5 * 3600e3 - back * 86400e3).toISOString().slice(0, 10)
+const quick = (over = {}) => ({ status: 'potential', company_name: 'Rathore Furniture', referred_by: 'Sanjay at Oak Studio said they are good', ...over })
+
+const pot = await rpc(U.dhruv, 'save_vendor', sub(), null, quick())
+assert.equal(pot.status, 'created')
+let pv = await rpc(U.dhruv, 'get_vendor', pot.id)
+assert.equal(pv.vendor.status, 'potential'); assert.equal(pv.vendor.phone, null); assert.equal(pv.vendor.profile_complete, false)
+assert.equal(pv.vendor.referred_by, 'Sanjay at Oak Studio said they are good')
+const potDup = await rpc(U.other, 'save_vendor', sub(), null, quick())
+assert.equal(potDup.status, 'duplicate'); assert.equal(potDup.id, pot.id)
+await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { status: 'potential' }], /VENDOR_INVALID: Company name is required/)
+await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), quick({ company_name: 'Bad Phone Co', phone: '123' })], /Mobile number does not look right/)
+await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { status: 'approved', company_name: 'Sneaky' }], /starts as potential, contacted or prospect/)
+await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { company_name: 'No Details Prospect' }], /VENDOR_INVALID: Contact person is required/)
+ok('a potential vendor needs only a name (and remembers who recommended them); the same name is a duplicate; a prospect still needs the full profile')
+
+let l = await rpc(U.dhruv, 'vendor_list', { statuses: ['potential'] })
+assert.equal(l.total, 1); assert.equal(l.rows[0].referred_by !== null, true); assert.equal(l.rows[0].phone, null)
+assert.ok(l.status_counts.potential >= 1)
+l = await rpc(U.dhruv, 'vendor_list', { q: 'oak studio' })
+assert.equal(l.total, 1, 'search also finds who recommended the vendor')
+ok('potential vendors list with a null phone, a tab count, and are found through the recommender')
+
+// Moving between the pre-visit stages: anyone; everything else: Admin.
+await rpc(U.dhruv, 'set_vendor_status', pot.id, 'contacted')
+await rpc(U.dhruv, 'set_vendor_status', pot.id, 'potential')
+await fails(U.dhruv, "select public.set_vendor_status($1::uuid, 'prospect')", [pot.id], /only an administrator/)
+await fails(U.admin, "select public.set_vendor_status($1::uuid, 'approved')", [pot.id], /complete the vendor's details/)
+ok('a person moves a vendor between potential and contacted; prospect and beyond are the owner\'s, and need a complete profile')
+
+// They came to us.
+const inbound = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, { kind: 'vendor_at_our_factory', purpose: 'first_meeting',
+  person_met: 'Mahesh Rathore', discussion: 'Visited our factory, brought samples of two chairs.', outcome: 'interested' })
+assert.equal(inbound.status, 'logged'); assert.equal(inbound.location_source, 'not_applicable'); assert.equal(inbound.kind, 'vendor_at_our_factory')
+pv = await rpc(U.dhruv, 'get_vendor', pot.id)
+assert.equal(pv.vendor.status, 'contacted', 'meeting them moves a potential vendor to contacted')
+assert.equal(pv.vendor.awaiting_site_visit, true)
+assert.equal(pv.visits[0].kind, 'vendor_at_our_factory'); assert.equal(pv.visits[0].photos.length, 0)
+l = await rpc(U.dhruv, 'vendor_list', { awaiting_visit: true })
+assert.equal(l.total, 1); assert.equal(l.rows[0].awaiting_site_visit, true); assert.equal(l.rows[0].inbound_count, 1); assert.equal(l.rows[0].site_visit_count, 0)
+ok('a meeting at our factory needs no photographs or location, moves the vendor to contacted and flags it as awaiting a site visit')
+
+// Registering: a site visit needs a complete profile and a factory photograph.
+const sPhoto = photoPath(U.dhruv)
+await upload(U.dhruv, sPhoto)
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }])], /complete the vendor's details/)
+await rpc(U.dhruv, 'save_vendor', sub(), pot.id, vendorBody({ company_name: 'Rathore Furniture', phone: '+919844444444', referred_by: 'Sanjay at Oak Studio' }))
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'person' }])], /first visit to the factory needs/)
+const reg = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }], { purpose: 'factory_inspection' }))
+assert.equal(reg.status, 'logged')
+pv = await rpc(U.dhruv, 'get_vendor', pot.id)
+assert.equal(pv.vendor.status, 'prospect', 'the site visit registers the vendor'); assert.equal(pv.vendor.awaiting_site_visit, false)
+l = await rpc(U.dhruv, 'vendor_list', { awaiting_visit: true })
+assert.equal(l.total, 0)
+ok('a site visit needs the complete profile and a factory photograph, then registers the vendor (contacted -> prospect)')
+
+// A visit that already happened.
+const lateVendor = await rpc(U.dhruv, 'save_vendor', sub(), null, vendorBody({ company_name: 'Old Visit Works', phone: '+919855555555' }))
+const lateBody = (over = {}) => ({ kind: 'site_visit', entered_later: true, visited_on: istDay(3), purpose: 'first_meeting',
+  person_met: 'Old Contact', discussion: 'Visited three days ago, saw the unit.', outcome: 'interested', ...over })
+const late = await rpc(U.dhruv, 'log_vendor_visit', sub(), lateVendor.id, lateBody())
+assert.equal(late.status, 'logged'); assert.equal(late.entered_later, true); assert.equal(late.location_source, 'not_applicable')
+let lv = await rpc(U.dhruv, 'get_vendor', lateVendor.id)
+assert.equal(lv.visits[0].entered_later, true); assert.equal(lv.visits[0].photos.length, 0); assert.equal(lv.visits[0].latitude, null)
+assert.ok(new Date(lv.visits[0].visited_at) < new Date(Date.now() - 2 * 86400e3), 'dated to the day it happened')
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), lateVendor.id, lateBody({ visited_on: istDay(-1) })], /cannot be in the future/)
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), lateVendor.id, lateBody({ visited_on: istDay(200) })], /too long ago/)
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), lateVendor.id, lateBody({ visited_on: undefined })], /give the day/)
+// Sent with a location, an entered-later visit still keeps none.
+const late2 = await rpc(U.dhruv, 'log_vendor_visit', sub(), lateVendor.id, lateBody({ latitude: 10, longitude: 10, accuracy_m: 5 }))
+lv = await rpc(U.dhruv, 'get_vendor', lateVendor.id)
+assert.equal(lv.visits.find(v => v.id === late2.id).latitude, null)
+ok('a visit that already happened needs a day (not future, not >120 days back), no photographs or location, and keeps none even if sent')
+
+// An entered-later visit does not count as the first live visit: the live one still needs a factory photograph.
+const lp = photoPath(U.dhruv); await upload(U.dhruv, lp)
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), lateVendor.id, visitBody([{ path: lp, kind: 'person' }])], /first visit to the factory needs/)
+ok('an entered-later visit never replaces the live proof: the first live visit still needs a factory photograph')
+
+// The window.
+await fails(U.dhruv, 'select public.set_vendor_past_entries_until($1::date)', [istDay(0)], /Admin only/)
+await fails(U.admin, 'select public.set_vendor_past_entries_until($1::date)', [istDay(-200)], /choose a day/)
+let access = await rpc(U.dhruv, 'vendors_my_access')
+assert.equal(access.past_entries_open, true); assert.equal(access.is_admin, false)
+await rpc(U.admin, 'set_vendor_past_entries_until', istDay(1))
+access = await rpc(U.dhruv, 'vendors_my_access')
+assert.equal(access.past_entries_open, false)
+await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), lateVendor.id, lateBody()], /adding visits that already happened is closed/)
+await rpc(U.admin, 'set_vendor_past_entries_until', istDay(-5))
+access = await rpc(U.admin, 'vendors_my_access'); assert.equal(access.past_entries_open, true)
+ok('Admin opens and closes the catch-up window; while closed nobody can add past visits')
+
+// The owner's view.
+const act2 = await rpc(U.admin, 'vendor_activity', null, null)
+assert.equal(act2.totals.at_our_factory, 1)
+assert.equal(act2.totals.entered_later, 2)
+assert.equal(act2.totals.at_site, 2, 'only live site visits within 500 m count as at the vendor')
+assert.ok(act2.pipeline.potential >= 0 && act2.pipeline.registered >= 1)
+const dh = act2.by_person.find(p => p.name === 'Dhruv')
+assert.equal(dh.at_our_factory, 1); assert.equal(dh.entered_later, 2)
+await rpc(U.dhruv, 'save_vendor', sub(), null, quick({ company_name: 'Chauhan Wood' }))
+const chauhan = (await rpc(U.dhruv, 'vendor_list', { q: 'chauhan' })).rows[0]
+await rpc(U.dhruv, 'log_vendor_visit', sub(), chauhan.id, { kind: 'vendor_at_our_factory', purpose: 'first_meeting', person_met: 'Chauhan', discussion: 'Came to the office', outcome: 'interested' })
+const act3 = await rpc(U.admin, 'vendor_activity', null, null)
+assert.ok(act3.awaiting_site_visit.some(w => w.company_name === 'Chauhan Wood' && w.days_waiting === 0), 'a vendor that met us but was never visited is on the chase list')
+assert.ok(!act3.awaiting_site_visit.some(w => w.company_name === 'Rathore Furniture'), 'once visited it leaves the list')
+ok('activity separates proven visits from meetings at our factory and entered-later records, and lists vendors awaiting a site visit')
 
 console.log(`all ${checks} checks passed`)

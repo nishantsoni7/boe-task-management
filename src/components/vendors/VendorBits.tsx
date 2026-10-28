@@ -29,7 +29,8 @@ export function daysAgoText(days: number | null | undefined): string {
 export const mapsHref = (lat: number, lng: number) => `https://www.google.com/maps?q=${lat},${lng}`
 
 export function StatusBadge({ status }: { status: string }) {
-  const tone = status === 'approved' ? s.badgeGood : status === 'rejected' ? s.badgeBad : status === 'on_hold' ? s.badgeWarn : ''
+  const tone = status === 'approved' ? s.badgeGood : status === 'rejected' ? s.badgeBad
+    : status === 'on_hold' ? s.badgeWarn : status === 'potential' || status === 'contacted' ? s.badgeSoft : ''
   return <span className={`${s.badge} ${tone}`}>{labelOf(VENDOR_STATUSES, status)}</span>
 }
 

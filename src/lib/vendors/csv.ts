@@ -10,7 +10,8 @@ type Column = { header: string; cell: (v: VendorSummary) => string }
 export const VENDOR_CSV_COLUMNS: Column[] = [
   { header: 'Company', cell: v => csvCell(v.company_name) },
   { header: 'Contact person', cell: v => csvCell(v.contact_name) },
-  { header: 'Mobile', cell: v => phoneCell(v.phone) },
+  { header: 'Mobile', cell: v => (v.phone ? phoneCell(v.phone) : '') },
+  { header: 'Recommended by', cell: v => csvCell(v.referred_by) },
   { header: 'City', cell: v => csvCell(v.city) },
   { header: 'State', cell: v => csvCell(v.state) },
   { header: 'Status', cell: v => csvCell(labelOf(VENDOR_STATUSES, v.status)) },

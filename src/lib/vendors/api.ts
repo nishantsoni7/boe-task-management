@@ -1,5 +1,5 @@
 import type { createClient } from '@/lib/supabase/client'
-import type { Activity, PhotoKind, VendorDetail, VendorPage } from './constants'
+import type { Activity, PhotoKind, VendorDetail, VendorPage, VisitKind } from './constants'
 
 // Thin typed wrappers over the database functions. There is no API route in between on purpose: every
 // function reads auth.uid() itself, so the browser's own session IS the identity.
@@ -68,6 +68,7 @@ export type VendorFilter = {
   capabilities?: string[]
   categories?: string[]
   city?: string
+  awaiting_visit?: boolean
   archived?: boolean
   sort?: 'last_visit' | 'oldest_visit' | 'name' | 'newest'
   limit?: number
@@ -84,7 +85,12 @@ export const fetchActivity = (s: Supabase, from: string | null, to: string | nul
   call<Activity>(() => s.rpc('vendor_activity', { p_from: from, p_to: to }))
 
 export const fetchMyAccess = (s: Supabase) =>
-  call<{ is_admin: boolean }>(() => s.rpc('vendors_my_access'))
+  call<VendorAccess>(() => s.rpc('vendors_my_access'))
+
+export type VendorAccess = { is_admin: boolean; past_entries_until: string | null; past_entries_open: boolean }
+
+export const setPastEntriesUntil = (s: Supabase, until: string) =>
+  call<{ past_entries_until: string; past_entries_open: boolean }>(() => s.rpc('set_vendor_past_entries_until', { p_until: until }))
 
 /** What the vendor form sends. Text stays text; the database parses and validates it again. */
 export type VendorInput = {
@@ -103,7 +109,10 @@ export type VendorInput = {
   materials: string
   headcount: string
   monthly_capacity: string
+  referred_by: string
   notes: string
+  /** Only when creating: 'potential' | 'contacted' (a name is enough) or 'prospect' (the default). */
+  status?: 'potential' | 'contacted' | 'prospect'
   latitude?: number | null
   longitude?: number | null
 }
@@ -114,6 +123,10 @@ export const saveVendor = (s: Supabase, submissionId: string, vendorId: string |
   call<SaveVendorResult>(() => s.rpc('save_vendor', { p_submission_id: submissionId, p_vendor_id: vendorId, p: input }))
 
 export type VisitInput = {
+  kind: VisitKind
+  /** A visit that already happened, typed in afterwards (no photographs or location). */
+  entered_later: boolean
+  visited_on: string
   purpose: string
   person_met: string
   person_met_designation: string
@@ -130,7 +143,9 @@ export type LogVisitResult = {
   status: 'logged' | 'replayed'
   id: string
   vendor_id: string
-  location_source?: 'gps' | 'unavailable'
+  kind?: VisitKind
+  entered_later?: boolean
+  location_source?: 'gps' | 'unavailable' | 'not_applicable'
   distance_m?: number | null
 }
 

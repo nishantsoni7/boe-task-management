@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Phone, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Download, Phone, Plus, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
@@ -41,6 +41,7 @@ const PARAMS = {
   type: enumListParam(CATEGORY_VALUES),
   sort: enumParam(SORTS, 'last_visit'),
   archived: enumParam(['0', '1'] as const, '0'),
+  waiting: enumParam(['0', '1'] as const, '0'),
   page: pageParam(),
 }
 
@@ -70,7 +71,7 @@ export default function VendorListScreen() {
   const archived = state.archived === '1'
   const filter: VendorFilter = {
     q: state.q, statuses: state.status, capabilities: state.can, categories: state.type,
-    sort: state.sort, archived, limit: PAGE, offset: (state.page - 1) * PAGE,
+    sort: state.sort, archived, awaiting_visit: state.waiting === '1', limit: PAGE, offset: (state.page - 1) * PAGE,
   }
   const { data, isLoading, error, isFetching, isPlaceholderData } = useQuery({
     queryKey: [VENDORS_KEY, 'list', filter],
@@ -91,7 +92,7 @@ export default function VendorListScreen() {
   const counts = data?.status_counts ?? {}
   const allCount = Object.values(counts).reduce((a, b) => a + b, 0)
   const advancedOn = state.can.length + state.type.length
-  const anyFilter = !!state.q || state.status.length > 0 || advancedOn > 0
+  const anyFilter = !!state.q || state.status.length > 0 || advancedOn > 0 || state.waiting === '1'
   const pages = Math.max(1, Math.ceil(total / PAGE))
 
   async function exportCsv() {
@@ -117,6 +118,7 @@ export default function VendorListScreen() {
           <Download size={16} aria-hidden="true" /> {exporting ? 'Preparing…' : 'Export'}
         </button>
       )}
+      <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors/new"><UserPlus size={16} aria-hidden="true" /> Add potential vendor</Link>
       <Link className={`${s.primary} ${s.hideOnPhone}`} href="/vendors/visit"><Plus size={16} aria-hidden="true" /> Log a Visit</Link>
     </>
   )
@@ -132,6 +134,11 @@ export default function VendorListScreen() {
           <button type="button" role="tab" aria-selected={state.status.length === 0}
                   className={`${s.tab}${state.status.length === 0 ? ` ${s.tabOn}` : ''}`} onClick={() => setState({ status: [] })}>
             All <span className={s.tabCount}>{allCount}</span>
+          </button>
+          <button type="button" role="tab" aria-selected={state.waiting === '1'}
+                  className={`${s.tab} ${s.tabAlert}${state.waiting === '1' ? ` ${s.tabOn}` : ''}`}
+                  onClick={() => setState({ waiting: state.waiting === '1' ? '0' : '1', status: [] })}>
+            Met us · awaiting site visit
           </button>
           {VENDOR_STATUSES.map(o => {
             const on = state.status.length === 1 && state.status[0] === o.value
@@ -210,11 +217,16 @@ export default function VendorListScreen() {
               {anyFilter ? 'No vendor matches' : archived ? 'No archived vendors' : 'No vendors yet'}
             </div>
             <div className={s.muted}>
-              {anyFilter ? 'Try fewer words, or clear the filters.' : archived ? 'Archived vendors appear here.' : 'Log your first vendor visit to start the vendor base.'}
+              {anyFilter ? 'Try fewer words, or clear the filters.' : archived ? 'Archived vendors appear here.' : 'Add a vendor you have heard about, or log your first visit, to start the vendor base.'}
             </div>
             {anyFilter
               ? <button type="button" className={s.secondary} onClick={() => { setInput(''); resetState() }}>Clear search and filters</button>
-              : !archived && <Link className={s.primary} href="/vendors/visit"><Plus size={16} aria-hidden="true" /> Log a Visit</Link>}
+              : !archived && (
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Link className={s.primary} href="/vendors/new"><UserPlus size={16} aria-hidden="true" /> Add potential vendor</Link>
+                  <Link className={s.secondary} href="/vendors/visit"><Plus size={16} aria-hidden="true" /> Log a Visit</Link>
+                </div>
+              )}
           </div>
         )}
 
@@ -267,7 +279,10 @@ function VendorRow({ v, q, onTouch }: { v: VendorSummary; q: string; onTouch: (i
           <div className={s.rowMain}>
             <span className={s.rowName}><Highlight text={v.company_name} q={q} /></span>
             <span className={s.rowMeta}>
-              <Highlight text={v.contact_name} q={q} /> · <Highlight text={`${v.city}${v.state ? `, ${v.state}` : ''}`} q={q} />
+              {[v.contact_name, [v.city, v.state].filter(Boolean).join(', ')].filter(Boolean).map((part, i) => (
+                <span key={i}>{i > 0 ? ' · ' : ''}<Highlight text={part as string} q={q} /></span>
+              ))}
+              {!v.contact_name && !v.city && <span className={s.muted}>No contact details yet</span>}
             </span>
           </div>
           <StatusBadge status={v.status} />
@@ -278,11 +293,19 @@ function VendorRow({ v, q, onTouch }: { v: VendorSummary; q: string; onTouch: (i
           {v.categories.length > 3 && <span className={`${s.badge} ${s.badgeSoft}`}>+{v.categories.length - 3}</span>}
           {v.headcount !== null && <span className={`${s.badge} ${s.badgeSoft}`}>{v.headcount} people</span>}
         </div>
-        <Freshness days={v.days_since_visit} visits={v.visit_count} by={v.last_visited_by} />
+        {v.referred_by && <div className={s.rowMeta}><strong>Recommended by:</strong> <Highlight text={v.referred_by} q={q} /></div>}
+        {v.awaiting_site_visit && <div className={`${s.badge} ${s.badgeWarn}`} style={{ alignSelf: 'flex-start' }}>Met us · awaiting a site visit</div>}
+        {v.site_visit_count === 0 && !v.awaiting_site_visit
+          ? <div className={s.fresh}><span className={`${s.dot} ${s.dotWarn}`} aria-hidden="true" /><span>
+              {v.inbound_count > 0 ? 'Not visited yet' : v.status === 'potential' ? 'Not contacted yet' : 'No visit recorded yet'}
+            </span></div>
+          : <Freshness days={v.days_since_visit} visits={v.visit_count} by={v.last_visited_by} />}
       </Link>
-      <a className={s.callBtn} href={telHref(v.phone)} aria-label={`Call ${v.contact_name} on ${formatPhone(v.phone)}`}>
-        <Phone size={18} aria-hidden="true" />
-      </a>
+      {v.phone && (
+        <a className={s.callBtn} href={telHref(v.phone)} aria-label={`Call ${v.contact_name ?? v.company_name} on ${formatPhone(v.phone)}`}>
+          <Phone size={18} aria-hidden="true" />
+        </a>
+      )}
     </div>
   )
 }

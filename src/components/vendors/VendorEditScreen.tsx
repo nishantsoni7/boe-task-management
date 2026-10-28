@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
 import { VENDORS_KEY, fetchVendor, saveVendor, type VendorInput } from '@/lib/vendors/api'
 import { newSubmissionId } from '@/lib/exhibitionLeads/draft'
+import { PRE_VISIT_STATUSES } from '@/lib/vendors/constants'
 import { EMPTY_VENDOR, validateVendor, vendorPayload, type FieldErrors, type VendorField } from '@/lib/vendors/validation'
 import VendorFields from './VendorFields'
 import s from './vendors.module.css'
@@ -37,18 +38,18 @@ export default function VendorEditScreen() {
   if (v && !loaded) {
     setLoaded(true)
     setValue({
-      company_name: v.company_name, contact_name: v.contact_name, contact_designation: v.contact_designation ?? '',
-      phone: v.phone, alt_phone: v.alt_phone ?? '', email: v.email ?? '', address: v.address, city: v.city,
+      company_name: v.company_name, contact_name: v.contact_name ?? '', contact_designation: v.contact_designation ?? '',
+      phone: v.phone ?? '', alt_phone: v.alt_phone ?? '', email: v.email ?? '', address: v.address ?? '', city: v.city ?? '',
       state: v.state ?? '', pincode: v.pincode ?? '', capabilities: v.capabilities, categories: v.categories,
       materials: v.materials ?? '', headcount: v.headcount === null ? '' : String(v.headcount),
-      monthly_capacity: v.monthly_capacity ?? '', notes: v.notes ?? '',
+      monthly_capacity: v.monthly_capacity ?? '', referred_by: v.referred_by ?? '', notes: v.notes ?? '',
     })
   }
 
   if (loading || !profile || detail.isLoading) return <LoadingScreen />
 
   async function save() {
-    const e = validateVendor(value)
+    const e = validateVendor(value, relaxed)
     setErrors(e)
     if (Object.keys(e).length > 0) { setProblem('Some details need attention — they are marked in red.'); return }
     setBusy(true)
@@ -63,13 +64,16 @@ export default function VendorEditScreen() {
     }
   }
 
+  // A vendor nobody has visited yet may stay a name and a few notes; a registered one needs the whole profile.
+  const relaxed = !!detail.data && PRE_VISIT_STATUSES.some(st => st === detail.data.vendor.status)
+
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Edit Vendor" subtitle={detail.data?.vendor.company_name}>
       <div className={s.wrap}>
         {detail.error && <div className={`${s.banner} ${s.bannerErr}`} role="alert">This vendor is not available.</div>}
         {detail.data && (
           <div className={s.card}>
-            <VendorFields value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
+            <VendorFields relaxed={relaxed} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
             {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save changes'}</button>

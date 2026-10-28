@@ -14,6 +14,9 @@ export function useVendors(): {
   supabase: ReturnType<typeof createClient>
   profile: UserProfile | null
   isAdmin: boolean
+  /** The catch-up window for visits that already happened is open (Admin sets the end date). */
+  pastEntriesOpen: boolean
+  pastEntriesUntil: string | null
   loading: boolean
   signOut: () => Promise<void>
 } {
@@ -50,7 +53,11 @@ export function useVendors(): {
     queryKey: ['vendors', 'my-access'],
     queryFn: () => fetchMyAccess(supabase),
     enabled: !!profile,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
   })
-  return { supabase, profile, isAdmin: profile?.role === 'admin' || access.data?.is_admin === true, loading, signOut }
+  return {
+    supabase, profile, isAdmin: profile?.role === 'admin' || access.data?.is_admin === true,
+    pastEntriesOpen: access.data?.past_entries_open === true, pastEntriesUntil: access.data?.past_entries_until ?? null,
+    loading, signOut,
+  }
 }

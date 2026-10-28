@@ -13,7 +13,7 @@ import {
   VENDORS_KEY, archiveVendor, fetchVendor, restoreVendor, setVendorStatus,
 } from '@/lib/vendors/api'
 import {
-  AT_SITE_METRES, CAPABILITIES, CATEGORIES, PHOTO_KINDS, VENDOR_STATUSES, VISIT_OUTCOMES, VISIT_PURPOSES,
+  AT_SITE_METRES, CAPABILITIES, CATEGORIES, PHOTO_KINDS, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES, VISIT_PURPOSES,
   labelOf, labelsOf, type Visit, type VisitPhoto,
 } from '@/lib/vendors/constants'
 import { signedVendorPhotoUrl } from '@/lib/vendors/photos'
@@ -63,7 +63,7 @@ export default function VendorDetailScreen() {
 
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title={v?.company_name ?? 'Vendor'}
-                   subtitle={v ? `${v.city}${v.state ? `, ${v.state}` : ''}` : undefined}
+                   subtitle={v ? ([v.city, v.state].filter(Boolean).join(', ') || undefined) : undefined}
                    actions={v && !v.archived ? (
                      <>
                        <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
@@ -91,33 +91,65 @@ export default function VendorDetailScreen() {
                   <span className={`${s.avatar} ${s.avatarLg}`} aria-hidden="true">{(v.company_name.trim()[0] ?? '?').toUpperCase()}</span>
                   <div className={s.rowMain}>
                     <div className={s.heroName}>{v.company_name}</div>
-                    <div className={s.rowMeta}>{v.contact_name}{v.contact_designation ? `, ${v.contact_designation}` : ''}</div>
+                    <div className={s.rowMeta}>{v.contact_name ? `${v.contact_name}${v.contact_designation ? `, ${v.contact_designation}` : ''}` : 'No contact person yet'}</div>
                   </div>
                 </div>
-                {isAdmin && !v.archived ? (
+                {(isAdmin || PRE_VISIT_STATUSES.some(p => p === v.status)) && !v.archived ? (
                   <select className={`${s.select} ${s.statusSelect}`} value={v.status} disabled={busy} aria-label="Vendor status"
                           onChange={e => void run(() => setVendorStatus(supabase, v.id, e.target.value))}>
-                    {VENDOR_STATUSES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {VENDOR_STATUSES.filter(o => isAdmin || PRE_VISIT_STATUSES.some(p => p === o.value)).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 ) : <StatusBadge status={v.status} />}
               </div>
 
               <div className={s.actionRow}>
-                <a className={s.actionBtn} href={telHref(v.phone)}><Phone size={18} aria-hidden="true" /><span>Call</span></a>
-                <a className={s.actionBtn} href={whatsappHref(v.phone)} target="_blank" rel="noopener noreferrer"><MessageCircle size={18} aria-hidden="true" /><span>WhatsApp</span></a>
+                {v.phone && <a className={s.actionBtn} href={telHref(v.phone)}><Phone size={18} aria-hidden="true" /><span>Call</span></a>}
+                {v.phone && <a className={s.actionBtn} href={whatsappHref(v.phone)} target="_blank" rel="noopener noreferrer"><MessageCircle size={18} aria-hidden="true" /><span>WhatsApp</span></a>}
                 {v.latitude !== null && v.longitude !== null
                   ? <a className={s.actionBtn} href={mapsHref(v.latitude, v.longitude)} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>
-                  : <a className={s.actionBtn} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${v.address}, ${v.city}`)}`} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>}
+                  : v.address && <a className={s.actionBtn} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${v.address}, ${v.city ?? ''}`)}`} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>}
                 {!v.archived && <Link className={`${s.actionBtn} ${s.actionPrimary}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={18} aria-hidden="true" /><span>Log visit</span></Link>}
               </div>
 
+              <div className={s.stageTrack} aria-label="Stage">
+                {(['potential', 'contacted', 'registered'] as const).map((st, i) => {
+                  const idx = PRE_VISIT_STATUSES.some(p => p === v.status) ? PRE_VISIT_STATUSES.findIndex(p => p === v.status) : 2
+                  return (
+                    <span key={st} className={`${s.stageStep} ${i < idx ? s.stageDone : ''} ${i === idx ? s.stageNow : ''}`}>
+                      {st === 'potential' ? 'Potential' : st === 'contacted' ? 'Contacted' : 'Registered (site visited)'}
+                    </span>
+                  )
+                })}
+              </div>
+              {v.referred_by && <div className={s.rowMeta}><strong>Recommended by:</strong> {v.referred_by}</div>}
+
               <div className={s.statStrip}>
-                <div className={s.stat}><div className={s.statValue}>{visits.length}</div><div className={s.statLabel}>Visits</div></div>
+                <div className={s.stat}><div className={s.statValue}>{visits.length}</div><div className={s.statLabel}>Meetings</div></div>
                 <div className={s.stat}><div className={s.statValue}>{daysSince === null ? '—' : daysSince === 0 ? 'Today' : `${daysSince}d`}</div><div className={s.statLabel}>Since last visit</div></div>
                 <div className={s.stat}><div className={s.statValue}>{v.headcount ?? '—'}</div><div className={s.statLabel}>People</div></div>
                 <div className={s.stat}><div className={s.statValue}>{allPhotos.length}</div><div className={s.statLabel}>Photos</div></div>
               </div>
             </section>
+
+            {!v.archived && v.awaiting_site_visit && (
+              <div className={`${s.banner} ${s.bannerWarn}`}>
+                This vendor has met us at our factory but nobody has visited theirs yet. A site visit registers them properly.
+                <div style={{ marginTop: 8 }}>
+                  <Link className={s.primary} href={`/vendors/visit?vendor=${v.id}&kind=site_visit`}><Plus size={16} aria-hidden="true" /> Log the site visit</Link>
+                </div>
+              </div>
+            )}
+            {!v.archived && !v.awaiting_site_visit && PRE_VISIT_STATUSES.some(p => p === v.status) && visits.length === 0 && (
+              <div className={`${s.banner} ${s.bannerWarn}`}>
+                Nobody has met or visited this vendor yet.
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className={s.secondary} disabled={busy}
+                          onClick={() => void run(() => setVendorStatus(supabase, v.id, v.status === 'potential' ? 'contacted' : 'potential'))}>
+                    {v.status === 'potential' ? 'Mark as contacted' : 'Mark as not contacted'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className={s.tabs} role="tablist" aria-label="Vendor sections">
               {([['visits', `Visits (${visits.length})`], ['profile', 'Profile'], ['photos', `Photos (${allPhotos.length})`]] as const).map(([k, label]) => (
@@ -145,14 +177,15 @@ export default function VendorDetailScreen() {
             {tab === 'profile' && (
               <section className={s.card} aria-label="Profile">
                 <dl className={s.facts}>
-                  <Fact label="Contact person">{v.contact_name}{v.contact_designation ? `, ${v.contact_designation}` : ''}</Fact>
+                  <Fact label="Contact person">{v.contact_name ? `${v.contact_name}${v.contact_designation ? `, ${v.contact_designation}` : ''}` : 'Not known yet'}</Fact>
+                  {v.referred_by && <Fact label="Recommended by">{v.referred_by}</Fact>}
                   <Fact label="Mobile">
-                    <a href={telHref(v.phone)}>{formatPhone(v.phone)}</a>
+                    {v.phone ? <a href={telHref(v.phone)}>{formatPhone(v.phone)}</a> : 'Not known yet'}
                     {v.alt_phone && <><br /><a href={telHref(v.alt_phone)}>{formatPhone(v.alt_phone)}</a></>}
                   </Fact>
                   {v.email && <Fact label="Email"><a href={`mailto:${v.email}`}>{v.email}</a></Fact>}
-                  <Fact label="Address">{v.address}{'\n'}{v.city}{v.state ? `, ${v.state}` : ''}{v.pincode ? ` ${v.pincode}` : ''}</Fact>
-                  <Fact label="Can do">{labelsOf(CAPABILITIES, v.capabilities)}</Fact>
+                  <Fact label="Address">{v.address ? `${v.address}\n` : ''}{[v.city, v.state].filter(Boolean).join(', ') || (v.address ? '' : 'Not known yet')}{v.pincode ? ` ${v.pincode}` : ''}</Fact>
+                  <Fact label="Can do">{v.capabilities.length > 0 ? labelsOf(CAPABILITIES, v.capabilities) : 'Not known yet'}</Fact>
                   {v.categories.length > 0 && <Fact label="Product types">{labelsOf(CATEGORIES, v.categories)}</Fact>}
                   {v.materials && <Fact label="Materials">{v.materials}</Fact>}
                   {v.monthly_capacity && <Fact label="Monthly capacity">{v.monthly_capacity}</Fact>}
@@ -208,19 +241,26 @@ function VisitCard({ visit: x }: { visit: Visit }) {
   return (
     <article className={s.visit}>
       <div className={s.visitHead}>
-        <span className={s.visitWhen}>{formatWhen(x.visited_at)}</span>
-        <span className={s.muted}>by {x.visited_by_name ?? 'unknown'}</span>
+        <span className={s.visitWhen}>{x.entered_later ? formatDay(x.visited_at) : formatWhen(x.visited_at)}</span>
+        <span className={s.muted}>
+          {x.entered_later ? `added on ${formatDay(x.recorded_at)} by ` : 'by '}{x.visited_by_name ?? 'unknown'}
+        </span>
       </div>
       <div className={s.rowBadges}>
+        <span className={`${s.badge} ${x.kind === 'site_visit' ? s.badgeDark : s.badgeSoft}`}>{labelOf(VISIT_KINDS, x.kind)}</span>
         <span className={s.badge}>{labelOf(VISIT_PURPOSES, x.purpose)}</span>
         <span className={s.badge}>{labelOf(VISIT_OUTCOMES, x.outcome)}</span>
-        {x.location_source === 'unavailable'
-          ? <span className={`${s.badge} ${s.badgeWarn}`}>No location recorded</span>
-          : x.distance_m === null
-            ? <span className={s.badge}>Location recorded</span>
-            : near
-              ? <span className={`${s.badge} ${s.badgeGood}`}>At the vendor ({x.distance_m} m)</span>
-              : <span className={`${s.badge} ${s.badgeBad}`}>{(x.distance_m / 1000).toFixed(1)} km from the vendor</span>}
+        {x.entered_later
+          ? <span className={`${s.badge} ${s.badgeWarn}`}>Added later · no proof</span>
+          : x.location_source === 'not_applicable'
+            ? null
+            : x.location_source === 'unavailable'
+              ? <span className={`${s.badge} ${s.badgeWarn}`}>No location recorded</span>
+              : x.distance_m === null
+                ? <span className={s.badge}>Location recorded</span>
+                : near
+                  ? <span className={`${s.badge} ${s.badgeGood}`}>At the vendor ({x.distance_m} m)</span>
+                  : <span className={`${s.badge} ${s.badgeBad}`}>{(x.distance_m / 1000).toFixed(1)} km from the vendor</span>}
         {x.latitude !== null && x.longitude !== null && (
           <a className={s.badge} href={mapsHref(x.latitude, x.longitude)} target="_blank" rel="noopener noreferrer">View where</a>
         )}

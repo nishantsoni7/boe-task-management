@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Activity, Factory, Home, Plus } from 'lucide-react'
+import { Activity, Factory, Home, Plus, UserPlus } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -16,6 +16,7 @@ const BASE = '/vendors'
 
 const NAV_ITEMS = [
   { href: `${BASE}/visit`, label: 'Log a Visit', icon: Plus, adminOnly: false },
+  { href: `${BASE}/new`, label: 'Add Potential Vendor', icon: UserPlus, adminOnly: false },
   { href: BASE, label: 'All Vendors', icon: Factory, adminOnly: false },
   { href: `${BASE}/activity`, label: 'Visit Activity', icon: Activity, adminOnly: true },
 ] as const
