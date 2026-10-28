@@ -122,6 +122,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View is enforced in the screen and in the database; leads are scoped to their current owner, and Admin sees all. View All Leads is enforced in the database (read functions only; every write still needs Admin or ownership) and in the screens; a holder is left out of the ranking.',
   },
 
+  // Every read is the table RLS (RESTRICTIVE module_entry_open('vendors') plus vendors_can_read()) or a
+  // SECURITY DEFINER function that calls vendors_actor(); every write is one of those functions, and the
+  // tables refuse direct writes. Entry: src/app/vendors/layout.tsx via ModuleGuard.
+  vendors: {
+    state: 'enforced',
+    detail: 'View is enforced in the screen and in the database. Status change, archive/restore and the Visit Activity report are Admin only, enforced in the functions. A visit is append-only (trigger).',
+  },
+
   // Every read is the table RLS (RESTRICTIVE module_entry_open('inventory') plus per-table policies) or a
   // SECURITY DEFINER function that calls inventory_actor(); every write is one of those functions, and the
   // tables refuse direct writes. Entry: src/app/inventory/layout.tsx via ModuleGuard.

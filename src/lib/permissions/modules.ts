@@ -417,6 +417,19 @@ registerModule({
 })
 
 registerModule({
+  moduleKey: 'vendors',
+  displayName: 'Vendors',
+  description: 'Outsourcing vendor base and a log of every vendor visit, with photographs and location.',
+  actions: [
+    // One action. `view` opens the module, adds vendors, edits profiles and logs visits; Admin (role) also sees
+    // the Visit Activity screen and changes a vendor's status or archives it. Rows are written only by
+    // SECURITY DEFINER functions that read auth.uid(), so there is no separate create/edit grant to drift out
+    // of step. Registered by 20270424000000; off for everybody until an administrator grants it to a person.
+    { actionKey: 'view', displayName: 'View' },
+  ],
+})
+
+registerModule({
   moduleKey: 'inventory',
   displayName: 'Inventory',
   description: 'Furniture stock for sale: stage, condition, availability and booking requests.',

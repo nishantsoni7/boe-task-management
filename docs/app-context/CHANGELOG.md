@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-28 — Vendors: new module — vendor base and a visit log with photographs and location (PR pending) · 20270424000000 NOT APPLIED
+- **Owner request.** Outsourcing manufacturing needs a managed vendor base, and proof of every vendor visit by the person managing it (Dhruv): who was met, company, exact address, photographs of the factory and person, contact, what the vendor can do (raw pieces / finished / finishing only), people count, and how often each vendor is revisited — searchable.
+- **Built.** Module key `vendors` (action `view`; granted per person, nobody by default; Admin by role). Vendor list with status tabs + counts, multi-word search, filters, URL state; Log a Visit (existing or new vendor, photos, automatic GPS, draft kept on the phone); vendor detail (call / WhatsApp / map, visits, profile, photo gallery); Admin Visit Activity (per person, at-the-vendor vs no-location, repeat visits, quiet vendors, follow-ups due); CSV export.
+- **Database.** Three tables (visits append-only by trigger), private photo bucket, five SECURITY DEFINER write functions, read functions incl. `vendor_list` / `vendor_activity`. Dossier `modules/23-vendors.md`.
+- **Proof.** tsc, eslint, 17 unit tests, the structural guards (migration ledgers updated), and 22 checks running the real migration in PGlite. **Not run against real Supabase; not seen on screen; `permissions:check` needs the live DB (not run).** The owner applies the migration (rehearse first); no code path needs it until a person is granted access.
+
 ## 2026-10-28 — Orders: PI detail top card — salesperson and Order type in the centre column, dates as the Order page's timeline (PR pending) · no migration
 - **Owner request.** On a PI submitted for review, the right column held the salesperson, submitter and a plain Confirm/Due box. Salesperson details and the Order type move to the centre (Client) column; the right column is dates only, drawn as the Order page's timeline with the delay in uploading.
 - **Centre column.** Under a rule beneath the client's contact and location: Salesperson, Submitted by, Created, Order type (Full order / Full order · sampling first / red Sample order). `order_submissions.sample_type` is read with the existing salesperson/lead-source read (`SALES_DETAILS_COLUMNS`, `readSalesDetails`); a failed read still means "not available", never a failed page.
