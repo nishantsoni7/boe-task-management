@@ -1,0 +1,336 @@
+/* ── For you: the panel beside the Modules tiles ───────────────────────────
+   Its own stylesheet, not modules.module.css: the tiles' stylesheet promises
+   that nothing in it clamps or cuts text (a module name must always arrive
+   whole), while an update row here is deliberately cut to two lines so one
+   long title cannot stretch the panel.
+
+   DOCKED, NOT FLOATING. One white panel with a single clear edge, stretched to
+   the height of the tile column, instead of white cards on the canvas that
+   blend into the tiles beside them. Inside: a header that sums everything,
+   "Waiting on you" on a light red ground, then quieter per-module updates.
+
+   LIGHT ONLY, like the launcher and the rest of the app. */
+.attention {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 340px;
+  min-width: 0;
+  align-self: stretch;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #DDD6CC;
+  border-radius: 16px;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  color: #303536;
+}
+
+.attentionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #EFEBE5;
+}
+
+.attentionHeading {
+  margin: 0;
+  font-family: var(--boe-font-heading);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.attentionSummary {
+  font-size: 12px;
+  color: #686D6C;
+  text-align: right;
+}
+
+/* Nothing pending: the panel stays, as this one line, so the tiles do not
+   change width the moment the last item is cleared. */
+.caughtUp {
+  margin: 0;
+  padding: 14px 18px 16px;
+  font-size: 13px;
+  color: #686D6C;
+}
+
+.actionList,
+.updateList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Waiting on you ──
+   The one tinted block: the things nobody else can move. Mounted whenever the
+   person has a source for it (so the approvals list can load); hidden while it
+   holds no row. */
+.waiting {
+  padding: 12px 18px 12px;
+  background: #FBF3F2;
+  border-bottom: 1px solid #F1DEDB;
+}
+
+.waiting:not(:has(li)) {
+  display: none;
+}
+
+.waitingHeading {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #A32D2D;
+}
+
+.actionItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.actionItem + .actionItem {
+  border-top: 1px solid #F1DEDB;
+}
+
+.actionIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #E4DED7;
+  color: #303536;
+}
+
+.actionText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.actionTitle {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.actionDetail {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #686D6C;
+  overflow-wrap: anywhere;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #303536;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #303536;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.actionButton:hover {
+  background: #303536;
+  color: #fff;
+}
+
+.actionButton:focus-visible,
+.updateRow:focus-visible,
+.moreLink:focus-visible,
+.attentionStrip:focus-visible {
+  outline: 2px solid #303536;
+  outline-offset: 2px;
+}
+
+/* A decision just made, said once in the list. */
+.approvalsNotice {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid #CFE3D6;
+  border-radius: 10px;
+  background: #F1F8F3;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #276247;
+}
+
+.drawerHost {
+  list-style: none;
+}
+
+/* ── Updates, one group per module ──
+   Quieter than the block above: no ground, a small heading with the module's
+   tile icon, and two-line rows cut with an ellipsis so one long title cannot
+   stretch the panel. */
+.updateGroup {
+  padding: 12px 18px 10px;
+}
+
+/* After the tinted block its own edge does the separating. */
+.updateGroup + .updateGroup {
+  border-top: 1px solid #EFEBE5;
+}
+
+.updateHeading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #4C5352;
+}
+
+.updateCount {
+  font-weight: 400;
+  color: #8A8F8E;
+}
+
+.updateList > li + li {
+  border-top: 1px solid #F2EFEA;
+}
+
+.updateRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 -6px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.16s ease;
+}
+
+.updateRow:hover,
+.updateRow:active {
+  background: #FBFAF8;
+}
+
+.unreadDot,
+.openDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 999px;
+}
+
+.unreadDot {
+  background: #B42332;
+}
+
+/* An open handover is not an unread notification: hollow, not filled. */
+.openDot {
+  border: 1.5px solid #B5B0A9;
+}
+
+.updateText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.updateTitle,
+.updateDetail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.updateTitle {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.updateDetail {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #686D6C;
+}
+
+.updateTime {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #8A8F8E;
+}
+
+.moreLink {
+  display: block;
+  padding: 8px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #B9472E;
+  text-decoration: none;
+}
+
+.moreLink:hover {
+  text-decoration: underline;
+}
+
+/* ── The narrow-screen strip ──
+   Where the panel falls below the tiles, one line at the top says how much
+   waits on you and jumps to it. Shown below the width at which the panel
+   wraps (~1132px of window: 80px rail, gutters, 640 + 28 + 340 of shell). */
+.attentionStrip {
+  display: none;
+}
+
+@media (max-width: 1131px) {
+  .attentionStrip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    background: #FBF3F2;
+    border: 1px solid #F1DEDB;
+    border-radius: 12px;
+    font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #A32D2D;
+    text-decoration: none;
+  }
+}
+
+.attentionStripDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #B42332;
+}
+
+.attentionStripText {
+  flex: 1 1 auto;
+}

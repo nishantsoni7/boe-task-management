@@ -222,12 +222,15 @@ describe('source contracts', () => {
   })
 
   test('and on the home screen, for recipients without Finance access', () => {
-    // The banner now lives in the launcher's right-hand attention panel, which
-    // the page mounts for everybody; its Finance group opens on handovers alone,
-    // whatever the person's Finance access.
+    // On the launcher they are rows of the For you panel, whatever the person's
+    // Finance access: one handed to you is "Waiting on you" (opening
+    // /handover/[id], where it is accepted), any other open one is an update.
+    // The panel exists for anybody with a handover, Finance access or not.
     const PANEL = readFileSync(join(process.cwd(), 'src/app/modules/AttentionPanel.tsx'), 'utf8')
-    assert.match(PANEL, /<HandoverBanner \/>/)
-    assert.match(PANEL, /const showFinance = hasHandovers \|\| showFinanceRow/)
+    assert.match(PANEL, /handoverRole\(h, viewerId\) === 'recipient' && h\.canAccept/)
+    assert.match(PANEL, /href=\{`\/handover\/\$\{h\.id\}`\}/)
+    assert.match(PANEL, /\|\| handovers\.length > 0 \|\| handoversError/)
+    assert.match(PANEL, /const showFinance = financeCount > 0 \|\| s\.elsewhere\.length > 0/)
     assert.match(MODULES, /<AttentionPanel/)
   })
 

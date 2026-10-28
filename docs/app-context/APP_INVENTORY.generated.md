@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `38e9a13d` — Merge remote-tracking branch 'origin/main' into feat/vendor-access-levels
+- Commit: `55b1b0af` — Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - Commits on this branch: 1046
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `38e9a13d` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-access-levels
-- `a2cf4f27` 2026-10-28 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center
+- `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
+- `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
 - `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
