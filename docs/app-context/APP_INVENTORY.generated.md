@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d22a970c` — Payment plan: rehearsal script and checks for migration 20270428000000
-- Commits on this branch: 1046
+- Commit: `f49bbbc7` — Merge remote-tracking branch 'origin/main' into feat/order-payment-plan
+- Commits on this branch: 1052
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 165
 - Migrations: 377 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 820   Enums: 0
@@ -14,6 +14,12 @@
 
 ## Latest 25 commits
 
+- `f49bbbc7` 2026-10-29 Merge remote-tracking branch 'origin/main' into feat/order-payment-plan
+- `5f339fab` 2026-10-29 Vendors: scan a card or name plate; clearer Products and Team size choices (#484)
+- `97d88dc1` 2026-10-29 Modules page: "For you" panel, action first and every update previewed (#483)
+- `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
+- `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
+- `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
 - `d22a970c` 2026-10-28 Payment plan: rehearsal script and checks for migration 20270428000000
 - `4af6e314` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/order-payment-plan
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
@@ -33,12 +39,6 @@
 - `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
-- `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
-- `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
-- `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
-- `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
-- `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
-- `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
 
 ## Pages by top-level area
 

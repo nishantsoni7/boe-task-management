@@ -245,8 +245,13 @@
 /* ── Navigation: hubs, section tabs, search ───────────────────────────────── */
 
 .navFind {
+  /* One fixed height and no wrapping: in the 64px rail the hidden label used to
+     wrap and make the box taller, so every icon below it jumped when the menu
+     opened. The 14px left padding puts the 14px icon's centre at 32px, on the
+     same line as the nav icons. */
   display: flex; align-items: center; gap: 8px; width: calc(100% - 20px); margin: 10px 10px 4px;
-  padding: 7px 10px; font-size: 12.5px; color: #686D6C; background: #F1EEE9;
+  height: 36px; box-sizing: border-box; white-space: nowrap;
+  padding: 0 10px 0 14px; font-size: 12.5px; color: #686D6C; background: #F1EEE9;
   border: 1px solid #ECE7E0; border-radius: 8px; cursor: pointer; text-align: left;
 }
 .navFind:hover { background: #fff; border-color: #CFC8BF; color: #4C5352; }

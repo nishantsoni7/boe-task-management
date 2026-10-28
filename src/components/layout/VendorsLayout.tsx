@@ -9,6 +9,7 @@ import { useVendorAccess } from '@/hooks/useVendors'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import s from '@/components/vendors/vendors.module.css'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 // The Vendors module shell — the BOE Module Layout Standard: two columns, a module header with Home → /modules,
 // module-only navigation, and the shared user area at the bottom.
@@ -35,25 +36,27 @@ type Props = {
 
 export function VendorsLayout({ profile, title, subtitle, actions, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const { canCreate, canSeeActivity } = useVendorAccess(profile)
   const router = useRouter()
   const pathname = usePathname()
   const showLogBar = canCreate && !pathname.startsWith(`${BASE}/visit`)
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
       <div className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Vendors</div>
             </div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => router.push('/modules')}
             title="BOE One Home"
             aria-label="BOE One Home"
@@ -86,13 +89,16 @@ export function VendorsLayout({ profile, title, subtitle, actions, onSignOut, ch
                 <span style={{ color: primary ? '#fff' : active ? '#37352F' : '#8A8782', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
-                {item.label}
+                <span className="boe-rail-label">{item.label}</span>
               </button>
             )
           })}
         </div>
 
-        <ViewModeSidebarSection profile={profile} onSignOut={onSignOut} accountSettingsHref={`/account?returnTo=${BASE}`} />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection profile={profile} onSignOut={onSignOut} accountSettingsHref={`/account?returnTo=${BASE}`} />
+        </div>
       </aside>
 
       <div className="boe-main-content">

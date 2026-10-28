@@ -182,7 +182,7 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
         </div>
 
         <button className={cc.navFind} onClick={openFind} aria-label="Find anything" title="Find anything" aria-keyshortcuts="Control+K Meta+K">
-          <Search size={13} strokeWidth={2} />
+          <Search size={14} strokeWidth={2} />
           <span className={`${cc.navFindText} boe-rail-label`}>Find anything…</span>
           <span className={`${cc.kbd} boe-rail-label`}>Ctrl K</span>
         </button>
