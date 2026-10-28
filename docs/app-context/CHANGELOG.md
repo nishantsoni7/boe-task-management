@@ -11,6 +11,36 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, eslint, `paymentPlan*` tests, full suite, 41-check PGlite suite; rehearsed on the linked database in a rolled-back transaction (REHEARSAL OK, zero residue afterwards). NOT seen on screen, PDF layout not viewed.
 - **Next.** Apply the migration (`db push --include-all` if earlier ones are still pending), then grant the two permissions to the right people.
 
+## 2026-10-29 — Vendors: scan a card or name plate; clearer Products and Team size choices (PR pending) · no migration
+- **Owner request.** The Products and Team size options looked like one control, and the address needed a way to scan the vendor's card or name plate.
+- **Choices.** Products and Team size are now separate pills, one selected (filled dark), tap again to clear. The two-way switches (stage, when it happened) are unchanged.
+- **Scan.** Scan button under Address; reads the photo with the same Anthropic key as Exhibition Leads scanning and fills only empty fields (company, contact person, mobile, address, area). The photo is not stored. Needs `vendors.create`; with no key set it says to type the details.
+
+## 2026-10-28 — Vendors: access levels (Viewer / Contributor / Manager / Custom) in Control Center (PR pending) · migration 20270429000000 NOT APPLIED (rehearsed in a rolled-back transaction on the linked database)
+- **Owner request.** Dhruv could not be set to Moderator / Manager for Vendors, and colleagues (Nitish) could not be given sight of what is happening, because the module registered a single `view` action.
+- **Levels.** Viewer = read-only. Contributor = add vendors, log visits, edit, move Potential ↔ Contacted. Manager = also later stages, archive / restore, catch-up date, Visit Activity, export. Custom: `view_all` shows Visit Activity only, with no power to decide (the way to give Nitish detailed, read-only oversight).
+- **Nobody loses access.** Everyone holding `view` when the migration applies also gets create + edit (Dhruv keeps working as today). Make him Manager in Control Center for the rest.
+- **Screens.** Buttons, nav items, the mobile log bar, export, archive and the stage selector appear only when the level allows; a Viewer opening the add / log / edit pages sees a plain notice. The database refuses the same actions regardless.
+- **Database.** One migration; no table changes. Self-assertions in the migration plus a live rehearsal: Dhruv unchanged, Viewer refused on create / visit / stage, view_all sees Activity but cannot decide, approve decides but cannot export, Admin keeps all.
+
+## 2026-10-28 — Rail sidebar: badges no longer clipped, one smooth spring motion (PR pending) · no migration
+- **Owner request.** Count badges on the collapsed icons were still cut off, and the hover opening was not smooth; wanted an Apple-like feel on every page.
+- **Cause of the clipping.** Rows had `overflow: hidden` (to trim labels) and the collapsed badge was placed at `left: 30px` of a 44 px row, so its right half was cut. Fix: rows no longer clip (the sidebar clips labels), and the badge sits at `top: 3px; right: 3px` inside the row with a surface-coloured ring.
+- **Motion.** One easing `cubic-bezier(0.32, 0.72, 0, 1)`, 0.34 s, for width, shadow and badge; 120 ms open intent delay, 80 ms close delay. Labels fade and drift in 6 px after the width starts. The badge is the SAME element in both states and glides from the icon corner to the row end (it used to jump between `absolute` and `static`). Sub-lists (`boe-rail-ghost`) and the notification card (`boe-rail-hide`) fade instead of snapping. A row with a count reserves 42 px when open and trims a long label with an ellipsis. Reduced-motion switches all of it off.
+- **Files.** CSS only: "HOVER RAIL SIDEBAR" in `globals.css`. Checked in a real browser with the compiled CSS on a mock sidebar (badges 4, 18, 123; with and without a count); not yet seen on the live pages.
+
+## 2026-10-29 — Modules page: "For you" panel redesign — action first, every update previewed (PR pending) · no migration
+- **Owner request.** The right column did not separate from the tiles; every notification should be visible as a preview by default and open its page on click (4 notifications = 4 previews, nothing to expand). Chosen from four mockups (v4).
+- **What.** One white panel beside the tiles: header "N to act on · M updates"; "Waiting on you" on a light red ground (cash handovers handed to you, attendance approvals for admins), each with how long it has waited and a Review button; then quieter per-module updates (Finance, Orders) with the tile icons — the newest 3 unread notifications each as a two-line preview that marks read and opens its record, then "N more in X →". Open handovers waiting on someone else are rows under Finance. Nothing pending = "You're all caught up." On phones the panel sits under the tiles and a "N waiting on you" strip at the top jumps to it.
+- **Unchanged.** Every permission gate; handovers still reach recipients without Finance access (now via `/handover/[id]`). The Finance pages keep their own handover banner.
+- **Proof.** 142 module + handover tests, tsc, eslint. Panel checked in a browser at 1280 px and phone width with its real stylesheet and stand-in tiles (static page, made-up data). NOT seen signed in on live data.
+
+## 2026-10-28 — Modules page: "Needs your attention" column on the right (merged #481) · no migration
+- **Owner request.** The notices on top of the Modules page spoiled the layout; show them on the right, split by category (Finance, Order approvals, Attendance approvals).
+- **What.** A right-hand column (sticky, ~320 px) with Finance (unread count + open cash handovers), Orders (unread count) and Attendance approvals (admins). Empty groups are hidden; with nothing to show the tiles use the full width. Below ~990 px (phone, tablet) it sits under the tiles. Permission gates are the page's own and unchanged; handovers still show to recipients without Finance access.
+- **Not done.** Orders shows the unread-notification count, not a list of orders waiting for approval: no such query exists yet.
+- **Proof.** tsc clean for these files (two unrelated errors from the borrowed `node_modules`), module and handover tests, eslint. NOT seen on screen signed in.
+
 ## 2026-10-28 — Vendors: a list that shows what each vendor is, and filters for it (PR pending) · migration 20270427000000 NOT APPLIED (rehearsed in a rolled-back transaction on the linked database)
 - **Owner request.** The vendor list needed better information and layout to identify the type of vendor and to filter by expertise, number of employees, location, and registered / not registered.
 - **List.** Three tabs (All / Registered / Not registered). Always-visible filter buttons: Expertise, Products, Team size, Area, Status, "Met us, not visited" (each shows what is chosen). Each row: expertise tags (colour per kind), what they make, team size, area, an editable stage, the last meeting. A column header with sortable Vendor and Last meeting; on a phone the same facts stack.

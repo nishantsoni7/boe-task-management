@@ -5,7 +5,7 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 ## 1. Purpose & users
 
 - The company is moving more manufacturing to outside vendors. Dhruv is the person who finds, meets and visits them. The owner wants a structured, searchable vendor base and **proof of every visit to a vendor's factory** (who, when, where, whom met, what was seen, photographs).
-- Users: anyone granted `vendors` → `view` (Dhruv, per employee; no department rule) can add vendors, edit profiles, log meetings and read everything. Admin (role) also sees **Visit Activity**, sets any vendor status, archives / restores, and controls the catch-up window.
+- Users and access levels (Control Center, per employee, no department rule; **since migration 20270429000000**): `view` = Viewer, read-only (every vendor, visit, photograph, note). `create` + `edit` = Contributor: add vendors, log visits, edit profiles, move a vendor between Potential and Contacted. `approve` = Manager: also set the later stages, archive / restore, change the catch-up date, and see **Visit Activity**. `export` = Manager: download the list. `view_all` (protected, Custom only) = see **Visit Activity** without any power to decide, for a colleague who oversees the team. The Admin role holds all. Before that migration `view` alone did everything a non-admin could; the migration gave create + edit to everyone who then held `view` (Dhruv), so nobody lost anything.
 
 ## 2. Status
 
@@ -16,7 +16,7 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 
 **Stages** of a vendor: `potential` (heard of, nobody in touch) → `contacted` (spoken to, or they came to our factory) → `prospect` (a member of our team has been to THEIR factory: registered) → the owner's decisions `under_evaluation` / `approved` / `on_hold` / `rejected`.
 - Only `potential` / `contacted` may have an incomplete profile (just a name is required, plus optional `referred_by` = who recommended them). Table CHECK `vendors_complete_once_registered` requires contact person, mobile, address, city and at least one capability from `prospect` on.
-- Anyone with access moves a vendor between `potential` and `contacted`; everything else is Admin only. A site visit moves `potential`/`contacted` → `prospect`; a meeting at our factory moves `potential` → `contacted`.
+- Anyone with `edit` moves a vendor between `potential` and `contacted`; everything else needs `approve` (or the Admin role). A site visit moves `potential`/`contacted` → `prospect`; a meeting at our factory moves `potential` → `contacted`.
 
 **Two kinds of meeting** (`vendor_visits.kind`):
 - `site_visit` — we went to their factory: the proof event. **Live** (not entered later) it needs ≥1 photograph (a factory photograph if it is the vendor's first live site visit) and captures GPS; the server computes `distance_m` from the vendor's address point.
@@ -39,17 +39,21 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 | `/vendors/visit` (`?vendor=<id>&kind=`) | `LogVisitScreen` — what happened, which vendor, completes the profile if a site visit registers a name-only vendor, details, photos, GPS, "already happened" switch | module users |
 | `/vendors/[id]` | `VendorDetailScreen` — hero (call / WhatsApp / map / log), stage track, tabs Visits · Profile · Photos | module users (archived: Admin) |
 | `/vendors/[id]/edit` | `VendorEditScreen` (relaxed while potential/contacted) | module users |
-| `/vendors/activity` | `ActivityScreen` — pipeline, site visits vs at-our-factory vs added-later, per person, chase list, quiet vendors, follow-ups, window control | Admin |
+| `/vendors/activity` | `ActivityScreen` — pipeline, site visits vs at-our-factory vs added-later, per person, chase list, quiet vendors, follow-ups, window control | `approve`, `view_all` or Admin |
 
 Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')`); shell `src/components/layout/VendorsLayout.tsx`; library `src/lib/vendors/` (constants, api, validation, photos, csv); hook `src/hooks/useVendors.ts`; launcher card in `src/app/modules/page.tsx`.
 
 ## 5. Database (`20270426000000_vendor_management.sql`)
 
 - `vendors`, `vendor_visits` (append-only by trigger; `visited_at` server time for live records, noon of the chosen day for entered-later ones), `vendor_visit_photos` (path unique), `vendor_settings` (one row, no browser access). Tables read-only to the browser: write privileges revoked **and** no write policy; `vendors_can_read()` select policies + RESTRICTIVE `module_entry_open('vendors')`.
-- Writes (SECURITY DEFINER, `auth.uid()`): `save_vendor` (create / update; stage-aware validation; duplicate by mobile, or by name+city when there is no mobile), `log_vendor_visit`, `set_vendor_status`, `set_vendor_past_entries_until` (Admin), `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (every typed word must match company / person / phone / address / notes; `status_counts` for the tabs and `awaiting_count` for the notice; `awaiting_visit` filter), `get_vendor`, `vendor_activity` (Admin), `vendors_my_access` (is_admin, window), `vendor_profile_complete` (internal).
+- Writes (SECURITY DEFINER, `auth.uid()`): `save_vendor` (create / update; stage-aware validation; duplicate by mobile, or by name+city when there is no mobile), `log_vendor_visit`, `set_vendor_status`, `set_vendor_past_entries_until` (Admin), `archive_vendor`, `restore_vendor`. Reads: `vendor_list` (every typed word must match company / person / phone / address / notes; `status_counts` for the tabs and `awaiting_count` for the notice; `awaiting_visit` filter), `get_vendor`, `vendor_activity` (`approve`, `view_all` or Admin), `vendors_my_access` (is_admin = may decide, can_create, can_edit, can_export, can_see_activity, window), `vendor_profile_complete` (internal).
 - Private bucket `vendor-visit-photos` (5 MB, JPEG), path `{uploader uuid}/{uuid}.jpg`. Registration inside the migration (`app_modules`, `permission_modules`, `view` action, Admin role row); default allowed: nobody. Mirrors `registerModule('vendors')` in `src/lib/permissions/modules.ts`; `ENGINE_GATED_MODULE_KEYS` (13 now) and `enforcement.ts` carry the key.
 
 **Migration 20270427000000** (Area and filters) re-issues `save_vendor`, `vendor_list` and `get_vendor` (the LATEST definitions) and adds `vendors.area`; `vendor_list` also filters on `team_sizes[]` and `areas[]` and returns `areas` (the areas in use, active vendors only) for the Area filter and the form's suggestions.
+
+**Migration 20270429000000** (access levels) registers create / edit / approve / export / view_all against Vendors (deny-by-default, Admin role row), backfills create + edit for explicit `view` holders, adds the internal helpers `vendors_can(action)` and `vendors_require(action)` (not callable from the browser), re-issues `save_vendor`, `log_vendor_visit`, `set_vendor_status`, `vendor_activity`, `vendors_actor` (its `p_is_admin` now means "may decide": Admin or `approve`, so archive / restore / the catch-up date / archived list follow `approve` unchanged) and `vendors_my_access`. The screens hide what the level does not allow (`useVendorAccess`); the database refuses it anyway. Export is a screen-level gate only: the list is already readable by every viewer.
+
+**Scan a card or name plate** (no migration). A Scan button under Address on the vendor form (Add vendor, Log visit for a new vendor, Edit) photographs a visiting card or the board outside the workshop; `POST /api/vendors/scan` reads it once with the same Anthropic key and model list as Exhibition Leads (`ANTHROPIC_API_KEY`; not set = "type the details"), returns company, contact person, numbers, address and area, and drops the photo (never stored, never logged). Access is the caller's own `vendors_my_access().can_create`. `applyVendorScan` fills only EMPTY fields and skips a number the form cannot save; the person checks before saving. Products and Team size are drawn as separate pills (`Chips`, single choice, tap again to clear) instead of a joined segmented bar.
 
 ## 6. Business rules to remember
 

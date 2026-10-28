@@ -40,47 +40,6 @@
   background: #FFFFFF;
 }
 
-/* "Other open handovers (n)" — the cash-handover banner's collapsed list —
-   drawn on this page as a quiet row in the launcher's own surface (white,
-   hairline, 12px corners, a chevron that turns when it opens) instead of a
-   bare grey caption with a browser triangle. Scoped to this page: Finance
-   keeps the banner exactly as it is. */
-:global(.boe-app-shell):has(.launcher) :global(.boe-handover-observers-title) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  margin: 0;
-  padding: 0 14px;
-  list-style: none;
-  background: #fff;
-  border: 1px solid #E4DED7;
-  border-radius: 12px;
-  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #4C5352;
-}
-
-:global(.boe-app-shell):has(.launcher) :global(.boe-handover-observers-title)::-webkit-details-marker {
-  display: none;
-}
-
-:global(.boe-app-shell):has(.launcher) :global(.boe-handover-observers-title)::after {
-  content: '';
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  margin-left: auto;
-  border-right: 2px solid #B5B0A9;
-  border-bottom: 2px solid #B5B0A9;
-  transform: translateY(-2px) rotate(45deg);
-}
-
-:global(.boe-app-shell):has(.launcher) :global(details[open] > .boe-handover-observers-title)::after {
-  transform: translateY(2px) rotate(-135deg);
-}
-
 /* The page's h1 stays "Modules" and stays in the header; here it reads as a
    quiet location label, the way the approved design shows it. */
 
@@ -704,188 +663,23 @@
   }
 }
 
-/* ── Pending approvals (admins) ────────────────────────────────────────────
-   The same grouped surface as the phone module list — one white rounded
-   block, a row per request split by hairlines — so the launcher reads as one
-   system. A row is an initials chip, the person's name over what they asked
-   for, and a chevron; the whole row opens the review panel. The count sits
-   beside the heading in the badge red, the one thing on the page asking for
-   action. Same at every width: the list never needs more than one column. */
-.approvalsCount {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #B42332;
-  color: #fff;
-  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  vertical-align: 2px;
-}
-
-.approvalsList {
+/* ── For you: the row the tiles and the panel share ─────────────────────────
+   The modules (.launcher, the size container) on the left and the For you
+   panel on the right while there is room; under ~1010px of shell width the
+   panel wraps below the tiles and takes the full width. Flex-wrap rather than
+   a viewport query, so every column count here follows container widths. The
+   panel's own rules live in attentionPanel.module.css. */
+.launcherShell {
   display: flex;
-  flex-direction: column;
-  background: #fff;
-  border: 1px solid #E4DED7;
-  border-radius: 14px;
+  flex-wrap: wrap;
+  align-items: stretch;
+  column-gap: 28px;
+  row-gap: 28px;
 }
 
-.approvalRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 12px;
-  border: 0;
-  border-top: 1px solid #EFEBE5;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.16s ease;
-}
-
-.approvalRow:first-child {
-  border-top: 0;
-  border-radius: 13px 13px 0 0;
-}
-
-.approvalRow:last-child {
-  border-radius: 0 0 13px 13px;
-}
-
-.approvalRow:first-child:last-child {
-  border-radius: 13px;
-}
-
-.approvalRow:hover,
-.approvalRow:active {
-  background: #FBFAF8;
-}
-
-.approvalRow:focus-visible,
-.approvalsMore:focus-visible,
-.approvalsRetry:focus-visible {
-  outline: 2px solid #303536;
-  outline-offset: -2px;
-}
-
-.approvalAvatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  background: #F1EEE9;
-  color: #303536;
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.approvalText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 auto;
+.launcherShell > .launcher {
+  flex: 999 1 640px;
   min-width: 0;
-}
-
-.approvalName {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: #303536;
-  overflow-wrap: anywhere;
-}
-
-.approvalDetail {
-  font-size: 13px;
-  line-height: 1.35;
-  color: #686D6C;
-  overflow-wrap: anywhere;
-}
-
-.approvalChevron {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  color: #B5B0A9;
-  pointer-events: none;
-}
-
-.approvalsMore {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 46px;
-  border-top: 1px solid #EFEBE5;
-  border-radius: 0 0 13px 13px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #B9472E;
-  text-decoration: none;
-}
-
-.approvalsMore:hover {
-  background: #FBFAF8;
-}
-
-/* A decision just made, said once above the list (or in its place when the
-   last request has been decided). */
-.approvalsNotice {
-  margin: 0 0 10px;
-  padding: 9px 12px;
-  border: 1px solid #CFE3D6;
-  border-radius: 10px;
-  background: #F1F8F3;
-  font-size: 13px;
-  line-height: 1.45;
-  color: #276247;
-}
-
-.approvalsError {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background: #fff;
-  border: 1px solid #E4DED7;
-  border-radius: 14px;
-  font-size: 13px;
-  color: #4C5352;
-}
-
-.approvalsRetry {
-  flex-shrink: 0;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid #E4DED7;
-  border-radius: 8px;
-  background: #fff;
-  font: inherit;
-  font-weight: 600;
-  color: #303536;
-  cursor: pointer;
-}
-
-/* The page's spacing is between sections; a notice standing alone needs its
-   own gap before the next section. */
-.approvalsNotice + .section {
-  margin-top: 14px;
 }
 
 /* ── Personal card order: the controls and the handle ───────────────────────

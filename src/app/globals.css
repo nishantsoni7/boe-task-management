@@ -11795,49 +11795,68 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .boe-rail-pin { display: none; }
 
 @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  /* One easing for every moving part, so the width, the labels and the badges
+     arrive together: a gentle spring-like curve (fast start, long soft landing). */
+  .boe-rail {
+    --boe-rail-ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --boe-rail-dur: 0.34s;
+  }
   .boe-rail > .boe-sidebar {
     width: 64px;
-    transition: width 0.18s ease, box-shadow 0.18s ease;
+    will-change: width;
+    /* Closing waits 80ms so a pointer leaving and re-entering does not flutter. */
+    transition: width var(--boe-rail-dur) var(--boe-rail-ease) 0.08s,
+                box-shadow var(--boe-rail-dur) var(--boe-rail-ease) 0.08s;
   }
   .boe-rail > .boe-main-content { margin-left: 64px; }
   .boe-rail.boe-rail-pinned > .boe-main-content { margin-left: 260px; }
 
-  /* Open: 150ms intent delay for the pointer only. */
+  /* Open: 120ms intent delay for the pointer only. */
   .boe-rail > .boe-sidebar:hover {
     width: 260px;
-    box-shadow: 8px 0 28px rgba(48, 53, 54, 0.16);
-    transition-delay: 0.15s;
+    box-shadow: 10px 0 32px rgba(48, 53, 54, 0.14);
+    transition-delay: 0.12s;
   }
   .boe-rail > .boe-sidebar:has(:focus-visible),
   .boe-rail > .boe-sidebar:has([aria-expanded="true"]) {
     width: 260px;
-    box-shadow: 8px 0 28px rgba(48, 53, 54, 0.16);
+    box-shadow: 10px 0 32px rgba(48, 53, 54, 0.14);
+    transition-delay: 0s;
   }
-  .boe-rail.boe-rail-pinned > .boe-sidebar { width: 260px; box-shadow: none; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar { width: 260px; box-shadow: none; transition-delay: 0s; }
 
   /* Icons stay put between the two states: 10px section padding + 13px item
-     padding + half the 18px icon = 32px, the centre of the 64px rail. */
+     padding + half the 18px icon = 32px, the centre of the 64px rail.
+     Rows do NOT clip (overflow visible) so a badge can sit on the icon corner;
+     the sidebar itself clips the labels that run past its edge. */
   .boe-rail > .boe-sidebar .boe-nav-item,
   .boe-rail > .boe-sidebar .boe-quick-action,
   .boe-rail > .boe-sidebar .boe-rail-row {
     padding-left: 13px !important;
     white-space: nowrap;
-    overflow: hidden;
   }
   /* One fixed row height in both states, so nothing moves vertically when the
      menu opens: a label that wrapped in the 44px rail used to make rows taller. */
   .boe-rail > .boe-sidebar .boe-nav-item:not(.boe-nav-item--quiet),
-  .boe-rail > .boe-sidebar .boe-rail-row { height: 38px; box-sizing: border-box; }
+  .boe-rail > .boe-sidebar .boe-rail-row { height: 38px; box-sizing: border-box; position: relative; }
   .boe-rail > .boe-sidebar .boe-rail-icon svg { width: 18px; height: 18px; }
   .boe-sidebar-foot > .boe-rail-pin { margin: 0 10px 2px; width: calc(100% - 20px); }
   .boe-rail > .boe-sidebar .boe-user-trigger { padding-left: 7px !important; }
   /* A sub-list keeps its height while collapsed (invisible), so the rows below
-     it do not jump up. */
-  .boe-rail > .boe-sidebar .boe-rail-ghost { visibility: hidden; }
+     it do not jump up. It fades with the labels instead of snapping. */
+  .boe-rail > .boe-sidebar .boe-rail-ghost {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+  }
   .boe-rail > .boe-sidebar:hover .boe-rail-ghost,
   .boe-rail > .boe-sidebar:has(:focus-visible) .boe-rail-ghost,
   .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-ghost,
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-ghost { visibility: visible; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-ghost {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.24s var(--boe-rail-ease) 0.14s, visibility 0s;
+  }
   .boe-rail > .boe-sidebar .boe-quick-action.boe-quick-action-featured {
     justify-content: flex-start;
     padding-right: 0;
@@ -11847,22 +11866,41 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 
   .boe-rail-pin { display: flex; }
 
-  /* Collapsed (the default inside a rail shell). */
+  /* Collapsed (the default inside a rail shell): labels fade and drift left. */
   .boe-rail > .boe-sidebar .boe-rail-label {
     opacity: 0;
+    transform: translateX(-6px);
     pointer-events: none;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.1s ease, transform 0.1s ease;
   }
   .boe-rail > .boe-sidebar .boe-rail-hide { display: none; }
+
+  /* Counts live INSIDE their row in both states, never clipped. Collapsed: a
+     small pill on the icon's top-right corner with a surface-coloured ring, the
+     way a phone app icon carries its badge. Open: the pill glides to the row's
+     right end, centred vertically. Same element, so it moves instead of
+     jumping. A row that has a count reserves room for it when open. */
   .boe-rail > .boe-sidebar .boe-nav-count {
     position: absolute !important;
-    top: 2px;
-    left: 30px;
+    top: 3px;
+    right: 3px;
+    left: auto;
     margin: 0 !important;
-    min-width: 14px !important;
+    box-sizing: border-box;
+    min-width: 16px !important;
+    height: 16px;
     padding: 0 4px !important;
     font-size: 10px !important;
-    line-height: 14px !important;
+    font-weight: 700 !important;
+    line-height: 16px !important;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--boe-surface);
+    transform: none;
+    transition: top var(--boe-rail-dur) var(--boe-rail-ease),
+                right var(--boe-rail-dur) var(--boe-rail-ease),
+                transform var(--boe-rail-dur) var(--boe-rail-ease),
+                font-size 0.2s ease, box-shadow 0.2s ease;
+    pointer-events: none;
   }
 
   /* Open (hover, keyboard focus, one of its menus open, or pinned). */
@@ -11871,30 +11909,55 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-label,
   .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-label {
     opacity: 1;
+    transform: none;
     pointer-events: auto;
-    transition-delay: 0.1s;
+    transition: opacity 0.24s var(--boe-rail-ease) 0.14s, transform 0.3s var(--boe-rail-ease) 0.14s;
   }
   .boe-rail > .boe-sidebar:hover .boe-rail-hide,
   .boe-rail > .boe-sidebar:has(:focus-visible) .boe-rail-hide,
   .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-hide,
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-hide { display: block; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-hide {
+    display: block;
+    animation: boe-rail-fade-in 0.28s var(--boe-rail-ease) 0.12s both;
+  }
   .boe-rail > .boe-sidebar:hover .boe-nav-count,
   .boe-rail > .boe-sidebar:has(:focus-visible) .boe-nav-count,
   .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-nav-count,
   .boe-rail.boe-rail-pinned > .boe-sidebar .boe-nav-count {
-    position: static !important;
-    margin-left: auto !important;
-    min-width: 17px !important;
-    padding: 1px 6px !important;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    min-width: 20px !important;
+    height: 20px;
+    padding: 0 6px !important;
     font-size: 12px !important;
-    line-height: 15px !important;
+    line-height: 20px !important;
+    box-shadow: none;
   }
+  .boe-rail > .boe-sidebar:hover .boe-nav-item:has(> .boe-nav-count),
+  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-nav-item:has(> .boe-nav-count),
+  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-nav-item:has(> .boe-nav-count),
+  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-nav-item:has(> .boe-nav-count) { padding-right: 42px !important; }
+  /* A label that is too long for the room left of its count is trimmed, never
+     run underneath it. */
+  .boe-rail > .boe-sidebar .boe-nav-item:has(> .boe-nav-count) > .boe-rail-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@keyframes boe-rail-fade-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .boe-rail > .boe-sidebar,
   .boe-rail > .boe-main-content,
-  .boe-rail > .boe-sidebar .boe-rail-label { transition: none; }
+  .boe-rail > .boe-sidebar .boe-rail-label,
+  .boe-rail > .boe-sidebar .boe-nav-count,
+  .boe-rail > .boe-sidebar .boe-rail-ghost { transition: none !important; animation: none !important; }
 }
 
 /* ── ORDER PAYMENT PLAN (20270428000000) ─────────────────────────────────────

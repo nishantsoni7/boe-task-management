@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Activity, Factory, Home, Plus, UserPlus } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { useVendorAccess } from '@/hooks/useVendors'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import s from '@/components/vendors/vendors.module.css'
@@ -15,15 +16,16 @@ import s from '@/components/vendors/vendors.module.css'
 const BASE = '/vendors'
 
 const NAV_ITEMS = [
-  { href: `${BASE}/visit`, label: 'Log Visit', icon: Plus, adminOnly: false },
-  { href: `${BASE}/new`, label: 'Add Vendor', icon: UserPlus, adminOnly: false },
-  { href: BASE, label: 'All Vendors', icon: Factory, adminOnly: false },
-  { href: `${BASE}/activity`, label: 'Visit Activity', icon: Activity, adminOnly: true },
+  { href: `${BASE}/visit`, label: 'Log Visit', icon: Plus, needs: 'create' },
+  { href: `${BASE}/new`, label: 'Add Vendor', icon: UserPlus, needs: 'create' },
+  { href: BASE, label: 'All Vendors', icon: Factory, needs: null },
+  { href: `${BASE}/activity`, label: 'Visit Activity', icon: Activity, needs: 'activity' },
 ] as const
 
 type Props = {
   profile: UserProfile | null
-  isAdmin: boolean
+  /** Kept for the callers; the nav reads the access flags itself. */
+  isAdmin?: boolean
   title: string
   subtitle?: string
   actions?: React.ReactNode
@@ -31,11 +33,12 @@ type Props = {
   children: React.ReactNode
 }
 
-export function VendorsLayout({ profile, isAdmin, title, subtitle, actions, onSignOut, children }: Props) {
+export function VendorsLayout({ profile, title, subtitle, actions, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { canCreate, canSeeActivity } = useVendorAccess(profile)
   const router = useRouter()
   const pathname = usePathname()
-  const showLogBar = !pathname.startsWith(`${BASE}/visit`)
+  const showLogBar = canCreate && !pathname.startsWith(`${BASE}/visit`)
 
   return (
     <div className="boe-app-shell">
@@ -66,7 +69,7 @@ export function VendorsLayout({ profile, isAdmin, title, subtitle, actions, onSi
         </div>
 
         <div className="boe-sidebar-section">
-          {NAV_ITEMS.filter(item => isAdmin || !item.adminOnly).map(item => {
+          {NAV_ITEMS.filter(item => item.needs === null || (item.needs === 'create' ? canCreate : canSeeActivity)).map(item => {
             const active = item.href === BASE ? pathname === BASE : pathname === item.href || pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
             const primary = item.href === `${BASE}/visit`

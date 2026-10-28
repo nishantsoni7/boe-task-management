@@ -432,3 +432,10 @@
   .rowActions { grid-column: 7; grid-row: 1; }
   .rowInline { display: none; }
 }
+
+/* ── Scan a card or name plate (vendor form) ─────────────────────────── */
+.scanRow { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; align-items: flex-start; }
+.scanButtons { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.spin { animation: vendorSpin 0.9s linear infinite; }
+@keyframes vendorSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

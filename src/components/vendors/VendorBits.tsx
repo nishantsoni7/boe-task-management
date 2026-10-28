@@ -37,13 +37,15 @@ export function StatusBadge({ status }: { status: string }) {
 type Option = { readonly value: string; readonly label: string }
 
 export function Chips({
-  options, value, onChange, multiple = false, label,
+  options, value, onChange, multiple = false, label, clearable = false,
 }: {
   options: readonly Option[]
   value: string[] | string
   onChange: (next: string[] | string) => void
   multiple?: boolean
   label: string
+  /** One-of-many only: tapping the selected option again clears it. */
+  clearable?: boolean
 }) {
   const selected = Array.isArray(value) ? value : value ? [value] : []
   return (
@@ -59,7 +61,7 @@ export function Chips({
             aria-checked={on}
             onClick={() => {
               if (multiple) onChange(on ? selected.filter(v => v !== o.value) : [...selected, o.value])
-              else onChange(o.value)
+              else onChange(clearable && on ? '' : o.value)
             }}
           >
             {o.label}

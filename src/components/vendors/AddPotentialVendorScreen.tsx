@@ -24,7 +24,7 @@ import s from './vendors.module.css'
 type Stage = 'potential' | 'contacted'
 
 export default function AddPotentialVendorScreen() {
-  const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const { supabase, profile, isAdmin, canCreate, loading, signOut } = useVendors()
   const areas = useVendorAreas(supabase, !!profile)
   const router = useRouter()
   const qc = useQueryClient()
@@ -39,6 +39,18 @@ export default function AddPotentialVendorScreen() {
   const { where, retry } = useDeviceLocation(true)
 
   if (loading || !profile) return <LoadingScreen />
+  if (!canCreate) {
+    return (
+      <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Vendors">
+        <div className={s.wrapWide}>
+          <div className={`${s.banner} ${s.bannerWarn}`} role="alert">
+            Your access level can view vendors but cannot add vendors. Ask an administrator for Contributor access.
+          </div>
+        </div>
+      </VendorsLayout>
+    )
+  }
+
 
   async function save() {
     if (busy) return

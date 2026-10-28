@@ -1,6 +1,6 @@
 'use client'
 
-// ── Pending approvals on the Modules launcher ────────────────────────────────
+// ── Attendance approvals in the launcher's "Waiting on you" block ────────────
 //
 // The attendance requests waiting for a decision, decided from the first
 // screen without opening Attendance & Payroll first. A SHORTCUT AND NOTHING
@@ -14,13 +14,13 @@
 //     requests are left out of this list (they wait for another admin);
 //   • rejecting needs a reason; the panel asks for it.
 //
-// With nothing waiting the section is not drawn at all. The list is short on
-// purpose: the oldest five, then a link to the full queue.
+// With nothing waiting nothing is drawn. The list is short on purpose: the
+// oldest five, then a link to the full queue.
 
 import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
+import { CalendarClock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { REQUEST_TYPE_LABEL, requestSummary } from '@/lib/attendance/requests'
 import {
@@ -29,8 +29,9 @@ import {
   type QueueRow,
   type Shift,
 } from '@/components/attendanceRequests/RequestReviewDrawer'
-import { actionableRequests, initialsOf, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
-import styles from './modules.module.css'
+import { actionableRequests, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
+import { timeAgo } from '@/lib/ui'
+import styles from './attentionPanel.module.css'
 
 type QueueResponse = {
   requests: QueueRow[]
@@ -42,19 +43,24 @@ type QueueResponse = {
 /** Shared with nothing else on purpose: the queue page keeps its own state. */
 export const pendingApprovalsKey = (userId: string) => ['attendance-requests', 'home-pending', userId] as const
 
-export function PendingApprovals({ userId }: { userId: string }) {
+function useAccessToken() {
   const supabase = useMemo(() => createClient(), [])
-  const queryClient = useQueryClient()
-  const [reviewing, setReviewing] = useState<QueueRow | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-
-  const getToken = useCallback(async () => {
+  return useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token ?? null
   }, [supabase])
+}
 
-  const { data, isError, refetch } = useQuery<QueueResponse>({
-    queryKey: pendingApprovalsKey(userId),
+/**
+ * The queue, read once. The panel calls it for the count in its header and
+ * PendingApprovals for the rows; both use the same key, so it is one request.
+ * `enabled` is false for anybody who is not the signed-in admin.
+ */
+export function usePendingApprovalQueue(userId: string | null, enabled: boolean) {
+  const getToken = useAccessToken()
+  const query = useQuery<QueueResponse>({
+    queryKey: pendingApprovalsKey(userId ?? ''),
+    enabled: enabled && !!userId,
     queryFn: async () => {
       const token = await getToken()
       const res = await fetch('/api/attendance-requests?scope=queue&status=pending', {
@@ -65,8 +71,16 @@ export function PendingApprovals({ userId }: { userId: string }) {
     },
     staleTime: 30_000,
   })
+  const rows = query.data ? actionableRequests(query.data.requests ?? [], query.data.viewer_id) : []
+  return { ...query, rows, getToken }
+}
 
-  const rows = data ? actionableRequests(data.requests ?? [], data.viewer_id) : []
+/** The approval rows, as items of the "Waiting on you" list. */
+export function PendingApprovals({ userId }: { userId: string }) {
+  const queryClient = useQueryClient()
+  const [reviewing, setReviewing] = useState<QueueRow | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const { data, rows, isError, refetch, getToken } = usePendingApprovalQueue(userId, true)
 
   const decide = async (status: 'approved' | 'rejected', note: string): Promise<string | null> => {
     if (!reviewing) return null
@@ -89,67 +103,74 @@ export function PendingApprovals({ userId }: { userId: string }) {
   // request somebody is waiting on.
   if (isError) {
     return (
-      <section className={styles.section} aria-labelledby="pending-approvals-heading">
-        <h2 id="pending-approvals-heading" className={styles.sectionTitle}>Pending approvals</h2>
-        <div className={styles.approvalsError} role="alert">
-          <span>Could not load attendance requests.</span>
-          <button type="button" className={styles.approvalsRetry} onClick={() => void refetch()}>Try again</button>
-        </div>
-      </section>
+      <li className={styles.actionItem} role="alert">
+        <span className={styles.actionIcon} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
+        <span className={styles.actionText}>
+          <span className={styles.actionTitle}>Attendance requests</span>
+          <span className={styles.actionDetail}>Could not be loaded</span>
+        </span>
+        <button type="button" className={styles.actionButton} onClick={() => void refetch()}>Try again</button>
+      </li>
     )
   }
 
-  // Nothing waiting (or not loaded yet): no section and no notice. A notice
-  // after the last decision is still shown, so the decision is acknowledged.
+  // Nothing waiting (or not loaded yet): no rows. A notice after the last
+  // decision is still shown, so the decision is acknowledged.
   if (rows.length === 0) {
-    return notice ? <p className={styles.approvalsNotice} role="status">{notice}</p> : null
+    return notice ? <li className={styles.approvalsNotice} role="status">{notice}</li> : null
   }
 
   const shown = rows.slice(0, PENDING_APPROVALS_SHOWN)
 
   return (
-    <section className={styles.section} aria-labelledby="pending-approvals-heading">
-      <h2 id="pending-approvals-heading" className={styles.sectionTitle}>
-        Pending approvals <span className={styles.approvalsCount}>{rows.length}</span>
-      </h2>
-      {notice && <p className={styles.approvalsNotice} role="status">{notice}</p>}
-      <div className={styles.approvalsList}>
-        {shown.map(r => (
-          <button
-            key={r.id}
-            type="button"
-            className={styles.approvalRow}
-            onClick={() => { setNotice(null); setReviewing(r) }}
-            aria-label={`Review ${REQUEST_TYPE_LABEL[r.request_type].toLowerCase()} request from ${r.employee?.full_name ?? 'employee'}`}
-          >
-            <span className={styles.approvalAvatar} aria-hidden="true">{initialsOf(r.employee?.full_name)}</span>
-            <span className={styles.approvalText}>
-              <span className={styles.approvalName}>{r.employee?.full_name ?? 'Employee'}</span>
-              <span className={styles.approvalDetail}>
-                {REQUEST_TYPE_LABEL[r.request_type]} · {requestSummary(r)}
+    <>
+      {notice && <li className={styles.approvalsNotice} role="status">{notice}</li>}
+      {shown.map(r => {
+        const name = r.employee?.full_name ?? 'Employee'
+        const type = REQUEST_TYPE_LABEL[r.request_type]
+        return (
+          <li key={r.id} className={styles.actionItem}>
+            <span className={styles.actionIcon} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
+            <span className={styles.actionText}>
+              <span className={styles.actionTitle}>{name} · {type.toLowerCase()}</span>
+              <span className={styles.actionDetail}>
+                {requestSummary(r)}{r.submitted_at ? ` · asked ${timeAgo(r.submitted_at)}` : ''}
               </span>
             </span>
-            <ChevronRight className={styles.approvalChevron} aria-hidden="true" focusable="false" />
-          </button>
-        ))}
-        {rows.length > shown.length && (
-          <Link href="/attendance/requests" className={styles.approvalsMore}>
-            See all {rows.length} requests
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => { setNotice(null); setReviewing(r) }}
+              aria-label={`Review ${type.toLowerCase()} request from ${name}`}
+            >
+              Review
+            </button>
+          </li>
+        )
+      })}
+      {rows.length > shown.length && (
+        <li>
+          <Link href="/attendance/requests" className={styles.moreLink}>
+            {rows.length - shown.length} more attendance requests →
           </Link>
-        )}
-      </div>
-
-      {reviewing && (
-        <RequestReviewDrawer
-          row={reviewing}
-          punch={data?.punches?.[`${reviewing.employee_id}|${reviewing.start_date}`]}
-          shift={data?.shift ?? null}
-          own={false}
-          getToken={getToken}
-          onClose={() => setReviewing(null)}
-          onDecide={decide}
-        />
+        </li>
       )}
-    </section>
+
+      {/* In its own list item so the list stays valid markup; the drawer
+          itself is an overlay. */}
+      {reviewing && (
+        <li className={styles.drawerHost}>
+          <RequestReviewDrawer
+            row={reviewing}
+            punch={data?.punches?.[`${reviewing.employee_id}|${reviewing.start_date}`]}
+            shift={data?.shift ?? null}
+            own={false}
+            getToken={getToken}
+            onClose={() => setReviewing(null)}
+            onDecide={decide}
+          />
+        </li>
+      )}
+    </>
   )
 }
