@@ -47,7 +47,7 @@ import {
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import { participatesInPayroll } from '@/lib/payroll/participation'
-import { AttentionPanel } from './AttentionPanel'
+import { AttentionPanel, AttentionStrip, type AttentionSources } from './AttentionPanel'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -466,6 +466,16 @@ export default function BoeOsHomePage() {
   const taskCount    = useUnreadCountState('task',    mayOpenTask)
   const financeCount = useUnreadCountState('finance', mayOpenFinance)
   const orderCount   = useUnreadCountState('order',   mayOpenOrders)
+
+  // What the For you panel and its phone strip read. Every gate is the page's
+  // own, passed in as data: a null count means the person cannot open that
+  // module, so it gets no group, exactly as it gets no tile.
+  const attentionSources: AttentionSources = {
+    userId,
+    financeUnread: mayOpenFinance ? financeCount.count : null,
+    ordersUnread: mayOpenOrders ? orderCount.count : null,
+    showAttendance: showPendingApprovals,
+  }
 
   const attendancePayrollHref = isModuleAdmin
     ? '/payroll'
@@ -892,10 +902,14 @@ export default function BoeOsHomePage() {
               moment edit mode closes. */}
           {!editingOrder && <QuickActionList actions={quickActions} variant="page" />}
 
-          {/* The modules on the left, "Needs your attention" on the right (open
-              cash handovers, unread Finance and Order notifications, attendance
-              approvals). Beside the tiles rather than above them so the notices
-              do not push the modules down; on a phone it falls below them. */}
+          {/* Narrow screens only: "N waiting on you", jumping to the For you
+              panel, which falls below the tiles there. */}
+          {!editingOrder && <AttentionStrip {...attentionSources} />}
+
+          {/* The modules on the left, "For you" on the right (what waits on
+              you, then unread Finance and Order updates). Beside the tiles
+              rather than above them so the notices do not push the modules
+              down; on a phone it falls below them. */}
           <div className={styles.launcherShell}>
           {/* ── The launcher ──
               `.launcher` is the size container every column count below is
@@ -965,14 +979,7 @@ export default function BoeOsHomePage() {
           {/* Not while arranging: that screen belongs to Save, Cancel and the
               cards. Every gate is the page's own, passed in as data: a null
               count means the person cannot open that module. */}
-          {!editingOrder && (
-            <AttentionPanel
-              userId={userId}
-              financeUnread={mayOpenFinance ? financeCount.count : null}
-              ordersUnread={mayOpenOrders ? orderCount.count : null}
-              showAttendance={showPendingApprovals}
-            />
-          )}
+          {!editingOrder && <AttentionPanel {...attentionSources} />}
           </div>
 
           {/* The save confirmation. The launcher's existing toast, in the place

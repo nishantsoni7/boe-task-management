@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `ebf9eb69` — Sidebar rail: no vertical movement anywhere, fluid open and close
-- Commits on this branch: 1047
-- Pages (`page.tsx`): 153   API routes (`route.ts`): 163
+- Commit: `1e2aa1f2` — Sidebar rail: a clean closed rail with no gaps or scrollbar
+- Commits on this branch: 1048
+- Pages (`page.tsx`): 153   API routes (`route.ts`): 164
 - Migrations: 376 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 813   Enums: 0
-- Test files: 666   Next.js 16.2.6, React 19.2.4
+- Test files: 667   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `1e2aa1f2` 2026-10-29 Sidebar rail: a clean closed rail with no gaps or scrollbar
 - `ebf9eb69` 2026-10-29 Sidebar rail: no vertical movement anywhere, fluid open and close
 - `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
@@ -38,7 +39,6 @@
 - `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
 - `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
 - `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
-- `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
 
 ## Pages by top-level area
 
@@ -126,6 +126,7 @@
 - **toggle-active** (1): ` [POST]`
 - **update-employee** (1): ` [PATCH]`
 - **update-member** (1): ` [POST]`
+- **vendors** (1): `/scan [POST]`
 - **view-as** (1): `/subject [GET]`
 
 ## Library folders (src/lib)
@@ -159,13 +160,13 @@
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
-- `src/lib/vendors` — 7 source, 1 test
+- `src/lib/vendors` — 10 source, 2 test
 
 ## Environment variable names read by the code
 
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
-- `ANTHROPIC_API_KEY` (14 reads)
+- `ANTHROPIC_API_KEY` (15 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
 - `BOE_BACKUP_ROOT` (1 reads)
@@ -176,7 +177,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `BOE_PERF_DEBUG` (1 reads)
 - `BOE_REHEARSAL_IMAGE` (1 reads)
 - `CRON_SECRET` (2 reads)
-- `EXHIBITION_SCAN_MODEL` (1 reads)
+- `EXHIBITION_SCAN_MODEL` (2 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (6 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
@@ -186,8 +187,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (10 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (138 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (11 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (139 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)

@@ -3,7 +3,8 @@
 import { CAPABILITIES, PRODUCT_FOCUS, TEAM_SIZES } from '@/lib/vendors/constants'
 import type { VendorInput } from '@/lib/vendors/api'
 import type { FieldErrors, VendorField } from '@/lib/vendors/validation'
-import { Chips, Field, Segmented } from './VendorBits'
+import { Chips, Field } from './VendorBits'
+import ScanVendorButton from './ScanVendorButton'
 import s from './vendors.module.css'
 
 // The vendor profile, kept to what the owner asked for: who they are, where they are, what they make, what they
@@ -45,18 +46,19 @@ export default function VendorFields({ value, errors, onChange, relaxed = false,
       <Field label="Address" required={need} error={errors.address} htmlFor="v-address">
         <textarea id="v-address" rows={2} className={`${s.textarea}${errors.address ? ` ${s.invalid}` : ''}`} value={value.address}
                   maxLength={500} onChange={e => onChange({ address: e.target.value })} />
+        <ScanVendorButton value={value} onChange={onChange} />
       </Field>
       <Field label="Products">
-        <Segmented label="Products" options={PRODUCT_FOCUS} value={value.product_focus} clearable
-                   onChange={v => onChange({ product_focus: v })} />
+        <Chips label="Products" options={PRODUCT_FOCUS} value={value.product_focus} clearable
+               onChange={v => onChange({ product_focus: v as string })} />
       </Field>
       <Field label="Capability" required={need} error={errors.capabilities}>
         <Chips multiple label="Capability" options={CAPABILITIES} value={value.capabilities}
                onChange={v => onChange({ capabilities: v as string[] })} />
       </Field>
       <Field label="Team size">
-        <Segmented label="Team size" options={TEAM_SIZES} value={value.team_size} clearable
-                   onChange={v => onChange({ team_size: v })} />
+        <Chips label="Team size" options={TEAM_SIZES} value={value.team_size} clearable
+               onChange={v => onChange({ team_size: v as string })} />
       </Field>
       <Field label="Notes" htmlFor="v-notes">
         <textarea id="v-notes" rows={3} className={s.textarea} value={value.notes} maxLength={2000}
