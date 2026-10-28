@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `9e328d53` — Vendors: vendor base and visit log with photographs and location (#472)
-- Commits on this branch: 1040
+- Commit: `b6e616dd` — Backups: pg_dump step for the tables the service role cannot read
+- Commits on this branch: 1041
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
-- Test files: 664   Next.js 16.2.6, React 19.2.4
+- Test files: 665   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `b6e616dd` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
 - `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
@@ -38,7 +39,6 @@
 - `56a4f2c0` 2026-10-27 Orders: Pendencies column, approve a pendency with an ERP screenshot, Activity categories
 - `a038b118` 2026-10-27 ERP sheet: freeze the header row (#459)
 - `a0c899cb` 2026-10-26 ERP sheet pictures and frozen columns, Payment card facts, main-only Activity (#458)
-- `564ecd96` 2026-10-26 Order page popups redesigned: PI history, Main PI details, payment lists, shipping and billing (#457)
 
 ## Pages by top-level area
 
