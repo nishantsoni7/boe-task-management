@@ -15,8 +15,8 @@ import s from '@/components/vendors/vendors.module.css'
 const BASE = '/vendors'
 
 const NAV_ITEMS = [
-  { href: `${BASE}/visit`, label: 'Log a Visit', icon: Plus, adminOnly: false },
-  { href: `${BASE}/new`, label: 'Add Potential Vendor', icon: UserPlus, adminOnly: false },
+  { href: `${BASE}/visit`, label: 'Log Visit', icon: Plus, adminOnly: false },
+  { href: `${BASE}/new`, label: 'Add Vendor', icon: UserPlus, adminOnly: false },
   { href: BASE, label: 'All Vendors', icon: Factory, adminOnly: false },
   { href: `${BASE}/activity`, label: 'Visit Activity', icon: Activity, adminOnly: true },
 ] as const
@@ -77,10 +77,10 @@ export function VendorsLayout({ profile, isAdmin, title, subtitle, actions, onSi
                 aria-current={active ? 'page' : undefined}
                 onClick={() => { setSidebarOpen(false); router.push(item.href) }}
                 style={primary
-                  ? { background: '#B9472E', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 12px', marginBottom: '10px', boxShadow: '0 2px 6px rgba(185,71,46,0.30)' }
-                  : { fontWeight: active ? 600 : undefined, marginBottom: '2px' }}
+                  ? { background: '#B9472E', color: '#fff', fontWeight: 500, fontSize: 13.5, padding: '8px 12px', marginBottom: '8px' }
+                  : { fontWeight: active ? 500 : 400, fontSize: 13.5, marginBottom: '2px' }}
               >
-                <span style={{ color: primary ? '#fff' : '#B9472E', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: primary ? '#fff' : active ? '#37352F' : '#8A8782', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 {item.label}
@@ -111,7 +111,7 @@ export function VendorsLayout({ profile, isAdmin, title, subtitle, actions, onSi
         </div>
         {showLogBar && (
           <Link href={`${BASE}/visit`} className={s.fab} aria-label="Log a vendor visit">
-            <Plus size={22} strokeWidth={2.8} aria-hidden="true" /> Log a Visit
+            <Plus size={18} strokeWidth={2.4} aria-hidden="true" /> Log visit
           </Link>
         )}
       </div>

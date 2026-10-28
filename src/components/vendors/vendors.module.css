@@ -351,3 +351,21 @@
 .kbdHint { font-size: 11.5px; color: #A8A59F; }
 .kbdKey { border: 1px solid #E0DDD7; border-radius: 4px; padding: 0 5px; background: #FBFAF8; font-family: inherit; font-size: 11px; }
 .emptyArt { width: 56px; height: 56px; color: #CFCBC4; }
+
+/* ══ Third pass: a white page surface, aligned details ═══════════════════ */
+.wrap, .wrapWide { background: #fff; border: 1px solid #ECE9E3; border-radius: 10px; padding: 18px 16px; }
+.submitBar { background: #fff; margin: 0 -16px -18px; padding: 12px 16px; border-radius: 0 0 10px 10px; }
+.submitBarEnd { justify-content: flex-end; gap: 8px; }
+.wrap > .submitBar { margin-top: -10px; }
+.segmented { max-width: 440px; }
+.listHead { background: #fff; }
+.tabs { margin-bottom: -4px; }
+.addProps { margin-left: -8px; }
+@media (min-width: 768px) {
+  .wrap { padding: 28px 32px; }
+  .wrapWide { padding: 22px 28px; }
+  .submitBar { margin: 0 -32px -28px; padding: 14px 32px; }
+  .wrap > .submitBar { margin-top: -6px; }
+  .addProps { margin-left: 154px; }
+  .listHead { margin: 0 -8px; }
+}

@@ -361,7 +361,7 @@ export default function LogVisitScreen() {
 
   const today = istToday()
   return (
-    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Log a visit">
+    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Log Visit">
       <div className={s.wrap} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void save() } }}>
         {restored && (
           <div className={`${s.banner} ${s.bannerOk}`} role="status">

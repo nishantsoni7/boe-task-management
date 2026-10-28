@@ -168,7 +168,7 @@ export default function VendorListScreen() {
 
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut}
-                   title={archived ? 'Archived vendors' : 'Vendors'}
+                   title={archived ? 'Archived Vendors' : 'Vendors'}
                    subtitle={archived ? 'Removed from the active list' : undefined}
                    actions={header}>
       <div className={s.wrapWide}>

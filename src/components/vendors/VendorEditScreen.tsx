@@ -75,7 +75,7 @@ export default function VendorEditScreen() {
               <VendorFields relaxed={relaxed} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
             </section>
             {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
-            <div className={s.submitBar}>
+            <div className={`${s.submitBar} ${s.submitBarEnd}`}>
               <Link className={s.secondary} href={`/vendors/${id}`}>Cancel</Link>
               <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save changes'}</button>
             </div>

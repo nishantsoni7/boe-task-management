@@ -56,7 +56,7 @@ export default function AddPotentialVendorScreen() {
   }
 
   return (
-    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Add vendor">
+    <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Add Vendor">
       <div className={s.wrap}>
         <section className={s.section}>
           <div className={s.segmented} role="radiogroup" aria-label="Where are we with them">
@@ -65,7 +65,7 @@ export default function AddPotentialVendorScreen() {
                       className={`${s.segment}${stage === v ? ` ${s.segmentOn}` : ''}`} onClick={() => setStage(v)}>{label}</button>
             ))}
           </div>
-          <div className={s.hint}>For a vendor we have heard about but not visited. A name is enough; the rest can wait until their factory is visited.</div>
+          <div className={s.hint}>A vendor we have heard about. A name is enough for now.</div>
         </section>
 
         <section className={s.section}>
@@ -78,7 +78,7 @@ export default function AddPotentialVendorScreen() {
           </div>
         )}
         {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
-        <div className={s.submitBar}>
+        <div className={`${s.submitBar} ${s.submitBarEnd}`}>
           <Link className={s.secondary} href="/vendors">Cancel</Link>
           <button type="button" className={s.primary} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Add vendor'}</button>
         </div>
