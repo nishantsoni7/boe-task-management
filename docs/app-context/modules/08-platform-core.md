@@ -161,8 +161,10 @@ Modules launcher (`src/app/modules/page.tsx`):
   that column itself (`['payroll-participation', userId]`, `select('payroll_active, is_deleted')` on the own row):
   the shared `usePermissionContext` profile does NOT select `payroll_active`, so testing it there always read
   "included" (the #467 defect). Until the read lands the button is held back; if it fails the button is offered.
-- "For you" panel (`src/app/modules/AttentionPanel.tsx`; #481, #483, focused 2026-10-29): ONE white panel to the
-  RIGHT of the tiles holding ONLY what the owner asked for, in this order. No notification previews, no Orders group.
+- "For you" panel (`src/app/modules/AttentionPanel.tsx`; #481, #483, focused 2026-10-29): a 280 px column docked to
+  the window's RIGHT EDGE holding ONLY what the owner asked for, each as ONE brief card (`.card`: label · age, bold
+  brief, optional muted line) with ONE button (Read / Accept / Review), in this order. No notification previews, no
+  Orders group.
   1. The newest UNREAD announcement (`latestAnnouncement` = first row of `useMyAnnouncements`, not while previewing),
      linking to `/announcements/[id]`, which is where it is acknowledged; then it leaves the panel.
   2. "Cash handed to you" (light red ground), for EVERYONE: open handovers where `handoverRole === 'recipient' &&
@@ -171,16 +173,22 @@ Modules launcher (`src/app/modules/page.tsx`):
      (20270417000000), Finance still verifies.
   3. "Cash not with the company": `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin / custodian /
      view_all, else the viewer's own), minus payments whose open handover is TO the viewer (item 2), grouped by holder
-     (`totalsByHolder`, oldest first): amount + "N payments, not handed over" / "Handed to X, not accepted" /
+     (`totalsByHolder`, oldest first): "X holds ₹N" + "N payments, not handed over" / "Handed to X, not accepted" /
      "X marked not received" + age. Review -> `/finance/handovers?holder=` ONLY when `financeAllowed` (Finance route).
-  4. "Leave and late arrival" (admin): `PendingApprovals.tsx`, filtered to `LAUNCHER_REQUEST_TYPES` (late_arrival,
-     half_day, full_day_leave); early departure and time out stay in Attendance. Hidden by CSS while it has no `li`.
-  - Header "For you" + "N items". No panel when there is nothing in it and nothing regularly comes (`regular` =
-    unclosed scope `all` or admin); for those regulars, "You're all caught up." once every list is in.
-  - Layout: `.launcherShell` (modules.module.css) is a flex-wrap row; `.launcher` (still the size container)
-    `flex: 999 1 640px`; `.attention` `flex: 1 1 340px`, stretched to the tile column. Under ~1010 px of shell width
-    it wraps BELOW the tiles; there `AttentionStrip` ("N waiting on you" = handovers to accept + requests,
-    `@media (max-width: 1131px)`) at the top jumps to `#for-you`. Not drawn while arranging cards.
+  4. Leave and late arrival (admin): `PendingApprovals.tsx`, filtered to `LAUNCHER_REQUEST_TYPES` (late_arrival,
+     half_day, full_day_leave); early departure and time out stay in Attendance.
+  - Header "For you" + count + "Clear all": hides every card showing for 24 hours, in this browser per user
+    (`src/lib/modules/forYouSnooze.ts`, localStorage `boe.forYou.cleared.<userId>`; a key names the thing AND what it
+    says, so a new or changed item shows at once; a timer brings everything back at `until`; an event keeps the panel
+    and the strip in step). Nothing is deleted, decided or marked read.
+  - NOTHING TO SHOW = NO PANEL (`itemCount === 0` and no read error): not drawn at all, no "caught up" line, and
+    the reserved width goes with it, so the tiles take the whole width.
+  - Layout: from 1132 px of window `.attention` is `position: fixed; top/right/bottom: 0; width: 280px`, own
+    scroll, sticky head, 150 px bottom room for the app's floating round buttons; `.boe-main-content:has(.attention)`
+    gives the page header and body `padding-right: 280px + 24px` (rules in attentionPanel.module.css). Narrower it
+    is `flex: 1 1 100%` in `.launcherShell` (modules.module.css, flex-wrap; `.launcher` still the size container,
+    `flex: 999 1 640px`), so it wraps BELOW the tiles, and `AttentionStrip` ("N waiting on you" = handovers to accept
+    + requests, `@media (max-width: 1131px)`) at the top jumps to `#for-you`. Not drawn while arranging cards.
   - The panel's CSS is its own `attentionPanel.module.css`, keeping the tiles' stylesheet free of anything its tests
     forbid (moduleCardSurface.test.ts). `useAttentionSummary` is shared by panel and strip; queries dedupe by key.
     The HandoverBanner is not on the launcher (Finance pages keep it). Pinned by `attentionPanel.test.ts`,
@@ -189,7 +197,7 @@ Modules launcher (`src/app/modules/page.tsx`):
   only (`profile.role === 'admin'`, not while previewing). `usePendingApprovalQueue` reads
   `/api/attendance-requests?scope=queue&status=pending` (key `['attendance-requests','home-pending',userId]`, not even
   asked unless that gate passed), drops the admin's own requests, keeps the launcher types, shows the oldest 5
-  (initials, name · type, `requestSummary`, "asked Xh ago" from `submitted_at`, Review) then "N more requests ->"
+  (type · "Xh ago" from `submitted_at`, name, `requestSummary`, Review) then "N more requests ->"
   `/attendance/requests`. Decides through `/api/attendance-requests/[id]/decision`; no rule moved.
 
 Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", counters. Primary data is one

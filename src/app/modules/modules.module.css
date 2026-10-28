@@ -527,11 +527,11 @@
 }
 
 /* ── For you: the row the tiles and the panel share ─────────────────────────
-   The modules (.launcher, the size container) on the left and the For you
-   panel on the right while there is room; under ~1010px of shell width the
-   panel wraps below the tiles and takes the full width. Flex-wrap rather than
-   a viewport query, so every column count here follows container widths. The
-   panel's own rules live in attentionPanel.module.css. */
+   From 1132px of window the For you panel is docked to the window's right
+   edge (fixed, out of this row), so the modules (.launcher, the size
+   container) take the whole row. Narrower, the panel is a full-width item that
+   wraps below the tiles. Every column count here still follows container
+   widths. The panel's own rules live in attentionPanel.module.css. */
 .launcherShell {
   display: flex;
   flex-wrap: wrap;

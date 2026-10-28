@@ -231,7 +231,8 @@ describe('source contracts', () => {
     assert.match(PANEL, /await accept\.mutateAsync\(h\.id\)/)
     assert.match(PANEL, /<HandoverConfirmDialog/)
     assert.match(PANEL, /Accept only after the cash is in your hands/)
-    assert.match(PANEL, /const show = s\.itemCount > 0 \|\|/)
+    // Any card (a handover to accept included) is enough for the panel to exist.
+    assert.match(PANEL, /if \(s\.itemCount === 0 && !errors\) return null/)
     assert.match(MODULES, /<AttentionPanel/)
   })
 

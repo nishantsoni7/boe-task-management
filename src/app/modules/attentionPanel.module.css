@@ -1,22 +1,28 @@
 /* ── For you: the panel beside the Modules tiles ───────────────────────────
    Its own stylesheet, not modules.module.css: the tiles' stylesheet promises
-   that nothing in it clamps or cuts text (a module name must always arrive
-   whole); the panel keeps its own rules apart so that promise stays checkable.
+   things its tests check (no viewport min-width queries, nothing cut), and the
+   docked panel needs both.
 
-   DOCKED, NOT FLOATING. One white panel with a single clear edge, stretched to
-   the height of the tile column. Inside, top to bottom: the newest unread
-   announcement, "Cash handed to you" on a light red ground (the one thing only
-   the viewer can clear), cash not with the company by person, and leave and
-   late-arrival requests.
+   DOCKED TO THE WINDOW EDGE (from 1132px of window): a 280px column fixed to
+   the right-hand edge, full height, its own scroll. The Modules page's header
+   and body reserve that width (rules at the end), so the bell, Edit order and
+   the tiles never sit under it. Narrower than that, the panel is an ordinary
+   block under the tiles and a strip at the top jumps to it.
+
+   ONE BRIEF CARD PER ITEM, ONE BUTTON EACH: a small label (what it is · how
+   old), one bold brief, sometimes one muted line, then Read / Accept / Review.
+   Only "Handed to you" is tinted, with the one filled button: it waits on the
+   viewer and nobody else.
+
+   With nothing to show the panel is not rendered at all, and the reserved
+   width goes with it (the `:has(.attention)` rules match nothing).
 
    LIGHT ONLY, like the launcher and the rest of the app. */
 .attention {
   display: flex;
   flex-direction: column;
-  flex: 1 1 340px;
+  flex: 1 1 100%;
   min-width: 0;
-  align-self: stretch;
-  overflow: hidden;
   background: #fff;
   border: 1px solid #DDD6CC;
   border-radius: 16px;
@@ -26,204 +32,102 @@
 
 .attentionHead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid #EFEBE5;
+  gap: 8px;
+  padding: 16px 14px 10px;
 }
 
 .attentionHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-family: var(--boe-font-heading);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.01em;
 }
 
-.attentionSummary {
-  font-size: 12px;
-  color: #686D6C;
-}
-
-/* Nothing pending (for somebody who regularly has items here). */
-.caughtUp {
-  margin: 0;
-  padding: 14px 18px 16px;
-  font-size: 13px;
-  color: #686D6C;
-}
-
-.list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* ── The newest unread announcement ──
-   The whole block is the link. */
-.announcement {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #EFEBE5;
-  color: inherit;
-  text-decoration: none;
-  transition: background-color 0.16s ease;
-}
-
-.announcement:hover,
-.announcement:active {
-  background: #FBFAF8;
-}
-
-.announcementIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #F1EEE9;
-  color: #303536;
-}
-
-.announcementLabel {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #B42332;
-}
-
-.announcementCta {
+.attentionCount {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 3px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #B9472E;
-}
-
-/* ── Cash handed to you ──
-   The tinted block: it waits on the viewer and nobody else. */
-.accept {
-  padding: 12px 18px 12px;
-  background: #FBF3F2;
-  border-bottom: 1px solid #F1DEDB;
-}
-
-.acceptHeading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 2px;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #A32D2D;
-}
-
-.acceptHint {
-  margin: 2px 0 0;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #F1EEE9;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
   font-size: 11.5px;
-  line-height: 1.4;
-  color: #686D6C;
-}
-
-.accept .item + .item {
-  border-top-color: #F1DEDB;
-}
-
-/* ── Cash not with the company, and Leave and late arrival ── */
-.group {
-  padding: 12px 18px 8px;
-}
-
-.group + .group {
-  border-top: 1px solid #EFEBE5;
-}
-
-/* The leave group is mounted for an admin so its queue can load; while it
-   holds no row it is not drawn. */
-.group:not(:has(li)) {
-  display: none;
-}
-
-.groupHeading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 2px;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: 0;
   color: #4C5352;
 }
 
-.groupLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.groupTotal {
-  font-size: 13px;
-  font-weight: 700;
-  color: #303536;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── One row: initials, two lines, one button ── */
-.item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-}
-
-.item + .item {
-  border-top: 1px solid #F2EFEA;
-}
-
-.avatar,
-.avatarOnTint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
+/* Quiet on purpose: it hides things, so it must not invite a stray click. */
+.clearAll {
   height: 30px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #686D6C;
+  cursor: pointer;
+}
+
+.clearAll:hover {
+  background: #F4F1EC;
   color: #303536;
 }
 
-.avatar {
-  background: #F1EEE9;
-}
-
-.avatarOnTint {
-  background: #fff;
-  border: 1px solid #E4DED7;
-}
-
-.itemText {
+.cards {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  flex: 1 1 auto;
-  min-width: 0;
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px 12px;
+  list-style: none;
 }
 
-.itemTitle {
+/* ── One card ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px 12px;
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+}
+
+.cardUrgent {
+  background: #FBF3F2;
+  border-color: #F1DEDB;
+}
+
+.cardLabel,
+.cardLabelUrgent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #686D6C;
+}
+
+.cardLabelUrgent {
+  font-weight: 600;
+  color: #A32D2D;
+}
+
+.cardBrief {
+  margin-top: 1px;
   font-size: 13.5px;
   font-weight: 600;
   line-height: 1.35;
@@ -231,23 +135,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-.itemDetail {
-  font-size: 12.5px;
+.cardDetail {
+  font-size: 12px;
   line-height: 1.4;
   color: #686D6C;
   overflow-wrap: anywhere;
 }
 
-.itemError {
-  margin-top: 2px;
+.cardError {
   font-size: 12px;
-  line-height: 1.4;
-  color: #A32D2D;
-}
-
-.sectionError {
-  margin: 6px 0 8px;
-  font-size: 12.5px;
   line-height: 1.45;
   color: #A32D2D;
 }
@@ -257,9 +153,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   height: 36px;
-  padding: 0 12px;
+  margin-top: 8px;
+  padding: 0 14px;
   border: 1px solid #303536;
   border-radius: 8px;
   font: inherit;
@@ -280,7 +176,7 @@
   color: #fff;
 }
 
-/* Accept is the one filled button: it is the action this panel exists for. */
+/* Accept is the one filled button: it is the action only the viewer can take. */
 .buttonPrimary {
   background: #303536;
   color: #fff;
@@ -297,7 +193,7 @@
 
 .button:focus-visible,
 .buttonPrimary:focus-visible,
-.announcement:focus-visible,
+.clearAll:focus-visible,
 .moreLink:focus-visible,
 .attentionStrip:focus-visible {
   outline: 2px solid #303536;
@@ -306,7 +202,7 @@
 
 .moreLink {
   display: block;
-  padding: 8px 0 4px;
+  padding: 2px 4px;
   font-size: 12.5px;
   font-weight: 600;
   color: #B9472E;
@@ -319,7 +215,6 @@
 
 /* A decision just made, said once in the list. */
 .approvalsNotice {
-  margin: 4px 0;
   padding: 8px 10px;
   border: 1px solid #CFE3D6;
   border-radius: 10px;
@@ -333,10 +228,49 @@
   list-style: none;
 }
 
+/* ── Docked: from 1132px of window ── */
+@media (min-width: 1132px) {
+  .attention {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: 280px;
+    overflow-y: auto;
+    border: 0;
+    border-left: 1px solid #DDD6CC;
+    border-radius: 0;
+    background: #FCFBF9;
+    /* Room at the bottom so the last card scrolls clear of the app's floating
+       round buttons (View As and friends), which sit over this corner. */
+    padding-bottom: 150px;
+  }
+
+  .attentionHead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    min-height: 68px;
+    padding: 0 12px 0 16px;
+    background: #FCFBF9;
+    border-bottom: 1px solid #EFEBE5;
+  }
+
+  .cards {
+    padding-top: 12px;
+  }
+
+  /* The Modules page reserves the panel's width, only while it is drawn. */
+  :global(.boe-main-content):has(.attention) > :global(.boe-page-header),
+  :global(.boe-main-content):has(.attention) > :global(.boe-page-body) {
+    padding-right: calc(280px + 24px);
+  }
+}
+
 /* ── The narrow-screen strip ──
    Where the panel falls below the tiles, one line at the top says how much
-   waits on you and jumps to it. Shown below the width at which the panel
-   wraps (~1132px of window: 80px rail, gutters, 640 + 28 + 340 of shell). */
+   waits on you and jumps to it. Shown exactly where the panel is not docked. */
 .attentionStrip {
   display: none;
 }

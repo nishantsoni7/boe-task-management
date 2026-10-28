@@ -29,7 +29,8 @@ import {
   type QueueRow,
   type Shift,
 } from '@/components/attendanceRequests/RequestReviewDrawer'
-import { actionableRequests, initialsOf, launcherRequests, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
+import { actionableRequests, launcherRequests, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
+import { itemKeys } from '@/lib/modules/forYouSnooze'
 import { timeAgo } from '@/lib/ui'
 import styles from './attentionPanel.module.css'
 
@@ -79,12 +80,17 @@ export function usePendingApprovalQueue(userId: string | null, enabled: boolean)
   return { ...query, rows, getToken }
 }
 
-/** The request rows, as items of the panel's "Leave and late arrival" list. */
-export function PendingApprovals({ userId }: { userId: string }) {
+/**
+ * The requests, as cards of the For you panel. `shown` is the panel's Clear all
+ * filter: a request hidden for 24 hours is left out here too.
+ */
+export function PendingApprovals({ userId, shown: isShown }: { userId: string; shown: (key: string) => boolean }) {
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<QueueRow | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const { data, rows, isError, refetch, getToken } = usePendingApprovalQueue(userId, true)
+  const queue = usePendingApprovalQueue(userId, true)
+  const { data, isError, refetch, getToken } = queue
+  const rows = queue.rows.filter(r => isShown(itemKeys.request(r.id)))
 
   const decide = async (status: 'approved' | 'rejected', note: string): Promise<string | null> => {
     if (!reviewing) return null
@@ -107,18 +113,18 @@ export function PendingApprovals({ userId }: { userId: string }) {
   // request somebody is waiting on.
   if (isError) {
     return (
-      <li className={styles.item} role="alert">
-        <span className={styles.avatar} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
-        <span className={styles.itemText}>
-          <span className={styles.itemTitle}>Attendance requests</span>
-          <span className={styles.itemDetail}>Could not be loaded</span>
+      <li className={styles.card} role="alert">
+        <span className={styles.cardLabel}>
+          <CalendarClock size={13} strokeWidth={2} aria-hidden="true" />
+          Leave and late arrival
         </span>
+        <span className={styles.cardError}>Could not be loaded.</span>
         <button type="button" className={styles.button} onClick={() => void refetch()}>Try again</button>
       </li>
     )
   }
 
-  // Nothing waiting (or not loaded yet): no rows. A notice after the last
+  // Nothing waiting (or not loaded yet): no cards. A notice after the last
   // decision is still shown, so the decision is acknowledged.
   if (rows.length === 0) {
     return notice ? <li className={styles.approvalsNotice} role="status">{notice}</li> : null
@@ -133,14 +139,13 @@ export function PendingApprovals({ userId }: { userId: string }) {
         const name = r.employee?.full_name ?? 'Employee'
         const type = REQUEST_TYPE_LABEL[r.request_type]
         return (
-          <li key={r.id} className={styles.item}>
-            <span className={styles.avatar} aria-hidden="true">{initialsOf(r.employee?.full_name)}</span>
-            <span className={styles.itemText}>
-              <span className={styles.itemTitle}>{name} · {type.toLowerCase()}</span>
-              <span className={styles.itemDetail}>
-                {requestSummary(r)}{r.submitted_at ? ` · asked ${timeAgo(r.submitted_at)}` : ''}
-              </span>
+          <li key={r.id} className={styles.card}>
+            <span className={styles.cardLabel}>
+              <CalendarClock size={13} strokeWidth={2} aria-hidden="true" />
+              {type}{r.submitted_at ? ` · ${timeAgo(r.submitted_at)}` : ''}
             </span>
+            <span className={styles.cardBrief}>{name}</span>
+            <span className={styles.cardDetail}>{requestSummary(r)}</span>
             <button
               type="button"
               className={styles.button}

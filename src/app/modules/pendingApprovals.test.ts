@@ -81,18 +81,18 @@ describe('who sees it, and what it may do', () => {
     assert.equal(/\.from\('attendance_requests'\)/.test(CARD), false)
   })
 
-  test("it is the For you panel's Leave and late arrival list, beside the modules", () => {
+  test("it is the For you panel's leave and late-arrival cards, beside the modules", () => {
     assert.ok(PAGE.indexOf('<AttentionPanel') > PAGE.indexOf('modules-essentials-heading'))
     assert.equal(PAGE.includes('<PendingApprovals'), false)
-    assert.match(PANEL, /<PendingApprovals userId=\{userId\} \/>/)
+    assert.match(PANEL, /<PendingApprovals userId=\{userId\} shown=\{key => s\.shown\(key\)\} \/>/)
   })
 
-  test('with nothing waiting, no row is drawn', () => {
+  test('with nothing waiting, no card is drawn', () => {
     assert.match(CARD, /if \(rows\.length === 0\) \{/)
   })
 
   test('each request says how long it has waited and has a Review button', () => {
-    assert.match(CARD, /asked \$\{timeAgo\(r\.submitted_at\)\}/)
+    assert.match(CARD, /\$\{timeAgo\(r\.submitted_at\)\}/)
     assert.match(CARD, />\s*Review\s*</)
   })
 })

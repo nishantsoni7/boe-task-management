@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `4ee65fb2` — Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
-- Commits on this branch: 1051
+- Commit: `32628efe` — Modules page: For you panel shows only announcements, cash and leave requests
+- Commits on this branch: 1052
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 165
 - Migrations: 377 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 820   Enums: 0
-- Test files: 670   Next.js 16.2.6, React 19.2.4
+- Test files: 671   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `32628efe` 2026-10-29 Modules page: For you panel shows only announcements, cash and leave requests
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 - `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
@@ -38,7 +39,6 @@
 - `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
-- `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
 
 ## Pages by top-level area
 
@@ -144,7 +144,7 @@
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/minop` — 11 source, 9 test
-- `src/lib/modules` — 1 source, 2 test
+- `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 92 source, 143 test

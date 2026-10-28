@@ -444,10 +444,10 @@ describe('the header, and the latest announcement in the For you panel', () => {
     return PAGE.slice(at, PAGE.indexOf('>\n', at))
   })()
 
-  /** The panel's AnnouncementItem component. */
+  /** The panel's AnnouncementCard component. */
   const LATEST = (() => {
-    const at = PANEL.indexOf('function AnnouncementItem(')
-    assert.notEqual(at, -1, 'AnnouncementItem exists')
+    const at = PANEL.indexOf('function AnnouncementCard(')
+    assert.notEqual(at, -1, 'AnnouncementCard exists')
     const end = PANEL.indexOf('\n// ── One handover waiting', at)
     return PANEL.slice(at, end === -1 ? undefined : end)
   })()
@@ -479,14 +479,15 @@ describe('the header, and the latest announcement in the For you panel', () => {
   test('THE PANEL SHOWS THE NEWEST ANNOUNCEMENT ONLY WHILE IT IS UNREAD', () => {
     // The first row of the page's own list; not while previewing somebody else.
     assert.match(PAGE, /latestAnnouncement: showAnnouncements \? myAnnouncements\[0\] \?\? null : null,/)
-    assert.match(PANEL, /latestAnnouncement && !latestAnnouncement\.read_at \? latestAnnouncement : null/)
+    // Unread, and not hidden by the panel's Clear all.
+    assert.match(PANEL, /latestAnnouncement && !latestAnnouncement\.read_at\s*&& shown\(itemKeys\.announcement\(latestAnnouncement\.id\)\) \? latestAnnouncement : null/)
   })
 
   test('THE ANNOUNCEMENT REUSES THE ANNOUNCEMENTS MODULE — no second query', () => {
     assert.match(PAGE, /useMyAnnouncements\(userId, showAnnouncements\)/)
     for (const forbidden of ['rpc(', '.from(', 'fetch(', 'useQuery', 'createClient', '.sort(', 'starts_on', 'created_at']) {
       assert.equal(stripJs(LATEST).includes(forbidden), false,
-        `AnnouncementItem must not ${forbidden} — my_announcements() already decides access and order`)
+        `AnnouncementCard must not ${forbidden} — my_announcements() already decides access and order`)
     }
   })
 
