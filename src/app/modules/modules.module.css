@@ -1,4 +1,4 @@
-/* ── Modules launcher: announcement, Essentials, All modules ─────────────
+/* ── Modules launcher: Essentials, All modules, and the For you shell ─────
    LIGHT ONLY, and nothing in this file has a dark variant — neither does the
    app, which carries no prefers-color-scheme block anywhere in globals.css.
 
@@ -8,17 +8,15 @@
    on this page. The page asks the shell for a 1400px content column
    (`contentMaxWidth`), so the header and the launcher share both edges.
 
-   COMPACT BY DESIGN. The latest announcement (when there is one), three
-   Essentials, then every other module — the whole launcher on one laptop
+   COMPACT BY DESIGN. Three Essentials, then every other module — the whole launcher on one laptop
    screen. WHITE SURFACES AND NEUTRAL BORDERS; BOE red only in small accents:
 
      #F7F5F1  the page canvas behind the tiles
-     #FFFFFF  the header, the announcement row and every tile
+     #FFFFFF  the header and every tile
      #303536  ink — section titles, module names, Essentials icons
      #4C5352  resting compact-tile icons
      #F1EEE9  icon boxes and the Essentials arrow chip
      #E4DED7  tile and card borders
-     #B42332  BOE red — the announcement marker and its label
      #B9472E  BOE red — the icon and arrow of the tile being pointed at
      #B42332  notification badge
 
@@ -51,136 +49,13 @@
   color: #303536;
 }
 
-/* ── The latest announcement ──────────────────────────────────────────────
-   One compact row across the launcher's full width, directly under the
-   header. Rendered only when there is an announcement to show, and hidden on
-   a phone (see the 767px block). */
-.announcementRow {
-  min-width: 0;
-}
-
-/* The label before the announcement title — sentence case, read inline. */
-.eyebrow {
-  flex-shrink: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #B42332;
-}
-
-/* A QUIET BANNER, NOT A SECTION. One slim row — icon, label, title, action —
-   about half the height of a module tile, so it reads as a notice above the
-   launcher rather than a block competing with it. The whole row is the link. */
-.announcement {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  min-height: 50px;
-  padding: 8px 10px 8px 14px;
-  background: #fff;
-  border: 1px solid #E4DED7;
-  border-left: 3px solid #B42332;
-  border-radius: 8px;
-  color: inherit;
-  text-decoration: none;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
-}
-
-.announcement:hover {
-  border-color: #CFC8BF;
-  border-left-color: #B42332;
-  background: #FBFAF8;
-}
-
-.announcement:focus-visible {
-  outline: 2px solid #303536;
-  outline-offset: 2px;
-}
-
-.announcementIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #F1EEE9;
-  color: #B42332;
-}
-
-/* Label and title on one line; a long title wraps under the label rather
-   than being cut. */
-.announcementText {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 10px;
-  row-gap: 2px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.announcementTitle {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: #303536;
-  overflow-wrap: anywhere;
-}
-
-.announcementCta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid #E4DED7;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #303536;
-  white-space: nowrap;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
-}
-
-.announcement:hover .announcementCta {
-  background: #FBFAF8;
-  border-color: #CFC8BF;
-}
-
-/* An announcement already read: the same card, a neutral edge. */
-.announcement:not(.announcementNew) {
-  border-left-color: #CFC8BF;
-}
-
-/* A phone keeps the arrow and drops the words, so the title has the width. */
-@container (max-width: 559px) {
-  .announcementCtaLabel {
-    display: none;
-  }
-
-  .announcementCta {
-    width: 34px;
-    padding: 0;
-    justify-content: center;
-  }
-}
-
 /* ── Sections ──────────────────────────────────────────────────────────────── */
 .section {
   margin-top: 0;
 }
 
 /* Space only between blocks: the first thing in the launcher sits right under
-   the header, whichever it is. */
-.announcementRow + .section {
-  margin-top: 24px;
-}
-
+   the header. */
 .section + .section {
   margin-top: 32px;
 }
@@ -501,18 +376,6 @@
   .section + .section {
     margin-top: 24px;
   }
-
-  /* A PHONE OPENS ON THE MODULES. The announcement row is not shown here and
-     takes no space: the first section starts directly under the header (and
-     the quick action). The bell in the header, the Announcements navigation
-     and the announcement pages are unchanged. */
-  .announcementRow {
-    display: none;
-  }
-
-  .announcementRow + .section {
-    margin-top: 0;
-  }
 }
 
 /* ── The phone: Essentials tiles and one grouped list ───────────────────────
@@ -664,11 +527,11 @@
 }
 
 /* ── For you: the row the tiles and the panel share ─────────────────────────
-   The modules (.launcher, the size container) on the left and the For you
-   panel on the right while there is room; under ~1010px of shell width the
-   panel wraps below the tiles and takes the full width. Flex-wrap rather than
-   a viewport query, so every column count here follows container widths. The
-   panel's own rules live in attentionPanel.module.css. */
+   From 1132px of window the For you panel is docked to the window's right
+   edge (fixed, out of this row), so the modules (.launcher, the size
+   container) take the whole row. Narrower, the panel is a full-width item that
+   wraps below the tiles. Every column count here still follows container
+   widths. The panel's own rules live in attentionPanel.module.css. */
 .launcherShell {
   display: flex;
   flex-wrap: wrap;
@@ -966,8 +829,6 @@
   .card,
   .cardArrow,
   .iconBox,
-  .announcement,
-  .announcementCta,
   .orderEditButton,
   .orderButton,
   .orderButtonPrimary,

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `f45ea656` — Orders: Payment plan on its own page, with product pictures
-- Commits on this branch: 1052
+- Commit: `a0cd2a3c` — Payment plan: account and cash kept apart, in one plain table
+- Commits on this branch: 1053
 - Pages (`page.tsx`): 154   API routes (`route.ts`): 165
 - Migrations: 378 (first `20260530_create_positions.sql`, latest `20270430000000_order_payment_plan_account_cash.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 821   Enums: 0
-- Test files: 670   Next.js 16.2.6, React 19.2.4
+- Test files: 671   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a0cd2a3c` 2026-10-29 Payment plan: account and cash kept apart, in one plain table
 - `f45ea656` 2026-10-29 Orders: Payment plan on its own page, with product pictures
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
@@ -38,7 +39,6 @@
 - `64f8f76d` 2026-10-28 PI top card: salesperson and Order type in the centre column, dates as the Order page timeline
 - `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
-- `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 
 ## Pages by top-level area
 
@@ -144,7 +144,7 @@
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/minop` — 11 source, 9 test
-- `src/lib/modules` — 1 source, 2 test
+- `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 92 source, 143 test

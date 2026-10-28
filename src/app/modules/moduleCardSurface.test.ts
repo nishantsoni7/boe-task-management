@@ -1,8 +1,8 @@
 /**
  * What the Modules launcher shows, and what happens when you activate a tile.
  *
- * The page is the latest announcement (when there is one), an Essentials row
- * and a compact "All modules" grid. A tile is AN ICON, ITS NOTIFICATION BADGE AND
+ * The page is an Essentials row and a compact "All modules" grid, with the For
+ * you panel beside them (attentionPanel.test.ts). A tile is AN ICON, ITS NOTIFICATION BADGE AND
  * THE MODULE NAME, plus a decorative arrow on an Essentials tile. Never a
  * description, at any width: that
  * furniture used to cost a phone most of the card to restate what the icon, the
@@ -424,18 +424,18 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
-// ── The header and the latest announcement ───────────────────────────────────
+// ── The header, and the latest announcement in the For you panel ─────────────
 //
 // The app header keeps the page title, the announcements bell and Edit order.
-// Beneath it, only when there is one: the latest announcement, as one compact
-// full-width row. There is no greeting block at any width, and on a phone the
-// announcement row is hidden, so the modules begin under the header and the
-// quick action.
+// There is no greeting block at any width. The newest unread announcement is
+// the first item of the For you panel beside the tiles (owner, 2026-10-29), so
+// the tiles always start directly under the header.
 //
-// These read the LAYOUT as well as the page, because the header is something
-// this page supplies rather than draws.
-describe('the header, and the latest announcement beneath it', () => {
+// These read the LAYOUT and the panel as well as the page, because the header
+// is something this page supplies rather than draws.
+describe('the header, and the latest announcement in the For you panel', () => {
   const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
+  const PANEL = read('src/app/modules/AttentionPanel.tsx')
 
   /** The props the launcher hands the shell. */
   const LAYOUT_CALL = (() => {
@@ -444,12 +444,12 @@ describe('the header, and the latest announcement beneath it', () => {
     return PAGE.slice(at, PAGE.indexOf('>\n', at))
   })()
 
-  /** The LatestAnnouncement component. */
+  /** The panel's AnnouncementCard component. */
   const LATEST = (() => {
-    const at = PAGE.indexOf('function LatestAnnouncement(')
-    assert.notEqual(at, -1, 'LatestAnnouncement exists')
-    const end = PAGE.indexOf('\n// ── Icons', at)
-    return PAGE.slice(at, end === -1 ? undefined : end)
+    const at = PANEL.indexOf('function AnnouncementCard(')
+    assert.notEqual(at, -1, 'AnnouncementCard exists')
+    const end = PANEL.indexOf('\n// ── One handover waiting', at)
+    return PANEL.slice(at, end === -1 ? undefined : end)
   })()
 
   test('MODULES IS STILL THE PAGE’S ONLY h1, in the shell', () => {
@@ -469,61 +469,48 @@ describe('the header, and the latest announcement beneath it', () => {
     }
   })
 
-  test('THE ROW EXISTS ONLY WHEN THERE IS AN ANNOUNCEMENT — no empty placeholder', () => {
-    assert.ok(PAGE.includes('{!editingOrder && showAnnouncements && myAnnouncements.length > 0 && ('),
-      'nothing is rendered when the list is empty, while previewing, or while arranging')
-    assert.ok(PAGE.includes('<LatestAnnouncement latest={myAnnouncements[0]} />'))
-    for (const gone of ['No announcements right now', 'announcementEmpty', 'announcementAll']) {
-      assert.equal(PAGE.includes(gone), false, `${gone} is gone`)
-      assert.equal(CSS.includes(gone), false, `and so is its style`)
+  test('THE TILES START UNDER THE HEADER — no announcement row above them', () => {
+    for (const gone of ['LatestAnnouncement', 'announcementRow', 'No announcements right now']) {
+      assert.equal(PAGE.includes(gone), false, `${gone} is gone from the page`)
     }
+    assert.equal(/\.announcement|\.eyebrow/.test(stripCss(CSS)), false, 'and its styles from the tiles')
+  })
+
+  test('THE PANEL SHOWS THE NEWEST ANNOUNCEMENT ONLY WHILE IT IS UNREAD', () => {
+    // The first row of the page's own list; not while previewing somebody else.
+    assert.match(PAGE, /latestAnnouncement: showAnnouncements \? myAnnouncements\[0\] \?\? null : null,/)
+    // Unread, and not hidden by the panel's Clear all.
+    assert.match(PANEL, /latestAnnouncement && !latestAnnouncement\.read_at\s*&& shown\(itemKeys\.announcement\(latestAnnouncement\.id\)\) \? latestAnnouncement : null/)
   })
 
   test('THE ANNOUNCEMENT REUSES THE ANNOUNCEMENTS MODULE — no second query', () => {
     assert.match(PAGE, /useMyAnnouncements\(userId, showAnnouncements\)/)
     for (const forbidden of ['rpc(', '.from(', 'fetch(', 'useQuery', 'createClient', '.sort(', 'starts_on', 'created_at']) {
       assert.equal(stripJs(LATEST).includes(forbidden), false,
-        `LatestAnnouncement must not ${forbidden} — my_announcements() already decides access and order`)
+        `AnnouncementCard must not ${forbidden} — my_announcements() already decides access and order`)
     }
   })
 
-  test('the latest is the first row, and it links to that announcement', () => {
+  test('it links to that announcement, which is where it is marked read', () => {
     assert.match(LATEST, /href=\{`\/announcements\/\$\{latest\.id\}`\}/)
     assert.match(LATEST, /\{latest\.title\}/)
-    assert.match(LATEST, /const isNew = !latest\.read_at/)
     assert.equal(/ACETECH/i.test(PAGE), false)
   })
 
-  test('reading the page acknowledges nothing, and the old banner is not back', () => {
-    assert.equal(PAGE.includes('useAcknowledgeAnnouncement'), false)
-    assert.equal(PAGE.includes('acknowledge_announcement'), false)
-    assert.equal(PAGE.includes('<AnnouncementBanner'), false)
-  })
-
-  test('A PHONE OPENS ON THE MODULES: the row is hidden and takes no space', () => {
-    const at = CSS.indexOf('@media (max-width: 767px) {\n  .card:hover')
-    assert.notEqual(at, -1, 'the phone block exists')
-    const phone = CSS.slice(at, CSS.indexOf('\n}\n', at))
-    assert.match(phone, /\.announcementRow\s*\{\s*display:\s*none;\s*\}/)
-    assert.match(phone, /\.announcementRow \+ \.section\s*\{\s*margin-top:\s*0;\s*\}/)
-    // Only this page's slot: the bell and the Announcements navigation stay.
+  test('reading the launcher acknowledges nothing, and the old banner is not back', () => {
+    for (const src of [PAGE, PANEL]) {
+      assert.equal(src.includes('useAcknowledgeAnnouncement'), false)
+      assert.equal(src.includes('acknowledge_announcement'), false)
+      assert.equal(src.includes('<AnnouncementBanner'), false)
+    }
+    // The bell and the Announcements navigation stay.
     assert.match(PAGE, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
     assert.match(LAYOUT, /label="Announcements"/)
   })
 
   test('SPACE ONLY BETWEEN BLOCKS, so nothing leaves a gap under the header', () => {
     assert.match(baseRule('.section'), /margin-top:\s*0/)
-    assert.match(CSS, /\.announcementRow \+ \.section\s*\{\s*margin-top:\s*\d+px;/)
     assert.match(CSS, /\.section \+ \.section\s*\{\s*margin-top:\s*\d+px;/)
-  })
-
-  test('THE ANNOUNCEMENT IS A SLIM BANNER, lower than any module tile', () => {
-    const banner = baseRule('.announcement').match(/min-height:\s*(\d+)px/)
-    const tile = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
-    assert.ok(banner && tile && Number(banner[1]) < Number(tile[1]),
-      'a notice must not read as another section')
-    assert.equal(/text-transform:\s*uppercase/.test(baseRule('.eyebrow')), false,
-      'its label is sentence case')
   })
 
   test('section titles are plain headings — no uppercase tracking, no rules', () => {
@@ -555,9 +542,7 @@ describe('a neutral canvas under white surfaces, with red only in small accents'
     assert.match(CSS, /:global\(\.boe-main-content\):has\(\.launcher\) :global\(\.boe-page-header\)\s*\{\s*background:\s*#FFFFFF;/)
   })
 
-  test('the announcement row and every tile stay white, with neutral borders', () => {
-    assert.match(baseRule('.announcement'), /background:\s*#fff/i)
-    assert.match(baseRule('.announcement'), /border:\s*1px solid #E4DED7/i)
+  test('every tile stays white, with neutral borders', () => {
     assert.match(DESKTOP_CARD, /background:\s*#fff/i)
     assert.match(DESKTOP_CARD, /border:\s*1px solid #E4DED7/i)
   })
@@ -575,11 +560,6 @@ describe('a neutral canvas under white surfaces, with red only in small accents'
   test('A TILE WITH UNREAD NOTIFICATIONS IS NOT TINTED — the badge says it', () => {
     assert.equal(PAGE.includes('cardAttention'), false)
     assert.equal(CSS.includes('cardAttention'), false)
-  })
-
-  test('the announcement marker is its red edge; its icon box is neutral', () => {
-    assert.match(baseRule('.announcement'), /border-left:\s*3px solid #B42332/)
-    assert.match(baseRule('.announcementIcon'), /background:\s*#F1EEE9/)
   })
 })
 
