@@ -6,6 +6,7 @@ import { Home, Wand2 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 
 // The Image Editor module shell.
 //
@@ -31,10 +32,13 @@ export function ImageEditorLayout({
   profile, title, subtitle, actions, onSignOut, children,
 }: ImageEditorLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -49,7 +53,7 @@ export function ImageEditorLayout({
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
-            <div>
+            <div className="boe-rail-label">
               <div className="boe-sidebar-brand-name">BOE One</div>
               <div className="boe-sidebar-brand-sub">Image Editor</div>
             </div>
@@ -57,6 +61,7 @@ export function ImageEditorLayout({
           <button
             onClick={() => router.push('/modules')}
             title="BOE One Home"
+            className="boe-rail-label"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -76,21 +81,25 @@ export function ImageEditorLayout({
           <button
             className="boe-nav-item active"
             onClick={() => { setSidebarOpen(false); router.push('/image-editor') }}
+            title="Studio Image"
             style={{ fontWeight: 600, marginBottom: '2px' }}
           >
             <span style={{ color: '#B9472E', display: 'flex', alignItems: 'center' }}>
               <Wand2 size={15} strokeWidth={1.8} />
             </span>
-            Studio Image
+            <span className="boe-rail-label">Studio Image</span>
           </button>
         </div>
 
-        {/* Bottom profile section */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/image-editor"
-        />
+        {/* Bottom: pin + profile section */}
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/image-editor"
+          />
+        </div>
 
       </aside>
 

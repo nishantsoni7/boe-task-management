@@ -42,15 +42,17 @@ export function NotificationsNavItem({
       onClick={() => onNavigate?.()}
       aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
       aria-current={active ? 'page' : undefined}
+      title="Notifications"
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
     >
       <span aria-hidden="true" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         <Bell size={15} strokeWidth={1.8} />
       </span>
-      Notifications
+      <span className="boe-rail-label">Notifications</span>
       {unread > 0 && (
         <span
           aria-hidden="true"
+          className="boe-nav-count"
           style={{
             marginLeft: 'auto',
             fontSize: '12px', fontWeight: 700, color: '#fff',

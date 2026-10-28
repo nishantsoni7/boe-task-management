@@ -271,6 +271,7 @@ function UserMenu({
       <button
         ref={triggerRef}
         type="button"
+        className="boe-user-trigger"
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -296,7 +297,7 @@ function UserMenu({
         }}>
           {initials(profile.full_name)}
         </span>
-        <span style={{ minWidth: 0, flex: 1 }}>
+        <span className="boe-rail-label" style={{ minWidth: 0, flex: 1 }}>
           <span style={{
             display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#303536',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -314,6 +315,7 @@ function UserMenu({
         </span>
         <ChevronDown
           size={13} strokeWidth={2}
+          className="boe-rail-label"
           style={{
             flexShrink: 0, color: '#686D6C',
             transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s',

@@ -7,6 +7,7 @@ import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
 import { QuickActionList, type QuickAction } from './QuickActions'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
@@ -100,6 +101,9 @@ export function BoeOsLayout({
   const showAnnouncements = !viewMode && myAnnouncements.length > 0
   const announcementUnread = myAnnouncements.filter(a => !a.read_at).length
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router   = useRouter()
   const pathname = usePathname()
   const isPhone  = usePhoneDrawer()
@@ -134,7 +138,7 @@ export function BoeOsLayout({
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -153,7 +157,7 @@ export function BoeOsLayout({
         {/* Brand */}
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="boe-rail-label" style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE One</div>
             <div className="boe-sidebar-brand-sub">Best of Exports</div>
           </div>
@@ -198,11 +202,14 @@ export function BoeOsLayout({
         <QuickActionList actions={quickActions} variant="sidebar" />
 
         {/* Bottom: profile + account settings + view as + sign out */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/modules"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/modules"
+          />
+        </div>
       </aside>
 
       {/* Main content */}
@@ -282,6 +289,7 @@ function OsNavItem({
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
+      title={label}
       aria-label={count > 0 ? `${label}, ${count} unread` : undefined}
       aria-current={active ? 'page' : undefined}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
@@ -289,9 +297,10 @@ function OsNavItem({
       <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
-      {label}
+      <span className="boe-rail-label">{label}</span>
       {count > 0 && (
         <span
+          className="boe-nav-count"
           aria-hidden="true"
           style={{
             marginLeft: 'auto',

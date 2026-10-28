@@ -205,6 +205,11 @@ Task Management's sidebar holds task work only (Dashboard, New Quotation Request
 Assigned By Me, Quotation Requests when `canViewQuotations`, Notifications); Performance, Settings and Super Admin were
 removed from it.
 
+Hover rail (2026-10-28): on a desktop with a mouse (>= 768 px, `hover: hover`, `pointer: fine`) every module sidebar rests as a 64 px icon rail
+and opens to 260 px OVER the page on hover (150 ms delay), on keyboard focus, while its account menu is open, or when pinned (`localStorage['boe.sidebar.pinned']`).
+A shell opts in with `railShellClass` and `useSidebarPinned` from `src/components/layout/RailControls.tsx`; labels carry `boe-rail-label` / `boe-rail-hide` / `boe-rail-ghost` / `boe-nav-count`
+(CSS: "HOVER RAIL SIDEBAR" in `globals.css`). Touch, tablets and the phone drawer are unchanged. A new module layout must opt in or keeps the full sidebar.
+
 BOE One identity (`docs/BOE_VISUAL_IDENTITY.md`; values in `:root` of `src/app/globals.css`, mirrored in `src/lib/tokens.ts`):
 terracotta `#B9472E` = actions/selection only; charcoal `#303536` text; canvas `#F7F5F1`; input border `#8C8379`
 (corrected from `#B9B2A9` for WCAG 1.4.11); error `#B42332`; status pairs (pending/working/waiting/blocked/completed) never

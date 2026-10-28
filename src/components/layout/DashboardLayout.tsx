@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from './AdminViewModeControls'
 import { MobileBottomNav } from './MobileBottomNav'
+import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
@@ -48,8 +49,11 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
   const [refreshing,   setRefreshing]   = useState(false)
+  // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
+  // the page on hover, unless pinned. Elsewhere this changes nothing.
+  const [railPinned, toggleRailPinned] = useSidebarPinned()
 
-  const router   = useRouter()
+  const router  = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
 
@@ -215,7 +219,7 @@ export function DashboardLayout({
   }
 
   return (
-    <div className="boe-app-shell">
+    <div className={railShellClass(railPinned)}>
 
       {/* Mobile overlay */}
       <div
@@ -229,11 +233,12 @@ export function DashboardLayout({
         {/* Brand header */}
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="boe-rail-label" style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE One</div>
             <div className="boe-sidebar-brand-sub">Task Management</div>
           </div>
           <button
+            className="boe-rail-label"
             onClick={() => navTo('/modules')}
             title="BOE One Home"
             style={{
@@ -369,7 +374,7 @@ export function DashboardLayout({
 
         {/* ── Notification alert block ── */}
         {unreadNotifs > 0 && (
-          <div style={{ padding: '0 10px 14px' }}>
+          <div className="boe-rail-hide" style={{ padding: '0 10px 14px' }}>
             <button
               onClick={() => navTo('/notifications')}
               className="boe-notif-alert"
@@ -396,11 +401,14 @@ export function DashboardLayout({
         )}
 
         {/* ── Bottom profile / account section ── */}
-        <ViewModeSidebarSection
-          profile={profile}
-          onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/dashboard"
-        />
+        <div className="boe-sidebar-foot">
+          <SidebarPinButton pinned={railPinned} onToggle={toggleRailPinned} />
+          <ViewModeSidebarSection
+            profile={profile}
+            onSignOut={onSignOut}
+            accountSettingsHref="/account?returnTo=/dashboard"
+          />
+        </div>
 
       </aside>
 
@@ -517,7 +525,9 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
   return (
     <>
       <button
+        className="boe-rail-row"
         onClick={() => setOpen(o => !o)}
+        title={label}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           width: '100%',
@@ -526,22 +536,22 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
           color: active ? '#303536' : '#4C5352',
           background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
           border: 'none', cursor: 'pointer',
-          marginBottom: '1px',
+          marginBottom: '1px', position: 'relative',
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
+          <span className="boe-rail-icon" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
             {icon}
           </span>
-          {label}
+          <span className="boe-rail-label">{label}</span>
           {count != null && count > 0 && (
-            <span style={{
+            <span className="boe-nav-count" style={{
               fontSize: '12px', fontWeight: 600, color: '#595D5B',
               background: '#E4DED7', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
             }}>{count}</span>
           )}
         </span>
-        <ChevronRight size={12} strokeWidth={2} style={{ opacity: 0.4, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
+        <ChevronRight className="boe-rail-label" size={12} strokeWidth={2} style={{ opacity: 0.4, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && <NavGroup>{children}</NavGroup>}
     </>
@@ -556,14 +566,15 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
+      title={label}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
       <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
-      {label}
+      <span className="boe-rail-label">{label}</span>
       {badge != null && badge > 0 && (
-        <span style={{
+        <span className="boe-nav-count" style={{
           marginLeft: 'auto',
           fontSize: '12px', fontWeight: 600, color: '#595D5B',
           background: '#E4DED7', borderRadius: '999px',
@@ -579,7 +590,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
 // ─── NavGroup ─────────────────────────────────────────────────────────────────
 function NavGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
+    <div className="boe-rail-ghost" style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
       {children}
     </div>
   )

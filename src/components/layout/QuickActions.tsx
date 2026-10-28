@@ -143,7 +143,7 @@ export function QuickActionList({
         : 'boe-quick-actions-page'}
       aria-label="Quick Actions"
     >
-      <h2 className={isSidebar ? 'boe-sidebar-label' : 'boe-quick-actions-page-label'}>
+      <h2 className={isSidebar ? 'boe-sidebar-label boe-rail-ghost' : 'boe-quick-actions-page-label'}>
         Quick Actions
       </h2>
       <div className="boe-quick-action-list">
@@ -156,9 +156,10 @@ export function QuickActionList({
             onFocus={() => warm(action.href)}
             onTouchStart={() => warm(action.href)}
             onClick={() => (action.opens ? setOpenForm(action.opens) : router.push(action.href!))}
+            title={isSidebar ? action.label : undefined}
           >
             {action.icon}
-            {action.label}
+            {isSidebar ? <span className="boe-rail-label">{action.label}</span> : action.label}
           </button>
         ))}
       </div>
