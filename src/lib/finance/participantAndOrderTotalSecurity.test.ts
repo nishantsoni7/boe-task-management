@@ -1141,7 +1141,7 @@ describe('the applied migrations are frozen', () => {
       '20270422000000_order_handoff_clarification_response.sql',
       // Bank Statements: sync bank credits into Confirmed Payments. APPLIED 2026-10-27.
       '20270423000000_finance_bank_line_sync.sql',
-      // My Tasks: personal drag-and-drop order. NOT APPLIED.
+      // My Tasks: personal drag-and-drop order. APPLIED 2026-10-28.
       '20270424000000_user_task_order.sql',
     ])
   })
@@ -1535,7 +1535,7 @@ describe('the applied migrations are frozen', () => {
       '20270422000000_order_handoff_clarification_response.sql',
       // Bank Statements: sync bank credits into Confirmed Payments. APPLIED 2026-10-27.
       '20270423000000_finance_bank_line_sync.sql',
-      // My Tasks: personal drag-and-drop order. NOT APPLIED.
+      // My Tasks: personal drag-and-drop order. APPLIED 2026-10-28.
       '20270424000000_user_task_order.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been

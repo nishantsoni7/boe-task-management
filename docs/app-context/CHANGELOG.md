@@ -4,12 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-28 — My Tasks: plain action icons, pinned tasks under Important, drag-and-drop order (PR pending) · migration `20270424000000` NOT APPLIED
+## 2026-10-28 — My Tasks: plain action icons, pinned tasks under Important, drag-and-drop order (PR pending) · migration `20270424000000` APPLIED 2026-10-28
 - **Owner request.** Action icons without borders (the pin shows its border only once pinned); a pinned task rises to just under the Important ones; drag a row to set your own order.
 - **Sort** (`sortMyTasks`, `src/lib/tasks/taskOrder.ts`): Important (starred, not completed), then Today's Focus pins, then the rest; inside each group the person's saved order, tasks never placed after it in the old order. Pin limit stays 3.
 - **Drag and drop** (desktop only, native HTML5, no library; off under View As and on the Completed tab): a grip beside the star; drop shows a line above the target row. A drop across groups is refused (the star and pin decide the group). The saved order is the whole active list, so it holds in every tab and filter. Optimistic, rolled back with a toast if the save fails.
 - **Database.** `user_task_order` (one row per person, `task_ids uuid[]`, validated by `user_task_order_ids_valid`, RLS owner-only SELECT/INSERT/UPDATE, no DELETE, self-asserting migration). A display preference: grants nothing. Hook `useTaskOrder`.
-- **Proof.** tsc, eslint, `taskOrder.test.ts` (9), tasks suites. Not seen on screen; migration not yet applied or rehearsed.
+- **Proof.** tsc, eslint, `taskOrder.test.ts` (9), tasks suites; migration rehearsed in a rolled-back transaction (own row, other user refused, duplicates refused, delete refused), then applied with `db query --file` + `migration repair`. Not seen on screen.
 
 ## 2026-10-28 — Orders: PI detail top card — salesperson and Order type in the centre column, dates as the Order page's timeline (PR pending) · no migration
 - **Owner request.** On a PI submitted for review, the right column held the salesperson, submitter and a plain Confirm/Due box. Salesperson details and the Order type move to the centre (Client) column; the right column is dates only, drawn as the Order page's timeline with the delay in uploading.
