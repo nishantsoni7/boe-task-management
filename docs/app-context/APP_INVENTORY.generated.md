@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ec765a59` — Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
-- Commits on this branch: 1036
+- Commit: `0d18f8e9` — Sidebar: rest as an icon rail on desktop, open over the page on hover
+- Commits on this branch: 1037
 - Pages (`page.tsx`): 147   API routes (`route.ts`): 163
 - Migrations: 373 (first `20260530_create_positions.sql`, latest `20270425000000_phone_push_notifications.sql`)
 - Tables ever created: 174 (dropped at some point: 7)   SQL functions: 791   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `0d18f8e9` 2026-10-28 Sidebar: rest as an icon rail on desktop, open over the page on hover
 - `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
 - `6e6c5993` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
@@ -38,7 +39,6 @@
 - `2ddfadea` 2026-10-26 Orders page: Pendencies card in the top band, Payment beside Documents, wider Commercial breakdown (#456)
 - `7ef7f67a` 2026-10-26 Documents card: drop Internal order details, redesign as shown; sample choice moves to Internal Order Details (#455)
 - `7e6a8228` 2026-10-26 Confirmed Order page, second pass: banners, top row with Payment, internal details card, full-width Activity (#454)
-- `6de4cc24` 2026-10-26 Confirmed Order page redesign; order numbers shown without leading zeros (#453)
 
 ## Pages by top-level area
 
