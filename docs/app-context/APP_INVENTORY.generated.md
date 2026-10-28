@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3909c56c` — Orders: Payment plan - how much more the client must pay before a dispatch (#479)
-- Commits on this branch: 1050
+- Commit: `4ee65fb2` — Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
+- Commits on this branch: 1051
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 165
 - Migrations: 377 (first `20260530_create_positions.sql`, latest `20270429000000_vendor_access_levels.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 820   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 - `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
 - `5f339fab` 2026-10-29 Vendors: scan a card or name plate; clearer Products and Team size choices (#484)
@@ -38,7 +39,6 @@
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
-- `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
 
 ## Pages by top-level area
 

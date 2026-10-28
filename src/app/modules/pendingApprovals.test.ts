@@ -14,7 +14,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AttendanceRequestRow } from '@/lib/attendance/requests'
-import { actionableRequests, initialsOf, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
+import {
+  actionableRequests, initialsOf, launcherRequests, LAUNCHER_REQUEST_TYPES, PENDING_APPROVALS_SHOWN,
+} from '@/lib/attendance/pendingApprovals'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const PAGE = read('src/app/modules/page.tsx')
@@ -39,6 +41,17 @@ describe('which requests the card lists', () => {
     assert.equal(PENDING_APPROVALS_SHOWN, 5)
     assert.match(CARD, /rows\.slice\(0, PENDING_APPROVALS_SHOWN\)/)
     assert.match(CARD, /href="\/attendance\/requests"/)
+  })
+
+  test('only leave and late arrival — the other types stay in Attendance', () => {
+    assert.deepEqual([...LAUNCHER_REQUEST_TYPES], ['late_arrival', 'half_day', 'full_day_leave'])
+    const typed = (id: string, request_type: AttendanceRequestRow['request_type']) => ({ id, request_type })
+    const rows = [
+      typed('a', 'late_arrival'), typed('b', 'early_departure'), typed('c', 'half_day'),
+      typed('d', 'time_out'), typed('e', 'full_day_leave'),
+    ]
+    assert.deepEqual(launcherRequests(rows).map(r => r.id), ['a', 'c', 'e'])
+    assert.match(CARD, /launcherRequests\(actionableRequests\(/)
   })
 })
 
@@ -68,7 +81,7 @@ describe('who sees it, and what it may do', () => {
     assert.equal(/\.from\('attendance_requests'\)/.test(CARD), false)
   })
 
-  test("it is part of the For you panel's Waiting on you list, beside the modules", () => {
+  test("it is the For you panel's Leave and late arrival list, beside the modules", () => {
     assert.ok(PAGE.indexOf('<AttentionPanel') > PAGE.indexOf('modules-essentials-heading'))
     assert.equal(PAGE.includes('<PendingApprovals'), false)
     assert.match(PANEL, /<PendingApprovals userId=\{userId\} \/>/)
@@ -86,7 +99,7 @@ describe('who sees it, and what it may do', () => {
 
 describe('the rows are styled as actions', () => {
   test('a real tap target for Review', () => {
-    const h = CSS.match(/\.actionButton \{[^}]*height: (\d+)px;/)
+    const h = CSS.match(/\.button,\s*\.buttonPrimary\s*\{[^}]*height: (\d+)px;/)
     assert.ok(h && Number(h[1]) >= 36, 'Review is at least 36px tall')
   })
 })

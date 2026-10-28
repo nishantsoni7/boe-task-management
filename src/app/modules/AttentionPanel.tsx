@@ -2,153 +2,221 @@
 
 // ── "For you" on the Modules launcher ────────────────────────────────────────
 //
-// One panel beside the module tiles, in two tiers:
+// One panel beside the module tiles holding only what the owner asked for
+// (2026-10-29), in this order:
 //
-//   WAITING ON YOU   things nobody else can move: a cash handover handed to you
-//                    (accept it), and — for an admin — attendance requests to
-//                    decide. Each says how long it has waited and carries a
-//                    Review button. Drawn first, on a light red ground.
-//   UPDATES          the newest unread notifications per module (Finance,
-//                    Orders), each a two-line preview that opens its record,
-//                    plus open cash handovers that wait on somebody else.
+//   1. THE NEWEST UNREAD ANNOUNCEMENT. Opening it marks it read (the
+//      announcement page acknowledges), and it leaves the panel.
+//   2. CASH HANDED TO YOU — for everyone. A handover whose recipient is the
+//      viewer and that they may accept, with Accept right here (after the same
+//      "Yes, I received ₹X" confirmation as the handover page).
+//   3. CASH NOT WITH THE COMPANY — Finance's own "money not yet with the
+//      company" list (finance_unclosed_funds: everyone's for an admin, the
+//      custodian or a view_all holder; otherwise the viewer's own), one row per
+//      person holding money. A handover waiting for the VIEWER is not repeated
+//      here: it is item 2.
+//   4. LEAVE AND LATE ARRIVAL — for the signed-in admin, the attendance requests
+//      of those types (PendingApprovals.tsx).
 //
-// The header sums both ("2 to act on · 9 updates"). With nothing pending the
-// panel stays, as one "You're all caught up" line, so the tiles do not change
-// width when the last item is cleared.
+// Nothing else: no notification previews and no Orders group.
 //
-// A PLACEMENT AND NOTHING ELSE. Every row reads what it read before — the
-// handover query, the module's own notification list, the attendance queue —
-// and every gate is decided by the page and passed in: a person who may not
-// open Finance or Orders gets no group for them, exactly as they get no tile.
-// The panel exists only for somebody with at least one source; an employee with
-// none of them (and no handover) gets no panel and the tiles keep the width.
+// A PLACEMENT AND NOTHING ELSE. Every row reads an existing query and every
+// write goes through an existing door (accept_cash_handover, the attendance
+// decision route). Accepting custody never approves a payment: Finance still
+// verifies it (20270417000000).
+//
+// With nothing to show, somebody who regularly has items here (an admin, the
+// custodian, a view_all holder) sees one "You're all caught up." line; anybody
+// else gets no panel and the tiles keep the whole width.
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, ClipboardList, DollarSign, HandCoins } from 'lucide-react'
-import { useOpenHandovers } from '@/hooks/queries/useHandovers'
+import { ArrowDown, ArrowRight, Banknote, CalendarClock, HandCoins, Megaphone } from 'lucide-react'
+import type { MyAnnouncement } from '@/lib/announcements'
+import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
+import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
+import { HandoverConfirmDialog } from '@/components/finance/HandoverCard'
+import { CASH_JOURNEYS_PATH } from '@/components/finance/UnclosedFundsCard'
 import { formatINR } from '@/lib/currency'
-import { handoverRole, sortMyHandovers, waitingFor, type Handover } from '@/lib/finance/handover'
-import { NotificationPreviews } from './NotificationPreviews'
+import { handoverPaymentCount, handoverRole, waitingFor, type Handover } from '@/lib/finance/handover'
+import { sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
+import { initialsOf } from '@/lib/attendance/pendingApprovals'
 import { PendingApprovals, usePendingApprovalQueue } from './PendingApprovals'
 import styles from './attentionPanel.module.css'
 
 export type AttentionSources = {
   userId: string | null
-  /** null = may not open Finance. undefined = count not known yet. */
-  financeUnread: number | null | undefined
-  /** null = may not open Orders. undefined = count not known yet. */
-  ordersUnread: number | null | undefined
-  /** The signed-in admin, not previewing: attendance approvals are theirs. */
+  /** The viewer may open Finance, so a cash row can link to Cash journeys. */
+  financeAllowed: boolean
+  /** The signed-in admin, not previewing: leave and late requests are theirs. */
   showAttendance: boolean
+  /** The newest announcement this person may see, or null. */
+  latestAnnouncement: MyAnnouncement | null
+}
+
+type HolderRow = {
+  holderId: string
+  name: string
+  amount: number
+  detail: string
+}
+
+/** What one person's held cash is doing, in a few words. */
+function holderDetail(payments: CashPayment[], oldestAgeHours: number): string {
+  const n = payments.length
+  const inHandover = payments.filter(p => p.openHandover)
+  const recipients = [...new Set(inHandover.map(p => p.openHandover!.recipientName))]
+  const disputed = inHandover.some(p => p.openHandover!.status === 'disputed')
+  let what: string
+  if (inHandover.length === 0) {
+    what = `${n} ${n === 1 ? 'payment' : 'payments'}, not handed over`
+  } else if (inHandover.length === n && recipients.length === 1) {
+    what = disputed
+      ? `${recipients[0]} marked not received`
+      : `Handed to ${recipients[0]}, not accepted`
+  } else {
+    what = `${n} payments · ${inHandover.length} handed over, not accepted`
+  }
+  return `${what} · ${waitingAge(oldestAgeHours)}`
 }
 
 /**
- * Everything the panel and the phone strip need to agree on, from one set of
- * queries (each deduped by its key, so calling this twice costs nothing).
+ * Everything the panel and the phone strip need, from one set of queries (each
+ * deduped by its key, so calling this twice costs nothing).
  */
-export function useAttentionSummary({ userId, financeUnread, ordersUnread, showAttendance }: AttentionSources) {
-  const { viewerId, mine, others, isError: handoversError } = useOpenHandovers()
+export function useAttentionSummary({ userId, showAttendance, latestAnnouncement }: AttentionSources) {
+  const { viewerId, mine, isError: handoversError, isLoading: handoversLoading } = useOpenHandovers()
+  const unclosed = useUnclosedFunds()
   const approvals = usePendingApprovalQueue(userId, showAttendance)
 
-  const handovers = sortMyHandovers([...mine, ...others], viewerId)
-  // Waiting on YOU: handed to you and yours to accept. Everything else that is
-  // open (you gave it, or you are watching) waits on somebody else.
-  const toAccept = handovers.filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
-  const elsewhere = handovers.filter(h => !toAccept.includes(h))
+  const toAccept = mine.filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
 
+  // Not repeated: cash on its way to the viewer is the Accept row above.
+  const payments = (unclosed.data?.payments ?? [])
+    .filter(p => !(p.openHandover && p.openHandover.recipientId === viewerId))
+  const holders: HolderRow[] = totalsByHolder(payments)
+    .sort((a, b) => b.oldestAgeHours - a.oldestAgeHours)
+    .map(t => ({
+      holderId: t.holderId,
+      name: t.holderId === viewerId ? 'You' : t.holderName,
+      amount: t.amount,
+      detail: holderDetail(payments.filter(p => (p.holderId ?? 'unknown') === t.holderId), t.oldestAgeHours),
+    }))
+
+  const announcement = latestAnnouncement && !latestAnnouncement.read_at ? latestAnnouncement : null
   const approvalCount = showAttendance ? approvals.rows.length : 0
   const actCount = toAccept.length + approvalCount
-  const updateCount = (financeUnread ?? 0) + (ordersUnread ?? 0) + elsewhere.length
+  const itemCount = (announcement ? 1 : 0) + toAccept.length + holders.length + approvalCount
 
-  // Known only once every count this person has is in. Until then the header
-  // says nothing rather than "all caught up".
-  const known = financeUnread !== undefined
-    && ordersUnread !== undefined
+  // Known only once every list this person has is in, so "caught up" is never
+  // said on the strength of a list still loading.
+  const known = !handoversLoading
+    && (unclosed.isFetched || unclosed.fetchStatus === 'idle')
     && (!showAttendance || approvals.isFetched)
-
-  const hasSource = financeUnread !== null || ordersUnread !== null || showAttendance
-    || handovers.length > 0 || handoversError
+  const regular = unclosed.data?.scope === 'all' || showAttendance
 
   return {
-    viewerId, toAccept, elsewhere, handoversError,
-    approvalsError: showAttendance && approvals.isError,
-    approvalCount, actCount, updateCount, known, hasSource,
+    announcement, toAccept, holders, cashTotal: sumAmounts(payments),
+    handoversError, cashError: unclosed.isError,
+    approvalCount, actCount, itemCount, known, regular,
   }
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export function AttentionPanel(props: AttentionSources) {
-  const { userId, financeUnread, ordersUnread, showAttendance } = props
+  const { userId, financeAllowed, showAttendance } = props
   const s = useAttentionSummary(props)
-  if (!s.hasSource) return null
 
-  const financeCount = financeUnread ?? 0
-  const ordersCount = ordersUnread ?? 0
-  const showWaiting = s.toAccept.length > 0 || s.handoversError || (showAttendance && !!userId)
-  const showFinance = financeCount > 0 || s.elsewhere.length > 0
-  const caughtUp = s.known && s.actCount === 0 && s.updateCount === 0 && !s.handoversError && !s.approvalsError
+  const caughtUp = s.known && s.itemCount === 0 && !s.handoversError && !s.cashError
+  // Nothing here, and nothing that regularly comes here: no panel.
+  const show = s.itemCount > 0 || s.handoversError || s.cashError || s.regular
+  if (!show) return null
 
   return (
     <aside id="for-you" className={styles.attention} aria-labelledby="for-you-heading">
       <header className={styles.attentionHead}>
         <h2 id="for-you-heading" className={styles.attentionHeading}>For you</h2>
-        {s.known && !caughtUp && (
-          <span className={styles.attentionSummary}>
-            {s.actCount} to act on · {plural(s.updateCount, 'update', 'updates')}
-          </span>
+        {s.known && s.itemCount > 0 && (
+          <span className={styles.attentionSummary}>{plural(s.itemCount, 'item', 'items')}</span>
         )}
       </header>
 
       {caughtUp && <p className={styles.caughtUp}>You&rsquo;re all caught up.</p>}
 
-      {/* Rendered whenever there is a source for it, so the approvals list can
-          mount and load; with nothing in it the block is hidden by CSS
-          (`.waiting:not(:has(li))`). */}
-      {showWaiting && (
-        <section className={styles.waiting} aria-labelledby="waiting-heading">
-          <h3 id="waiting-heading" className={styles.waitingHeading}>Waiting on you</h3>
-          <ul className={styles.actionList}>
-            {s.handoversError && (
-              <li className={styles.actionItem} role="alert">
-                <span className={styles.actionIcon} aria-hidden="true"><HandCoins size={15} strokeWidth={1.9} /></span>
-                <span className={styles.actionText}>
-                  <span className={styles.actionTitle}>Cash handovers</span>
-                  <span className={styles.actionDetail}>Could not be loaded, so one waiting for you may be missing</span>
-                </span>
-              </li>
-            )}
-            {s.toAccept.map(h => <HandoverAction key={h.id} h={h} />)}
-            {showAttendance && userId && <PendingApprovals userId={userId} />}
-          </ul>
+      {s.announcement && <AnnouncementItem latest={s.announcement} />}
+
+      {(s.toAccept.length > 0 || s.handoversError) && (
+        <section className={styles.accept} aria-labelledby="accept-heading">
+          <h3 id="accept-heading" className={styles.acceptHeading}>
+            <HandCoins size={14} strokeWidth={2} aria-hidden="true" />
+            Cash handed to you
+          </h3>
+          {s.handoversError ? (
+            <p className={styles.sectionError} role="alert">
+              Handovers could not be loaded, so one waiting for you may be missing.
+            </p>
+          ) : (
+            <>
+              <ul className={styles.list}>
+                {s.toAccept.map(h => <AcceptItem key={h.id} h={h} />)}
+              </ul>
+              <p className={styles.acceptHint}>Accept only after the cash is in your hands.</p>
+            </>
+          )}
         </section>
       )}
 
-      {showFinance && (
-        <section className={styles.updateGroup} aria-labelledby="updates-finance-heading">
-          <h3 id="updates-finance-heading" className={styles.updateHeading}>
-            <DollarSign size={14} strokeWidth={2} aria-hidden="true" />
-            Finance
-            {financeCount > 0 && <span className={styles.updateCount}>· {financeCount} new</span>}
+      {(s.holders.length > 0 || s.cashError) && (
+        <section className={styles.group} aria-labelledby="cash-heading">
+          <h3 id="cash-heading" className={styles.groupHeading}>
+            <span className={styles.groupLabel}>
+              <Banknote size={14} strokeWidth={2} aria-hidden="true" />
+              Cash not with the company
+            </span>
+            {!s.cashError && <span className={styles.groupTotal}>{formatINR(s.cashTotal)}</span>}
           </h3>
-          <ul className={styles.updateList}>
-            {s.elsewhere.map(h => <HandoverUpdate key={h.id} h={h} viewerId={s.viewerId} />)}
-            {financeCount > 0 && (
-              <NotificationPreviews category="finance" moduleName="Finance" allHref="/finance/notifications" unreadCount={financeCount} />
-            )}
-          </ul>
+          {s.cashError ? (
+            <p className={styles.sectionError} role="alert">Could not be loaded.</p>
+          ) : (
+            <ul className={styles.list}>
+              {s.holders.map(h => (
+                <li key={h.holderId} className={styles.item}>
+                  <span className={styles.avatar} aria-hidden="true">{h.name === 'You' ? 'Y' : initialsOf(h.name)}</span>
+                  <span className={styles.itemText}>
+                    <span className={styles.itemTitle}>{h.name} · {formatINR(h.amount)}</span>
+                    <span className={styles.itemDetail}>{h.detail}</span>
+                  </span>
+                  {/* Cash journeys is a Finance page: offered only to somebody
+                      who may open Finance. */}
+                  {financeAllowed && (
+                    <Link
+                      href={`${CASH_JOURNEYS_PATH}?holder=${encodeURIComponent(h.holderId)}`}
+                      className={styles.button}
+                      aria-label={`Review cash held by ${h.name}`}
+                    >
+                      Review
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
-      {ordersCount > 0 && (
-        <section className={styles.updateGroup} aria-labelledby="updates-orders-heading">
-          <h3 id="updates-orders-heading" className={styles.updateHeading}>
-            <ClipboardList size={14} strokeWidth={2} aria-hidden="true" />
-            Orders
-            <span className={styles.updateCount}>· {ordersCount} new</span>
+      {/* Rendered for the admin whatever the count, so the queue can load; with
+          nothing in it the group is hidden by CSS (`.group:not(:has(li))`). */}
+      {showAttendance && userId && (
+        <section className={styles.group} aria-labelledby="leave-heading">
+          <h3 id="leave-heading" className={styles.groupHeading}>
+            <span className={styles.groupLabel}>
+              <CalendarClock size={14} strokeWidth={2} aria-hidden="true" />
+              Leave and late arrival
+            </span>
           </h3>
-          <ul className={styles.updateList}>
-            <NotificationPreviews category="order" moduleName="Orders" allHref="/orders/notifications" unreadCount={ordersCount} />
+          <ul className={styles.list}>
+            <PendingApprovals userId={userId} />
           </ul>
         </section>
       )}
@@ -156,44 +224,82 @@ export function AttentionPanel(props: AttentionSources) {
   )
 }
 
-/** A handover handed to the viewer: theirs to accept. Opens the handover page. */
-function HandoverAction({ h }: { h: Handover }) {
-  const disputed = h.status === 'disputed'
+// ── The newest unread announcement ───────────────────────────────────────────
+//
+// The first row of the list the page already holds: `useMyAnnouncements` is the
+// Announcements module's own query (the bell's), and public.my_announcements()
+// decides who sees what, newest first. No second query and no ordering here.
+// Reading this panel acknowledges nothing; the announcement page does.
+function AnnouncementItem({ latest }: { latest: MyAnnouncement }) {
   return (
-    <li className={styles.actionItem}>
-      <span className={styles.actionIcon} aria-hidden="true"><HandCoins size={15} strokeWidth={1.9} /></span>
-      <span className={styles.actionText}>
-        <span className={styles.actionTitle}>Accept {formatINR(h.totalAmount)} from {h.giverName}</span>
-        <span className={styles.actionDetail}>
-          Cash handover{disputed ? ' · disputed' : ''} · waiting {waitingFor(h.ageHours)}
+    <Link
+      href={`/announcements/${latest.id}`}
+      className={styles.announcement}
+      aria-label={`New announcement: ${latest.title}. Read update.`}
+    >
+      <span className={styles.announcementIcon} aria-hidden="true">
+        <Megaphone size={15} strokeWidth={1.9} />
+      </span>
+      <span className={styles.itemText}>
+        <span className={styles.announcementLabel}>New announcement</span>
+        <span className={styles.itemTitle}>{latest.title}</span>
+        <span className={styles.announcementCta}>
+          Read update <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
         </span>
       </span>
-      <Link href={`/handover/${h.id}`} className={styles.actionButton}
-        aria-label={`Review cash handover of ${formatINR(h.totalAmount)} from ${h.giverName}`}>
-        Review
-      </Link>
-    </li>
+    </Link>
   )
 }
 
-/** An open handover waiting on somebody else: the viewer gave it, or watches. */
-function HandoverUpdate({ h, viewerId }: { h: Handover; viewerId: string | null }) {
-  const role = handoverRole(h, viewerId)
-  const title = role === 'giver'
-    ? `${h.recipientName} has not accepted ${formatINR(h.totalAmount)}`
-    : `${h.giverName} → ${h.recipientName} · ${formatINR(h.totalAmount)}`
+// ── One handover waiting for the viewer ──────────────────────────────────────
+//
+// Accept writes through accept_cash_handover (useHandoverActions), after the
+// handover page's own confirmation. It records custody only: a payment it
+// carries still waits for Finance to verify it.
+function AcceptItem({ h }: { h: Handover }) {
+  const { accept } = useHandoverActions()
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const disputed = h.status === 'disputed'
+
   return (
-    <li>
-      <Link href={`/handover/${h.id}`} className={styles.updateRow}>
-        {/* Not a notification, so not an unread dot: a hollow "open" marker. */}
-        <span className={styles.openDot} aria-hidden="true" />
-        <span className={styles.updateText}>
-          <span className={styles.updateTitle}>{title}</span>
-          <span className={styles.updateDetail}>
-            Cash handover{h.status === 'disputed' ? ' · disputed' : ''} · waiting {waitingFor(h.ageHours)}
-          </span>
+    <li className={styles.item}>
+      <span className={styles.avatarOnTint} aria-hidden="true">{initialsOf(h.giverName)}</span>
+      <span className={styles.itemText}>
+        <span className={styles.itemTitle}>{formatINR(h.totalAmount)} from {h.giverName}</span>
+        <span className={styles.itemDetail}>
+          {handoverPaymentCount(h)}{disputed ? ' · marked not received' : ''} · waiting {waitingFor(h.ageHours)}
         </span>
-      </Link>
+        {error && <span className={styles.itemError} role="alert">{error}</span>}
+      </span>
+      <button
+        type="button"
+        className={styles.buttonPrimary}
+        disabled={accept.isPending}
+        onClick={() => { setError(null); setConfirming(true) }}
+        aria-label={`Accept ${formatINR(h.totalAmount)} from ${h.giverName}`}
+      >
+        Accept
+      </button>
+
+      {confirming && (
+        <HandoverConfirmDialog
+          title="Accept this cash"
+          confirmLabel={`Yes, I received ${formatINR(h.totalAmount)}`}
+          pending={accept.isPending}
+          onClose={() => setConfirming(false)}
+          onConfirm={async () => {
+            try { await accept.mutateAsync(h.id); setConfirming(false) }
+            catch (e) { setConfirming(false); setError(e instanceof Error ? e.message : 'Could not accept the handover.') }
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+            Accept only after the cash is in your hands. You are confirming that you received{' '}
+            <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> for {handoverPaymentCount(h)}.
+            You will then be the holder of these payments in the custody trail.
+          </p>
+        </HandoverConfirmDialog>
+      )}
     </li>
   )
 }
@@ -205,7 +311,7 @@ function HandoverUpdate({ h, viewerId }: { h: Handover; viewerId: string | null 
  */
 export function AttentionStrip(props: AttentionSources) {
   const s = useAttentionSummary(props)
-  if (!s.hasSource || s.actCount === 0) return null
+  if (s.actCount === 0) return null
   return (
     <a href="#for-you" className={styles.attentionStrip}>
       <span className={styles.attentionStripDot} aria-hidden="true" />

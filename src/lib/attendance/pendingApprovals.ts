@@ -19,6 +19,18 @@ export function actionableRequests<T extends Pick<AttendanceRequestRow, 'status'
   return rows.filter(r => r.status === 'pending' && r.employee_id !== viewerId)
 }
 
+/**
+ * The request types the launcher's For you panel lists: leave and late
+ * arrival (owner, 2026-10-29). Early departure and time out during the shift
+ * still wait in Attendance → Requests, just not on the first screen.
+ */
+export const LAUNCHER_REQUEST_TYPES = ['late_arrival', 'half_day', 'full_day_leave'] as const
+
+/** Only the requests of the launcher's types, in the order given. */
+export function launcherRequests<T extends Pick<AttendanceRequestRow, 'request_type'>>(rows: T[]): T[] {
+  return rows.filter(r => (LAUNCHER_REQUEST_TYPES as readonly string[]).includes(r.request_type))
+}
+
 /** Two letters for the avatar chip: first and last name. */
 export function initialsOf(name: string | null | undefined): string {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)

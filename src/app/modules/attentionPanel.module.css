@@ -1,13 +1,13 @@
 /* ── For you: the panel beside the Modules tiles ───────────────────────────
    Its own stylesheet, not modules.module.css: the tiles' stylesheet promises
    that nothing in it clamps or cuts text (a module name must always arrive
-   whole), while an update row here is deliberately cut to two lines so one
-   long title cannot stretch the panel.
+   whole); the panel keeps its own rules apart so that promise stays checkable.
 
    DOCKED, NOT FLOATING. One white panel with a single clear edge, stretched to
-   the height of the tile column, instead of white cards on the canvas that
-   blend into the tiles beside them. Inside: a header that sums everything,
-   "Waiting on you" on a light red ground, then quieter per-module updates.
+   the height of the tile column. Inside, top to bottom: the newest unread
+   announcement, "Cash handed to you" on a light red ground (the one thing only
+   the viewer can clear), cash not with the company by person, and leave and
+   late-arrival requests.
 
    LIGHT ONLY, like the launcher and the rest of the app. */
 .attention {
@@ -45,11 +45,9 @@
 .attentionSummary {
   font-size: 12px;
   color: #686D6C;
-  text-align: right;
 }
 
-/* Nothing pending: the panel stays, as this one line, so the tiles do not
-   change width the moment the last item is cleared. */
+/* Nothing pending (for somebody who regularly has items here). */
 .caughtUp {
   margin: 0;
   padding: 14px 18px 16px;
@@ -57,8 +55,7 @@
   color: #686D6C;
 }
 
-.actionList,
-.updateList {
+.list {
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -66,40 +63,25 @@
   list-style: none;
 }
 
-/* ── Waiting on you ──
-   The one tinted block: the things nobody else can move. Mounted whenever the
-   person has a source for it (so the approvals list can load); hidden while it
-   holds no row. */
-.waiting {
-  padding: 12px 18px 12px;
-  background: #FBF3F2;
-  border-bottom: 1px solid #F1DEDB;
-}
-
-.waiting:not(:has(li)) {
-  display: none;
-}
-
-.waitingHeading {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #A32D2D;
-}
-
-.actionItem {
+/* ── The newest unread announcement ──
+   The whole block is the link. */
+.announcement {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 8px 0;
+  padding: 14px 18px;
+  border-bottom: 1px solid #EFEBE5;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.16s ease;
 }
 
-.actionItem + .actionItem {
-  border-top: 1px solid #F1DEDB;
+.announcement:hover,
+.announcement:active {
+  background: #FBFAF8;
 }
 
-.actionIcon {
+.announcementIcon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,12 +89,133 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: #fff;
-  border: 1px solid #E4DED7;
+  background: #F1EEE9;
   color: #303536;
 }
 
-.actionText {
+.announcementLabel {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #B42332;
+}
+
+.announcementCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #B9472E;
+}
+
+/* ── Cash handed to you ──
+   The tinted block: it waits on the viewer and nobody else. */
+.accept {
+  padding: 12px 18px 12px;
+  background: #FBF3F2;
+  border-bottom: 1px solid #F1DEDB;
+}
+
+.acceptHeading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #A32D2D;
+}
+
+.acceptHint {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #686D6C;
+}
+
+.accept .item + .item {
+  border-top-color: #F1DEDB;
+}
+
+/* ── Cash not with the company, and Leave and late arrival ── */
+.group {
+  padding: 12px 18px 8px;
+}
+
+.group + .group {
+  border-top: 1px solid #EFEBE5;
+}
+
+/* The leave group is mounted for an admin so its queue can load; while it
+   holds no row it is not drawn. */
+.group:not(:has(li)) {
+  display: none;
+}
+
+.groupHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #4C5352;
+}
+
+.groupLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.groupTotal {
+  font-size: 13px;
+  font-weight: 700;
+  color: #303536;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── One row: initials, two lines, one button ── */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.item + .item {
+  border-top: 1px solid #F2EFEA;
+}
+
+.avatar,
+.avatarOnTint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #303536;
+}
+
+.avatar {
+  background: #F1EEE9;
+}
+
+.avatarOnTint {
+  background: #fff;
+  border: 1px solid #E4DED7;
+}
+
+.itemText {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -120,21 +223,37 @@
   min-width: 0;
 }
 
-.actionTitle {
+.itemTitle {
   font-size: 13.5px;
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
-.actionDetail {
+.itemDetail {
   font-size: 12.5px;
   line-height: 1.4;
   color: #686D6C;
   overflow-wrap: anywhere;
 }
 
-.actionButton {
+.itemError {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #A32D2D;
+}
+
+.sectionError {
+  margin: 6px 0 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #A32D2D;
+}
+
+.button,
+.buttonPrimary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -143,27 +262,59 @@
   padding: 0 12px;
   border: 1px solid #303536;
   border-radius: 8px;
-  background: #fff;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: #303536;
   text-decoration: none;
   cursor: pointer;
   transition: background-color 0.16s ease, color 0.16s ease;
 }
 
-.actionButton:hover {
+.button {
+  background: #fff;
+  color: #303536;
+}
+
+.button:hover {
   background: #303536;
   color: #fff;
 }
 
-.actionButton:focus-visible,
-.updateRow:focus-visible,
+/* Accept is the one filled button: it is the action this panel exists for. */
+.buttonPrimary {
+  background: #303536;
+  color: #fff;
+}
+
+.buttonPrimary:hover {
+  background: #1E2223;
+}
+
+.buttonPrimary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.button:focus-visible,
+.buttonPrimary:focus-visible,
+.announcement:focus-visible,
 .moreLink:focus-visible,
 .attentionStrip:focus-visible {
   outline: 2px solid #303536;
   outline-offset: 2px;
+}
+
+.moreLink {
+  display: block;
+  padding: 8px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #B9472E;
+  text-decoration: none;
+}
+
+.moreLink:hover {
+  text-decoration: underline;
 }
 
 /* A decision just made, said once in the list. */
@@ -180,121 +331,6 @@
 
 .drawerHost {
   list-style: none;
-}
-
-/* ── Updates, one group per module ──
-   Quieter than the block above: no ground, a small heading with the module's
-   tile icon, and two-line rows cut with an ellipsis so one long title cannot
-   stretch the panel. */
-.updateGroup {
-  padding: 12px 18px 10px;
-}
-
-/* After the tinted block its own edge does the separating. */
-.updateGroup + .updateGroup {
-  border-top: 1px solid #EFEBE5;
-}
-
-.updateHeading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 2px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #4C5352;
-}
-
-.updateCount {
-  font-weight: 400;
-  color: #8A8F8E;
-}
-
-.updateList > li + li {
-  border-top: 1px solid #F2EFEA;
-}
-
-.updateRow {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0 -6px;
-  padding: 8px 6px;
-  border-radius: 8px;
-  color: inherit;
-  text-decoration: none;
-  transition: background-color 0.16s ease;
-}
-
-.updateRow:hover,
-.updateRow:active {
-  background: #FBFAF8;
-}
-
-.unreadDot,
-.openDot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  margin-top: 6px;
-  border-radius: 999px;
-}
-
-.unreadDot {
-  background: #B42332;
-}
-
-/* An open handover is not an unread notification: hollow, not filled. */
-.openDot {
-  border: 1.5px solid #B5B0A9;
-}
-
-.updateText {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.updateTitle,
-.updateDetail {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.updateTitle {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.updateDetail {
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: #686D6C;
-}
-
-.updateTime {
-  flex-shrink: 0;
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: #8A8F8E;
-}
-
-.moreLink {
-  display: block;
-  padding: 8px 0 4px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #B9472E;
-  text-decoration: none;
-}
-
-.moreLink:hover {
-  text-decoration: underline;
 }
 
 /* ── The narrow-screen strip ──

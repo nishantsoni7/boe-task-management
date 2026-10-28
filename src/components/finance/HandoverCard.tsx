@@ -259,7 +259,8 @@ export function HandoverCard({
   )
 }
 
-function HandoverConfirmDialog({
+/** Also used by the Modules launcher's For you panel, for the same Accept. */
+export function HandoverConfirmDialog({
   title, confirmLabel, pending, onClose, onConfirm, children,
 }: {
   title: string

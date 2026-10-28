@@ -69,6 +69,9 @@ Migration: `20270110000000_announcements.sql`. Local proof: `supabase/tests/run_
 - Writes only through admin-checked functions; RLS only decides SELECT. FORCE RLS to bind even the table owner.
 - Private PDF bucket with policies tied to the same visibility rule so the file can never be seen by someone the list hides it from.
 - Launcher integration made "quieter" in #262 (one latest announcement, compact).
+- 2026-10-29: on the launcher the announcement is no longer a row above the tiles. The newest UNREAD one is the first
+  item of the For you panel (`src/app/modules/AttentionPanel.tsx`, `AnnouncementItem`); opening it acknowledges it on
+  `/announcements/[id]` and it leaves the panel. Same `useMyAnnouncements` list; the bell is unchanged.
 
 ## 9. Known traps, gotchas, unfixed defects
 

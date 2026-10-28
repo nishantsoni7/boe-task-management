@@ -142,16 +142,15 @@ Modules launcher (`src/app/modules/page.tsx`):
 - Cards present: tasks (`/dashboard`), orders, samples, attendance_payroll (ONE card: admin -> `/payroll`; else
   `/my-attendance` if attendance visible, else `/my-payroll`), showroom (`/showroom-admin`), assets, members (Employee
   Records -> `/admin/control-center/people`), performance (always `/performance`), finance, meetings, customer_reviews
-  (Review Workflow), image_editor, exhibition_leads, inventory, plus personal pages (my credits etc.) and the latest
-  announcement banner (module 10).
+  (Review Workflow), image_editor, exhibition_leads, inventory, plus personal pages (my credits etc.). The newest
+  unread announcement (module 22) is the first item of the For you panel, not a row above the tiles (2026-10-29).
 - Unread badge counts via `useUnreadCountState('task'|'finance'|'order')`, only when the person may open that module.
 - Phone layout (2026-10-27 redesign), measured on the launcher's own width with container queries in
   `src/app/modules/modules.module.css`: up to 719 px the Essentials are ONE row of equal tiles (icon over name,
   ~100 px, `grid-auto-flow: column` so 1-2 Essentials share the width); up to 479 px "All modules" is ONE rounded
   white surface of 52 px rows (32 px icon chip, 15 px name, chevron) split by hairlines. The chevron
   (`styles.cardChevron`, compact tiles only, not in edit mode) is `display: none` at every other size. Edit order
-  uses the same list (dashed hairlines; the held card gets its own ink edge). The announcement row stays hidden on a
-  phone. Desktop/tablet (>= 480 px compact, >= 720 px Essentials) are unchanged. Layout values live in the CSS
+  uses the same list (dashed hairlines; the held card gets its own ink edge). Desktop/tablet (>= 480 px compact, >= 720 px Essentials) are unchanged. Layout values live in the CSS
   module because inline `style` beats media queries. Pinned by `moduleCardSurface.test.ts` (PHONE_LIST /
   PHONE_ESSENTIALS) and the dimension list in `src/lib/modules/moduleOrderStorage.test.ts`.
 - Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
@@ -162,36 +161,36 @@ Modules launcher (`src/app/modules/page.tsx`):
   that column itself (`['payroll-participation', userId]`, `select('payroll_active, is_deleted')` on the own row):
   the shared `usePermissionContext` profile does NOT select `payroll_active`, so testing it there always read
   "included" (the #467 defect). Until the read lands the button is held back; if it fails the button is offered.
-- "For you" panel (`src/app/modules/AttentionPanel.tsx`; first #481, redesigned 2026-10-29): the notices that
-  used to stack above the tiles sit in ONE white panel to the RIGHT of them, in two tiers.
-  - Header: "For you" + "N to act on · M updates" (only once every count is known).
-  - "Waiting on you" (light red ground): cash handovers handed to the viewer that they may accept
-    (`handoverRole === 'recipient' && canAccept`, Review -> `/handover/[id]`, which is not behind the Finance guard),
-    and for the signed-in ADMIN the attendance queue (`PendingApprovals.tsx`, Review opens `RequestReviewDrawer`).
-    Each row says how long it has waited. Hidden by CSS while it holds no `li`.
-  - Updates, per module with the tile's icon: Finance (open handovers that wait on somebody else, hollow dot, ->
-    `/handover/[id]`; then `NotificationPreviews` of unread Finance notifications) and Orders (unread Orders
-    notifications). A preview = unread dot, title, body, age; two lines cut with an ellipsis; click marks read
-    (`useNotificationMutations`) and opens `getNotificationMeta(n).href`. Newest 3 per module, then "N more in X ->"
-    the module's Notifications page. A group mounts only when its count > 0 (the list fetches on mount; the count
-    is null for anybody who may not open the module).
-  - Nothing pending: one "You're all caught up." line (the panel stays so the tiles do not change width). No panel
-    at all for somebody with no source (no Finance, no Orders, not admin, no handover).
+- "For you" panel (`src/app/modules/AttentionPanel.tsx`; #481, #483, focused 2026-10-29): ONE white panel to the
+  RIGHT of the tiles holding ONLY what the owner asked for, in this order. No notification previews, no Orders group.
+  1. The newest UNREAD announcement (`latestAnnouncement` = first row of `useMyAnnouncements`, not while previewing),
+     linking to `/announcements/[id]`, which is where it is acknowledged; then it leaves the panel.
+  2. "Cash handed to you" (light red ground), for EVERYONE: open handovers where `handoverRole === 'recipient' &&
+     canAccept`, with Accept right there -> `HandoverConfirmDialog` (exported from HandoverCard; "Yes, I received ₹X")
+     -> `useHandoverActions().accept` (`accept_cash_handover`). Custody only: accepting never approves a payment
+     (20270417000000), Finance still verifies.
+  3. "Cash not with the company": `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin / custodian /
+     view_all, else the viewer's own), minus payments whose open handover is TO the viewer (item 2), grouped by holder
+     (`totalsByHolder`, oldest first): amount + "N payments, not handed over" / "Handed to X, not accepted" /
+     "X marked not received" + age. Review -> `/finance/handovers?holder=` ONLY when `financeAllowed` (Finance route).
+  4. "Leave and late arrival" (admin): `PendingApprovals.tsx`, filtered to `LAUNCHER_REQUEST_TYPES` (late_arrival,
+     half_day, full_day_leave); early departure and time out stay in Attendance. Hidden by CSS while it has no `li`.
+  - Header "For you" + "N items". No panel when there is nothing in it and nothing regularly comes (`regular` =
+    unclosed scope `all` or admin); for those regulars, "You're all caught up." once every list is in.
   - Layout: `.launcherShell` (modules.module.css) is a flex-wrap row; `.launcher` (still the size container)
     `flex: 999 1 640px`; `.attention` `flex: 1 1 340px`, stretched to the tile column. Under ~1010 px of shell width
-    it wraps BELOW the tiles; there `AttentionStrip` ("N waiting on you", `@media (max-width: 1131px)`) at the top
-    jumps to `#for-you`. Not drawn while arranging cards.
-  - The panel's CSS is its own `attentionPanel.module.css`: the tiles' stylesheet is pinned to never clamp or
-    ellipsise text (moduleCardSurface.test.ts), and update rows deliberately do.
-  - `useAttentionSummary` is shared by panel and strip; every query in it is deduped by key. The HandoverBanner is
-    no longer on the launcher (Finance pages keep it). The Orders group is unread notifications only: there is no
-    "orders awaiting your approval" query. Pinned by `attentionPanel.test.ts`, `pendingApprovals.test.ts`.
-- Attendance approvals (`PendingApprovals.tsx`, helpers `src/lib/attendance/pendingApprovals.ts`): ADMIN only
-  (`profile.role === 'admin'`, not while previewing). `usePendingApprovalQueue` reads
+    it wraps BELOW the tiles; there `AttentionStrip` ("N waiting on you" = handovers to accept + requests,
+    `@media (max-width: 1131px)`) at the top jumps to `#for-you`. Not drawn while arranging cards.
+  - The panel's CSS is its own `attentionPanel.module.css`, keeping the tiles' stylesheet free of anything its tests
+    forbid (moduleCardSurface.test.ts). `useAttentionSummary` is shared by panel and strip; queries dedupe by key.
+    The HandoverBanner is not on the launcher (Finance pages keep it). Pinned by `attentionPanel.test.ts`,
+    `pendingApprovals.test.ts`, `moduleCardSurface.test.ts`, `handover.test.ts`.
+- Leave and late-arrival requests (`PendingApprovals.tsx`, helpers `src/lib/attendance/pendingApprovals.ts`): ADMIN
+  only (`profile.role === 'admin'`, not while previewing). `usePendingApprovalQueue` reads
   `/api/attendance-requests?scope=queue&status=pending` (key `['attendance-requests','home-pending',userId]`, not even
-  asked unless that gate passed), drops the admin's own requests, shows the oldest 5 as action rows (name · type,
-  `requestSummary`, "asked Xh ago" from `submitted_at`) then "N more attendance requests ->" `/attendance/requests`.
-  Decides through `/api/attendance-requests/[id]/decision`; no rule moved. A failed read shows "Try again".
+  asked unless that gate passed), drops the admin's own requests, keeps the launcher types, shows the oldest 5
+  (initials, name · type, `requestSummary`, "asked Xh ago" from `submitted_at`, Review) then "N more requests ->"
+  `/attendance/requests`. Decides through `/api/attendance-requests/[id]/decision`; no rule moved.
 
 Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", counters. Primary data is one
 React Query entry `['tasks','assigned-to',<effective uid>,'dashboard-active']`. Refresh uses `manualRefreshKey` only

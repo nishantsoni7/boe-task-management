@@ -1,8 +1,8 @@
 'use client'
 
-// ── Attendance approvals in the launcher's "Waiting on you" block ────────────
+// ── Leave and late-arrival requests in the launcher's For you panel ─────────
 //
-// The attendance requests waiting for a decision, decided from the first
+// The leave and late-arrival requests waiting for a decision, decided from the first
 // screen without opening Attendance & Payroll first. A SHORTCUT AND NOTHING
 // ELSE: it reads the same queue (`/api/attendance-requests?scope=queue`) and
 // opens the same review panel (RequestReviewDrawer) as /attendance/requests,
@@ -29,7 +29,7 @@ import {
   type QueueRow,
   type Shift,
 } from '@/components/attendanceRequests/RequestReviewDrawer'
-import { actionableRequests, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
+import { actionableRequests, initialsOf, launcherRequests, PENDING_APPROVALS_SHOWN } from '@/lib/attendance/pendingApprovals'
 import { timeAgo } from '@/lib/ui'
 import styles from './attentionPanel.module.css'
 
@@ -71,11 +71,15 @@ export function usePendingApprovalQueue(userId: string | null, enabled: boolean)
     },
     staleTime: 30_000,
   })
-  const rows = query.data ? actionableRequests(query.data.requests ?? [], query.data.viewer_id) : []
+  // Leave and late arrival only (LAUNCHER_REQUEST_TYPES); the other types still
+  // wait in Attendance → Requests.
+  const rows = query.data
+    ? launcherRequests(actionableRequests(query.data.requests ?? [], query.data.viewer_id))
+    : []
   return { ...query, rows, getToken }
 }
 
-/** The approval rows, as items of the "Waiting on you" list. */
+/** The request rows, as items of the panel's "Leave and late arrival" list. */
 export function PendingApprovals({ userId }: { userId: string }) {
   const queryClient = useQueryClient()
   const [reviewing, setReviewing] = useState<QueueRow | null>(null)
@@ -103,13 +107,13 @@ export function PendingApprovals({ userId }: { userId: string }) {
   // request somebody is waiting on.
   if (isError) {
     return (
-      <li className={styles.actionItem} role="alert">
-        <span className={styles.actionIcon} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
-        <span className={styles.actionText}>
-          <span className={styles.actionTitle}>Attendance requests</span>
-          <span className={styles.actionDetail}>Could not be loaded</span>
+      <li className={styles.item} role="alert">
+        <span className={styles.avatar} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
+        <span className={styles.itemText}>
+          <span className={styles.itemTitle}>Attendance requests</span>
+          <span className={styles.itemDetail}>Could not be loaded</span>
         </span>
-        <button type="button" className={styles.actionButton} onClick={() => void refetch()}>Try again</button>
+        <button type="button" className={styles.button} onClick={() => void refetch()}>Try again</button>
       </li>
     )
   }
@@ -129,17 +133,17 @@ export function PendingApprovals({ userId }: { userId: string }) {
         const name = r.employee?.full_name ?? 'Employee'
         const type = REQUEST_TYPE_LABEL[r.request_type]
         return (
-          <li key={r.id} className={styles.actionItem}>
-            <span className={styles.actionIcon} aria-hidden="true"><CalendarClock size={15} strokeWidth={1.9} /></span>
-            <span className={styles.actionText}>
-              <span className={styles.actionTitle}>{name} · {type.toLowerCase()}</span>
-              <span className={styles.actionDetail}>
+          <li key={r.id} className={styles.item}>
+            <span className={styles.avatar} aria-hidden="true">{initialsOf(r.employee?.full_name)}</span>
+            <span className={styles.itemText}>
+              <span className={styles.itemTitle}>{name} · {type.toLowerCase()}</span>
+              <span className={styles.itemDetail}>
                 {requestSummary(r)}{r.submitted_at ? ` · asked ${timeAgo(r.submitted_at)}` : ''}
               </span>
             </span>
             <button
               type="button"
-              className={styles.actionButton}
+              className={styles.button}
               onClick={() => { setNotice(null); setReviewing(r) }}
               aria-label={`Review ${type.toLowerCase()} request from ${name}`}
             >
@@ -151,7 +155,7 @@ export function PendingApprovals({ userId }: { userId: string }) {
       {rows.length > shown.length && (
         <li>
           <Link href="/attendance/requests" className={styles.moreLink}>
-            {rows.length - shown.length} more attendance requests →
+            {rows.length - shown.length} more requests →
           </Link>
         </li>
       )}

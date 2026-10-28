@@ -23,9 +23,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import Link from 'next/link'
-import { Armchair, ArrowRight, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone } from 'lucide-react'
-import type { MyAnnouncement } from '@/lib/announcements'
+import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon } from 'lucide-react'
 import {
   IDLE_MODULE_ORDER_EDIT,
   moduleOrderEditReducer,
@@ -467,16 +465,6 @@ export default function BoeOsHomePage() {
   const financeCount = useUnreadCountState('finance', mayOpenFinance)
   const orderCount   = useUnreadCountState('order',   mayOpenOrders)
 
-  // What the For you panel and its phone strip read. Every gate is the page's
-  // own, passed in as data: a null count means the person cannot open that
-  // module, so it gets no group, exactly as it gets no tile.
-  const attentionSources: AttentionSources = {
-    userId,
-    financeUnread: mayOpenFinance ? financeCount.count : null,
-    ordersUnread: mayOpenOrders ? orderCount.count : null,
-    showAttendance: showPendingApprovals,
-  }
-
   const attendancePayrollHref = isModuleAdmin
     ? '/payroll'
     : (canSeeAttendance ? '/my-attendance' : '/my-payroll')
@@ -685,11 +673,22 @@ export default function BoeOsHomePage() {
   // The SIGNED-IN person's own, as the database decides them (named recipient,
   // live today in India). Not while previewing somebody else: acknowledging
   // there would record the admin's own read, so the preview shows neither the
-  // banner nor the bell. Never blocks the launcher — the banner appears when
-  // the list lands.
+  // For you panel's announcement nor the bell. Never blocks the launcher — the
+  // announcement appears when the list lands.
   const showAnnouncements = !viewMode && !!userId
   const { data: myAnnouncements = [] } = useMyAnnouncements(userId, showAnnouncements)
   const showBell = showAnnouncements && !editingOrder
+
+  // What the For you panel and its phone strip read. Every gate is the page's
+  // own, passed in as data. The newest announcement is the first row of the
+  // list above (my_announcements() decides access and order); the panel shows
+  // it while it is unread.
+  const attentionSources: AttentionSources = {
+    userId,
+    financeAllowed: mayOpenFinance,
+    showAttendance: showPendingApprovals,
+    latestAnnouncement: showAnnouncements ? myAnnouncements[0] ?? null : null,
+  }
 
   // Whether Save has anything to write: the working arrangement against what is
   // stored, resolved through the same function the grid renders with, so "no
@@ -906,35 +905,24 @@ export default function BoeOsHomePage() {
               panel, which falls below the tiles there. */}
           {!editingOrder && <AttentionStrip {...attentionSources} />}
 
-          {/* The modules on the left, "For you" on the right (what waits on
-              you, then unread Finance and Order updates). Beside the tiles
-              rather than above them so the notices do not push the modules
-              down; on a phone it falls below them. */}
+          {/* The modules on the left, "For you" on the right (a new
+              announcement, cash handed to you, cash not with the company,
+              leave and late arrival). Beside the tiles rather than above them
+              so nothing pushes the modules down; on a phone it falls below
+              them. */}
           <div className={styles.launcherShell}>
           {/* ── The launcher ──
               `.launcher` is the size container every column count below is
               measured against — the width the launcher actually gets, not the
               window — and it scopes this page's typeface.
 
-              Three parts: a greeting beside the latest announcement, the
-              Essentials row and a compact grid for everything else.
+              Two parts: the Essentials row and a compact grid for everything
+              else. The tiles always start at the top: the latest announcement
+              is in the For you panel.
 
               Edit mode shows every module in one grid, as before the
               sections: each tile turns dashed and gains a handle. */}
           <div className={styles.launcher}>
-            {/* ── The latest announcement ──
-                One compact full-width row under the header, above the
-                modules, and only when there is one to show: with none, the
-                row is not rendered at all. Not while previewing somebody else
-                — their announcements are theirs, and reading one would be the
-                admin's — and not while arranging, as the quick action. Hidden
-                on a phone, which opens straight on the modules. */}
-            {!editingOrder && showAnnouncements && myAnnouncements.length > 0 && (
-              <div className={styles.announcementRow}>
-                <LatestAnnouncement latest={myAnnouncements[0]} />
-              </div>
-            )}
-
             {!editingOrder && essentialModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-essentials-heading">
                 <h2 id="modules-essentials-heading" className={styles.sectionTitle}>Your essentials</h2>
@@ -1082,39 +1070,6 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
         )}
       </div>
     </div>
-  )
-}
-
-// ── The latest announcement ───────────────────────────────────────────────────
-
-// THE LATEST ANNOUNCEMENT THIS PERSON MAY SEE: the first row of the list the
-// page already holds. `useMyAnnouncements` is the Announcements module's own
-// query — the one the bell reads — and public.my_announcements() decides who
-// sees what and returns the newest first (starts_on, then created_at,
-// descending). No second query, no ordering or permission logic here.
-//
-// Read or unread, the latest is shown; an unread one is labelled as new. With
-// nothing to show the page renders no row at all, so there is no empty state.
-function LatestAnnouncement({ latest }: { latest: MyAnnouncement }) {
-  const isNew = !latest.read_at
-  return (
-    <Link
-      href={`/announcements/${latest.id}`}
-      className={`${styles.announcement}${isNew ? ` ${styles.announcementNew}` : ''}`}
-      aria-label={`${isNew ? 'New announcement' : 'Announcement'}: ${latest.title}. Read update.`}
-    >
-      <span className={styles.announcementIcon} aria-hidden="true">
-        <Megaphone size={15} strokeWidth={1.9} />
-      </span>
-      <span className={styles.announcementText}>
-        <span className={styles.eyebrow}>{isNew ? 'New announcement' : 'Announcement'}</span>
-        <span className={styles.announcementTitle}>{latest.title}</span>
-      </span>
-      <span className={styles.announcementCta} aria-hidden="true">
-        <span className={styles.announcementCtaLabel}>Read update</span>
-        <ArrowRight size={14} strokeWidth={2} />
-      </span>
-    </Link>
   )
 }
 
