@@ -4,30 +4,32 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Phone, Plus, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Phone, Plus, Search, UserPlus, X } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
-import { enumListParam, enumParam, pageParam, textParam } from '@/lib/listState'
+import { enumListParam, enumParam, pageParam, textParam, type ParamCodec } from '@/lib/listState'
 import { VENDORS_KEY, fetchVendor, fetchVendorPage, setVendorStatus, type VendorFilter } from '@/lib/vendors/api'
 import {
-  CAPABILITIES, PRE_VISIT_STATUSES, PRODUCT_FOCUS, VENDOR_STATUSES, labelOf, type VendorSummary,
+  CAPABILITIES, PRE_VISIT_STATUSES, PRODUCT_FOCUS, TEAM_SIZES, VENDOR_STATUSES, labelOf, type VendorSummary,
 } from '@/lib/vendors/constants'
 import { vendorsCsv } from '@/lib/vendors/csv'
 import { telHref, formatPhone } from '@/lib/exhibitionLeads/phone'
-import { Chips, Highlight, StatusBadge, daysAgoText } from './VendorBits'
+import FilterMenu from './FilterMenu'
+import { Highlight, StatusBadge, daysAgoText } from './VendorBits'
 import s from './vendors.module.css'
 
-// The vendor base, as a table you can drive from the keyboard:
-//   four stage tabs that always fit (All · Potential · Contacted · Registered), one search box, one Filter button;
-//   a sortable header on a wide screen; the stage is editable right in the row (a person moves a vendor between
-//   Potential and Contacted; Admin sets any stage); ↑ ↓ move between rows, Enter opens, "/" jumps to the search.
-// Search, tab, filters and sort live in the URL, so Back, reload and a shared link restore the exact view. Results
-// update as you type; the previous list stays on screen while the next one loads.
+// The vendor base, built to answer "which vendor is this, and which of them do I want?" at a glance:
+//   each row shows the vendor's expertise (raw manufacturing / full finished piece / only finishing), what they make,
+//   the team size, the area, the stage (editable in the row) and when somebody last met them;
+//   the filters are always on screen: Expertise, Products, Team size, Area, Status, and "met us, not visited";
+//   three tabs split registered (a site visit was made) from not registered.
+// Search, tab, filters and sort live in the URL, so Back, reload and a shared link restore the exact view. Arrow keys
+// move between rows, Enter opens one, "/" jumps to the search.
 
 const PAGE = 30
-const STAGES = ['all', 'potential', 'contacted', 'registered'] as const
+const STAGES = ['all', 'registered', 'unregistered'] as const
 type Stage = (typeof STAGES)[number]
 const SORTS = ['last_visit', 'oldest_visit', 'newest', 'name'] as const
 type Sort = (typeof SORTS)[number]
@@ -37,35 +39,48 @@ const SORT_LABELS: Record<Sort, string> = {
   newest: 'Newest added first',
   name: 'Name A–Z',
 }
-const REGISTERED = VENDOR_STATUSES.filter(o => !PRE_VISIT_STATUSES.some(p => p === o.value))
-const DECISIONS = REGISTERED.map(o => o.value)
-const PRE_VISIT_OPTIONS = VENDOR_STATUSES.filter(o => PRE_VISIT_STATUSES.some(p => p === o.value))
+const PRE = PRE_VISIT_STATUSES as readonly string[]
+const DECISIONS = VENDOR_STATUSES.filter(o => !PRE.includes(o.value)).map(o => o.value)
+const PRE_VISIT_OPTIONS = VENDOR_STATUSES.filter(o => PRE.includes(o.value))
+const ALL_STATUSES = VENDOR_STATUSES.map(o => o.value)
+
+// Areas are typed by people, so the list is open: "|"-separated in the address bar.
+const freeListParam = (): ParamCodec<string[]> => ({
+  parse: raw => (raw ? raw.split('|').map(x => x.trim()).filter(Boolean).slice(0, 20) : []),
+  serialize: value => (value.length > 0 ? value.join('|') : null),
+})
 
 const PARAMS = {
   q: textParam(),
   stage: enumParam(STAGES, 'all'),
-  decision: enumListParam(DECISIONS),
+  status: enumListParam(ALL_STATUSES),
   can: enumListParam(CAPABILITIES.map(o => o.value)),
   type: enumListParam(PRODUCT_FOCUS.map(o => o.value)),
+  team: enumListParam(TEAM_SIZES.map(o => o.value)),
+  area: freeListParam(),
   sort: enumParam(SORTS, 'last_visit'),
   archived: enumParam(['0', '1'] as const, '0'),
   waiting: enumParam(['0', '1'] as const, '0'),
   page: pageParam(),
 }
 
-/** Which statuses a tab shows (and, for Registered / All, which decisions the filter narrows to). */
-function statusesFor(stage: Stage, decision: string[]): string[] | undefined {
-  if (stage === 'potential' || stage === 'contacted') return [stage]
-  if (decision.length > 0) return decision
-  return stage === 'registered' ? DECISIONS : undefined
+/** The statuses to ask for: the tab's set, narrowed by the Status filter when one is chosen. */
+function statusesFor(stage: Stage, status: string[]): string[] | undefined {
+  const tab = stage === 'registered' ? DECISIONS : stage === 'unregistered' ? [...PRE] : undefined
+  if (status.length === 0) return tab
+  if (!tab) return status
+  const both = status.filter(x => tab.includes(x))
+  return both.length > 0 ? both : ['none'] // a choice outside the tab matches nothing, not everything
 }
+
+const CAP_SHORT: Record<string, string> = { raw_pieces: 'Raw', finished_pieces: 'Full finish', finishing_only: 'Finishing only' }
+const CAP_TONE: Record<string, string> = { raw_pieces: s.tagRaw, finished_pieces: s.tagFull, finishing_only: s.tagFinish }
 
 export default function VendorListScreen() {
   const { supabase, profile, isAdmin, loading, signOut } = useVendors()
   const qc = useQueryClient()
   const { state, setState, resetState } = useListUrlState(PARAMS, { pageKey: 'page' })
   const [input, setInput, flush] = useUrlSearchInput(state.q, q => setState({ q }))
-  const [showFilters, setShowFilters] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [rowProblem, setRowProblem] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -87,8 +102,9 @@ export default function VendorListScreen() {
 
   const archived = state.archived === '1'
   const filter: VendorFilter = {
-    q: state.q, statuses: statusesFor(state.stage, state.decision), capabilities: state.can, products: state.type,
-    sort: state.sort, archived, awaiting_visit: state.waiting === '1', limit: PAGE, offset: (state.page - 1) * PAGE,
+    q: state.q, statuses: statusesFor(state.stage, state.status), capabilities: state.can, products: state.type,
+    team_sizes: state.team, areas: state.area, sort: state.sort, archived, awaiting_visit: state.waiting === '1',
+    limit: PAGE, offset: (state.page - 1) * PAGE,
   }
   const { data, isLoading, error, isFetching, isPlaceholderData } = useQuery({
     queryKey: [VENDORS_KEY, 'list', filter],
@@ -117,8 +133,7 @@ export default function VendorListScreen() {
     const links = Array.from(rowsRef.current?.querySelectorAll<HTMLAnchorElement>('a[data-vendor]') ?? [])
     if (links.length === 0) return
     const at = from ? links.findIndex(l => l === from || l.closest('[data-row]') === from.closest('[data-row]')) : -1
-    const next = links[Math.min(links.length - 1, Math.max(0, at + delta))]
-    next?.focus()
+    links[Math.min(links.length - 1, Math.max(0, at + delta))]?.focus()
   }, [])
 
   if (loading || !profile) return <LoadingScreen />
@@ -129,13 +144,13 @@ export default function VendorListScreen() {
   const sum = (keys: string[]) => keys.reduce((n, k) => n + (counts[k] ?? 0), 0)
   const tabCount: Record<Stage, number> = {
     all: Object.values(counts).reduce((a, b) => a + b, 0),
-    potential: counts.potential ?? 0,
-    contacted: counts.contacted ?? 0,
     registered: sum(DECISIONS),
+    unregistered: sum([...PRE]),
   }
-  const tabLabel: Record<Stage, string> = { all: 'All', potential: 'Potential', contacted: 'Contacted', registered: 'Registered' }
-  const advancedOn = state.can.length + state.type.length + state.decision.length + (state.waiting === '1' ? 1 : 0)
-  const anyFilter = !!state.q || state.stage !== 'all' || advancedOn > 0
+  const tabLabel: Record<Stage, string> = { all: 'All', registered: 'Registered', unregistered: 'Not registered' }
+  const areas = data?.areas ?? []
+  const filtersOn = state.status.length + state.can.length + state.type.length + state.team.length + state.area.length + (state.waiting === '1' ? 1 : 0)
+  const anyFilter = !!state.q || state.stage !== 'all' || filtersOn > 0
   const pages = Math.max(1, Math.ceil(total / PAGE))
   const awaiting = data?.awaiting_count ?? 0
 
@@ -162,7 +177,6 @@ export default function VendorListScreen() {
     </>
   )
 
-  // Clicking a column header sorts by it; clicking it again flips the direction where one exists.
   const nameSortOn = state.sort === 'name'
   const lastSortOn = state.sort === 'last_visit' || state.sort === 'oldest_visit'
 
@@ -172,71 +186,50 @@ export default function VendorListScreen() {
                    subtitle={archived ? 'Removed from the active list' : undefined}
                    actions={header}>
       <div className={s.wrapWide}>
-        <div className={s.tabs} role="tablist" aria-label="Stage">
+        <div className={s.tabs} role="tablist" aria-label="Registration">
           {STAGES.map(st => (
             <button key={st} type="button" role="tab" aria-selected={state.stage === st}
                     className={`${s.tab}${state.stage === st ? ` ${s.tabOn}` : ''}`}
-                    onClick={() => setState({ stage: st, decision: st === 'potential' || st === 'contacted' ? [] : state.decision })}>
+                    onClick={() => setState({ stage: st })}>
               {tabLabel[st]} <span className={s.tabCount}>{tabCount[st]}</span>
             </button>
           ))}
         </div>
 
-        <div className={s.toolbar}>
-          <div className={s.searchWrap}>
-            <Search size={16} className={s.searchIcon} aria-hidden="true" />
-            <input ref={searchRef} className={`${s.input} ${s.searchInput}`} value={input} type="search" enterKeyHint="search"
-                   onChange={e => setInput(e.target.value)} onBlur={flush}
-                   onKeyDown={e => {
-                     if (e.key === 'Escape') { setInput(''); e.currentTarget.blur() }
-                     if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(null, 1) }
-                   }}
-                   placeholder="Search vendors" aria-label="Search vendors" autoComplete="off" />
-            {input ? (
-              <button type="button" className={s.searchClear} aria-label="Clear search" onClick={() => { setInput(''); searchRef.current?.focus() }}>
-                <X size={15} aria-hidden="true" />
-              </button>
-            ) : <kbd className={`${s.kbd} ${s.hideOnPhone}`} aria-hidden="true">/</kbd>}
-          </div>
-          <button type="button" className={`${s.secondary} ${showFilters || advancedOn > 0 ? s.secondaryOn : ''}`}
-                  onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters}>
-            <SlidersHorizontal size={15} aria-hidden="true" />
-            <span>Filter{advancedOn > 0 ? ` · ${advancedOn}` : ''}</span>
-          </button>
+        <div className={s.searchWrap}>
+          <Search size={16} className={s.searchIcon} aria-hidden="true" />
+          <input ref={searchRef} className={`${s.input} ${s.searchInput}`} value={input} type="search" enterKeyHint="search"
+                 onChange={e => setInput(e.target.value)} onBlur={flush}
+                 onKeyDown={e => {
+                   if (e.key === 'Escape') { setInput(''); e.currentTarget.blur() }
+                   if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(null, 1) }
+                 }}
+                 placeholder="Search name, phone or area" aria-label="Search vendors" autoComplete="off" />
+          {input ? (
+            <button type="button" className={s.searchClear} aria-label="Clear search" onClick={() => { setInput(''); searchRef.current?.focus() }}>
+              <X size={15} aria-hidden="true" />
+            </button>
+          ) : <kbd className={`${s.kbd} ${s.hideOnPhone}`} aria-hidden="true">/</kbd>}
         </div>
 
-        {showFilters && (
-          <div className={`${s.filterPanel} ${s.fade}`}>
-            {state.stage !== 'potential' && state.stage !== 'contacted' && (
-              <div className={s.filterRow}><span className={s.label}>Decision</span>
-                <Chips multiple label="Decision" options={REGISTERED} value={state.decision}
-                       onChange={v => setState({ decision: v as typeof state.decision })} /></div>
-            )}
-            <div className={s.filterRow}><span className={s.label}>What they do</span>
-              <Chips multiple label="What they do" options={CAPABILITIES} value={state.can}
-                     onChange={v => setState({ can: v as typeof state.can })} /></div>
-            <div className={s.filterRow}><span className={s.label}>Products</span>
-              <Chips multiple label="Products" options={PRODUCT_FOCUS} value={state.type}
-                     onChange={v => setState({ type: v as typeof state.type })} /></div>
-            <label className={s.checkRow}>
-              <input type="checkbox" checked={state.waiting === '1'} onChange={e => setState({ waiting: e.target.checked ? '1' : '0' })} />
-              Met us at our factory, not visited yet
-            </label>
-            <div className={s.filterRow}><span className={s.label}>Sort by</span>
-              <select className={s.select} style={{ maxWidth: 260 }} value={state.sort} aria-label="Sort order"
-                      onChange={e => setState({ sort: e.target.value as Sort })}>
-                {SORTS.map(k => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
-              </select></div>
-            {isAdmin && (
-              <div style={{ display: 'flex', gap: 14 }}>
-                <button type="button" className={s.linkBtn} onClick={() => void exportCsv()} disabled={exporting}>{exporting ? 'Preparing…' : 'Export to CSV'}</button>
-                <button type="button" className={s.linkBtn} onClick={() => setState({ archived: archived ? '0' : '1' })}>
-                  {archived ? 'Back to active vendors' : 'Show archived'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <div className={s.filterBar} role="group" aria-label="Filters">
+          <FilterMenu label="Expertise" options={CAPABILITIES} value={state.can} onChange={v => setState({ can: v as typeof state.can })} />
+          <FilterMenu label="Products" options={PRODUCT_FOCUS} value={state.type} onChange={v => setState({ type: v as typeof state.type })} />
+          <FilterMenu label="Team size" options={TEAM_SIZES} value={state.team} onChange={v => setState({ team: v as typeof state.team })} />
+          <FilterMenu label="Area" options={areas.map(a => ({ value: a, label: a }))} value={state.area}
+                      onChange={v => setState({ area: v })} emptyText="No areas yet: add one on a vendor" />
+          <FilterMenu label="Status" options={VENDOR_STATUSES} value={state.status} onChange={v => setState({ status: v as typeof state.status })} />
+          <button type="button" className={`${s.fbtn}${state.waiting === '1' ? ` ${s.fbtnOn}` : ''}`} aria-pressed={state.waiting === '1'}
+                  onClick={() => setState({ waiting: state.waiting === '1' ? '0' : '1' })}>
+            Met us, not visited
+          </button>
+          <span className={s.showOnPhone}>
+            <select className={`${s.select} ${s.sortSelect}`} value={state.sort} aria-label="Sort order"
+                    onChange={e => setState({ sort: e.target.value as Sort })}>
+              {SORTS.map(k => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
+            </select>
+          </span>
+        </div>
 
         {awaiting > 0 && state.waiting !== '1' && !archived && (
           <div className={`${s.notice} ${s.fade}`} role="status">
@@ -245,19 +238,18 @@ export default function VendorListScreen() {
           </div>
         )}
 
-        {(state.can.length > 0 || state.type.length > 0 || state.decision.length > 0 || state.waiting === '1') && (
-          <div className={s.pills} aria-label="Active filters">
-            {state.waiting === '1' && <Pill label="Awaiting a site visit" onRemove={() => setState({ waiting: '0' })} />}
-            {state.decision.map(v => <Pill key={v} label={labelOf(VENDOR_STATUSES, v)} onRemove={() => setState({ decision: state.decision.filter(x => x !== v) })} />)}
-            {state.can.map(v => <Pill key={v} label={labelOf(CAPABILITIES, v)} onRemove={() => setState({ can: state.can.filter(x => x !== v) })} />)}
-            {state.type.map(v => <Pill key={v} label={labelOf(PRODUCT_FOCUS, v)} onRemove={() => setState({ type: state.type.filter(x => x !== v) })} />)}
-          </div>
-        )}
-
         <div className={s.resultLine} aria-live="polite">
           {isFetching && isPlaceholderData ? 'Updating…' : `${total} vendor${total === 1 ? '' : 's'}`}
           {anyFilter && (
             <button type="button" className={s.linkBtn} style={{ marginLeft: 10 }} onClick={() => { setInput(''); resetState() }}>Clear all</button>
+          )}
+          {isAdmin && (
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
+              <button type="button" className={s.linkBtn} onClick={() => void exportCsv()} disabled={exporting}>{exporting ? 'Preparing…' : 'Export CSV'}</button>
+              <button type="button" className={s.linkBtn} onClick={() => setState({ archived: archived ? '0' : '1' })}>
+                {archived ? 'Back to active' : 'Show archived'}
+              </button>
+            </span>
           )}
         </div>
 
@@ -286,14 +278,15 @@ export default function VendorListScreen() {
 
         {rows.length > 0 && (
           <div className={s.listHead} role="row">
-            <button type="button" className={`${s.sortBtn} ${nameSortOn ? s.sortBtnOn : ''}`}
-                    onClick={() => setState({ sort: 'name' })} aria-label="Sort by name">
+            <button type="button" className={`${s.sortBtn} ${nameSortOn ? s.sortBtnOn : ''}`} onClick={() => setState({ sort: 'name' })} aria-label="Sort by name">
               Vendor {nameSortOn && <ArrowDown size={12} aria-hidden="true" />}
             </button>
+            <span className={s.headLabel}>Expertise</span>
+            <span className={s.headLabel}>Team</span>
+            <span className={s.headLabel}>Area</span>
             <span className={s.headLabel}>Stage</span>
             <button type="button" className={`${s.sortBtn} ${lastSortOn ? s.sortBtnOn : ''}`}
-                    onClick={() => setState({ sort: state.sort === 'last_visit' ? 'oldest_visit' : 'last_visit' })}
-                    aria-label="Sort by last meeting">
+                    onClick={() => setState({ sort: state.sort === 'last_visit' ? 'oldest_visit' : 'last_visit' })} aria-label="Sort by last meeting">
               Last meeting {lastSortOn && (state.sort === 'last_visit' ? <ArrowDown size={12} aria-hidden="true" /> : <ArrowUp size={12} aria-hidden="true" />)}
             </button>
             <span />
@@ -310,7 +303,7 @@ export default function VendorListScreen() {
                }
              }}>
           {rows.map(r => (
-            <VendorRow key={r.id} v={r} q={state.q} canEditStage={!archived && (isAdmin || PRE_VISIT_STATUSES.some(p => p === r.status))}
+            <VendorRow key={r.id} v={r} q={state.q} canEditStage={!archived && (isAdmin || PRE.includes(r.status))}
                        isAdmin={isAdmin} onTouch={prefetch} onStage={changeStage} />
           ))}
         </div>
@@ -324,15 +317,6 @@ export default function VendorListScreen() {
         )}
       </div>
     </VendorsLayout>
-  )
-}
-
-function Pill({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className={s.pill}>
-      {label}
-      <button type="button" className={s.pillX} aria-label={`Remove ${label}`} onClick={onRemove}><X size={12} aria-hidden="true" /></button>
-    </span>
   )
 }
 
@@ -364,10 +348,7 @@ function SkeletonRows() {
 /** The one line that says where this vendor stands with us. */
 function standing(v: VendorSummary): { text: string; warn: boolean } {
   if (v.awaiting_site_visit) return { text: 'Met us · awaiting a site visit', warn: true }
-  if (v.visit_count === 0) {
-    if (v.status === 'potential') return { text: 'Not contacted yet', warn: false }
-    return { text: 'Not visited yet', warn: true }
-  }
+  if (v.visit_count === 0) return v.status === 'potential' ? { text: 'Not contacted yet', warn: false } : { text: 'Not visited yet', warn: true }
   const stale = v.days_since_visit !== null && v.days_since_visit >= 30
   return { text: `${daysAgoText(v.days_since_visit)} · ${v.visit_count} meeting${v.visit_count === 1 ? '' : 's'}`, warn: stale }
 }
@@ -381,17 +362,26 @@ function VendorRow({ v, q, canEditStage, isAdmin, onTouch, onStage }: {
   onTouch: (id: string) => void; onStage: (id: string, next: string) => void
 }) {
   const router = useRouter()
-  const meta = v.contact_name ?? ''
   const where = standing(v)
   const options = isAdmin ? VENDOR_STATUSES : PRE_VISIT_OPTIONS
+  const makes = v.product_focus ? labelOf(PRODUCT_FOCUS, v.product_focus) : null
+  const inline = [v.team_size ? `${v.team_size} people` : null, v.area].filter(Boolean).join(' · ')
   return (
     <div className={s.row} data-row onMouseEnter={() => onTouch(v.id)} onTouchStart={() => onTouch(v.id)}
          onClick={e => { if (!(e.target as HTMLElement).closest('select, a[data-stop]')) router.push(`/vendors/${v.id}`) }}
          style={{ cursor: 'pointer' }}>
       <Link href={`/vendors/${v.id}`} className={s.rowLink} data-vendor onFocus={() => onTouch(v.id)}>
         <span className={s.rowName}><Highlight text={v.company_name} q={q} /></span>
-        {meta && <span className={s.rowMeta}><Highlight text={meta} q={q} /></span>}
+        {v.contact_name && <span className={s.rowMeta}><Highlight text={v.contact_name} q={q} /></span>}
       </Link>
+      <span className={s.rowTags}>
+        {v.capabilities.map(c => <span key={c} className={`${s.tag} ${CAP_TONE[c] ?? ''}`}>{CAP_SHORT[c] ?? c}</span>)}
+        {makes && <span className={`${s.tag} ${s.tagPlain}`}>{makes}</span>}
+        {v.capabilities.length === 0 && !makes && <span className={s.rowDash}>—</span>}
+      </span>
+      <span className={s.rowInline}>{inline}</span>
+      <span className={s.rowTeam}>{v.team_size ?? <span className={s.rowDash}>—</span>}</span>
+      <span className={s.rowArea}>{v.area ? <Highlight text={v.area} q={q} /> : <span className={s.rowDash}>—</span>}</span>
       <span className={s.rowStage}>
         {canEditStage ? (
           <select className={`${s.stagePick} ${stageTone(v.status)}`} value={v.status} aria-label={`Stage of ${v.company_name}`}

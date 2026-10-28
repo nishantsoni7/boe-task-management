@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
+import { useVendorAreas } from '@/lib/vendors/useVendorAreas'
 import { VENDORS_KEY, fetchVendor, saveVendor, type VendorInput } from '@/lib/vendors/api'
 import { newSubmissionId } from '@/lib/exhibitionLeads/draft'
 import { PRE_VISIT_STATUSES } from '@/lib/vendors/constants'
@@ -21,6 +22,7 @@ export default function VendorEditScreen() {
   const router = useRouter()
   const qc = useQueryClient()
   const { supabase, profile, isAdmin, loading, signOut } = useVendors()
+  const areas = useVendorAreas(supabase, !!profile)
   const [value, setValue] = useState<VendorInput>(EMPTY_VENDOR)
   const [loaded, setLoaded] = useState(false)
   const [errors, setErrors] = useState<FieldErrors<VendorField>>({})
@@ -39,7 +41,7 @@ export default function VendorEditScreen() {
     setLoaded(true)
     setValue({
       company_name: v.company_name, contact_name: v.contact_name ?? '', phone: v.phone ?? '', address: v.address ?? '',
-      capabilities: v.capabilities, product_focus: v.product_focus ?? '', team_size: v.team_size ?? '', notes: v.notes ?? '',
+      capabilities: v.capabilities, product_focus: v.product_focus ?? '', team_size: v.team_size ?? '', area: v.area ?? '', notes: v.notes ?? '',
     })
   }
 
@@ -71,7 +73,7 @@ export default function VendorEditScreen() {
         {detail.data && (
           <>
             <section className={s.section}>
-              <VendorFields relaxed={relaxed} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
+              <VendorFields relaxed={relaxed} areas={areas} value={value} errors={errors} onChange={patch => setValue(v => ({ ...v, ...patch }))} />
             </section>
             {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
             <div className={`${s.submitBar} ${s.submitBarEnd}`}>

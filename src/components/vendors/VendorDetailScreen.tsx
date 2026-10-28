@@ -63,7 +63,7 @@ export default function VendorDetailScreen() {
 
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title={v?.company_name ?? 'Vendor'}
-                   subtitle={v?.contact_name ?? undefined}
+                   subtitle={[v?.area, v?.contact_name].filter(Boolean).join(' · ') || undefined}
                    actions={v && !v.archived ? (
                      <>
                        <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
@@ -182,6 +182,7 @@ export default function VendorDetailScreen() {
                   </Fact>
                   <Fact label="Address">{v.address ?? 'Not known yet'}</Fact>
                   <Fact label="Can do">{v.capabilities.length > 0 ? labelsOf(CAPABILITIES, v.capabilities) : 'Not known yet'}</Fact>
+                  {v.area && <Fact label="Area">{v.area}</Fact>}
                   {v.product_focus && <Fact label="Products">{labelOf(PRODUCT_FOCUS, v.product_focus)}</Fact>}
                   {v.team_size && <Fact label="Team size">{v.team_size}</Fact>}
                   {v.notes && <Fact label="Notes">{v.notes}</Fact>}

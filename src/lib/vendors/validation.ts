@@ -8,7 +8,7 @@ import type { VendorInput, VisitInput } from './api'
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
 export const EMPTY_VENDOR: VendorInput = {
-  company_name: '', contact_name: '', phone: '', address: '', capabilities: [], product_focus: '', team_size: '', notes: '',
+  company_name: '', contact_name: '', phone: '', address: '', capabilities: [], product_focus: '', team_size: '', area: '', notes: '',
 }
 
 export type VendorField = keyof VendorInput
@@ -38,7 +38,7 @@ export function vendorPayload(v: VendorInput): VendorInput {
   return {
     ...v,
     company_name: v.company_name.trim(), contact_name: v.contact_name.trim(),
-    phone: v.phone.trim() ? fullPhone(v.phone) : '', address: v.address.trim(), notes: v.notes.trim(),
+    phone: v.phone.trim() ? fullPhone(v.phone) : '', address: v.address.trim(), area: v.area.trim(), notes: v.notes.trim(),
   }
 }
 

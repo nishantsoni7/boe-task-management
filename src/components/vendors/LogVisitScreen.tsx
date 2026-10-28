@@ -20,6 +20,7 @@ import {
 } from '@/lib/vendors/constants'
 import { shrinkPhoto, uploadVendorPhoto } from '@/lib/vendors/photos'
 import { useDeviceLocation } from '@/lib/vendors/useDeviceLocation'
+import { useVendorAreas } from '@/lib/vendors/useVendorAreas'
 import {
   EMPTY_VENDOR, EMPTY_VISIT, isLiveSiteVisit, validateVendor, validateVisit, vendorPayload,
   type FieldErrors, type VendorField, type VisitDraft, type VisitField,
@@ -60,6 +61,7 @@ type Draft = {
 export default function LogVisitScreen() {
   const { supabase, profile, isAdmin, pastEntriesOpen, pastEntriesUntil, loading, signOut } = useVendors()
   const params = useSearchParams()
+  const areas = useVendorAreas(supabase, !!profile)
   const qc = useQueryClient()
   const presetId = params.get('vendor')
 
@@ -133,7 +135,7 @@ export default function LogVisitScreen() {
     setCompletion({
       company_name: chosenVendor.company_name, contact_name: chosenVendor.contact_name ?? '', phone: chosenVendor.phone ?? '',
       address: chosenVendor.address ?? '', capabilities: chosenVendor.capabilities,
-      product_focus: chosenVendor.product_focus ?? '', team_size: chosenVendor.team_size ?? '', notes: chosenVendor.notes ?? '',
+      product_focus: chosenVendor.product_focus ?? '', team_size: chosenVendor.team_size ?? '', area: chosenVendor.area ?? '', notes: chosenVendor.notes ?? '',
     })
   }
 
@@ -423,7 +425,7 @@ export default function LogVisitScreen() {
                   }}>Use it</button>
                 </div>
               )}
-              <VendorFields relaxed={newVendorRelaxed} value={vendor} errors={vendorErrors}
+              <VendorFields relaxed={newVendorRelaxed} areas={areas} value={vendor} errors={vendorErrors}
                             onChange={patch => setVendor(v => ({ ...v, ...patch }))} />
             </>
           )}
@@ -432,7 +434,7 @@ export default function LogVisitScreen() {
             <>
               <hr className={s.rule} />
               <div className={s.hint}>This visit registers the vendor, so its details need to be complete.</div>
-              <VendorFields value={completion} errors={completionErrors} onChange={patch => setCompletion(v => ({ ...v, ...patch }))} />
+              <VendorFields areas={areas} value={completion} errors={completionErrors} onChange={patch => setCompletion(v => ({ ...v, ...patch }))} />
             </>
           )}
 

@@ -16,9 +16,11 @@ type Props = {
   errors: FieldErrors<VendorField>
   onChange: (patch: Partial<VendorInput>) => void
   relaxed?: boolean
+  /** Areas already in use: offered as suggestions, so "Basni" is spelled one way everywhere. */
+  areas?: readonly string[]
 }
 
-export default function VendorFields({ value, errors, onChange, relaxed = false }: Props) {
+export default function VendorFields({ value, errors, onChange, relaxed = false, areas = [] }: Props) {
   const need = !relaxed
   const cls = (k: VendorField) => `${s.input}${errors[k] ? ` ${s.invalid}` : ''}`
   return (
@@ -34,6 +36,11 @@ export default function VendorFields({ value, errors, onChange, relaxed = false 
       <Field label="Mobile" required={need} error={errors.phone} htmlFor="v-phone">
         <input id="v-phone" className={cls('phone')} value={value.phone} inputMode="tel" autoComplete="off"
                placeholder="98765 43210" onChange={e => onChange({ phone: e.target.value })} />
+      </Field>
+      <Field label="Area" htmlFor="v-area" hint={areas.length === 0 ? 'The locality, for example Basni or Boranada' : undefined}>
+        <input id="v-area" className={s.input} value={value.area} maxLength={80} list="v-area-list" autoComplete="off"
+               placeholder="Basni" onChange={e => onChange({ area: e.target.value })} />
+        <datalist id="v-area-list">{areas.map(a => <option key={a} value={a} />)}</datalist>
       </Field>
       <Field label="Address" required={need} error={errors.address} htmlFor="v-address">
         <textarea id="v-address" rows={2} className={`${s.textarea}${errors.address ? ` ${s.invalid}` : ''}`} value={value.address}
