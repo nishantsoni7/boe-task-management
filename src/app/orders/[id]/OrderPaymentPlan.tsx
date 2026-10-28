@@ -1,6 +1,6 @@
 'use client'
 
-// ── PAYMENT PLAN, on the Confirmed Order page ────────────────────────────────
+// ── PAYMENT PLAN, its own page: /orders/[id]/payment-plan ───────────────────
 //
 // How much more the client must pay before a dispatch: the goods leaving in
 // full (with their share of every charge, and GST on the billed part), plus a
@@ -8,15 +8,17 @@
 // computePaymentPlan (lib/orders/paymentPlan.ts); this file only draws it and
 // saves the inputs.
 //
-// Self-loading on purpose: the Order page's startup reads are counted and
-// pinned (orderStartupShape.test.ts), and this is a section only the people
-// granted view_payment_plan ever open. One read (order_payment_plan_read), and
+// Self-loading: the Order page only links here, so its counted startup reads
+// are unchanged. One read (order_payment_plan_read), plus the product pictures
+// (read under the person's own access; no picture just shows "No image"), and
 // writes only through the order_payment_plan_* / order_dispatch_lot_* functions
 // of 20270428000000, which re-derive who may. `canEdit` and `isAdmin` decide
 // only which controls are drawn.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
+import { planItemKey } from '@/lib/orders/paymentPlan'
 import {
   PLAN_PROBLEM_TEXT,
   computePaymentPlan,
@@ -77,10 +79,55 @@ const showDate = (iso: string | null) => {
   return y && m && d ? `${d}-${m}-${y}` : iso
 }
 
+const PICTURE_URL_TTL_SECONDS = 3600
+
+/** One representative picture URL per PI line, keyed like the plan's lines. Silent on any failure. */
+function useProductPictures(
+  supabase: ReturnType<typeof createClient>, submissionId: string | null, enabled: boolean,
+): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!enabled || !submissionId) return
+    let live = true
+    void (async () => {
+      const [items, images] = await Promise.all([
+        supabase.from('order_submission_items').select('id, item_sequence').eq('submission_id', submissionId),
+        supabase.from('order_submission_item_images').select('item_id, role, position, storage_path')
+          .eq('submission_id', submissionId).eq('role', 'representative').order('position', { ascending: true }),
+      ])
+      if (!live || items.error || images.error) return
+      const keyOf = new Map<string, string>()
+      for (const i of (items.data ?? []) as { id: string; item_sequence: string | null }[]) {
+        keyOf.set(i.id, planItemKey(i.item_sequence, i.id))
+      }
+      const pathByKey = new Map<string, string>()
+      for (const m of (images.data ?? []) as { item_id: string; storage_path: string }[]) {
+        const key = keyOf.get(m.item_id)
+        if (key && !pathByKey.has(key)) pathByKey.set(key, m.storage_path)
+      }
+      const paths = [...pathByKey.values()]
+      if (paths.length === 0) return
+      const signed = await supabase.storage.from(ORDER_FILES_BUCKET).createSignedUrls(paths, PICTURE_URL_TTL_SECONDS)
+      if (!live || signed.error) return
+      const urlByPath = new Map<string, string>()
+      for (const s of signed.data ?? []) if (s.path && s.signedUrl) urlByPath.set(s.path, s.signedUrl)
+      const out: Record<string, string> = {}
+      for (const [key, path] of pathByKey) {
+        const url = urlByPath.get(path)
+        if (url) out[key] = url
+      }
+      setUrls(out)
+    })()
+    return () => { live = false }
+  }, [supabase, submissionId, enabled])
+  return urls
+}
+
 export default function OrderPaymentPlan({
-  orderId, canEdit, isAdmin,
-}: { orderId: string; canEdit: boolean; isAdmin: boolean }) {
+  orderId, submissionId, canEdit, isAdmin,
+}: { orderId: string; submissionId: string | null; canEdit: boolean; isAdmin: boolean }) {
   const supabase = useMemo(() => createClient(), [])
+  const pictures = useProductPictures(supabase, submissionId, true)
   const [data, setData] = useState<PlanData | null | undefined>(undefined)   // undefined = loading
   const [unreadable, setUnreadable] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
@@ -151,10 +198,13 @@ export default function OrderPaymentPlan({
       || saved.note.trim() !== edit.note.trim()
   }, [data, edit, parsed])
 
-  if (unreadable) return null
-  if (data === undefined) return null
-  // No PI behind this Order: nothing to plan against, so nothing to draw.
-  if (data === null || !edit || !parsed) return null
+  if (unreadable) {
+    return <p className="opp-warn" role="alert">The Payment plan could not be opened. You may not have access, or the page needs a reload.</p>
+  }
+  if (data === undefined) return <p className="opp-note" role="status">Opening the Payment plan…</p>
+  if (data === null || !edit || !parsed) {
+    return <p className="opp-note" role="status">This Order has no PI to plan against.</p>
+  }
 
   const { result } = parsed
   const set = (patch: Partial<Edit>) => { setProblem(null); setEdit({ ...edit, ...patch }) }
@@ -301,7 +351,7 @@ export default function OrderPaymentPlan({
         <table className="opp-table">
           <thead>
             <tr>
-              <th>Line</th><th>Product</th>
+              <th>Line</th><th>Picture</th><th>Product</th>
               <th className="opp-num">Rate</th>
               <th className="opp-num">Ordered</th>
               <th className="opp-num">Sent earlier</th>
@@ -318,6 +368,12 @@ export default function OrderPaymentPlan({
               return (
                 <tr key={l.itemSequence}>
                   <td>{l.itemSequence}</td>
+                  <td className="opp-pic">
+                    {pictures[l.itemSequence]
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
+                      : <span className="opp-thumb opp-thumb--none">No image</span>}
+                  </td>
                   <td className="opp-name">{l.productName ?? '—'}</td>
                   <td className="opp-num">{formatPaise(Math.round(l.rate * 100))}</td>
                   <td className="opp-num">{l.ordered}</td>
@@ -335,7 +391,7 @@ export default function OrderPaymentPlan({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={7}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
+              <td colSpan={8}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
               <td className="opp-num">{formatPaise(result.plannedPaise)}</td>
             </tr>
           </tfoot>

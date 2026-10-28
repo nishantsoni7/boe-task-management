@@ -7,6 +7,7 @@ import {
   gstRateOf,
   parsePlanData,
   parseTypedNumber,
+  planItemKey,
   plannedLinesPayload,
   type PlanInput,
 } from './paymentPlan'
@@ -186,4 +187,10 @@ test('the database answer is read into plan data, and a missing PI reads as null
   assert.equal(data.piDiffersFromOrder, false)
   assert.equal(data.lots[0].lines[0].quantity, 4)
   assert.equal(data.displayNumber, '0539')
+})
+
+test('a PI line is keyed by its item sequence, or its row id when it has none (as the database does)', () => {
+  assert.equal(planItemKey(' 3 ', 'id-1'), '3')
+  assert.equal(planItemKey('', 'id-1'), 'id-1')
+  assert.equal(planItemKey(null, 'id-2'), 'id-2')
 })

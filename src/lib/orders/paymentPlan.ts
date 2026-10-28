@@ -340,6 +340,12 @@ export function parsePlanData(raw: unknown): PlanData | null {
   }
 }
 
+/** A PI line's key in the plan: its item_sequence, or its row id when it has none (as order_payment_plan_read does). */
+export function planItemKey(itemSequence: string | null | undefined, itemId: string): string {
+  const s = (itemSequence ?? '').trim()
+  return s === '' ? itemId : s
+}
+
 /** The planned lot's quantities as the editor holds them. */
 export function plannedQuantities(lots: readonly PlanLot[]): Record<string, number> {
   const out: Record<string, number> = {}

@@ -84,10 +84,20 @@ test('the PDF renders to a real PDF with the order number in its file name', asy
   assert.equal(paymentPlanFileName('a/b c', 'xlsx'), 'Payment-plan-a-b-c.xlsx')
 })
 
-test('the Order page draws the section only for holders of view_payment_plan, never under View As', () => {
+test('the Order page only LINKS to the plan, for holders of view_payment_plan, never under View As', () => {
   const page = read('src/app/orders/[id]/page.tsx')
   assert.match(page, /ordersCaps\.canViewPaymentPlan && !viewAsUserId/)
-  assert.match(page, /canEdit=\{ordersCaps\.canEditPaymentPlan\}/)
+  assert.match(page, /router\.push\(`\/orders\/\$\{order\.id\}\/payment-plan`\)/)
+  assert.doesNotMatch(page, /<OrderPaymentPlan\b/, 'the plan is not drawn on the Order page itself')
+})
+
+test('the plan has its own page, which says "no access" rather than drawing nothing', () => {
+  const page = read('src/app/orders/[id]/payment-plan/page.tsx')
+  assert.match(page, /<OrderPaymentPlan\b/)
+  assert.match(page, /caps\.canViewPaymentPlan/)
+  assert.match(page, /canEdit=\{ready\.caps\.canEditPaymentPlan\}/)
+  assert.match(page, /Back to the Order/)
+  assert.match(page, /You do not have access to the Payment plan/)
 })
 
 test('the section talks only to its own five functions, and the PDF route runs as the caller', () => {
@@ -97,7 +107,10 @@ test('the section talks only to its own five functions, and the PDF route runs a
     'order_dispatch_lot_admin_change', 'order_dispatch_lot_mark_dispatched', 'order_dispatch_lot_save',
     'order_payment_plan_read', 'order_payment_plan_save',
   ])
-  assert.doesNotMatch(ui, /\.from\('/)
+  // the only table reads are the two the product pictures need
+  assert.deepEqual([...ui.matchAll(/\.from\('([a-z_]+)'\)/g)].map(m => m[1]).sort(),
+    ['order_submission_item_images', 'order_submission_items'])
+  assert.match(ui, /createSignedUrls\(/)
   const route = read('src/app/api/orders/[id]/payment-plan/pdf/route.ts')
   assert.match(route, /rpc\('order_payment_plan_read'/)
   assert.doesNotMatch(route, /adminClient|service_role|SERVICE_ROLE/)
