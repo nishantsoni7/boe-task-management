@@ -11788,174 +11788,179 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    Touch screens, tablets and phones keep today's full menu / drawer, because
    they have no hover. The phone drawer (max-width: 767px) is untouched.
 
-   Labels carry .boe-rail-label (faded while collapsed) or .boe-rail-hide
-   (removed while collapsed). The menu counts as open when hovered (after a
-   150ms delay, so a pass across the edge does not open it), when a keyboard
-   user has focus inside it, when one of its own menus is open, or when pinned. */
+   The menu counts as open when hovered (after a short intent delay, so a pass
+   across the edge does not open it), when a keyboard user has focus inside it,
+   when one of its own pop-up menus is open, or when pinned.
+
+   THE THREE RULES THAT KEEP THE MOTION CLEAN
+   1. Nothing inside changes height between the two states. Text never wraps
+      (white-space: nowrap on the whole rail), rows have one fixed height, and
+      what the open menu adds (captions, sub-lists, the notification card) is
+      laid out in both states and only faded (.boe-rail-ghost / .boe-rail-hide).
+      So no icon ever moves vertically.
+   2. Only the panel's width animates; everything else is opacity or transform
+      on the same curve and clock, so the parts arrive together.
+   3. A count badge keeps one size in both states. It rides the panel's moving
+      edge (it is anchored to its row's right end) and settles from the icon's
+      corner to the row's centre line by transform alone, on its own
+      compositor layer, so its digits never re-render mid-flight. */
 .boe-rail-pin { display: none; }
 
 @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
-  /* One easing for every moving part, so the width, the labels and the badges
-     arrive together: a gentle spring-like curve (fast start, long soft landing). */
   .boe-rail {
+    /* The iOS sheet curve: a quick start and a long, soft landing, no bounce. */
     --boe-rail-ease: cubic-bezier(0.32, 0.72, 0, 1);
-    --boe-rail-dur: 0.34s;
+    --boe-rail-open: 0.44s;
+    --boe-rail-open-delay: 0.1s;
+    --boe-rail-close: 0.32s;
+    --boe-rail-close-delay: 0.06s;
   }
+
+  /* -- Panel ---------------------------------------------------------------- */
   .boe-rail > .boe-sidebar {
     width: 64px;
-    will-change: width;
-    /* Closing waits 80ms so a pointer leaving and re-entering does not flutter. */
-    transition: width var(--boe-rail-dur) var(--boe-rail-ease) 0.08s,
-                box-shadow var(--boe-rail-dur) var(--boe-rail-ease) 0.08s;
+    white-space: nowrap;
+    /* Closing: a beat later and a little quicker than opening. */
+    transition: width var(--boe-rail-close) var(--boe-rail-ease) var(--boe-rail-close-delay),
+                box-shadow var(--boe-rail-close) var(--boe-rail-ease) var(--boe-rail-close-delay);
   }
   .boe-rail > .boe-main-content { margin-left: 64px; }
   .boe-rail.boe-rail-pinned > .boe-main-content { margin-left: 260px; }
 
-  /* Open: 120ms intent delay for the pointer only. */
-  .boe-rail > .boe-sidebar:hover {
-    width: 260px;
-    box-shadow: 10px 0 32px rgba(48, 53, 54, 0.14);
-    transition-delay: 0.12s;
-  }
+  .boe-rail > .boe-sidebar:hover,
   .boe-rail > .boe-sidebar:has(:focus-visible),
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) {
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) {
     width: 260px;
-    box-shadow: 10px 0 32px rgba(48, 53, 54, 0.14);
-    transition-delay: 0s;
+    box-shadow: 1px 0 0 rgba(48, 53, 54, 0.04), 12px 0 36px -6px rgba(48, 53, 54, 0.16);
+    transition: width var(--boe-rail-open) var(--boe-rail-ease) var(--boe-rail-open-delay),
+                box-shadow var(--boe-rail-open) var(--boe-rail-ease) var(--boe-rail-open-delay);
   }
-  .boe-rail.boe-rail-pinned > .boe-sidebar { width: 260px; box-shadow: none; transition-delay: 0s; }
+  /* Keyboard and pop-up menus open at once: no intent delay to wait out. */
+  .boe-rail > .boe-sidebar:has(:focus-visible),
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) { transition-delay: 0s; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar { width: 260px; box-shadow: none; transition: none; }
 
-  /* Icons stay put between the two states: 10px section padding + 13px item
-     padding + half the 18px icon = 32px, the centre of the 64px rail.
-     Rows do NOT clip (overflow visible) so a badge can sit on the icon corner;
-     the sidebar itself clips the labels that run past its edge. */
+  /* -- Fixed geometry, identical in both states ----------------------------
+     Icons stay put: 10px section padding + 13px item padding + half the 18px
+     icon = 32px, the centre of the 64px rail. Rows do not clip, so a badge on
+     an icon's corner is never cut; the panel itself clips what runs past it. */
   .boe-rail > .boe-sidebar .boe-nav-item,
   .boe-rail > .boe-sidebar .boe-quick-action,
   .boe-rail > .boe-sidebar .boe-rail-row {
     padding-left: 13px !important;
-    white-space: nowrap;
   }
-  /* One fixed row height in both states, so nothing moves vertically when the
-     menu opens: a label that wrapped in the 44px rail used to make rows taller. */
   .boe-rail > .boe-sidebar .boe-nav-item:not(.boe-nav-item--quiet),
   .boe-rail > .boe-sidebar .boe-rail-row { height: 38px; box-sizing: border-box; position: relative; }
   .boe-rail > .boe-sidebar .boe-rail-icon svg { width: 18px; height: 18px; }
   .boe-sidebar-foot > .boe-rail-pin { margin: 0 10px 2px; width: calc(100% - 20px); }
   .boe-rail > .boe-sidebar .boe-user-trigger { padding-left: 7px !important; }
-  /* A sub-list keeps its height while collapsed (invisible), so the rows below
-     it do not jump up. It fades with the labels instead of snapping. */
-  .boe-rail > .boe-sidebar .boe-rail-ghost {
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
-  }
-  .boe-rail > .boe-sidebar:hover .boe-rail-ghost,
-  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-rail-ghost,
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-ghost,
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-ghost {
-    visibility: visible;
-    opacity: 1;
-    transition: opacity 0.24s var(--boe-rail-ease) 0.14s, visibility 0s;
-  }
+  /* A quick action carries a 1px border the nav rows do not; one pixel less
+     padding keeps its icon on the same 32px line. */
+  .boe-rail > .boe-sidebar .boe-quick-action { padding-left: 12px !important; }
   .boe-rail > .boe-sidebar .boe-quick-action.boe-quick-action-featured {
     justify-content: flex-start;
     padding-right: 0;
     overflow: hidden;
   }
-  .boe-rail > .boe-sidebar .boe-sidebar-brand { padding-left: 12px; white-space: nowrap; }
+  .boe-rail > .boe-sidebar .boe-sidebar-brand { padding-left: 12px; }
+  /* A label never shrinks with the panel, so its text (and any "…" it ends
+     in) is the same on every frame; the panel's edge reveals it. */
+  .boe-rail > .boe-sidebar .boe-rail-label { flex-shrink: 0; }
+  /* The account row's name and e-mail end in "…" and the label is flex: 1
+     inline, so give it its open width outright: 259px panel - 20px foot
+     padding - 17px row padding - 30px avatar - 2 x 10px gaps - 13px chevron. */
+  .boe-rail > .boe-sidebar .boe-user-trigger > .boe-rail-label { flex: 0 0 159px !important; }
 
   .boe-rail-pin { display: flex; }
 
-  /* Collapsed (the default inside a rail shell): labels fade and drift left. */
-  .boe-rail > .boe-sidebar .boe-rail-label {
+  /* -- What the open menu adds: laid out always, faded in ------------------- */
+  .boe-rail > .boe-sidebar .boe-rail-label,
+  .boe-rail > .boe-sidebar .boe-rail-ghost,
+  .boe-rail > .boe-sidebar .boe-rail-hide {
     opacity: 0;
-    transform: translateX(-6px);
     pointer-events: none;
-    transition: opacity 0.1s ease, transform 0.1s ease;
+    transition: opacity 0.12s ease, transform 0.12s ease;
   }
-  .boe-rail > .boe-sidebar .boe-rail-hide { display: none; }
-
-  /* Counts live INSIDE their row in both states, never clipped. Collapsed: a
-     small pill on the icon's top-right corner with a surface-coloured ring, the
-     way a phone app icon carries its badge. Open: the pill glides to the row's
-     right end, centred vertically. Same element, so it moves instead of
-     jumping. A row that has a count reserves room for it when open. */
-  .boe-rail > .boe-sidebar .boe-nav-count {
-    position: absolute !important;
-    top: 3px;
-    right: 3px;
-    left: auto;
-    margin: 0 !important;
-    box-sizing: border-box;
-    min-width: 16px !important;
-    height: 16px;
-    padding: 0 4px !important;
-    font-size: 10px !important;
-    font-weight: 700 !important;
-    line-height: 16px !important;
-    text-align: center;
-    box-shadow: 0 0 0 2px var(--boe-surface);
-    transform: none;
-    transition: top var(--boe-rail-dur) var(--boe-rail-ease),
-                right var(--boe-rail-dur) var(--boe-rail-ease),
-                transform var(--boe-rail-dur) var(--boe-rail-ease),
-                font-size 0.2s ease, box-shadow 0.2s ease;
-    pointer-events: none;
+  .boe-rail > .boe-sidebar .boe-rail-label { transform: translateX(-4px); }
+  .boe-rail > .boe-sidebar .boe-rail-ghost,
+  .boe-rail > .boe-sidebar .boe-rail-hide {
+    visibility: hidden;
+    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
   }
 
-  /* Open (hover, keyboard focus, one of its menus open, or pinned). */
-  .boe-rail > .boe-sidebar:hover .boe-rail-label,
-  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-rail-label,
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-label,
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-label {
+  .boe-rail > .boe-sidebar:hover :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
+  .boe-rail > .boe-sidebar:has(:focus-visible) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide),
+  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide) {
     opacity: 1;
+    visibility: visible;
     transform: none;
     pointer-events: auto;
-    transition: opacity 0.24s var(--boe-rail-ease) 0.14s, transform 0.3s var(--boe-rail-ease) 0.14s;
+    /* Content follows the edge: it starts once the panel is a third open. */
+    transition: opacity 0.3s var(--boe-rail-ease) calc(var(--boe-rail-open-delay) + 0.08s),
+                transform 0.4s var(--boe-rail-ease) calc(var(--boe-rail-open-delay) + 0.08s),
+                visibility 0s;
   }
-  .boe-rail > .boe-sidebar:hover .boe-rail-hide,
-  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-rail-hide,
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-rail-hide,
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-rail-hide {
-    display: block;
-    animation: boe-rail-fade-in 0.28s var(--boe-rail-ease) 0.12s both;
+  .boe-rail.boe-rail-pinned > .boe-sidebar :is(.boe-rail-label, .boe-rail-ghost, .boe-rail-hide) { transition: none; }
+
+  /* -- Count badges ----------------------------------------------------------
+     One size, one place in the row's box (right end, centred), in both states.
+     Collapsed, a transform lifts it onto the icon's top-right corner and makes
+     it a touch smaller, with a ring in the panel's colour; open, it settles to
+     the row's centre line. Its horizontal travel is the row's own growth, so it
+     stays with the edge on every frame. A row that ends in a chevron keeps the
+     badge clear of it. */
+  .boe-rail > .boe-sidebar :is(.boe-nav-item, .boe-rail-row) { --boe-rail-count-end: 10px; }
+  .boe-rail > .boe-sidebar :is(.boe-nav-item, .boe-rail-row):has(> svg.boe-rail-label:last-child) { --boe-rail-count-end: 30px; }
+  .boe-rail > .boe-sidebar .boe-nav-count {
+    position: absolute !important;
+    top: 50%;
+    right: var(--boe-rail-count-end, 10px);
+    left: auto;
+    margin: -9px 0 0 !important;
+    box-sizing: border-box;
+    height: 18px;
+    min-width: 18px !important;
+    padding: 0 5px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 18px !important;
+    letter-spacing: 0;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    will-change: transform;
+    transform-origin: 0 50%;
+    /* Collapsed: start the badge 8px inside the icon's right edge (21px into
+       the 44px row), up 7px, at 86%, so a wide count grows outward into the
+       rail's spare room instead of covering the icon. The row's right end
+       sits at 44px - end; 100% is the badge's own width. */
+    transform: translate(calc(100% + var(--boe-rail-count-end, 10px) - 23px), -7px) scale(0.86);
+    box-shadow: 0 0 0 2px var(--boe-surface);
+    transition: transform var(--boe-rail-close) var(--boe-rail-ease) var(--boe-rail-close-delay),
+                box-shadow var(--boe-rail-close) var(--boe-rail-ease) var(--boe-rail-close-delay);
   }
+  /* Product Master's "active" suffix has no room on an icon corner. */
+  .boe-rail > .boe-sidebar .boe-nav-count > span { display: none; }
+
   .boe-rail > .boe-sidebar:hover .boe-nav-count,
   .boe-rail > .boe-sidebar:has(:focus-visible) .boe-nav-count,
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-nav-count,
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) .boe-nav-count,
   .boe-rail.boe-rail-pinned > .boe-sidebar .boe-nav-count {
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    min-width: 20px !important;
-    height: 20px;
-    padding: 0 6px !important;
-    font-size: 12px !important;
-    line-height: 20px !important;
-    box-shadow: none;
+    transform: none;
+    box-shadow: 0 0 0 2px transparent;
+    transition: transform var(--boe-rail-open) var(--boe-rail-ease) var(--boe-rail-open-delay),
+                box-shadow var(--boe-rail-open) var(--boe-rail-ease) var(--boe-rail-open-delay);
   }
-  .boe-rail > .boe-sidebar:hover .boe-nav-item:has(> .boe-nav-count),
-  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-nav-item:has(> .boe-nav-count),
-  .boe-rail > .boe-sidebar:has([aria-expanded="true"]) .boe-nav-item:has(> .boe-nav-count),
-  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-nav-item:has(> .boe-nav-count) { padding-right: 42px !important; }
-  /* A label that is too long for the room left of its count is trimmed, never
-     run underneath it. */
-  .boe-rail > .boe-sidebar .boe-nav-item:has(> .boe-nav-count) > .boe-rail-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
-
-@keyframes boe-rail-fade-in {
-  from { opacity: 0; transform: translateX(-6px); }
-  to { opacity: 1; transform: none; }
+  .boe-rail > .boe-sidebar:has(:focus-visible) .boe-nav-count,
+  .boe-rail > .boe-sidebar:has([aria-haspopup][aria-expanded="true"]) .boe-nav-count { transition-delay: 0s; }
+  .boe-rail.boe-rail-pinned > .boe-sidebar .boe-nav-count { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .boe-rail > .boe-sidebar,
-  .boe-rail > .boe-main-content,
   .boe-rail > .boe-sidebar .boe-rail-label,
-  .boe-rail > .boe-sidebar .boe-nav-count,
-  .boe-rail > .boe-sidebar .boe-rail-ghost { transition: none !important; animation: none !important; }
+  .boe-rail > .boe-sidebar .boe-rail-ghost,
+  .boe-rail > .boe-sidebar .boe-rail-hide,
+  .boe-rail > .boe-sidebar .boe-nav-count { transition: none !important; }
 }

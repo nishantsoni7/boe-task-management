@@ -41,7 +41,7 @@ Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472).
 | `/vendors/[id]/edit` | `VendorEditScreen` (relaxed while potential/contacted) | module users |
 | `/vendors/activity` | `ActivityScreen` — pipeline, site visits vs at-our-factory vs added-later, per person, chase list, quiet vendors, follow-ups, window control | `approve`, `view_all` or Admin |
 
-Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')`); shell `src/components/layout/VendorsLayout.tsx`; library `src/lib/vendors/` (constants, api, validation, photos, csv); hook `src/hooks/useVendors.ts`; launcher card in `src/app/modules/page.tsx`.
+Layout guard `src/app/vendors/layout.tsx` (sign-in, then `ModuleGuard('vendors')`); shell `src/components/layout/VendorsLayout.tsx` (on the hover rail since 2026-10-29, like every other module); library `src/lib/vendors/` (constants, api, validation, photos, csv); hook `src/hooks/useVendors.ts`; launcher card in `src/app/modules/page.tsx`.
 
 ## 5. Database (`20270426000000_vendor_management.sql`)
 

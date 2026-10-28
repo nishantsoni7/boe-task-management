@@ -216,7 +216,9 @@ Assigned By Me, Quotation Requests when `canViewQuotations`, Notifications); Per
 removed from it.
 
 Hover rail (2026-10-28): on a desktop with a mouse (>= 768 px, `hover: hover`, `pointer: fine`) every module sidebar rests as a 64 px icon rail
-and opens to 260 px OVER the page on hover (150 ms delay), on keyboard focus, while its account menu is open, or when pinned (`localStorage['boe.sidebar.pinned']`).
+and opens to 260 px OVER the page on hover (100 ms intent delay), on keyboard focus, while its account menu (`[aria-haspopup][aria-expanded="true"]`) is open, or when pinned (`localStorage['boe.sidebar.pinned']`).
+Motion (2026-10-29): nothing inside changes height between the two states (whole rail `white-space: nowrap`, fixed 38 px rows, `boe-rail-hide` and `boe-rail-ghost` both keep their height and only fade); only the panel width animates, on `cubic-bezier(0.32, 0.72, 0, 1)` (0.44 s open, 0.32 s close); count badges keep one size and move by transform only (icon corner -> row end).
+Checked by measuring every sidebar element closed vs open on all 16 module shells: 0 move. A new sidebar element must keep its height in both states, never `display: none` it.
 A shell opts in with `railShellClass` and `useSidebarPinned` from `src/components/layout/RailControls.tsx`; labels carry `boe-rail-label` / `boe-rail-hide` / `boe-rail-ghost` / `boe-nav-count`
 (CSS: "HOVER RAIL SIDEBAR" in `globals.css`). Touch, tablets and the phone drawer are unchanged. A new module layout must opt in or keeps the full sidebar.
 
