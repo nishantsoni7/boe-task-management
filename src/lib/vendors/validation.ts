@@ -8,8 +8,7 @@ import type { VendorInput, VisitInput } from './api'
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
 export const EMPTY_VENDOR: VendorInput = {
-  company_name: '', contact_name: '', phone: '', address: '', city: '', capabilities: [], categories: [],
-  headcount: '', referred_by: '', notes: '',
+  company_name: '', contact_name: '', phone: '', address: '', capabilities: [], product_focus: '', team_size: '', notes: '',
 }
 
 export type VendorField = keyof VendorInput
@@ -18,8 +17,9 @@ export type VendorField = keyof VendorInput
 export const fullPhone = (raw: string) => joinPhone('91', raw)
 
 /**
- * `relaxed` is a potential / contacted vendor: only a name is required, but anything typed must still be valid.
- * Otherwise (a registered vendor, or one about to be registered by a site visit) the whole profile is.
+ * `relaxed` is a potential / contacted vendor: only the company name is required, but anything typed must still
+ * be valid. Otherwise (a registered vendor, or one about to be registered by a site visit) the contact, mobile,
+ * address and capability are required too.
  */
 export function validateVendor(v: VendorInput, relaxed = false): FieldErrors<VendorField> {
   const e: FieldErrors<VendorField> = {}
@@ -29,9 +29,7 @@ export function validateVendor(v: VendorInput, relaxed = false): FieldErrors<Ven
     if (!relaxed) e.phone = 'Enter the mobile number'
   } else if (!normalizeLeadPhone(fullPhone(v.phone))) e.phone = 'Enter a valid mobile number'
   if (v.address.trim() ? v.address.trim().length < 5 : !relaxed) e.address = 'Enter the exact address'
-  if (!relaxed && !v.city.trim()) e.city = 'Enter the city'
-  if (!relaxed && v.capabilities.length === 0) e.capabilities = 'Choose what they can do'
-  if (v.headcount.trim() && !/^[0-9]{1,4}$/.test(v.headcount.trim())) e.headcount = 'Enter a whole number'
+  if (!relaxed && v.capabilities.length === 0) e.capabilities = 'Choose what they do'
   return e
 }
 
@@ -40,8 +38,7 @@ export function vendorPayload(v: VendorInput): VendorInput {
   return {
     ...v,
     company_name: v.company_name.trim(), contact_name: v.contact_name.trim(),
-    phone: v.phone.trim() ? fullPhone(v.phone) : '', address: v.address.trim(), city: v.city.trim(),
-    headcount: v.headcount.trim(), referred_by: v.referred_by.trim(), notes: v.notes.trim(),
+    phone: v.phone.trim() ? fullPhone(v.phone) : '', address: v.address.trim(), notes: v.notes.trim(),
   }
 }
 

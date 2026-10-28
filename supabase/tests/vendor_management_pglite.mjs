@@ -105,8 +105,8 @@ const rpc = async (uid, fn, ...args) => {
 const sub = () => crypto.randomUUID()
 const vendorBody = (over = {}) => ({
   company_name: 'Sharma Wood Works', contact_name: 'Ramesh Sharma',
-  phone: '+919876543210', address: 'Plot 14, Basni Industrial Area, Phase 2', city: 'Jodhpur',
-  capabilities: ['raw_pieces', 'finishing_only'], categories: ['chairs', 'tables'], headcount: '35', ...over,
+  phone: '+919876543210', address: 'Plot 14, Basni Industrial Area, Phase 2',
+  capabilities: ['raw_pieces', 'finishing_only'], product_focus: 'chairs_and_other', team_size: '21+', ...over,
 })
 const photoPath = uid => `${uid}/${crypto.randomUUID()}.jpg`
 async function upload(uid, path) {
@@ -136,8 +136,8 @@ await fails(null, `select public.vendor_list('{}'::jsonb)`, [], /VENDORS_FORBIDD
 await fails(U.nobody, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody()], /VENDORS_FORBIDDEN/)
 ok('a person without the grant (or signed out) cannot read or write')
 
-await fails(U.dhruv, `insert into public.vendors (submission_id, company_name, contact_name, phone_e164, address, city, capabilities, created_by)
-  values (gen_random_uuid(), 'X', 'Y', '+919999999999', 'Somewhere far', 'Z', '{raw_pieces}', $1)`, [U.dhruv], /row-level security|permission denied/)
+await fails(U.dhruv, `insert into public.vendors (submission_id, company_name, contact_name, phone_e164, address, capabilities, created_by)
+  values (gen_random_uuid(), 'X', 'Y', '+919999999999', 'Somewhere far', '{raw_pieces}', $1)`, [U.dhruv], /row-level security|permission denied/)
 ok('a granted person cannot write the table directly')
 
 const nobodyRead = await as(U.nobody, 'select count(*)::int n from public.vendors')
@@ -162,7 +162,8 @@ ok('the same mobile number (typed differently) reports the existing vendor inste
 await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '12345', company_name: 'Bad Phone' })], /VENDOR_INVALID: Mobile/)
 await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '+919811111111', capabilities: [] })], /VENDOR_INVALID: choose at least 1/)
 await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '+919811111111', address: 'abc' })], /VENDOR_INVALID: Address/)
-await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '+919811111111', categories: ['spaceships'] })], /VENDOR_INVALID: Product types/)
+await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '+919811111111', product_focus: 'spaceships' })], /VENDOR_INVALID: Products/)
+await fails(U.dhruv, `select public.save_vendor($1::uuid, null, $2::jsonb)`, [sub(), vendorBody({ phone: '+919811111111', team_size: '100+' })], /VENDOR_INVALID: Team size/)
 ok('invalid phone, empty capability, short address and unknown product type are refused with a readable message')
 
 // ── Visits ─────────────────────────────────────────────────────────────────
@@ -222,25 +223,29 @@ await assert.rejects(() => db.query(`delete from public.vendor_visit_photos`), /
 ok('a visit and its photographs cannot be edited or deleted, even by a superuser')
 
 // ── Reading ────────────────────────────────────────────────────────────────
-await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Kumar Upholstery', contact_name: 'Anil Kumar', phone: '+919822222222', city: 'Jaipur', capabilities: ['finished_pieces'], categories: ['sofa_upholstery'], headcount: '12' }))
-await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Metal Craft', contact_name: 'Sohan', phone: '+919833333333', city: 'Jodhpur', capabilities: ['raw_pieces'], categories: ['metal_fabrication'] }))
+await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Kumar Upholstery', contact_name: 'Anil Kumar', phone: '+919822222222', capabilities: ['finished_pieces'], product_focus: 'other_only', team_size: '6-10' }))
+await rpc(U.other, 'save_vendor', sub(), null, vendorBody({ company_name: 'Metal Craft', contact_name: 'Sohan', phone: '+919833333333', capabilities: ['raw_pieces'], product_focus: 'other_only' }))
 
-let list = await rpc(U.dhruv, 'vendor_list', { q: 'jodhpur' })
-assert.equal(list.total, 2)
-list = await rpc(U.dhruv, 'vendor_list', { q: 'upholstery jaipur' })
-assert.equal(list.total, 1); assert.equal(list.rows[0].company_name, 'Kumar Upholstery')
-list = await rpc(U.dhruv, 'vendor_list', { q: 'jaipur upholstery' })
+let list = await rpc(U.dhruv, 'vendor_list', { q: 'wood works' })
 assert.equal(list.total, 1)
+list = await rpc(U.dhruv, 'vendor_list', { q: 'upholstery kumar' })
+assert.equal(list.total, 1); assert.equal(list.rows[0].company_name, 'Kumar Upholstery')
+list = await rpc(U.dhruv, 'vendor_list', { q: 'kumar upholstery' })
+assert.equal(list.total, 1)
+list = await rpc(U.dhruv, 'vendor_list', { q: 'basni wood' })
+assert.equal(list.total, 1, 'words may match different fields (the address and the name), in any order')
 list = await rpc(U.dhruv, 'vendor_list', { q: '98765' })
 assert.equal(list.total, 1)
 list = await rpc(U.dhruv, 'vendor_list', { q: 'nonexistent' })
 assert.equal(list.total, 0)
-ok('search finds by city, by several words in any order, by part of the phone number')
+ok('search finds by name or address, by several words in any order, by part of the phone number')
 
 list = await rpc(U.dhruv, 'vendor_list', { capabilities: ['finished_pieces'] })
 assert.equal(list.total, 1)
-list = await rpc(U.dhruv, 'vendor_list', { categories: ['chairs'] })
+list = await rpc(U.dhruv, 'vendor_list', { products: ['chairs_and_other'] })
 assert.equal(list.total, 1)
+list = await rpc(U.dhruv, 'vendor_list', { products: ['other_only'] })
+assert.equal(list.total, 2)
 list = await rpc(U.dhruv, 'vendor_list', {})
 assert.equal(list.total, 3)
 assert.equal(list.rows[0].company_name, 'Sharma Wood Works', 'most recently visited first')
@@ -258,7 +263,7 @@ list = await rpc(U.dhruv, 'vendor_list', { statuses: ['approved'] })
 assert.equal(list.total, 1)
 assert.equal(list.status_counts.approved, 1)
 assert.equal(list.status_counts.prospect, 2, 'tabs show their counts even while one status is selected')
-list = await rpc(U.dhruv, 'vendor_list', { q: 'jaipur', statuses: ['approved'] })
+list = await rpc(U.dhruv, 'vendor_list', { q: 'kumar', statuses: ['approved'] })
 assert.equal(list.total, 0)
 assert.equal(list.status_counts.prospect, 1, 'counts follow the search')
 ok('status tabs: counts under the current search, filter applied after the counts')
@@ -279,11 +284,11 @@ assert.equal(firstVisit.photos.length, 2)
 ok('vendor detail returns the profile and every visit with its photographs, newest first')
 
 // ── Editing and archiving ──────────────────────────────────────────────────
-const edited = await rpc(U.other, 'save_vendor', sub(), vendorId, vendorBody({ headcount: '40', notes: 'Added a second shed' }))
+const edited = await rpc(U.other, 'save_vendor', sub(), vendorId, vendorBody({ team_size: '11-15', notes: 'Added a second shed' }))
 assert.equal(edited.status, 'saved')
 await fails(U.other, `select public.save_vendor($1::uuid, $2::uuid, $3::jsonb)`, [sub(), vendorId, vendorBody({ phone: '+919822222222' })], /VENDOR_DUPLICATE_PHONE/)
-const afterEdit = await db.query('select headcount, latitude from public.vendors where id = $1', [vendorId])
-assert.equal(afterEdit.rows[0].headcount, 40)
+const afterEdit = await db.query('select team_size, latitude from public.vendors where id = $1', [vendorId])
+assert.equal(afterEdit.rows[0].team_size, '11-15')
 assert.equal(Number(afterEdit.rows[0].latitude), 26.2389, 'an edit without a location leaves the pin')
 ok('edit updates the profile, keeps the pin, refuses another vendor\'s number')
 
@@ -330,27 +335,26 @@ ok('photograph upload is limited to your own folder and uuid names; reading foll
 
 // ── Stages, meetings at our factory, past entries ─────────────────────────
 const istDay = back => new Date(Date.now() + 5.5 * 3600e3 - back * 86400e3).toISOString().slice(0, 10)
-const quick = (over = {}) => ({ status: 'potential', company_name: 'Rathore Furniture', referred_by: 'Sanjay at Oak Studio said they are good', ...over })
+const quick = (over = {}) => ({ status: 'potential', company_name: 'Rathore Furniture', ...over })
 
 const pot = await rpc(U.dhruv, 'save_vendor', sub(), null, quick())
 assert.equal(pot.status, 'created')
 let pv = await rpc(U.dhruv, 'get_vendor', pot.id)
 assert.equal(pv.vendor.status, 'potential'); assert.equal(pv.vendor.phone, null); assert.equal(pv.vendor.profile_complete, false)
-assert.equal(pv.vendor.referred_by, 'Sanjay at Oak Studio said they are good')
 const potDup = await rpc(U.other, 'save_vendor', sub(), null, quick())
 assert.equal(potDup.status, 'duplicate'); assert.equal(potDup.id, pot.id)
 await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { status: 'potential' }], /VENDOR_INVALID: Company name is required/)
 await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), quick({ company_name: 'Bad Phone Co', phone: '123' })], /Mobile number does not look right/)
 await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { status: 'approved', company_name: 'Sneaky' }], /starts as potential, contacted or prospect/)
 await fails(U.dhruv, 'select public.save_vendor($1::uuid, null, $2::jsonb)', [sub(), { company_name: 'No Details Prospect' }], /VENDOR_INVALID: Contact person is required/)
-ok('a potential vendor needs only a name (and remembers who recommended them); the same name is a duplicate; a prospect still needs the full profile')
+ok('a potential vendor needs only a name; the same name is a duplicate; a prospect still needs the full profile')
 
 let l = await rpc(U.dhruv, 'vendor_list', { statuses: ['potential'] })
-assert.equal(l.total, 1); assert.equal(l.rows[0].referred_by !== null, true); assert.equal(l.rows[0].phone, null)
+assert.equal(l.total, 1); assert.equal(l.rows[0].phone, null)
 assert.ok(l.status_counts.potential >= 1)
-l = await rpc(U.dhruv, 'vendor_list', { q: 'oak studio' })
-assert.equal(l.total, 1, 'search also finds who recommended the vendor')
-ok('potential vendors list with a null phone, a tab count, and are found through the recommender')
+l = await rpc(U.dhruv, 'vendor_list', { q: 'rathore' })
+assert.equal(l.total, 1)
+ok('potential vendors list with a null phone and a tab count, and are found by name')
 
 // Moving between the pre-visit stages: anyone; everything else: Admin.
 await rpc(U.dhruv, 'set_vendor_status', pot.id, 'contacted')
@@ -377,7 +381,7 @@ ok('a meeting at our factory needs no photographs or location, moves the vendor 
 const sPhoto = photoPath(U.dhruv)
 await upload(U.dhruv, sPhoto)
 await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }])], /complete the vendor's details/)
-await rpc(U.dhruv, 'save_vendor', sub(), pot.id, vendorBody({ company_name: 'Rathore Furniture', phone: '+919844444444', referred_by: 'Sanjay at Oak Studio' }))
+await rpc(U.dhruv, 'save_vendor', sub(), pot.id, vendorBody({ company_name: 'Rathore Furniture', phone: '+919844444444' }))
 await fails(U.dhruv, 'select public.log_vendor_visit($1::uuid, $2::uuid, $3::jsonb)', [sub(), pot.id, visitBody([{ path: sPhoto, kind: 'person' }])], /first visit to the factory needs/)
 const reg = await rpc(U.dhruv, 'log_vendor_visit', sub(), pot.id, visitBody([{ path: sPhoto, kind: 'factory' }], {}))
 assert.equal(reg.status, 'logged')

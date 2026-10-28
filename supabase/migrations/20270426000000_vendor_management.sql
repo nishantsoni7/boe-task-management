@@ -111,20 +111,16 @@ create table public.vendors (
   contact_name        text check (contact_name is null or length(btrim(contact_name)) between 1 and 120),
   phone_e164          text check (phone_e164 is null or phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
   address             text check (address is null or length(btrim(address)) between 5 and 500),
-  city                text check (city is null or length(btrim(city)) between 1 and 80),
   latitude            numeric(9,6) check (latitude is null or latitude between -90 and 90),
   longitude           numeric(9,6) check (longitude is null or longitude between -180 and 180),
   -- What the vendor can do: raw/semi-finished pieces, complete finished furniture, or finishing only.
   capabilities        text[] not null default '{}'
                       check (cardinality(capabilities) <= 3
                              and capabilities <@ array['raw_pieces','finished_pieces','finishing_only']),
-  categories          text[] not null default '{}'
-                      check (categories <@ array['sofa_upholstery','chairs','tables','beds','storage_cabinets',
-                                                 'outdoor','metal_fabrication','wood_carving_turning',
-                                                 'polishing_finishing','other']),
-  headcount           integer check (headcount is null or headcount between 0 and 5000),
-  -- Who recommended this vendor, or how we heard of them (the reference being followed up).
-  referred_by         text check (referred_by is null or length(referred_by) <= 200),
+  -- What they make: chairs (and other products), or other products only.
+  product_focus       text check (product_focus is null or product_focus in ('chairs_and_other','other_only')),
+  -- How many people work at the unit.
+  team_size           text check (team_size is null or team_size in ('3-5','6-10','11-15','16-20','21+')),
   notes               text check (notes is null or length(notes) <= 2000),
   status              text not null default 'prospect'
                       check (status in ('potential','contacted','prospect','under_evaluation','approved','on_hold','rejected')),
@@ -142,14 +138,13 @@ create table public.vendors (
   constraint vendors_complete_once_registered check (
     status in ('potential', 'contacted')
     or (contact_name is not null and phone_e164 is not null and address is not null
-        and city is not null and cardinality(capabilities) >= 1)
+        and cardinality(capabilities) >= 1)
   )
 );
 
 -- One ACTIVE vendor per mobile number: the second entry of the same factory is a visit to the first, not a
 -- new vendor. Archiving frees the number. (A vendor with no number yet takes no part in this.)
 create unique index vendors_one_active_phone on public.vendors (phone_e164) where archived_at is null;
-create index vendors_city_idx on public.vendors (lower(city));
 create index vendors_company_idx on public.vendors (lower(company_name));
 
 create trigger vendors_set_updated_at
@@ -460,13 +455,13 @@ immutable
 set search_path = public, pg_temp
 as $$
   select p_vendor.contact_name is not null and p_vendor.phone_e164 is not null and p_vendor.address is not null
-     and p_vendor.city is not null and cardinality(p_vendor.capabilities) >= 1;
+     and cardinality(p_vendor.capabilities) >= 1;
 $$;
 revoke all on function public.vendor_profile_complete(public.vendors) from public, anon, authenticated;
 
 -- Create (p_vendor_id null) or update a vendor profile. Create is idempotent on p_submission_id.
 -- p.status on create: 'potential' | 'contacted' (only a name is needed) or 'prospect' (the default, a complete
--- profile). A second ACTIVE vendor with the same mobile (or, with no mobile, the same name and city) is not
+-- profile). A second ACTIVE vendor with the same mobile (or, with no mobile, the same name) is not
 -- created: the answer says which vendor holds it. Returns {status: created|saved|duplicate, id, company_name}.
 create or replace function public.save_vendor(p_submission_id uuid, p_vendor_id uuid, p jsonb)
 returns jsonb
@@ -484,13 +479,11 @@ declare
   v_contact text;
   v_phone   text;
   v_address text;
-  v_city    text;
   v_lat     numeric;
   v_lng     numeric;
   v_caps    text[];
-  v_cats    text[];
-  v_head    integer;
-  v_ref     text;
+  v_product text;
+  v_team    text;
   v_notes   text;
 begin
   select a.p_uid, a.p_is_admin into v_uid, v_admin from public.vendors_actor() a;
@@ -523,15 +516,17 @@ begin
   if v_address is not null and length(v_address) < 5 then
     raise exception 'VENDOR_INVALID: Address is too short; give the exact address of the factory' using errcode = '22023';
   end if;
-  v_city    := public.vendor_txt(p, 'city', 80, 'City', not v_relaxed);
-  v_ref     := public.vendor_txt(p, 'referred_by', 200, 'Who recommended them');
   v_notes   := public.vendor_txt(p, 'notes', 2000, 'Notes');
   v_caps    := public.vendor_arr(p, 'capabilities', array['raw_pieces','finished_pieces','finishing_only'],
                                  'What the vendor can do', case when v_relaxed then 0 else 1 end);
-  v_cats    := public.vendor_arr(p, 'categories',
-                 array['sofa_upholstery','chairs','tables','beds','storage_cabinets','outdoor',
-                       'metal_fabrication','wood_carving_turning','polishing_finishing','other'],
-                 'Product types');
+  v_product := nullif(btrim(coalesce(p ->> 'product_focus', '')), '');
+  if v_product is not null and v_product not in ('chairs_and_other', 'other_only') then
+    raise exception 'VENDOR_INVALID: Products is not on the list' using errcode = '22023';
+  end if;
+  v_team := nullif(btrim(coalesce(p ->> 'team_size', '')), '');
+  if v_team is not null and v_team not in ('3-5', '6-10', '11-15', '16-20', '21+') then
+    raise exception 'VENDOR_INVALID: Team size is not on the list' using errcode = '22023';
+  end if;
 
   if nullif(btrim(coalesce(p ->> 'phone', '')), '') is null then
     if not v_relaxed then
@@ -542,13 +537,6 @@ begin
     if v_phone is null then
       raise exception 'VENDOR_INVALID: Mobile number does not look right' using errcode = '22023';
     end if;
-  end if;
-
-  if nullif(btrim(coalesce(p ->> 'headcount', '')), '') is not null then
-    if (p ->> 'headcount') !~ '^[0-9]{1,4}$' or (p ->> 'headcount')::integer > 5000 then
-      raise exception 'VENDOR_INVALID: Number of people must be a whole number up to 5000' using errcode = '22023';
-    end if;
-    v_head := (p ->> 'headcount')::integer;
   end if;
 
   if nullif(btrim(coalesce(p ->> 'latitude', '')), '') is not null
@@ -576,19 +564,18 @@ begin
       select * into v_row from public.vendors where phone_e164 = v_phone and archived_at is null;
     else
       select * into v_row from public.vendors
-       where archived_at is null and lower(company_name) = lower(v_company)
-         and coalesce(lower(city), '') = coalesce(lower(v_city), '');
+       where archived_at is null and lower(company_name) = lower(v_company);
     end if;
     if found then
       return jsonb_build_object('status', 'duplicate', 'id', v_row.id, 'company_name', v_row.company_name);
     end if;
     begin
       insert into public.vendors
-        (submission_id, company_name, contact_name, phone_e164, address, city, latitude, longitude,
-         capabilities, categories, headcount, referred_by, notes, status, created_by, updated_by)
+        (submission_id, company_name, contact_name, phone_e164, address, latitude, longitude,
+         capabilities, product_focus, team_size, notes, status, created_by, updated_by)
       values
-        (p_submission_id, v_company, v_contact, v_phone, v_address, v_city, v_lat, v_lng,
-         v_caps, v_cats, v_head, v_ref, v_notes, v_stage, v_uid, v_uid)
+        (p_submission_id, v_company, v_contact, v_phone, v_address, v_lat, v_lng,
+         v_caps, v_product, v_team, v_notes, v_stage, v_uid, v_uid)
       returning * into v_row;
     exception when unique_violation then
       select * into v_row from public.vendors where phone_e164 = v_phone and archived_at is null;
@@ -610,10 +597,10 @@ begin
     raise exception 'VENDOR_DUPLICATE_PHONE: another vendor already uses this mobile number' using errcode = '23505';
   end if;
   update public.vendors set
-    company_name = v_company, contact_name = v_contact, phone_e164 = v_phone, address = v_address, city = v_city,
+    company_name = v_company, contact_name = v_contact, phone_e164 = v_phone, address = v_address,
     -- A location sent with the edit moves the pin; an edit without one leaves it.
     latitude = coalesce(v_lat, latitude), longitude = coalesce(v_lng, longitude),
-    capabilities = v_caps, categories = v_cats, headcount = v_head, referred_by = v_ref, notes = v_notes,
+    capabilities = v_caps, product_focus = v_product, team_size = v_team, notes = v_notes,
     updated_by = v_uid
   where id = p_vendor_id;
   return jsonb_build_object('status', 'saved', 'id', p_vendor_id, 'company_name', v_company);
@@ -800,7 +787,7 @@ begin
   -- A site visit registers the vendor, so the profile must be complete.
   if v_kind = 'site_visit' and v_vendor.status in ('potential', 'contacted')
      and not public.vendor_profile_complete(v_vendor) then
-    raise exception 'VENDOR_INVALID: complete the vendor''s details (contact person, mobile, address, city, what they can do) before registering a site visit' using errcode = '22023';
+    raise exception 'VENDOR_INVALID: complete the vendor''s details (contact person, mobile, address, what they can do) before registering a site visit' using errcode = '22023';
   end if;
 
   insert into public.vendor_visits
@@ -984,7 +971,7 @@ $$;
 revoke all on function public.vendors_my_access() from public, anon;
 grant execute on function public.vendors_my_access() to authenticated;
 
--- The vendor list. p_filter: q, statuses[], capabilities[], categories[], city, awaiting_visit (bool: met us,
+-- The vendor list. p_filter: q, statuses[], capabilities[], products[], awaiting_visit (bool: met us,
 -- not yet visited), archived (bool), sort (last_visit|name|newest|oldest_visit), limit (<= 1000), offset.
 create or replace function public.vendor_list(p_filter jsonb default '{}'::jsonb)
 returns jsonb
@@ -998,8 +985,7 @@ declare
   v_q        text := nullif(lower(btrim(coalesce(p_filter ->> 'q', ''))), '');
   v_status   text[];
   v_caps     text[];
-  v_cats     text[];
-  v_city     text := nullif(lower(btrim(coalesce(p_filter ->> 'city', ''))), '');
+  v_products text[];
   v_await    boolean := coalesce((p_filter ->> 'awaiting_visit')::boolean, false);
   v_archived boolean := coalesce((p_filter ->> 'archived')::boolean, false);
   v_sort     text := coalesce(p_filter ->> 'sort', 'last_visit');
@@ -1022,8 +1008,8 @@ begin
   if jsonb_typeof(p_filter -> 'capabilities') = 'array' and jsonb_array_length(p_filter -> 'capabilities') > 0 then
     v_caps := array(select jsonb_array_elements_text(p_filter -> 'capabilities'));
   end if;
-  if jsonb_typeof(p_filter -> 'categories') = 'array' and jsonb_array_length(p_filter -> 'categories') > 0 then
-    v_cats := array(select jsonb_array_elements_text(p_filter -> 'categories'));
+  if jsonb_typeof(p_filter -> 'products') = 'array' and jsonb_array_length(p_filter -> 'products') > 0 then
+    v_products := array(select jsonb_array_elements_text(p_filter -> 'products'));
   end if;
 
   -- Every word typed must be found somewhere in the vendor (company, person, phone, city, address,
@@ -1033,8 +1019,8 @@ begin
   end if;
 
   with pre as (
-    select v.id, v.company_name, v.contact_name, v.phone_e164, v.city, v.status, v.referred_by,
-           v.capabilities, v.categories, v.headcount, v.created_at, v.archived_at,
+    select v.id, v.company_name, v.contact_name, v.phone_e164, v.status,
+           v.capabilities, v.product_focus, v.team_size, v.created_at, v.archived_at,
            (select count(*) from public.vendor_visits x where x.vendor_id = v.id) as visit_count,
            (select count(*) from public.vendor_visits x where x.vendor_id = v.id and x.kind = 'site_visit') as site_visit_count,
            (select count(*) from public.vendor_visits x where x.vendor_id = v.id and x.kind = 'vendor_at_our_factory') as inbound_count,
@@ -1046,10 +1032,9 @@ begin
        and (v_terms is null or not exists (
               select 1 from unnest(v_terms) t
                where position(t in lower(concat_ws(' ', v.company_name, v.contact_name, v.phone_e164,
-                       v.city, v.address, v.referred_by, array_to_string(v.categories, ' ')))) = 0))
+                       v.address, v.notes))) = 0))
        and (v_caps is null or v.capabilities && v_caps)
-       and (v_cats is null or v.categories && v_cats)
-       and (v_city is null or lower(v.city) = v_city)
+       and (v_products is null or v.product_focus = any(v_products))
   ),
   -- The status filter is applied AFTER the counts below are taken, so every status tab can show how many
   -- vendors it would hold under the current search and filters.
@@ -1064,9 +1049,8 @@ begin
          coalesce((
            select jsonb_agg(jsonb_build_object(
                     'id', b.id, 'company_name', b.company_name, 'contact_name', b.contact_name,
-                    'phone', b.phone_e164, 'city', b.city, 'status', b.status,
-                    'referred_by', b.referred_by,
-                    'capabilities', b.capabilities, 'categories', b.categories, 'headcount', b.headcount,
+                    'phone', b.phone_e164, 'status', b.status,
+                    'capabilities', b.capabilities, 'product_focus', b.product_focus, 'team_size', b.team_size,
                     'created_at', b.created_at, 'archived', b.archived_at is not null,
                     'visit_count', b.visit_count, 'site_visit_count', b.site_visit_count,
                     'inbound_count', b.inbound_count,
@@ -1116,10 +1100,9 @@ begin
   return jsonb_build_object(
     'vendor', jsonb_build_object(
       'id', v_vendor.id, 'company_name', v_vendor.company_name, 'contact_name', v_vendor.contact_name,
-      'phone', v_vendor.phone_e164, 'address', v_vendor.address, 'city', v_vendor.city,
+      'phone', v_vendor.phone_e164, 'address', v_vendor.address,
       'latitude', v_vendor.latitude, 'longitude', v_vendor.longitude,
-      'capabilities', v_vendor.capabilities, 'categories', v_vendor.categories,
-      'headcount', v_vendor.headcount, 'referred_by', v_vendor.referred_by,
+      'capabilities', v_vendor.capabilities, 'product_focus', v_vendor.product_focus, 'team_size', v_vendor.team_size,
       'notes', v_vendor.notes, 'status', v_vendor.status,
       'created_at', v_vendor.created_at,
       'created_by_name', (select u.full_name from public.users u where u.id = v_vendor.created_by),
@@ -1232,7 +1215,7 @@ begin
     'quiet_vendors', coalesce((
       select jsonb_agg(row_to_json(q)::jsonb order by q.days_since_visit desc nulls first)
         from (
-          select v.id, v.company_name, v.city, v.status,
+          select v.id, v.company_name, v.status,
                  max(x.visited_at) as last_visit_at,
                  case when max(x.visited_at) is null then null
                       else v_today - (max(x.visited_at) at time zone 'Asia/Kolkata')::date end as days_since_visit
@@ -1248,7 +1231,7 @@ begin
     'awaiting_site_visit', coalesce((
       select jsonb_agg(row_to_json(w)::jsonb order by w.first_met_at)
         from (
-          select v.id, v.company_name, v.city, v.status,
+          select v.id, v.company_name, v.status,
                  min(x.visited_at) as first_met_at,
                  v_today - (min(x.visited_at) at time zone 'Asia/Kolkata')::date as days_waiting
             from public.vendors v

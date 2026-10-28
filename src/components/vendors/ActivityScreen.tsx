@@ -92,7 +92,7 @@ export default function ActivityScreen() {
                         <li key={w.id}>
                           <Link href={`/vendors/${w.id}`}>{w.company_name}</Link>
                           <span className={s.muted}>
-                            {w.city ? `${w.city} · ` : ''}{labelOf(VENDOR_STATUSES, w.status)} · waiting {w.days_waiting === 0 ? 'since today' : `${w.days_waiting} day${w.days_waiting === 1 ? '' : 's'}`}
+                            {labelOf(VENDOR_STATUSES, w.status)} · waiting {w.days_waiting === 0 ? 'since today' : `${w.days_waiting} day${w.days_waiting === 1 ? '' : 's'}`}
                           </span>
                         </li>
                       ))}
@@ -149,7 +149,7 @@ export default function ActivityScreen() {
                           <li key={q.id}>
                             <Link href={`/vendors/${q.id}`}>{q.company_name}</Link>
                             <span className={s.muted}>
-                              {q.city ? `${q.city} · ` : ''}{labelOf(VENDOR_STATUSES, q.status)} · {q.days_since_visit === null ? 'never visited' : `${q.days_since_visit} days`}
+                              {labelOf(VENDOR_STATUSES, q.status)} · {q.days_since_visit === null ? 'never visited' : `${q.days_since_visit} days`}
                             </span>
                           </li>
                         ))}

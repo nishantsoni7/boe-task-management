@@ -39,8 +39,7 @@ export default function VendorEditScreen() {
     setLoaded(true)
     setValue({
       company_name: v.company_name, contact_name: v.contact_name ?? '', phone: v.phone ?? '', address: v.address ?? '',
-      city: v.city ?? '', capabilities: v.capabilities, categories: v.categories,
-      headcount: v.headcount === null ? '' : String(v.headcount), referred_by: v.referred_by ?? '', notes: v.notes ?? '',
+      capabilities: v.capabilities, product_focus: v.product_focus ?? '', team_size: v.team_size ?? '', notes: v.notes ?? '',
     })
   }
 

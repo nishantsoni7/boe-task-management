@@ -369,3 +369,12 @@
   .addProps { margin-left: 154px; }
   .listHead { margin: 0 -8px; }
 }
+
+/* ══ Fourth pass: one row layout everywhere, search box fixed ═══════════ */
+/* Specificity matters here: the desktop rule for inputs would otherwise cancel the icon's room. */
+.input.searchInput { padding-left: 34px; padding-right: 34px; }
+.rule { border: 0; border-top: 1px solid #F1EFEB; margin: 2px 0; }
+.locationBox { display: flex; flex-direction: column; gap: 6px; }
+.locationLine { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: #6B6B67; padding-top: 6px; }
+.locationWarn { color: #8A5A00; }
+.formStack > .banner { margin: 0; }

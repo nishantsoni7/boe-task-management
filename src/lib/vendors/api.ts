@@ -66,8 +66,7 @@ export type VendorFilter = {
   q?: string
   statuses?: string[]
   capabilities?: string[]
-  categories?: string[]
-  city?: string
+  products?: string[]
   awaiting_visit?: boolean
   archived?: boolean
   sort?: 'last_visit' | 'oldest_visit' | 'name' | 'newest'
@@ -98,11 +97,9 @@ export type VendorInput = {
   contact_name: string
   phone: string
   address: string
-  city: string
   capabilities: string[]
-  categories: string[]
-  headcount: string
-  referred_by: string
+  product_focus: string
+  team_size: string
   notes: string
   /** Only when creating: 'potential' | 'contacted' (a name is enough) or 'prospect' (the default). */
   status?: 'potential' | 'contacted' | 'prospect'

@@ -4,17 +4,21 @@ import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
+import { MapPin } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
 import { newSubmissionId } from '@/lib/exhibitionLeads/draft'
 import { VENDORS_KEY, saveVendor } from '@/lib/vendors/api'
+import { useDeviceLocation } from '@/lib/vendors/useDeviceLocation'
 import { EMPTY_VENDOR, validateVendor, vendorPayload } from '@/lib/vendors/validation'
+import { Field, Segmented } from './VendorBits'
 import VendorFields from './VendorFields'
 import s from './vendors.module.css'
 
-// A vendor we have heard about but not visited. A name and who recommended them are enough; the rest can wait
-// until someone meets or visits them. A visit to their factory later registers them properly.
+// A vendor we have heard about, or spoken to, but not visited. Only the company name is needed; the rest can be
+// filled in when someone visits their factory. The phone's location is found automatically: if the person is at
+// the factory right now, one tick saves it as the factory's location (a visit later pins it too).
 
 type Stage = 'potential' | 'contacted'
 
@@ -24,11 +28,13 @@ export default function AddPotentialVendorScreen() {
   const qc = useQueryClient()
   const [form, setForm] = useState(EMPTY_VENDOR)
   const [stage, setStage] = useState<Stage>('potential')
+  const [atFactory, setAtFactory] = useState(false)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [errors, setErrors] = useState<ReturnType<typeof validateVendor>>({})
   const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null)
   const key = useRef(newSubmissionId())
+  const { where, retry } = useDeviceLocation(true)
 
   if (loading || !profile) return <LoadingScreen />
 
@@ -41,7 +47,12 @@ export default function AddPotentialVendorScreen() {
     setBusy(true)
     setProblem(null)
     try {
-      const res = await saveVendor(supabase, key.current, null, { ...vendorPayload(form), status: stage })
+      const payload = { ...vendorPayload(form), status: stage }
+      if (atFactory && where.state === 'ok' && where.accuracy <= 200) {
+        payload.latitude = where.latitude
+        payload.longitude = where.longitude
+      }
+      const res = await saveVendor(supabase, key.current, null, payload)
       if (res.status === 'duplicate') {
         setDuplicate({ id: res.id, name: res.company_name })
         setBusy(false)
@@ -58,19 +69,35 @@ export default function AddPotentialVendorScreen() {
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title="Add Vendor">
       <div className={s.wrap}>
-        <section className={s.section}>
-          <div className={s.segmented} role="radiogroup" aria-label="Where are we with them">
-            {([['potential', 'Not contacted yet'], ['contacted', 'Already spoken to']] as const).map(([v, label]) => (
-              <button key={v} type="button" role="radio" aria-checked={stage === v}
-                      className={`${s.segment}${stage === v ? ` ${s.segmentOn}` : ''}`} onClick={() => setStage(v)}>{label}</button>
-            ))}
-          </div>
-          <div className={s.hint}>A vendor we have heard about. A name is enough for now.</div>
-        </section>
+        <div className={s.formStack}>
+          <Field label="Status">
+            <Segmented label="Where are we with them" value={stage} onChange={v => v && setStage(v as Stage)} options={[
+              { value: 'potential', label: 'Not contacted yet' },
+              { value: 'contacted', label: 'Already spoken to' },
+            ]} />
+          </Field>
 
-        <section className={s.section}>
           <VendorFields relaxed value={form} errors={errors} onChange={patch => setForm(f => ({ ...f, ...patch }))} />
-        </section>
+
+          <Field label="Location">
+            <div className={s.locationBox}>
+              <div className={s.locationLine}>
+                <MapPin size={14} aria-hidden="true" />
+                {where.state === 'asking' && <span>Finding your location…</span>}
+                {where.state === 'ok' && <span>Location found (about {where.accuracy} m)</span>}
+                {where.state === 'unavailable' && (
+                  <span className={s.locationWarn}>{where.reason} <button type="button" className={s.linkBtn} onClick={retry}>Try again</button></span>
+                )}
+              </div>
+              {where.state === 'ok' && (
+                <label className={s.switchRow}>
+                  <input type="checkbox" checked={atFactory} onChange={e => setAtFactory(e.target.checked)} />
+                  I am at the vendor’s factory now — save this as its location
+                </label>
+              )}
+            </div>
+          </Field>
+        </div>
 
         {duplicate && (
           <div className={`${s.banner} ${s.bannerWarn}`} role="alert">

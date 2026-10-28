@@ -4,22 +4,23 @@
 export const VENDORS_MODULE_KEY = 'vendors'
 
 export const CAPABILITIES = [
-  { value: 'raw_pieces', label: 'Raw / semi-finished pieces' },
-  { value: 'finished_pieces', label: 'Complete finished furniture' },
-  { value: 'finishing_only', label: 'Finishing only' },
+  { value: 'raw_pieces', label: 'Raw manufacturing' },
+  { value: 'finished_pieces', label: 'Full finished piece' },
+  { value: 'finishing_only', label: 'Only finishing' },
 ] as const
 
-export const CATEGORIES = [
-  { value: 'sofa_upholstery', label: 'Sofa / upholstery' },
-  { value: 'chairs', label: 'Chairs' },
-  { value: 'tables', label: 'Tables' },
-  { value: 'beds', label: 'Beds' },
-  { value: 'storage_cabinets', label: 'Storage / cabinets' },
-  { value: 'outdoor', label: 'Outdoor' },
-  { value: 'metal_fabrication', label: 'Metal fabrication' },
-  { value: 'wood_carving_turning', label: 'Wood carving / turning' },
-  { value: 'polishing_finishing', label: 'Polishing / finishing' },
-  { value: 'other', label: 'Other' },
+/** What they make: chairs (and other products too), or other products only. */
+export const PRODUCT_FOCUS = [
+  { value: 'chairs_and_other', label: 'Chairs and other products' },
+  { value: 'other_only', label: 'Other products only' },
+] as const
+
+export const TEAM_SIZES = [
+  { value: '3-5', label: '3-5' },
+  { value: '6-10', label: '6-10' },
+  { value: '11-15', label: '11-15' },
+  { value: '16-20', label: '16-20' },
+  { value: '21+', label: '21+' },
 ] as const
 
 export const VENDOR_STATUSES = [
@@ -77,12 +78,10 @@ export type VendorSummary = {
   company_name: string
   contact_name: string | null
   phone: string | null
-  city: string | null
   status: string
-  referred_by: string | null
   capabilities: string[]
-  categories: string[]
-  headcount: number | null
+  product_focus: string | null
+  team_size: string | null
   created_at: string
   archived: boolean
   visit_count: number
@@ -102,13 +101,11 @@ export type Vendor = {
   contact_name: string | null
   phone: string | null
   address: string | null
-  city: string | null
   latitude: number | null
   longitude: number | null
   capabilities: string[]
-  categories: string[]
-  headcount: number | null
-  referred_by: string | null
+  product_focus: string | null
+  team_size: string | null
   notes: string | null
   status: string
   profile_complete: boolean
@@ -167,7 +164,7 @@ export type Activity = {
   totals: { visits: number; vendors_visited: number; at_site: number; no_location: number; at_our_factory: number; entered_later: number }
   by_person: ActivityPerson[]
   by_day: { day: string; visits: number }[]
-  awaiting_site_visit: { id: string; company_name: string; city: string | null; status: string; first_met_at: string; days_waiting: number }[]
-  quiet_vendors: { id: string; company_name: string; city: string | null; status: string; last_visit_at: string | null; days_since_visit: number | null }[]
+  awaiting_site_visit: { id: string; company_name: string; status: string; first_met_at: string; days_waiting: number }[]
+  quiet_vendors: { id: string; company_name: string; status: string; last_visit_at: string | null; days_since_visit: number | null }[]
   follow_ups_due: { vendor_id: string; company_name: string; next_follow_up_on: string; visited_by_name: string | null }[]
 }

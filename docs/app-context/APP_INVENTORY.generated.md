@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `76bd26b5` — Merge remote-tracking branch 'origin/main' into feat/vendor-management
-- Commits on this branch: 1046
+- Commit: `0045c928` — Vendors: white page surface, calmer sidebar, aligned details
+- Commits on this branch: 1050
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `0045c928` 2026-10-28 Vendors: white page surface, calmer sidebar, aligned details
+- `7d795ddf` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
+- `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
+- `5daf3d92` 2026-10-28 Vendors: second design pass (table, inline stage, photo tiles, property pattern)
 - `76bd26b5` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `af411456` 2026-10-28 Vendors: Notion-style redesign and a much smaller set of fields
 - `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
@@ -35,10 +39,6 @@
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
 - `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
-- `c1188fc9` 2026-10-27 Bank Statements: sync credits into Confirmed Payments
-- `e5e7b07f` 2026-10-27 Bank Statements: list the newest line first
-- `fa0fcca0` 2026-10-27 Orders: Documents card trimmed, respond to Operations with remarks, approver's own revision approves itself, order's own product code, first-PI dates
-- `e2646db2` 2026-10-27 Test: account for migration 20270421000000 in both migration ledgers
 
 ## Pages by top-level area
 
@@ -159,7 +159,7 @@
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
-- `src/lib/vendors` — 5 source, 1 test
+- `src/lib/vendors` — 6 source, 1 test
 
 ## Environment variable names read by the code
 

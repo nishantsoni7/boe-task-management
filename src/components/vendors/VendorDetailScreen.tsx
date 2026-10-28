@@ -13,7 +13,7 @@ import {
   VENDORS_KEY, archiveVendor, fetchVendor, restoreVendor, setVendorStatus,
 } from '@/lib/vendors/api'
 import {
-  AT_SITE_METRES, CAPABILITIES, CATEGORIES, PHOTO_KINDS, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
+  AT_SITE_METRES, CAPABILITIES, PHOTO_KINDS, PRODUCT_FOCUS, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
   labelOf, labelsOf, type Visit, type VisitPhoto,
 } from '@/lib/vendors/constants'
 import { signedVendorPhotoUrl } from '@/lib/vendors/photos'
@@ -63,7 +63,7 @@ export default function VendorDetailScreen() {
 
   return (
     <VendorsLayout profile={profile} isAdmin={isAdmin} onSignOut={signOut} title={v?.company_name ?? 'Vendor'}
-                   subtitle={v?.city ?? undefined}
+                   subtitle={v?.contact_name ?? undefined}
                    actions={v && !v.archived ? (
                      <>
                        <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
@@ -107,7 +107,7 @@ export default function VendorDetailScreen() {
                 {v.phone && <a className={s.actionBtn} href={whatsappHref(v.phone)} target="_blank" rel="noopener noreferrer"><MessageCircle size={18} aria-hidden="true" /><span>WhatsApp</span></a>}
                 {v.latitude !== null && v.longitude !== null
                   ? <a className={s.actionBtn} href={mapsHref(v.latitude, v.longitude)} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>
-                  : v.address && <a className={s.actionBtn} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${v.address}, ${v.city ?? ''}`)}`} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>}
+                  : v.address && <a className={s.actionBtn} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.address)}`} target="_blank" rel="noopener noreferrer"><MapPin size={18} aria-hidden="true" /><span>Map</span></a>}
                 {!v.archived && <Link className={`${s.actionBtn} ${s.actionPrimary}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={18} aria-hidden="true" /><span>Log visit</span></Link>}
               </div>
 
@@ -121,12 +121,11 @@ export default function VendorDetailScreen() {
                   )
                 })}
               </div>
-              {v.referred_by && <div className={s.rowMeta}><strong>Recommended by:</strong> {v.referred_by}</div>}
 
               <div className={s.statStrip}>
                 <div className={s.stat}><div className={s.statValue}>{visits.length}</div><div className={s.statLabel}>Meetings</div></div>
                 <div className={s.stat}><div className={s.statValue}>{daysSince === null ? '—' : daysSince === 0 ? 'Today' : `${daysSince}d`}</div><div className={s.statLabel}>Since last visit</div></div>
-                <div className={s.stat}><div className={s.statValue}>{v.headcount ?? '—'}</div><div className={s.statLabel}>People</div></div>
+                <div className={s.stat}><div className={s.statValue}>{v.team_size ?? '—'}</div><div className={s.statLabel}>Team size</div></div>
                 <div className={s.stat}><div className={s.statValue}>{allPhotos.length}</div><div className={s.statLabel}>Photos</div></div>
               </div>
             </section>
@@ -178,13 +177,13 @@ export default function VendorDetailScreen() {
               <section className={s.card} aria-label="Profile">
                 <dl className={s.facts}>
                   <Fact label="Contact person">{v.contact_name ?? 'Not known yet'}</Fact>
-                  {v.referred_by && <Fact label="Recommended by">{v.referred_by}</Fact>}
                   <Fact label="Mobile">
                     {v.phone ? <a href={telHref(v.phone)}>{formatPhone(v.phone)}</a> : 'Not known yet'}
                   </Fact>
-                  <Fact label="Address">{v.address ? `${v.address}\n` : ''}{v.city ?? (v.address ? '' : 'Not known yet')}</Fact>
+                  <Fact label="Address">{v.address ?? 'Not known yet'}</Fact>
                   <Fact label="Can do">{v.capabilities.length > 0 ? labelsOf(CAPABILITIES, v.capabilities) : 'Not known yet'}</Fact>
-                  {v.categories.length > 0 && <Fact label="Product types">{labelsOf(CATEGORIES, v.categories)}</Fact>}
+                  {v.product_focus && <Fact label="Products">{labelOf(PRODUCT_FOCUS, v.product_focus)}</Fact>}
+                  {v.team_size && <Fact label="Team size">{v.team_size}</Fact>}
                   {v.notes && <Fact label="Notes">{v.notes}</Fact>}
                   <Fact label="Added">{formatDay(v.created_at)}{v.created_by_name ? ` by ${v.created_by_name}` : ''}</Fact>
                   <Fact label="Last visit">{last ? `${daysAgoText(daysSince)} · ${formatWhen(last.visited_at)}` : 'Never visited'}</Fact>

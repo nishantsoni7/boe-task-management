@@ -70,6 +70,31 @@ export function Chips({
   )
 }
 
+/** A row of equal choices, one selected (Notion's select, drawn as a segmented control). */
+export function Segmented({
+  options, value, onChange, label, clearable = false,
+}: {
+  options: readonly Option[]
+  value: string
+  onChange: (next: string) => void
+  label: string
+  /** Tapping the selected option again clears it. */
+  clearable?: boolean
+}) {
+  return (
+    <div className={s.segmented} role="radiogroup" aria-label={label}
+         style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)`, maxWidth: options.length > 2 ? 520 : 440 }}>
+      {options.map(o => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value}
+                className={`${s.segment}${value === o.value ? ` ${s.segmentOn}` : ''}`}
+                onClick={() => onChange(clearable && value === o.value ? '' : o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** A label and its control: side by side on a wide screen (a property row), stacked on a phone. */
 export function Field({
   label, required, hint, error, children, htmlFor,

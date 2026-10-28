@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { classifyVendorError } from './api'
 import {
-  CAPABILITIES, CATEGORIES, PRE_VISIT_STATUSES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
+  CAPABILITIES, PRE_VISIT_STATUSES, PRODUCT_FOCUS, TEAM_SIZES, VENDOR_STATUSES, VISIT_KINDS, VISIT_OUTCOMES,
   labelOf, labelsOf, type VendorSummary,
 } from './constants'
 import { vendorsCsv } from './csv'
@@ -13,7 +13,7 @@ const MIGRATION = readFileSync('supabase/migrations/20270426000000_vendor_manage
 
 const goodVendor = {
   ...EMPTY_VENDOR, company_name: 'Sharma Wood Works', contact_name: 'Ramesh', phone: '98765 43210',
-  address: 'Plot 14, Basni Industrial Area', city: 'Jodhpur', capabilities: ['raw_pieces'],
+  address: 'Plot 14, Basni Industrial Area', capabilities: ['raw_pieces'],
 }
 
 describe('vendor form validation', () => {
@@ -22,7 +22,7 @@ describe('vendor form validation', () => {
   })
   test('the required fields are named', () => {
     const e = validateVendor(EMPTY_VENDOR)
-    for (const k of ['company_name', 'contact_name', 'phone', 'address', 'city', 'capabilities']) {
+    for (const k of ['company_name', 'contact_name', 'phone', 'address', 'capabilities']) {
       assert.ok(e[k as keyof typeof e], `${k} is required`)
     }
   })
@@ -30,7 +30,7 @@ describe('vendor form validation', () => {
     assert.deepEqual(validateVendor({ ...EMPTY_VENDOR, company_name: 'Rathore Furniture' }, true), {})
     const e = validateVendor({ ...EMPTY_VENDOR, phone: '123', address: 'abc' }, true)
     assert.ok(e.company_name); assert.ok(e.phone); assert.ok(e.address)
-    assert.equal(e.contact_name, undefined); assert.equal(e.city, undefined); assert.equal(e.capabilities, undefined)
+    assert.equal(e.contact_name, undefined); assert.equal(e.capabilities, undefined)
   })
   test('phone numbers follow the same rules as the database', () => {
     assert.ok(validateVendor({ ...goodVendor, phone: '12345' }).phone)
@@ -93,8 +93,8 @@ describe('error messages', () => {
 
 describe('CSV export', () => {
   const row: VendorSummary = {
-    id: 'x', company_name: '=cmd|calc', contact_name: 'Ramesh', phone: '+919876543210', city: 'Jodhpur',
-    status: 'approved', referred_by: null, capabilities: ['raw_pieces', 'finishing_only'], categories: ['chairs'], headcount: 35,
+    id: 'x', company_name: '=cmd|calc', contact_name: 'Ramesh', phone: '+919876543210',
+    status: 'approved', capabilities: ['raw_pieces', 'finishing_only'], product_focus: 'chairs_and_other', team_size: '21+',
     created_at: '2026-10-01T00:00:00Z', archived: false, visit_count: 3, site_visit_count: 3, inbound_count: 0,
     awaiting_site_visit: false, last_visit_at: null, last_visited_by: 'Dhruv', days_since_visit: null,
   }
@@ -108,19 +108,18 @@ describe('CSV export', () => {
   })
   test('labels, not slugs', () => {
     assert.ok(csv.includes('Approved'))
-    assert.ok(csv.includes('Raw / semi-finished pieces, Finishing only'))
+    assert.ok(csv.includes('Raw manufacturing, Only finishing'))
   })
   test('a potential vendor with no number exports an empty cell, not a crash', () => {
-    const out = vendorsCsv([{ ...row, phone: null, contact_name: null, city: null, status: 'potential', referred_by: 'Sanjay' }])
+    const out = vendorsCsv([{ ...row, phone: null, contact_name: null, status: 'potential', product_focus: null, team_size: null }])
     assert.ok(out.includes('Potential'))
-    assert.ok(out.includes('Sanjay'))
   })
 })
 
 describe('vocabularies match the database CHECKs', () => {
   test('capabilities and product types', () => {
     assert.deepEqual(CAPABILITIES.map(o => o.value).sort(), ['finished_pieces', 'finishing_only', 'raw_pieces'])
-    for (const c of CATEGORIES) assert.ok(MIGRATION.includes(`'${c.value}'`), `${c.value} is in the migration`)
+    for (const c of [...PRODUCT_FOCUS, ...TEAM_SIZES]) assert.ok(MIGRATION.includes(`'${c.value}'`), `${c.value} is in the migration`)
   })
   test('stages, kinds, purposes and outcomes', () => {
     for (const o of [...VENDOR_STATUSES, ...VISIT_KINDS, ...VISIT_OUTCOMES]) {
@@ -134,7 +133,7 @@ describe('vocabularies match the database CHECKs', () => {
   test('labels fall back to the raw value', () => {
     assert.equal(labelOf(VENDOR_STATUSES, 'approved'), 'Approved')
     assert.equal(labelOf(VENDOR_STATUSES, 'mystery'), 'mystery')
-    assert.equal(labelsOf(CATEGORIES, ['chairs', 'beds']), 'Chairs, Beds')
+    assert.equal(labelsOf(CAPABILITIES, ['raw_pieces', 'finishing_only']), 'Raw manufacturing, Only finishing')
   })
 })
 

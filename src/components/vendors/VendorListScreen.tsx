@@ -12,7 +12,7 @@ import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumListParam, enumParam, pageParam, textParam } from '@/lib/listState'
 import { VENDORS_KEY, fetchVendor, fetchVendorPage, setVendorStatus, type VendorFilter } from '@/lib/vendors/api'
 import {
-  CAPABILITIES, CATEGORIES, PRE_VISIT_STATUSES, VENDOR_STATUSES, labelOf, type VendorSummary,
+  CAPABILITIES, PRE_VISIT_STATUSES, PRODUCT_FOCUS, VENDOR_STATUSES, labelOf, type VendorSummary,
 } from '@/lib/vendors/constants'
 import { vendorsCsv } from '@/lib/vendors/csv'
 import { telHref, formatPhone } from '@/lib/exhibitionLeads/phone'
@@ -46,7 +46,7 @@ const PARAMS = {
   stage: enumParam(STAGES, 'all'),
   decision: enumListParam(DECISIONS),
   can: enumListParam(CAPABILITIES.map(o => o.value)),
-  type: enumListParam(CATEGORIES.map(o => o.value)),
+  type: enumListParam(PRODUCT_FOCUS.map(o => o.value)),
   sort: enumParam(SORTS, 'last_visit'),
   archived: enumParam(['0', '1'] as const, '0'),
   waiting: enumParam(['0', '1'] as const, '0'),
@@ -87,7 +87,7 @@ export default function VendorListScreen() {
 
   const archived = state.archived === '1'
   const filter: VendorFilter = {
-    q: state.q, statuses: statusesFor(state.stage, state.decision), capabilities: state.can, categories: state.type,
+    q: state.q, statuses: statusesFor(state.stage, state.decision), capabilities: state.can, products: state.type,
     sort: state.sort, archived, awaiting_visit: state.waiting === '1', limit: PAGE, offset: (state.page - 1) * PAGE,
   }
   const { data, isLoading, error, isFetching, isPlaceholderData } = useQuery({
@@ -216,7 +216,7 @@ export default function VendorListScreen() {
               <Chips multiple label="What they do" options={CAPABILITIES} value={state.can}
                      onChange={v => setState({ can: v as typeof state.can })} /></div>
             <div className={s.filterRow}><span className={s.label}>Products</span>
-              <Chips multiple label="Products" options={CATEGORIES} value={state.type}
+              <Chips multiple label="Products" options={PRODUCT_FOCUS} value={state.type}
                      onChange={v => setState({ type: v as typeof state.type })} /></div>
             <label className={s.checkRow}>
               <input type="checkbox" checked={state.waiting === '1'} onChange={e => setState({ waiting: e.target.checked ? '1' : '0' })} />
@@ -250,7 +250,7 @@ export default function VendorListScreen() {
             {state.waiting === '1' && <Pill label="Awaiting a site visit" onRemove={() => setState({ waiting: '0' })} />}
             {state.decision.map(v => <Pill key={v} label={labelOf(VENDOR_STATUSES, v)} onRemove={() => setState({ decision: state.decision.filter(x => x !== v) })} />)}
             {state.can.map(v => <Pill key={v} label={labelOf(CAPABILITIES, v)} onRemove={() => setState({ can: state.can.filter(x => x !== v) })} />)}
-            {state.type.map(v => <Pill key={v} label={labelOf(CATEGORIES, v)} onRemove={() => setState({ type: state.type.filter(x => x !== v) })} />)}
+            {state.type.map(v => <Pill key={v} label={labelOf(PRODUCT_FOCUS, v)} onRemove={() => setState({ type: state.type.filter(x => x !== v) })} />)}
           </div>
         )}
 
@@ -365,7 +365,7 @@ function SkeletonRows() {
 function standing(v: VendorSummary): { text: string; warn: boolean } {
   if (v.awaiting_site_visit) return { text: 'Met us · awaiting a site visit', warn: true }
   if (v.visit_count === 0) {
-    if (v.status === 'potential') return { text: v.referred_by ? `Recommended by ${v.referred_by}` : 'Not contacted yet', warn: false }
+    if (v.status === 'potential') return { text: 'Not contacted yet', warn: false }
     return { text: 'Not visited yet', warn: true }
   }
   const stale = v.days_since_visit !== null && v.days_since_visit >= 30
@@ -381,7 +381,7 @@ function VendorRow({ v, q, canEditStage, isAdmin, onTouch, onStage }: {
   onTouch: (id: string) => void; onStage: (id: string, next: string) => void
 }) {
   const router = useRouter()
-  const meta = [v.contact_name, v.city].filter(Boolean).join(' · ')
+  const meta = v.contact_name ?? ''
   const where = standing(v)
   const options = isAdmin ? VENDOR_STATUSES : PRE_VISIT_OPTIONS
   return (

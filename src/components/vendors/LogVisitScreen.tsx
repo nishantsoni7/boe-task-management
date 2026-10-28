@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,11 +19,12 @@ import {
   type PhotoKind, type VisitKind,
 } from '@/lib/vendors/constants'
 import { shrinkPhoto, uploadVendorPhoto } from '@/lib/vendors/photos'
+import { useDeviceLocation } from '@/lib/vendors/useDeviceLocation'
 import {
   EMPTY_VENDOR, EMPTY_VISIT, isLiveSiteVisit, validateVendor, validateVisit, vendorPayload,
   type FieldErrors, type VendorField, type VisitDraft, type VisitField,
 } from '@/lib/vendors/validation'
-import { Field } from './VendorBits'
+import { Field, Segmented } from './VendorBits'
 import VendorFields from './VendorFields'
 import s from './vendors.module.css'
 
@@ -40,11 +41,6 @@ import s from './vendors.module.css'
 // so a dropped signal and a second tap on Save never makes a second vendor or a second visit.
 
 type Photo = { key: string; kind: PhotoKind; blob: Blob; preview: string }
-type Where =
-  | { state: 'asking' }
-  | { state: 'ok'; latitude: number; longitude: number; accuracy: number }
-  | { state: 'unavailable'; reason: string }
-
 type Picked = { id: string; name: string; siteVisitCount: number }
 
 const OUTCOME_SHORT: Record<string, string> = {
@@ -77,7 +73,6 @@ export default function LogVisitScreen() {
   const [completionLoadedFor, setCompletionLoadedFor] = useState<string | null>(null)
   const [visit, setVisit] = useState<VisitDraft>(EMPTY_VISIT)
   const [photos, setPhotos] = useState<Photo[]>([])
-  const [where, setWhere] = useState<Where>({ state: 'asking' })
   const [vendorErrors, setVendorErrors] = useState<FieldErrors<VendorField>>({})
   const [completionErrors, setCompletionErrors] = useState<FieldErrors<VendorField>>({})
   const [visitErrors, setVisitErrors] = useState<FieldErrors<VisitField>>({})
@@ -98,26 +93,7 @@ export default function LogVisitScreen() {
   const live = isLiveSiteVisit(kind, effectiveLater)
 
   // ── Where the phone says it is (a live visit to their factory only) ──
-  const requestFix = useCallback(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      queueMicrotask(() => setWhere({ state: 'unavailable', reason: 'This phone does not share its location.' }))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      pos => setWhere({
-        state: 'ok', latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy),
-      }),
-      err => setWhere({
-        state: 'unavailable',
-        reason: err.code === err.PERMISSION_DENIED
-          ? 'Location is switched off for this site. Allow it in the browser settings.'
-          : 'The phone could not find its location.',
-      }),
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
-    )
-  }, [])
-  const locate = () => { setWhere({ state: 'asking' }); requestFix() }
-  useEffect(() => { if (live) requestFix() }, [live, requestFix])
+  const { where, retry: locate } = useDeviceLocation(live)
 
   // ── A vendor named in the link (Log a visit from a vendor page) ───
   const preset = useQuery({
@@ -156,9 +132,8 @@ export default function LogVisitScreen() {
     setCompletionLoadedFor(chosenVendor.id)
     setCompletion({
       company_name: chosenVendor.company_name, contact_name: chosenVendor.contact_name ?? '', phone: chosenVendor.phone ?? '',
-      address: chosenVendor.address ?? '', city: chosenVendor.city ?? '', capabilities: chosenVendor.capabilities,
-      categories: chosenVendor.categories, headcount: chosenVendor.headcount === null ? '' : String(chosenVendor.headcount),
-      referred_by: chosenVendor.referred_by ?? '', notes: chosenVendor.notes ?? '',
+      address: chosenVendor.address ?? '', capabilities: chosenVendor.capabilities,
+      product_focus: chosenVendor.product_focus ?? '', team_size: chosenVendor.team_size ?? '', notes: chosenVendor.notes ?? '',
     })
   }
 
@@ -373,79 +348,70 @@ export default function LogVisitScreen() {
           </div>
         )}
 
-        {/* What happened */}
-        <section className={s.section}>
-          <div className={s.segmented} role="radiogroup" aria-label="What happened">
-            {VISIT_KINDS.map(o => (
-              <button key={o.value} type="button" role="radio" aria-checked={kind === o.value}
-                      className={`${s.segment}${kind === o.value ? ` ${s.segmentOn}` : ''}`} onClick={() => setKind(o.value)}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <div className={s.hint}>
-            {kind === 'site_visit'
-              ? 'Photographs and your location are saved with a visit to their factory.'
-              : 'A vendor who comes to us needs no photographs. They are registered when someone from our team visits their factory.'}
-          </div>
-          {pastEntriesOpen && (
-            <div className={later ? s.laterBox : undefined}>
-              <label className={s.switchRow}>
-                <input type="checkbox" checked={later} onChange={e => setLater(e.target.checked)} />
-                This already happened
-              </label>
-              {later && (
-                <>
-                  <div className={s.hint}>
-                    Saved as “Added later”: no photographs or location needed, and it does not count as a proven visit.
-                    {pastEntriesUntil ? ` Open until ${new Date(`${pastEntriesUntil}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}.` : ''}
-                  </div>
-                  <Field label="Day it happened" required error={visitErrors.visited_on} htmlFor="x-on">
-                    <input id="x-on" type="date" className={`${s.input}${visitErrors.visited_on ? ` ${s.invalid}` : ''}`}
-                           min={istAddDays(today, -120)} max={today} value={visit.visited_on} style={{ maxWidth: 200 }}
-                           onChange={e => setVisit(d => ({ ...d, visited_on: e.target.value }))} />
-                  </Field>
-                </>
-              )}
-            </div>
-          )}
-        </section>
+        <div className={s.formStack}>
+          <Field label="Type" hint={kind === 'site_visit'
+            ? 'Photographs and your location are saved with a visit to their factory.'
+            : 'A vendor who comes to us needs no photographs. They are registered when someone from our team visits their factory.'}>
+            <Segmented label="What happened" value={kind} onChange={v => v && setKind(v as VisitKind)}
+                       options={VISIT_KINDS} />
+          </Field>
 
-        {/* Vendor */}
-        <section className={s.section} aria-labelledby="h-vendor">
-          <h2 id="h-vendor" className={s.sectionTitle}>Vendor</h2>
-          {mode === 'existing' && picked && (
-            <div className={s.chosen}>
+          {pastEntriesOpen && (
+            <Field label="When" hint={later
+              ? `Saved as “Added later”: no photographs or location needed, and it does not count as a proven visit.${pastEntriesUntil ? ` Open until ${new Date(`${pastEntriesUntil}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}.` : ''}`
+              : undefined}>
+              <Segmented label="When it happened" value={later ? 'earlier' : 'now'} onChange={v => v && setLater(v === 'earlier')}
+                         options={[{ value: 'now', label: 'Just now' }, { value: 'earlier', label: 'Already happened' }]} />
+            </Field>
+          )}
+          {pastEntriesOpen && later && (
+            <Field label="Day" required error={visitErrors.visited_on} htmlFor="x-on">
+              <input id="x-on" type="date" className={`${s.input}${visitErrors.visited_on ? ` ${s.invalid}` : ''}`}
+                     min={istAddDays(today, -120)} max={today} value={visit.visited_on} style={{ maxWidth: 200 }}
+                     onChange={e => setVisit(d => ({ ...d, visited_on: e.target.value }))} />
+            </Field>
+          )}
+
+          <hr className={s.rule} />
+
+          <Field label="Vendor" required={mode === 'existing' && !picked}>
+            {mode === 'existing' && picked ? (
+              <div className={s.chosen}>
+                <div>
+                  <div className={s.rowName}>{picked.name}</div>
+                  {chosen.data && <div className={s.muted}>{chosen.data.visits.length} earlier meeting{chosen.data.visits.length === 1 ? '' : 's'}</div>}
+                </div>
+                {!presetId && <button type="button" className={s.linkBtn} onClick={() => { setPicked(null); setCompletionLoadedFor(null) }}>Change</button>}
+              </div>
+            ) : mode === 'existing' ? (
+              <div className={s.vendorPick}>
+                <div className={s.searchWrap}>
+                  <Search size={16} className={s.searchIcon} aria-hidden="true" />
+                  <input className={`${s.input} ${s.searchInput}`} value={search} onChange={e => setSearch(e.target.value)}
+                         placeholder="Search by company, person or phone" aria-label="Search vendors" autoComplete="off" />
+                </div>
+                {results.data?.rows.map(r => (
+                  <button key={r.id} type="button" className={s.pickItem}
+                          onClick={() => {
+                            setPicked({ id: r.id, name: r.company_name, siteVisitCount: r.site_visit_count })
+                            setVisit(v => ({ ...v, person_met: v.person_met || (r.contact_name ?? '') }))
+                            setTimeout(() => document.getElementById('x-disc')?.focus(), 50)
+                          }}>
+                    <span className={s.rowName}>{r.company_name}</span>
+                    <span className={s.rowMeta}>{r.contact_name || 'No contact details yet'}</span>
+                  </button>
+                ))}
+                {results.data && results.data.rows.length === 0 && <div className={s.muted} style={{ padding: '8px 0' }}>No vendor found.</div>}
+                {results.isFetching && <div className={s.muted} style={{ padding: '8px 0' }}>Searching…</div>}
+                <div><button type="button" className={s.linkBtn} onClick={() => { setMode('new'); setPicked(null) }}>+ New vendor</button></div>
+              </div>
+            ) : (
               <div>
-                <div className={s.rowName}>{picked.name}</div>
-                {chosen.data && <div className={s.muted}>{chosen.data.visits.length} earlier meeting{chosen.data.visits.length === 1 ? '' : 's'}</div>}
+                <button type="button" className={s.linkBtn} onClick={() => setMode('existing')}>← Pick an existing vendor</button>
               </div>
-              {!presetId && <button type="button" className={s.linkBtn} onClick={() => { setPicked(null); setCompletionLoadedFor(null) }}>Change</button>}
-            </div>
-          )}
-          {mode === 'existing' && !picked && (
-            <div className={s.vendorPick}>
-              <div className={s.searchWrap}>
-                <Search size={16} className={s.searchIcon} aria-hidden="true" />
-                <input className={`${s.input} ${s.searchInput}`} value={search} onChange={e => setSearch(e.target.value)}
-                       placeholder="Search by name, person, phone or city" aria-label="Search vendors" autoComplete="off" />
-              </div>
-              {results.data?.rows.map(r => (
-                <button key={r.id} type="button" className={s.pickItem}
-                        onClick={() => {
-                          setPicked({ id: r.id, name: r.company_name, siteVisitCount: r.site_visit_count })
-                          setVisit(v => ({ ...v, person_met: v.person_met || (r.contact_name ?? '') }))
-                          setTimeout(() => document.getElementById('x-disc')?.focus(), 50)
-                        }}>
-                  <span className={s.rowName}>{r.company_name}</span>
-                  <span className={s.rowMeta}>{[r.contact_name, r.city].filter(Boolean).join(' · ') || 'No contact details yet'}</span>
-                </button>
-              ))}
-              {results.data && results.data.rows.length === 0 && <div className={s.muted} style={{ padding: '8px 0' }}>No vendor found.</div>}
-              {results.isFetching && <div className={s.muted} style={{ padding: '8px 0' }}>Searching…</div>}
-              <div><button type="button" className={s.linkBtn} onClick={() => { setMode('new'); setPicked(null) }}>+ New vendor</button></div>
-            </div>
-          )}
+            )}
+          </Field>
+
           {isNewVendor && (
             <>
               {duplicate && (
@@ -459,116 +425,110 @@ export default function LogVisitScreen() {
               )}
               <VendorFields relaxed={newVendorRelaxed} value={vendor} errors={vendorErrors}
                             onChange={patch => setVendor(v => ({ ...v, ...patch }))} />
-              <div><button type="button" className={s.linkBtn} onClick={() => setMode('existing')}>← Pick an existing vendor</button></div>
             </>
           )}
-        </section>
 
-        {/* Registering a vendor we only knew by name */}
-        {registering && (
-          <section className={s.section} aria-labelledby="h-complete">
-            <h2 id="h-complete" className={s.sectionTitle}>Complete the vendor’s details</h2>
-            <div className={s.hint}>This visit registers the vendor, so its profile needs to be complete.</div>
-            <VendorFields value={completion} errors={completionErrors} onChange={patch => setCompletion(v => ({ ...v, ...patch }))} />
-          </section>
-        )}
-
-        {/* The meeting */}
-        <section className={s.section} aria-labelledby="h-visit">
-          <h2 id="h-visit" className={s.sectionTitle}>Meeting</h2>
-          <div className={s.formStack}>
-            <Field label="Person met" required error={visitErrors.person_met} htmlFor="x-person">
-              <input id="x-person" className={`${s.input}${visitErrors.person_met ? ` ${s.invalid}` : ''}`} value={visit.person_met}
-                     maxLength={120} autoComplete="off" onChange={e => setVisit(d => ({ ...d, person_met: e.target.value }))} />
-            </Field>
-            <Field label="Notes" required error={visitErrors.discussion} htmlFor="x-disc" hint="What they make, quality, capacity, rates, timelines">
-              <textarea id="x-disc" rows={4} className={`${s.textarea}${visitErrors.discussion ? ` ${s.invalid}` : ''}`} value={visit.discussion}
-                        maxLength={2000} onChange={e => setVisit(d => ({ ...d, discussion: e.target.value }))} />
-            </Field>
-            <Field label="Outcome" required error={visitErrors.outcome}>
-              <div className={s.outcomeGrid} role="radiogroup" aria-label="Outcome">
-                {VISIT_OUTCOMES.map(o => (
-                  <button key={o.value} type="button" role="radio" aria-checked={visit.outcome === o.value}
-                          className={`${s.outcome}${visit.outcome === o.value ? ` ${s.outcomeOn}` : ''}`}
-                          onClick={() => setVisit(d => ({ ...d, outcome: o.value }))}>
-                    <span className={`${s.outcomeDot} ${OUTCOME_DOT[o.value] ?? ''}`} aria-hidden="true" />
-                    {OUTCOME_SHORT[o.value] ?? o.label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            {visit.outcome !== 'not_suitable' && visit.outcome !== 'approved_to_start' && (
-              <Field label="Follow up on" required={visit.outcome === 'follow_up_needed'} error={visitErrors.next_follow_up_on} htmlFor="x-next">
-                <input id="x-next" type="date" className={`${s.input}${visitErrors.next_follow_up_on ? ` ${s.invalid}` : ''}`}
-                       min={today} value={visit.next_follow_up_on} style={{ maxWidth: 200 }}
-                       onChange={e => setVisit(d => ({ ...d, next_follow_up_on: e.target.value }))} />
-              </Field>
-            )}
-          </div>
-        </section>
-
-        {/* Photographs */}
-        <section className={s.section} aria-labelledby="h-photos">
-          <h2 id="h-photos" className={s.sectionTitle}>Photos{live ? '' : ' (optional)'}</h2>
-          {live && (
-            <div className={`${s.photoStatus}${hasFactory ? ` ${s.photoStatusOk}` : ''}`}>
-              {hasFactory ? <CheckCircle2 size={14} aria-hidden="true" /> : <Camera size={14} aria-hidden="true" />}
-              {hasFactory ? 'Factory photo added' : needsFactoryPhoto ? 'A photo of the factory is required' : 'Add photos of the visit'}
-            </div>
+          {registering && (
+            <>
+              <hr className={s.rule} />
+              <div className={s.hint}>This visit registers the vendor, so its details need to be complete.</div>
+              <VendorFields value={completion} errors={completionErrors} onChange={patch => setCompletion(v => ({ ...v, ...patch }))} />
+            </>
           )}
-          {visitErrors.photos && <div className={s.err} role="alert">{visitErrors.photos}</div>}
-          <div className={`${s.tiles} ${s.tilesDrop}${dragOn ? ` ${s.tilesDropOn}` : ''}`}
-               onDragOver={e => { e.preventDefault(); setDragOn(true) }} onDragLeave={() => setDragOn(false)}
-               onDrop={e => {
-                 e.preventDefault(); setDragOn(false)
-                 void addPhotos(live ? (needsFactoryPhoto && !hasFactory ? 'factory' : 'person') : 'other', e.dataTransfer.files)
-               }}>
-            {photos.map(p => (
-              <div key={p.key} className={s.tile}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
-                <img src={p.preview} alt="Photograph to upload" />
-                {TILE_TAG[p.kind] && <span className={s.tileTag}>{TILE_TAG[p.kind]}</span>}
-                <button type="button" className={s.tileX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
-              </div>
-            ))}
-            {live ? (
-              <>
-                <label className={`${s.tileAdd}${needsFactoryPhoto && !hasFactory ? ` ${s.tileRequired}` : ''}`}>
-                  <Camera size={18} aria-hidden="true" /> Factory photo
-                  <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
-                         onChange={e => { void addPhotos('factory', e.target.files); e.target.value = '' }} />
-                </label>
-                <label className={s.tileAdd}>
-                  <Plus size={18} aria-hidden="true" /> Other photo
-                  <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
-                         onChange={e => { void addPhotos('person', e.target.files); e.target.value = '' }} />
-                </label>
-              </>
-            ) : (
-              <label className={s.tileAdd}>
-                <Plus size={18} aria-hidden="true" /> Add photo
-                <input className={s.hiddenFile} type="file" accept="image/*" multiple
-                       onChange={e => { void addPhotos('other', e.target.files); e.target.value = '' }} />
-              </label>
-            )}
-          </div>
-          {live && <div className={s.hint}>Take photos now, at the vendor. On a computer you can also drop files here.</div>}
-        </section>
 
-        {/* Location (a live visit to their factory only) */}
-        {live && (
-          <div className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <MapPin size={14} aria-hidden="true" />
-            {where.state === 'asking' && 'Finding your location…'}
-            {where.state === 'ok' && `Location captured (about ${where.accuracy} m). Saved with the visit.`}
-            {where.state === 'unavailable' && (
-              <>
-                <span style={{ color: '#8A5A00' }}>{where.reason} The visit will be marked “no location”.</span>
-                <button type="button" className={s.linkBtn} onClick={locate}>Try again</button>
-              </>
-            )}
-          </div>
-        )}
+          <hr className={s.rule} />
+
+          <Field label="Person met" required error={visitErrors.person_met} htmlFor="x-person">
+            <input id="x-person" className={`${s.input}${visitErrors.person_met ? ` ${s.invalid}` : ''}`} value={visit.person_met}
+                   maxLength={120} autoComplete="off" onChange={e => setVisit(d => ({ ...d, person_met: e.target.value }))} />
+          </Field>
+          <Field label="Notes" required error={visitErrors.discussion} htmlFor="x-disc" hint="What they make, quality, capacity, rates, timelines">
+            <textarea id="x-disc" rows={4} className={`${s.textarea}${visitErrors.discussion ? ` ${s.invalid}` : ''}`} value={visit.discussion}
+                      maxLength={2000} onChange={e => setVisit(d => ({ ...d, discussion: e.target.value }))} />
+          </Field>
+          <Field label="Outcome" required error={visitErrors.outcome}>
+            <div className={s.outcomeGrid} role="radiogroup" aria-label="Outcome">
+              {VISIT_OUTCOMES.map(o => (
+                <button key={o.value} type="button" role="radio" aria-checked={visit.outcome === o.value}
+                        className={`${s.outcome}${visit.outcome === o.value ? ` ${s.outcomeOn}` : ''}`}
+                        onClick={() => setVisit(d => ({ ...d, outcome: o.value }))}>
+                  <span className={`${s.outcomeDot} ${OUTCOME_DOT[o.value] ?? ''}`} aria-hidden="true" />
+                  {OUTCOME_SHORT[o.value] ?? o.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          {visit.outcome !== 'not_suitable' && visit.outcome !== 'approved_to_start' && (
+            <Field label="Follow up on" required={visit.outcome === 'follow_up_needed'} error={visitErrors.next_follow_up_on} htmlFor="x-next">
+              <input id="x-next" type="date" className={`${s.input}${visitErrors.next_follow_up_on ? ` ${s.invalid}` : ''}`}
+                     min={today} value={visit.next_follow_up_on} style={{ maxWidth: 200 }}
+                     onChange={e => setVisit(d => ({ ...d, next_follow_up_on: e.target.value }))} />
+            </Field>
+          )}
+
+          <hr className={s.rule} />
+
+          <Field label="Photos" required={live} error={visitErrors.photos}
+                 hint={live ? 'Take photos now, at the vendor. On a computer you can also drop files here.' : 'Optional.'}>
+            <div className={s.fieldBody}>
+              {live && (
+                <div className={`${s.photoStatus}${hasFactory ? ` ${s.photoStatusOk}` : ''}`}>
+                  {hasFactory ? <CheckCircle2 size={14} aria-hidden="true" /> : <Camera size={14} aria-hidden="true" />}
+                  {hasFactory ? 'Factory photo added' : needsFactoryPhoto ? 'A photo of the factory is required' : 'Add photos of the visit'}
+                </div>
+              )}
+              <div className={`${s.tiles} ${s.tilesDrop}${dragOn ? ` ${s.tilesDropOn}` : ''}`}
+                   onDragOver={e => { e.preventDefault(); setDragOn(true) }} onDragLeave={() => setDragOn(false)}
+                   onDrop={e => {
+                     e.preventDefault(); setDragOn(false)
+                     void addPhotos(live ? (needsFactoryPhoto && !hasFactory ? 'factory' : 'person') : 'other', e.dataTransfer.files)
+                   }}>
+                {photos.map(p => (
+                  <div key={p.key} className={s.tile}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview */}
+                    <img src={p.preview} alt="Photograph to upload" />
+                    {TILE_TAG[p.kind] && <span className={s.tileTag}>{TILE_TAG[p.kind]}</span>}
+                    <button type="button" className={s.tileX} aria-label="Remove this photograph" onClick={() => setPhotos(list => list.filter(x => x.key !== p.key))}>×</button>
+                  </div>
+                ))}
+                {live ? (
+                  <>
+                    <label className={`${s.tileAdd}${needsFactoryPhoto && !hasFactory ? ` ${s.tileRequired}` : ''}`}>
+                      <Camera size={18} aria-hidden="true" /> Factory photo
+                      <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
+                             onChange={e => { void addPhotos('factory', e.target.files); e.target.value = '' }} />
+                    </label>
+                    <label className={s.tileAdd}>
+                      <Plus size={18} aria-hidden="true" /> Other photo
+                      <input className={s.hiddenFile} type="file" accept="image/*" capture="environment" multiple
+                             onChange={e => { void addPhotos('person', e.target.files); e.target.value = '' }} />
+                    </label>
+                  </>
+                ) : (
+                  <label className={s.tileAdd}>
+                    <Plus size={18} aria-hidden="true" /> Add photo
+                    <input className={s.hiddenFile} type="file" accept="image/*" multiple
+                           onChange={e => { void addPhotos('other', e.target.files); e.target.value = '' }} />
+                  </label>
+                )}
+              </div>
+            </div>
+          </Field>
+
+          {live && (
+            <Field label="Location">
+              <div className={s.locationLine}>
+                <MapPin size={14} aria-hidden="true" />
+                {where.state === 'asking' && <span>Finding your location…</span>}
+                {where.state === 'ok' && <span>Location captured (about {where.accuracy} m). Saved with the visit.</span>}
+                {where.state === 'unavailable' && (
+                  <span className={s.locationWarn}>{where.reason} The visit will be marked “no location”.{' '}
+                    <button type="button" className={s.linkBtn} onClick={locate}>Try again</button></span>
+                )}
+              </div>
+            </Field>
+          )}
+        </div>
 
         {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
         <div className={s.submitBar}>
