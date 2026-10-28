@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0045c928` — Vendors: white page surface, calmer sidebar, aligned details
-- Commits on this branch: 1050
+- Commit: `a207a070` — Vendors: settled field set, automatic location on Add Vendor, one row layout in the visit form
+- Commits on this branch: 1051
 - Pages (`page.tsx`): 153   API routes (`route.ts`): 163
 - Migrations: 374 (first `20260530_create_positions.sql`, latest `20270426000000_vendor_management.sql`)
 - Tables ever created: 178 (dropped at some point: 7)   SQL functions: 811   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a207a070` 2026-10-28 Vendors: settled field set, automatic location on Add Vendor, one row layout in the visit form
 - `0045c928` 2026-10-28 Vendors: white page surface, calmer sidebar, aligned details
 - `7d795ddf` 2026-10-28 Merge remote-tracking branch 'origin/main' into feat/vendor-management
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
@@ -38,7 +39,6 @@
 - `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 - `f6f75031` 2026-10-27 Modules: phone redesign — Essentials tile row and one grouped module list
 - `e39c8cad` 2026-10-27 Docs: migration 20270423000000 applied to production
-- `3d1d5816` 2026-10-27 Rename the sync migration so the credits-migration ledger does not match it
 
 ## Pages by top-level area
 

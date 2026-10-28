@@ -1,6 +1,6 @@
 # 23. Vendors (outsourcing vendor base, visit log, vendor pipeline)
 
-Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472). Migration `20270426000000` is **NOT APPLIED** to production at the time of writing; the module is invisible to everyone until it is applied and a person is granted `view`.
+Written 2026-10-28 from the build, on branch `feat/vendor-management` (PR #472). Migration `20270426000000` was **APPLIED to production on 2026-10-28** (together with the earlier-unapplied `20270422000000` Orders and `20270425000000` phone-alerts migrations, with `db push --include-all`); the module stays invisible to everyone until a person is granted `view` in Control Center. The catch-up window for past entries was set to 2026-11-11.
 
 ## 1. Purpose & users
 
