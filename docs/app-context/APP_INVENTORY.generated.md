@@ -5,15 +5,19 @@
 
 ## Snapshot
 
-- Commit: `6b1a5a1c` — Orders: Payment plan on its own page — pictures, account and cash apart (#488)
-- Commits on this branch: 1053
-- Pages (`page.tsx`): 154   API routes (`route.ts`): 165
+- Commit: `a20dcee5` — Test: the employee permission read may also select the action id
+- Commits on this branch: 1057
+- Pages (`page.tsx`): 155   API routes (`route.ts`): 165
 - Migrations: 378 (first `20260530_create_positions.sql`, latest `20270430000000_order_payment_plan_account_cash.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 821   Enums: 0
-- Test files: 672   Next.js 16.2.6, React 19.2.4
+- Test files: 673   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a20dcee5` 2026-10-29 Test: the employee permission read may also select the action id
+- `3c7bab8b` 2026-10-29 Control Center Access: People, Modules and Authorities screens
+- `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
+- `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
@@ -35,16 +39,12 @@
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
 - `6e6c5993` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
 - `240a1c7c` 2026-10-28 Docs: migration 20270424000000 (user_task_order) applied to production
-- `8d74eecb` 2026-10-28 My Tasks: plain action icons, pinned tasks under Important, drag-and-drop personal order
-- `64f8f76d` 2026-10-28 PI top card: salesperson and Order type in the centre column, dates as the Order page timeline
-- `7122417b` 2026-10-28 Modules: read payroll participation so Attendance request really hides
-- `eb76f3ea` 2026-10-27 Modules: Pending approvals for admins, Quick Actions tiles, Attendance request only for payroll members
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (10): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/test-data-cleanup`, `/admin/members`
+- **admin** (11): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/test-data-cleanup`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (13): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/upload`
@@ -91,7 +91,7 @@
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
-- **control-center** (8): `/departments [GET,POST]`, `/departments/[key] [DELETE,PATCH]`, `/modules [GET]`, `/modules/[key] [PATCH]`, `/permissions/employees/[id] [GET,PUT]`, `/permissions/modules [GET]`, `/permissions/modules/[key]/departments [GET,PUT]`, `/permissions/modules/[key]/employees [GET]`
+- **control-center** (8): `/departments [GET,POST]`, `/departments/[key] [DELETE,PATCH]`, `/modules [GET]`, `/modules/[key] [PATCH]`, `/permissions/employees/[id] [GET,PUT]`, `/permissions/matrix [GET]`, `/permissions/modules [GET]`, `/permissions/modules/[key]/departments [GET,PUT]`
 - **create-employee** (1): ` [POST]`
 - **create-user** (1): ` [POST]`
 - **customer-reviews** (9): `/custom-submissions [DELETE,PATCH,POST,PUT]`, `/draft [PATCH]`, `/generate [POST]`, `/image-groups [DELETE,POST]`, `/images [DELETE,POST]`, `/photos [DELETE,POST]`, `/revise [POST]`, `/test-cards/purge [POST]`, `/whatsapp [POST]`
@@ -149,7 +149,7 @@
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 92 source, 143 test
 - `src/lib/payroll` — 34 source, 32 test
-- `src/lib/permissions` — 19 source, 32 test
+- `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 7 source, 5 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/samples` — 1 source, 1 test
