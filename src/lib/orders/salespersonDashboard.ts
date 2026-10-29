@@ -330,7 +330,7 @@ export const SP_CARD_PENDING = 'Orders Pending Approval'
 export const SP_CARD_PENDING_SUB = 'Submitted, awaiting approval'
 export const SP_REVENUE_BASIS = 'Product value after discount, excl. GST'
 
-export const SP_CARD_RETURNED = 'Sent Back for Changes'
+export const SP_CARD_RETURNED = 'Returned to Sales'
 export const SP_CARD_RETURNED_SUB = 'Edit and resubmit'
 export const SP_CARD_REJECTED = 'Closed'
 export const SP_CARD_REJECTED_SUB = 'Last 7 days'

@@ -100,7 +100,7 @@ describe('the confirmed-order display defect', () => {
     // changed is that the badge no longer reads that column.
     const state = paymentDisplayState('approved_unlinked', confirmedOrder())
     assert.equal(state, 'received')
-    assert.equal(PAYMENT_DISPLAY_STATE_META[state].label, 'Received Payment')
+    assert.equal(PAYMENT_DISPLAY_STATE_META[state].label, 'Verified')
   })
 
   test('the Order Number is the allocated Order\'s, never blank', () => {
@@ -158,7 +158,7 @@ describe('the four destination kinds', () => {
   test('a VERIFIED payment with no allocation reads unallocated, not linked', () => {
     const state = paymentDisplayState('approved_linked', suspense())
     assert.equal(state, 'received_unallocated')
-    assert.equal(PAYMENT_DISPLAY_STATE_META[state].label, 'Received — Unallocated')
+    assert.equal(PAYMENT_DISPLAY_STATE_META[state].label, 'Verified — not allocated')
   })
 
   test('a MIXED destination is summarised, never sampled', () => {

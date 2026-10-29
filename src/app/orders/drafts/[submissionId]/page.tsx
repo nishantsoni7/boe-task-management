@@ -240,7 +240,7 @@ import {
 } from '@/lib/orders/advanceRequirement'
 import { asPaymentPosition, readExceptionReason } from '@/lib/orders/paymentGate'
 import { notifyFinance, notifyPiSubmission } from '@/lib/notify'
-import { applyAvailableMoney, availableMoneyUsedNotice, piDecisionMoneyNote, searchAvailableMoney } from '@/lib/finance/availableMoney'
+import { announcePaymentMoved, applyAvailableMoney, availableMoneyUsedNotice, piDecisionMoneyNote, searchAvailableMoney } from '@/lib/finance/availableMoney'
 import {
   describeApprovalReadiness,
   describeReviewDecision,
@@ -1204,7 +1204,7 @@ function PiDraftDetailPageInner() {
       setPaymentDialog(null)
       setPaymentNotice(availableMoneyUsedNotice(result, 'PI'))
       // FINANCE HEARS OF IT, for information only: the money was already received.
-      void notifyFinance({ event: 'finance_payment_moved', requestNumber: result.requestNumber ?? '', entityId: paymentId, orderNumber: draftReference })
+      announcePaymentMoved(paymentId, result.requestNumber, draftReference)
       await loadPayments()
       return null
     },

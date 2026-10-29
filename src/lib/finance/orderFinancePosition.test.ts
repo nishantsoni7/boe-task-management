@@ -473,8 +473,11 @@ describe('a payment status is called the same thing on the Order and on the PI',
   const rows = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
   test('the Order screen takes its labels from the PI card\'s own map', () => {
-    assert.ok(rows.includes('piPaymentStatusLabel(row.status)'),
+    // Since 20270505000000 the list draws the shared tracker, whose word is the
+    // same map the PI card uses (PI_PAYMENT_STATUS_LABEL === PAYMENT_STATUS_WORD).
+    assert.ok(rows.includes('<PaymentTracker status={row.status} />'),
       'the label comes from the shared map, not a second one on this screen')
+    assert.ok(readFileSync('src/components/finance/PaymentTracker.tsx', 'utf8').includes("from '@/lib/finance/paymentWords'"))
     assert.ok(rows.includes("piPaymentStatusLabel } from '@/lib/finance/piPaymentView'"),
       'and it is imported from the shared map')
   })
@@ -498,7 +501,7 @@ describe('a payment status is called the same thing on the Order and on the PI',
   test('both verified statuses read alike, because both are verified money', () => {
     assert.equal(piPaymentStatusLabel('approved_unlinked'), piPaymentStatusLabel('approved_linked'))
     assert.equal(piPaymentStatusLabel('approved_unlinked'), 'Verified')
-    assert.equal(piPaymentStatusLabel('pending_approval'), 'Awaiting Verification')
+    assert.equal(piPaymentStatusLabel('pending_approval'), 'Waiting for Finance')
   })
 
   test('and the WORD is now the whole signal — the table\'s palette went with it', () => {
@@ -511,7 +514,7 @@ describe('a payment status is called the same thing on the Order and on the PI',
     assert.equal(rows.includes('PAYMENT_STATUS_COLOR'), false)
     // NOTHING WAS LOST THAT A READER ACTED ON: the status is still stated, in
     // the shared map's own words, and no meaning ever depended on the tint.
-    assert.ok(rows.includes('piPaymentStatusLabel(row.status)'))
+    assert.ok(rows.includes('<PaymentTracker status={row.status} />'))
   })
 })
 

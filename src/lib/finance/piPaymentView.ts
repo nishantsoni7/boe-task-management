@@ -243,7 +243,7 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
       hint: 'the base for the advance' },
     { key: 'grand',      label: 'Grand total',           value: formatMoney(summary.grand_total) },
     { key: 'verified',   label: 'Verified payment',      value: formatMoney(summary.verified_amount) },
-    { key: 'unverified', label: 'Awaiting verification', value: formatMoney(summary.unverified_amount) },
+    { key: 'unverified', label: 'Waiting for Finance', value: formatMoney(summary.unverified_amount) },
     { key: 'percent',    label: 'Verified payment %',    value: formatPercent(summary.verified_percent),
       hint: 'of Total before GST, verified only' },
     { key: 'needed',     label: 'Needed for approval',   value: formatMoney(summary.needed_for_standard),

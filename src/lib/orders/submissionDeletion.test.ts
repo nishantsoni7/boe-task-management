@@ -236,8 +236,8 @@ describe('the confirmation says what is about to happen', () => {
   })
 
   test('the status is shown in the words the rest of Orders uses', () => {
-    assert.equal(deletionStatusLabel('needs_changes'), 'Needs Changes')
-    assert.equal(deletionStatusLabel('rejected'), 'Rejected')
+    assert.equal(deletionStatusLabel('needs_changes'), 'Returned to Sales')
+    assert.equal(deletionStatusLabel('rejected'), 'Closed (deal lost)')
     // An unknown value renders as itself rather than as a lie about the record.
     assert.equal(deletionStatusLabel('something_new'), 'something_new')
     assert.equal(deletionStatusLabel(null), '—')

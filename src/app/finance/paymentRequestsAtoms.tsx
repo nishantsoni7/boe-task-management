@@ -141,7 +141,7 @@ export function StaleBadge() {
 // any of those guarantees.
 
 export const STATUS_CORRECTION_OPTIONS: { value: string; label: string }[] = [
-  { value: 'pending_approval',    label: 'Pending Review' },
+  { value: 'pending_approval',    label: 'Waiting for Finance' },
   { value: 'needs_clarification', label: 'Needs Clarification' },
   { value: 'rejected',            label: 'Rejected' },
 ]

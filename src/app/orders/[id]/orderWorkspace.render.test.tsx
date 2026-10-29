@@ -427,7 +427,7 @@ describe('the payment summary figures', () => {
     assert.equal(/order value/i.test(body), false)
     // The two parts of what has been received.
     assert.ok(body.includes('Verified ₹7,50,000.00'))
-    assert.ok(body.includes('Awaiting verification ₹0.00'))
+    assert.ok(body.includes('Waiting for Finance ₹0.00'))
     // What remains.
     assert.ok(body.includes('Balance ₹8,14,090.00'))
     // THE BASE IS STATED ONCE, in the line under the headline.
@@ -475,7 +475,7 @@ describe('the payment summary figures', () => {
   test('the payment WORDS are the Order’s own — verified is never called approved', () => {
     const body = text(paymentMarkup([payment({})], 1564090))
     assert.ok(body.includes('Verified'))
-    assert.ok(body.includes('Awaiting verification'))
+    assert.ok(body.includes('Waiting for Finance'))
     assert.equal(/approved/i.test(body), false)
   })
 
@@ -489,10 +489,10 @@ describe('the payment summary figures', () => {
     for (const b of buttons) assert.match(b, /type="button"/)
     const body = text(html)
     assert.ok(body.includes('Verified ₹7,50,000.00 1 payment'))
-    assert.ok(body.includes('Awaiting verification ₹1,00,000.00 1 payment'))
+    assert.ok(body.includes('Waiting for Finance ₹1,00,000.00 1 payment'))
     // The accessible name says what the control DOES, not just what it shows.
     assert.match(html, /aria-label="Verified: [^"]*Show the payments\."/)
-    assert.match(html, /aria-label="Awaiting verification: [^"]*Show the payments\."/)
+    assert.match(html, /aria-label="Waiting for Finance: [^"]*Show the payments\."/)
   })
 
   test('an empty set still gets a button — a figure of zero is a set, not a fault', () => {
@@ -507,7 +507,7 @@ describe('the payment summary figures', () => {
       payment({ id: 'p2', status: 'pending_approval', amount: 100000, allocatedAmount: 100000, exactAmount: '100000.00', exactAllocatedAmount: '100000.00' }),
     ], 1564090))
     assert.ok(body.includes('Verified ₹7,50,000.00'))
-    assert.ok(body.includes('Awaiting verification ₹1,00,000.00'))
+    assert.ok(body.includes('Waiting for Finance ₹1,00,000.00'))
     // The balance is measured against VERIFIED money, exactly as before.
     assert.ok(body.includes('Balance ₹8,14,090.00'))
     assert.ok(body.includes('against verified'))
@@ -628,7 +628,9 @@ describe('the payments behind a figure', () => {
     // Every row in the verified list is verified; captioning each one so says
     // nothing. A row awaiting Finance may be pending or need clarification.
     assert.equal(text(dialog([payment({})], 'verified')).includes('Status'), false)
-    assert.ok(text(dialog([awaitingRow], 'awaiting')).includes('Status Awaiting Verification'))
+    // The shared tracker (20270505000000): Recorded, then the status word.
+    const awaiting = text(dialog([awaitingRow], 'awaiting'))
+    assert.ok(awaiting.includes('Status') && awaiting.includes('Recorded') && awaiting.includes('Waiting for Finance'))
   })
 
   test('A SPLIT PAYMENT SHOWS THIS ORDER’S SHARE, never the full amount as the figure', () => {

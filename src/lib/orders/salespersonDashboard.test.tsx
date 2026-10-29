@@ -212,7 +212,7 @@ describe('the page body: three cards and four panels, in order', () => {
   test('five summary cards, in order, with the stated figures and labels (the last two count PIs sent back / rejected, never pending)', () => {
     const out = html(parsed(payload()))
     const cards = [...out.matchAll(/<section class="spd-card"[^>]*><h2[^>]*>([^<]+)<\/h2><p class="spd-card-value">([^<]*)<\/p><p class="spd-card-sub">([^<]*)<\/p>/g)]
-    assert.deepEqual(cards.map(c => c[1]), ['Total Orders', 'Current Month Revenue', 'Orders Pending Approval', 'Sent Back for Changes', 'Rejected'])
+    assert.deepEqual(cards.map(c => c[1]), ['Total Orders', 'Current Month Revenue', 'Orders Pending Approval', 'Returned to Sales', 'Closed'])
     assert.equal(cards[0][2], '42')
     assert.equal(cards[0][3], 'All-time confirmed orders')
     assert.equal(cards[1][2], '₹12,34,567.50')

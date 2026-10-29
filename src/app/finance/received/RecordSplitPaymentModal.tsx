@@ -89,7 +89,7 @@ import {
 } from '@/app/finance/components/PaymentEntryFields'
 import { DiscardConfirmation, useDiscardGuard } from '@/app/finance/components/DiscardGuard'
 import { AvailableMoneyPanel } from '@/components/finance/AvailableMoneyPanel'
-import { applyAvailableMoney, availableMoneyUsedNotice, searchAvailableMoney } from '@/lib/finance/availableMoney'
+import { announcePaymentMoved, applyAvailableMoney, availableMoneyUsedNotice, searchAvailableMoney } from '@/lib/finance/availableMoney'
 import {
   DEFAULT_PAYMENT_MODE,
   SUSPENSE_NOTICE,
@@ -644,7 +644,7 @@ export function RecordSplitPaymentModal({
           onUse={async paymentId => {
             const result = await applyAvailableMoney(supabase, paymentId, { orderId: initialTarget.id })
             if (!result.ok) return result.message
-            void notifyFinance({ event: 'finance_payment_moved', requestNumber: result.requestNumber ?? '', entityId: paymentId, orderNumber: `Order ${initialTarget.reference}` })
+            announcePaymentMoved(paymentId, result.requestNumber, `Order ${initialTarget.reference}`)
             onUsedAvailable(availableMoneyUsedNotice(result, 'Order'))
             return null
           }}

@@ -809,10 +809,12 @@ export function OrderPaymentListDialog({
                       one so says nothing; a row awaiting Finance may be
                       pending or may need clarification, which is a real
                       difference to the person chasing it. */}
-                  <div className="order-pay-list-fact">
-                    <dt>Status</dt>
-                    <dd><PaymentTracker status={row.status} /></dd>
-                  </div>
+                  {kind === 'awaiting' && (
+                    <div className="order-pay-list-fact">
+                      <dt>Status</dt>
+                      <dd><PaymentTracker status={row.status} /></dd>
+                    </div>
+                  )}
                 </dl>
                 {/* THE DOORS: View details (Finance entry) and Edit (an administrator). */}
                 <div className="order-pay-list-actions">

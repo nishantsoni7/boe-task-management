@@ -14,6 +14,7 @@
 
 import { formatMoney, paymentModeLabel } from '@/lib/finance/piPaymentView'
 import { paymentStatusWord } from '@/lib/finance/paymentWords'
+import { notifyFinance } from '@/lib/notify'
 
 /** Exactly one target: the PI being paid, or the Order. */
 export type AvailableMoneyTarget =
@@ -115,6 +116,15 @@ export async function applyAvailableMoney(
     verified: row.status === 'approved_linked' || row.status === 'approved_unlinked',
     requestNumber: row.request_number ?? null,
   }
+}
+
+/**
+ * Tells Finance, for information only, that money already received was moved
+ * onto a PI or Order. Never awaited and never fails the move, which has already
+ * happened by the time this is called.
+ */
+export function announcePaymentMoved(paymentId: string, requestNumber: string | null, where: string | null): void {
+  void notifyFinance({ event: 'finance_payment_moved', requestNumber: requestNumber ?? '', entityId: paymentId, orderNumber: where })
 }
 
 /** The words one match is drawn with. */

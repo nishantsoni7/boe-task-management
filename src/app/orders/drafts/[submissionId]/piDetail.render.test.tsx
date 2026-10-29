@@ -1086,8 +1086,8 @@ describe('payment status: how much has been received, and what it is made of', (
 
   test('beside it, Confirmed and Awaiting verification — each an amount, a count and a share', () => {
     const t = text(statusHtml())
-    assert.ok(t.includes('Confirmed ₹2,50,000 2 payments · 21.18% of Total before GST'))
-    assert.ok(t.includes('Awaiting verification ₹2,45,000 1 payment · 20.76% of Total before GST'))
+    assert.ok(t.includes('Verified ₹2,50,000 2 payments · 21.18% of Total before GST'))
+    assert.ok(t.includes('Waiting for Finance ₹2,45,000 1 payment · 20.76% of Total before GST'))
     assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'money waiting on Finance is never called failed or unpaid')
   })
 
@@ -1249,8 +1249,8 @@ describe('each part opens the rows it is made of', () => {
       assert.ok(control, `${prefix} must be pressable`)
       ;(control.props.onClick as () => void)()
     }
-    press('Confirmed')
-    press('Awaiting verification')
+    press('Verified')
+    press('Waiting for Finance')
     press('Payment details')
     press('Verify 1 pending')
     press('Add payment')
@@ -1353,7 +1353,7 @@ describe('payment status opens OPEN, and is still a real disclosure', () => {
     assert.ok(html.includes('pi-detail-paystatus-chevron'), 'with a visible expand indicator')
 
     // The amounts, the shares and the bar.
-    for (const figure of ['₹', '%', 'received', 'Confirmed', 'Awaiting verification']) {
+    for (const figure of ['₹', '%', 'received', 'Verified', 'Waiting for Finance']) {
       assert.ok(!t.includes(figure), `${figure} must not be readable while the card is shut`)
     }
     assert.ok(!html.includes('role="progressbar"'), 'no progress bar')
@@ -1376,7 +1376,7 @@ describe('payment status opens OPEN, and is still a real disclosure', () => {
     const t = text(open)
     assert.ok(open.includes('aria-expanded="true"'))
     assert.ok(!t.includes(PAYMENT_COLLAPSED_HINT), 'the hint has done its job and gone')
-    for (const part of ['received', 'Confirmed', 'Awaiting verification', 'Total before GST']) {
+    for (const part of ['received', 'Verified', 'Waiting for Finance', 'Total before GST']) {
       assert.ok(t.includes(part), `${part} is back`)
     }
     assert.ok(open.includes('role="progressbar"'))
@@ -2228,7 +2228,7 @@ describe('the owner of a returned PI', () => {
 
   test('is told, in management’s own words, what to correct', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.needsChangesOwner))
-    assert.equal(WORKFLOW_HEADING.needsChangesOwner, 'Changes requested')
+    assert.equal(WORKFLOW_HEADING.needsChangesOwner, 'Returned to Sales')
     assert.ok(text(html).includes('What management asked for'))
     assert.ok(text(html).includes('The fabric on line 3 is wrong.'))
   })
@@ -2309,13 +2309,13 @@ describe('the owner of a rejected PI', () => {
 
   test('is told it is closed, with the reason, and offered no action', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.rejected))
-    assert.ok(text(html).includes('Why this was rejected'))
+    assert.ok(text(html).includes('Why this was closed'))
     assert.ok(text(html).includes('The client withdrew.'))
     assert.ok(!html.includes('<button'), 'the page must not look actionable')
   })
 
   test('is told who closed it and when', () => {
-    assert.ok(text(html).includes('Rejected by Rohit Verma · 05 Aug 2026, 09:10 am'))
+    assert.ok(text(html).includes('Closed by Rohit Verma · 05 Aug 2026, 09:10 am'))
   })
 
   test('is offered no deletion here — that stays on the PI Drafts list', () => {
@@ -3123,8 +3123,8 @@ describe('the activity trail', () => {
     assert.equal(ACTIVITY_WINDOW, 5)
     assert.ok(text(html).includes('Latest 5 of 7'))
     for (const label of [
-      'Submitted for approval', 'Advance exception requested', 'Changes requested',
-      'Advance exception approved', 'Rejected',
+      'Submitted for approval', 'Advance exception requested', 'Returned to Sales',
+      'Advance exception approved', 'Closed (deal lost)',
     ]) {
       assert.ok(text(html).includes(label), `${label} must be in the trail`)
     }
@@ -3191,10 +3191,10 @@ describe('the activity trail', () => {
   })
 
   test('keeps the newest event first, as it always has', () => {
-    assert.equal(entries[0].label, 'Rejected')
+    assert.equal(entries[0].label, 'Closed (deal lost)')
     const list = html.slice(html.indexOf('<ol'))
-    assert.ok(list.indexOf('Rejected') < list.indexOf('Changes requested'))
-    assert.ok(list.indexOf('Changes requested') < list.indexOf('Submitted for approval'))
+    assert.ok(list.indexOf('Closed (deal lost)') < list.indexOf('Returned to Sales'))
+    assert.ok(list.indexOf('Returned to Sales') < list.indexOf('Submitted for approval'))
   })
 
   test('exposes no id, no enum and no metadata object', () => {
