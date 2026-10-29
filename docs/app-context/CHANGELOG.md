@@ -4,12 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Task Management: Dashboard counters and Tasks Created in an "At a glance" bar on the right (PR #500) · no migration
+## 2026-10-29 — Task Management: Dashboard counters and Tasks Created in an "At a glance" bar on the right (PR #500, squash-merged as c79bb1a6) · no migration · Production deploy success 06:18 UTC, live Dashboard bundle carries the bar · backup verified: code bundle 20261029T061614Z, database export 20261029T061637Z (197 tables, 0 errors)
 - **Owner request.** Bring the bottom two sections of the Dashboard (Overdue / Waiting / Due Today, and Tasks Created) into a bar on the right-hand side, as on the Modules page. Mockup agreed first.
 - **What.** One bar, "At a glance": "Your tasks now" (the three counters, stacked) and "Tasks created" (7 days / 30 days; rows "Self tasks", "Delegated tasks"). From a 1132 px window it is a 280 px column fixed to the right edge, full height, own scroll; the header and body reserve its width so the header buttons and cards never sit under it. Narrower, it is a block under Needs Your Attention. Always drawn.
 - **Unchanged.** The counts and how they are computed, the labels, Overdue's red, and the rule that a counter opens its list only when it has tasks. Top 3 Focus and Needs Your Attention are untouched.
 - **How.** `src/app/dashboard/GlanceBar.tsx` + `glanceBar.module.css` (the Modules panel's docking rules); `OperationalStatusPanel` removed from the page; `TaskCreationReportCard` loses its `isMobile` prop. Dossier `11-task-management.md` §6.
-- **Proof.** tsc, eslint on the changed files, `glanceBar.test.ts` plus every suite that reads the Dashboard page (524 tests, 0 fail). Not seen signed in or in a browser.
+- **Proof.** tsc, eslint on the changed files, `glanceBar.test.ts` plus every suite that reads the Dashboard page (524 tests, 0 fail); on the PR, CI and the Vercel check passed. Not seen signed in or in a browser.
 - Migrations: none.
 
 ## 2026-10-29 — Finance: Founders' payouts (PR #497, squash-merged as 1a17b86b) · migration 20270501000000 APPLIED 2026-10-29 (by the owner, from the worktree, after a rolled-back rehearsal on the linked database) · Production deploy success 05:48 UTC (deployment 7405108646); the live bundle on boeone.vercel.app carries `founder_payouts_read` · backup verified: code bundle 20261029T055431Z, database export 20261029T054642Z (197 tables, 100,116 rows, 0 errors; the five `founder_payout_*` tables included)
