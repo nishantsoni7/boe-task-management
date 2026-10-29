@@ -230,7 +230,7 @@ revoke execute on function public.reject_order_submission(uuid, text) from publi
 grant  execute on function public.reject_order_submission(uuid, text) to authenticated;
 
 comment on function public.reject_order_submission(uuid, text) is
-  'Closes a submitted PI ("Close: deal lost"), for a caller who may approve orders. The reason is mandatory and recorded on the PI and in its history. Final: a closed PI has no transition out. Its active payment allocations are reversed with the reason and its pending allocation intents cancelled, so the money is free for the client''s next PI or Order; payment rows are not changed. 20270505000000.';
+  'Closes a submitted PI ("Close: deal lost"), for a caller who may approve orders. The reason is mandatory and recorded on the PI and in its history. Final: a closed PI has no transition out. Its active payment allocations are reversed with the reason and its pending allocation intents cancelled, so the money is free for the client''s next PI or Order; payment rows are not changed. 20270506000000.';
 
 
 -- ═══ 4. Money already received from this client ══════════════════════════════
@@ -326,7 +326,7 @@ revoke execute on function public.client_available_payments(uuid, uuid, numeric,
 grant  execute on function public.client_available_payments(uuid, uuid, numeric, date) to authenticated;
 
 comment on function public.client_available_payments(uuid, uuid, numeric, date) is
-  'Add payment, before anything is recorded: at most three payments of the target''s own client (client_name_key), same amount, payment date within 30 days, with money free to use (payment_amount_free_for_reuse > 0) and not already on this target. Same doors as the payment forms. Needs an amount and a date; returns [] otherwise. 20270505000000.';
+  'Add payment, before anything is recorded: at most three payments of the target''s own client (client_name_key), same amount, payment date within 30 days, with money free to use (payment_amount_free_for_reuse > 0) and not already on this target. Same doors as the payment forms. Needs an amount and a date; returns [] otherwise. 20270506000000.';
 
 
 -- ═══ 5. Use this money ═══════════════════════════════════════════════════════
@@ -503,7 +503,7 @@ revoke execute on function public.use_available_payment(uuid, uuid, uuid) from p
 grant  execute on function public.use_available_payment(uuid, uuid, uuid) to authenticated;
 
 comment on function public.use_available_payment(uuid, uuid, uuid) is
-  'Use this money: moves one payment''s free money onto a PI or a Confirmed Order of the SAME client, through the same doors as the payment forms. Releases any allocation the payment still has on a closed PI (reason recorded), then allocates everything free via allocate_payment_to_target_internal. The payment keeps its ID and status (a verified payment stays verified). 20270505000000.';
+  'Use this money: moves one payment''s free money onto a PI or a Confirmed Order of the SAME client, through the same doors as the payment forms. Releases any allocation the payment still has on a closed PI (reason recorded), then allocates everything free via allocate_payment_to_target_internal. The payment keeps its ID and status (a verified payment stays verified). 20270506000000.';
 
 
 -- ═══ 6. Assertions ═══════════════════════════════════════════════════════════

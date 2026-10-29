@@ -1,5 +1,5 @@
 /**
- * Payments counted once, Step 1 (20270505000000): the four words, money already
+ * Payments counted once, Step 1 (20270506000000): the four words, money already
  * received from this client, and the approver's Close / Return choice.
  *
  * The database half is proven against the real functions in
@@ -29,7 +29,7 @@ import { PAYMENT_DISPLAY_STATE_META } from './paymentDestination'
 import { REJECT_BUTTON_LABEL, REQUEST_CHANGES_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import { PI_DRAFT_STATUS_LABEL } from '@/lib/orders/draftsView'
 
-const MIGRATION = readFileSync(join('supabase', 'migrations', '20270505000000_order_submission_close_returns_payments.sql'), 'utf8')
+const MIGRATION = readFileSync(join('supabase', 'migrations', '20270506000000_order_submission_close_returns_payments.sql'), 'utf8')
 
 function fakeClient(answer: { data: unknown; error: { message?: string } | null }) {
   const calls: { fn: string; args: Record<string, unknown> }[] = []

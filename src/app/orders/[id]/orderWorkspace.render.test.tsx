@@ -628,7 +628,7 @@ describe('the payments behind a figure', () => {
     // Every row in the verified list is verified; captioning each one so says
     // nothing. A row awaiting Finance may be pending or need clarification.
     assert.equal(text(dialog([payment({})], 'verified')).includes('Status'), false)
-    // The shared tracker (20270505000000): Recorded, then the status word.
+    // The shared tracker (20270506000000): Recorded, then the status word.
     const awaiting = text(dialog([awaitingRow], 'awaiting'))
     assert.ok(awaiting.includes('Status') && awaiting.includes('Recorded') && awaiting.includes('Waiting for Finance'))
   })

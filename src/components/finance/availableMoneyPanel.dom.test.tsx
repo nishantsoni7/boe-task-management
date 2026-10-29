@@ -1,6 +1,6 @@
 /**
  * "Money already received from this client" — the panel inside Add payment,
- * run for real in a DOM (Payments counted once, 20270505000000).
+ * run for real in a DOM (Payments counted once, 20270506000000).
  *
  * Run: npm run test:file -- src/components/finance/availableMoneyPanel.dom.test.tsx
  */

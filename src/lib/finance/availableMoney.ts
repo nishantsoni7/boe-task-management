@@ -7,7 +7,7 @@
 // the PI or Order. The payment keeps its ID and its status, so a verified one
 // stays verified and the transfer is never typed in a second time.
 //
-// Both calls are database doors (20270505000000): client_available_payments
+// Both calls are database doors (20270506000000): client_available_payments
 // (at most three rows, needs the amount and the date, same client only) and
 // use_available_payment. This file decides nothing; it formats, and it turns
 // every refusal into a fixed sentence so no database text reaches the screen.

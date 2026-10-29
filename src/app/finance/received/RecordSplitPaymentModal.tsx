@@ -179,7 +179,7 @@ export function RecordSplitPaymentModal({
     clientName: string
   } | null
   /**
-   * Money already received from this client (20270505000000). Given with an
+   * Money already received from this client (20270506000000). Given with an
    * Order `initialTarget`, the form shows the client's free money once the amount
    * and date are in, and "Use this money" moves it onto that Order instead of
    * recording it again. Called with the sentence to show; the caller closes.

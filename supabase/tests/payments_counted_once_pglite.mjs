@@ -1,4 +1,4 @@
-// Database regression suite for 20270505000000 (Payments counted once, Step 1:
+// Database regression suite for 20270506000000 (Payments counted once, Step 1:
 // a closed PI gives its money back; Add payment can use money already received).
 //
 // Applies the REAL migration on an in-memory Postgres (PGlite), together with the
@@ -118,7 +118,7 @@ await db.exec(extract(mig('20260921000000_order_submission_verified_payment_gate
 await db.exec(extract(mig('20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql'), 'assert_finance_payment_door'))
 
 // THE MIGRATION UNDER TEST, whole, including its own assertions.
-await db.exec(mig('20270505000000_order_submission_close_returns_payments.sql'))
+await db.exec(mig('20270506000000_order_submission_close_returns_payments.sql'))
 
 let checks = 0
 const pass = name => { checks++; console.log('ok', checks, name) }

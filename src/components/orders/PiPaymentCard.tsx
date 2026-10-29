@@ -218,7 +218,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
   /** Who is recording it (the default holder of the money). */
   recorderId?: string | null
   /**
-   * Money already received from this client (20270505000000). `use` resolves to
+   * Money already received from this client (20270506000000). `use` resolves to
    * an error sentence, or null once the money is on the PI (the page then closes
    * this form). Absent: the form is exactly as before.
    */

@@ -20,7 +20,7 @@ export type FinanceNotifyEvent =
   | 'finance_rejected'
   | 'finance_linked'
   | 'finance_status_corrected'
-  /** Use this money (20270505000000): already-received money moved onto a PI or Order. For information only. */
+  /** Use this money (20270506000000): already-received money moved onto a PI or Order. For information only. */
   | 'finance_payment_moved'
 
 type NotifRow = {

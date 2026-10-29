@@ -473,7 +473,7 @@ describe('a payment status is called the same thing on the Order and on the PI',
   const rows = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
   test('the Order screen takes its labels from the PI card\'s own map', () => {
-    // Since 20270505000000 the list draws the shared tracker, whose word is the
+    // Since 20270506000000 the list draws the shared tracker, whose word is the
     // same map the PI card uses (PI_PAYMENT_STATUS_LABEL === PAYMENT_STATUS_WORD).
     assert.ok(rows.includes('<PaymentTracker status={row.status} />'),
       'the label comes from the shared map, not a second one on this screen')

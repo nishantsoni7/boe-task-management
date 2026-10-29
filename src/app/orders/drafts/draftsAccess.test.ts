@@ -528,7 +528,7 @@ describe('the detail page renders only what it fetched', () => {
       // finance.verify_own_payment, through approve_finance_payment_request;
       // for everybody else it writes nothing.
       'completePaymentEntry',
-      // src/lib/finance/availableMoney.ts — use_available_payment (20270505000000):
+      // src/lib/finance/availableMoney.ts — use_available_payment (20270506000000):
       // moves money already received from the SAME client onto this PI, through
       // the same door as record_pi_submission_payment. Pinned in availableMoney.test.ts
       // and proven on PGlite (supabase/tests/payments_counted_once_pglite.mjs).
@@ -544,7 +544,7 @@ describe('the detail page renders only what it fetched', () => {
       // decision. Ids only, under the caller's own RLS.
       'loadOwnPaymentIds',
       // client_available_payments: at most three of this client's payments with
-      // money free to use, for the amount and date typed (20270505000000).
+      // money free to use, for the amount and date typed (20270506000000).
       'searchAvailableMoney',
     ] as const
 

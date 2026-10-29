@@ -273,7 +273,7 @@ describe('who may call this, and who gets written to', () => {
   test('the notification payload is unchanged', () => {
     // Same columns, same values. This change is about how many queries decide
     // what to write, never about what is written.
-    // `type` defaults to the event name; only finance_payment_moved (20270505000000)
+    // `type` defaults to the event name; only finance_payment_moved (20270506000000)
     // passes the existing finance_linked type instead of a new enum value.
     assert.ok(route.includes('rows.push({ user_id: userId, task_id: null, entity_id: entityId ?? null, type, title, body, is_push_sent: true })'))
     assert.ok(route.includes('const push = (userId: string | null | undefined, title: string, type: string = event) => {'))

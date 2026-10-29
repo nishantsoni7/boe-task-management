@@ -915,7 +915,7 @@ export function PiSubmitConfirmModal({
 // The owner's two choices (Payments counted once, 2026-10-29): anything that can
 // be fixed goes back to Sales on the SAME PI, with its payments still on it; a
 // deal that is off is closed, and closing hands its money back to the client
-// (reject_order_submission, 20270505000000).
+// (reject_order_submission, 20270506000000).
 
 export type PiNoteIntent = 'needs_changes' | 'reject' | 'reject_exception'
 
@@ -948,7 +948,7 @@ const INTENT_COPY: Record<PiNoteIntent, {
     placeholder: 'Say why this PI is being closed…',
     // Stated plainly because it is true and irreversible: the database has no
     // transition out of 'rejected'. The money is not lost: closing hands it back
-    // to the client (20270505000000).
+    // to the client (20270506000000).
     warning:
       'This is final. The PI is closed for good and stays read-only. Any payments on it go back to the client’s money, ready for their next PI or Order. If the PI only needs correcting, use Return to Sales.',
     tone: { background: colors.redTint, border: '1px solid rgba(180,35,50,0.3)', color: '#A12438' },

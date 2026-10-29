@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `cf417c79` — Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
-- Commits on this branch: 1071
+- Commit: `cfcf4233` — Docs: Payments counted once, Step 1 is PR #508
+- Commits on this branch: 1074
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
-- Migrations: 384 (first `20260530_create_positions.sql`, latest `20270505000000_order_submission_close_returns_payments.sql`)
+- Migrations: 384 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
 - Test files: 681   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `cfcf4233` 2026-10-29 Docs: Payments counted once, Step 1 is PR #508
+- `7b830d04` 2026-10-29 Payments counted once, Step 1: tests and the last labels follow the shared words
+- `c522a805` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back, Add payment offers money already received
 - `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
 - `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 - `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
@@ -36,9 +39,6 @@
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
-- `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
-- `5f339fab` 2026-10-29 Vendors: scan a card or name plate; clearer Products and Team size choices (#484)
-- `97d88dc1` 2026-10-29 Modules page: "For you" panel, action first and every update previewed (#483)
 
 ## Pages by top-level area
 
@@ -427,7 +427,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270502000000_order_number_rename.sql`
 - `20270503000000_order_payment_plan_bdpi.sql`
 - `20270504000000_order_payment_plan_line_costs.sql`
-- `20270505000000_order_submission_close_returns_payments.sql`
+- `20270506000000_order_submission_close_returns_payments.sql`
 
 ## All SQL function names
 

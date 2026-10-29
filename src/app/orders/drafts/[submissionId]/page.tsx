@@ -1191,7 +1191,7 @@ function PiDraftDetailPageInner() {
     }
   }, [supabase, submissionId, viewerId, loadPayments])
 
-  // MONEY ALREADY RECEIVED FROM THIS CLIENT (20270505000000): offered inside Add
+  // MONEY ALREADY RECEIVED FROM THIS CLIENT (20270506000000): offered inside Add
   // payment, so a transfer already in the system is moved here, never typed in
   // again. The database decides who may and which money qualifies.
   const draftReference = load.kind === 'ready' ? (load.draft.submission.draft_reference ?? null) : null

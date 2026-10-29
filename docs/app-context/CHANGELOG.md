@@ -4,10 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Finance + Orders: Payments counted once, Step 1 (PR #508, not merged) · migration 20270505000000 NOT APPLIED (proven on PGlite, 21 checks; the owner applies it before merge)
+## 2026-10-29 — Finance + Orders: Payments counted once, Step 1 (PR #508, not merged) · migration 20270506000000 NOT APPLIED (proven on PGlite, 21 checks; the owner applies it before merge)
 - **Owner request.** Staff re-uploaded payments as new entries when a rejected PI was resubmitted as a new PI, after the first copy had been verified. Wanted: smooth verification, no duplicates, simple for new staff. Plan v3 approved with all picks.
 - **What.** Approver: **Return to Sales** (fix and resubmit the same PI, payments stay) / **Close: deal lost** (final; its money goes back to the client). Add payment (PI, and Order from Finance) shows **Money already received from this client** once amount + date are in; **Use this money** moves the same payment (same ID, same status) onto the PI/Order. One set of words for a payment's state everywhere (Waiting for Finance / Verified / Needs Clarification / Rejected) and a Recorded → status tracker on PI and Order payment rows. One-page guides in `docs/guides/`.
-- **Database.** `20270505000000_order_submission_close_returns_payments.sql`: `client_name_key`, `payment_amount_free_for_reuse` (internal), `reject_order_submission` restated (releases allocations, cancels intents), `client_available_payments`, `use_available_payment`. Self-asserting; writes no data on apply.
+- **Database.** `20270506000000_order_submission_close_returns_payments.sql`: `client_name_key`, `payment_amount_free_for_reuse` (internal), `reject_order_submission` restated (releases allocations, cancels intents), `client_available_payments`, `use_available_payment`. Self-asserting; writes no data on apply.
 - **Rollback.** Migration header: drop the four new functions and re-run the 20261224000000 `reject_order_submission`; revert the PR. Reversed allocations stay reversed; that money is ordinary unallocated money.
 - **Not in this step.** UTR rule, duplicate flags, Compare/merge, the To do list (Step 2); bank links and the third tracker step (Step 3).
 - **Not changed on purpose.** The Confirmed Order PDF still prints "Awaiting verification" (PDF output is pinned by its own tests); the Finance page names (Payment Requests, Confirmed Payments) are unchanged.
