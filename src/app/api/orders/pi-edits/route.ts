@@ -31,6 +31,7 @@ import {
   type PiEditState,
 } from '@/lib/orders/piEdit'
 import { describePiEditFailure, loadPiContent } from '@/lib/orders/piEditServer'
+import { loadSheetCostsForEdit } from '@/lib/orders/fabricFinishServer'
 import { isCanonicalPiImageKey, proposalImagesAreCanonical } from '@/lib/orders/piImageKey'
 
 export const runtime = 'nodejs'
@@ -88,7 +89,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const priced = priceEdit(content, edit)
+  // The PI's Fabric & Finish sheet (20270431000000): when it carries figures,
+  // the Fabric cost and Packing cost lines are ITS totals for the quantities
+  // this edit proposes — the owner's rule that the two must match (2026-10-29).
+  const priced = priceEdit(content, edit, await loadSheetCostsForEdit(service, submissionId, edit))
   const orderId = typeof row.order_id === 'string' ? row.order_id : null
 
   if (mode === 'propose') {

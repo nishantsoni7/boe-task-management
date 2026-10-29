@@ -77,6 +77,7 @@ import {
   type ProductColumns,
 } from './layout'
 import { describeImageFormat, isStorableImageFormat, PI_ACCEPTED_IMAGE_LABEL } from './imageFormats'
+import { readFabricFinishSheets } from './fabricFinishSheets'
 import { isCalendarDate } from '@/lib/orders/dueDate'
 import type {
   PiAmountOrText,
@@ -568,6 +569,10 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       },
       representativeImages,
       customizationImages,
+      // The two sheets beside the Master (fabricFinishSheets.ts). Optional
+      // content: a workbook without them, or with them headed differently,
+      // is reported there and refused nowhere.
+      fabricFinish: readFabricFinishSheets(entries),
     },
   }
 }

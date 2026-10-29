@@ -93,6 +93,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
+import { FabricFinishDrawer } from '@/components/orders/FabricFinishDrawer'
+import { FABRIC_FINISH_OPEN_LABEL, FABRIC_FINISH_TITLE } from '@/components/orders/FabricFinishSheet'
 import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
 import { usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
@@ -459,6 +461,9 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
+  // The Fabric & Finish cost sheet (20270431000000), a panel that slides in
+  // from the right. Self-loading when opened: nothing of it runs at startup.
+  const [costSheetOpen, setCostSheetOpen] = useState(false)
   // The payment whose Edit form is open (the payments dialog is hidden meanwhile).
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   // Which rows Payment details opens on: every one, or the rows behind one of
@@ -2625,6 +2630,18 @@ function PiDraftDetailPageInner() {
               {/* ── 2b. Management review, beside Finance ──
                   Row 3 keeps the panel when the completion area is not drawn. */}
               {showCompletion && workflowPanel}
+              {/* ── 2c. Fabric & Finish cost sheet (20270431000000) ──
+                  Per product: fabric metres and price, packing, the finish
+                  choices and reference pictures, read from the workbook's own
+                  two sheets and typeable where they left blanks. A button: the
+                  sheet slides in from the right, and offers its own page. */}
+              <button type="button" className="opp-entry" onClick={() => setCostSheetOpen(true)}>
+                <span className="opp-entry-text">
+                  <strong>{FABRIC_FINISH_TITLE}</strong>
+                  <span>Fabric metres and price, packing and finish choices per product, from the PI workbook</span>
+                </span>
+                <span className="opp-entry-go" aria-hidden="true">{FABRIC_FINISH_OPEN_LABEL} →</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2982,6 +2999,16 @@ function PiDraftDetailPageInner() {
           No request: clientDetails came off the submission already on screen. */}
       {clientDialog && (
         <PiClientDetailsModal client={clientDetails} onClose={() => setClientDialog(false)} />
+      )}
+
+      {/* ── Fabric & Finish cost sheet (20270431000000): slides in from the right ── */}
+      {costSheetOpen && (
+        <FabricFinishDrawer
+          submissionId={submissionId}
+          context={submission.client_name ? `PI · ${submission.client_name}` : 'PI'}
+          openAsPageHref={`/orders/drafts/${submissionId}/fabric-finish`}
+          onClose={() => setCostSheetOpen(false)}
+        />
       )}
 
       {billingDialog && (
