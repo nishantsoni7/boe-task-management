@@ -12404,12 +12404,13 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 
 /* ── ORDER PAYMENT PLAN (20270428000000) ─────────────────────────────────────
    The sheet on a Confirmed Order: inputs, a lines table with this lot's
-   quantities, the summary and the lot history. */
-.opp { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); padding: 18px 20px; margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
-.opp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+   quantities, the summary and the lot history. Layout B (2026-10-30): the plan
+   is a stack of its own cards on the page background, see "Layout B" below. */
+.opp { margin-top: 4px; display: flex; flex-direction: column; gap: 14px; }
+.opp-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .opp-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--boe-text-strong); }
 .opp-sub { margin: 2px 0 0; font-size: 12.5px; color: var(--boe-text-muted); }
-.opp-downloads { display: flex; gap: 8px; }
+.opp-downloads { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .opp-disabled { opacity: 0.5; pointer-events: none; }
 .opp-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .opp-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--boe-text-muted); min-width: 0; }
@@ -12425,7 +12426,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-name { min-width: 140px; }
 .opp-lot { background: var(--boe-brand-tint); }
 .opp-qty { width: 84px; text-align: right; padding: 4px 8px; }
-.opp-neg { color: var(--boe-error); font-weight: 600; }
 .opp-sum { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); overflow: hidden; }
 .opp-sum > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 12px; border-bottom: 1px solid var(--boe-border); font-size: 13px; }
 .opp-sum > div:last-child { border-bottom: 0; }
@@ -12441,7 +12441,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-note, .opp-warn { margin: 0; font-size: 12.5px; padding: 8px 12px; border-radius: var(--boe-radius-control); }
 .opp-note { background: var(--boe-surface-quiet); color: var(--boe-text-muted); }
 .opp-warn { background: var(--boe-error-bg); border: 1px solid var(--boe-error-border); color: var(--boe-error); }
-.opp-h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--boe-text-strong); }
 .opp-lots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .opp-lot-row { border-bottom: 1px solid var(--boe-border); padding: 8px 0; }
 .opp-lot-line { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 12.5px; }
@@ -12466,17 +12465,22 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-row-link { cursor: pointer; }
 .opp-row-link:hover td, .opp-row-link:focus td { background: var(--boe-surface-hover); }
 .opp-bdpi-table td { white-space: nowrap; }
-/* Dispatch sheet, mockup v2 (owner, 2026-10-29): a real grid, one plain calculation table, the sum read across */
-.opp-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.opp-grid th, .opp-grid td { border: 1px solid #E4E4E4; padding: 7px 8px; font-size: 12.5px; text-align: right; vertical-align: middle; font-variant-numeric: tabular-nums; color: var(--boe-text); overflow-wrap: anywhere; }
-.opp-grid th { background: #F7F7F7; color: #4A4A4A; font-weight: 600; font-size: 11.5px; line-height: 1.3; }
+/* The goods in this lot (layout B): 11 columns under three group headings, lines between rows, a rule between groups */
+.opp-grid { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: fixed; }
+.opp-grid th, .opp-grid td { border-bottom: 1px solid var(--boe-border); padding: 8px 9px; font-size: 12.5px; text-align: right; vertical-align: middle; font-variant-numeric: tabular-nums; color: var(--boe-text); overflow-wrap: anywhere; }
+.opp-grid th { background: var(--boe-surface-quiet); color: var(--boe-text-muted); font-weight: 600; font-size: 12px; line-height: 1.3; vertical-align: bottom; }
+.opp-grid .opp-grid-groups th { background: var(--boe-surface); text-align: center; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 9px; }
+.opp-grid .opp-grid-groups th.l { text-align: left; }
+.opp-grid .opp-gs { border-left: 1px solid var(--boe-border); }
 .opp-grid .l { text-align: left; }
-.opp-grid .opp-lot { background: #FFF9EC; }
-.opp-grid tfoot td { font-weight: 700; background: #F7F7F7; }
-.opp-grid .opp-qty { width: 100%; max-width: 76px; }
-.opp-grid .opp-thumb { width: 40px; height: 40px; }
-.opp-block { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-.opp-block-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--boe-text-strong); }
+.opp-grid .opp-lot { background: var(--boe-brand-tint); }
+.opp-grid th.opp-lot { color: var(--boe-brand-ink); }
+.opp-grid tfoot td { font-weight: 700; background: var(--boe-surface-quiet); color: var(--boe-text); border-bottom: 0; }
+.opp-grid .opp-qty { width: 100%; max-width: 76px; text-align: right; }
+.opp-grid .opp-thumb { width: 42px; height: 42px; }
+.opp-name { display: block; min-width: 0; font-weight: 600; color: var(--boe-text); }
+.opp-rates { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--boe-text-muted); }
+.opp-dash { color: var(--boe-text-muted); }
 .opp-block-note { margin: 0; font-size: 12px; color: var(--boe-text-muted); line-height: 1.6; }
 .opp-calc { width: 100%; border-collapse: collapse; }
 .opp-calc th, .opp-calc td { border: 1px solid #E4E4E4; padding: 11px 16px; font-size: 13.5px; text-align: right; font-variant-numeric: tabular-nums; color: var(--boe-text); }
@@ -12485,25 +12489,76 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-calc .opp-calc-sum td, .opp-calc .opp-calc-needed td { font-weight: 700; background: #FAFAFA; color: var(--boe-text-strong); }
 .opp-calc .opp-calc-gap td { border-left: 0; border-right: 0; padding: 8px; background: transparent; }
 .opp-calc td.opp-carried { background: #FFF1D6; font-weight: 700; color: #111111; }
-.opp-pay { border: 2px solid var(--boe-brand); border-radius: 14px; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
-.opp-pay-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.opp-pay-title { margin: 0; font-size: 18px; font-weight: 700; color: var(--boe-text-strong); }
-.opp-pay-hint { font-size: 13px; color: var(--boe-text-muted); }
-.opp-pay-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 640px; }
-.opp-pay-table th, .opp-pay-table td { padding: 13px 14px; text-align: right; border-bottom: 1px solid #ECECEC; font-variant-numeric: tabular-nums; }
-.opp-pay-table th { font-size: 13px; font-weight: 600; color: var(--boe-text-strong); vertical-align: bottom; line-height: 1.35; }
-.opp-pay-table td { font-size: 15px; color: var(--boe-text); }
-.opp-pay-table .l { text-align: left; width: 12%; color: #4A4A4A; font-weight: 500; }
-.opp-pay-table .opp-op { width: 40px; text-align: center; color: #9A9A9A; font-size: 18px; padding-left: 0; padding-right: 0; }
-.opp-pay-table .opp-bal { background: #FDF3EF; color: #8F3524; font-weight: 600; }
-.opp-pay-table .opp-pay-total td { font-weight: 700; font-size: 16px; border-bottom: 0; border-top: 1px solid #D6D6D6; }
-.opp-pay-table .opp-pay-total td.opp-bal { font-size: 19px; }
-.opp-sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--boe-text-muted); margin-top: 2px; }
-.opp-mark { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; background: var(--boe-brand); color: #FFFFFF; font-size: 11px; font-weight: 700; text-align: center; margin-right: 6px; }
 .opp-fix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
-@media (max-width: 640px) {
-  .opp { padding: 14px 12px; }
-  .opp-sum > div { flex-direction: column; gap: 2px; }
+/* Layout B (owner, 2026-10-30). The bottom "To pay" table and its round number
+   badges are gone from the screen (Excel and PDF keep them); the badge rule
+   used to share the name .opp-mark with the "Mark as dispatched" row above and
+   won, drawing that row as an 18px terracotta pill. */
+.opp-section-title { margin: 0; padding: 0; font-family: var(--boe-font-heading); font-size: 15px; font-weight: 700; color: var(--boe-text); }
+.opp-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.opp-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.opp-chips li { padding: 3px 10px; border-radius: 999px; background: var(--boe-surface); border: 1px solid var(--boe-border); font-size: 12.5px; color: var(--boe-text); }
+/* 1. The sum: goods sent + advance − already received = balance */
+.opp-total { display: flex; flex-direction: column; gap: 10px; }
+.opp-tiles { display: flex; align-items: stretch; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); overflow: hidden; }
+.opp-tile { flex: 1 1 0; display: flex; flex-direction: column; gap: 3px; padding: 14px 18px 16px; min-width: 0; }
+.opp-tile-k { font-size: 12.5px; font-weight: 600; color: var(--boe-text-muted); }
+.opp-tile-v { font-family: var(--boe-font-heading); font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--boe-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.opp-tile-s { font-size: 12px; color: var(--boe-text-muted); }
+.opp-tile-op { flex: none; width: 32px; display: flex; align-items: center; justify-content: center; font-family: var(--boe-font-heading); font-size: 20px; font-weight: 600; color: var(--boe-text-muted); }
+.opp-tile-bal { flex-grow: 1.3; background: var(--boe-brand-tint); border-left: 1px solid var(--boe-border); }
+.opp-tile-bal .opp-tile-k, .opp-tile-bal .opp-tile-v { color: var(--boe-brand-ink); }
+.opp-tile-bal .opp-tile-v { font-size: 28px; }
+.opp-tile-bal .opp-tile-s { color: var(--boe-text); }
+/* 2. A warning with an icon, never colour alone */
+.opp-attention { margin: 0; display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border: 1px solid var(--boe-warning-border); background: var(--boe-waiting-bg); color: var(--boe-waiting-fg); border-radius: var(--boe-radius-control); font-size: 13px; }
+.opp-attention svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+/* 3. Plan settings: label above, help below that stays */
+.opp-settings { margin: 0; min-width: 0; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); padding: 14px 18px 18px; }
+.opp-settings > legend { float: left; width: 100%; margin-bottom: 12px; }
+.opp-settings-grid { clear: both; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px 24px; }
+.opp-setting { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.opp-setting-label { font-size: 12.5px; font-weight: 600; color: var(--boe-text); }
+.opp-help { font-size: 12px; color: var(--boe-text-muted); }
+.opp-field-problem { display: flex; gap: 5px; align-items: flex-start; margin-top: 4px; font-size: 12px; font-weight: 500; color: var(--boe-error); text-align: left; }
+.opp-field-problem svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
+/* 4. Cards for the goods, the folded working and the lot history */
+.opp-card, .opp-fold, .opp-history, .opp .opp-mark { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); }
+.opp-card { overflow: hidden; }
+.opp-card-head { display: flex; flex-direction: column; gap: 3px; padding: 14px 18px 12px; }
+.opp-history { padding: 14px 18px; }
+.opp-history .opp-section-title { margin-bottom: 6px; }
+.opp .opp-mark { padding: 12px 18px; }
+.opp-fold > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 14px 18px; cursor: pointer; list-style: none; }
+.opp-fold > summary::-webkit-details-marker { display: none; }
+.opp-fold > summary::before { content: ""; flex: none; width: 8px; height: 8px; border-right: 2px solid var(--boe-text-muted); border-bottom: 2px solid var(--boe-text-muted); transform: rotate(-45deg); transition: transform 0.2s ease-out; }
+.opp-fold[open] > summary::before { transform: rotate(45deg); }
+.opp-fold-title { font-family: var(--boe-font-heading); font-size: 15px; font-weight: 700; color: var(--boe-text); }
+.opp-fold-sub { font-size: 12.5px; color: var(--boe-text-muted); }
+.opp-fold-body { display: flex; flex-direction: column; gap: 10px; padding: 0 18px 16px; }
+/* 5. Save: a bar that stays at the bottom of the screen (desktop; the phone shell scrolls in a way that keeps it at the end) */
+.opp-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; padding: 12px 18px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: 0 -6px 18px rgba(48, 53, 54, 0.08); }
+.opp-bar-problem { flex: 1 1 100%; }
+.opp-status { display: flex; align-items: center; gap: 7px; min-height: 38px; font-size: 12.5px; color: var(--boe-text-muted); white-space: nowrap; }
+.opp-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--boe-completed-fg); }
+.opp-status-dirty { color: var(--boe-text); font-weight: 600; }
+.opp-status-dirty i { background: var(--boe-brand); }
+@media (prefers-reduced-motion: reduce) {
+  .opp-fold > summary::before { transition: none; }
+}
+@media (max-width: 900px) {
+  .opp-tiles { flex-wrap: wrap; }
+  .opp-tile-op { display: none; }
+  .opp-tile { flex: 1 1 50%; border-bottom: 1px solid var(--boe-border); }
+  .opp-tile-bal { flex-basis: 100%; border-left: 0; border-bottom: 0; }
+}
+@media (max-width: 767px) {
+  .opp-bar { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
+  .opp-bar .opp-field { flex: 1 1 100%; }
+  .opp-bar .boe-btn-primary { flex: 1 1 auto; }
+}
+@media (max-width: 480px) {
+  .opp-tile { flex-basis: 100%; }
 }
 /* ═══════════════════════════════════════════════════════════════════════════
    FABRIC & FINISH COST SHEET — the slide-in panel and its own pages (20270431000000)

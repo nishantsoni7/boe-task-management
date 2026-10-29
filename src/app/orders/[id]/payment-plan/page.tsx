@@ -84,15 +84,13 @@ export default function OrderPaymentPlanPage() {
           <p className="opp-warn" role="alert">You do not have access to the Payment plan. An Admin can grant it in Control Center.</p>
         )}
         {ready && (
-          <>
-            {ready.order.client_name && <p className="opp-sub">{ready.order.client_name}</p>}
-            <OrderPaymentPlan
-              orderId={ready.order.id}
-              submissionId={ready.order.source_order_submission_id}
-              canEdit={ready.caps.canEditPaymentPlan}
-              isAdmin={profile?.role === 'admin'}
-            />
-          </>
+          // The client's name is drawn by the plan itself, beside the lot.
+          <OrderPaymentPlan
+            orderId={ready.order.id}
+            submissionId={ready.order.source_order_submission_id}
+            canEdit={ready.caps.canEditPaymentPlan}
+            isAdmin={profile?.role === 'admin'}
+          />
         )}
       </div>
     </OrdersLayout>

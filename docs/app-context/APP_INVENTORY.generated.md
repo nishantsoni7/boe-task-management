@@ -5,16 +5,20 @@
 
 ## Snapshot
 
-- Commit: `b68fe055` — Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
-- Commits on this branch: 1080
+- Commit: `4eaf0a89` — Merge remote-tracking branch 'origin/docs/approve-opens-order-merged' into stack/overnight-integration
+- Commits on this branch: 1084
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
-- Test files: 682   Next.js 16.2.6, React 19.2.4
+- Test files: 683   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `4eaf0a89` 2026-10-30 Merge remote-tracking branch 'origin/docs/approve-opens-order-merged' into stack/overnight-integration
+- `3e43c870` 2026-10-30 Orders: drop the unused two-figure summary after stacking on #511 and #513
+- `e82689b4` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list
 - `b68fe055` 2026-10-30 Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
+- `0befa07f` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e)
 - `c7799b48` 2026-10-30 Merge main (#510, approving opens the Order) into fix/approve-popup-simple
 - `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
@@ -35,10 +39,6 @@
 - `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
 - `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
-- `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
-- `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
-- `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
-- `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 98 source, 147 test
+- `src/lib/orders` — 99 source, 148 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
