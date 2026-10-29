@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b482ecac` — Docs: PI Draft redesign is PR #493
-- Commits on this branch: 1059
+- Commit: `2e1689ca` — Merge origin/main into feat/pi-draft-redesign: the fabric sheet is PR #494's
+- Commits on this branch: 1063
 - Pages (`page.tsx`): 157   API routes (`route.ts`): 166
 - Migrations: 379 (first `20260530_create_positions.sql`, latest `20270431000000_order_submission_fabric_finish_lines.sql`)
 - Tables ever created: 183 (dropped at some point: 7)   SQL functions: 828   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `2e1689ca` 2026-10-29 Merge origin/main into feat/pi-draft-redesign: the fabric sheet is PR #494's
+- `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
+- `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
+- `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
 - `b482ecac` 2026-10-29 Docs: PI Draft redesign is PR #493
 - `4f2762b1` 2026-10-29 Orders: PI Draft page laid out like the Order page, Fabric & finish cost page
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
@@ -35,10 +39,6 @@
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
-- `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
-- `2e35cd72` 2026-10-28 Sidebar: rest as an icon rail on desktop, open over the page on hover
-- `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
-- `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
 
 ## Pages by top-level area
 
