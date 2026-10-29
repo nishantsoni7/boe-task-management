@@ -23,8 +23,11 @@ import {
   APPROVE_PAYMENT_LABEL,
   EDIT_PAYMENT_LABEL,
   PAYMENT_BAR_COLORS,
+  PAYMENT_DETAILS_NOTHING_ADDED,
   PAYMENT_DETAILS_TITLE,
   PAYMENT_FILTER_TITLE,
+  PAYMENT_TABLE_COLUMNS,
+  paymentDetailsToggleLabel,
   PiPaymentDetailsModal,
   PiPaymentProgress,
   PiPaymentRow,
@@ -75,7 +78,7 @@ function row(over: Partial<PiPaymentSummaryRow>): PiPaymentSummaryRow {
 const ROWS: PiPaymentSummaryRow[] = [
   row({ allocation_id: 'a-pending', payment_id: 'p-pending', request_number: 'PAY-REQ-2026-0101', human_payment_id: 'P-AA-0101' }),
   row({ allocation_id: 'a-clar', payment_id: 'p-clar', request_number: 'PAY-REQ-2026-0102', human_payment_id: 'P-AA-0102', status: 'needs_clarification' }),
-  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', human_payment_id: 'P-AA-0103', status: 'approved_unlinked', is_verified: true, remarks: 'Advance via NEFT' }),
+  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', human_payment_id: 'P-AA-0103', status: 'approved_unlinked', is_verified: true, remarks: 'Advance via NEFT', verified_by: 'Meera Shah', verified_at: '2026-08-06T05:30:00Z' }),
   row({ allocation_id: 'a-rej', payment_id: 'p-rej', request_number: 'PAY-REQ-2026-0104', human_payment_id: 'P-AA-0104', status: 'rejected', admin_note: 'Duplicate of 0101' }),
   row({ allocation_id: 'a-rev', payment_id: 'p-rev', request_number: 'PAY-REQ-2026-0105', human_payment_id: 'P-AA-0105', allocation_status: 'reversed' }),
   row({ allocation_id: 'a-split', payment_id: 'p-split', request_number: 'PAY-REQ-2026-0106', human_payment_id: 'P-AA-0106', status: 'approved_linked', is_verified: true, amount: '250000.00', allocated_amount: '150000.00' }),
@@ -497,10 +500,24 @@ describe('the progress bar: green confirmed, amber awaiting verification, red no
 describe('each row says when, how, how much and where it stands', () => {
   const t = text(modal())
 
-  test('date, mode, reference, Payment ID, who recorded it', () => {
-    for (const part of ['05 Aug 2026', 'Ref UTR123', 'P-AA-0101', 'Recorded by Priya Rao']) {
+  test('date, mode, Payment ID, who recorded it', () => {
+    for (const part of ['05 Aug 2026', 'HDFC', 'P-AA-0101', 'Recorded by Priya Rao']) {
       assert.ok(t.includes(part), `${part} missing`)
     }
+  })
+
+  test('the reference waits in Details, closed until it is opened', () => {
+    assert.ok(!t.includes('UTR123'), 'no row is open when the dialog opens')
+    const open = text(renderToStaticMarkup(
+      <table><tbody>
+        <PiPaymentRow
+          row={describePiPaymentRow(ROWS[0], { canVerify: false })} armed={null} note="" busy={false} error={null}
+          open onToggle={() => {}}
+          onOpenProof={() => {}} onArm={() => {}} onNote={() => {}} onCancel={() => {}} onConfirm={() => {}}
+        />
+      </tbody></table>,
+    ))
+    assert.ok(open.includes('Reference / UTR UTR123'))
   })
 
   test('a payment is named by its Payment ID, never its request number (owner, 2026-10-29)', () => {
@@ -515,8 +532,17 @@ describe('each row says when, how, how much and where it stands', () => {
     assert.equal(neither.humanPaymentId, '—')
   })
 
-  test('the remarks typed with the payment', () => {
-    assert.ok(t.includes('Remarks: Advance via NEFT'))
+  test('the remarks typed with the payment, in its Details', () => {
+    const open = text(renderToStaticMarkup(
+      <table><tbody>
+        <PiPaymentRow
+          row={describePiPaymentRow(ROWS[2], { canVerify: false })} armed={null} note="" busy={false} error={null}
+          open onToggle={() => {}}
+          onOpenProof={() => {}} onArm={() => {}} onNote={() => {}} onCancel={() => {}} onConfirm={() => {}}
+        />
+      </tbody></table>,
+    ))
+    assert.ok(open.includes('Remarks Advance via NEFT'))
   })
 
   test('no internal identifier reaches the reader', () => {
@@ -545,11 +571,13 @@ describe('each row says when, how, how much and where it stands', () => {
 describe('deciding one row', () => {
   const view = describePiPaymentRow(ROWS[0], { canVerify: true })
   const armed = (over: Partial<Parameters<typeof PiPaymentRow>[0]>) => renderToStaticMarkup(
-    <PiPaymentRow
-      row={view} armed={null} note="" busy={false} error={null}
-      onOpenProof={() => {}} onArm={() => {}} onNote={() => {}} onCancel={() => {}} onConfirm={() => {}}
-      {...over}
-    />,
+    <table><tbody>
+      <PiPaymentRow
+        row={view} armed={null} note="" busy={false} error={null}
+        onOpenProof={() => {}} onArm={() => {}} onNote={() => {}} onCancel={() => {}} onConfirm={() => {}}
+        {...over}
+      />
+    </tbody></table>,
   )
 
   test('reject asks for a reason, and cannot be confirmed without one', () => {
@@ -569,7 +597,8 @@ describe('deciding one row', () => {
   })
 
   test('while a decision is in flight every control on the row is dead', () => {
-    const html = armed({ armed: 'approve', busy: true, note: 'ok' })
+    const html = armed({ armed: 'approve', busy: true, note: 'ok', onToggle: () => {} })
+    assert.ok(html.includes('pi-pay-toggle'), 'the Details control is among them')
     // The Payment ID's copy button stays live: it only copies text and cannot
     // touch the payment.
     const opens = [...html.matchAll(/<button\b([^>]*)>/g)].map(m => m[1])
@@ -592,6 +621,154 @@ describe('deciding one row', () => {
     assert.ok(source.includes('closeOnBackdropClick={armed === null}'),
       'a typed reason is not discarded by a stray click on the backdrop')
     assert.ok(/const close = useCallback\(\(\) => \{\s*if \(busyRef\.current\) return/.test(source))
+  })
+})
+
+// ── A table on a wide screen, cards on a phone (owner, 2026-10-30) ───────────
+
+describe('the payments are a table, the date and the mode first', () => {
+  const html = modal()
+
+  test('one table, its columns in the agreed order', () => {
+    assert.deepEqual([...PAYMENT_TABLE_COLUMNS],
+      ['Date', 'Mode', 'Amount', 'Payment ID', 'Recorded by', 'Verification', 'Actions'])
+    assert.equal((html.match(/<table class="pi-pay-table"/g) ?? []).length, 1)
+    const heads = [...html.matchAll(/<th\b[^>]*scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map(m => text(m[1]).trim())
+    assert.deepEqual(heads, [...PAYMENT_TABLE_COLUMNS])
+  })
+
+  test('one row per payment, in the order the database returned them', () => {
+    const rowsHtml = [...html.matchAll(/<tr class="pi-pay-row[^"]*">([\s\S]*?)<\/tr>/g)].map(m => text(m[1]))
+    assert.equal(rowsHtml.length, ROWS.length)
+    rowsHtml.forEach((r, i) => assert.ok(r.includes(`P-AA-010${i + 1}`), `row ${i + 1} is P-AA-010${i + 1}`))
+  })
+
+  test('the date and the mode are the first two cells of every row', () => {
+    const first = html.match(/<tr class="pi-pay-row[^"]*">([\s\S]*?)<\/tr>/)![1]
+    const cells = [...first.matchAll(/<td class="pi-pay-cell ([a-z-]+)"/g)].map(m => m[1])
+    assert.deepEqual(cells, ['pi-pay-date', 'pi-pay-mode', 'pi-pay-amount', 'pi-pay-id',
+      'pi-pay-recorded', 'pi-pay-verification', 'pi-pay-actions-cell'])
+  })
+
+  test('a reversed allocation is drawn faded; nothing else is', () => {
+    assert.equal((html.match(/class="pi-pay-row is-reversed"/g) ?? []).length, 2)
+  })
+
+  test('the same markup is a card on a phone: the CSS, not a second list', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
+    const phone = css.slice(css.indexOf('@media (max-width: 900px) {\n  .pi-pay-table-wrap'))
+    assert.ok(phone.length > 0, 'the phone rules exist')
+    assert.ok(phone.includes('"amount amount"') && phone.includes('"date mode"'),
+      'the amount leads the card, the date and mode follow')
+    assert.ok(phone.includes('.pi-pay-cell-label {\n    display: block;'), 'each value is labelled on the card')
+    assert.ok(phone.includes('.pi-pay-chip-icon { display: block; }'), 'the date and mode become chips')
+    assert.ok(css.includes('.pi-pay-cell-label { display: none; }'), 'and the table header labels them on a wide screen')
+    const source = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentCard.tsx'), 'utf8')
+    assert.ok(source.includes('width="1160px"'), 'the dialog is wide enough for the table')
+    assert.ok(!source.includes('<ul style'), 'no second, list-shaped rendering of the rows')
+  })
+})
+
+describe('who verified a payment, and when', () => {
+  test('a verified payment names its verifier, in the Verification column', () => {
+    const view = describePiPaymentRow(ROWS[2], { canVerify: false })
+    assert.equal(view.verifiedBy, 'Meera Shah')
+    assert.ok(view.verifiedAt?.includes('Aug 2026'))
+    const ok = modal().match(/<tr class="pi-pay-row[^"]*">((?:(?!<\/tr>)[\s\S])*P-AA-0103(?:(?!<\/tr>)[\s\S])*)<\/tr>/)![1]
+    const verification = ok.slice(ok.indexOf('pi-pay-verification'))
+    assert.ok(text(verification).includes('Meera Shah'))
+  })
+
+  test('only a verified payment has a verifier — a stray name on any other is not shown', () => {
+    for (const status of ['pending_approval', 'needs_clarification', 'rejected']) {
+      const view = describePiPaymentRow(row({ status, verified_by: 'Meera Shah', verified_at: '2026-08-06T05:30:00Z' }), { canVerify: false })
+      assert.equal(view.verifiedBy, null, status)
+      assert.equal(view.verifiedAt, null, status)
+    }
+  })
+
+  test('a payment still with Finance says so; a rejected one says when', () => {
+    const t = text(modal())
+    assert.ok(t.includes('Not verified yet'))
+    const rejected = describePiPaymentRow(row({ status: 'rejected', rejected_at: '2026-08-07T09:00:00Z' }), { canVerify: false })
+    assert.ok(rejected.rejectedAt?.includes('Aug 2026'))
+    assert.equal(describePiPaymentRow(row({ rejected_at: '2026-08-07T09:00:00Z' }), { canVerify: false }).rejectedAt, null)
+  })
+
+  test('when it was recorded, and nothing invented when the record has no time', () => {
+    assert.ok(describePiPaymentRow(ROWS[0], { canVerify: false }).recordedAt?.includes('Aug 2026'))
+    assert.equal(describePiPaymentRow(row({ created_at: null }), { canVerify: false }).recordedAt, null)
+    assert.equal(describePiPaymentRow(row({ created_at: 'not a date' }), { canVerify: false }).recordedAt, null)
+  })
+})
+
+describe('Details opens under its row', () => {
+  const openRow = (r: PiPaymentSummaryRow, over: Partial<Parameters<typeof PiPaymentRow>[0]> = {}) => renderToStaticMarkup(
+    <table><tbody>
+      <PiPaymentRow
+        row={describePiPaymentRow(r, { canVerify: false })} armed={null} note="" busy={false} error={null}
+        open onToggle={() => {}}
+        onOpenProof={() => {}} onArm={() => {}} onNote={() => {}} onCancel={() => {}} onConfirm={() => {}}
+        {...over}
+      />
+    </tbody></table>,
+  )
+
+  test('every row starts closed, and no history is asked for until one is opened', () => {
+    let asked = 0
+    const html = modal({ paymentActivity: () => { asked += 1; return <span>history</span> } })
+    assert.equal(asked, 0)
+    assert.ok(!html.includes('pi-pay-details'))
+    const toggles = [...html.matchAll(/<button\b([^>]*pi-pay-toggle[^>]*)>/g)].map(m => m[1])
+    assert.equal(toggles.length, ROWS.length, 'with Finance access every row has Details: its history')
+    for (const attrs of toggles) assert.ok(attrs.includes('aria-expanded="false"'))
+    assert.ok(toggles[0].includes(`aria-label="${paymentDetailsToggleLabel(false, 'P-AA-0101')}"`))
+  })
+
+  test('without Finance access, Details only where the payment has a reference, remarks or proof', () => {
+    const plain = row({ reference: null, remarks: null, proof_count: 0 })
+    const bare = modal({ summary: { ...SUMMARY, payments: [plain] } })
+    assert.ok(!bare.includes('pi-pay-toggle'), 'nothing more to show, no control')
+    assert.ok(modal({ summary: { ...SUMMARY, payments: [row({})] } }).includes('pi-pay-toggle'), 'a reference is worth opening')
+    assert.ok(modal({ summary: { ...SUMMARY, payments: [plain] }, paymentActivity: () => null }).includes('pi-pay-toggle'),
+      'its history is, for a Finance reader')
+  })
+
+  test('opened: reference, remarks and proof, and the history the page supplied', () => {
+    const html = openRow(row({ remarks: 'Advance via NEFT', proof_count: 1, can_view_proof: true }), {
+      activity: <div>Recorded by Priya Rao</div>,
+    })
+    const t = text(html)
+    assert.ok(t.includes('Reference / UTR UTR123'))
+    assert.ok(t.includes('Remarks Advance via NEFT'))
+    assert.ok(t.includes('Proof') && buttonLabels(html).includes('View proof'))
+    assert.ok(html.includes('pi-pay-details-activity') && t.includes('Recorded by Priya Rao'))
+    assert.ok(html.includes('aria-expanded="true"'))
+    assert.ok(html.includes('id="pi-payment-details-alloc-1"') && html.includes('aria-controls="pi-payment-details-alloc-1"'))
+  })
+
+  test('a payment with nothing added says so, rather than an empty panel', () => {
+    const t = text(openRow(row({ reference: null, remarks: null, proof_count: 0 })))
+    assert.ok(t.includes(PAYMENT_DETAILS_NOTHING_ADDED))
+  })
+
+  test('the proof opens through the page, as before; no proof, no button', () => {
+    let opened: string | null = null
+    const html = openRow(row({ proof_count: 2, can_view_proof: true }), { onOpenProof: id => { opened = id } })
+    assert.ok(buttonLabels(html).includes('View proof'))
+    assert.equal(opened, null, 'rendering opens nothing')
+    assert.ok(!buttonLabels(openRow(row({ proof_count: 2, can_view_proof: false }))).includes('View proof'),
+      'a proof this reader may not open is not offered')
+  })
+
+  test('the page supplies the history only to a reader with Finance access', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('setCanViewPaymentActivity(financeCaps.canAccessFinanceModule)'))
+    assert.ok(page.includes('paymentActivity={canViewPaymentActivity ? paymentActivity : null}'))
+    assert.ok(page.includes('<PaymentRequestActivity'))
+    const source = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentCard.tsx'), 'utf8')
+    assert.ok(source.includes('activity={open && paymentActivity ? paymentActivity(row.paymentId) : null}'),
+      'asked for only for an open row')
   })
 })
 

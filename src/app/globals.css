@@ -7410,6 +7410,342 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
   opacity: 0.55;
 }
 
+/* ── The payments behind the PI, as a table (owner, 2026-10-30) ──
+   A WIDE SCREEN READS ACROSS: one row per payment, the date and the mode first
+   and bold, the amounts right-aligned so they line up, then the Payment ID,
+   who recorded it and who verified it. A NARROW SCREEN READS DOWN: the same
+   rows become cards — the amount and its state on top, the date and the mode
+   as chips, then the rest — and the table's columns are not squeezed. Details
+   opens as a full-width row under its payment on both. */
+.pi-pay-table-wrap {
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+.pi-pay-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.pi-pay-table th {
+  padding: 10px;
+  background: #FBFAF8;
+  border-bottom: 1px solid #E4DED7;
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #686D6C;
+  white-space: nowrap;
+}
+.pi-pay-table th:first-child,
+.pi-pay-cell.pi-pay-date { padding-left: 16px; }
+.pi-pay-table th:last-child,
+.pi-pay-cell.pi-pay-actions-cell { padding-right: 16px; }
+.pi-pay-table .pi-pay-th-amount,
+.pi-pay-table .pi-pay-th-actions { text-align: right; }
+.pi-pay-cell {
+  padding: 12px 10px;
+  border-bottom: 1px solid #EFEAE4;
+  vertical-align: middle;
+}
+.pi-pay-row.is-open > .pi-pay-cell {
+  background: #FBFAF8;
+  border-bottom-color: transparent;
+}
+.pi-pay-row.is-reversed > .pi-pay-cell { opacity: 0.55; }
+/* A label over each value, for the card; the table's header says it instead. */
+.pi-pay-cell-label { display: none; }
+.pi-pay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #303536;
+  white-space: nowrap;
+}
+.pi-pay-chip-icon { display: none; flex-shrink: 0; color: #686D6C; }
+.pi-pay-cash { margin-top: 4px; }
+.pi-pay-amount { text-align: right; white-space: nowrap; }
+.pi-pay-amount-value {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #303536;
+}
+.pi-pay-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #686D6C;
+  white-space: normal;
+}
+.pi-pay-person {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303536;
+  white-space: nowrap;
+}
+.pi-pay-person--verified { margin-top: 5px; font-weight: 600; color: #276247; }
+.pi-pay-recorded,
+.pi-pay-verification { min-width: 140px; }
+.pi-pay-note {
+  display: block;
+  max-width: 260px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4C5352;
+  overflow-wrap: anywhere;
+}
+.pi-pay-note.is-rejected { color: #A12438; }
+.pi-pay-own { max-width: 240px; }
+.pi-pay-status-narrow { display: none; }
+.pi-pay-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pi-pay-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.pi-pay-pill--green   { background: #E8F2EC; color: #276247; }
+.pi-pay-pill--amber   { background: #FAF0DA; color: #805B0D; }
+.pi-pay-pill--blue    { background: #EAF0F8; color: #335A86; }
+.pi-pay-pill--red     { background: #FBE9EC; color: #A12438; }
+.pi-pay-pill--neutral { background: #F1EEE9; color: #4C5352; }
+/* Waiting is a hollow dot: not done yet. */
+.pi-pay-pill--amber .pi-pay-pill-dot {
+  box-sizing: border-box;
+  background: transparent;
+  border: 2px solid #C48A1A;
+}
+.pi-pay-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.pi-pay-toggle {
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #CFC8BF;
+  border-radius: 6px;
+  background: #FBFAF8;
+  color: #303536;
+  cursor: pointer;
+}
+.pi-pay-toggle[aria-expanded="true"] { border-color: #303536; background: #F1EEE9; }
+.pi-pay-btn:focus-visible,
+.pi-pay-proof:focus-visible {
+  outline: 2px solid #B9472E;
+  outline-offset: 2px;
+}
+.pi-pay-btn:disabled,
+.pi-pay-proof:disabled { cursor: not-allowed; opacity: 0.55; }
+.pi-pay-extra > td {
+  padding: 0 12px 12px;
+  background: #FBFAF8;
+  border-bottom: 1px solid #EFEAE4;
+}
+.pi-pay-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 24px;
+  padding: 16px 18px;
+  background: #FFFFFF;
+  border: 1px solid #E4DED7;
+  border-radius: 10px;
+}
+.pi-pay-details-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.pi-pay-details-head {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4C5352;
+}
+.pi-pay-details-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303536;
+  overflow-wrap: anywhere;
+}
+.pi-pay-details-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #4C5352;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pi-pay-proof {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid #E4DED7;
+  border-radius: 8px;
+  background: #F1EEE9;
+  color: #303536;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pi-pay-proof:hover:not(:disabled) { background: #E4DED7; }
+
+@media (min-width: 901px) {
+  .pi-pay-table tbody tr:last-child > td { border-bottom: none; }
+}
+
+/* A PHONE (and a narrow window) READS EACH PAYMENT AS A CARD. */
+@media (max-width: 900px) {
+  .pi-pay-table-wrap { border: none; border-radius: 0; overflow: visible; }
+  .pi-pay-table,
+  .pi-pay-table tbody { display: block; }
+  .pi-pay-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .pi-pay-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "amount amount"
+      "date mode"
+      "id id"
+      "recorded verification"
+      "actions actions";
+    gap: 12px;
+    margin-top: 10px;
+    padding: 14px;
+    border: 1px solid #E4DED7;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+  .pi-pay-row:first-child { margin-top: 0; }
+  .pi-pay-row:has(+ .pi-pay-extra) {
+    border-color: #CFC8BF;
+    border-bottom: none;
+    border-radius: 12px 12px 0 0;
+  }
+  .pi-pay-cell,
+  .pi-pay-row.is-open > .pi-pay-cell {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  .pi-pay-cell.pi-pay-date { grid-area: date; padding: 0; }
+  .pi-pay-cell.pi-pay-mode { grid-area: mode; }
+  .pi-pay-cell.pi-pay-amount {
+    grid-area: amount;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 10px;
+    text-align: left;
+    white-space: normal;
+  }
+  .pi-pay-amount .pi-pay-sub { flex-basis: 100%; margin-top: 0; }
+  .pi-pay-amount-value { font-size: 24px; }
+  .pi-pay-status-narrow { display: inline-flex; }
+  .pi-pay-status-wide { display: none; }
+  .pi-pay-cell.pi-pay-id {
+    grid-area: id;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #EFEAE4;
+  }
+  .pi-pay-cell.pi-pay-recorded { grid-area: recorded; min-width: 0; }
+  .pi-pay-cell.pi-pay-verification { grid-area: verification; min-width: 0; }
+  .pi-pay-cell.pi-pay-actions-cell { grid-area: actions; padding: 0; }
+  .pi-pay-cell-label {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #686D6C;
+  }
+  .pi-pay-id .pi-pay-cell-label { margin-bottom: 0; }
+  .pi-pay-chip {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 8px;
+    background: #F1EEE9;
+    border: 1px solid #E4DED7;
+    font-size: 15px;
+  }
+  .pi-pay-chip-icon { display: block; }
+  .pi-pay-person { white-space: normal; }
+  .pi-pay-person--verified { margin-top: 0; }
+  .pi-pay-note,
+  .pi-pay-own { max-width: none; }
+  .pi-pay-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pi-pay-actions:not(:empty) { padding-top: 12px; border-top: 1px solid #EFEAE4; }
+  .pi-pay-btn { min-height: 44px; }
+  .pi-pay-toggle { width: 44px; margin-left: auto; }
+  .pi-pay-extra { display: block; }
+  .pi-pay-table tbody tr.pi-pay-extra > td {
+    display: block;
+    padding: 0 14px 14px;
+    background: #FFFFFF;
+    border: 1px solid #CFC8BF;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+  }
+  .pi-pay-table tbody tr.pi-pay-extra:has(+ .pi-pay-extra) > td { border-radius: 0; }
+  .pi-pay-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 14px 0 0;
+    border: none;
+    border-top: 1px solid #E4DED7;
+    border-radius: 0;
+  }
+}
+
 .pi-detail-paystatus-notice {
   display: flex;
   align-items: flex-start;

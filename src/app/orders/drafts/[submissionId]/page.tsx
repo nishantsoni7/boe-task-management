@@ -190,6 +190,7 @@ import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
 import { PiPaymentEditDialog } from '@/components/orders/PiPaymentEditDialog'
+import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   describeReservation,
@@ -559,6 +560,11 @@ function PiDraftDetailPageInner() {
   const [canApprovePayments, setCanApprovePayments] = useState(false)
   /** The administrator override on separating payment entry from decision. */
   const [canDecideOwnPayments, setCanDecideOwnPayments] = useState(false)
+  /**
+   * Finance module entry: a payment's own history inside Payment details, the
+   * Order page's rule for View details. Reads only; RLS decides again.
+   */
+  const [canViewPaymentActivity, setCanViewPaymentActivity] = useState(false)
 
   /** Which decision dialog is open, if any. */
   const [dialog, setDialog] = useState<
@@ -966,6 +972,7 @@ function PiDraftDetailPageInner() {
       // capability, and deliberately granting nothing on the PI itself.
       setCanApprovePayments(financeCaps.canApprovePayment)
       setCanDecideOwnPayments(financeCaps.canDecideOwnPayment)
+      setCanViewPaymentActivity(financeCaps.canAccessFinanceModule)
       // finance.allocate — the PROTECTED action, never a preset, and the only
       // Finance capability that opens payment entry. Wider Finance access
       // (view, view_all, approve, manage) deliberately does not, which is the
@@ -1229,6 +1236,18 @@ function PiDraftDetailPageInner() {
     const url = await paymentProofSignedUrl(supabase, paymentId)
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
   }, [supabase])
+
+  // ONE PAYMENT'S HISTORY, inside its Details in Payment details: Finance's own
+  // activity trail, read only when that row is opened. An allocation to this PI
+  // is named by its draft reference rather than "a PI".
+  const paymentActivity = useCallback((paymentId: string) => (
+    <PaymentRequestActivity
+      supabase={supabase}
+      paymentRequestId={paymentId}
+      resolveTarget={(kind, id) => (kind === 'submission' && id === submissionId ? draftReference : null)}
+      heading={<div className="pi-pay-details-head">Activity</div>}
+    />
+  ), [supabase, submissionId, draftReference])
 
   /**
    * Approve or reject one pending payment, from Payment details.
@@ -3218,6 +3237,7 @@ function PiDraftDetailPageInner() {
              payment still with Finance. It opens Finance's own Edit form, so the
              database (edit_payment_request) is the one that decides. */
           onEdit={canAdminAmend ? (paymentId => { setPaymentDialog(null); setEditingPaymentId(paymentId) }) : null}
+          paymentActivity={canViewPaymentActivity ? paymentActivity : null}
         />
       )}
 

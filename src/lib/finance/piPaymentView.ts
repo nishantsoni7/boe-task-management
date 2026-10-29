@@ -37,6 +37,7 @@ import {
   isAmbiguousFailure,
 } from '@/lib/finance/submissionAttempt'
 import { PAYMENT_STATUS_WORD } from '@/lib/finance/paymentWords'
+import { formatActivityTimestamp } from '@/lib/ui'
 
 // THE FOUR WORDS every screen uses (lib/finance/paymentWords.ts, 2026-10-29).
 export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = PAYMENT_STATUS_WORD
@@ -299,6 +300,13 @@ export function formatPaymentDate(iso: string | null | undefined): string {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/** A stored moment (recorded, verified, rejected), for display: "24 Oct 2026, 5:49 PM". */
+export function formatPaymentMoment(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  if (Number.isNaN(new Date(iso).getTime())) return null
+  return formatActivityTimestamp(iso)
+}
+
 const displayMoney = (value: string | number | null | undefined): string => {
   if (value === null || value === undefined || value === '') return '—'
   const n = typeof value === 'number' ? value : Number(value)
@@ -330,6 +338,16 @@ export type PiPaymentRowView = {
   /** A reversed allocation is history: shown, and visibly not counting. */
   reversed: boolean
   recordedBy: string | null
+  /** When it was typed in (created_at), or null. */
+  recordedAt: string | null
+  /**
+   * Who verified it and when (approved_by, approved_at), only on a verified
+   * payment. Null on any other, and on a verified one whose record names nobody.
+   */
+  verifiedBy: string | null
+  verifiedAt: string | null
+  /** When Finance rejected it, only on a rejected payment. */
+  rejectedAt: string | null
   /** The remarks typed when the payment was recorded, or null. */
   remarks: string | null
   note: { heading: string; text: string; rejected: boolean } | null
@@ -367,6 +385,7 @@ export function describePiPaymentRow(
   const whole = displayMoney(row.amount)
   const remark = (row.admin_note ?? '').trim()
   const rejected = row.status === 'rejected'
+  const verified = isConfirmedPayment(row.status)
   return {
     key: row.allocation_id,
     paymentId: row.payment_id,
@@ -382,6 +401,10 @@ export function describePiPaymentRow(
     statusTone: piPaymentStatusTone(row.status),
     reversed,
     recordedBy: (row.entered_by ?? '').trim() || null,
+    recordedAt: formatPaymentMoment(row.created_at),
+    verifiedBy: verified ? (row.verified_by ?? '').trim() || null : null,
+    verifiedAt: verified ? formatPaymentMoment(row.verified_at) : null,
+    rejectedAt: rejected ? formatPaymentMoment(row.rejected_at) : null,
     remarks: (row.remarks ?? '').trim() || null,
     note: remark === ''
       ? null
