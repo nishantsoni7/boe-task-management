@@ -347,17 +347,22 @@ export function ReceivedPaymentsTable({
   const TH: React.CSSProperties = { padding: `0 ${TABLE_CELL_PADDING_X_PX}px` }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
+  // Amount is right-aligned and Client left-aligned, so with 8px a side the
+  // figure and the name nearly touched. A wider left edge on Client (header
+  // and cell alike) gives that pair the same breathing room as the rest.
+  const AFTER_AMOUNT: React.CSSProperties = { paddingLeft: '20px' }
 
   return (
     <div style={{ width: '100%' }}>
-      {/* FIXED LAYOUT: every column but Client has a pixel width sized to its
-          data, and Client takes the rest, so the columns sit where the header
-          says they are whatever the rows contain. */}
+      {/* FIXED LAYOUT: every column has a pixel width sized to its data, and
+          a wider screen shares its spare room across all of them in
+          proportion, so the columns sit where the header says they are
+          whatever the rows contain. */}
       <table className="fin-table">
         <thead>
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
-              <th key={column.key} style={{ ...TH, ...align(column.align), ...('width' in column ? { width: column.width } : {}) }}>
+              <th key={column.key} style={{ ...TH, ...align(column.align), ...(column.key === 'client' ? AFTER_AMOUNT : {}), ...('width' in column ? { width: column.width } : {}) }}>
                 {column.key === 'actions' ? <span className="boe-sr-only">{column.label}</span> : column.label}
               </th>
             ))}
@@ -390,7 +395,7 @@ export function ReceivedPaymentsTable({
                   </td>
 
                   {/* WHO PAID. "Not identified" (muted) for a Suspense payment. */}
-                  <td style={TD} title={client}>
+                  <td style={{ ...TD, ...AFTER_AMOUNT }} title={client}>
                     <span className="fin-primary-text" style={r.client_name ? undefined : { color: colors.muted, fontWeight: 400 }}>
                       {client}
                     </span>

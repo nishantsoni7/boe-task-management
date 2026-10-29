@@ -112,6 +112,12 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
 // ── The Confirmed Payments table ─────────────────────────────────────────────
 
 /**
+ * Client's width at the narrowest table: room for a name of about 20
+ * characters. On a wider screen it grows with the other columns.
+ */
+export const CONFIRMED_CLIENT_MIN_PX = 180
+
+/**
  * SEVEN COLUMNS, IN THIS ORDER, AND NO OTHERS.
  *
  * The table carried eleven and was honestly wide: at 1024px it either scrolled
@@ -146,30 +152,38 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  * this is a change to what the TABLE draws, not to what the page knows.
  *
  * WIDTHS (REDESIGN 2026-10, owner's column order). The table lays out `fixed`;
- * every column except Client carries a PIXEL width sized to its widest value
- * (8px cell padding a side, TABLE_CELL_PADDING_X_PX):
+ * EVERY column carries a PIXEL width sized to its widest value (8px cell
+ * padding a side, TABLE_CELL_PADDING_X_PX):
  *
  *   Payment ID         100   "P-ZZ-9999" in 12px monospace + the copy icon
  *   Amount             128   "₹12,34,56,789.00" in 14px semibold, RIGHT-aligned
+ *   Client             180   about 20 characters (CUSTOMER_NAME_DISPLAY_LIMIT)
  *   Received on        100   "17 Sept 2026"
  *   Payment mode       104   the "Payment mode" header is the widest thing
  *   Added by           132   initials + a first and last name, truncating
  *   Allocation status  156   the "Over-allocated — review" pill
  *   Actions            140   computed — see ACTIONS_COLUMN_WIDTH_PX
  *
- * Client has no width and takes all remaining room (CONFIRMED_CLIENT_MIN_PX
- * floor), so the one column whose text varies most is the one that grows.
- * 860px fixed + 120px floor = 980px, which CONFIRMED_TABLE_MIN_CONTAINER_PX
- * rounds up to 985. Where the money went is no longer a column: the Allocation
- * status pill opens it (AllocationDetailsPopup).
+ * These are the widths at the NARROWEST table: 1040px, which
+ * CONFIRMED_TABLE_MIN_CONTAINER_PX rounds up to 1045. On a wider screen the
+ * browser shares the spare room across all eight columns IN PROPORTION to
+ * these widths (fixed layout, no auto column), so every column breathes a
+ * little instead of one taking it all.
+ *
+ * CLIENT USED TO HAVE NO WIDTH and took every spare pixel: on a ~1390px table
+ * it was 526px wide around "Not identified" while the other seven sat at their
+ * minimum (owner, 2026-10-29: "reduce the width of the Client … make it look
+ * more spacious"). Now it is about 240px there and a longer name ends in "…"
+ * with the full name in the cell's tooltip. Where the money went is no longer
+ * a column: the Allocation status pill opens it (AllocationDetailsPopup).
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
   { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '100px' },
   // RIGHT-ALIGNED: digits line up by place value down the column.
   { key: 'amount',       label: 'Amount',            align: 'right', width: '128px' },
   // Who paid, from the payment's own client_name ("Not identified" for Suspense).
-  // No width — it takes the room the fixed columns leave.
-  { key: 'client',       label: 'Client',            align: 'left' },
+  // A width like the rest, so it no longer swallows the spare room.
+  { key: 'client',       label: 'Client',            align: 'left',  width: `${CONFIRMED_CLIENT_MIN_PX}px` },
   // When the money arrived (payment_date, not created_at).
   { key: 'date',         label: 'Received on',       align: 'left',  width: '100px' },
   { key: 'mode',         label: 'Payment mode',      align: 'left',  width: '104px' },
@@ -183,8 +197,6 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   { key: 'actions',      label: 'Actions',           align: 'left',  width: `${ACTIONS_COLUMN_WIDTH_PX}px` },
 ] as const
 
-/** The floor the flexible Client column keeps when the table is at its narrowest. */
-export const CONFIRMED_CLIENT_MIN_PX = 120
 
 /**
  * The breakdown fields shown only in the expandable row/card detail, so the
@@ -318,8 +330,13 @@ export const PAYMENTS_TABLE_BREAKPOINT = 1024
  * 120px Client floor = 980px, rounded up to 985. A 1280px window (~976px card)
  * now gets CARDS; 1366px and wider get the table. NOT re-measured in a browser
  * yet — the overflow fallback above still protects it.
+ *
+ * REVISED 2026-10-29 (Client got a width of its own): 860px + 180px for Client
+ * = 1040px, rounded up to 1045. With the 64px hover rail (#475) that is a
+ * window of about 1155px or wider; with the sidebar pinned open (260px), about
+ * 1350px or wider. Narrower windows get the cards.
  */
-export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 985
+export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 1045
 
 /**
  * The floor Allocated Against keeps when the table is at its narrowest. Every

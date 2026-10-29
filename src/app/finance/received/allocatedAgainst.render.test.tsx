@@ -165,15 +165,24 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
     assert.ok(!r.includes('0999'), 'the obsolete single-Order field is not read')
   })
 
-  test('fixed widths sized to the data; Client takes the rest; no sideways scroll', () => {
+  test('every column has a fixed width sized to the data, Client included; no sideways scroll', () => {
+    // REVISED (owner, 2026-10-29): Client no longer takes all the spare room.
+    // With every column fixed, a wider screen shares it across all of them.
     assert.ok(!/<table[^>]*min-width/.test(desktop), 'the table sets no minWidth')
     const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>(.*?)<\/th>/g)]
       .map(m => [m[2].replace(/<[^>]+>/g, ''), /(?:^|;)width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
     assert.deepEqual(widths, [
-      ['Payment ID', '100px'], ['Amount', '128px'], ['Client', 'auto'], ['Received on', '100px'],
+      ['Payment ID', '100px'], ['Amount', '128px'], ['Client', '180px'], ['Received on', '100px'],
       ['Payment mode', '104px'], ['Added by', '132px'], ['Allocation status', '156px'], ['Actions', '140px'],
     ])
     assert.ok(desktop.includes('class="fin-table"'), 'and the table lays out by them (.fin-table is table-layout: fixed)')
+  })
+
+  test('Client keeps a wider left edge, so the right-aligned Amount does not touch the name', () => {
+    const head = /<th style="([^"]*)"[^>]*>Client<\/th>/.exec(desktop)?.[1] ?? ''
+    assert.ok(head.includes('padding-left:20px'), 'the header')
+    const cell = /<td style="([^"]*)" title="Hotel ABC"/.exec(rowOf(desktop, '0002'))?.[1] ?? ''
+    assert.ok(cell.includes('padding-left:20px'), 'and the cell, so the two line up')
   })
 })
 

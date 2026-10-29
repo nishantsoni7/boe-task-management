@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `26a85d0e` — Docs: Change Order number merged as PR #502 (217a69b2)
+- Commit: `f7c35de7` — Docs: Change Order number merged as PR #502 (217a69b2) (#504)
 - Commits on this branch: 1069
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 167
 - Migrations: 381 (first `20260530_create_positions.sql`, latest `20270502000000_order_number_rename.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `26a85d0e` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2)
+- `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
 - `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
