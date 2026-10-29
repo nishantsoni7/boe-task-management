@@ -103,6 +103,7 @@ import { PiSupportingDetails } from '@/components/orders/PiSupportingDetails'
 import {
   SALES_DETAILS_COLUMNS,
   SALES_DETAILS_UNAVAILABLE,
+  nameSubmitterAsSalesperson,
   orderDetailsReview,
   readSalesDetails,
   salespersonName,
@@ -179,12 +180,12 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   describeConfirmationFailure,
   matchWorkbookSalesperson,
+  orderSalespersonFor,
   validateOrderConfirmation,
   workbookSalespersonHint,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
-import { saveNewOrderPendencies } from '@/lib/orders/orderPendencies'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
@@ -290,7 +291,6 @@ import {
 // at three breakpoints lives in the CSS module. This file keeps the reads, the
 // permissions and the RPCs, which is the part that has authority behind it.
 import {
-  buildApprovalSummary,
   buildBillingSummary,
   buildBreakdownView,
   buildClientDetails,
@@ -398,11 +398,6 @@ const diagnosticEntries = (value: unknown): PiDiagnosticEntry[] =>
       }
       return a.code.localeCompare(b.code)
     })
-
-/** What the approval dialog reviews from the section beside the four Order fields. */
-const APPROVAL_REVIEW_KEYS: readonly OrderDetailsFieldKey[] = [
-  'billing_percentage', 'billing_terms', 'fabric_responsibility', 'middleman_commission',
-]
 
 export default function PiDraftDetailPage() {
   return (
@@ -583,8 +578,6 @@ function PiDraftDetailPageInner() {
     salesperson: null, confirmDate: null, dueDate: null, leadSource: null,
   })
   const [confirmationField, setConfirmationField] = useState<OrderConfirmationField | null>(null)
-  /** "Pending from client" entered in the convert dialog; saved on the new Order. */
-  const [pendencyDrafts, setPendencyDrafts] = useState<string[]>([])
   // Cash on this PI that has not reached the company (20270414000000): read only
   // while a dialog that creates an Order is open; the tick and reason are the
   // approver's, reset whenever the dialog closes.
@@ -594,8 +587,6 @@ function PiDraftDetailPageInner() {
   const [cashAckState, setCashAckState] = useState<{ dialog: typeof dialog; ack: OrderCashAck }>({ dialog: null, ack: EMPTY_ORDER_CASH_ACK })
   const cashAck = cashAckState.dialog === dialog && dialog !== null ? cashAckState.ack : EMPTY_ORDER_CASH_ACK
   const setCashAck = useCallback((ack: OrderCashAck) => setCashAckState({ dialog, ack }), [dialog])
-  /** Said when the Order was created but its pendencies could not be saved. */
-  const [pendencyFailure, setPendencyFailure] = useState<string | null>(null)
   /** Who may be named as the salesperson. Read once, with the record. */
   const [salespeople, setSalespeople] = useState<{ id: string; name: string }[]>([])
   // The salesperson and lead source Sales chose on this PI (20270211000000).
@@ -1271,7 +1262,16 @@ function PiDraftDetailPageInner() {
     // ONE CALL: submit_pi_for_review_with_documents() sends the PI through
     // submit_pi_for_review() unchanged and records the attached Design Files /
     // Client PO (and any confirmed absence) in the same transaction.
-    const send = () => supporting.send({ note, terms, acknowledgedMissing })
+    //
+    // THE BOE SALESPERSON, when Sales chose nobody (owner, 2026-10-30): the
+    // person submitting, named just before the PI is sent — after the dates
+    // are saved, while it is still editable — so a submitted PI always names
+    // its salesperson and management is not asked for one.
+    const send = async () => {
+      const named = await nameSubmitterAsSalesperson(supabase, submissionId, salesDetails, viewerId)
+      if (named.error) return { data: null, error: named.error }
+      return supporting.send({ note, terms, acknowledgedMissing })
+    }
 
     // THE TWO INTERNAL DATES FIRST (2026-09-27). Saved — and, only with the
     // submitter's tick, confirmed — through the Internal details RPC before the
@@ -1323,7 +1323,7 @@ function PiDraftDetailPageInner() {
       void notifyPiSubmission({ event: 'pi_exception_requested', submissionId })
     }
     return { error: null }
-  }, ownMessage), [runAction, submissionId, loadPayments, supporting, supabase, rowVersion, draftRow, loadDraft])
+  }, ownMessage), [runAction, submissionId, loadPayments, supporting, supabase, rowVersion, draftRow, loadDraft, salesDetails, viewerId])
 
   /**
    * Accept the proposed advance. THE PI STAYS UNDER REVIEW.
@@ -1689,22 +1689,11 @@ function PiDraftDetailPageInner() {
         const named = describeConfirmationFailure(error)
         if (named) setConfirmationField(named.field)
       } else {
-        const outcome = readApprovalOutcome(data)
-        setApproval(outcome)
-        // The Order exists; its pendencies are a separate, optional write. A
-        // failure here never undoes the Order — it is said, and the same list
-        // can be added from the Order page.
-        if (outcome && pendencyDrafts.length > 0) {
-          const saved = await saveNewOrderPendencies(supabase, outcome.orderId, pendencyDrafts)
-          setPendencyFailure(!saved
-            ? 'The Order was created, but its pendencies could not be saved. Add them from the Order page under Fabric & Finish.'
-            : null)
-          setPendencyDrafts([])
-        }
+        setApproval(readApprovalOutcome(data))
       }
       return { error }
     }, error => describeConfirmationFailure(error)?.message ?? orderCashFailureMessage(error))
-  }, [runAction, supabase, submissionId, confirmation, pendencyDrafts, cashCheck.data, cashAck])
+  }, [runAction, supabase, submissionId, confirmation, cashCheck.data, cashAck])
 
   /**
    * The PI decision ON ITS OWN (20261119000000).
@@ -1829,6 +1818,18 @@ function PiDraftDetailPageInner() {
   const documentAuthor = submission.source_created_by?.trim() || null
   // The one BOE user the workbook's author name points at, when Sales saved nobody.
   const workbookSalespersonMatch = salesDetails.salesperson_id ? null : matchWorkbookSalesperson(documentAuthor, salespeople)
+  // THE SALESPERSON THE ORDER IS CREATED FOR (owner, 2026-10-30): the one Sales
+  // saved, else that workbook match, else whoever submitted the PI. The approver
+  // is not asked again for a person the system already knows.
+  const orderSalesperson = orderSalespersonFor({
+    saved: salesDetails.salesperson_id
+      ? { id: salesDetails.salesperson_id, name: salespersonName(salesDetails.salesperson_id, salespeople) ?? 'Saved salesperson (not in the list)' }
+      : null,
+    workbookMatch: workbookSalespersonMatch,
+    submitter: submission.submitted_by
+      ? { id: submission.submitted_by, name: draft.submitterName ?? salespersonName(submission.submitted_by, salespeople) ?? 'The person who submitted this PI' }
+      : null,
+  })
 
   // The shared builder still decides every LABEL and every formatted VALUE —
   // the dates, the em dash for an absent cell, and the rule that the workbook's
@@ -2222,16 +2223,6 @@ function PiDraftDetailPageInner() {
    */
   const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
   const summaryFigures = summaryCommercialFigures(commercialRows)
-  /**
-   * THE ONE "Product value" FIGURE, read where the card reads it.
-   *
-   * The confirmation dialog states the same figure the card above it prints, by
-   * taking the SAME element of the SAME array rather than formatting a second
-   * copy from the same column. If the card's figure ever changes, the dialog's
-   * changes with it, because there is only one.
-   */
-  const productValueLabel =
-    summaryFigures.find(figure => figure.key === 'productValue')?.value ?? orDash(null)
 
   /**
    * The billing declaration, and what it comes to.
@@ -2475,20 +2466,17 @@ function PiDraftDetailPageInner() {
       approvedOrder={approvedOrder}
       onApprove={() => {
         setActionFailure(null)
-        /* THE PI'S OWN SAVED SALESPERSON, or nobody — never the viewer,
-           the submitter, the only option, the first one, or a person
-           matched by the workbook's printed name. A legacy PI with no
-           saved id opens unselected (the name is shown as a hint), and
-           validateOrderConfirmation refuses to confirm until management
-           chooses. Re-derived on every open rather than remembered, so
-           the dialog always reflects the PI as it stands now. */
+        /* THE FOUR FIELDS COME FROM THE PI, so the dialog asks for none
+           of them on a PI submitted today. The salesperson is
+           orderSalesperson (saved, else the workbook match, else the
+           submitter) — never the viewer approving it. Re-derived on every
+           open rather than remembered, so the dialog always reflects the
+           PI as it stands now; validateOrderConfirmation still refuses an
+           empty field, which the dialog then draws. */
         setConfirmationField(null)
         setConfirmation(prev => ({
           ...prev,
-          // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
-          // there is one — never the approver. A PI from before that has
-          // none, and nobody is selected for it.
-          salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,
+          salesperson: orderSalesperson?.id ?? null,
           leadSource: salesDetails.lead_source ?? prev.leadSource,
           confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
           dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
@@ -2614,11 +2602,6 @@ function PiDraftDetailPageInner() {
 
         {/* ── 1b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
-        {pendencyFailure && (
-          <p role="alert" style={{ margin: 0, padding: '10px 14px', borderRadius: '8px', border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#A12438', fontSize: '13px' }}>
-            {pendencyFailure}
-          </p>
-        )}
 
         {/* ── 2. Payment status beside what the PI is worth ──
             ~60/40 on a wide column, stacked when narrow, payment first. Each
@@ -3276,21 +3259,6 @@ function PiDraftDetailPageInner() {
         <PiApproveOrderModal
           client={clientLabel}
           mode={dialog === 'approve_pi' ? 'approve_pi' : dialog === 'create_order' ? 'create_order' : 'approve_and_create'}
-          rows={buildApprovalSummary({
-            client: clientLabel,
-            // THE PAGE'S OWN "Product value" FIGURE, passed through. Not
-            // recomputed, and not the grand total: one calculation, two places.
-            productValue: productValueLabel,
-            // CONFIRMED MONEY ONLY — the verified sum, which is exactly what
-            // Finance has approved. Nothing pending, in clarification or
-            // rejected is added to it; that is the database's own figure and
-            // this only formats it.
-            advanceConfirmed: payments === null ? null : formatMoney(payments.verified_amount),
-            exception: payments === null ? null : {
-              reason: payments.exception_status ? (payments.exception_reason ?? null) : null,
-              status: payments.exception_status ?? null,
-            },
-          })}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}
@@ -3307,26 +3275,19 @@ function PiDraftDetailPageInner() {
           // The four fields the Order is built from. Not offered in
           // `approve_pi`, which records a decision and creates no Order.
           salespeople={salespeople}
-          // What Sales already provided, shown as review values with a Change
-          // path; the approver types only what is genuinely missing.
+          // What the PI already provides is used, not shown again; the
+          // approver types only what is genuinely missing.
           provided={{
-            salesperson: salesDetails.salesperson_id
-              ? { id: salesDetails.salesperson_id, name: salespersonName(salesDetails.salesperson_id, salespeople) ?? 'Saved salesperson (not in the list)' }
-              : workbookSalespersonMatch,
-            salespersonFromWorkbook: !!workbookSalespersonMatch,
+            salesperson: orderSalesperson,
             leadSource: salesDetails.lead_source,
             confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? null,
             dueDate: submission.due_date?.slice(0, 10) ?? null,
           }}
-          // A legacy PI's workbook name, shown beside the selector as a hint only.
+          // The workbook's name, under the selector as a hint only, when the PI names nobody.
           workbookSalesperson={workbookSalespersonHint(documentAuthor)}
-          detailsReview={orderDetailsReview(detailsRow, salespeople)
-            .filter(row => APPROVAL_REVIEW_KEYS.includes(row.key))}
           confirmation={confirmation}
           onConfirmationChange={next => { setConfirmationField(null); setConfirmation(next) }}
           confirmationField={confirmationField}
-          pendencies={pendencyDrafts}
-          onPendenciesChange={setPendencyDrafts}
         />
       )}
 

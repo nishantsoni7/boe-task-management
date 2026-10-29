@@ -23,7 +23,6 @@ import {
 } from './salesOrderDetails'
 import { PiOrderDetailsSection } from '@/components/orders/PiOrderDetailsSection'
 import { PiApproveOrderModal } from '@/components/orders/piReviewModals'
-import { buildApprovalSummary } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OrderConfirmationDraft } from './orderConfirmation'
 
@@ -47,7 +46,8 @@ describe('every field says how much it is needed — and nothing optional became
     const need = Object.fromEntries(ORDER_DETAILS_FIELDS.map(f => [f.key, f.need]))
     assert.deepEqual(need, {
       order_confirmation_date: 'submission', due_date: 'submission',
-      salesperson_id: 'approval', lead_source: 'submission',
+      // Optional to Sales since 2026-10-30: left empty, Submit names the submitter.
+      salesperson_id: 'optional', lead_source: 'submission',
       billing_percentage: 'optional', billing_terms: 'optional', payment_terms: 'optional',
       fabric_responsibility: 'submission',
       middleman_commission: 'submission', middleman_structure: 'conditional',
@@ -303,48 +303,48 @@ describe('the section states what Sales has provided', () => {
   })
 })
 
-describe('approval reviews what Sales provided instead of asking again', () => {
+describe('approval uses what the PI provides instead of asking again (owner, 2026-10-30)', () => {
   const render = (provided: Parameters<typeof PiApproveOrderModal>[0]['provided'], confirmation: OrderConfirmationDraft = {
     salesperson: 'u-dhruv', confirmDate: '2026-09-27', dueDate: '2026-11-20', leadSource: 'website',
   }) => renderToStaticMarkup(
     <PiApproveOrderModal client="Rivoli" mode="approve_and_create"
-      rows={buildApprovalSummary({ client: 'Rivoli', productValue: '₹9,64,200', advanceConfirmed: '₹0' })}
       saving={false} failure={null} onCancel={() => {}} onConfirm={() => {}}
       salespeople={PEOPLE} confirmation={confirmation} onConfirmationChange={() => {}} confirmationField={null}
       provided={provided}
-      detailsReview={orderDetailsReview(COMPLETE, PEOPLE).filter(r => ['billing_percentage', 'billing_terms', 'fabric_responsibility', 'middleman_commission'].includes(r.key))}
     />)
 
-  test('the persisted salesperson, dates and lead source are review values, with a Change control — no selector', () => {
+  test('a PI with all four: nothing to pick, type or change — only who the salesperson is', () => {
     const html = render({ salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' }, leadSource: 'website', confirmDate: '2026-09-27', dueDate: '2026-11-20' })
-    for (const field of ['salesperson', 'confirm_date', 'due_date', 'lead_source']) assert.match(html, new RegExp(`data-review="${field}"`))
-    assert.ok(html.includes('Dhruv Mehta') && html.includes('27 Sep 2026') && html.includes('20 Nov 2026') && html.includes('Website'))
+    assert.ok(html.includes('Salesperson: <strong') && html.includes('Dhruv Mehta'))
     assert.doesNotMatch(html, /<select/, 'nothing to pick')
     assert.doesNotMatch(html, /type="date"/, 'nothing to type')
-    assert.equal((html.match(/>Change</g) ?? []).length, 4, 'management keeps the authority to change each one')
-  })
-
-  test('billing, fabric and commission are reviewed, never re-entered', () => {
-    const html = render({ salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' }, leadSource: 'website', confirmDate: '2026-09-27', dueDate: '2026-11-20' })
-    const review = html.slice(html.indexOf('data-testid="pi-approve-details-review"'))
-    for (const text of ['Billing percentage', '65%', 'Fabric will be provided by client', 'Middleman commission', 'No']) {
-      assert.ok(review.includes(text), text)
+    assert.doesNotMatch(html, />Change</, 'no Change links')
+    assert.doesNotMatch(html, /data-review=/, 'and nothing restated for review')
+    for (const restated of ['27 Sep 2026', '20 Nov 2026', 'Website', 'Lead source', 'Confirm date', 'Due date']) {
+      assert.ok(!html.includes(restated), `${restated} is on the page behind the dialog`)
     }
-    assert.ok(!review.includes('Billing terms'), 'billing terms are no longer reviewed; the stored value is left as it is')
   })
 
-  test('A LEGACY PI with no saved salesperson keeps the selector, says so, and picks nobody', () => {
+  test('billing, fabric and commission are not restated', () => {
+    const html = render({ salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' }, leadSource: 'website', confirmDate: '2026-09-27', dueDate: '2026-11-20' })
+    assert.doesNotMatch(html, /pi-approve-details-review/)
+    for (const text of ['Billing percentage', 'Fabric', 'Middleman commission']) assert.ok(!html.includes(text), text)
+  })
+
+  test('a PI that names nobody keeps the selector, says so, and picks nobody; given dates are not asked', () => {
     const html = render({ salesperson: null, leadSource: null, confirmDate: '2026-09-27', dueDate: '2026-11-20' },
       { salesperson: null, confirmDate: '2026-09-27', dueDate: '2026-11-20', leadSource: null })
     assert.match(html, /Select a salesperson…/)
     assert.match(html, /This PI has no saved salesperson\. Choose the person responsible; nobody is selected for you\./)
     assert.match(html, /<option value="" selected="">Select a salesperson…/)
     assert.match(html, /Select a lead source…/)
-    assert.match(html, /data-review="confirm_date"/, 'the dates Sales gave are still review values')
+    assert.doesNotMatch(html, /type="date"/, 'the dates Sales gave are simply used')
   })
 
-  test('the page prefills from the PI, never from the approver', () => {
-    assert.ok(PAGE.includes('salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,'), 'the saved id, else the one exact workbook-name match')
+  test('the page prefills from the PI — saved, workbook match, then the submitter — never from the approver', () => {
+    assert.ok(PAGE.includes('salesperson: orderSalesperson?.id ?? null,'))
+    assert.ok(PAGE.includes('workbookMatch: workbookSalespersonMatch,'))
+    assert.ok(PAGE.includes('submitter: submission.submitted_by'))
     assert.ok(PAGE.includes('leadSource: salesDetails.lead_source ?? prev.leadSource,'))
     assert.ok(!/salesperson:\s*viewerId/.test(PAGE) && !/salesperson:\s*profile/.test(PAGE))
   })

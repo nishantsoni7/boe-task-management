@@ -18,12 +18,14 @@
 //                            commercial terms, the two order dates and the
 //                            middleman answer — and the workbook and product
 //                            lines, which only a re-import can fix.
-//   required later           the salesperson, which approve_order_submission
-//                            asks for when the Order is created (the approval
-//                            dialog preselects the workbook's exact match).
-//                            The lead source is required for submission.
+//   required later           nothing today. The BOE salesperson used to be
+//                            listed here; since 2026-10-30 Submit names the
+//                            person submitting when Sales chose nobody, so it
+//                            is never missing when the Order is created. The
+//                            lead source is required for submission.
 //   optional                 billing percentage, payment terms, Client PO,
-//                            Design Files and the order highlight.
+//                            Design Files and the order highlight. The
+//                            salesperson is not listed: empty is not "skipped".
 //
 // A LATER item is never a submission blocker. It is listed so the person knows
 // it is coming, and left out of the "proceed without these?" question, which is
@@ -92,12 +94,8 @@ export function buildPiCompletion(input: {
     }
   })
 
+  // Empty since 2026-10-30: see "required later" above.
   const laterMissing: CompletionItem[] = []
-  if (input.salesDetailsAvailable) {
-    if (blank(input.details.salesperson_id)) {
-      laterMissing.push({ key: 'salesperson_id', label: ORDER_DETAILS_FIELD.salesperson_id.label, need: 'later', where: 'internal', field: 'salesperson_id' })
-    }
-  }
 
   const optionalMissing: CompletionItem[] = []
   if (readBillingPercentage(input.details.billing_percentage ?? null) === null) {

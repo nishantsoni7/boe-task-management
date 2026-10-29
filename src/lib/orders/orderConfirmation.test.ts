@@ -345,8 +345,9 @@ describe('the approval dialog asks for all four, and the page sends them', () =>
     assert.ok(modal.includes('ORDER_LEAD_SOURCES.map'), 'the lead source list is the shared one')
   })
 
-  test('it asks only where an Order is actually created', () => {
-    assert.match(modal, /const asksForOrderFields = mode !== 'approve_pi'/)
+  test('it asks only where an Order is actually created, and only for what the PI lacks', () => {
+    assert.match(modal, /const createsOrder = mode !== 'approve_pi'/)
+    assert.ok(modal.includes("createsOrder && (!providedValue[field] || confirmationField === field)"))
   })
 
   test('the refused field is focused, not merely reddened', () => {

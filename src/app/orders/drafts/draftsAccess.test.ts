@@ -1963,8 +1963,11 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // made by the supporting-documents sender: it runs submit_pi_for_review()
     // unchanged and records the attached files in the same transaction.
     // (Since 2026-09-27 the call is named once and made either directly or
-    // after the internal dates are saved — still one call, with all three.)
-    assert.ok(source.includes('const send = () => supporting.send({ note, terms, acknowledgedMissing })'))
+    // after the internal dates are saved — still one call, with all three.
+    // Since 2026-10-30 it is preceded, when Sales chose nobody, by naming the
+    // person submitting as the salesperson — a separate field write.)
+    assert.ok(source.includes('return supporting.send({ note, terms, acknowledgedMissing })'))
+    assert.ok(source.includes('nameSubmitterAsSalesperson(supabase, submissionId, salesDetails, viewerId)'))
     assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
     assert.ok(supportingSource.includes('p_note: input.note,'))
     assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))

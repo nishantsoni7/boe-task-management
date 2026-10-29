@@ -282,14 +282,6 @@ export const APPROVE_ORDER_FINAL_NOTE =
 export const APPROVE_ORDER_NOT_A_PAYMENT =
   'This does not record receipt of any payment.'
 
-export const APPROVE_SUMMARY_LABEL = {
-  client: 'Client',
-  grandTotal: 'Grand total',
-  advance: 'Advance condition',
-  finance: 'Finance verification',
-  lines: 'Product lines',
-} as const
-
 export const FINANCE_SUMMARY_VERIFIED = 'Verified'
 export const FINANCE_SUMMARY_PENDING = 'Pending'
 
