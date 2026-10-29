@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `cd6445cd` — Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
-- Commits on this branch: 1067
+- Commit: `26a85d0e` — Docs: Change Order number merged as PR #502 (217a69b2)
+- Commits on this branch: 1069
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 167
 - Migrations: 381 (first `20260530_create_positions.sql`, latest `20270502000000_order_number_rename.sql`)
 - Tables ever created: 188 (dropped at some point: 7)   SQL functions: 836   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `26a85d0e` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2)
+- `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
@@ -37,8 +39,6 @@
 - `97d88dc1` 2026-10-29 Modules page: "For you" panel, action first and every update previewed (#483)
 - `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
-- `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
-- `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 
 ## Pages by top-level area
 
