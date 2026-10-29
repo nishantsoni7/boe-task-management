@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `cfcf4233` — Docs: Payments counted once, Step 1 is PR #508
-- Commits on this branch: 1074
+- Commit: `b931e120` — Docs: migration 20270506000000 applied to production (owner, 2026-10-29)
+- Commits on this branch: 1076
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 384 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `b931e120` 2026-10-29 Docs: migration 20270506000000 applied to production (owner, 2026-10-29)
+- `e375213a` 2026-10-29 Payments counted once: renumber the migration to 20270506000000
 - `cfcf4233` 2026-10-29 Docs: Payments counted once, Step 1 is PR #508
 - `7b830d04` 2026-10-29 Payments counted once, Step 1: tests and the last labels follow the shared words
 - `c522a805` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back, Add payment offers money already received
@@ -37,8 +39,6 @@
 - `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
-- `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
-- `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 
 ## Pages by top-level area
 
