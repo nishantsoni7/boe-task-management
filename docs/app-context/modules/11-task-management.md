@@ -126,7 +126,7 @@ Statuses and transitions:
   archives and Assigned By Me INCLUDE them. Completed pages are DB-paged (`COMPLETED_PAGE_SIZE = 20`, `completed_at desc nulls last`, id tiebreak); filters counterpart,
   priority, title `ilike` (LIKE wildcards escaped), completed-on day (local-day range). Legacy rows with `completed_at IS NULL` sort last and never match date filters
   (their count was never measured, from memory). Completion windows: yesterday, last 7, last 30 days.
-- **Dashboard "At a glance" bar (2026-10-29, PR pending, no SQL).** The three counters (Overdue, Waiting, Due Today) and the Tasks Created table moved from the
+- **Dashboard "At a glance" bar (2026-10-29, PR #500, no SQL).** The three counters (Overdue, Waiting, Due Today) and the Tasks Created table moved from the
   bottom of `/dashboard` into one bar, `src/app/dashboard/GlanceBar.tsx` + `glanceBar.module.css`, built like the Modules "For you" panel: from a 1132 px window a
   280 px column fixed to the right edge, full height, own scroll, header and body reserving `280px + 24px` through `:has(.glance)`, 150 px bottom padding for the
   floating round buttons; narrower, an ordinary block under Needs Your Attention (counters three across from 640 px). Always drawn (a 0 still shows). Same counts,

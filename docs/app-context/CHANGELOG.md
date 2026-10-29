@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Task Management: Dashboard counters and Tasks Created in an "At a glance" bar on the right (PR pending) · no migration
+## 2026-10-29 — Task Management: Dashboard counters and Tasks Created in an "At a glance" bar on the right (PR #500) · no migration
 - **Owner request.** Bring the bottom two sections of the Dashboard (Overdue / Waiting / Due Today, and Tasks Created) into a bar on the right-hand side, as on the Modules page. Mockup agreed first.
 - **What.** One bar, "At a glance": "Your tasks now" (the three counters, stacked) and "Tasks created" (7 days / 30 days; rows "Self tasks", "Delegated tasks"). From a 1132 px window it is a 280 px column fixed to the right edge, full height, own scroll; the header and body reserve its width so the header buttons and cards never sit under it. Narrower, it is a block under Needs Your Attention. Always drawn.
 - **Unchanged.** The counts and how they are computed, the labels, Overdue's red, and the rule that a counter opens its list only when it has tasks. Top 3 Focus and Needs Your Attention are untouched.
@@ -12,7 +12,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** tsc, eslint on the changed files, `glanceBar.test.ts` plus every suite that reads the Dashboard page (524 tests, 0 fail). Not seen signed in or in a browser.
 - Migrations: none.
 
-## 2026-10-29 — Finance: Founders' payouts (PR #497) · migration 20270501000000 APPLIED 2026-10-29 (by the owner, from the worktree, after a rolled-back rehearsal on the linked database)
+## 2026-10-29 — Finance: Founders' payouts (PR #497, squash-merged as 1a17b86b) · migration 20270501000000 APPLIED 2026-10-29 (by the owner, from the worktree, after a rolled-back rehearsal on the linked database) · Production deploy success 05:48 UTC (deployment 7405108646); the live bundle on boeone.vercel.app carries `founder_payouts_read` · backup verified: code bundle 20261029T055431Z, database export 20261029T054642Z (197 tables, 100,116 rows, 0 errors; the five `founder_payout_*` tables included)
 - **Owner request.** "Personal finance management": BOE pays money at irregular times into the partners' and their families' accounts (e.g. ₹1.5 lakh split ₹75,000 / ₹75,000 between Namrata and Jaishree; sometimes three ways; Nitish into his own and his family's). Namrata's common partner remuneration and her incentive for converting orders must be told apart. Per financial year, per account, for income tax; and how much more each account can take to use the tax-free amount.
 - **Owner decisions (2026-10-29).** Only the owner sees it (no admin branch); the two sides stay equal (gap shown, incentive left out); Jaishree is family, not working in BOE (a payment to her is not her income); a page inside Finance.
 - **What.** `/finance/founders`: Overview, Payments (filters, change, delete with reason, Excel for the CA), Tax planner (role, other income, tax-free limit, room left, per month till March, "try an amount", the firm's ceiling from the expected book profit), Accounts (name, side, role, bank with last digits only). New payout: total, accounts, equal split in whole rupees, a second kind on one account, "Same as last time", a tax-room hint per line.

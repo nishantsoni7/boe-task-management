@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `648d0281` — Dashboard: counters and Tasks Created in an "At a glance" bar on the right
-- Commits on this branch: 1063
+- Commit: `a60d5860` — Merge remote-tracking branch 'origin/main' into feat/dashboard-glance-bar
+- Commits on this branch: 1066
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 166
 - Migrations: 380 (first `20260530_create_positions.sql`, latest `20270501000000_finance_founder_payouts.sql`)
 - Tables ever created: 188 (dropped at some point: 7)   SQL functions: 835   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
+- `a60d5860` 2026-10-29 Merge remote-tracking branch 'origin/main' into feat/dashboard-glance-bar
 - `648d0281` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right
+- `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
+- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
 - `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
 - `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
@@ -36,9 +39,6 @@
 - `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
-- `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
-- `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
-- `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
 
 ## Pages by top-level area
 
