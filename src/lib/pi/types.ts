@@ -29,6 +29,8 @@
 // Silently substituting our arithmetic for the workbook's would make the import
 // disagree with the document the client was actually sent.
 
+import type { FabricFinishSheets } from './fabricFinishSheets'
+
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 
 /** Blocking failures. Each one means "this is not a parseable BOE PI". */
@@ -581,6 +583,13 @@ export type PiWorkbook = {
    * has no such table. That migration is NOT touched in this phase.
    */
   customizationImages: readonly PiProductImage[]
+  /**
+   * The "Packing cost and Fabric Cost" and "Fabric and Finish" sheets beside
+   * the Master (fabricFinishSheets.ts), each reported as found or not. Optional
+   * so that fixtures built before 2026-10-29 still type-check; the parser
+   * always sets it.
+   */
+  fabricFinish?: FabricFinishSheets
 }
 
 /**

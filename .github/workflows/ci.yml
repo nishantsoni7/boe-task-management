@@ -9,10 +9,10 @@
 # configured): they run in live-db.yml against a disposable project.
 name: CI
 
+# Pull requests only. A merge to main is the PR head that already passed here, so a
+# second run on push to main repeated the same suite.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}

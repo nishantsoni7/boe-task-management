@@ -35,6 +35,7 @@ import {
   PI_EDIT_TERMS_FIELDS,
   diffPi,
   editChangesSomething,
+  editQuantities,
   initialEditState,
   newEditItem,
   normalizePi,
@@ -49,6 +50,7 @@ import {
   type PiEditState,
 } from '@/lib/orders/piEdit'
 import type { EditPiOutcome } from '@/lib/orders/editPiPage'
+import { parseFabricFinishData, sheetCostsForEdit, type FabricFinishLine } from '@/lib/orders/fabricFinishCost'
 import { formatBoeItemCode, formatOrderOperationalNumber, formatPiLineCode, piLineNumber } from '@/lib/orders/orderProductCodes'
 import { PiImageRegenerate } from './PiImageRegenerate'
 
@@ -58,6 +60,8 @@ export const EDIT_PI_PROPOSE_NOTE =
 export const EDIT_PI_WORKBOOK_NOTE =
   "The uploaded workbook stays V1's file and is never changed. An edited version has no workbook of its own: it is these details, and its PDF is generated from them."
 export const EDIT_PI_UNSAVED_PROMPT = 'You have changes that are not saved. Leave this page and lose them?'
+/** Under a Fabric cost / Packing cost the Fabric & Finish sheet decides (20270431000000). */
+export const SHEET_COST_NOTE = 'From the Fabric & Finish sheet: per-product values × the quantities above, rounded to ₹10. Change it on the sheet.'
 
 type Mode = 'propose' | 'apply'
 
@@ -152,6 +156,10 @@ export function PiEditor({
   const [reviewing, setReviewing] = useState(false)
   // What was last saved (or loaded), to tell unsaved edits from saved ones.
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null)
+  // The PI's Fabric & Finish sheet (20270431000000). When it carries figures,
+  // the Fabric cost and Packing cost lines follow it — in this preview and on
+  // the server, which reads the same rows and prices with the same function.
+  const [sheetLines, setSheetLines] = useState<readonly FabricFinishLine[] | null>(null)
 
   useEffect(() => {
     let live = true
@@ -163,6 +171,8 @@ export function PiEditor({
       setCurrent(content)
       setState(initial)
       setSavedSnapshot(JSON.stringify({ edit: initial, reason: '' }))
+      const sheet = await supabase.rpc('order_submission_fabric_finish_read', { p_submission_id: submissionId })
+      if (live) setSheetLines(sheet.error ? [] : (parseFabricFinishData(sheet.data)?.lines ?? []))
       if (mode === 'propose' && orderId) {
         const { data } = await supabase.from('order_pi_edit_drafts')
           .select('edit, reason, updated_at').eq('order_id', orderId).maybeSingle()
@@ -197,7 +207,12 @@ export function PiEditor({
   }, [supabase, unsignedNewPhotos])
 
   const problems = useMemo(() => (state ? validateEdit(state) : []), [state])
-  const priced = useMemo(() => (current && state && problems.length === 0 ? priceEdit(current, state) : null), [current, state, problems])
+  const sheetCosts = useMemo(() => {
+    if (!state || !sheetLines || sheetLines.length === 0) return null
+    const costs = sheetCostsForEdit(sheetLines, editQuantities(state))
+    return costs.hasSheet ? { fabric: costs.fabric, packing: costs.packing } : null
+  }, [state, sheetLines])
+  const priced = useMemo(() => (current && state && problems.length === 0 ? priceEdit(current, state, sheetCosts) : null), [current, state, problems, sheetCosts])
   const diff = useMemo(() => {
     if (!current || !state || !priced) return null
     const lines = priced.lines.map((l, i) => ({
@@ -536,14 +551,26 @@ export function PiEditor({
           <Section id="pi-edit-commercial" title="Commercial figures" summary={summaries.commercial}>
             <div className="pi-edit-grid">
               {([['discount_amount', 'Discount (₹)'], ['fabric_cost', 'Fabric cost (₹)'], ['packing_cost', 'Packing cost (₹)'],
-                 ['transportation_amount', 'Transportation (₹)'], ['gst_percent', 'GST %']] as const).map(([key, label]) => (
+                 ['transportation_amount', 'Transportation (₹)'], ['gst_percent', 'GST %']] as const).map(([key, label]) => {
+                // A figure the Fabric & Finish sheet gives is THE figure: shown, not typed.
+                const fromSheet = key === 'fabric_cost' ? (sheetCosts?.fabric ?? null)
+                  : key === 'packing_cost' ? (sheetCosts?.packing ?? null) : null
+                return (
                 <label key={key} className="pi-edit-field">
                   <span>{label}</span>
+                  {fromSheet !== null ? (
+                    <>
+                      <input inputMode="decimal" value={formatInr(fromSheet)} className="boe-input" readOnly aria-describedby={`pi-edit-${key}-sheet`} />
+                      <small id={`pi-edit-${key}-sheet`} className="pi-edit-hint">{SHEET_COST_NOTE}</small>
+                    </>
+                  ) : (
                   <input inputMode="decimal" value={state.commercial[key]} className="boe-input"
                     placeholder={key !== 'gst_percent' && key !== 'discount_amount' ? 'Blank keeps what the PI states' : undefined}
                     onChange={e => { const v = e.target.value; set(s => ({ ...s, commercial: { ...s.commercial, [key]: v } })) }} />
+                  )}
                 </label>
-              ))}
+                )
+              })}
             </div>
             {priced && (
               <dl className="pi-edit-figures">

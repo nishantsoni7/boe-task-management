@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
+import { matchFabricFinishSheets } from '@/lib/pi/fabricFinishSheets'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
@@ -622,6 +623,41 @@ export async function processUnderLease(ctx: {
     // they always did. The workbook itself is never touched on any path.
     await rollbackCreated()
     return fail(500, 'SAVE_FAILED', 'The draft could not be saved. Please try again.')
+  }
+
+  // ── 18a. The two sheets beside the Master (20270431000000) ──
+  //
+  // AFTER the parse committed, and keyed by the item numbers IT stored: the
+  // rows are re-read by source row, so a revision whose lines were matched to
+  // the products in force still lands its fabric and finish values on the
+  // right numbers. The workbook's values replace the sheet's earlier values
+  // for this PI; anything a person typed in the app is kept (the RPC's rule).
+  //
+  // A FAILURE HERE IS NOT A SAVE FAILURE, for the same reason as 18b below:
+  // the PI is saved and correct, and the cost sheet says it was not read.
+  if (parsed.data.fabricFinish) {
+    const match = matchFabricFinishSheets(parsed.data.fabricFinish, parsed.data.products)
+    const { data: storedItems } = await service.from('order_submission_items')
+      .select('id, item_sequence, source_row').eq('submission_id', submissionId)
+    const keyByRow = new Map<number, string>()
+    for (const i of (storedItems ?? []) as { id: string; item_sequence: string | null; source_row: number }[]) {
+      keyByRow.set(i.source_row, (i.item_sequence ?? '').trim() || i.id)
+    }
+    const lines = match.products.flatMap(p => {
+      const key = keyByRow.get(p.productRow)
+      if (!key || (!p.cost && !p.finish)) return []
+      return [{
+        item_sequence: key,
+        fabric_metres_per_piece: p.cost?.fabricMetresPerPiece ?? null,
+        fabric_price_per_metre: p.cost?.fabricPricePerMetre ?? null,
+        packing_cost_per_piece: p.cost?.packingCostPerPiece ?? null,
+        packing_type: p.cost?.packingType ?? null,
+        finish: (p.finish?.specs ?? []).map(s => ({ heading: s.heading, value: s.value })),
+      }]
+    })
+    await service.rpc('order_submission_fabric_finish_save_sheet', {
+      p_submission_id: submissionId, p_workbook_sha256: workbookSha256, p_lines: lines,
+    })
   }
 
   // ── 18b. What the workbook said about its own terms ──
