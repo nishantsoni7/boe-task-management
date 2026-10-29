@@ -464,7 +464,11 @@ describe('no Order screen waits more than it must', () => {
       // SAVE, called a second time from Submit for Approval, which now takes the
       // two internal dates and saves them before sending. A press, never at load;
       // the startup path is unchanged.
-      [DRAFTS]: 4, [PI_DETAIL]: 30, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 30 -> 31 (owner, 2026-10-30): after approve_order_submission
+      // succeeds, one orders.select('id') under the approver's RLS decides
+      // whether the page may open the new Order. A press, never at load; the
+      // startup path is unchanged.
+      [DRAFTS]: 4, [PI_DETAIL]: 31, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
