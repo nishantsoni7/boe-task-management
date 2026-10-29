@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `a20dcee5` — Test: the employee permission read may also select the action id
+- Commit: `db606387` — Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - Commits on this branch: 1057
 - Pages (`page.tsx`): 155   API routes (`route.ts`): 165
 - Migrations: 378 (first `20260530_create_positions.sql`, latest `20270430000000_order_payment_plan_account_cash.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `a20dcee5` 2026-10-29 Test: the employee permission read may also select the action id
-- `3c7bab8b` 2026-10-29 Control Center Access: People, Modules and Authorities screens
+- `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
+- `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 - `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
 - `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
