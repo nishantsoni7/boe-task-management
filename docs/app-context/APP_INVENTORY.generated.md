@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `53ee3f89` — Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
-- Commits on this branch: 1075
+- Commit: `33e4472e` — Orders: approving a PI opens the Order it created (#510)
+- Commits on this branch: 1076
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
@@ -38,7 +39,6 @@
 - `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
-- `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 
 ## Pages by top-level area
 
