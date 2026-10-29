@@ -15,8 +15,15 @@ import { handoverDraftError, sumRupees } from '@/lib/finance/handover'
  *
  * Only payments the caller is CURRENTLY HOLDING are offered
  * (finance_my_handoverable_payments); create_cash_handover re-checks every one.
+ *
+ * `initialPaymentIds` ticks those payments to begin with (the Modules panel
+ * passes the ones just accepted); any of them not offered is simply not sent.
  */
-export function HandoverModal({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
+export function HandoverModal({ onClose, onCreated, initialPaymentIds }: {
+  onClose: () => void
+  onCreated?: () => void
+  initialPaymentIds?: readonly string[]
+}) {
   const { data, isPending, isError, error: loadError } = useHandoverFormData(true)
   const { create } = useHandoverActions()
 
@@ -25,7 +32,7 @@ export function HandoverModal({ onClose, onCreated }: { onClose: () => void; onC
 
   const [recipientId, setRecipientId] = useState('')
   const [personFilter, setPersonFilter] = useState('')
-  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(initialPaymentIds ?? []))
   const [handedAt, setHandedAt] = useState(() => isoToLocalInput(new Date().toISOString()))
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +47,7 @@ export function HandoverModal({ onClose, onCreated }: { onClose: () => void; onC
   const recipient = (data?.recipients ?? []).find(r => r.id === recipientId) ?? null
   const chosen = candidates.filter(c => picked.has(c.paymentId))
   const total = sumRupees(chosen.map(c => c.amount))
-  const allPicked = candidates.length > 0 && picked.size === candidates.length
+  const allPicked = candidates.length > 0 && chosen.length === candidates.length
 
   const toggle = (id: string) => setPicked(prev => {
     const next = new Set(prev)
@@ -49,13 +56,14 @@ export function HandoverModal({ onClose, onCreated }: { onClose: () => void; onC
   })
 
   const submit = async () => {
-    const problem = handoverDraftError({ recipientId, paymentIds: [...picked], handedAt })
+    const paymentIds = chosen.map(c => c.paymentId)
+    const problem = handoverDraftError({ recipientId, paymentIds, handedAt })
     if (problem) { setError(problem); return }
     setError(null)
     try {
       await create.mutateAsync({
         recipientId,
-        paymentIds: [...picked],
+        paymentIds,
         handedAtIso: localInputToIso(handedAt),
         note,
         idempotencyKey: keyRef.current,

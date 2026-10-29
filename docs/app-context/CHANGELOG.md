@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Modules page: For you follows your cash hand to hand until Nitish accepts it (PR #495) · no migration
+- **Owner request.** A payment handover shows to BOTH people until it changes hands: Mohit sees that Dhruv has not accepted, Dhruv sees Mohit's cash waiting for him. Once Dhruv accepts he must say whom he handed it to, and both of those see it; the cycle closes when Nitish accepts. Mockup agreed first.
+- **What.** In the For you panel: "Handed to you" (Accept; on success "Hand over cash" opens at once with those payments ticked, except for a cash custodian, whose accepting closes the journey); the giver's "Waiting for X · X has not accepted yet" with Remind (server limit 4 hours); "With you · You hold ₹N" with Hand over for cash held and not handed on. The viewer's own cash is no longer repeated among "Not with the company", which now shows everybody else's. `HandoverModal` gained `initialPaymentIds` and sends only the ticked payments it offers.
+- **How.** Existing doors only: `finance_handover_list`, `finance_unclosed_funds`, `accept_cash_handover`, `remind_cash_handover`, `create_cash_handover`. Accepting still never approves a payment (20270417000000).
+- **Proof.** tsc, eslint, 814 tests in every suite that reads the panel, the modal or the Modules page, and the full suite (18,375 tests: 18,366 pass, 0 fail, 9 skipped). Not seen signed in on live data.
+
 ## 2026-10-29 — GitHub Actions: daily backup bundle kept 7 days, CI on pull requests only (PR pending) · no migration
 - **Why.** Review of Actions usage. The repo is public, so minutes and storage are free today, but each merge stored a ~29 MB bundle of every branch for 90 days (149 bundles, ~4.3 GB in 10 days; ~50 GB at steady state), and CI ran the same suite twice per merge.
 - **Backup (`backup-on-merge.yml`).** The bundle artifact (L8) is made daily (02:17 UTC, was weekly) and on manual runs, not per merge; retention 90 → 7 days. The private mirror (L9) still runs on every push to `main`, and now daily instead of weekly.

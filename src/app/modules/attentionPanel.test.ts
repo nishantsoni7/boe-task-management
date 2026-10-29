@@ -1,7 +1,9 @@
 /**
  * The Modules launcher's "For you" panel (owner, 2026-10-29): a 280px column
- * docked to the window's right edge, holding only a new announcement, cash
- * handed to you, cash not with the company, and leave and late-arrival
+ * docked to the window's right edge, holding only a new announcement, your own
+ * cash as it passes hand to hand (handed to you, waiting for the person you
+ * gave it to, held by you), everybody else's cash not with the company, and
+ * leave and late-arrival
  * requests — each one brief card with one action — plus Clear all. With
  * nothing to show it is not drawn and the tiles take the whole width.
  *
@@ -61,6 +63,48 @@ describe('cash handed to you — for everyone', () => {
   })
 })
 
+describe('your cash, hand to hand until a custodian accepts it (owner, 2026-10-29)', () => {
+  test('cards in order: handed to you, waiting for the recipient, you hold', () => {
+    const order = ['<AcceptCard', '<WaitingCard', 'You hold {formatINR(s.held.amount)}', 'Not with the company ·']
+      .map(s => PANEL.indexOf(s))
+    assert.ok(order.every(i => i >= 0), 'each card exists')
+    assert.deepEqual([...order].sort((a, b) => a - b), order)
+  })
+
+  test('the giver sees the same open handover until it is accepted, with Remind', () => {
+    assert.match(PANEL, /\.filter\(h => handoverRole\(h, viewerId\) === 'giver'\)/)
+    assert.match(PANEL, /You handed \{formatINR\(h\.totalAmount\)\} to \{h\.recipientName\}/)
+    assert.match(PANEL, /\{h\.recipientName\} has not accepted yet/)
+    assert.match(PANEL, /const \{ remind \} = useHandoverActions\(\)/)
+    assert.match(PANEL, /await remind\.mutateAsync\(h\.id\)/)
+    assert.match(PANEL, /\{h\.canRemind && !sent && \(/)
+  })
+
+  test('after Accept, "Hand over cash" opens with those payments ticked — not for a custodian', () => {
+    assert.match(PANEL, /await accept\.mutateAsync\(h\.id\); setConfirming\(false\); onAccepted\?\.\(\)/)
+    assert.match(PANEL, /onAccepted=\{s\.viewerIsCustodian \? undefined : \(\) => setHandOn\(\{ paymentIds: h\.items\.map\(i => i\.paymentId\) \}\)\}/)
+    assert.match(PANEL, /<HandoverModal\s+initialPaymentIds=\{handOn\.paymentIds \?\? undefined\}/)
+    // Held by the panel, not the card: the card leaves once its handover is accepted.
+    assert.match(PANEL, /const \[handOn, setHandOn\] = useState/)
+  })
+
+  test('cash you hold and have not handed on: one card, Hand over', () => {
+    assert.match(PANEL, /allPayments\.filter\(p => p\.holderId === viewerId && !p\.openHandover\)/)
+    assert.match(PANEL, /onClick=\{\(\) => setHandOn\(\{ paymentIds: null \}\)\}/)
+    assert.match(PANEL, /\{s\.held\.canHandOver && \(/)
+  })
+
+  test('the hand-over form ticks only payments it offers', () => {
+    const MODAL = read('src/components/finance/HandoverModal.tsx')
+    assert.match(MODAL, /useState<Set<string>>\(\(\) => new Set\(initialPaymentIds \?\? \[\]\)\)/)
+    assert.match(MODAL, /const paymentIds = chosen\.map\(c => c\.paymentId\)/)
+  })
+
+  test("your own cash is not repeated among everybody else's", () => {
+    assert.match(PANEL, /\.filter\(p => p\.holderId !== viewerId\)/)
+  })
+})
+
 describe('cash not with the company', () => {
   test("reads Finance's own list, one card per person holding money", () => {
     assert.match(PANEL, /const unclosed = useUnclosedFunds\(\)/)
@@ -108,7 +152,9 @@ describe('when the panel is drawn', () => {
   })
 
   test('NOTHING TO SHOW, NO PANEL — and no "caught up" line', () => {
-    assert.match(PANEL, /if \(s\.itemCount === 0 && !errors\) return null/)
+    // (Unless "Hand over cash" is open: the card it was opened from may have
+    // just left the list.)
+    assert.match(PANEL, /if \(s\.itemCount === 0 && !errors\) return handOnModal \|\| null/)
     assert.equal(PANEL.includes('caught up'), false)
   })
 })

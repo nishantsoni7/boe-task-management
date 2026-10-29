@@ -7,13 +7,21 @@
 //
 //   1. THE NEWEST UNREAD ANNOUNCEMENT — Read. Opening it marks it read (the
 //      announcement page acknowledges), and it leaves the panel.
-//   2. CASH HANDED TO YOU — for everyone. Accept, after the same "Yes, I
-//      received ₹X" confirmation as the handover page.
-//   3. CASH NOT WITH THE COMPANY — Finance's own "money not yet with the
-//      company" list (finance_unclosed_funds: everyone's for an admin, the
-//      custodian or a view_all holder; otherwise the viewer's own), one card per
-//      person holding money. Review opens Cash journeys, for Finance users. A
-//      handover waiting for the VIEWER is item 2, not repeated here.
+//   2. THE VIEWER'S OWN CASH, for everyone, as it passes hand to hand until a
+//      company cash custodian (Nitish) accepts it (owner, 2026-10-29). Both
+//      people in an open handover see it until it changes hands:
+//        - HANDED TO YOU: Accept, after the handover page's own "Yes, I
+//          received ₹X". Then, unless the viewer is a custodian (whose accepting
+//          closes the journey), "Hand over cash" opens at once with those
+//          payments ticked: who did you give it to?
+//        - WAITING FOR <recipient>: the giver's side. Remind (the server allows
+//          one every 4 hours).
+//        - YOU HOLD: accepted or recorded cash not handed on yet. Hand over.
+//   3. CASH NOT WITH THE COMPANY — everybody else's, from Finance's own "money
+//      not yet with the company" list (finance_unclosed_funds: everyone's for an
+//      admin, the custodian or a view_all holder), one card per person holding
+//      money. Review opens Cash journeys, for Finance users. The viewer's own
+//      cash is item 2, not repeated here.
 //   4. LEAVE AND LATE ARRIVAL — for the signed-in admin (PendingApprovals.tsx).
 //
 // CLEAR ALL hides every card showing for 24 hours, on this device; anything
@@ -24,21 +32,23 @@
 // whole width again.
 //
 // A PLACEMENT AND NOTHING ELSE. Every card reads an existing query and every
-// write goes through an existing door (accept_cash_handover, the attendance
+// write goes through an existing door (accept_cash_handover,
+// remind_cash_handover, create_cash_handover via HandoverModal, the attendance
 // decision route). Accepting custody never approves a payment: Finance still
 // verifies it (20270417000000).
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, Banknote, HandCoins, Megaphone } from 'lucide-react'
+import { ArrowDown, Banknote, Clock, HandCoins, Megaphone, Wallet } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
 import { HandoverConfirmDialog } from '@/components/finance/HandoverCard'
+import { HandoverModal } from '@/components/finance/HandoverModal'
 import { CASH_JOURNEYS_PATH } from '@/components/finance/UnclosedFundsCard'
 import { formatINR } from '@/lib/currency'
 import { handoverPaymentCount, handoverRole, waitingFor, type Handover } from '@/lib/finance/handover'
-import { totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
+import { sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
 import {
   EMPTY_SNOOZE, isHidden, itemKeys, readSnooze, snoozeAll, snoozeStorageKey, type SnoozeState,
 } from '@/lib/modules/forYouSnooze'
@@ -61,6 +71,15 @@ type HolderCard = {
   brief: string
   state: string
   age: string
+}
+
+/** Cash the viewer holds and has not handed on yet. */
+type HeldCard = {
+  key: string
+  amount: number
+  count: number
+  age: string
+  canHandOver: boolean
 }
 
 /** What one person's held cash is doing, in a few words (no age: it is in the key). */
@@ -142,8 +161,32 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
     .filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
     .filter(h => shown(itemKeys.handover(h.id)))
 
-  // Not repeated: cash on its way to the viewer is an Accept card above.
-  const payments = (unclosed.data?.payments ?? [])
+  // The giver's side of the same handovers: shown until the recipient accepts.
+  const handedOut = mine
+    .filter(h => handoverRole(h, viewerId) === 'giver')
+    .filter(h => shown(itemKeys.handover(h.id)))
+
+  const allPayments = unclosed.data?.payments ?? []
+  // What the viewer holds and has not handed on. (Held cash already in an open
+  // handover is a "Waiting for" card above.) A custodian's cash is with the
+  // company, so finance_unclosed_funds never lists it.
+  const ownLoose = allPayments.filter(p => p.holderId === viewerId && !p.openHandover)
+  const ownTotal = sumAmounts(ownLoose)
+  const heldKey = viewerId ? itemKeys.holder(viewerId, ownTotal, 'held') : ''
+  const held: HeldCard | null = viewerId && ownLoose.length > 0 && shown(heldKey)
+    ? {
+        key: heldKey,
+        amount: ownTotal,
+        count: ownLoose.length,
+        age: waitingAge(Math.max(...ownLoose.map(p => p.ageHours))),
+        canHandOver: ownLoose.some(p => p.canHandOver),
+      }
+    : null
+
+  // Everybody else's. Not repeated: the viewer's own cash, and cash on its way
+  // to the viewer (an Accept card above).
+  const payments = allPayments
+    .filter(p => p.holderId !== viewerId)
     .filter(p => !(p.openHandover && p.openHandover.recipientId === viewerId))
   const holders: HolderCard[] = totalsByHolder(payments)
     .sort((a, b) => b.oldestAgeHours - a.oldestAgeHours)
@@ -153,7 +196,7 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
       return {
         key: itemKeys.holder(t.holderId, t.amount, state),
         holderId: t.holderId,
-        brief: t.holderId === viewerId ? `You hold ${formatINR(t.amount)}` : `${t.holderName} holds ${formatINR(t.amount)}`,
+        brief: `${t.holderName} holds ${formatINR(t.amount)}`,
         state,
         age: waitingAge(t.oldestAgeHours),
       }
@@ -164,17 +207,23 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
     ? approvals.rows.filter(r => shown(itemKeys.request(r.id)))
     : []
 
-  const actCount = toAccept.length + requests.length
-  const itemCount = (announcement ? 1 : 0) + toAccept.length + holders.length + requests.length
+  // Waiting on the viewer: accepting, handing on, deciding. Not their own
+  // "Waiting for" cards: that is somebody else's move.
+  const actCount = toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length
+  const itemCount = (announcement ? 1 : 0) + toAccept.length + handedOut.length + (held ? 1 : 0)
+    + holders.length + requests.length
   const visibleKeys = [
     ...(announcement ? [itemKeys.announcement(announcement.id)] : []),
     ...toAccept.map(h => itemKeys.handover(h.id)),
+    ...handedOut.map(h => itemKeys.handover(h.id)),
+    ...(held ? [held.key] : []),
     ...holders.map(h => h.key),
     ...requests.map(r => itemKeys.request(r.id)),
   ]
 
   return {
-    announcement, toAccept, holders, requests,
+    announcement, toAccept, handedOut, held, holders, requests,
+    viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
     handoversError, cashError: unclosed.isError, approvalsError: showAttendance && approvals.isError,
     actCount, itemCount, visibleKeys, shown, clearAll: () => snooze.clear(visibleKeys),
   }
@@ -184,11 +233,24 @@ export function AttentionPanel(props: AttentionSources) {
   const { userId, financeAllowed } = props
   const s = useAttentionSummary(props)
   const errors = s.handoversError || s.cashError || s.approvalsError
+  // "Hand over cash", opened from a card. Kept here, not in the card: the card
+  // it was opened from leaves the list the moment its handover is accepted.
+  // `paymentIds` = the payments to tick first (null = none).
+  const [handOn, setHandOn] = useState<{ paymentIds: string[] | null } | null>(null)
+
+  const handOnModal = handOn && (
+    <HandoverModal
+      initialPaymentIds={handOn.paymentIds ?? undefined}
+      onClose={() => setHandOn(null)}
+    />
+  )
 
   // Nothing to show: no panel at all, and the tiles take the whole width.
-  if (s.itemCount === 0 && !errors) return null
+  if (s.itemCount === 0 && !errors) return handOnModal || null
 
   return (
+    <>
+    {handOnModal}
     <aside id="for-you" className={styles.attention} aria-labelledby="for-you-heading">
       <header className={styles.attentionHead}>
         <h2 id="for-you-heading" className={styles.attentionHeading}>
@@ -214,7 +276,38 @@ export function AttentionPanel(props: AttentionSources) {
             Could not be loaded, so one waiting for you may be missing.
           </ErrorCard>
         )}
-        {s.toAccept.map(h => <AcceptCard key={h.id} h={h} />)}
+        {s.toAccept.map(h => (
+          <AcceptCard
+            key={h.id}
+            h={h}
+            // Accepted: who did you give it to? Not for a custodian, whose
+            // accepting puts the cash with the company and ends the journey.
+            onAccepted={s.viewerIsCustodian ? undefined : () => setHandOn({ paymentIds: h.items.map(i => i.paymentId) })}
+          />
+        ))}
+        {s.handedOut.map(h => <WaitingCard key={h.id} h={h} />)}
+        {s.held && (
+          <li className={`${styles.card} ${styles.cardUrgent}`}>
+            <span className={styles.cardLabelUrgent}>
+              <Wallet size={13} strokeWidth={2} aria-hidden="true" />
+              With you · {s.held.age}
+            </span>
+            <span className={styles.cardBrief}>You hold {formatINR(s.held.amount)}</span>
+            <span className={styles.cardDetail}>
+              {s.held.count} {s.held.count === 1 ? 'payment' : 'payments'}, not with the company yet
+            </span>
+            {s.held.canHandOver && (
+              <button
+                type="button"
+                className={styles.buttonPrimary}
+                onClick={() => setHandOn({ paymentIds: null })}
+                aria-label={`Hand over ${formatINR(s.held.amount)}`}
+              >
+                Hand over
+              </button>
+            )}
+          </li>
+        )}
 
         {s.cashError && (
           <ErrorCard icon={<Banknote size={13} strokeWidth={2} />} label="Cash not with the company">
@@ -248,6 +341,7 @@ export function AttentionPanel(props: AttentionSources) {
         )}
       </ul>
     </aside>
+    </>
   )
 }
 
@@ -289,8 +383,9 @@ function AnnouncementCard({ latest }: { latest: MyAnnouncement }) {
 //
 // Accept writes through accept_cash_handover (useHandoverActions), after the
 // handover page's own confirmation. It records custody only: a payment it
-// carries still waits for Finance to verify it.
-function AcceptCard({ h }: { h: Handover }) {
+// carries still waits for Finance to verify it. `onAccepted` then asks who the
+// cash went to next.
+function AcceptCard({ h, onAccepted }: { h: Handover; onAccepted?: () => void }) {
   const { accept } = useHandoverActions()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -304,7 +399,7 @@ function AcceptCard({ h }: { h: Handover }) {
       </span>
       <span className={styles.cardBrief}>{formatINR(h.totalAmount)} from {h.giverName}</span>
       <span className={styles.cardDetail}>
-        {handoverPaymentCount(h)}{disputed ? ' · marked not received' : ''}
+        {disputed ? 'Marked not received' : 'Not accepted yet'} · {handoverPaymentCount(h)}
       </span>
       {error && <span className={styles.cardError} role="alert">{error}</span>}
       <button
@@ -324,7 +419,7 @@ function AcceptCard({ h }: { h: Handover }) {
           pending={accept.isPending}
           onClose={() => setConfirming(false)}
           onConfirm={async () => {
-            try { await accept.mutateAsync(h.id); setConfirming(false) }
+            try { await accept.mutateAsync(h.id); setConfirming(false); onAccepted?.() }
             catch (e) { setConfirming(false); setError(e instanceof Error ? e.message : 'Could not accept the handover.') }
           }}
         >
@@ -334,6 +429,46 @@ function AcceptCard({ h }: { h: Handover }) {
             You will then be the holder of these payments in the custody trail.
           </p>
         </HandoverConfirmDialog>
+      )}
+    </li>
+  )
+}
+
+// ── One handover the viewer gave, not accepted yet ───────────────────────────
+//
+// The giver's side of an Accept card. Remind writes through
+// remind_cash_handover, which notifies the recipient and refuses a second
+// reminder within 4 hours (its sentence is shown as it comes).
+function WaitingCard({ h }: { h: Handover }) {
+  const { remind } = useHandoverActions()
+  const [error, setError] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
+
+  return (
+    <li className={styles.card}>
+      <span className={styles.cardLabel}>
+        <Clock size={13} strokeWidth={2} aria-hidden="true" />
+        Waiting for {h.recipientName} · {waitingFor(h.ageHours)}
+      </span>
+      <span className={styles.cardBrief}>You handed {formatINR(h.totalAmount)} to {h.recipientName}</span>
+      <span className={styles.cardDetail}>
+        {h.recipientName} has not accepted yet · {handoverPaymentCount(h)}
+      </span>
+      {error && <span className={styles.cardError} role="alert">{error}</span>}
+      {sent && <span className={styles.cardDetail} role="status">Reminder sent</span>}
+      {h.canRemind && !sent && (
+        <button
+          type="button"
+          className={styles.button}
+          disabled={remind.isPending}
+          onClick={async () => {
+            setError(null)
+            try { await remind.mutateAsync(h.id); setSent(true) }
+            catch (e) { setError(e instanceof Error ? e.message : 'Could not send the reminder.') }
+          }}
+        >
+          Remind {h.recipientName}
+        </button>
       )}
     </li>
   )

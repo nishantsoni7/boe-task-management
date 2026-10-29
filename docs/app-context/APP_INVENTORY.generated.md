@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `db606387` — Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
-- Commits on this branch: 1057
+- Commit: `6f0ef2bd` — Modules: For you follows your cash hand to hand until Nitish accepts it
+- Commits on this branch: 1058
 - Pages (`page.tsx`): 157   API routes (`route.ts`): 166
 - Migrations: 379 (first `20260530_create_positions.sql`, latest `20270431000000_order_submission_fabric_finish_lines.sql`)
 - Tables ever created: 183 (dropped at some point: 7)   SQL functions: 828   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `6f0ef2bd` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 - `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
@@ -38,7 +39,6 @@
 - `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 - `93db3b81` 2026-10-28 Docs: regenerate app inventory after rebase
 - `6e6c5993` 2026-10-28 My Tasks: smoother drag (live reorder, edge auto-scroll) and Move to top
-- `240a1c7c` 2026-10-28 Docs: migration 20270424000000 (user_task_order) applied to production
 
 ## Pages by top-level area
 
