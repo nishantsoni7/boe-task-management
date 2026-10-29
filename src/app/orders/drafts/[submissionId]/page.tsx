@@ -303,7 +303,6 @@ import {
   buildPaymentStatusView,
   buildSubmissionContext,
   commercialBreakdownRows,
-  summaryCommercialFigures,
   describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
@@ -2276,15 +2275,13 @@ function PiDraftDetailPageInner() {
   })
 
   /**
-   * The commercial rows, built ONCE and shared.
-   *
-   * The top summary repeats two of them beside the payment; the Commercial
-   * breakdown below renders the lot. Both are handed this same array, so the
-   * figure in the card and the figure in the breakdown cannot drift apart —
-   * they are literally the same string.
+   * The commercial rows, built ONCE. The Commercial breakdown at the foot of
+   * the Products card renders them, and the products' totals row takes its
+   * "Product value, before discount" from the same selection — the same
+   * string, so the two cannot drift apart. The payment card no longer repeats
+   * any of them (owner, 2026-10-30).
    */
   const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
-  const summaryFigures = summaryCommercialFigures(commercialRows)
 
   /**
    * The billing declaration, and what it comes to.

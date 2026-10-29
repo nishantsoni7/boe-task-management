@@ -948,8 +948,10 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
       'the component takes no fabric prop: the answer is on the view')
     assert.ok(detail.includes('commercialTerms={submission.commercial_terms_note'),
       'the terms are passed, not derived')
-    assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
-      'and the summary card picks its two figures out of the same array')
+    // The two-figure summary beside the payment is gone (owner, 2026-10-30):
+    // Product value and Total before GST are the breakdown's rows alone.
+    assert.ok(!detail.includes('summaryCommercialFigures('),
+      'no second copy of the figures is picked out for a summary card')
   })
 
   test('the two screens share the reading of the figures; the variant is chrome only', () => {
