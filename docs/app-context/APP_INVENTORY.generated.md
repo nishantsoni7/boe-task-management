@@ -5,21 +5,20 @@
 
 ## Snapshot
 
-- Commit: `2e1689ca` — Merge origin/main into feat/pi-draft-redesign: the fabric sheet is PR #494's
-- Commits on this branch: 1063
+- Commit: `e69d51ed` — Orders: PI Draft page laid out like the Order page (#493)
+- Commits on this branch: 1062
 - Pages (`page.tsx`): 157   API routes (`route.ts`): 166
 - Migrations: 379 (first `20260530_create_positions.sql`, latest `20270431000000_order_submission_fabric_finish_lines.sql`)
 - Tables ever created: 183 (dropped at some point: 7)   SQL functions: 828   Enums: 0
-- Test files: 675   Next.js 16.2.6, React 19.2.4
+- Test files: 676   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `2e1689ca` 2026-10-29 Merge origin/main into feat/pi-draft-redesign: the fabric sheet is PR #494's
+- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
+- `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
 - `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
 - `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
-- `b482ecac` 2026-10-29 Docs: PI Draft redesign is PR #493
-- `4f2762b1` 2026-10-29 Orders: PI Draft page laid out like the Order page, Fabric & finish cost page
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 - `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
@@ -39,6 +38,7 @@
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
+- `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
 
 ## Pages by top-level area
 

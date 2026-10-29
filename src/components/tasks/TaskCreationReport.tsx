@@ -5,31 +5,34 @@ import type { CreationReport } from '@/lib/tasks/taskReporting'
 // Dashboard: self vs delegated tasks created, last 7 and 30 days. A plain table
 // in the Dashboard's card language — no chart. "—" until the counts arrive; the
 // Dashboard never waits for them.
+//
+// Sized for the Dashboard's 280px "At a glance" bar (src/app/dashboard/GlanceBar.tsx),
+// whose heading already says "Tasks created": the rows say only whose tasks,
+// the columns only the window.
 
 const cellBase: React.CSSProperties = {
-  padding: '9px 14px',
+  padding: '9px 12px',
   borderTop: '1px solid #F1EEE9',
   fontSize: '13px',
 }
 
 export function TaskCreationReportCard({
-  report, isMobile,
+  report,
 }: {
   report: CreationReport | undefined
-  isMobile: boolean
 }) {
   const rows = [
-    { label: 'Self tasks created',      last7: report?.self7,      last30: report?.self30 },
-    { label: 'Delegated tasks created', last7: report?.delegated7, last30: report?.delegated30 },
+    { label: 'Self tasks',      last7: report?.self7,      last30: report?.self30 },
+    { label: 'Delegated tasks', last7: report?.delegated7, last30: report?.delegated30 },
   ]
   const shown = (n: number | undefined) => (n === undefined ? '—' : String(n))
   const numeric: React.CSSProperties = {
     ...cellBase, textAlign: 'right', fontWeight: 700, color: '#303536',
     fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-    width: isMobile ? '84px' : '120px',
+    width: '62px',
   }
   const header: React.CSSProperties = {
-    padding: '10px 14px', fontSize: '12px', fontWeight: 600, color: '#686D6C',
+    padding: '9px 12px 7px', fontSize: '11.5px', fontWeight: 600, color: '#686D6C',
     textAlign: 'right', whiteSpace: 'nowrap',
   }
 
@@ -41,9 +44,9 @@ export function TaskCreationReportCard({
       <table style={{ width: '100%', borderCollapse: 'collapse' }} aria-busy={report ? undefined : true}>
         <thead>
           <tr>
-            <th scope="col" style={{ ...header, textAlign: 'left' }}>Tasks</th>
-            <th scope="col" style={header}>Last 7 days</th>
-            <th scope="col" style={header}>Last 30 days</th>
+            <th scope="col" style={{ ...header, textAlign: 'left' }}><span className="sr-only">Tasks</span></th>
+            <th scope="col" style={header}>7 days</th>
+            <th scope="col" style={header}>30 days</th>
           </tr>
         </thead>
         <tbody>
