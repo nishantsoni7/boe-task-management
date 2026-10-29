@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `874753a7` — Docs: migration 20270504000000 applied
-- Commits on this branch: 1073
+- Commit: `421020d1` — Payment plan: layout v2 — full-width grid, plain calculation table, the sum read across
+- Commits on this branch: 1074
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 383 (first `20260530_create_positions.sql`, latest `20270504000000_order_payment_plan_line_costs.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 846   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `421020d1` 2026-10-29 Payment plan: layout v2 — full-width grid, plain calculation table, the sum read across
 - `874753a7` 2026-10-29 Docs: migration 20270504000000 applied
 - `9f570ace` 2026-10-29 Payment plan: the owner's dispatch sheet layout, fabric and packing per product
 - `5f496c27` 2026-10-29 wip: per-product dispatch sheet (squashed on merge)
@@ -38,7 +39,6 @@
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
-- `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
 
 ## Pages by top-level area
 
