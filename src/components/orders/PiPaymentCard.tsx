@@ -19,6 +19,7 @@ import { colors } from '@/lib/tokens'
 import { amountInputProblem, groupIndianDigits, isValidAmount } from '@/lib/currency'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { ProofDropZone } from '@/app/finance/components/ProofDropZone'
+import { PaymentIdChip } from '@/app/finance/components/PaymentIdChip'
 import {
   FieldProblem,
   FormDialog,
@@ -428,7 +429,7 @@ const PAYMENT_FILTER_EMPTY: Record<PiPaymentFilter, string> = {
 const PAYMENT_FILTERS: readonly PiPaymentFilter[] = ['all', 'confirmed', 'awaiting']
 
 /** The decision a verifier has started on one row, before confirming it. */
-type ArmedDecision = { paymentId: string; requestNumber: string; decision: PaymentDecision }
+type ArmedDecision = { paymentId: string; humanPaymentId: string; decision: PaymentDecision }
 
 const SMALL_BUTTON: React.CSSProperties = {
   padding: '5px 11px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', cursor: 'pointer',
@@ -531,7 +532,7 @@ export function PiPaymentRow({
 
       <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '12px', color: colors.tertiary }}>
         {row.reference && <span>Ref {row.reference}</span>}
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{row.requestNumber}</span>
+        <PaymentIdChip>{row.humanPaymentId}</PaymentIdChip>
         {row.recordedBy && <span>Recorded by {row.recordedBy}</span>}
         {row.paymentAmount && <span>Part of a {row.paymentAmount} payment</span>}
         {row.reversed && <span>Allocation reversed</span>}
@@ -740,7 +741,7 @@ export function PiPaymentDetailsModal({
 
   const arm = (row: PiPaymentRowView, decision: PaymentDecision) => {
     if (busyRef.current) return
-    setArmed({ paymentId: row.paymentId, requestNumber: row.requestNumber, decision })
+    setArmed({ paymentId: row.paymentId, humanPaymentId: row.humanPaymentId, decision })
     setNote('')
     setError(null)
     setNotice(null)
@@ -755,7 +756,7 @@ export function PiPaymentDetailsModal({
     try {
       const failure = await onDecide(armed.paymentId, armed.decision, note)
       if (failure) { setError(failure); return }
-      setNotice(`${armed.requestNumber} ${armed.decision === 'approve' ? 'approved' : 'rejected'}. Payment status updated.`)
+      setNotice(`${armed.humanPaymentId} ${armed.decision === 'approve' ? 'approved' : 'rejected'}. Payment status updated.`)
       setArmed(null)
       setNote('')
     } finally {
