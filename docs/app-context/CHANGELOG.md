@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Orders: dispatch payment sheet, layout v2 (PR #503) · no migration
+- **Owner feedback on the first redesign.** Horizontal scroll, did not look like a table, too much item detail, too many colours, the to-pay box confusing. Mockup redone twice and approved.
+- **What.** Full-width grid table with thin lines, product name only; one plain calculation table (Sent earlier | This lot | Still to come | Whole order) ending in what is needed in bank and in cash; "To pay before this dispatch" as one sum read across (Goods sent + Advance - Already received = Balance) with Bank / Cash / Total rows; whole rupees. Screen, Excel and PDF alike.
+- **Proof.** tsc, eslint, full suite (0 failures), new tests that every to-pay row adds up and the carried cells match. Not seen on screen; PDF not viewed.
+
 ## 2026-10-29 — Orders: the dispatch payment sheet redesigned like the owner's own, fabric and packing per product (PR #503) · migration 20270504000000 APPLIED 2026-10-29
 - **Owner request.** "Very complicated to understand"; redesign after their dispatch sheet so a client follows it easily, and show each product's fabric and packing. Mockup approved before building.
 - **What.** Product table with item, packing and fabric amounts per product; four panels (this lot, sent earlier, still to come, received); one box "To pay before this dispatch" in Bank / Cash / Total. The same in Excel and the PDF (A4 landscape). Applies to Confirmed Orders and BDPIs.

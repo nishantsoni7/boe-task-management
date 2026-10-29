@@ -1,12 +1,21 @@
 // ── The Payment plan as a document ────────────────────────────────────────────
 //
-// ONE model that the screen's summary, the Excel and the PDF all draw, so a
-// download can never say something the screen does not. It decides nothing:
-// every figure comes from computePaymentPlan, and this only arranges them into
-// labelled rows in plain words a client can follow (owner, 2026-10-29).
+// ONE model that the screen, the Excel and the PDF all draw, so a download can
+// never say something the screen does not. It decides nothing: every figure
+// comes from computePaymentPlan, and this only arranges them, in plain words a
+// client can follow (owner, 2026-10-29, mockup v2 approved):
+//
+//   1. the product table (one row per product, this lot's quantities)
+//   2. "How the amount is worked out": one plain table, columns Sent earlier |
+//      This lot | Still to come | Whole order, ending in what is needed before
+//      this dispatch in bank and in cash (those cells are carried forward)
+//   3. "To pay before this dispatch": one table read across as a sum,
+//      Goods sent + Advance − Already received = Balance, rows Bank / Cash / Total.
+//
+// Amounts are shown in whole rupees (the owner's own sheet does so); the
+// calculation keeps paise.
 
 import {
-  formatPaise,
   rupees,
   type PlanData,
   type PlanResult,
@@ -15,63 +24,94 @@ import {
 export type SheetCell = string | number | null
 export type SheetColumn = { label: string; kind: 'text' | 'qty' | 'money' }
 
-/** One row of the Account / Cash / Total summary. Amounts in paise; null = nothing on that side. */
-export type SummaryRow = {
+/** One row of "How the amount is worked out": four cells (earlier, this lot, still to come, whole order). */
+export type CalcRow = {
   label: string
-  account: number | null
-  cash: number | null
-  total: number | null
-  kind: 'line' | 'total' | 'balance'
+  /** Paise, or words ("100%", "(when sent)"), or null for an empty cell. */
+  cells: (number | string | null)[]
+  kind: 'line' | 'sum' | 'gap' | 'needed'
+  /** The cells carried into "To pay before this dispatch". */
+  carried?: boolean
 }
 
-export type SheetPanel = { title: string; rows: { label: string; paise: number | null; text?: string }[] }
+export type PayColumn = { mark: string | null; title: string; sub: string; op: '+' | '−' | '=' | null; balance?: boolean }
+export type PayRow = { label: string; cells: number[]; total?: boolean }
 
 export type PaymentPlanSheet = {
   title: string
+  subtitle: string
   facts: { label: string; value: string }[]
-  panels: SheetPanel[]
   lineColumns: SheetColumn[]
   lineRows: SheetCell[][]
   lineTotals: SheetCell[]
-  lotColumns: SheetColumn[]
-  lotRows: SheetCell[][]
-  summary: SummaryRow[]
+  calcColumns: string[]
+  calcRows: CalcRow[]
+  payColumns: PayColumn[]
+  payRows: PayRow[]
   notes: string[]
-}
-
-const dateText = (iso: string | null) => {
-  if (!iso) return '—'
-  const [y, m, d] = iso.split('-')
-  return y && m && d ? `${d}-${m}-${y}` : iso
 }
 
 const pct = (n: number) => `${(Math.round(n * 100) / 100).toString()}%`
 export const gstRateText = (rate: number) => pct(rate * 100)
 
-/** The summary in plain words: what is due, what has come in, what is left — account and cash apart. */
-export function planSummaryRows(result: PlanResult): SummaryRow[] {
-  const s = result.split
-  const row = (label: string, side: { account: number; cash: number; total: number }, kind: SummaryRow['kind'] = 'line'): SummaryRow =>
-    ({ label, account: side.account, cash: side.cash, total: side.total, kind })
-  const rows: SummaryRow[] = [
-    { label: `Goods sent (this lot + earlier), with GST ${gstRateText(result.gstRate)} on the billed part`,
-      account: s.dispatch.account + s.gst.account, cash: s.dispatch.cash, total: s.dispatch.total + s.gst.total, kind: 'line' },
-    row(`Advance for goods still to come (${pct(result.pendingPercent)})`, s.pending),
-    row('Total to be paid', s.due, 'total'),
-    { label: 'Already received', account: -s.received.account, cash: -s.received.cash, total: -s.received.total, kind: 'line' },
+/** Paise as whole rupees with Indian grouping, no symbol; a minus sign for negatives. */
+export function wholeRupees(paise: number): string {
+  const r = Math.round(paise / 100)
+  const s = Math.abs(r).toLocaleString('en-IN')
+  return r < 0 ? `−${s}` : s
+}
+
+/** "How the amount is worked out". */
+export function planCalcRows(result: PlanResult): CalcRow[] {
+  const e = result.earlier, l = result.lot, p = result.pending
+  const four = (pick: (g: typeof e) => number) => [pick(e), pick(l), pick(p), pick(e) + pick(l) + pick(p)]
+  const billing = result.billingPercent === null ? 'billing % not set' : pct(result.billingPercent)
+  const cashShare = result.billingPercent === null ? '100%' : pct(100 - result.billingPercent)
+  const adv = result.split.pending
+  const bankNeeded = [e.billed + e.gst, l.billed + l.gst, adv.account]
+  const cashNeeded = [e.cash, l.cash, adv.cash]
+  return [
+    { label: 'Item amount', cells: four(g => g.items), kind: 'line' },
+    { label: 'Packing', cells: four(g => g.packing), kind: 'line' },
+    { label: 'Fabric', cells: four(g => g.fabric), kind: 'line' },
+    { label: 'Transport and other charges (shared by item value)', cells: four(g => g.otherShare), kind: 'line' },
+    { label: 'Discount (shared by item value)', cells: four(g => g.discountShare), kind: 'line' },
+    { label: 'Value', cells: four(g => g.value), kind: 'sum' },
+    { label: '', cells: [null, null, null, null], kind: 'gap' },
+    { label: `Billed part (${billing}) — paid in bank`, cells: four(g => g.billed), kind: 'line' },
+    { label: `GST ${gstRateText(result.gstRate)} on the billed part — paid in bank`, cells: [e.gst, l.gst, '(when sent)', e.gst + l.gst], kind: 'line' },
+    { label: `Cash part (${cashShare})`, cells: four(g => g.cash), kind: 'line' },
+    { label: '', cells: [null, null, null, null], kind: 'gap' },
+    { label: 'Needed before this dispatch', cells: ['100%', '100%', `${pct(result.pendingPercent)} as advance`, null], kind: 'needed' },
+    { label: '— in bank', cells: [...bankNeeded, bankNeeded.reduce((a, b) => a + b, 0)], kind: 'line', carried: true },
+    { label: '— in cash', cells: [...cashNeeded, cashNeeded.reduce((a, b) => a + b, 0)], kind: 'line', carried: true },
   ]
+}
+
+/** "To pay before this dispatch", read across: 1 + 2 − 3 (+ extra moved) = balance. */
+export function planPayTable(result: PlanResult): { columns: PayColumn[]; rows: PayRow[] } {
+  const s = result.split
   const m = s.movedFromAccount
-  if (m.excessPaise > 0) {
-    rows.push({
-      label: `Extra paid in account, billed as goods ${formatPaise(m.goodsPaise)} + GST ${formatPaise(m.gstPaise)}`,
-      account: m.excessPaise,
-      cash: -m.goodsPaise,
-      total: m.excessPaise - m.goodsPaise,
-      kind: 'line',
-    })
+  const moved = m.excessPaise > 0
+  const columns: PayColumn[] = [
+    { mark: '1', title: 'Goods sent', sub: 'earlier + this lot, with GST', op: null },
+    { mark: '2', title: 'Advance', sub: `${pct(result.pendingPercent)} of goods still to come`, op: '+' },
+    { mark: '3', title: 'Already received', sub: 'confirmed payments', op: '−' },
+    ...(moved ? [{ mark: '4', title: 'Extra in bank', sub: 'billed as goods + GST', op: '+' as const }] : []),
+    { mark: null, title: 'Balance to pay', sub: 'now', op: '=', balance: true },
+  ]
+  const goodsBank = s.dispatch.account + s.gst.account
+  const goodsCash = s.dispatch.cash
+  const row = (label: string, goods: number, advance: number, received: number, extra: number, balance: number, total = false): PayRow =>
+    ({ label, cells: [goods, advance, received, ...(moved ? [extra] : []), balance], total })
+  return {
+    columns,
+    rows: [
+      row('Bank', goodsBank, s.pending.account, s.received.account, m.excessPaise, s.balance.account),
+      row('Cash', goodsCash, s.pending.cash, s.received.cash, -m.goodsPaise, s.balance.cash),
+      row('Total', goodsBank + goodsCash, s.pending.total, s.received.total, m.gstPaise, s.balance.total, true),
+    ],
   }
-  rows.push(row('Balance to pay', s.balance, 'balance'))
-  return rows
 }
 
 export function buildPaymentPlanSheet(
@@ -79,10 +119,9 @@ export function buildPaymentPlanSheet(
   result: PlanResult,
   extra: { lotLines: Record<string, number>; generatedOn: string; plannedOn: string | null },
 ): PaymentPlanSheet {
-  const rateOf = new Map(data.items.map(i => [i.itemSequence, i.rate]))
-  const sourceWord = (src: 'typed' | 'finance' | 'none') =>
-    src === 'typed' ? 'typed' : src === 'finance' ? 'confirmed payments' : 'none recorded'
   const s = result.split
+  const lotNo = (data.lots.find(l => l.status === 'planned')?.lotNo)
+    ?? (data.lots.filter(l => l.status === 'dispatched').length + 1)
 
   const lineRows: SheetCell[][] = result.lines.map(l => [
     l.itemSequence,
@@ -90,6 +129,7 @@ export function buildPaymentPlanSheet(
     l.ordered,
     l.previouslyDispatched,
     l.planned,
+    Math.max(0, l.remaining),
     l.rate,
     rupees(l.plannedPaise),
     l.packingRate,
@@ -100,105 +140,58 @@ export function buildPaymentPlanSheet(
     rupees(l.plannedFabricPaise),
     rupees(l.plannedLineTotalPaise),
   ])
-  const billing = result.billingPercent === null ? 'billing % not set' : pct(result.billingPercent)
-  const rate = gstRateText(result.gstRate)
-  const panels: SheetPanel[] = [
-    { title: '1 · This lot', rows: [
-      { label: 'Item total', paise: result.lot.items },
-      { label: 'Packing', paise: result.lot.packing },
-      { label: 'Fabric', paise: result.lot.fabric },
-      { label: 'Transport and other share', paise: result.lot.otherShare },
-      { label: 'Discount share', paise: result.lot.discountShare },
-      { label: 'Lot value', paise: result.lot.value },
-      { label: `Billed (${billing})`, paise: result.lot.billed },
-      { label: `GST ${rate} on billed`, paise: result.lot.gst },
-      { label: 'Cash part', paise: result.lot.cash },
-    ] },
-    { title: '2 · Sent earlier', rows: [
-      { label: 'Value sent', paise: result.earlier.value },
-      { label: 'Billed', paise: result.earlier.billed },
-      { label: `GST ${rate}`, paise: result.earlier.gst },
-      { label: 'Cash part', paise: result.earlier.cash },
-    ] },
-    { title: '3 · Still to come', rows: [
-      { label: 'Value of goods not yet sent', paise: result.pendingValuePaise },
-      { label: 'Advance asked', paise: null, text: pct(result.pendingPercent) },
-      { label: 'Advance for them', paise: result.pendingShareAmountPaise },
-    ] },
-    { title: '4 · Received', rows: [
-      { label: 'In bank', paise: s.received.account },
-      { label: 'In cash', paise: s.received.cash },
-      { label: 'Total received', paise: s.received.total },
-    ] },
-  ]
-
-  const lotRows: SheetCell[][] = data.lots
-    .filter(l => l.status === 'dispatched')
-    .map(l => {
-      const goods = l.lines.reduce((sum, x) => sum + Math.round(x.quantity * 100) * Math.round((rateOf.get(x.itemSequence) ?? 0) * 100), 0)
-      return [`Lot ${l.lotNo}`, dateText(l.dispatchedOn), l.lines.length, Math.round(goods / 100) / 100]
-    })
-  if (extra.lotLines && Object.values(extra.lotLines).some(q => q > 0)) {
-    lotRows.push([
-      'This lot (planned)',
-      dateText(extra.plannedOn),
-      Object.values(extra.lotLines).filter(q => q > 0).length,
-      rupees(result.plannedPaise),
-    ])
-  }
+  const fabricMetres = Math.round(result.lines.reduce((sum, l) => sum + l.plannedFabricMetres, 0) * 1000) / 1000
 
   const notes: string[] = []
-  notes.push(`Account = payments into the company bank account (HDFC). Cash = all other payments. The billed part (${result.billingPercent === null ? 'billing % not set' : pct(result.billingPercent)}) and all GST are paid in account; the rest in cash.`)
+  notes.push('Bank = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara). Amounts rounded to the rupee.')
   if (result.billingMissing) notes.push('No billing percentage is set on the PI or on this plan, so everything is shown as cash and no GST is included.')
   if (s.movedFromAccount.excessPaise > 0) {
-    notes.push(`More was paid in account than needed. The extra ${formatPaise(s.movedFromAccount.excessPaise)} is billed: ${formatPaise(s.movedFromAccount.goodsPaise)} of goods (taken off the cash balance) and ${formatPaise(s.movedFromAccount.gstPaise)} of GST.`)
+    notes.push(`More was paid in bank than needed. The extra ${wholeRupees(s.movedFromAccount.excessPaise)} is billed: ${wholeRupees(s.movedFromAccount.goodsPaise)} of goods (taken off the cash balance) and ${wholeRupees(s.movedFromAccount.gstPaise)} of GST.`)
   }
-  if (s.balance.cash < 0) notes.push(`${formatPaise(-s.balance.cash)} more has been paid in cash than needed.`)
+  if (s.balance.cash < 0) notes.push(`${wholeRupees(-s.balance.cash)} more has been paid in cash than needed.`)
   if (data.piDiffersFromOrder) notes.push('The Order value was amended after the PI; this sheet uses the PI\'s totals.')
   if (s.awaiting.account > 0 || s.awaiting.cash > 0) {
-    notes.push(`Still being checked in Finance and not counted yet: ${formatPaise(s.awaiting.account)} in account, ${formatPaise(s.awaiting.cash)} in cash.`)
+    notes.push(`Still being checked in Finance and not counted yet: ${wholeRupees(s.awaiting.account)} in bank, ${wholeRupees(s.awaiting.cash)} in cash.`)
   }
   if (data.note) notes.push(data.note)
 
+  const billing = result.billingPercent === null ? 'billing not set' : `Billing ${pct(result.billingPercent)} in bank, rest in cash`
+  const who = data.kind === 'bdpi' && data.oldOrderNo ? `Old order ${data.oldOrderNo}` : null
+  const pay = planPayTable(result)
+
   return {
-    title: `Payment plan — Order ${data.displayNumber}`,
+    title: `Payment plan — ${data.kind === 'bdpi' ? '' : 'Order '}${data.displayNumber}`,
+    subtitle: [who, data.clientName, `Lot ${lotNo}`, extra.generatedOn, billing,
+      `Advance on goods still to come ${pct(result.pendingPercent)}`].filter(Boolean).join(' · '),
     facts: [
       ['Client', data.clientName ?? '—'],
       ['Date', extra.generatedOn],
-      ['PI total before GST', formatPaise(result.totalBeforeGstPaise ?? 0)],
-      ['Goods sent so far + this lot', `${result.dispatchSharePercent.toFixed(2)}% of the PI's goods`],
       ['Billing (paid in bank)', result.billingPercent === null ? 'Not set' : pct(result.billingPercent)],
-      ['Received in account', `${formatPaise(s.received.account)} (${sourceWord(s.receivedSource.account)})`],
-      ['Received in cash', `${formatPaise(s.received.cash)} (${sourceWord(s.receivedSource.cash)})`],
     ].map(([label, value]) => ({ label, value })),
-    panels,
     lineColumns: [
       { label: 'Code', kind: 'text' },
       { label: 'Item', kind: 'text' },
       { label: 'Total qty', kind: 'qty' },
       { label: 'Sent earlier', kind: 'qty' },
       { label: 'This lot', kind: 'qty' },
+      { label: 'Still to come', kind: 'qty' },
       { label: 'Unit price', kind: 'money' },
       { label: 'Item amount', kind: 'money' },
       { label: 'Pkg rate', kind: 'money' },
       { label: 'Pkg amount', kind: 'money' },
       { label: 'Fabric m/pc', kind: 'qty' },
-      { label: 'Total fabric', kind: 'qty' },
+      { label: 'Fabric m', kind: 'qty' },
       { label: 'Fab rate', kind: 'money' },
       { label: 'Fab amount', kind: 'money' },
       { label: 'Line total', kind: 'money' },
     ],
     lineRows,
-    lineTotals: ['', 'This lot', null, null, null, null, rupees(result.lot.items), null, rupees(result.lot.packing),
-      null, null, null, rupees(result.lot.fabric), rupees(result.lot.items + result.lot.packing + result.lot.fabric)],
-    lotColumns: [
-      { label: 'Lot', kind: 'text' },
-      { label: 'Date', kind: 'text' },
-      { label: 'Lines', kind: 'qty' },
-      { label: 'Goods value', kind: 'money' },
-    ],
-    lotRows,
-    summary: planSummaryRows(result),
+    lineTotals: ['', 'This lot', null, null, null, null, null, rupees(result.lot.items), null, rupees(result.lot.packing),
+      null, fabricMetres, null, rupees(result.lot.fabric), rupees(result.lot.items + result.lot.packing + result.lot.fabric)],
+    calcColumns: ['Sent earlier', 'This lot', 'Still to come', 'Whole order'],
+    calcRows: planCalcRows(result),
+    payColumns: pay.columns,
+    payRows: pay.rows,
     notes,
   }
 }

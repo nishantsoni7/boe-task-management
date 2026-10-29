@@ -187,6 +187,8 @@ export type PlanResult = {
   split: PlanSplit
   /** The owner's panels: this lot, what was sent earlier, and the goods still to come. */
   lot: PlanGroup
+  /** The goods still to come, the same way (value = the PI total less what has left; GST only when sent). */
+  pending: PlanGroup
   earlier: PlanGroup
   pendingValuePaise: number
 }
@@ -380,6 +382,9 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
   })
   const earlierGroup = group(beforeV, pkgB, fabB, E, earlierBilled, earlierGst)
   const lotGroup = group(plannedV, pkgP, fabP, A - E, dispatchAcc - earlierBilled, gstP - earlierGst)
+  const notNeg = (v: bigint) => (v < BIG(0) ? BIG(0) : v)
+  const pendingGroup = group(notNeg(orderedV - dispatchedV), notNeg(pkgO - pkgB - pkgP), notNeg(fabO - fabB - fabP),
+    pendBase, accountPart(pendBase), BIG(0))
 
   // the share of the PI (by value) that has left or leaves with this lot
   const share = T > BIG(0)
@@ -413,6 +418,7 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
     toCollectPaise: toNumber(balAcc + balCash),
     dispatchSharePercent: share,
     lot: lotGroup,
+    pending: pendingGroup,
     earlier: earlierGroup,
     pendingValuePaise: toNumber(pendBase),
     split: {

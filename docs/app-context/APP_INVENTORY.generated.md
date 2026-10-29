@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5f496c27` — wip: per-product dispatch sheet (squashed on merge)
-- Commits on this branch: 1070
+- Commit: `874753a7` — Docs: migration 20270504000000 applied
+- Commits on this branch: 1073
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 383 (first `20260530_create_positions.sql`, latest `20270504000000_order_payment_plan_line_costs.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 846   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
+- `874753a7` 2026-10-29 Docs: migration 20270504000000 applied
+- `9f570ace` 2026-10-29 Payment plan: the owner's dispatch sheet layout, fabric and packing per product
 - `5f496c27` 2026-10-29 wip: per-product dispatch sheet (squashed on merge)
+- `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 - `21208b13` 2026-10-29 BDPI: renumber the migration to 20270503000000 (applied)
 - `eca639c6` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
@@ -36,9 +39,6 @@
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
 - `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 - `64ee38e0` 2026-10-29 Sidebar rail: no vertical movement, fluid motion, clean closed rail (#485)
-- `5f339fab` 2026-10-29 Vendors: scan a card or name plate; clearer Products and Team size choices (#484)
-- `97d88dc1` 2026-10-29 Modules page: "For you" panel, action first and every update previewed (#483)
-- `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 
 ## Pages by top-level area
 
