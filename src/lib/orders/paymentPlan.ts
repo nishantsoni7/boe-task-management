@@ -35,6 +35,8 @@ export type PlanItem = {
   productName: string | null
   quantity: number
   rate: number
+  /** Size, material, fabric / finish chosen… shown under the name (BDPI lines carry them). */
+  details?: string[]
 }
 
 export type PlanLot = {
@@ -360,6 +362,35 @@ export type PlanData = {
   financeCashVerified: number
   financeAccountAwaiting: number
   financeCashAwaiting: number
+  /** 'bdpi' for an OLD order kept as a BDPI (20270502000000). */
+  kind: 'order' | 'bdpi'
+  oldOrderNo: string | null
+  fabricResponsibility: string | null
+}
+
+const str = (v: unknown): string | null => (v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim())
+
+/** The detail lines of one PI line, in plain words; empty when the read carries none. */
+export function itemDetails(i: Record<string, unknown>): string[] {
+  const out: string[] = []
+  const size = str(i.dimensions); if (size) out.push(`Size: ${size}`)
+  const material = str(i.material); if (material) out.push(`Material: ${material}`)
+  const custom = str(i.customization); if (custom) out.push(`Customization: ${custom}`)
+  if (Array.isArray(i.finish_specs)) {
+    for (const s of i.finish_specs as { heading?: unknown; value?: unknown }[]) {
+      const h = str(s?.heading), v = str(s?.value)
+      if (h && v) out.push(`${h}: ${v}`)
+    }
+  }
+  const metres = num(i.fabric_metres_per_piece), perMetre = num(i.fabric_price_per_metre)
+  if (metres !== null || perMetre !== null) {
+    out.push(`Fabric: ${metres ?? '—'} m per piece${perMetre !== null ? ` at ₹${perMetre.toLocaleString('en-IN')}/m` : ''}`)
+  }
+  const packing = num(i.packing_cost_per_piece), packType = str(i.packing_type)
+  if (packing !== null || packType) {
+    out.push(`Packing: ${packType ?? ''}${packing !== null ? `${packType ? ', ' : ''}₹${packing.toLocaleString('en-IN')} per piece` : ''}`)
+  }
+  return out
 }
 
 const num = (v: unknown): number | null => {
@@ -394,6 +425,7 @@ export function parsePlanData(raw: unknown): PlanData | null {
         productName: i.product_name === null || i.product_name === undefined ? null : String(i.product_name),
         quantity: num(i.quantity) ?? 0,
         rate: num(i.rate) ?? 0,
+        details: itemDetails(i),
       }
     }),
     lots: arr(r.lots).map(x => {
@@ -427,6 +459,9 @@ export function parsePlanData(raw: unknown): PlanData | null {
     financeCashVerified: num(fin.cash_verified) ?? 0,
     financeAccountAwaiting: num(fin.account_awaiting) ?? 0,
     financeCashAwaiting: num(fin.cash_awaiting) ?? 0,
+    kind: r.kind === 'bdpi' ? 'bdpi' : 'order',
+    oldOrderNo: str(order.old_order_no),
+    fabricResponsibility: str(order.fabric_responsibility),
   }
 }
 

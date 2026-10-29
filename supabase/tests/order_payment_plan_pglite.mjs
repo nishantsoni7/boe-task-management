@@ -1,5 +1,6 @@
 // Database regression suite for 20270428000000 (Orders Payment plan) and
-// 20270430000000 (account and cash kept apart).
+// 20270430000000 (account and cash kept apart) and 20270502000000 (old orders
+// kept as BDPI).
 //
 // Applies the REAL migration on an in-memory Postgres (PGlite) over a small
 // stand-in for what it depends on: users, the permission tables, orders, PIs,
@@ -25,6 +26,7 @@ const { PGlite } = require('@electric-sql/pglite')
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const migration = readFileSync(`${REPO}/supabase/migrations/20270428000000_order_payment_plan.sql`, 'utf8')
 const migration2 = readFileSync(`${REPO}/supabase/migrations/20270430000000_order_payment_plan_account_cash.sql`, 'utf8')
+const migration3 = readFileSync(`${REPO}/supabase/migrations/20270502000000_order_payment_plan_bdpi.sql`, 'utf8')
 
 const U = {
   admin:   '00000000-0000-0000-0000-0000000000a1',
@@ -59,7 +61,9 @@ create table public.order_submissions (
 create table public.orders (id uuid primary key, display_number text, status text not null default 'running', source_order_submission_id uuid references public.order_submissions(id), total_value numeric);
 create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id), item_sequence text, product_name text, quantity numeric, cost_per_piece numeric, total_amount numeric, sort_order int);
 create table public.finance_payment_requests (id uuid primary key default gen_random_uuid(), status text, payment_mode text, deleted_at timestamptz);
-create table public.finance_payment_allocations (id uuid primary key default gen_random_uuid(), payment_request_id uuid references public.finance_payment_requests(id), order_id uuid, allocated_amount numeric, status text default 'active');
+create table public.finance_payment_allocations (id uuid primary key default gen_random_uuid(), payment_request_id uuid references public.finance_payment_requests(id), order_id uuid, allocated_amount numeric, status text default 'active', legacy_order_no text, legacy_client_name text);
+create function public.normalize_legacy_order_no(p_value text) returns text language sql immutable as $$
+  select nullif(upper(regexp_replace(btrim(coalesce(p_value, '')), '\\s+', ' ', 'g')), '') $$;
 
 create table public.test_grants (uid uuid, action text);
 create function public.actor_has_module_permission(m text, a text) returns boolean language sql stable security definer as $$
@@ -245,5 +249,115 @@ await db.exec(`delete from public.order_dispatch_lot_events; delete from public.
 assert.equal((await q(`select count(*)::int as n from public.order_dispatch_lots`))[0].n, 0)
 assert.equal((await q(`select count(*)::int as n from public.order_payment_plans`))[0].n, 0)
 ok('deleting an Order removes its plan and lots')
+
+// ══ Old orders kept as BDPI (20270502000000) ═════════════════════════════════
+await asOwner()
+await db.exec(migration3)
+ok('the BDPI migration applies on top and its own assertions pass')
+
+const bdpiPayload = (old, extra = {}) => JSON.stringify({
+  old_order_no: old, client_name: 'Rivoli Hotels', workbook_name: 'Old 412.xlsx', fabric_responsibility: 'client',
+  commercial_terms_note: 'Ex-works',
+  commercial: { gross_product_amount: 20000, total_before_gst: 24000, gst_amount: 4320, grand_total: 28320, packing_cost: 1000, fabric_cost_text: 'as per selection' },
+  items: [
+    { item_sequence: 'B1', product_name: 'Sofa', quantity: 10, rate: 1000, line_total: 10000, dimensions: '80 in', material: 'Teak',
+      fabric_metres_per_piece: 6.5, fabric_price_per_metre: 450, packing_cost_per_piece: 100, packing_type: 'BCF',
+      finish_specs: [{ heading: 'Fabric', value: 'Velvet Blue' }] },
+    { item_sequence: 'B2', product_name: 'Chair', quantity: 20, rate: 500, line_total: 10000 },
+  ],
+  ...extra,
+})
+
+await as(U.viewer)
+await refuses(`select public.create_bdpi('${bdpiPayload('412')}'::jsonb)`, /PAYMENT_PLAN_FORBIDDEN/, 'a viewer cannot create a BDPI')
+await as(U.editor)
+const created = (await q(`select public.create_bdpi('${bdpiPayload(' 412 ')}'::jsonb) as r`))[0].r
+assert.equal(created.bdpi_no, 'BDPI-0001')
+ok('an editor creates BDPI-0001')
+await refuses(`select public.create_bdpi('${bdpiPayload('412')}'::jsonb)`, /BDPI_OLD_ORDER_EXISTS/, 'the same old order number twice is refused')
+await refuses(`select public.create_bdpi('${bdpiPayload('413', { items: [{ item_sequence: 'X', quantity: 1.234, rate: 1 }] })}'::jsonb)`, /BDPI_ITEM_INVALID/, 'three decimals on a line are refused')
+await refuses(`select public.create_bdpi('${bdpiPayload('', {})}'::jsonb)`, /BDPI_OLD_ORDER_REQUIRED/, 'an old order number is required')
+const B = created.id
+
+await as(U.editor)
+await refuses(`select public.bdpi_attach_files('${B}', 'submissions/x/y.xlsx', 'x', '[]'::jsonb)`, /BDPI_PATH_INVALID/, 'files outside bdpi/<id>/ are refused')
+await q(`select public.bdpi_attach_files('${B}', 'bdpi/${B}/workbook.xlsx', 'Old 412.xlsx', '[{"item_sequence":"B1","path":"bdpi/${B}/items/B1.png"}]'::jsonb)`)
+
+// Finance money allocated to OLD order 412: 3000 HDFC verified, 2000 PNB verified, 700 Canara awaiting
+await asOwner()
+await db.exec(`
+insert into public.finance_payment_requests (id, status, payment_mode) values
+  ('20000000-0000-0000-0000-000000000001', 'approved_linked', 'hdfc'),
+  ('20000000-0000-0000-0000-000000000002', 'approved_unlinked', 'pnb'),
+  ('20000000-0000-0000-0000-000000000003', 'pending_approval', 'canara');
+insert into public.finance_payment_allocations (payment_request_id, legacy_order_no, legacy_client_name, allocated_amount) values
+  ('20000000-0000-0000-0000-000000000001', '412', 'Rivoli', 3000),
+  ('20000000-0000-0000-0000-000000000002', '412', 'Rivoli', 2000),
+  ('20000000-0000-0000-0000-000000000003', '412', 'Rivoli', 700);`)
+
+let b = (await (async () => { await as(U.viewer); return q(`select public.bdpi_payment_plan_read('${B}') as r`) })())[0].r
+assert.equal(b.kind, 'bdpi')
+assert.equal(b.order.display_number, 'BDPI-0001')
+assert.equal(b.order.old_order_no, '412')
+assert.equal(b.order.fabric_responsibility, 'client')
+assert.equal(Number(b.pi.total_before_gst), 24000)
+assert.equal(b.pi.fabric_cost_text, 'as per selection')
+assert.equal(b.items.length, 2)
+assert.equal(b.items[0].has_image, true)
+assert.equal(b.items[0].material, 'Teak')
+assert.deepEqual(b.items[0].finish_specs, [{ heading: 'Fabric', value: 'Velvet Blue' }])
+assert.equal(Number(b.items[0].fabric_metres_per_piece), 6.5)
+ok('the BDPI reads in the same shape as an Order, with the complete PI details')
+assert.equal(Number(b.finance.account_verified), 3000)
+assert.equal(Number(b.finance.cash_verified), 2000)
+assert.equal(Number(b.finance.cash_awaiting), 700)
+ok('payments Finance allocated to the old order number are split into account and cash')
+assert.doesNotMatch(JSON.stringify(b), /bdpi\/|20000000-/)
+ok('no storage path or payment id leaves the database')
+
+await as(U.viewer)
+await refuses(`select public.bdpi_payment_plan_save('${B}', 50, null, null, null, null)`, /PAYMENT_PLAN_FORBIDDEN/, 'a viewer cannot save a BDPI plan')
+await as(U.editor)
+await q(`select public.bdpi_payment_plan_save('${B}', 60, 50, null, 500, 'old order')`)
+await refuses(`select public.bdpi_dispatch_lot_save('${B}', '${lines(['B1', 11])}'::jsonb, null)`, /DISPATCH_QUANTITY_EXCEEDS_ORDER/, 'a BDPI lot cannot exceed what was ordered')
+await refuses(`select public.bdpi_dispatch_lot_save('${B}', '${lines(['1', 1])}'::jsonb, null)`, /DISPATCH_LINE_NOT_ON_PI/, 'an Order line is not a BDPI line')
+await q(`select public.bdpi_dispatch_lot_save('${B}', '${lines(['B1', 10], ['B2', 5])}'::jsonb, null)`)
+await q(`select public.bdpi_dispatch_lot_mark_dispatched('${B}', current_date)`)
+await q(`select public.bdpi_dispatch_lot_save('${B}', '${lines(['B2', 15])}'::jsonb, null)`)
+b = (await q(`select public.bdpi_payment_plan_read('${B}') as r`))[0].r
+assert.deepEqual(b.lots.map(l => [l.lot_no, l.status]), [[1, 'dispatched'], [2, 'planned']])
+assert.equal(Number(b.plan.pending_percent), 60)
+assert.equal(Number(b.plan.advance_cash_override), 500)
+ok('a BDPI remembers what was dispatched; the next load shows lot 1 sent and lot 2 planned')
+
+const list = (await q(`select public.bdpi_list() as r`))[0].r
+assert.equal(list.length, 1)
+assert.equal(Number(list[0].dispatched_qty), 15)
+assert.equal(Number(list[0].ordered_qty), 30)
+assert.equal(list[0].has_planned, true)
+ok('the list shows pieces sent of pieces ordered')
+
+// admin change of a BDPI lot, and delete rules
+const bLot = b.lots[0].id
+await refuses(`select public.order_dispatch_lot_admin_change('${bLot}', 'Entered the wrong quantity', '${lines(['B1', 9])}'::jsonb, null)`, /administrator/i, 'an editor cannot change a dispatched BDPI lot')
+await as(U.admin)
+await q(`select public.order_dispatch_lot_admin_change('${bLot}', 'Entered the wrong quantity', '${lines(['B1', 9], ['B2', 5])}'::jsonb, null)`)
+ok('an administrator corrects a dispatched BDPI lot through the shared door')
+await refuses(`select public.delete_bdpi('${B}', 'Uploaded the wrong file')`, /BDPI_HAS_DISPATCHES/, 'a BDPI with dispatches cannot be deleted')
+const second = (await (async () => { await as(U.editor); return q(`select public.create_bdpi('${bdpiPayload('OLD 9')}'::jsonb) as r`) })())[0].r
+assert.equal(second.bdpi_no, 'BDPI-0002')
+await refuses(`select public.delete_bdpi('${second.id}', 'Uploaded the wrong file')`, /administrator/i, 'only an administrator deletes a BDPI')
+await as(U.admin)
+await refuses(`select public.delete_bdpi('${second.id}', 'short')`, /DISPATCH_REASON_REQUIRED/, 'deleting a BDPI needs a reason')
+await q(`select public.delete_bdpi('${second.id}', 'Uploaded the wrong file')`)
+await asOwner()
+assert.equal((await q(`select count(*)::int as n from public.bdpi_records`))[0].n, 1)
+ok('an administrator deletes a BDPI with nothing dispatched')
+await as(U.editor)
+await refuses(`select * from public.bdpi_records`, /permission denied/i, 'a client role cannot read the BDPI tables')
+await asOwner()
+const owners = await q(`select count(*)::int as n from public.order_dispatch_lots where num_nonnulls(order_id, bdpi_id) <> 1`)
+assert.equal(owners[0].n, 0)
+ok('every lot belongs to exactly one Order or BDPI')
 
 console.log(`all ${checks} checks passed`)

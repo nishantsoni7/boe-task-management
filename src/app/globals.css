@@ -12126,6 +12126,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-sum-total td, .opp-sum-balance td { font-weight: 700; background: var(--boe-surface-quiet); color: var(--boe-text-strong); }
 .opp-sum-balance td.opp-num { color: var(--boe-brand); }
 .opp-sum-balance td.opp-extra, .opp-extra { color: var(--boe-success-border); }
+.opp-detail { display: block; font-size: 11.5px; color: var(--boe-text-muted); margin-top: 2px; }
+.opp-row-link { cursor: pointer; }
+.opp-row-link:hover td, .opp-row-link:focus td { background: var(--boe-surface-hover); }
+.opp-bdpi-table td { white-space: nowrap; }
 .opp-fix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 @media (max-width: 640px) {
   .opp { padding: 14px 12px; }

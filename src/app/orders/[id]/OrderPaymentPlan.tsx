@@ -129,11 +129,41 @@ function useProductPictures(
   return urls
 }
 
+/** A BDPI's pictures are private files signed by the app's server after it asks the database. */
+function useBdpiPictures(bdpiId: string | null): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!bdpiId) return
+    let live = true
+    void fetch(`/api/orders/bdpi/${bdpiId}/pictures`)
+      .then(r => (r.ok ? r.json() : { urls: {} }))
+      .then((body: { urls?: Record<string, string> }) => { if (live) setUrls(body.urls ?? {}) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [bdpiId])
+  return urls
+}
+
+// The same plan runs for a Confirmed Order and for an OLD order kept as a BDPI
+// (20270502000000). Only the doors differ; their answers have the same shape.
+const ORDER_DOORS = {
+  read: 'order_payment_plan_read', save: 'order_payment_plan_save',
+  lotSave: 'order_dispatch_lot_save', markDispatched: 'order_dispatch_lot_mark_dispatched', key: 'p_order_id',
+} as const
+const BDPI_DOORS = {
+  read: 'bdpi_payment_plan_read', save: 'bdpi_payment_plan_save',
+  lotSave: 'bdpi_dispatch_lot_save', markDispatched: 'bdpi_dispatch_lot_mark_dispatched', key: 'p_bdpi_id',
+} as const
+
 export default function OrderPaymentPlan({
-  orderId, submissionId, canEdit, isAdmin,
-}: { orderId: string; submissionId: string | null; canEdit: boolean; isAdmin: boolean }) {
+  orderId, submissionId, bdpiId = null, canEdit, isAdmin,
+}: { orderId: string; submissionId: string | null; bdpiId?: string | null; canEdit: boolean; isAdmin: boolean }) {
   const supabase = useMemo(() => createClient(), [])
-  const pictures = useProductPictures(supabase, submissionId, true)
+  const doors = bdpiId ? BDPI_DOORS : ORDER_DOORS
+  const targetId = bdpiId ?? orderId
+  const orderPictures = useProductPictures(supabase, submissionId, !bdpiId)
+  const bdpiPictures = useBdpiPictures(bdpiId)
+  const pictures = bdpiId ? bdpiPictures : orderPictures
   const [data, setData] = useState<PlanData | null | undefined>(undefined)   // undefined = loading
   const [unreadable, setUnreadable] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
@@ -147,10 +177,10 @@ export default function OrderPaymentPlan({
   const [fixReason, setFixReason] = useState('')
 
   const fetchPlan = useCallback(async () => {
-    const { data: raw, error } = await supabase.rpc('order_payment_plan_read', { p_order_id: orderId })
+    const { data: raw, error } = await supabase.rpc(doors.read, { [doors.key]: targetId })
     if (error) return { ok: false as const }
     return { ok: true as const, plan: parsePlanData(raw) }
-  }, [supabase, orderId])
+  }, [supabase, doors, targetId])
 
   const apply = useCallback((res: Awaited<ReturnType<typeof fetchPlan>>) => {
     if (!res.ok) { setUnreadable(true); return }
@@ -228,8 +258,8 @@ export default function OrderPaymentPlan({
   const save = async () => {
     if (parsed.invalid || !result.ok) { setProblem('Fix the highlighted figures first.'); return }
     setBusy(true); setProblem(null)
-    const a = await supabase.rpc('order_payment_plan_save', {
-      p_order_id: orderId,
+    const a = await supabase.rpc(doors.save, {
+      [doors.key]: targetId,
       p_pending_percent: parsed.pending,
       p_billing_percent: parsed.billing,
       p_advance_account: parsed.advanceAccount,
@@ -237,8 +267,8 @@ export default function OrderPaymentPlan({
       p_note: edit.note.trim() === '' ? null : edit.note.trim(),
     })
     if (a.error) { setProblem(describeError(a.error.message)); setBusy(false); return }
-    const b = await supabase.rpc('order_dispatch_lot_save', {
-      p_order_id: orderId,
+    const b = await supabase.rpc(doors.lotSave, {
+      [doors.key]: targetId,
       p_lines: plannedLinesPayload(parsed.planned),
       p_planned_on: edit.plannedOn === '' ? null : edit.plannedOn,
     })
@@ -249,8 +279,8 @@ export default function OrderPaymentPlan({
 
   const markDispatched = async () => {
     setBusy(true); setProblem(null)
-    const { error } = await supabase.rpc('order_dispatch_lot_mark_dispatched', {
-      p_order_id: orderId, p_dispatched_on: dispatchOn,
+    const { error } = await supabase.rpc(doors.markDispatched, {
+      [doors.key]: targetId, p_dispatched_on: dispatchOn,
     })
     if (error) setProblem(describeError(error.message))
     await reload()
@@ -307,6 +337,7 @@ export default function OrderPaymentPlan({
     const n = parseTypedNumber(text)
     return allowBlank && n === null ? false : n === null || Number.isNaN(n) || n > 100
   }
+  const detailsOf = new Map(data.items.map(i => [i.itemSequence, i.details ?? []]))
   const typedBad = (text: string) => { const n = parseTypedNumber(text); return n !== null && Number.isNaN(n) }
   const rateText = `${(result.gstRate * 100).toFixed(2).replace(/\.?0+$/, '')}%`
   const downloadsOff = dirty || busy
@@ -325,7 +356,7 @@ export default function OrderPaymentPlan({
           </button>
           <a className={`boe-btn boe-btn-ghost${downloadsOff ? ' opp-disabled' : ''}`}
             aria-disabled={downloadsOff} title={dirty ? 'Save your changes first' : undefined}
-            href={downloadsOff ? undefined : `/api/orders/${orderId}/payment-plan/pdf`}>
+            href={downloadsOff ? undefined : bdpiId ? `/api/orders/bdpi/${bdpiId}/pdf` : `/api/orders/${orderId}/payment-plan/pdf`}>
             PDF
           </a>
         </div>
@@ -389,7 +420,10 @@ export default function OrderPaymentPlan({
                       ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
                       : <span className="opp-thumb opp-thumb--none">No image</span>}
                   </td>
-                  <td className="opp-name">{l.productName ?? '—'}</td>
+                  <td className="opp-name">
+                    {l.productName ?? '—'}
+                    {(detailsOf.get(l.itemSequence) ?? []).map(d => <span key={d} className="opp-detail">{d}</span>)}
+                  </td>
                   <td className="opp-num">{formatPaise(Math.round(l.rate * 100))}</td>
                   <td className="opp-num">{l.ordered}</td>
                   <td className="opp-num">{l.previouslyDispatched || '—'}</td>

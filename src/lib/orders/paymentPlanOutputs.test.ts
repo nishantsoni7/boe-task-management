@@ -105,11 +105,14 @@ test('the plan has its own page, which says "no access" rather than drawing noth
 
 test('the section talks only to its own five functions, and the PDF route runs as the caller', () => {
   const ui = read('src/app/orders/[id]/OrderPaymentPlan.tsx')
-  const called = [...ui.matchAll(/supabase\.rpc\('([a-z_]+)'/g)].map(m => m[1]).sort()
+  // every door it may call: the Order's five, and since 20270502000000 the BDPI's four (admin change is shared)
+  const called = [...new Set([...ui.matchAll(/'((?:order|bdpi)_(?:payment_plan|dispatch_lot)_[a-z_]+)'/g)].map(m => m[1]))].sort()
   assert.deepEqual(called, [
+    'bdpi_dispatch_lot_mark_dispatched', 'bdpi_dispatch_lot_save', 'bdpi_payment_plan_read', 'bdpi_payment_plan_save',
     'order_dispatch_lot_admin_change', 'order_dispatch_lot_mark_dispatched', 'order_dispatch_lot_save',
     'order_payment_plan_read', 'order_payment_plan_save',
   ])
+  assert.equal([...ui.matchAll(/supabase\.rpc\(/g)].length, 5, 'five calls, through the door table or the shared admin change')
   // the only table reads are the two the product pictures need
   assert.deepEqual([...ui.matchAll(/\.from\('([a-z_]+)'\)/g)].map(m => m[1]).sort(),
     ['order_submission_item_images', 'order_submission_items'])

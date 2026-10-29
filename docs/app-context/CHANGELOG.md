@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Orders: old orders kept as BDPI, with the same Payment plan (PR pending) · migration 20270502000000
+- **Owner request.** 50+ old orders were never uploaded. Upload the old PI (usual format) and get the same Payment plan, recorded as BDPI-0001…, with complete details (fabric and packing costs, which fabric was chosen) and dispatch history.
+- **What.** Sidebar "Old orders (BDPI)": list + New BDPI upload; each BDPI opens the same Payment plan page (lots, Mark as dispatched, Account / Cash / Total, Excel, PDF). Payments are the confirmed ones Finance allocated to the old order number. Admin can delete one uploaded by mistake while nothing is dispatched.
+- **Database.** Three closed tables, `bdpi_id` on dispatch lots and events, nine functions; rehearsed in a rolled-back transaction on the linked database (REHEARSAL OK, zero residue).
+- **Proof.** tsc, eslint, full suite, `bdpiImport.test.ts`, PGlite suite (66 checks). Not seen on screen; no real old workbook uploaded yet.
+
 ## 2026-10-29 — Task Management: Dashboard counters and Tasks Created in an "At a glance" bar on the right (PR #500, squash-merged as c79bb1a6) · no migration · Production deploy success 06:18 UTC, live Dashboard bundle carries the bar · backup verified: code bundle 20261029T061614Z, database export 20261029T061637Z (197 tables, 0 errors)
 - **Owner request.** Bring the bottom two sections of the Dashboard (Overdue / Waiting / Due Today, and Tasks Created) into a bar on the right-hand side, as on the Modules page. Mockup agreed first.
 - **What.** One bar, "At a glance": "Your tasks now" (the three counters, stacked) and "Tasks created" (7 days / 30 days; rows "Self tasks", "Delegated tasks"). From a 1132 px window it is a 280 px column fixed to the right edge, full height, own scroll; the header and body reserve its width so the header buttons and cards never sit under it. Narrower, it is a block under Needs Your Attention. Always drawn.
