@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Finance: Founders' payouts (PR pending) · migration 20270501000000 NOT applied
+## 2026-10-29 — Finance: Founders' payouts (PR #497) · migration 20270501000000 NOT applied
 - **Owner request.** "Personal finance management": BOE pays money at irregular times into the partners' and their families' accounts (e.g. ₹1.5 lakh split ₹75,000 / ₹75,000 between Namrata and Jaishree; sometimes three ways; Nitish into his own and his family's). Namrata's common partner remuneration and her incentive for converting orders must be told apart. Per financial year, per account, for income tax; and how much more each account can take to use the tax-free amount.
 - **Owner decisions (2026-10-29).** Only the owner sees it (no admin branch); the two sides stay equal (gap shown, incentive left out); Jaishree is family, not working in BOE (a payment to her is not her income); a page inside Finance.
 - **What.** `/finance/founders`: Overview, Payments (filters, change, delete with reason, Excel for the CA), Tax planner (role, other income, tax-free limit, room left, per month till March, "try an amount", the firm's ceiling from the expected book profit), Accounts (name, side, role, bank with last digits only). New payout: total, accounts, equal split in whole rupees, a second kind on one account, "Same as last time", a tax-room hint per line.
