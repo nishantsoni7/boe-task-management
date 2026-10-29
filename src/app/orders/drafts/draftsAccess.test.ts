@@ -1730,6 +1730,30 @@ describe('the record page draws controls from one rule, and from nothing else', 
       'and the page is not blanked, so the scroll position and an open viewer survive')
   })
 
+  test('creating the Order opens it instead of re-reading the PI (owner, 2026-10-30)', () => {
+    // The approval asks the rule where to go, after the pendencies are saved
+    // and only for an Order this approver may read under their own RLS.
+    const approve = source.slice(source.indexOf('const approveSubmission = useCallback'))
+    const approveBody = approve.slice(0, approve.indexOf('const approvePiReview'))
+    assert.ok(approveBody.includes("supabase.from('orders').select('id').eq('id', outcome.orderId).maybeSingle()"))
+    assert.ok(approveBody.includes('orderToOpenAfterApproval({'))
+    assert.ok(approveBody.includes('if (leaveFor) return { error, leaveFor }'))
+    assert.ok(approveBody.indexOf('saveNewOrderPendencies') < approveBody.indexOf('orderToOpenAfterApproval({'),
+      'the pendencies are saved before the page is left')
+    // The PI-only decision creates no Order, so it still re-reads the PI.
+    const piOnly = approve.slice(approve.indexOf('const approvePiReview'), approve.indexOf('const closeDialog'))
+    assert.ok(!piOnly.includes('leaveFor'))
+
+    // runAction leaves BEFORE the re-read, and stays busy while it goes.
+    const run = source.slice(source.indexOf('const runAction = useCallback'))
+    const runBody = run.slice(0, run.indexOf('}, [loadDraft, router])'))
+    assert.ok(runBody.includes('router.replace(leaveFor)'),
+      'replace, so Back from the Order goes where the PI was opened from')
+    assert.ok(runBody.indexOf('router.replace(leaveFor)') < runBody.indexOf('await loadDraft({ quiet: true })'))
+    assert.ok(runBody.includes('if (!leaving) {\n        actingRef.current = false'),
+      'the dialog keeps saying Approving… until the Order opens')
+  })
+
   test('a failure shows a fixed sentence, never the database’s own message', () => {
     assert.ok(source.includes('describeSubmissionFailure(error, action).message'))
     assert.ok(!source.includes('error.message'),

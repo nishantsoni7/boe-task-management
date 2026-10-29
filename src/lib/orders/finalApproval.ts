@@ -303,6 +303,28 @@ export function orderHref(orderId: string): string {
   return `/orders/${encodeURIComponent(orderId)}`
 }
 
+/**
+ * Where the approver goes once the Order exists — or null to stay on the PI.
+ *
+ * STRAIGHT TO THE ORDER (owner, 2026-10-30): the approver lands on the Order
+ * they just created rather than on the PI announcing it. The PI stays on
+ * screen only when it has something the Order page cannot say:
+ *
+ *   no outcome            the RPC answer was unreadable; the PI re-reads the record
+ *   pendencies not saved  the PI says so, and says to add them from the Order
+ *   Order not readable    the approver may not SELECT it under RLS; the PI still
+ *                         shows the number, where the Order page would say
+ *                         "not available"
+ */
+export function orderToOpenAfterApproval(input: {
+  outcome: ApprovalOutcome | null
+  pendenciesSaved: boolean
+  orderReadable: boolean
+}): string | null {
+  if (!input.outcome || !input.pendenciesSaved || !input.orderReadable) return null
+  return orderHref(input.outcome.orderId)
+}
+
 // ── Eligibility: may this reviewer press it, and if not, why ──────────────────
 
 /**
