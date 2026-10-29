@@ -145,7 +145,7 @@ function useBdpiPictures(bdpiId: string | null): Record<string, string> {
 }
 
 // The same plan runs for a Confirmed Order and for an OLD order kept as a BDPI
-// (20270502000000). Only the doors differ; their answers have the same shape.
+// (20270503000000). Only the doors differ; their answers have the same shape.
 const ORDER_DOORS = {
   read: 'order_payment_plan_read', save: 'order_payment_plan_save',
   lotSave: 'order_dispatch_lot_save', markDispatched: 'order_dispatch_lot_mark_dispatched', key: 'p_order_id',

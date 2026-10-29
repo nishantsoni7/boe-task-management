@@ -12,7 +12,7 @@ import {
   describeBdpiError,
 } from '@/lib/orders/bdpiImport'
 
-// ── UPLOAD AN OLD ORDER'S PI AS A BDPI (20270502000000) ──────────────────────
+// ── UPLOAD AN OLD ORDER'S PI AS A BDPI (20270503000000) ──────────────────────
 //
 // POST /api/orders/bdpi/import   multipart: file (.xlsx), old_order_no?, client_name?
 //

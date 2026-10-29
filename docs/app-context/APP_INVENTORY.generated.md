@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `cd6445cd` — Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
-- Commits on this branch: 1067
+- Commit: `eca639c6` — Orders: old orders kept as BDPI, with the same Payment plan
+- Commits on this branch: 1068
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 170
-- Migrations: 381 (first `20260530_create_positions.sql`, latest `20270502000000_order_payment_plan_bdpi.sql`)
+- Migrations: 381 (first `20260530_create_positions.sql`, latest `20270503000000_order_payment_plan_bdpi.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 845   Enums: 0
 - Test files: 678   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `eca639c6` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
@@ -38,7 +39,6 @@
 - `55b1b0af` 2026-10-29 Vendors: access levels (Viewer, Contributor, Manager, Custom) in Control Center (#482)
 - `62ce7c76` 2026-10-28 Modules page: "Needs your attention" column on the right
 - `ee033fb4` 2026-10-28 Sidebar rail: badges no longer clipped, one smooth spring motion
-- `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 
 ## Pages by top-level area
 
@@ -233,9 +233,9 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `bank_statement_accounts` — 20270329000000
 - `bank_statement_imports` — 20270329000000
 - `bank_statement_lines` — 20270329000000
-- `bdpi_items` — 20270502000000
-- `bdpi_payment_plans` — 20270502000000
-- `bdpi_records` — 20270502000000
+- `bdpi_items` — 20270503000000
+- `bdpi_payment_plans` — 20270503000000
+- `bdpi_records` — 20270503000000
 - `boe_credit_attendance_redemptions` — 20261103000000
 - `boe_credit_payroll_applications` — 20261104000000
 - `boe_credit_review_months` — 20261104000000
@@ -427,7 +427,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270430000000_order_payment_plan_account_cash.sql`
 - `20270431000000_order_submission_fabric_finish_lines.sql`
 - `20270501000000_finance_founder_payouts.sql`
-- `20270502000000_order_payment_plan_bdpi.sql`
+- `20270503000000_order_payment_plan_bdpi.sql`
 
 ## All SQL function names
 

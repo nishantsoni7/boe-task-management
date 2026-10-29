@@ -44,7 +44,7 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
   if (section === undefined) return 'dashboard'
   if (section === 'drafts' || section === 'import') return 'drafts'
   if (section === 'all') return 'confirmed'
-  // Old orders kept as BDPI (20270502000000): the list and each record.
+  // Old orders kept as BDPI (20270503000000): the list and each record.
   if (section === 'bdpi') return 'bdpi'
   // customize-learning sits under Resources (admin), not among the destinations.
   if (section === 'notifications' || section === 'requests' || section === 'customize-learning') return null

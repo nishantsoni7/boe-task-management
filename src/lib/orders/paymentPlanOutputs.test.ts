@@ -105,7 +105,7 @@ test('the plan has its own page, which says "no access" rather than drawing noth
 
 test('the section talks only to its own five functions, and the PDF route runs as the caller', () => {
   const ui = read('src/app/orders/[id]/OrderPaymentPlan.tsx')
-  // every door it may call: the Order's five, and since 20270502000000 the BDPI's four (admin change is shared)
+  // every door it may call: the Order's five, and since 20270503000000 the BDPI's four (admin change is shared)
   const called = [...new Set([...ui.matchAll(/'((?:order|bdpi)_(?:payment_plan|dispatch_lot)_[a-z_]+)'/g)].map(m => m[1]))].sort()
   assert.deepEqual(called, [
     'bdpi_dispatch_lot_mark_dispatched', 'bdpi_dispatch_lot_save', 'bdpi_payment_plan_read', 'bdpi_payment_plan_save',

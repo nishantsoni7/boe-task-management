@@ -139,7 +139,7 @@ revoke all on public.bdpi_payment_plans from anon, authenticated;
 revoke all on sequence public.bdpi_number_seq from anon, authenticated;
 
 comment on table public.bdpi_records is
-  'Payment plan for an OLD order not in the app (owner: "BDPI"). Lines from the uploaded PI workbook. Reached only through the bdpi_* functions (20270502000000).';
+  'Payment plan for an OLD order not in the app (owner: "BDPI"). Lines from the uploaded PI workbook. Reached only through the bdpi_* functions (20270503000000).';
 
 
 -- ═══ §2. Lots and events belong to an Order OR a BDPI ═══════════════════════

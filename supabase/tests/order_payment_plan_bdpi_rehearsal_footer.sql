@@ -1,5 +1,5 @@
--- Rehearsal checks for 20270502000000 (old orders kept as BDPI). Everything rolls back.
---   node scripts/dev/rehearse-migration.mjs supabase/migrations/20270502000000_order_payment_plan_bdpi.sql supabase/tests/order_payment_plan_bdpi_rehearsal_footer.sql <out.sql>
+-- Rehearsal checks for 20270503000000 (old orders kept as BDPI). Everything rolls back.
+--   node scripts/dev/rehearse-migration.mjs supabase/migrations/20270503000000_order_payment_plan_bdpi.sql supabase/tests/order_payment_plan_bdpi_rehearsal_footer.sql <out.sql>
 --   supabase db query --linked --file <out.sql>     (last row must be REHEARSAL OK)
 
 create temp table zz_ctx (admin_id uuid, lots_before int);

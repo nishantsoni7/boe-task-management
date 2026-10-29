@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Orders: old orders kept as BDPI, with the same Payment plan (PR pending) · migration 20270502000000
+## 2026-10-29 — Orders: old orders kept as BDPI, with the same Payment plan (PR #503) · migration 20270503000000 APPLIED 2026-10-29 (renumbered from 20270502000000, which another session had taken; applied by db query --file + migration repair because db push refused the other unmerged version)
 - **Owner request.** 50+ old orders were never uploaded. Upload the old PI (usual format) and get the same Payment plan, recorded as BDPI-0001…, with complete details (fabric and packing costs, which fabric was chosen) and dispatch history.
 - **What.** Sidebar "Old orders (BDPI)": list + New BDPI upload; each BDPI opens the same Payment plan page (lots, Mark as dispatched, Account / Cash / Total, Excel, PDF). Payments are the confirmed ones Finance allocated to the old order number. Admin can delete one uploaded by mistake while nothing is dispatched.
 - **Database.** Three closed tables, `bdpi_id` on dispatch lots and events, nine functions; rehearsed in a rolled-back transaction on the linked database (REHEARSAL OK, zero residue).

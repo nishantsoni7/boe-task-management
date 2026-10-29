@@ -150,7 +150,7 @@ test('the sidebar lights Old orders for the list and each record', () => {
 })
 
 test('the migration keeps the tables closed and every door gated', () => {
-  const sql = read('supabase/migrations/20270502000000_order_payment_plan_bdpi.sql')
+  const sql = read('supabase/migrations/20270503000000_order_payment_plan_bdpi.sql')
   for (const t of ['bdpi_records', 'bdpi_items', 'bdpi_payment_plans']) {
     assert.match(sql, new RegExp(`revoke all on public\\.${t} from anon, authenticated`))
   }

@@ -1,5 +1,5 @@
 // Database regression suite for 20270428000000 (Orders Payment plan) and
-// 20270430000000 (account and cash kept apart) and 20270502000000 (old orders
+// 20270430000000 (account and cash kept apart) and 20270503000000 (old orders
 // kept as BDPI).
 //
 // Applies the REAL migration on an in-memory Postgres (PGlite) over a small
@@ -26,7 +26,7 @@ const { PGlite } = require('@electric-sql/pglite')
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const migration = readFileSync(`${REPO}/supabase/migrations/20270428000000_order_payment_plan.sql`, 'utf8')
 const migration2 = readFileSync(`${REPO}/supabase/migrations/20270430000000_order_payment_plan_account_cash.sql`, 'utf8')
-const migration3 = readFileSync(`${REPO}/supabase/migrations/20270502000000_order_payment_plan_bdpi.sql`, 'utf8')
+const migration3 = readFileSync(`${REPO}/supabase/migrations/20270503000000_order_payment_plan_bdpi.sql`, 'utf8')
 
 const U = {
   admin:   '00000000-0000-0000-0000-0000000000a1',
@@ -250,7 +250,7 @@ assert.equal((await q(`select count(*)::int as n from public.order_dispatch_lots
 assert.equal((await q(`select count(*)::int as n from public.order_payment_plans`))[0].n, 0)
 ok('deleting an Order removes its plan and lots')
 
-// ══ Old orders kept as BDPI (20270502000000) ═════════════════════════════════
+// ══ Old orders kept as BDPI (20270503000000) ═════════════════════════════════
 await asOwner()
 await db.exec(migration3)
 ok('the BDPI migration applies on top and its own assertions pass')

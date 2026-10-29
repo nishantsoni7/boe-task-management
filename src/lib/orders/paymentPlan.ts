@@ -362,7 +362,7 @@ export type PlanData = {
   financeCashVerified: number
   financeAccountAwaiting: number
   financeCashAwaiting: number
-  /** 'bdpi' for an OLD order kept as a BDPI (20270502000000). */
+  /** 'bdpi' for an OLD order kept as a BDPI (20270503000000). */
   kind: 'order' | 'bdpi'
   oldOrderNo: string | null
   fabricResponsibility: string | null
