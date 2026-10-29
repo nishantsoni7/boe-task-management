@@ -1842,8 +1842,10 @@ describe('the drafts list carries the review queue', () => {
     // gone with the workflow (20261007000000). The review queue still has no
     // entry of its own: it is a SECTION of PI Drafts, so a reviewer finds it
     // where the records already are.
-    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'PI Drafts'],
-      'three destinations, and the review queue is not a fourth')
+    // Old orders (BDPI, 20270503000000) is the one addition, and it is drawn
+    // only for holders of view_payment_plan.
+    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'PI Drafts', 'Old orders (BDPI)'],
+      'the review queue is not an entry of its own')
   })
 })
 

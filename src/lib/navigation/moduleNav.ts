@@ -18,7 +18,7 @@
 // NOTHING HERE DECIDES ACCESS. A lit entry is a statement about location. Each
 // route's own guard and the database still decide what opens.
 
-export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed'
+export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed' | 'bdpi'
 export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank' | 'reimbursements' | 'handovers' | 'founders'
 
 // The destinations themselves (labels, paths, icons) stay in OrdersLayout and
@@ -44,6 +44,8 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
   if (section === undefined) return 'dashboard'
   if (section === 'drafts' || section === 'import') return 'drafts'
   if (section === 'all') return 'confirmed'
+  // Old orders kept as BDPI (20270503000000): the list and each record.
+  if (section === 'bdpi') return 'bdpi'
   // customize-learning sits under Resources (admin), not among the destinations.
   if (section === 'notifications' || section === 'requests' || section === 'customize-learning') return null
   // Anything else directly under /orders is an Order record.

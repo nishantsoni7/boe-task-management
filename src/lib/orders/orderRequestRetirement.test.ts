@@ -100,8 +100,9 @@ describe('no Order Request navigation remains', () => {
     assert.equal(nav.includes('Order Requests'), false)
     assert.deepEqual(
       [...nav.matchAll(/label: '([^']+)'/g)].map(m => m[1]),
-      // The owner's order since 2026-10-19.
-      ['Dashboard', 'Confirmed Orders', 'PI Drafts'],
+      // The owner's order since 2026-10-19; Old orders (BDPI) since 2026-10-29,
+      // drawn only for holders of view_payment_plan.
+      ['Dashboard', 'Confirmed Orders', 'PI Drafts', 'Old orders (BDPI)'],
     )
   })
 

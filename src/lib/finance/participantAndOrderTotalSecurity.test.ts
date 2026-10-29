@@ -1159,6 +1159,8 @@ describe('the applied migrations are frozen', () => {
       '20270501000000_finance_founder_payouts.sql',
       // Orders: an administrator changes an Order number; the newest goes back to the next Order. APPLIED 2026-10-29.
       '20270502000000_order_number_rename.sql',
+      '20270503000000_order_payment_plan_bdpi.sql',
+      '20270504000000_order_payment_plan_line_costs.sql',
     ])
   })
 
@@ -1569,6 +1571,8 @@ describe('the applied migrations are frozen', () => {
       '20270501000000_finance_founder_payouts.sql',
       // Orders: an administrator changes an Order number; the newest goes back to the next Order. APPLIED 2026-10-29.
       '20270502000000_order_number_rename.sql',
+      '20270503000000_order_payment_plan_bdpi.sql',
+      '20270504000000_order_payment_plan_line_costs.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

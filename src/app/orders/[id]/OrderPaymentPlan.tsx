@@ -15,7 +15,7 @@
 // of 20270428000000, which re-derive who may. `canEdit` and `isAdmin` decide
 // only which controls are drawn.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
 import { planItemKey } from '@/lib/orders/paymentPlan'
@@ -31,7 +31,7 @@ import {
   plannedQuantities,
   type PlanData,
 } from '@/lib/orders/paymentPlan'
-import { buildPaymentPlanSheet, paymentPlanFileName, planSummaryRows } from '@/lib/orders/paymentPlanSheet'
+import { buildPaymentPlanSheet, paymentPlanFileName, wholeRupees } from '@/lib/orders/paymentPlanSheet'
 import { downloadPaymentPlanXlsx } from '@/lib/orders/paymentPlanXlsx'
 
 type Edit = {
@@ -129,11 +129,41 @@ function useProductPictures(
   return urls
 }
 
+/** A BDPI's pictures are private files signed by the app's server after it asks the database. */
+function useBdpiPictures(bdpiId: string | null): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!bdpiId) return
+    let live = true
+    void fetch(`/api/orders/bdpi/${bdpiId}/pictures`)
+      .then(r => (r.ok ? r.json() : { urls: {} }))
+      .then((body: { urls?: Record<string, string> }) => { if (live) setUrls(body.urls ?? {}) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [bdpiId])
+  return urls
+}
+
+// The same plan runs for a Confirmed Order and for an OLD order kept as a BDPI
+// (20270503000000). Only the doors differ; their answers have the same shape.
+const ORDER_DOORS = {
+  read: 'order_payment_plan_read', save: 'order_payment_plan_save',
+  lotSave: 'order_dispatch_lot_save', markDispatched: 'order_dispatch_lot_mark_dispatched', key: 'p_order_id',
+} as const
+const BDPI_DOORS = {
+  read: 'bdpi_payment_plan_read', save: 'bdpi_payment_plan_save',
+  lotSave: 'bdpi_dispatch_lot_save', markDispatched: 'bdpi_dispatch_lot_mark_dispatched', key: 'p_bdpi_id',
+} as const
+
 export default function OrderPaymentPlan({
-  orderId, submissionId, canEdit, isAdmin,
-}: { orderId: string; submissionId: string | null; canEdit: boolean; isAdmin: boolean }) {
+  orderId, submissionId, bdpiId = null, canEdit, isAdmin,
+}: { orderId: string; submissionId: string | null; bdpiId?: string | null; canEdit: boolean; isAdmin: boolean }) {
   const supabase = useMemo(() => createClient(), [])
-  const pictures = useProductPictures(supabase, submissionId, true)
+  const doors = bdpiId ? BDPI_DOORS : ORDER_DOORS
+  const targetId = bdpiId ?? orderId
+  const orderPictures = useProductPictures(supabase, submissionId, !bdpiId)
+  const bdpiPictures = useBdpiPictures(bdpiId)
+  const pictures = bdpiId ? bdpiPictures : orderPictures
   const [data, setData] = useState<PlanData | null | undefined>(undefined)   // undefined = loading
   const [unreadable, setUnreadable] = useState(false)
   const [edit, setEdit] = useState<Edit | null>(null)
@@ -147,10 +177,10 @@ export default function OrderPaymentPlan({
   const [fixReason, setFixReason] = useState('')
 
   const fetchPlan = useCallback(async () => {
-    const { data: raw, error } = await supabase.rpc('order_payment_plan_read', { p_order_id: orderId })
+    const { data: raw, error } = await supabase.rpc(doors.read, { [doors.key]: targetId })
     if (error) return { ok: false as const }
     return { ok: true as const, plan: parsePlanData(raw) }
-  }, [supabase, orderId])
+  }, [supabase, doors, targetId])
 
   const apply = useCallback((res: Awaited<ReturnType<typeof fetchPlan>>) => {
     if (!res.ok) { setUnreadable(true); return }
@@ -228,8 +258,8 @@ export default function OrderPaymentPlan({
   const save = async () => {
     if (parsed.invalid || !result.ok) { setProblem('Fix the highlighted figures first.'); return }
     setBusy(true); setProblem(null)
-    const a = await supabase.rpc('order_payment_plan_save', {
-      p_order_id: orderId,
+    const a = await supabase.rpc(doors.save, {
+      [doors.key]: targetId,
       p_pending_percent: parsed.pending,
       p_billing_percent: parsed.billing,
       p_advance_account: parsed.advanceAccount,
@@ -237,8 +267,8 @@ export default function OrderPaymentPlan({
       p_note: edit.note.trim() === '' ? null : edit.note.trim(),
     })
     if (a.error) { setProblem(describeError(a.error.message)); setBusy(false); return }
-    const b = await supabase.rpc('order_dispatch_lot_save', {
-      p_order_id: orderId,
+    const b = await supabase.rpc(doors.lotSave, {
+      [doors.key]: targetId,
       p_lines: plannedLinesPayload(parsed.planned),
       p_planned_on: edit.plannedOn === '' ? null : edit.plannedOn,
     })
@@ -249,8 +279,8 @@ export default function OrderPaymentPlan({
 
   const markDispatched = async () => {
     setBusy(true); setProblem(null)
-    const { error } = await supabase.rpc('order_dispatch_lot_mark_dispatched', {
-      p_order_id: orderId, p_dispatched_on: dispatchOn,
+    const { error } = await supabase.rpc(doors.markDispatched, {
+      [doors.key]: targetId, p_dispatched_on: dispatchOn,
     })
     if (error) setProblem(describeError(error.message))
     await reload()
@@ -307,8 +337,10 @@ export default function OrderPaymentPlan({
     const n = parseTypedNumber(text)
     return allowBlank && n === null ? false : n === null || Number.isNaN(n) || n > 100
   }
+  const rs = (paise: number) => (paise < 0 ? `−₹${wholeRupees(-paise)}` : `₹${wholeRupees(paise)}`)
+  const qty = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('en-IN')
+  const sheet = sheetFor()
   const typedBad = (text: string) => { const n = parseTypedNumber(text); return n !== null && Number.isNaN(n) }
-  const rateText = `${(result.gstRate * 100).toFixed(2).replace(/\.?0+$/, '')}%`
   const downloadsOff = dirty || busy
 
   return (
@@ -325,7 +357,7 @@ export default function OrderPaymentPlan({
           </button>
           <a className={`boe-btn boe-btn-ghost${downloadsOff ? ' opp-disabled' : ''}`}
             aria-disabled={downloadsOff} title={dirty ? 'Save your changes first' : undefined}
-            href={downloadsOff ? undefined : `/api/orders/${orderId}/payment-plan/pdf`}>
+            href={downloadsOff ? undefined : bdpiId ? `/api/orders/bdpi/${bdpiId}/pdf` : `/api/orders/${orderId}/payment-plan/pdf`}>
             PDF
           </a>
         </div>
@@ -337,11 +369,6 @@ export default function OrderPaymentPlan({
       {result.problems.map(p => <p key={p} className="opp-warn" role="alert">{PLAN_PROBLEM_TEXT[p]}</p>)}
 
       <div className="opp-inputs">
-        <label className="opp-field">
-          <span>Pending goods to pay in advance (%)</span>
-          <input className={`boe-input${percentBad(edit.pending, false) ? ' opp-bad' : ''}`} inputMode="decimal"
-            value={edit.pending} disabled={!canEdit || busy} onChange={e => set({ pending: e.target.value })} />
-        </label>
         <label className="opp-field">
           <span>Billing (%) <em>{data.piBillingPercent === null ? 'PI has none' : `PI says ${data.piBillingPercent}%`}</em></span>
           <input className={`boe-input${percentBad(edit.billing, true) ? ' opp-bad' : ''}`} inputMode="decimal"
@@ -362,17 +389,21 @@ export default function OrderPaymentPlan({
         </label>
       </div>
 
+      {/* ── 1. The products (owner, mockup v2: full width, a real grid, the name only) ── */}
       <div className="opp-scroll">
-        <table className="opp-table">
+        <table className="opp-grid">
+          <colgroup>
+            <col style={{ width: 58 }} /><col style={{ width: 68 }} /><col />
+            <col style={{ width: 62 }} /><col style={{ width: 66 }} /><col style={{ width: 86 }} /><col style={{ width: 66 }} />
+            <col style={{ width: 84 }} /><col style={{ width: 98 }} /><col style={{ width: 70 }} /><col style={{ width: 90 }} />
+            <col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 90 }} /><col style={{ width: 102 }} />
+          </colgroup>
           <thead>
             <tr>
-              <th>Line</th><th>Picture</th><th>Product</th>
-              <th className="opp-num">Rate</th>
-              <th className="opp-num">Ordered</th>
-              <th className="opp-num">Sent earlier</th>
-              <th className="opp-num opp-lot">This lot</th>
-              <th className="opp-num">Still to come</th>
-              <th className="opp-num">This lot value</th>
+              <th className="l">Image</th><th className="l">Code</th><th className="l">Item</th>
+              <th>Total qty</th><th>Sent earlier</th><th className="opp-lot">This lot</th><th>Still to come</th>
+              <th>Unit price</th><th>Item amount</th><th>Pkg rate</th><th>Pkg amount</th>
+              <th>Fabric m/pc</th><th>Fabric m</th><th>Fab rate</th><th>Fab amount</th><th>Line total</th>
             </tr>
           </thead>
           <tbody>
@@ -382,63 +413,114 @@ export default function OrderPaymentPlan({
               const bad = (n !== null && Number.isNaN(n)) || l.remaining < 0
               return (
                 <tr key={l.itemSequence}>
-                  <td>{l.itemSequence}</td>
-                  <td className="opp-pic">
+                  <td className="l">
                     {pictures[l.itemSequence]
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
                       : <span className="opp-thumb opp-thumb--none">No image</span>}
                   </td>
-                  <td className="opp-name">{l.productName ?? '—'}</td>
-                  <td className="opp-num">{formatPaise(Math.round(l.rate * 100))}</td>
-                  <td className="opp-num">{l.ordered}</td>
-                  <td className="opp-num">{l.previouslyDispatched || '—'}</td>
-                  <td className="opp-num opp-lot">
+                  <td className="l">{l.itemSequence}</td>
+                  <td className="l">{l.productName ?? '—'}</td>
+                  <td>{qty(l.ordered)}</td>
+                  <td>{qty(l.previouslyDispatched)}</td>
+                  <td className="opp-lot">
                     <input className={`boe-input opp-qty${bad ? ' opp-bad' : ''}`} inputMode="decimal"
-                      aria-label={`Quantity of line ${l.itemSequence} in this lot`}
+                      aria-label={`Quantity of ${l.productName ?? l.itemSequence} in this lot`}
                       value={text} disabled={!canEdit || busy} onChange={e => setQty(l.itemSequence, e.target.value)} />
                   </td>
-                  <td className={`opp-num${l.remaining < 0 ? ' opp-neg' : ''}`}>{l.remaining}</td>
-                  <td className="opp-num">{l.plannedPaise > 0 ? formatPaise(l.plannedPaise) : '—'}</td>
+                  <td className={l.remaining < 0 ? 'opp-neg' : undefined}>{l.remaining < 0 ? `${qty(-l.remaining)} too many` : qty(l.remaining)}</td>
+                  <td>{rs(Math.round(l.rate * 100))}</td>
+                  <td>{rs(l.plannedPaise)}</td>
+                  <td>{l.packingRate === null ? '—' : rs(Math.round(l.packingRate * 100))}</td>
+                  <td>{rs(l.plannedPackingPaise)}</td>
+                  <td>{l.fabricMetresPerPiece ?? '—'}</td>
+                  <td>{qty(l.plannedFabricMetres)}</td>
+                  <td>{l.fabricRate === null ? '—' : rs(Math.round(l.fabricRate * 100))}</td>
+                  <td>{rs(l.plannedFabricPaise)}</td>
+                  <td><strong>{rs(l.plannedLineTotalPaise)}</strong></td>
                 </tr>
               )
             })}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={8}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
-              <td className="opp-num">{formatPaise(result.plannedPaise)}</td>
+              <td className="l" colSpan={8}>This lot</td>
+              <td>{rs(result.lot.items)}</td><td></td><td>{rs(result.lot.packing)}</td>
+              <td></td><td>{qty(result.lines.reduce((s, l) => s + l.plannedFabricMetres, 0))}</td><td></td>
+              <td>{rs(result.lot.fabric)}</td><td>{rs(result.lot.items + result.lot.packing + result.lot.fabric)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-      <div className="opp-scroll">
-        <table className="opp-table opp-sum-table">
-          <thead>
-            <tr><th></th><th className="opp-num">Account</th><th className="opp-num">Cash</th><th className="opp-num">Total</th></tr>
-          </thead>
-          <tbody>
-            {planSummaryRows(result).map(r => (
-              <tr key={r.label} className={r.kind === 'line' ? undefined : `opp-sum-${r.kind}`}>
-                <td>{r.label}</td>
-                {[r.account, r.cash, r.total].map((v, i) => (
-                  <td key={i} className={`opp-num${v !== null && v < 0 ? ' opp-extra' : ''}`}>
-                    {v === null ? '—' : r.kind === 'balance' && v < 0 ? `${formatPaise(-v)} paid extra` : formatPaise(v)}
-                  </td>
+      {/* ── 2. How the amount is worked out ── */}
+      <section className="opp-block" aria-label="How the amount is worked out">
+        <h3 className="opp-block-title">How the amount is worked out</h3>
+        <div className="opp-scroll">
+          <table className="opp-calc">
+            <thead>
+              <tr><th className="l"></th>{sheet.calcColumns.map(c => <th key={c}>{c}</th>)}</tr>
+            </thead>
+            <tbody>
+              {sheet.calcRows.map((r, i) => r.kind === 'gap'
+                ? <tr key={`gap${i}`} className="opp-calc-gap" aria-hidden="true"><td colSpan={5}></td></tr>
+                : (
+                  <tr key={r.label} className={r.kind === 'line' ? undefined : `opp-calc-${r.kind}`}>
+                    <td className="l">{r.label}</td>
+                    {r.cells.map((c, j) => (
+                      <td key={j} className={r.carried && j < 3 ? 'opp-carried' : undefined}>
+                        {c === null ? '' : typeof c === 'string' ? c : rs(c)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="opp-block-note">Shaded figures are carried into the box below. Bank = HDFC. Cash = PNB, Paytm, Canara. All amounts in ₹, rounded to the rupee.</p>
+      </section>
+
+      {/* ── 3. To pay before this dispatch, read across ── */}
+      <section className="opp-pay" aria-label="To pay before this dispatch">
+        <div className="opp-pay-head">
+          <h3 className="opp-pay-title">To pay before this dispatch</h3>
+          <span className="opp-pay-hint">Goods sent + Advance − Already received = Balance</span>
+        </div>
+        <div className="opp-scroll">
+          <table className="opp-pay-table">
+            <thead>
+              <tr>
+                <th className="l"></th>
+                {sheet.payColumns.map((c, i) => (
+                  <Fragment key={c.title}>
+                    {i > 0 && <th className="opp-op" aria-hidden="true"></th>}
+                    <th className={c.balance ? 'opp-bal' : undefined}>
+                      {c.mark && <span className="opp-mark">{c.mark}</span>}{c.title}
+                      <span className="opp-sub">{c.sub}</span>
+                    </th>
+                  </Fragment>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="opp-note">
-        Account = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara).
-        The billed part ({result.billingPercent === null ? 'billing % not set' : `${result.billingPercent}%`}) and all GST ({rateText}) are paid in account; the rest in cash.
-        {(result.split.awaiting.account > 0 || result.split.awaiting.cash > 0) &&
-          ` Still being checked in Finance, not counted yet: ${formatPaise(result.split.awaiting.account)} in account, ${formatPaise(result.split.awaiting.cash)} in cash.`}
-      </p>
-      {result.billingMissing && <p className="opp-warn" role="status">No billing % on the PI or here, so GST is not included yet.</p>}
+            </thead>
+            <tbody>
+              {sheet.payRows.map(r => (
+                <tr key={r.label} className={r.total ? 'opp-pay-total' : undefined}>
+                  <td className="l">{r.label}</td>
+                  {r.cells.map((v, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && <td className="opp-op">{sheet.payColumns[i].op}</td>}
+                      <td className={sheet.payColumns[i].balance ? 'opp-bal' : undefined}>
+                        {sheet.payColumns[i].balance && v < 0 ? `${rs(-v)} paid extra` : rs(v)}
+                      </td>
+                    </Fragment>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {sheet.notes.slice(1).map(n => <p key={n} className="opp-block-note">{n}</p>)}
+      </section>
 
       {canEdit && (
         <div className="opp-actions">

@@ -4,6 +4,23 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Orders: dispatch payment sheet, layout v2 (PR #503) · no migration
+- **Owner feedback on the first redesign.** Horizontal scroll, did not look like a table, too much item detail, too many colours, the to-pay box confusing. Mockup redone twice and approved.
+- **What.** Full-width grid table with thin lines, product name only; one plain calculation table (Sent earlier | This lot | Still to come | Whole order) ending in what is needed in bank and in cash; "To pay before this dispatch" as one sum read across (Goods sent + Advance - Already received = Balance) with Bank / Cash / Total rows; whole rupees. Screen, Excel and PDF alike.
+- **Proof.** tsc, eslint, full suite (0 failures), new tests that every to-pay row adds up and the carried cells match. Not seen on screen; PDF not viewed.
+
+## 2026-10-29 — Orders: the dispatch payment sheet redesigned like the owner's own, fabric and packing per product (PR #503) · migration 20270504000000 APPLIED 2026-10-29
+- **Owner request.** "Very complicated to understand"; redesign after their dispatch sheet so a client follows it easily, and show each product's fabric and packing. Mockup approved before building.
+- **What.** Product table with item, packing and fabric amounts per product; four panels (this lot, sent earlier, still to come, received); one box "To pay before this dispatch" in Bank / Cash / Total. The same in Excel and the PDF (A4 landscape). Applies to Confirmed Orders and BDPIs.
+- **Rule.** Packing and fabric now per product (quantity x rates from the Fabric & Finish sheet); transport and discount still shared by item value; without per-product figures the result is unchanged.
+- **Proof.** tsc, eslint, full suite, new calculation tests, PGlite suite (68 checks), rehearsal REHEARSAL OK. Not seen on screen; PDF not viewed.
+
+## 2026-10-29 — Orders: old orders kept as BDPI, with the same Payment plan (PR #503) · migration 20270503000000 APPLIED 2026-10-29 (renumbered from 20270502000000, which another session had taken; applied by db query --file + migration repair because db push refused the other unmerged version)
+- **Owner request.** 50+ old orders were never uploaded. Upload the old PI (usual format) and get the same Payment plan, recorded as BDPI-0001…, with complete details (fabric and packing costs, which fabric was chosen) and dispatch history.
+- **What.** Sidebar "Old orders (BDPI)": list + New BDPI upload; each BDPI opens the same Payment plan page (lots, Mark as dispatched, Account / Cash / Total, Excel, PDF). Payments are the confirmed ones Finance allocated to the old order number. Admin can delete one uploaded by mistake while nothing is dispatched.
+- **Database.** Three closed tables, `bdpi_id` on dispatch lots and events, nine functions; rehearsed in a rolled-back transaction on the linked database (REHEARSAL OK, zero residue).
+- **Proof.** tsc, eslint, full suite, `bdpiImport.test.ts`, PGlite suite (66 checks). Not seen on screen; no real old workbook uploaded yet.
+
 ## 2026-10-29 — Orders: an administrator can change an Order number (PR #502, squash-merged as 217a69b2) · migration 20270502000000 APPLIED 2026-10-29 (by the owner, from the worktree, after a rolled-back rehearsal on the linked database and a dry run listing only this file; backup 20261029T083014Z verified first) · Production deploy success (deployment 7408859871); the live route answers `POST /api/orders/<id>/number` signed out with its own 401 "Sign in again to change this Order number." · backup verified: code bundle 20261029T094252Z, database export 20261029T094309Z (200 tables, 0 errors)
 - **Owner request.** A recently uploaded Order was given the next number (0541) but is really an older Order; it must carry the older number. "The only condition is that the order number should be unique." The number it gave up must be free for the next Order. Owner decisions: admins only; the PI PDF prints the new number.
 - **What.** ⋯ menu on the Order page → **Change Order number** → type the new number. Refused when another Order has it, a PI Draft ever reserved it, or it is not below the number the next Order will be given. When the Order held the newest number, the counter steps back and the next approved Order is given it; otherwise the old number is left unused. Activity shows "Order number changed · 541 → 508 · 541 goes to the next Order". Product codes and the PI PDF follow the new number.
