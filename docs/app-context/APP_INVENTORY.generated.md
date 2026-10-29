@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `33e4472e` — Orders: approving a PI opens the Order it created (#510)
-- Commits on this branch: 1076
+- Commit: `1cc848a7` — Orders: PI payments popup as a table, with who verified each payment and a Details row
+- Commits on this branch: 1077
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
@@ -38,7 +39,6 @@
 - `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
 - `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
-- `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 
 ## Pages by top-level area
 

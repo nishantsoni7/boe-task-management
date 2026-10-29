@@ -25,25 +25,22 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { PiApproveOrderModal, PiFinanceVerifyModal, type ApproveDialogMode } from './piReviewModals'
 import {
-  APPROVE_SUMMARY_EXTRA_LABEL,
-  buildApprovalSummary,
-} from '@/app/orders/drafts/[submissionId]/piDetailView'
-import {
   ORDER_CONFIRMATION_LABEL,
   matchWorkbookSalesperson,
+  orderSalespersonFor,
   salespersonSelectorNote,
   validateOrderConfirmation,
   workbookSalespersonHint,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
+import { nameSubmitterAsSalesperson } from '@/lib/orders/salesOrderDetails'
 import {
   APPROVE_ORDER_BUSY_LABEL,
   APPROVE_ORDER_CONFIRM_LABEL,
   APPROVE_ORDER_DIALOG_TITLE,
   APPROVE_ORDER_FINAL_NOTE,
   APPROVE_ORDER_NOT_A_PAYMENT,
-  APPROVE_SUMMARY_LABEL,
   VERIFY_FINANCE_BUSY_LABEL,
   VERIFY_FINANCE_BUTTON_LABEL,
   VERIFY_FINANCE_CONFIRM,
@@ -86,41 +83,44 @@ const SALESPEOPLE = [
   { id: 'u-nishant', name: 'Nishant Soni' },
 ]
 
+type Provided = { salesperson: { id: string; name: string } | null; leadSource: string | null; confirmDate: string | null; dueDate: string | null }
+
+/** A PI submitted today: it provides all four, so the dialog asks nothing. */
+const PROVIDED_ALL: Provided = {
+  salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' },
+  leadSource: 'reference', confirmDate: '2026-01-31', dueDate: '2026-03-25',
+}
+const DRAFT_ALL: OrderConfirmationDraft = {
+  salesperson: 'u-dhruv', confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: 'reference',
+}
+/** An older PI that provides nothing. */
+const PROVIDED_NONE: Provided = { salesperson: null, leadSource: null, confirmDate: null, dueDate: null }
+const DRAFT_NONE: OrderConfirmationDraft = { salesperson: null, confirmDate: null, dueDate: null, leadSource: null }
+
 const approveModal = (over: {
   saving?: boolean
   failure?: string | null
   client?: string
-  productValue?: string
-  advanceConfirmed?: string | null
-  exception?: { reason: string | null; status: string | null } | null
   mode?: ApproveDialogMode
   confirmation?: OrderConfirmationDraft
   salespeople?: readonly { id: string; name: string }[]
   confirmationField?: OrderConfirmationField | null
-  provided?: { salesperson: { id: string; name: string } | null; salespersonFromWorkbook?: boolean; leadSource: string | null; confirmDate: string | null; dueDate: string | null }
+  provided?: Provided
   workbookSalesperson?: string | null
 } = {}): string =>
   renderToStaticMarkup(
     <PiApproveOrderModal
       client={over.client ?? 'Kalyan Interiors'}
       mode={over.mode ?? 'approve_and_create'}
-      rows={buildApprovalSummary({
-        client: over.client ?? 'Kalyan Interiors',
-        productValue: over.productValue ?? '₹10,00,000',
-        advanceConfirmed: over.advanceConfirmed === undefined ? '₹4,72,000' : over.advanceConfirmed,
-        exception: over.exception ?? null,
-      })}
       saving={over.saving ?? false}
       failure={over.failure ?? null}
       onCancel={() => {}}
       onConfirm={() => {}}
       salespeople={over.salespeople ?? SALESPEOPLE}
-      confirmation={over.confirmation ?? {
-        salesperson: null, confirmDate: null, dueDate: null, leadSource: null,
-      }}
+      confirmation={over.confirmation ?? DRAFT_ALL}
       onConfirmationChange={() => {}}
       confirmationField={over.confirmationField ?? null}
-      provided={over.provided}
+      provided={over.provided ?? PROVIDED_ALL}
       workbookSalesperson={over.workbookSalesperson}
     />,
   )
@@ -221,64 +221,41 @@ describe('the final approval dialog', () => {
     assert.equal(APPROVE_ORDER_DIALOG_TITLE, 'Approve PI & Create Order')
   })
 
-  test('shows the THREE facts a reviewer confirms against', () => {
-    const body = text(html)
-    assert.ok(body.includes('Kalyan Interiors'), 'client')
-    assert.ok(body.includes(APPROVE_SUMMARY_EXTRA_LABEL.productValue))
-    assert.ok(body.includes('₹10,00,000'), 'the product value')
-    assert.ok(body.includes(APPROVE_SUMMARY_EXTRA_LABEL.advanceConfirmed))
-    assert.ok(body.includes('₹4,72,000'), 'the confirmed advance')
-  })
-
-  test('THE SEVEN REPEATED ROWS ARE GONE from the rendered dialog', () => {
-    const body = text(html)
-    for (const gone of ['Grand total', 'Advance condition', 'Product lines',
-                        'Approved payment', 'Pending / unapproved payment',
-                        'Total attached payment', 'PI decision']) {
-      assert.ok(!body.includes(gone), `${gone} is on the page behind this dialog`)
-    }
-    assert.ok(!/\bline(s)?\b/.test(body.replace(/inline/gi, '')), 'no product-line count')
-    assert.ok(!body.includes(APPROVE_SUMMARY_LABEL.finance),
-      'and nothing 20261226000000 removed has come back')
-  })
-
-  test('the product value is the PAGE\u2019S figure, never the grand total', () => {
-    // The page prints ₹10,00,000 as "Product value" and ₹11,80,000 as the grand
-    // total. The dialog must carry the first and never the second.
-    const body = text(html)
-    assert.ok(body.includes('₹10,00,000'))
-    assert.ok(!body.includes('₹11,80,000'), 'the grand total is not this dialog\u2019s figure')
-    for (const wrong of ['Total before GST', 'PI total', 'Billing value']) {
-      assert.ok(!body.includes(wrong), `${wrong} is a different number`)
-    }
-  })
-
-  test('Confirm date and Due date appear ONCE each, as editable inputs', () => {
-    const body = text(html)
-    // Once in the label of its own input, and nowhere as a read-only row.
-    assert.equal(body.split(ORDER_CONFIRMATION_LABEL.confirm_date).length - 1, 1)
-    assert.equal(body.split(ORDER_CONFIRMATION_LABEL.due_date).length - 1, 1)
-    assert.ok(isEditable(html, 'Confirm date'), 'and it is still editable')
-    assert.ok(isEditable(html, 'Due date'), 'and so is it')
-    assert.equal((html.match(/type="date"/g) ?? []).length, 2, 'two date inputs, no more')
-  })
-
-  test('says approval is final, a number is assigned, and the Order is created', () => {
+  test('says approval is final, a number is assigned, the Order is created, and who the salesperson is', () => {
     const body = text(html)
     assert.ok(body.includes(APPROVE_ORDER_FINAL_NOTE))
     assert.ok(/final/i.test(body))
     assert.ok(/official Order number/i.test(body))
     assert.ok(/confirmed Order will be created/i.test(body))
+    assert.ok(body.includes('Salesperson: Dhruv Mehta'))
   })
 
   test('states, out loud, that it records NO payment', () => {
     assert.ok(text(html).includes(APPROVE_ORDER_NOT_A_PAYMENT))
   })
 
+  test('RESTATES NOTHING the page behind it already shows (owner, 2026-10-30)', () => {
+    const body = text(html)
+    for (const gone of ['Total product value', 'Advance confirmed', 'Exception reason', 'Grand total',
+                        'Advance condition', 'Product lines', 'Finance verification', 'PI decision',
+                        'Confirm date', 'Due date', 'Lead source', 'Reference', 'From the PI',
+                        'Billing percentage', 'Middleman commission', 'Pending from client']) {
+      assert.ok(!body.includes(gone), `${gone} is on the page behind this dialog`)
+    }
+    assert.ok(!/\bline(s)?\b/.test(body.replace(/inline/gi, '')), 'no product-line count')
+    assert.doesNotMatch(html, /data-review=/)
+  })
+
+  test('offers no Change links, no pickers and no inputs when the PI provides everything', () => {
+    assert.ok(!buttonLabels(html).includes('Change'))
+    assert.doesNotMatch(html, /<select/)
+    assert.doesNotMatch(html, /<input/)
+  })
+
   test('never shows or promises a specific number', () => {
     // The number does not exist until the RPC commits, and a dialog that showed
     // "the next number will be 0413" would be predicting the allocator.
-    assert.ok(!/\b\d{4}\b/.test(text(html).replace(/₹[\d,]+/g, '').replace(/40%/g, '')))
+    assert.ok(!/\b\d{4}\b/.test(text(html)))
   })
 
   test('offers exactly Cancel and Approve & Create Order', () => {
@@ -299,126 +276,147 @@ describe('the final approval dialog', () => {
     assert.ok(text(failed).includes(APPROVE_ORDER_DIALOG_TITLE))
   })
 
-  test('long client names and long currency values wrap rather than clip', () => {
+  test('a long salesperson name wraps rather than clips', () => {
     const long = approveModal({
-      client: 'Kalyan Interiors & Contract Furnishing Solutions Private Limited',
-      productValue: '₹12,34,56,789',
+      provided: { ...PROVIDED_ALL, salesperson: { id: 'u-long', name: 'Venkata Subrahmanya Lakshmi Narasimha Prasad' } },
+      confirmation: { ...DRAFT_ALL, salesperson: 'u-long' },
     })
-    assert.ok(text(long).includes('Kalyan Interiors & Contract Furnishing Solutions Private Limited'))
-    assert.ok(long.includes('overflow-wrap:anywhere'), 'the VALUE breaks instead of overflowing')
-    assert.ok(long.includes('flex-wrap:wrap'), 'and the row wraps before it pushes')
+    assert.ok(text(long).includes('Venkata Subrahmanya Lakshmi Narasimha Prasad'))
+    assert.ok(long.includes('overflow-wrap:anywhere'))
     assert.ok(!/overflow-x\s*:\s*(scroll|auto)/.test(long))
+  })
+
+  test('the PI-only door asks nothing and names no salesperson', () => {
+    const piOnly = approveModal({ mode: 'approve_pi', provided: PROVIDED_NONE, confirmation: DRAFT_NONE })
+    assert.doesNotMatch(piOnly, /<select|<input/)
+    assert.ok(!text(piOnly).includes('Salesperson'))
   })
 })
 
 // ── The salesperson the PI already names ──────────────────────────────────────
 
-describe('the salesperson is the one saved on the PI, or chosen by management', () => {
+describe('the salesperson is never asked again when the PI or its submitter names one', () => {
   const complete = (salesperson: string | null): OrderConfirmationDraft =>
     ({ salesperson, confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: 'reference' })
+  const dhruv = { id: 'u-dhruv', name: 'Dhruv Mehta' }
+  const priya = { id: 'u-priya', name: 'Priya Rao' }
+  const nishant = { id: 'u-nishant', name: 'Nishant Soni' }
 
-  test('1 · a SAVED salesperson id is reviewed as the PI\u2019s, and is what is submitted', () => {
-    const html = approveModal({
-      provided: { ...{ salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' } },
-      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
-    })
-    assert.match(html, /data-review="salesperson"/)
-    assert.ok(text(html).includes('Dhruv Mehta') && text(html).includes('From the PI'))
-    assert.ok(!text(html).includes('Select a salesperson…'), 'a review value, not a control')
-    const check = validateOrderConfirmation(complete('u-dhruv'))
-    assert.equal(check.ok, true)
-    assert.equal(check.ok && check.values.salesperson, 'u-dhruv')
+  test('1 · saved, else the one workbook match, else whoever submitted the PI', () => {
+    assert.deepEqual(orderSalespersonFor({ saved: dhruv, workbookMatch: priya, submitter: nishant }), dhruv)
+    assert.deepEqual(orderSalespersonFor({ saved: null, workbookMatch: priya, submitter: nishant }), priya)
+    assert.deepEqual(orderSalespersonFor({ saved: null, workbookMatch: null, submitter: nishant }), nishant)
+    assert.equal(orderSalespersonFor({ saved: null, workbookMatch: null, submitter: null }), null)
   })
 
-  test('1b · changing a saved salesperson: the selector opens on it and says whom Sales saved', () => {
-    const html = approveModal({
-      provided: { ...{ salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' } },
-      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
-      confirmationField: 'salesperson',
-      workbookSalesperson: 'Somebody Else',
-    })
-    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), 'u-dhruv')
-    assert.ok(text(html).includes('Sales saved Dhruv Mehta on this PI. Choose someone else only if that is wrong.'))
-    assert.ok(!text(html).includes('no saved salesperson'), 'the legacy wording is not shown for a newer PI')
-    assert.ok(!text(html).includes('Somebody Else'), 'nor the workbook hint')
+  test('2 · a resolved salesperson is named, not asked, and is what is submitted', () => {
+    const html = approveModal({ provided: { ...PROVIDED_ALL, salesperson: nishant }, confirmation: complete('u-nishant') })
+    assert.ok(text(html).includes('Salesperson: Nishant Soni'))
+    assert.ok(!html.includes('Select a salesperson…'))
+    const check = validateOrderConfirmation(complete('u-nishant'))
+    assert.equal(check.ok && check.values.salesperson, 'u-nishant')
   })
 
-  test('2 · a LEGACY PI whose workbook name EXACTLY matches one person: that person is preselected, editable', () => {
-    assert.equal(SALESPEOPLE.filter(p => p.name === 'Dhruv Mehta').length, 1)
-    const match = matchWorkbookSalesperson('  dhruv   MEHTA ', SALESPEOPLE)
-    assert.deepEqual(match, { id: 'u-dhruv', name: 'Dhruv Mehta' })
-    const html = approveModal({
-      provided: { salesperson: match, salespersonFromWorkbook: true, leadSource: null, confirmDate: null, dueDate: null },
-      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
-      workbookSalesperson: workbookSalespersonHint('Dhruv Mehta'),
-    })
-    assert.ok(html.includes('data-review="salesperson"'), 'shown as a review value')
-    assert.ok(text(html).includes('Dhruv Mehta') && text(html).includes('From the PI workbook'))
-    assert.ok(html.includes('Change'), 'with a Change control')
-  })
-
-  test('2b · no match, a partial name and two people with one name all select nobody', () => {
+  test('3 · the workbook match is still exact: no match, a partial name and two people with one name select nobody', () => {
+    assert.deepEqual(matchWorkbookSalesperson('  dhruv   MEHTA ', SALESPEOPLE), dhruv)
     assert.equal(matchWorkbookSalesperson('Somebody Else', SALESPEOPLE), null)
     assert.equal(matchWorkbookSalesperson('Dhruv', SALESPEOPLE), null)
     assert.equal(matchWorkbookSalesperson('—', SALESPEOPLE), null)
     assert.equal(matchWorkbookSalesperson(null, SALESPEOPLE), null)
     assert.equal(matchWorkbookSalesperson('Priya Rao', [...SALESPEOPLE, { id: 'u-priya2', name: 'priya  rao' }]), null)
-    const html = approveModal({ provided: { salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, workbookSalesperson: 'Somebody Else' })
+  })
+
+  test('4 · a PI that names nobody at all: the selector opens unselected, with the workbook name as a hint', () => {
+    const html = approveModal({
+      provided: { ...PROVIDED_ALL, salesperson: null },
+      confirmation: complete(null),
+      workbookSalesperson: 'Somebody Else',
+    })
     assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '', 'the selector opens unselected')
     assert.ok(text(html).includes('The workbook names “Somebody Else” — a hint only.'))
+    assert.ok(!text(html).includes('Salesperson:'), 'nobody is named')
+    for (const person of SALESPEOPLE) assert.ok(html.includes(`value="${person.id}"`), `${person.name} is choosable`)
     const check = validateOrderConfirmation(complete(null))
     assert.equal(check.ok === false && check.field, 'salesperson')
   })
 
-  test('3 · the page selects the saved id, else the one exact workbook match — never the viewer or the submitter', () => {
-    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
-    assert.ok(page.includes('salesperson: salesDetails.salesperson_id ?? workbookSalespersonMatch?.id ?? null,'))
-    assert.ok(page.includes('workbookSalesperson={workbookSalespersonHint(documentAuthor)}'))
-    assert.ok(!/salesperson: *(viewerId|profile|submitter)/.test(page))
+  test('5 · when the database refuses the resolved person, the selector opens on them', () => {
+    const html = approveModal({ confirmationField: 'salesperson' })
+    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), 'u-dhruv')
+    assert.ok(isEditable(html, ORDER_CONFIRMATION_LABEL.salesperson))
+    assert.ok(!text(html).includes('no saved salesperson'), 'the nobody-named note is not shown')
   })
 
-  test('4 · the hint is the workbook\u2019s name, tidied, and nothing for a blank or a dash', () => {
+  test('6 · the hint is the workbook’s name, tidied, and nothing for a blank or a dash', () => {
     assert.equal(workbookSalespersonHint('  Dhruv   Mehta '), 'Dhruv Mehta')
     for (const blank of [null, undefined, '', '   ', '—']) assert.equal(workbookSalespersonHint(blank), null)
-    assert.equal(salespersonSelectorNote({ savedName: null, workbookName: null }),
+    assert.equal(salespersonSelectorNote(null),
       'This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.')
   })
 
-  test('5 · the dropdown stays editable, with every option still offered', () => {
-    const html = approveModal({ confirmation: {
-      salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null,
-    } })
-    assert.ok(isEditable(html, ORDER_CONFIRMATION_LABEL.salesperson),
-      'preselected is not the same as decided')
-    for (const person of SALESPEOPLE) {
-      assert.ok(html.includes(`value="${person.id}"`), `${person.name} is still choosable`)
-    }
-    assert.ok(html.includes('Select a salesperson…'), 'and it can be cleared again')
+  test('7 · the page resolves the salesperson from the PI and its submitter — never the viewer approving it', () => {
+    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    assert.ok(page.includes('const orderSalesperson = orderSalespersonFor({'))
+    assert.ok(page.includes('submitter: submission.submitted_by'))
+    assert.ok(page.includes('salesperson: orderSalesperson?.id ?? null,'))
+    assert.ok(page.includes('salesperson: orderSalesperson,'))
+    assert.ok(page.includes('workbookSalesperson={workbookSalespersonHint(documentAuthor)}'))
+    assert.ok(!/salesperson: *(viewerId|profile)/.test(page))
   })
 
-  test('12 · Lead source is still required, and still a select', () => {
-    const html = approveModal()
-    assert.ok(text(html).includes(`${ORDER_CONFIRMATION_LABEL.lead_source} *`))
+  test('8 · Submit names the person submitting when Sales chose nobody — and only then', async () => {
+    const calls: { fn: string; args: Record<string, unknown> }[] = []
+    const client = (error: unknown = null) => ({
+      rpc: (fn: string, args: Record<string, unknown>) => { calls.push({ fn, args }); return Promise.resolve({ error }) },
+    })
+    const none = { available: true, salesperson_id: null, lead_source: 'website', sample_type: null }
+
+    assert.deepEqual(await nameSubmitterAsSalesperson(client(), 'pi-1', none, 'u-nishant'), { error: null })
+    assert.deepEqual(calls, [{ fn: 'set_order_submission_sales_details', args: {
+      p_submission_id: 'pi-1', p_salesperson_id: 'u-nishant', p_lead_source: 'website', p_expected_version: null,
+    } }], 'the submitter, with the lead source kept as loaded')
+
+    calls.length = 0
+    await nameSubmitterAsSalesperson(client(), 'pi-1', { ...none, salesperson_id: 'u-dhruv' }, 'u-nishant')
+    await nameSubmitterAsSalesperson(client(), 'pi-1', { ...none, available: false }, 'u-nishant')
+    await nameSubmitterAsSalesperson(client(), 'pi-1', none, null)
+    assert.equal(calls.length, 0, 'a saved salesperson is never replaced, and nothing is guessed')
+
+    const refused = { message: 'ORDER_SUBMISSION_NOT_EDITABLE' }
+    assert.deepEqual(await nameSubmitterAsSalesperson(client(refused), 'pi-1', none, 'u-nishant'), { error: refused })
+
+    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    const send = page.slice(page.indexOf('const send = async () => {'), page.indexOf('return supporting.send('))
+    assert.ok(send.includes('nameSubmitterAsSalesperson(supabase, submissionId, salesDetails, viewerId)'),
+      'run inside the send step, after the dates are saved')
+    assert.ok(send.includes('if (named.error) return { data: null, error: named.error }'), 'a refusal sends nothing')
+  })
+
+  test('9 · a missing date or lead source is asked for; a given one is simply used', () => {
+    const html = approveModal({
+      provided: { ...PROVIDED_ALL, dueDate: null, leadSource: null },
+      confirmation: { ...DRAFT_ALL, dueDate: null, leadSource: null },
+    })
+    assert.equal((html.match(/type="date"/g) ?? []).length, 1, 'only the missing due date')
+    assert.ok(text(html).includes('Due date *') && !text(html).includes('Confirm date'))
     assert.ok(isEditable(html, ORDER_CONFIRMATION_LABEL.lead_source))
-    const draft: OrderConfirmationDraft = {
-      salesperson: 'u-dhruv', confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: null,
-    }
-    const check = validateOrderConfirmation(draft)
-    assert.equal(check.ok, false)
+    const check = validateOrderConfirmation({ ...DRAFT_ALL, leadSource: null })
     assert.equal(check.ok === false && check.field, 'lead_source')
+  })
+
+  test('10 · an older PI that provides nothing asks for all four', () => {
+    const html = approveModal({ provided: PROVIDED_NONE, confirmation: DRAFT_NONE })
+    assert.equal((html.match(/type="date"/g) ?? []).length, 2)
+    assert.equal((html.match(/<select/g) ?? []).length, 2)
   })
 
   test('13 · Create Order behaviour and payload are untouched', () => {
     const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
     // The RPC, its name and its four parameters are exactly what they were.
     assert.ok(page.includes('p_assigned_to:   check.values.salesperson,'),
-      'the id sent is still the VALIDATED draft value, not the preselection')
+      'the id sent is still the VALIDATED draft value')
     assert.ok(page.includes('validateOrderConfirmation('),
       'and it still goes through the same gate')
-    // Preselection only ever seeds the draft; it never reaches the call.
-    assert.ok(!page.includes('p_assigned_to:   resolveSavedSalesperson'))
-    assert.ok(!page.includes('resolveSavedSalesperson') || page.includes('setConfirmation(prev => ({'),
-      'it is written into the draft the person can still change')
   })
 })
 

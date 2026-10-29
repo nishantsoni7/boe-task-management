@@ -9,11 +9,9 @@ import {
   addPendencyDraft,
   cleanPendencyLabel,
   describePendencyError,
-  saveNewOrderPendencies,
   splitPendencies,
 } from './orderPendencies'
 import { PiApproveOrderModal } from '@/components/orders/piReviewModals'
-import { buildApprovalSummary } from '@/app/orders/drafts/[submissionId]/piDetailView'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const sql = read('supabase/migrations/20270325000000_order_pendencies.sql')
@@ -55,38 +53,18 @@ describe('splitPendencies / describePendencyError', () => {
   })
 })
 
-describe('saveNewOrderPendencies', () => {
-  test('nothing to save makes no call', async () => {
-    let calls = 0
-    const ok = await saveNewOrderPendencies({ rpc: () => { calls++; return Promise.resolve({ error: null }) } }, 'o', [])
-    assert.equal(ok, true); assert.equal(calls, 0)
-  })
-  test('calls add_order_pendencies with the order id and labels; reports failure', async () => {
-    let seen: unknown
-    const client = (error: unknown) => ({ rpc: (fn: string, args: Record<string, unknown>) => { seen = { fn, args }; return Promise.resolve({ error }) } })
-    assert.equal(await saveNewOrderPendencies(client(null), 'o1', ['a', 'b']), true)
-    assert.deepEqual(seen, { fn: 'add_order_pendencies', args: { p_order_id: 'o1', p_labels: ['a', 'b'] } })
-    assert.equal(await saveNewOrderPendencies(client({ message: 'x' }), 'o1', ['a']), false)
-  })
-})
-
-describe('the convert dialog', () => {
-  const render = (onPendenciesChange?: (n: string[]) => void, mode: 'approve_and_create' | 'approve_pi' = 'approve_and_create') =>
-    renderToStaticMarkup(
-      <PiApproveOrderModal client="Rivoli" mode={mode}
-        rows={buildApprovalSummary({ client: 'Rivoli', productValue: '₹1', advanceConfirmed: '₹1' })}
+describe('the convert dialog (owner, 2026-10-30)', () => {
+  test('no longer collects pendencies: they are added on the Order page', () => {
+    const html = renderToStaticMarkup(
+      <PiApproveOrderModal client="Rivoli" mode="approve_and_create"
         saving={false} failure={null} onCancel={() => {}} onConfirm={() => {}}
         salespeople={[]} confirmation={{ salesperson: null, confirmDate: null, dueDate: null, leadSource: null }}
-        onConfirmationChange={() => {}} confirmationField={null}
-        pendencies={['Fabric swatch']} onPendenciesChange={onPendenciesChange} />)
-  test('lists the pendencies where an Order is created', () => {
-    const html = render(() => {})
-    assert.match(html, /data-testid="pi-approve-pendencies"/)
-    assert.ok(html.includes('Fabric swatch') && html.includes('Pending from client'))
-  })
-  test('is not drawn without a handler, nor where no Order is created', () => {
-    assert.doesNotMatch(render(undefined), /pi-approve-pendencies/)
-    assert.doesNotMatch(render(() => {}, 'approve_pi'), /pi-approve-pendencies/)
+        onConfirmationChange={() => {}} confirmationField={null} />)
+    assert.doesNotMatch(html, /pi-approve-pendencies/)
+    assert.ok(!html.includes('Pending from client'))
+    const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
+    assert.ok(!page.includes('add_order_pendencies') && !page.includes('pendencyDrafts'),
+      'and the PI page writes none after approval')
   })
 })
 

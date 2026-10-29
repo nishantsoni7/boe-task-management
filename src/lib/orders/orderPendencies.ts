@@ -97,20 +97,3 @@ export function describePendencyError(message: string | null | undefined): strin
   if (m.includes('ORDER_PENDENCY_TOO_LONG')) return `Keep each pendency under ${PENDENCY_MAX_LENGTH} characters.`
   return 'The pendency could not be saved. Try again.'
 }
-
-type RpcCaller = { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ error: unknown }> }
-
-/**
- * Saves the convert dialog's list on the Order that was just created. Lives
- * here, not on the PI page, because that page's writes are pinned to the status
- * RPCs (draftsAccess.test.ts). Resolves true when saved (or nothing to save).
- */
-export async function saveNewOrderPendencies(
-  client: RpcCaller,
-  orderId: string,
-  labels: readonly string[],
-): Promise<boolean> {
-  if (labels.length === 0) return true
-  const { error } = await client.rpc('add_order_pendencies', { p_order_id: orderId, p_labels: [...labels] })
-  return !error
-}

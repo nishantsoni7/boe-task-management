@@ -465,26 +465,24 @@ describe('the browser has no opinion about an Order number', () => {
 describe('approving opens the Order it created (owner, 2026-10-30)', () => {
   const outcome = { orderId: 'order-1', displayNumber: '0541', alreadyApproved: false }
 
-  test('a created, readable Order with its pendencies saved is opened', () => {
+  test('a created, readable Order is opened', () => {
     assert.equal(
-      orderToOpenAfterApproval({ outcome, pendenciesSaved: true, orderReadable: true }),
+      orderToOpenAfterApproval({ outcome, orderReadable: true }),
       '/orders/order-1',
     )
   })
 
   test('a retry that found the PI already approved opens the same Order', () => {
     assert.equal(
-      orderToOpenAfterApproval({ outcome: { ...outcome, alreadyApproved: true }, pendenciesSaved: true, orderReadable: true }),
+      orderToOpenAfterApproval({ outcome: { ...outcome, alreadyApproved: true }, orderReadable: true }),
       '/orders/order-1',
     )
   })
 
   test('the PI stays when it has something the Order page cannot say', () => {
-    assert.equal(orderToOpenAfterApproval({ outcome: null, pendenciesSaved: true, orderReadable: true }), null,
+    assert.equal(orderToOpenAfterApproval({ outcome: null, orderReadable: true }), null,
       'an unreadable RPC answer: the PI re-reads the record')
-    assert.equal(orderToOpenAfterApproval({ outcome, pendenciesSaved: false, orderReadable: true }), null,
-      'pendencies not saved: the PI says so')
-    assert.equal(orderToOpenAfterApproval({ outcome, pendenciesSaved: true, orderReadable: false }), null,
+    assert.equal(orderToOpenAfterApproval({ outcome, orderReadable: false }), null,
       'an Order this approver may not read: the PI still shows its number')
   })
 })

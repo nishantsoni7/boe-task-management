@@ -31,10 +31,7 @@ import {
   ADVANCE_NONE_LABEL,
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
-import {
-  APPROVE_SUMMARY_LABEL,
-  orderHref,
-} from '@/lib/orders/finalApproval'
+import { orderHref } from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
 import { PAYMENT_POSITION_LABEL, type PaymentPosition } from '@/lib/orders/paymentGate'
 import {
@@ -672,109 +669,9 @@ export const STORED_COPY_NOTE =
 
 // ── 9. Final approval ─────────────────────────────────────────────────────────
 //
-// What the approval dialog SHOWS, and what the workflow panel says once an Order
-// exists. The RULES live in finalApproval.ts; this is the arrangement.
-
-/** One line of the approval dialog's summary. */
-export type ApprovalSummaryRow = {
-  key: string
-  label: string
-  value: string
-  /** True for the figure the eye should land on first. */
-  strong?: boolean
-}
-
-/**
- * The compact final summary a reviewer confirms against.
- *
- * THREE FACTS, AND NOT ONE MORE: who the client is, what is being sold, and how
- * much confirmed money is already against it. Between them they answer "am I
- * creating the Order I think I am creating", which is the only question a
- * confirmation dialog is for.
- *
- * THE DIALOG USED TO CARRY NINE ROWS — grand total, advance condition, product
- * lines, approved payment, pending payment, total attached payment and the PI
- * decision on top of these three. Every one of them is on the page behind the
- * dialog, most of them twice over, and a reader confirming an irreversible
- * action scans a short list or scans nothing at all. The long version was read
- * as a wall and skipped, which is worse than showing less.
- *
- * THE TWO DATES ARE NOT HERE EITHER, and deliberately: Confirm date and Due
- * date are EDITABLE INPUTS a few millimetres below, and those inputs are what
- * the approver is verifying. Printing them read-only above would state the same
- * two dates twice and leave a reader wondering which one counts.
- *
- * NOTHING IS COMPUTED HERE. Both figures arrive formatted, from the page's own
- * single source for each — see the field notes below.
- */
-export const APPROVE_SUMMARY_EXTRA_LABEL = {
-  /**
-   * THE SAME FIGURE THE PI DETAIL PAGE PRINTS AS "Product value", passed
-   * through from summaryCommercialFigures' `gross` row. It is NOT the grand
-   * total, NOT the PI total, NOT the total before GST and NOT the billing
-   * value, and it is not recomputed here — one calculation, printed in two
-   * places, so the dialog and the page can never disagree.
-   */
-  productValue: 'Total product value',
-  /**
-   * CONFIRMED MONEY ONLY — the verified amount, which is exactly the money
-   * Finance has approved. Money awaiting verification, money in clarification
-   * and rejected money are all excluded, because an approver reading "advance
-   * confirmed" beside an Order must not be shown a figure that could still
-   * evaporate. Stated as an amount alone; the shares and the row-by-row
-   * position live on the payment card, where they can be acted on.
-   */
-  advanceConfirmed: 'Advance confirmed',
-} as const
-
-/**
- * What survives of the old payment block: the exception reason.
- *
- * IT IS NOT ONE OF THE THREE and it is not always drawn — it appears only while
- * an advance exception actually exists, headed by its state so the approver
- * knows whether it is still theirs to decide. It is kept because it is the one
- * payment fact that is a WARNING rather than a figure: an Order created under a
- * waived advance condition is a different commitment, and the person taking the
- * irreversible action is the right person to be told.
- */
-export const APPROVE_PAYMENT_LABEL = {
-  exception: 'Exception reason',
-} as const
-
-export function buildApprovalSummary(input: {
-  client: string
-  /** summaryCommercialFigures' `productValue` — the page's "Product value", after the discount. */
-  productValue: string
-  /** formatMoney(payments.verified_amount), or null before the read lands. */
-  advanceConfirmed: string | null
-  /** An advance exception, while one exists. */
-  exception?: { reason: string | null; status: string | null } | null
-}): ApprovalSummaryRow[] {
-  const rows: ApprovalSummaryRow[] = [
-    { key: 'client', label: APPROVE_SUMMARY_LABEL.client, value: input.client },
-    {
-      key: 'product_value',
-      label: APPROVE_SUMMARY_EXTRA_LABEL.productValue,
-      value: input.productValue,
-      strong: true,
-    },
-  ]
-  // Not a labelled hole: before the payment summary has been read there is no
-  // confirmed figure to state, and inventing ₹0 would be a figure somebody acts on.
-  if (input.advanceConfirmed !== null) {
-    rows.push({
-      key: 'advance_confirmed',
-      label: APPROVE_SUMMARY_EXTRA_LABEL.advanceConfirmed,
-      value: input.advanceConfirmed,
-    })
-  }
-  const exception = input.exception ?? null
-  if (exception?.reason) {
-    const state = exception.status ? ` (${exception.status})` : ''
-    rows.push({ key: 'exception', label: `${APPROVE_PAYMENT_LABEL.exception}${state}`, value: exception.reason })
-  }
-  return rows
-}
+// What the workflow panel says once an Order exists. The RULES live in
+// finalApproval.ts; this is the arrangement. The approval dialog restates no
+// summary since 2026-10-30 (see PiApproveOrderModal).
 
 /**
  * The created Order, as the approved record reports it — or null.

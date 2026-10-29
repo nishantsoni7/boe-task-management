@@ -3,16 +3,16 @@
 // Traced 2026-09-27: the PI Draft card, the Create Confirmed Order dialog's
 // "Total product value" row and the Order page's "Total product value" were
 // three readings of two different figures (the gross and the after-discount
-// subtotal). These pin that all three now say the same rupees, from stored
-// columns only, for a discounted and an undiscounted PI — and that no stored
-// total, payment figure, fabric/packing charge or Total before GST moved.
+// subtotal). These pin that the card and the Order page say the same rupees,
+// from stored columns only, for a discounted and an undiscounted PI — and that
+// no stored total, payment figure, fabric/packing charge or Total before GST
+// moved. (The dialog restates no figure since 2026-10-30.)
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCommercialRows, formatInr } from '@/lib/pi/previewView'
 import { persistedCommercial } from './draftsView'
 import {
-  buildApprovalSummary,
   buildBreakdownView,
   commercialBreakdownRows,
   summaryCommercialFigures,
@@ -44,19 +44,15 @@ const PLAIN = pi({ gross_product_amount: 500000, discount_amount: 0, subtotal_af
 
 const rowsOf = (p: Pi) => commercialBreakdownRows(buildCommercialRows(persistedCommercial(p)))
 const draftProductValue = (p: Pi) => summaryCommercialFigures(rowsOf(p)).find(f => f.key === 'productValue')!.value
-const dialogProductValue = (p: Pi) =>
-  buildApprovalSummary({ client: 'X', productValue: draftProductValue(p), advanceConfirmed: '₹0' })
-    .find(r => r.key === 'product_value')!.value
 const orderSummaryValue = (p: Pi, stored = Number(p.gross_product_amount)) => orderProductValue({
   stored,
   pi: { gross: Number(p.gross_product_amount), discount: Number(p.discount_amount), subtotal: p.subtotal_after_discount === null ? null : Number(p.subtotal_after_discount) },
 })
 
-describe('the draft card, the approval dialog and the Order page state one product value', () => {
+describe('the draft card and the Order page state one product value', () => {
   for (const [name, p, expected] of [['Rivoli (discount only)', RIVOLI, 964200], ['Kalyan (discount + fabric + packing)', KALYAN, 475000], ['no discount', PLAIN, 500000]] as const) {
     test(name, () => {
       assert.equal(draftProductValue(p), formatInr(expected), 'PI Draft card')
-      assert.equal(dialogProductValue(p), formatInr(expected), 'Create Confirmed Order dialog')
       // The Order was created by approval, which stores the PI's GROSS.
       const order = orderSummaryValue(p)
       assert.equal(order.amount, expected, 'Order page summary')
