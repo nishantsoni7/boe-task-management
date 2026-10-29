@@ -47,7 +47,7 @@ test('the sheet carries the same figures the calculation produced, account and c
   const due = byLabel.get('Total to be paid')!
   assert.deepEqual([due.account, due.cash, due.total], [result.split.due.account, result.split.due.cash, result.requiredPaise])
   const got = byLabel.get('Already received')!
-  assert.deepEqual([got.account, got.cash], [100000, 1000000])
+  assert.deepEqual([got.account, got.cash], [-100000, -1000000])
   const last = sheet.summary[sheet.summary.length - 1]
   assert.equal(last.label, 'Balance to pay')
   assert.equal(last.total, result.toCollectPaise)

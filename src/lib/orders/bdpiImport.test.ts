@@ -139,7 +139,9 @@ test('a BDPI read is understood by the same plan code, with its line details', (
   assert.equal(data.kind, 'bdpi')
   assert.equal(data.oldOrderNo, '412')
   assert.equal(data.displayNumber, 'BDPI-0001')
-  assert.deepEqual(data.items[0].details, ['Size: 80 x 36 in', 'Fabric: Velvet', 'Fabric: 6.5 m per piece at ₹450/m'])
+  assert.deepEqual(data.items[0].details, ['Size: 80 x 36 in', 'Fabric: Velvet'])
+  assert.equal(data.items[0].fabricMetresPerPiece, 6.5)
+  assert.equal(data.items[0].fabricRate, 450)
   assert.deepEqual(itemDetails({}), [])
 })
 

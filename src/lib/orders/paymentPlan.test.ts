@@ -249,3 +249,58 @@ test('with no billing percentage everything is cash and there is no GST', () => 
   assert.equal(s.due.account, 0)
   assert.equal(s.due.cash, paise(18000))
 })
+
+// ── Fabric and packing per product (owner, 2026-10-29, "Req-0169") ──
+// Sofa: 1 @ 2,85,000, packing 8,000, fabric 45 m @ 550. Chair: 110 @ 4,200, packing 200, 1.25 m @ 550.
+// PI total = items 7,47,000 + packing 30,000 + fabric 1,00,375 + transport 10,000 - discount 37,350 = 8,50,025.
+const sheet: PlanInput = {
+  ...base,
+  items: [
+    { itemSequence: 'S', productName: 'Sofa', quantity: 1, rate: 285000, packingRate: 8000, fabricMetresPerPiece: 45, fabricRate: 550 },
+    { itemSequence: 'C', productName: 'Chair', quantity: 110, rate: 4200, packingRate: 200, fabricMetresPerPiece: 1.25, fabricRate: 550 },
+  ],
+  totalBeforeGst: 850025, gstAmount: 153004.5, discount: 37350, piBillingPercent: 30,
+  planned: {}, advanceCashOverride: null,
+}
+
+test('a lot carries its own packing and fabric, and a share of transport and discount by item value', () => {
+  const r = computePaymentPlan({ ...sheet, planned: { S: 1 } })
+  assert.equal(r.lot.items, paise(285000))
+  assert.equal(r.lot.packing, paise(8000))
+  assert.equal(r.lot.fabric, paise(24750))
+  // item share 2,85,000 / 7,47,000 of transport 10,000 and of discount 37,350
+  assert.equal(r.lot.otherShare, Math.round(10000 * 285000 / 747000 * 100))
+  assert.equal(r.lot.discountShare, -Math.round(37350 * 285000 / 747000 * 100))
+  assert.equal(r.lot.value, r.lot.items + r.lot.packing + r.lot.fabric + r.lot.otherShare + r.lot.discountShare)
+  assert.equal(r.dispatchAmountPaise, r.lot.value)
+  const sofa = r.lines.find(l => l.itemSequence === 'S')!
+  assert.deepEqual([sofa.plannedPackingPaise, sofa.plannedFabricMetres, sofa.plannedFabricPaise, sofa.plannedLineTotalPaise],
+    [paise(8000), 45, paise(24750), paise(317750)])
+})
+
+test('billing, GST and cash are worked out on the lot value', () => {
+  const r = computePaymentPlan({ ...sheet, planned: { C: 110 } })
+  assert.equal(r.lot.fabric, paise(75625))
+  assert.equal(r.lot.billed, Math.round(r.lot.value * 0.3))
+  assert.equal(r.lot.gst, Math.round(r.lot.billed * 0.18))
+  assert.equal(r.lot.cash, r.lot.value - r.lot.billed)
+})
+
+test('everything sent adds up to the whole PI, however it is split into lots', () => {
+  const all = computePaymentPlan({ ...sheet, planned: { S: 1, C: 110 } })
+  assert.equal(all.dispatchAmountPaise, paise(850025))
+  assert.equal(all.pendingValuePaise, 0)
+  const twoLots = computePaymentPlan({
+    ...sheet,
+    dispatchedLots: [{ id: 'l1', lotNo: 1, status: 'dispatched', plannedOn: null, dispatchedOn: '2026-10-20', lines: [{ itemSequence: 'C', quantity: 60 }] }],
+    planned: { S: 1, C: 50 },
+  })
+  assert.equal(twoLots.earlier.value + twoLots.lot.value, paise(850025))
+  assert.equal(twoLots.dispatchAmountPaise, paise(850025))
+})
+
+test('goods still to come carry their own packing and fabric too', () => {
+  const r = computePaymentPlan({ ...sheet, planned: { S: 1 } })
+  const chairsValue = 110 * 4200 + 110 * 200 + 110 * 1.25 * 550 + (10000 - 37350) * (110 * 4200) / 747000
+  assert.ok(Math.abs(r.pendingValuePaise - Math.round(chairsValue * 100)) <= 1)
+})

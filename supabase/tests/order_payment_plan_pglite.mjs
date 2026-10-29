@@ -27,6 +27,7 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const migration = readFileSync(`${REPO}/supabase/migrations/20270428000000_order_payment_plan.sql`, 'utf8')
 const migration2 = readFileSync(`${REPO}/supabase/migrations/20270430000000_order_payment_plan_account_cash.sql`, 'utf8')
 const migration3 = readFileSync(`${REPO}/supabase/migrations/20270503000000_order_payment_plan_bdpi.sql`, 'utf8')
+const migration4 = readFileSync(`${REPO}/supabase/migrations/20270504000000_order_payment_plan_line_costs.sql`, 'utf8')
 
 const U = {
   admin:   '00000000-0000-0000-0000-0000000000a1',
@@ -59,7 +60,12 @@ create table public.order_submissions (
   fabric_cost numeric, packing_cost numeric, transportation_amount numeric, transportation_text text,
   total_before_gst numeric, gst_amount numeric, grand_total numeric, billing_percentage numeric);
 create table public.orders (id uuid primary key, display_number text, status text not null default 'running', source_order_submission_id uuid references public.order_submissions(id), total_value numeric);
-create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id), item_sequence text, product_name text, quantity numeric, cost_per_piece numeric, total_amount numeric, sort_order int);
+create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id), item_sequence text, product_name text, quantity numeric, cost_per_piece numeric, total_amount numeric, sort_order int, dimensions text, material text);
+create table public.order_submission_fabric_finish_lines (submission_id uuid, item_sequence text,
+  sheet_fabric_metres_per_piece numeric, sheet_fabric_price_per_metre numeric, sheet_packing_cost_per_piece numeric, sheet_packing_type text,
+  sheet_finish jsonb not null default '[]'::jsonb,
+  typed_fabric_metres_per_piece numeric, typed_fabric_price_per_metre numeric, typed_packing_cost_per_piece numeric, typed_packing_type text,
+  typed_finish jsonb not null default '[]'::jsonb, primary key (submission_id, item_sequence));
 create table public.finance_payment_requests (id uuid primary key default gen_random_uuid(), status text, payment_mode text, deleted_at timestamptz);
 create table public.finance_payment_allocations (id uuid primary key default gen_random_uuid(), payment_request_id uuid references public.finance_payment_requests(id), order_id uuid, allocated_amount numeric, status text default 'active', legacy_order_no text, legacy_client_name text);
 create function public.normalize_legacy_order_no(p_value text) returns text language sql immutable as $$
@@ -359,5 +365,26 @@ await asOwner()
 const owners = await q(`select count(*)::int as n from public.order_dispatch_lots where num_nonnulls(order_id, bdpi_id) <> 1`)
 assert.equal(owners[0].n, 0)
 ok('every lot belongs to exactly one Order or BDPI')
+
+// ══ Fabric and packing per product on an Order's read (20270504000000) ═══════
+await asOwner()
+await db.exec(migration4)
+ok('the line-cost migration applies on top')
+await db.exec(`
+insert into public.orders values ('00000000-0000-0000-0000-0000000000f3', '0541', 'running', '${PI}', 28320);
+insert into public.order_submission_fabric_finish_lines (submission_id, item_sequence, sheet_fabric_metres_per_piece, sheet_fabric_price_per_metre, sheet_packing_cost_per_piece, typed_packing_cost_per_piece, sheet_finish)
+values ('${PI}', '1', 6.5, 450, 800, 900, '[{"heading":"Fabric","value":"Velvet"}]'::jsonb);`)
+await as(U.editor)
+const oc = (await q(`select public.order_payment_plan_read('00000000-0000-0000-0000-0000000000f3') as r`))[0].r
+const line1 = oc.items.find(i => i.item_sequence === '1')
+assert.equal(Number(line1.fabric_metres_per_piece), 6.5)
+assert.equal(Number(line1.fabric_price_per_metre), 450)
+assert.equal(Number(line1.packing_cost_per_piece), 900)
+assert.deepEqual(line1.finish_specs, [{ heading: 'Fabric', value: 'Velvet' }])
+const line2 = oc.items.find(i => i.item_sequence === '2')
+assert.equal(line2.packing_cost_per_piece, null)
+assert.deepEqual(line2.finish_specs, [])
+assert.ok(oc.finance && 'account_verified' in oc.finance && oc.pi && 'discount_amount' in oc.pi)
+ok('an Order read carries each product\'s fabric and packing (a typed value wins over the sheet) and the fabric chosen')
 
 console.log(`all ${checks} checks passed`)

@@ -10,7 +10,15 @@
 //      every charge travels with the goods, in proportion to their value.
 //   Dc value of everything dispatched to date plus the planned lot, at rate.
 //   G  value of every ordered line, at rate.
-//   A  = T x Dc / G                      dispatched goods + their charges, in full
+//   A  = value of the goods sent to date + this lot, in full, where the value
+//        of any set of pieces is (owner, 2026-10-29, after their "Req-0169"):
+//          item amount   quantity x rate
+//        + packing       quantity x packing rate           (per product)
+//        + fabric        quantity x metres/piece x fabric rate (per product)
+//        + share of what the PI adds beyond those (transport, any packing or
+//          fabric the sheet does not explain), by item value
+//        - share of the PI's discount, by item value
+//        With no per-product figures this is exactly the old T x Dc / G.
 //   GST = A x billing% x GST rate        GST on the BILLED part of what leaves
 //   P  = (T - A) x pending%              goods still to come, charges included,
 //                                        no GST
@@ -35,8 +43,12 @@ export type PlanItem = {
   productName: string | null
   quantity: number
   rate: number
-  /** Size, material, fabric / finish chosen… shown under the name (BDPI lines carry them). */
+  /** Size, material, fabric / finish chosen… shown under the name. */
   details?: string[]
+  /** Per piece, from the Fabric & Finish sheet; null/absent = none given. */
+  packingRate?: number | null
+  fabricMetresPerPiece?: number | null
+  fabricRate?: number | null
 }
 
 export type PlanLot = {
@@ -56,6 +68,8 @@ export type PlanInput = {
   planned: Readonly<Record<string, number>>
   totalBeforeGst: number | null
   gstAmount: number | null
+  /** The PI's discount (a positive amount), shared by item value. */
+  discount?: number | null
   /** The PI's own billing percentage, or null when it declares none. */
   piBillingPercent: number | null
   /** The plan's own billing percentage, which wins when set. */
@@ -108,6 +122,29 @@ export type PlanLineResult = {
   dispatchedBeforePaise: number
   plannedPaise: number
   remainingPaise: number
+  packingRate: number | null
+  fabricMetresPerPiece: number | null
+  fabricRate: number | null
+  /** This lot's packing, fabric metres, fabric amount and line total (items + packing + fabric). */
+  plannedPackingPaise: number
+  plannedFabricMetres: number
+  plannedFabricPaise: number
+  plannedLineTotalPaise: number
+}
+
+/** One set of pieces (this lot, or everything sent earlier), in paise. */
+export type PlanGroup = {
+  items: number
+  packing: number
+  fabric: number
+  /** Share of what the PI adds beyond items, packing and fabric (transport…). Signed. */
+  otherShare: number
+  /** Share of the PI's discount, as a negative figure. */
+  discountShare: number
+  value: number
+  billed: number
+  gst: number
+  cash: number
 }
 
 export type PlanProblem =
@@ -148,6 +185,10 @@ export type PlanResult = {
   dispatchSharePercent: number
   /** The same money, account and cash apart. */
   split: PlanSplit
+  /** The owner's panels: this lot, what was sent earlier, and the goods still to come. */
+  lot: PlanGroup
+  earlier: PlanGroup
+  pendingValuePaise: number
 }
 
 export const DEFAULT_PENDING_PERCENT = 50
@@ -168,6 +209,11 @@ function divRound(n: bigint, d: bigint): bigint {
 }
 
 const toNumber = (v: bigint) => Number(v)
+
+/** n / d rounded half away from zero, d > 0, n of either sign. */
+function signedDivRound(n: bigint, d: bigint): bigint {
+  return n < BIG(0) ? -divRound(-n, d) : divRound(n, d)
+}
 
 /** The GST rate the PI itself carries: its GST amount over its total, 18% when it states none. */
 export function gstRateOf(totalBeforeGst: number | null, gstAmount: number | null): number {
@@ -202,6 +248,9 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
   let orderedV = BIG(0)   // units of 1/10,000 rupee
   let beforeV = BIG(0)
   let plannedV = BIG(0)
+  // packing and fabric per product, the same units
+  let pkgO = BIG(0), pkgB = BIG(0), pkgP = BIG(0)
+  let fabO = BIG(0), fabB = BIG(0), fabP = BIG(0)
 
   const lines: PlanLineResult[] = input.items.map(item => {
     const prev = before.get(item.itemSequence) ?? 0
@@ -219,6 +268,13 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
     plannedV += p
     const rest = o - b - p
     const paise = (v: bigint) => toNumber(divRound(v < BIG(0) ? BIG(0) : v, BIG(100)))
+    const pkRate = scaled(item.packingRate ?? 0, 100)
+    const metres = scaled(item.fabricMetresPerPiece ?? 0, 1000)
+    const fRate = scaled(item.fabricRate ?? 0, 100)
+    const pkg = (q: number) => scaled(q, 100) * pkRate
+    const fab = (q: number) => divRound(scaled(q, 100) * metres * fRate, BIG(1000))
+    pkgO += pkg(item.quantity); pkgB += pkg(prev); pkgP += pkg(plan)
+    fabO += fab(item.quantity); fabB += fab(prev); fabP += fab(plan)
     return {
       itemSequence: item.itemSequence,
       productName: item.productName,
@@ -231,6 +287,13 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
       dispatchedBeforePaise: paise(b),
       plannedPaise: paise(p),
       remainingPaise: paise(rest),
+      packingRate: item.packingRate ?? null,
+      fabricMetresPerPiece: item.fabricMetresPerPiece ?? null,
+      fabricRate: item.fabricRate ?? null,
+      plannedPackingPaise: paise(pkg(plan)),
+      plannedFabricMetres: Math.round(plan * (item.fabricMetresPerPiece ?? 0) * 1000) / 1000,
+      plannedFabricPaise: paise(fab(plan)),
+      plannedLineTotalPaise: paise(p + pkg(plan) + fab(plan)),
     }
   })
 
@@ -243,10 +306,22 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
   const pending = input.pendingPercent
 
   const T = noTotal ? BIG(0) : scaled(input.totalBeforeGst, 100)               // paise
+  // Everything in 1/10,000 rupee: T4 the PI total, D4 its discount, other4 what the PI
+  // adds beyond items, packing and fabric (transport, any unexplained cost).
+  const T4 = T * BIG(100)
+  const D4 = scaled(input.discount ?? 0, 10000)
+  const other4 = T4 - (orderedV - D4 + pkgO + fabO)
+  const shareOf = (amount4: bigint, items4: bigint) =>
+    orderedV > BIG(0) ? signedDivRound(amount4 * items4, orderedV) : BIG(0)
+  const groupValue4 = (items4: bigint, pkg4: bigint, fab4: bigint) =>
+    items4 + pkg4 + fab4 + shareOf(other4, items4) - shareOf(D4, items4)
+  const toPaise = (v4: bigint) => signedDivRound(v4, BIG(100))
   const dispatchedV = beforeV + plannedV
-  // A line can never make the dispatched share more than the whole.
-  const cappedV = dispatchedV > orderedV ? orderedV : dispatchedV
-  const A = orderedV > BIG(0) ? divRound(T * cappedV, orderedV) : BIG(0)       // paise
+  const rawA = noTotal ? BIG(0) : toPaise(groupValue4(dispatchedV, pkgB + pkgP, fabB + fabP))
+  // Never more than the whole PI, never below nothing.
+  const A = rawA > T ? T : rawA < BIG(0) ? BIG(0) : rawA                         // paise
+  const rawE = noTotal ? BIG(0) : toPaise(groupValue4(beforeV, pkgB, fabB))
+  const E = rawE > A ? A : rawE < BIG(0) ? BIG(0) : rawE                         // paise, sent earlier
   const gstP = billing === null
     ? BIG(0)
     : divRound(A * scaled(billing, 100) * scaled(gstRate, 10000), BIG(100000000))
@@ -288,8 +363,27 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
     typed ? 'typed' : (accSource === 'finance' || cashSource === 'finance') ? 'finance' : 'none'
   const advance = recAcc + recCash
 
-  const share = orderedV > BIG(0)
-    ? Number(divRound(cappedV * BIG(10000), orderedV)) / 100
+  // ── the owner's panels: earlier, this lot (the difference, so the two always add up to A) ──
+  const gstOf = (billed: bigint) => divRound(billed * scaled(gstRate, 10000), BIG(10000))
+  const earlierBilled = accountPart(E)
+  const earlierGst = billing === null ? BIG(0) : gstOf(earlierBilled)
+  const group = (items4: bigint, pkg4: bigint, fab4: bigint, value: bigint, billed: bigint, gst: bigint): PlanGroup => ({
+    items: toNumber(toPaise(items4)),
+    packing: toNumber(toPaise(pkg4)),
+    fabric: toNumber(toPaise(fab4)),
+    otherShare: toNumber(toPaise(shareOf(other4, items4))),
+    discountShare: -toNumber(toPaise(shareOf(D4, items4))),
+    value: toNumber(value),
+    billed: toNumber(billed),
+    gst: toNumber(gst),
+    cash: toNumber(value - billed),
+  })
+  const earlierGroup = group(beforeV, pkgB, fabB, E, earlierBilled, earlierGst)
+  const lotGroup = group(plannedV, pkgP, fabP, A - E, dispatchAcc - earlierBilled, gstP - earlierGst)
+
+  // the share of the PI (by value) that has left or leaves with this lot
+  const share = T > BIG(0)
+    ? Number(divRound(A * BIG(10000), T)) / 100
     : 0
 
   const paiseOf = (v: bigint) => toNumber(divRound(v, BIG(100)))
@@ -318,6 +412,9 @@ export function computePaymentPlan(input: PlanInput): PlanResult {
     financePaymentCount: input.financePaymentCount,
     toCollectPaise: toNumber(balAcc + balCash),
     dispatchSharePercent: share,
+    lot: lotGroup,
+    earlier: earlierGroup,
+    pendingValuePaise: toNumber(pendBase),
     split: {
       dispatch: side(dispatchAcc, A - dispatchAcc),
       pending: side(pendAcc, pendShare - pendAcc),
@@ -346,6 +443,7 @@ export type PlanData = {
   lots: PlanLot[]
   totalBeforeGst: number | null
   gstAmount: number | null
+  discount: number | null
   grandTotal: number | null
   piBillingPercent: number | null
   /** Set when the Order's value no longer equals the PI's grand total (an amendment). */
@@ -381,14 +479,6 @@ export function itemDetails(i: Record<string, unknown>): string[] {
       const h = str(s?.heading), v = str(s?.value)
       if (h && v) out.push(`${h}: ${v}`)
     }
-  }
-  const metres = num(i.fabric_metres_per_piece), perMetre = num(i.fabric_price_per_metre)
-  if (metres !== null || perMetre !== null) {
-    out.push(`Fabric: ${metres ?? '—'} m per piece${perMetre !== null ? ` at ₹${perMetre.toLocaleString('en-IN')}/m` : ''}`)
-  }
-  const packing = num(i.packing_cost_per_piece), packType = str(i.packing_type)
-  if (packing !== null || packType) {
-    out.push(`Packing: ${packType ?? ''}${packing !== null ? `${packType ? ', ' : ''}₹${packing.toLocaleString('en-IN')} per piece` : ''}`)
   }
   return out
 }
@@ -426,6 +516,9 @@ export function parsePlanData(raw: unknown): PlanData | null {
         quantity: num(i.quantity) ?? 0,
         rate: num(i.rate) ?? 0,
         details: itemDetails(i),
+        packingRate: num(i.packing_cost_per_piece),
+        fabricMetresPerPiece: num(i.fabric_metres_per_piece),
+        fabricRate: num(i.fabric_price_per_metre),
       }
     }),
     lots: arr(r.lots).map(x => {
@@ -444,6 +537,7 @@ export function parsePlanData(raw: unknown): PlanData | null {
     }),
     totalBeforeGst: num(pi.total_before_gst),
     gstAmount: num(pi.gst_amount),
+    discount: num(pi.discount_amount),
     grandTotal: grand,
     piBillingPercent: num(pi.billing_percentage),
     piDiffersFromOrder: grand !== null && orderValue !== null && Math.abs(grand - orderValue) > 0.005,
@@ -499,6 +593,7 @@ export function inputFromData(
     planned: edit.planned,
     totalBeforeGst: data.totalBeforeGst,
     gstAmount: data.gstAmount,
+    discount: data.discount,
     piBillingPercent: data.piBillingPercent,
     billingPercentOverride: edit.billingPercentOverride,
     pendingPercent: edit.pendingPercent,

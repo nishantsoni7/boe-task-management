@@ -12130,6 +12130,31 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-row-link { cursor: pointer; }
 .opp-row-link:hover td, .opp-row-link:focus td { background: var(--boe-surface-hover); }
 .opp-bdpi-table td { white-space: nowrap; }
+/* Dispatch sheet layout (owner, 2026-10-29, after their "Req-0169") */
+.opp-sheet { border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); }
+.opp-lines th { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; background: var(--boe-surface-quiet); }
+.opp-lines td { white-space: nowrap; }
+.opp-lines td.opp-name { white-space: normal; min-width: 200px; }
+.opp-lines tfoot td { background: var(--boe-surface-quiet); }
+.opp-dim { color: var(--boe-text-muted); }
+.opp-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; background: #F5F2EE; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); padding: 20px 22px; }
+.opp-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.opp-panel + .opp-panel { border-left: 1px solid #E4DED6; padding-left: 20px; }
+.opp-panel-title { margin: 6px 0 0; font-size: 12.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--boe-text-strong); }
+.opp-panel dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.opp-panel dl > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.opp-panel dt { color: var(--boe-text); }
+.opp-panel dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opp-panel .opp-panel-sum { border-top: 1px solid #DDD5CB; padding-top: 6px; margin-top: 2px; font-weight: 700; }
+.opp-panel .opp-minus dt, .opp-panel .opp-minus dd { color: #B42318; }
+.opp-panel .opp-bank dt, .opp-panel .opp-bank dd { color: #1D4ED8; }
+.opp-panel .opp-cash dt, .opp-panel .opp-cash dd { color: #B54708; }
+.opp-panel .opp-in dd { color: #067647; font-weight: 600; }
+.opp-panel-note { margin: 4px 0 0; font-size: 11.5px; color: var(--boe-text-muted); line-height: 1.5; }
+.opp-pct { width: 72px; text-align: right; padding: 3px 8px; }
+.opp-due-box { border: 2px solid var(--boe-brand); border-radius: var(--boe-radius-panel); padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.opp-due-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--boe-text-strong); }
+@media (max-width: 640px) { .opp-panel + .opp-panel { border-left: 0; padding-left: 0; border-top: 1px solid #E4DED6; padding-top: 12px; } }
 .opp-fix-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 @media (max-width: 640px) {
   .opp { padding: 14px 12px; }

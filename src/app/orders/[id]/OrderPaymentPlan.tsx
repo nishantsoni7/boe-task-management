@@ -338,6 +338,8 @@ export default function OrderPaymentPlan({
     return allowBlank && n === null ? false : n === null || Number.isNaN(n) || n > 100
   }
   const detailsOf = new Map(data.items.map(i => [i.itemSequence, i.details ?? []]))
+  const money = (paise: number) => formatPaise(paise).replace(/\.00$/, '')
+  const billingText = result.billingPercent === null ? 'billing % not set' : `${result.billingPercent}%`
   const typedBad = (text: string) => { const n = parseTypedNumber(text); return n !== null && Number.isNaN(n) }
   const rateText = `${(result.gstRate * 100).toFixed(2).replace(/\.?0+$/, '')}%`
   const downloadsOff = dirty || busy
@@ -369,11 +371,6 @@ export default function OrderPaymentPlan({
 
       <div className="opp-inputs">
         <label className="opp-field">
-          <span>Pending goods to pay in advance (%)</span>
-          <input className={`boe-input${percentBad(edit.pending, false) ? ' opp-bad' : ''}`} inputMode="decimal"
-            value={edit.pending} disabled={!canEdit || busy} onChange={e => set({ pending: e.target.value })} />
-        </label>
-        <label className="opp-field">
           <span>Billing (%) <em>{data.piBillingPercent === null ? 'PI has none' : `PI says ${data.piBillingPercent}%`}</em></span>
           <input className={`boe-input${percentBad(edit.billing, true) ? ' opp-bad' : ''}`} inputMode="decimal"
             placeholder={data.piBillingPercent === null ? 'Type the billing %' : `${data.piBillingPercent}`}
@@ -393,17 +390,24 @@ export default function OrderPaymentPlan({
         </label>
       </div>
 
-      <div className="opp-scroll">
-        <table className="opp-table">
+      {/* ── The owner's dispatch sheet (after "Req-0169"): one row per product ── */}
+      <div className="opp-scroll opp-sheet">
+        <table className="opp-table opp-lines">
           <thead>
             <tr>
-              <th>Line</th><th>Picture</th><th>Product</th>
-              <th className="opp-num">Rate</th>
-              <th className="opp-num">Ordered</th>
+              <th>Image</th><th>Code</th><th>Item</th>
+              <th className="opp-num">Total qty</th>
               <th className="opp-num">Sent earlier</th>
               <th className="opp-num opp-lot">This lot</th>
-              <th className="opp-num">Still to come</th>
-              <th className="opp-num">This lot value</th>
+              <th className="opp-num">Unit price</th>
+              <th className="opp-num">Item amount</th>
+              <th className="opp-num">Pkg rate</th>
+              <th className="opp-num">Pkg amount</th>
+              <th className="opp-num">Fabric m/pc</th>
+              <th className="opp-num">Total fabric</th>
+              <th className="opp-num">Fab rate</th>
+              <th className="opp-num">Fab amount</th>
+              <th className="opp-num">Line total</th>
             </tr>
           </thead>
           <tbody>
@@ -413,66 +417,129 @@ export default function OrderPaymentPlan({
               const bad = (n !== null && Number.isNaN(n)) || l.remaining < 0
               return (
                 <tr key={l.itemSequence}>
-                  <td>{l.itemSequence}</td>
                   <td className="opp-pic">
                     {pictures[l.itemSequence]
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
                       : <span className="opp-thumb opp-thumb--none">No image</span>}
                   </td>
+                  <td>{l.itemSequence}</td>
                   <td className="opp-name">
                     {l.productName ?? '—'}
                     {(detailsOf.get(l.itemSequence) ?? []).map(d => <span key={d} className="opp-detail">{d}</span>)}
                   </td>
-                  <td className="opp-num">{formatPaise(Math.round(l.rate * 100))}</td>
                   <td className="opp-num">{l.ordered}</td>
-                  <td className="opp-num">{l.previouslyDispatched || '—'}</td>
+                  <td className="opp-num opp-dim">{l.previouslyDispatched}</td>
                   <td className="opp-num opp-lot">
                     <input className={`boe-input opp-qty${bad ? ' opp-bad' : ''}`} inputMode="decimal"
-                      aria-label={`Quantity of line ${l.itemSequence} in this lot`}
+                      aria-label={`Quantity of ${l.productName ?? l.itemSequence} in this lot`}
                       value={text} disabled={!canEdit || busy} onChange={e => setQty(l.itemSequence, e.target.value)} />
+                    {l.remaining < 0 && <span className="opp-detail opp-neg">{-l.remaining} too many</span>}
                   </td>
-                  <td className={`opp-num${l.remaining < 0 ? ' opp-neg' : ''}`}>{l.remaining}</td>
-                  <td className="opp-num">{l.plannedPaise > 0 ? formatPaise(l.plannedPaise) : '—'}</td>
+                  <td className="opp-num">{money(Math.round(l.rate * 100))}</td>
+                  <td className="opp-num">{money(l.plannedPaise)}</td>
+                  <td className="opp-num">{l.packingRate === null ? '—' : money(Math.round(l.packingRate * 100))}</td>
+                  <td className="opp-num">{money(l.plannedPackingPaise)}</td>
+                  <td className="opp-num">{l.fabricMetresPerPiece ?? '—'}</td>
+                  <td className="opp-num">{l.plannedFabricMetres}</td>
+                  <td className="opp-num">{l.fabricRate === null ? '—' : money(Math.round(l.fabricRate * 100))}</td>
+                  <td className="opp-num">{money(l.plannedFabricPaise)}</td>
+                  <td className="opp-num"><strong>{money(l.plannedLineTotalPaise)}</strong></td>
                 </tr>
               )
             })}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={8}>Goods ordered {formatPaise(result.orderedValuePaise)} · leaving ({result.dispatchSharePercent.toFixed(2)}% with earlier lots)</td>
-              <td className="opp-num">{formatPaise(result.plannedPaise)}</td>
+              <td colSpan={7}>This lot</td>
+              <td className="opp-num">{money(result.lot.items)}</td>
+              <td></td>
+              <td className="opp-num">{money(result.lot.packing)}</td>
+              <td></td><td></td><td></td>
+              <td className="opp-num">{money(result.lot.fabric)}</td>
+              <td className="opp-num">{money(result.lot.items + result.lot.packing + result.lot.fabric)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-      <div className="opp-scroll">
-        <table className="opp-table opp-sum-table">
-          <thead>
-            <tr><th></th><th className="opp-num">Account</th><th className="opp-num">Cash</th><th className="opp-num">Total</th></tr>
-          </thead>
-          <tbody>
-            {planSummaryRows(result).map(r => (
-              <tr key={r.label} className={r.kind === 'line' ? undefined : `opp-sum-${r.kind}`}>
-                <td>{r.label}</td>
-                {[r.account, r.cash, r.total].map((v, i) => (
-                  <td key={i} className={`opp-num${v !== null && v < 0 ? ' opp-extra' : ''}`}>
-                    {v === null ? '—' : r.kind === 'balance' && v < 0 ? `${formatPaise(-v)} paid extra` : formatPaise(v)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* ── Four plain panels ── */}
+      <div className="opp-panels">
+        <section className="opp-panel" aria-label="This lot">
+          <h3 className="opp-panel-title">1 · This lot</h3>
+          <dl>
+            <div><dt>Item total</dt><dd>{money(result.lot.items)}</dd></div>
+            <div><dt>Packing</dt><dd>{money(result.lot.packing)}</dd></div>
+            <div><dt>Fabric</dt><dd>{money(result.lot.fabric)}</dd></div>
+            <div><dt>Transport and other share</dt><dd>{money(result.lot.otherShare)}</dd></div>
+            <div className="opp-minus"><dt>Discount share</dt><dd>{money(result.lot.discountShare)}</dd></div>
+            <div className="opp-panel-sum"><dt>Lot value</dt><dd>{money(result.lot.value)}</dd></div>
+            <div className="opp-bank"><dt>Billed ({billingText})</dt><dd>{money(result.lot.billed)}</dd></div>
+            <div><dt>GST {rateText} on billed</dt><dd>{money(result.lot.gst)}</dd></div>
+            <div className="opp-cash"><dt>Cash part</dt><dd>{money(result.lot.cash)}</dd></div>
+          </dl>
+        </section>
+        <section className="opp-panel" aria-label="Sent earlier">
+          <h3 className="opp-panel-title">2 · Sent earlier</h3>
+          <dl>
+            <div><dt>Value sent</dt><dd>{money(result.earlier.value)}</dd></div>
+            <div className="opp-bank"><dt>Billed</dt><dd>{money(result.earlier.billed)}</dd></div>
+            <div><dt>GST {rateText}</dt><dd>{money(result.earlier.gst)}</dd></div>
+            <div className="opp-cash"><dt>Cash part</dt><dd>{money(result.earlier.cash)}</dd></div>
+          </dl>
+          <h3 className="opp-panel-title">3 · Still to come</h3>
+          <dl>
+            <div><dt>Value of goods not yet sent</dt><dd>{money(result.pendingValuePaise)}</dd></div>
+            <div>
+              <dt><label htmlFor="opp-pending">Advance asked (%)</label></dt>
+              <dd>
+                <input id="opp-pending" className={`boe-input opp-pct${percentBad(edit.pending, false) ? ' opp-bad' : ''}`} inputMode="decimal"
+                  value={edit.pending} disabled={!canEdit || busy} onChange={e => set({ pending: e.target.value })} />
+              </dd>
+            </div>
+            <div className="opp-panel-sum"><dt>Advance for them</dt><dd>{money(result.pendingShareAmountPaise)}</dd></div>
+          </dl>
+        </section>
+        <section className="opp-panel" aria-label="Received">
+          <h3 className="opp-panel-title">4 · Received</h3>
+          <dl>
+            <div className="opp-in"><dt>In bank</dt><dd>{money(result.split.received.account)}</dd></div>
+            <div className="opp-in"><dt>In cash</dt><dd>{money(result.split.received.cash)}</dd></div>
+            <div className="opp-panel-sum"><dt>Total received</dt><dd>{money(result.split.received.total)}</dd></div>
+          </dl>
+          <p className="opp-panel-note">From confirmed payments. Bank = HDFC. Cash = PNB, Paytm, Canara.</p>
+        </section>
       </div>
-      <p className="opp-note">
-        Account = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara).
-        The billed part ({result.billingPercent === null ? 'billing % not set' : `${result.billingPercent}%`}) and all GST ({rateText}) are paid in account; the rest in cash.
-        {(result.split.awaiting.account > 0 || result.split.awaiting.cash > 0) &&
-          ` Still being checked in Finance, not counted yet: ${formatPaise(result.split.awaiting.account)} in account, ${formatPaise(result.split.awaiting.cash)} in cash.`}
-      </p>
-      {result.billingMissing && <p className="opp-warn" role="status">No billing % on the PI or here, so GST is not included yet.</p>}
+
+      {/* ── What to pay, bank and cash ── */}
+      <section className="opp-due-box" aria-label="To pay before this dispatch">
+        <h3 className="opp-due-title">To pay before this dispatch</h3>
+        <div className="opp-scroll">
+          <table className="opp-table opp-sum-table">
+            <thead>
+              <tr><th></th><th className="opp-num">Bank</th><th className="opp-num">Cash</th><th className="opp-num">Total</th></tr>
+            </thead>
+            <tbody>
+              {planSummaryRows(result).map(r => (
+                <tr key={r.label} className={r.kind === 'line' ? undefined : `opp-sum-${r.kind}`}>
+                  <td>{r.label}</td>
+                  {[r.account, r.cash, r.total].map((v, i) => (
+                    <td key={i} className={`opp-num${r.kind === 'balance' && v !== null && v < 0 ? ' opp-extra' : ''}`}>
+                      {v === null ? '—' : r.kind === 'balance' && v < 0 ? `${money(-v)} paid extra` : money(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {(result.split.awaiting.account > 0 || result.split.awaiting.cash > 0) && (
+          <p className="opp-panel-note">
+            Still being checked in Finance, not counted yet: {money(result.split.awaiting.account)} in bank, {money(result.split.awaiting.cash)} in cash.
+          </p>
+        )}
+      </section>
+      {result.billingMissing && <p className="opp-warn" role="status">No billing % on the PI or here, so everything is shown as cash and no GST is included yet.</p>}
 
       {canEdit && (
         <div className="opp-actions">
