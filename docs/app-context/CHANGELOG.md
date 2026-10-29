@@ -4,13 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-29 — Finance: Confirmed Payments columns spaced evenly (PR #505, open) · no migration · not merged yet
+## 2026-10-29 — Finance: Confirmed Payments columns spaced evenly (PR #505, squash-merged as cf417c79) · no migration · Production deploy success (deployment 7411724502); the live Confirmed Payments bundle on boeone.vercel.app carries `key:"client",…,width:"180px"`, `paddingLeft:"20px"` and `e<1045`, and no 985 · backup verified: code bundle 20261029T120837Z, database export 20261029T120432Z (200 tables, 100,327 rows, 0 errors)
 - **Owner request.** On a wide screen the Client column was mostly empty (about 526px around "Not identified" on a ~1390px table) while the other seven sat at their minimum: "reduce the width of the Client Name and increase where required to make it look more spacious." Column widths were agreed first, shown as a diagram.
 - **What.** Client gets a width like every other column (`CONFIRMED_CLIENT_MIN_PX` = 180px, about 20 characters). With no auto column, `table-layout: fixed` shares the spare width across all eight columns in proportion; on the owner's screen Client is about 240px and the others grow by about a third. A longer name ends in "…" with the full name in the cell's tooltip (unchanged). Client's header and cell get a 20px left edge so the right-aligned Amount no longer touches the name.
 - **Consequence.** The table now needs a 1045px container (was 985): with the 64px hover rail, a window of about 1155px or wider; narrower windows get the cards. Phone cards unchanged.
 - **Files.** `lib/finance/paymentSurfaces.ts` (widths, threshold), `app/finance/received/receivedPaymentsTable.tsx` (Client left edge); tests `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx`.
 - **Rollback.** Revert the PR.
-- **Proof.** tsc 0; eslint 0 on the changed files; `paymentSurfaces.test.ts` + `menuPlacement.test.ts` + `allocatedAgainst.render.test.tsx` 225/225, and the other suites that read this table 131/131; the new Client-edge test fails with the change removed. Not seen in a browser.
+- **Proof.** tsc 0; eslint 0 on the changed files; `paymentSurfaces.test.ts` + `menuPlacement.test.ts` + `allocatedAgainst.render.test.tsx` 225/225, and the other suites that read this table 131/131; the new Client-edge test fails with the change removed; on the PR, `verify` (4m52s), Vercel and Vercel Preview Comments passed after main (#503) was merged into the branch (doc conflicts only). Not seen in a browser.
 
 ## 2026-10-29 — Orders: dispatch payment sheet, layout v2 (PR #503) · no migration
 - **Owner feedback on the first redesign.** Horizontal scroll, did not look like a table, too much item detail, too many colours, the to-pay box confusing. Mockup redone twice and approved.
