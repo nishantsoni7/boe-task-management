@@ -17,7 +17,7 @@
 // These draw the answers.
 
 import Link from 'next/link'
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowRight, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, ChevronUp,
   Clock, Copy, FileSpreadsheet, Hash, History, Info, MapPin, Pencil, Percent, Phone, Send, ShieldCheck,
@@ -67,6 +67,7 @@ import {
   commercialTermsPoints,
 } from '@/lib/orders/piTerms'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
+import { ACTIVITY_FILTERS, activityCategory } from '@/lib/orders/orderActivityCategory'
 import {
   RESUBMISSION_CHANGES_TITLE,
   RESUBMISSION_LINE_DETAIL_NOTE,
@@ -103,6 +104,32 @@ import {
   type SummaryFigure,
   type WorkflowPanel,
 } from './piDetailView'
+
+// ── A card that carries a class ───────────────────────────────────────────────
+
+/**
+ * PiCard, with a className: the same white card, hairline and corners, drawn
+ * here because the shared card (piPreview.tsx) is held byte-for-byte by the
+ * photographs guard and takes no class. The stylesheet's Order-page pass
+ * styles the attention card and the activity card through these classes.
+ */
+function ClassedCard({ className, style, children }: {
+  className: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+}) {
+  return (
+    <div className={className} style={{
+      background: colors.base,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '8px',
+      overflow: 'hidden',
+      ...style,
+    }}>
+      {children}
+    </div>
+  )
+}
 
 // ── Tone ──────────────────────────────────────────────────────────────────────
 
@@ -950,25 +977,31 @@ function QuotedNote({ heading, body, tone }: {
   body: string
   tone: 'amber' | 'red' | 'neutral'
 }) {
-  const ground = tone === 'red' ? colors.redTint : tone === 'amber' ? colors.amberTint : colors.raised
-  const border = tone === 'red' ? 'rgba(180,35,50,0.25)'
-    : tone === 'amber' ? 'rgba(196,138,26,0.3)'
+  // A QUOTE, NOT A TINTED BOX (owner, 2026-10-29): the Order page's attention
+  // card marks the whole card with one coloured edge, and the words people
+  // wrote sit under a small caption behind a rule in that colour. Two tinted
+  // boxes inside a tinted card read as three warnings about one thing.
+  const rule = tone === 'red' ? 'rgba(180,35,50,0.35)'
+    : tone === 'amber' ? '#E6D2A0'
     : colors.border
   const headingColor = tone === 'red' ? '#A12438' : tone === 'amber' ? '#805B0D' : colors.muted
 
   return (
-    <div style={{
-      padding: '9px 12px', borderRadius: '8px',
-      background: ground, border: `1px solid ${border}`,
-    }}>
-      <div style={{ fontSize: '12px', fontWeight: 700, color: headingColor, marginBottom: '2px' }}>
+    <div className="pi-detail-quote" style={{ padding: '2px 0 2px 12px', borderLeft: `2px solid ${rule}` }}>
+      <div style={{ fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: headingColor, marginBottom: '2px' }}>
         {heading}
       </div>
-      <MultilineText style={{ fontSize: '12px', color: colors.primary, margin: 0 }}>
+      <MultilineText style={{ fontSize: '13.5px', color: colors.primary, margin: 0, lineHeight: 1.5 }}>
         {body}
       </MultilineText>
     </div>
   )
+}
+
+/** The reviewer's note and the refusal reason are often the same words, typed once into one dialog. */
+export function refusalReasonRepeatsNote(reason: string | null, reviewNote: string | null): boolean {
+  if (!reason || !reviewNote) return false
+  return reason.trim().replace(/\s+/g, ' ') === reviewNote.trim().replace(/\s+/g, ' ')
 }
 
 /**
@@ -1173,10 +1206,16 @@ export function PiWorkflowPanel({
   if (!hasActions && !hasBody && !showMeta && !advanceBand) return null
 
   return (
-    <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>
+    <ClassedCard
+      /* THE ORDER PAGE'S ATTENTION CARD (owner, 2026-10-29): a white card with
+         one coloured edge in the panel's tone, instead of a tinted border all
+         round. The class carries the tone; the stylesheet draws the edge. */
+      className={panel.closed ? 'pi-detail-workflow' : `pi-detail-workflow pi-detail-workflow--${panel.tone}`}
+      style={panel.closed ? undefined : { borderColor: tone.border }}
+    >
       <div className="pi-detail-workflow-head">
         <div style={{ minWidth: '200px', flex: '1 1 260px' }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>
             {panel.heading}
           </div>
           {showMeta && (
@@ -1355,7 +1394,10 @@ export function PiWorkflowPanel({
               choice the employee has. */}
           {advanceRefusal && (
             <>
-              {advanceRefusal.reason && (
+              {/* SAID ONCE. The Needs-changes dialog stores the same sentence as
+                  the review note and as the refusal reason; when the two are the
+                  same words, the note above already carries them. */}
+              {advanceRefusal.reason && !refusalReasonRepeatsNote(advanceRefusal.reason, reviewNote) && (
                 <QuotedNote
                   heading="Why the advance was refused"
                   body={advanceRefusal.reason}
@@ -1371,7 +1413,7 @@ export function PiWorkflowPanel({
       )}
 
       {advanceBand && <div className="pi-detail-workflow-band">{advanceBand}</div>}
-    </PiCard>
+    </ClassedCard>
   )
 }
 
@@ -1643,17 +1685,94 @@ const ACTIVITY_CARD_STYLE: React.CSSProperties = {
  * done since the trail existed; reversing it here would silently change what a
  * reader finds at the top of a record they have read before.
  */
+/** The latest events on screen before the reader asks for the rest. */
+export const ACTIVITY_WINDOW = 5
+export const ACTIVITY_SHOW_ALL = (count: number) => `Show all ${count} events`
+export const ACTIVITY_SHOW_LATEST = `Show the latest ${ACTIVITY_WINDOW}`
+export const ACTIVITY_SHOW_MINOR = (count: number) => `Show ${count} minor event${count === 1 ? '' : 's'}`
+export const ACTIVITY_HIDE_MINOR = 'Hide minor events'
+export const ACTIVITY_NAV_TITLE = 'Key events'
+
+/**
+ * HOW THE PI TRAIL SORTS ITS EVENTS (2026-10-29): the same reading the Order
+ * page gives its own trail. The PI's events are worded, so both answers are
+ * read from the words: a key event is a decision or a submission; a minor one
+ * is a detail edit, a file or a picture. Display only.
+ */
+export function isKeyPiEvent(label: string): boolean {
+  return /(submitted|approved|rejected|changes requested|order created|replaced|payment)/i.test(label)
+}
+export function isMinorPiEvent(label: string): boolean {
+  return /(details updated|details changed|highlight|sample|attached file|file attached|picture|image|reordered|billing|terms updated|internal)/i.test(label)
+    && !isKeyPiEvent(label)
+}
+
+/**
+ * The append-only trail, FULL WIDTH, drawn as the Order page draws its own
+ * (owner, 2026-10-29): what happened, who did it and when in three columns, the
+ * latest five until the reader asks for the rest, the minor events one click
+ * away, a category filter, and the key events as a navigation on the right.
+ *
+ * IT IS A HISTORY AND NOT A CONTROL. No ids, no raw metadata, no status enums —
+ * only what happened, who did it, when, whatever note they left, and (for the
+ * three advance events) the percentage and amount that WERE the event.
+ *
+ * NOTHING GENERATED IS PRINTED UNDER AN EVENT. User-entered notes and reasons
+ * are the only prose the trail carries.
+ *
+ * NEWEST FIRST, unchanged. describeActivityEntries decides the order and has
+ * done since the trail existed; this only decides how many are on screen.
+ */
 export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntry[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const [showMinor, setShowMinor] = useState(false)
+  const [filter, setFilter] = useState<(typeof ACTIVITY_FILTERS)[number]['key']>('all')
+  const pendingRef = useRef<string | null>(null)
+
+  const categorised = entries.map(entry => ({
+    entry,
+    category: activityCategory({ source: 'pi', label: entry.label }),
+    key: isKeyPiEvent(entry.label),
+    minor: isMinorPiEvent(entry.label),
+  }))
+  const minorCount = categorised.filter(e => e.minor).length
+  const items = filter !== 'all'
+    ? categorised.filter(e => e.category === filter)
+    : showMinor ? categorised : categorised.filter(e => !e.minor)
+  const shown = expanded ? items.length : Math.min(items.length, ACTIVITY_WINDOW)
+  const visible = items.slice(0, shown)
+  const collapsible = items.length > ACTIVITY_WINDOW
+  const keyEvents = items.filter(e => e.key)
+
+  const scrollToEntry = (key: string) => {
+    const el = document.getElementById(`pi-activity-${key}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('is-flash')
+    window.setTimeout(() => el.classList.remove('is-flash'), 1800)
+  }
+  const goTo = (key: string) => {
+    if (items.findIndex(e => e.entry.key === key) >= shown) {
+      pendingRef.current = key
+      setExpanded(true)
+      return
+    }
+    scrollToEntry(key)
+  }
+  useEffect(() => {
+    if (!expanded || !pendingRef.current) return
+    const key = pendingRef.current
+    pendingRef.current = null
+    scrollToEntry(key)
+  }, [expanded])
+
   return (
-    <PiCard style={ACTIVITY_CARD_STYLE}>
+    <ClassedCard style={ACTIVITY_CARD_STYLE} className="pi-detail-activity">
       <PiCardHeader
         title={
-          // Softer than the commercial card's heading by a weight and a shade —
-          // the two sit side by side, and which one is the reference should be
-          // answerable without reading either.
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '8px',
-            fontWeight: 600, color: colors.secondary,
+            fontWeight: 700, color: colors.primary,
           }}>
             <History size={15} strokeWidth={1.9} color={colors.muted} />
             Activity
@@ -1661,7 +1780,9 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
         }
         right={
           <span style={{ fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
-            {entries.length} event{entries.length === 1 ? '' : 's'}
+            {collapsible && !expanded
+              ? `Latest ${shown} of ${items.length}`
+              : `${entries.length} event${entries.length === 1 ? '' : 's'}`}
           </span>
         }
       />
@@ -1670,88 +1791,137 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
           No activity has been recorded against this PI yet.
         </div>
       ) : (
-        <ol className="pi-detail-timeline">
-          {entries.map(entry => (
-            <li key={entry.key} className="pi-detail-timeline-item">
-              <div className="pi-detail-timeline-rail" aria-hidden="true">
-                <span
-                  className="pi-detail-timeline-dot"
-                  style={{ background: TIMELINE_MARKER[entry.tone] }}
-                />
-                <span className="pi-detail-timeline-line" />
-              </div>
-              <div className="pi-detail-timeline-body">
-                <div style={{
-                  display: 'flex', gap: '10px', flexWrap: 'wrap',
-                  alignItems: 'baseline', justifyContent: 'space-between',
-                }}>
-                  <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
-                    {entry.label}
-                  </span>
-                  {/* Darkened, not lightened. The card's ground moved off pure
-                      white, and a muted grey on it would have fallen below the
-                      contrast this text had before — quieter must not mean
-                      harder to read. */}
-                  <span style={{ fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
-                    {entry.at}
-                  </span>
+        <div className="pi-detail-activity-body">
+          <div role="group" aria-label="Activity category" className="pi-detail-activity-filters">
+            {ACTIVITY_FILTERS.map(f => (
+              <button key={f.key} type="button" aria-pressed={filter === f.key}
+                className={filter === f.key ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
+                onClick={() => { setFilter(f.key); setExpanded(false) }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {items.length === 0 ? (
+            <div style={{ fontSize: '12.5px', color: colors.tertiary }}>
+              {filter !== 'all'
+                ? `No ${ACTIVITY_FILTERS.find(f => f.key === filter)?.label.toLowerCase()} activity yet.`
+                : 'No main activity yet.'}
+            </div>
+          ) : (
+            <div className={keyEvents.length > 0 ? 'pi-detail-activity-layout pi-detail-activity-layout--nav' : 'pi-detail-activity-layout'}>
+              <div className="pi-detail-activity-main">
+                <div className="pi-detail-activity-cols" aria-hidden="true">
+                  <span>What happened</span><span>By</span><span>When</span>
                 </div>
-                <div style={{ fontSize: '12px', color: colors.tertiary, marginTop: '2px' }}>
-                  {entry.actor}
-                  {entry.figures && (
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>
+                <ol className="pi-detail-timeline" id="pi-activity-list">
+                  {visible.map(({ entry, key }, idx) => (
+                    <li key={entry.key} id={`pi-activity-${entry.key}`}
+                      className={key ? 'pi-detail-timeline-item pi-detail-timeline-item--key' : 'pi-detail-timeline-item'}>
+                      <div className="pi-detail-timeline-rail" aria-hidden="true">
+                        <span
+                          className="pi-detail-timeline-dot"
+                          style={{ background: TIMELINE_MARKER[entry.tone] }}
+                        />
+                        {idx < visible.length - 1 && <span className="pi-detail-timeline-line" />}
+                      </div>
+                      <div className="pi-detail-timeline-body">
+                        <span style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, overflowWrap: 'anywhere' }}>
+                          {entry.label}
+                          {entry.figures && (
+                            <span style={{ fontWeight: 500, color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>
+                          )}
+                        </span>
+                        {entry.note && (
+                          <MultilineText style={{
+                            fontSize: '13px', color: colors.secondary, margin: '4px 0 0',
+                            paddingLeft: '10px', borderLeft: `2px solid ${colors.border}`,
+                            lineHeight: 1.5,
+                            overflowWrap: 'anywhere',
+                          }}>
+                            {entry.note}
+                          </MultilineText>
+                        )}
+                      </div>
+                      {/* Darkened, not lightened: the card's ground is off-white, and
+                          a muted grey on it would fall below the contrast this text
+                          had before — quieter must not mean harder to read. */}
+                      <div className="pi-detail-timeline-by" style={{ fontSize: '13px', color: colors.tertiary, overflowWrap: 'anywhere' }}>
+                        {entry.actor}
+                      </div>
+                      <div className="pi-detail-timeline-when" style={{ fontSize: '12.5px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
+                        {entry.at}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+                <div className="pi-detail-activity-foot">
+                  {collapsible && (
+                    <button type="button" className="pi-detail-activity-link" aria-expanded={expanded} aria-controls="pi-activity-list"
+                      onClick={() => setExpanded(e => !e)}>
+                      {expanded ? ACTIVITY_SHOW_LATEST : ACTIVITY_SHOW_ALL(items.length)}
+                    </button>
+                  )}
+                  {minorCount > 0 && filter === 'all' && (
+                    <button type="button" className="pi-detail-activity-link" aria-pressed={showMinor}
+                      onClick={() => { setShowMinor(v => !v); setExpanded(false) }}>
+                      {showMinor ? ACTIVITY_HIDE_MINOR : ACTIVITY_SHOW_MINOR(minorCount)}
+                    </button>
                   )}
                 </div>
-                {entry.note && (
-                  <MultilineText style={{
-                    fontSize: '12px', color: colors.secondary, margin: '5px 0 0',
-                    paddingLeft: '10px', borderLeft: `2px solid ${colors.border}`,
-                    lineHeight: 1.5,
-                    // A long reason wraps inside the narrow column rather than
-                    // widening it.
-                    overflowWrap: 'anywhere',
-                  }}>
-                    {entry.note}
-                  </MultilineText>
-                )}
               </div>
-            </li>
-          ))}
-        </ol>
+              {keyEvents.length > 0 && (
+                <nav className="pi-detail-activity-nav" aria-label={ACTIVITY_NAV_TITLE}>
+                  <h4 className="pi-detail-activity-nav-title">{ACTIVITY_NAV_TITLE}</h4>
+                  <ul>
+                    {keyEvents.map(({ entry }) => (
+                      <li key={entry.key}>
+                        <button type="button" className="pi-detail-activity-nav-link" onClick={() => goTo(entry.key)}>
+                          <span className="pi-detail-activity-nav-label">{entry.label}</span>
+                          <span className="pi-detail-activity-nav-when">{entry.at}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
+            </div>
+          )}
+        </div>
       )}
-    </PiCard>
+    </ClassedCard>
   )
 }
 
 // ── The lower grid ────────────────────────────────────────────────────────────
 
 /**
- * The activity trail beside the commercial breakdown, as one band under the
- * products.
+ * Internal order details beside the commercial breakdown, as one band under
+ * the products — the Order page's lower band (owner, 2026-10-29).
  *
- * ACTIVITY TAKES THE LEFT AND THE WIDTH (~62%). It is prose: notes people typed,
- * names, timestamps. Squeezed into the narrow column it wrapped every line.
+ * THE DETAILS TAKE THE LEFT AND THE WIDTH. They are a property list and, while
+ * editing, a form; both need room.
  *
- * THE BREAKDOWN TAKES THE RIGHT (~38%). It is compact label-value data that
- * needs no more, and on the right its figures land under the Cost / piece and
- * Line total columns of the products table directly above — which is the way a
- * reader moves anyway, from line totals down to order totals.
+ * THE BREAKDOWN TAKES THE RIGHT, the Order page's width. It is compact
+ * label-value data, and on the right its figures land under the Cost / piece
+ * and Line total columns of the products table directly above — which is the
+ * way a reader moves anyway, from line totals down to order totals.
  *
  * STACKED, THE BREAKDOWN COMES FIRST. A phone reader has just finished the
- * product values and wants the total next, not a history. The DOM order is
- * activity-then-breakdown so the desktop layout needs no reordering; the single
- * column flips it with `order`, which costs nothing and no JavaScript.
+ * product values and wants the total next. The DOM order is details-then-
+ * breakdown so the desktop layout needs no reordering; the single column flips
+ * it with `order`, which costs nothing and no JavaScript.
  *
- * Top-aligned and never stretched: a long trail must not drag the breakdown card
- * down to its own height.
+ * Top-aligned and never stretched: an open form must not drag the breakdown
+ * card down to its own height. The activity trail is no longer here: it is the
+ * full-width card under this band.
  */
-export function PiLowerGrid({ commercial, activity }: {
+export function PiLowerGrid({ commercial, details }: {
   commercial: React.ReactNode
-  activity: React.ReactNode
+  details: React.ReactNode
 }) {
   return (
     <div className="pi-detail-lower-grid">
-      <div className="pi-detail-activity-col">{activity}</div>
+      <div className="pi-detail-details-col">{details}</div>
       <div className="pi-detail-commercial-col">{commercial}</div>
     </div>
   )

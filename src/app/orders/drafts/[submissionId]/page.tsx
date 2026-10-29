@@ -2669,21 +2669,9 @@ function PiDraftDetailPageInner() {
                   onEdit={() => { setClientFailure(null); setEditSection('client') }}
                 />
                 {supportingDetails}
-                <PiOrderDetailsSection
-                  supabase={supabase}
-                  submissionId={submissionId}
-                  row={detailsRow}
-                  rowVersion={rowVersion}
-                  canEdit={canEditInternalDetails}
-                  locked={isLocked}
-                  salesDetailsAvailable={salesDetails.available}
-                  people={salespeople}
-                  grandTotal={grandTotalValue}
-                  fabricCost={toNumber(submission.fabric_cost)}
-                  focus={detailsFocus}
-                  onSaved={() => loadDraft({ quiet: true })}
-                  billingValue={billingValueText}
-                />
+                {/* Internal order details sit below the products, beside the
+                    Commercial breakdown, as on the Order page (owner,
+                    2026-10-29); the checklist's "Add" scrolls down to them. */}
               </>}
               submit={actions.canSubmit ? {
                 label: submitButtonLabel(submission.status),
@@ -2706,25 +2694,10 @@ function PiDraftDetailPageInner() {
             ? 'pi-detail-split-grid pi-detail-split-grid--rail'
             : 'pi-detail-split-grid pi-detail-split-grid--banner'}>
             <div className="pi-detail-split-stack">
-              {/* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
-                  seen and entered together; each value saved by the RPC that
-                  already owns it. Editable exactly where can_edit_order_submission
-                  says; read-only for everybody else. */}
+              {/* ── SUPPORTING DETAILS ── the highlight, the sample choice and
+                  the files, as the Order page's Documents card. Internal order
+                  details are below the products, beside the breakdown. */}
               {supportingDetails}
-              <PiOrderDetailsSection
-                supabase={supabase}
-                submissionId={submissionId}
-                row={detailsRow}
-                rowVersion={rowVersion}
-                canEdit={canEditInternalDetails}
-                salesDetailsAvailable={salesDetails.available}
-                people={salespeople}
-                grandTotal={grandTotalValue}
-                fabricCost={toNumber(submission.fabric_cost)}
-                focus={detailsFocus}
-                onSaved={() => loadDraft({ quiet: true })}
-                billingValue={billingValueText}
-              />
             </div>
 
             {/* ── Workflow and actions, ABOVE the products ──
@@ -2964,6 +2937,28 @@ function PiDraftDetailPageInner() {
             a desktop, aligned at the top and never stretched to a common height;
             stacked in this order on anything narrower. */}
         <PiLowerGrid
+          details={
+            /* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
+               seen and entered together; each value saved by the RPC that
+               already owns it. Editable exactly where can_edit_order_submission
+               says; read-only for everybody else, and locked with management.
+               Beside the breakdown, as on the Order page (owner, 2026-10-29). */
+            <PiOrderDetailsSection
+              supabase={supabase}
+              submissionId={submissionId}
+              row={detailsRow}
+              rowVersion={rowVersion}
+              canEdit={canEditInternalDetails}
+              locked={isLocked}
+              salesDetailsAvailable={salesDetails.available}
+              people={salespeople}
+              grandTotal={grandTotalValue}
+              fabricCost={toNumber(submission.fabric_cost)}
+              focus={detailsFocus}
+              onSaved={() => loadDraft({ quiet: true })}
+              billingValue={billingValueText}
+            />
+          }
           commercial={
             /* The stored figures, through the shared rows builder, selected by
                buildBreakdownView: the nine lines of the calculation in order, ending
@@ -2974,8 +2969,11 @@ function PiDraftDetailPageInner() {
               onEditTerms={null}
             />
           }
-          activity={<PiActivityTimeline entries={draft.activity} />}
         />
+
+        {/* ── 6b. Activity, full width, last — the current state is understood
+            before the history that produced it (owner, 2026-10-29). */}
+        <PiActivityTimeline entries={draft.activity} />
 
         {/* ── 7. Worth checking ──
             Below the grid and quieter than the blocking panel: nothing here
