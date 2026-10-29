@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1b50f285` — Orders: PI payments popup shows the Payment ID, not the request number (#506)
-- Commits on this branch: 1074
+- Commit: `53ee3f89` — Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
+- Commits on this branch: 1075
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
 - `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
@@ -38,7 +39,6 @@
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 - `37f9d051` 2026-10-29 Modules page: For you docked right at 280px — announcements, cash, leave requests, Clear all (#487)
 - `4ee65fb2` 2026-10-29 Docs: rail sidebar entry merged as PR #485 (64ee38e0) (#486)
-- `3909c56c` 2026-10-29 Orders: Payment plan - how much more the client must pay before a dispatch (#479)
 
 ## Pages by top-level area
 

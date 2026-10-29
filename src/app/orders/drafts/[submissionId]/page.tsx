@@ -245,6 +245,7 @@ import {
   describeApprovalReadiness,
   describeReviewDecision,
   orderHref,
+  orderToOpenAfterApproval,
   piApprovedLine,
   piDecisionIsCurrent,
   readApprovalOutcome,
@@ -1001,13 +1002,17 @@ function PiDraftDetailPageInner() {
    * optimistic guess, and the page does not blank, scroll or lose an open image
    * viewer while it happens.
    *
+   * UNLESS THE DECISION ENDS ON ANOTHER PAGE (`leaveFor`, owner 2026-10-30):
+   * the approval that creates the Order opens it instead. Nothing is re-read
+   * for a screen nobody will see, and the dialog stays busy until it goes.
+   *
    * On failure the dialog stays open with the typed note intact, and what is
    * shown is a fixed sentence chosen by describeSubmissionFailure — never the
    * database's own message, which carries statement text and ids.
    */
   const runAction = useCallback(async (
     action: SubmissionAction,
-    call: () => Promise<{ error: unknown }>,
+    call: () => Promise<{ error: unknown; leaveFor?: string | null }>,
     /**
      * A sentence this caller owns for refusals only it can name. Consulted
      * FIRST and only for what it recognises: it returns null for everything
@@ -1019,9 +1024,10 @@ function PiDraftDetailPageInner() {
     actingRef.current = true
     setActing(true)
     setActionFailure(null)
+    let leaving = false
 
     try {
-      const { error } = await call()
+      const { error, leaveFor } = await call()
       if (error) {
         // THE TWO REFUSALS THAT BELONG TO THE RESERVATION, said in their own
         // words first. describeSubmissionFailure has no sentence for either and
@@ -1037,13 +1043,22 @@ function PiDraftDetailPageInner() {
         )
         return
       }
+      if (leaveFor) {
+        // Replace, not push: Back from the Order goes where the PI was opened
+        // from, not to a PI whose work is done.
+        leaving = true
+        router.replace(leaveFor)
+        return
+      }
       setDialog(null)
       await loadDraft({ quiet: true })
     } finally {
-      actingRef.current = false
-      setActing(false)
+      if (!leaving) {
+        actingRef.current = false
+        setActing(false)
+      }
     }
-  }, [loadDraft])
+  }, [loadDraft, router])
 
   // ── Payments: load, record, open a proof ─────────────────────────────────
   //
@@ -1694,13 +1709,25 @@ function PiDraftDetailPageInner() {
         // The Order exists; its pendencies are a separate, optional write. A
         // failure here never undoes the Order — it is said, and the same list
         // can be added from the Order page.
+        let pendenciesSaved = true
         if (outcome && pendencyDrafts.length > 0) {
-          const saved = await saveNewOrderPendencies(supabase, outcome.orderId, pendencyDrafts)
-          setPendencyFailure(!saved
+          pendenciesSaved = await saveNewOrderPendencies(supabase, outcome.orderId, pendencyDrafts)
+          setPendencyFailure(!pendenciesSaved
             ? 'The Order was created, but its pendencies could not be saved. Add them from the Order page under Fabric & Finish.'
             : null)
           setPendencyDrafts([])
         }
+        // STRAIGHT TO THE ORDER (owner, 2026-10-30), when this approver may
+        // read it — asked under their own RLS, the same way loadDraft does.
+        const visible = outcome && pendenciesSaved
+          ? await supabase.from('orders').select('id').eq('id', outcome.orderId).maybeSingle()
+          : null
+        const leaveFor = orderToOpenAfterApproval({
+          outcome,
+          pendenciesSaved,
+          orderReadable: Boolean(visible?.data),
+        })
+        if (leaveFor) return { error, leaveFor }
       }
       return { error }
     }, error => describeConfirmationFailure(error)?.message ?? orderCashFailureMessage(error))
