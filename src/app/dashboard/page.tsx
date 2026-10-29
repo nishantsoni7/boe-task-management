@@ -19,8 +19,8 @@ import { useActiveUsers, warmMyTasksCaches } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
-import { TaskCreationReportCard } from '@/components/tasks/TaskCreationReport'
 import { useRefresh } from '@/contexts/RefreshContext'
+import { GlanceBar } from './GlanceBar'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -614,20 +614,17 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ── Operational counters ── */}
-        <OperationalStatusPanel
+        {/* ── At a glance: the counters and Tasks created (rolling 7 / 30 days) ──
+            Docked to the window's right edge from 1132px, like the Modules
+            page's "For you" panel; narrower, it falls here, under Needs Your
+            Attention. */}
+        <GlanceBar
           overdueTasks={overdueTasks}
           waitingTasks={waitingTasks}
           dueTodayTasks={dueTodayTasks}
+          creationReport={creationReport}
           onShowList={setPreviewList}
-          isMobile={isMobile}
         />
-
-        {/* ── Tasks created — rolling 7 / 30 days ── */}
-        <section style={{ marginTop: isMobile ? '18px' : '22px' }}>
-          <SectionHeading title="Tasks Created" hint="Rolling windows, up to now" isMobile={isMobile} />
-          <TaskCreationReportCard report={creationReport} isMobile={isMobile} />
-        </section>
       </DashboardLayout>
 
       {previewList && !selectedTask && (
@@ -1087,91 +1084,6 @@ function TodaysFocusPanel({
           )
         })}
       </div>
-    </section>
-  )
-}
-
-// ── Operational status strip ──────────────────────────────────────────────────
-
-function OperationalStatusPanel({
-  overdueTasks,
-  waitingTasks,
-  dueTodayTasks,
-  onShowList,
-  isMobile,
-}: {
-  overdueTasks: Task[]
-  waitingTasks: Task[]
-  dueTodayTasks: Task[]
-  onShowList: (list: { title: string; items: Task[] }) => void
-  isMobile: boolean
-}) {
-  // Overdue keeps its red — it is the one counter that reports a problem.
-  // Waiting and Due Today are states, not alarms, and stay neutral.
-  const items = [
-    { label: 'Overdue',   sub: 'Needs attention', count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#B42332' },
-    { label: 'Waiting',   sub: 'Pending action',  count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#303536' },
-    { label: 'Due Today', sub: 'Finish today',    count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',     countColor: '#303536' },
-  ]
-  return (
-    <section style={{
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-      gap: isMobile ? '10px' : '12px',
-    }}>
-      {items.map(item => {
-        // Unchanged rule: a counter opens its list only when it has one.
-        const isInteractive = item.count > 0
-        const open = () => onShowList({ title: item.title, items: item.items })
-        return (
-          <div
-            key={item.label}
-            onClick={() => isInteractive && open()}
-            role={isInteractive ? 'button' : undefined}
-            tabIndex={isInteractive ? 0 : undefined}
-            onKeyDown={e => { if (isInteractive && e.key === 'Enter') open() }}
-            style={{
-              background: '#fff',
-              border: '1px solid #E4DED7',
-              borderRadius: '12px',
-              padding: '14px 16px',
-              cursor: isInteractive ? 'pointer' : 'default',
-              transition: 'background 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={e => {
-              if (!isInteractive) return
-              e.currentTarget.style.background = '#FBFAF8'
-              e.currentTarget.style.borderColor = '#CFC8BF'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = '#fff'
-              e.currentTarget.style.borderColor = '#E4DED7'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{
-                fontSize: '20px', fontWeight: 700, lineHeight: 1,
-                color: item.count > 0 ? item.countColor : '#686D6C',
-                letterSpacing: '-0.03em',
-                minWidth: '20px',
-              }}>
-                {item.count}
-              </span>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#4C5352', lineHeight: 1 }}>
-                {item.label}
-              </span>
-              {isInteractive && (
-                <span style={{ marginLeft: 'auto', display: 'flex' }}>
-                  <ChevronRightIcon color="#686D6C" />
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '6px', lineHeight: 1.2 }}>
-              {item.sub}
-            </div>
-          </div>
-        )
-      })}
     </section>
   )
 }

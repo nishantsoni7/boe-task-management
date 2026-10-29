@@ -29,7 +29,7 @@ before deploy - treat as applied (commit #287 shipped on it) but verify with `su
 ## 3. Pages and API routes
 
 Pages (`src/app/tasks/**`, `src/app/dashboard`, all behind `ModuleGuard moduleKey="task_management"`):
-`/dashboard` (home: Top 3 Focus, Needs Your Attention, counters), `/tasks/my` (My Tasks; tabs, drawer), `/tasks/my/completed`, `/tasks/cancelled`,
+`/dashboard` (home: Top 3 Focus, Needs Your Attention, and the "At a glance" bar with the counters and Tasks Created), `/tasks/my` (My Tasks; tabs, drawer), `/tasks/my/completed`, `/tasks/cancelled`,
 `/tasks/assigned-by-me` (+ `/completed`, `/cancelled`), `/tasks/assigned-to-me` (redirects to assigned-by-me), `/tasks/all` (admin|manager by role),
 `/tasks/create` (delegate), `/tasks/create-self`, `/tasks/[id]` (Task Detail, has `loading.tsx`), `/tasks/quotation-requests` (+ `/new`), `/manager`
 (admin|manager), `/super-admin` (Task Records, admin) and `/super-admin/view-user/[userId]`.
@@ -126,6 +126,12 @@ Statuses and transitions:
   archives and Assigned By Me INCLUDE them. Completed pages are DB-paged (`COMPLETED_PAGE_SIZE = 20`, `completed_at desc nulls last`, id tiebreak); filters counterpart,
   priority, title `ilike` (LIKE wildcards escaped), completed-on day (local-day range). Legacy rows with `completed_at IS NULL` sort last and never match date filters
   (their count was never measured, from memory). Completion windows: yesterday, last 7, last 30 days.
+- **Dashboard "At a glance" bar (2026-10-29, PR #500, no SQL).** The three counters (Overdue, Waiting, Due Today) and the Tasks Created table moved from the
+  bottom of `/dashboard` into one bar, `src/app/dashboard/GlanceBar.tsx` + `glanceBar.module.css`, built like the Modules "For you" panel: from a 1132 px window a
+  280 px column fixed to the right edge, full height, own scroll, header and body reserving `280px + 24px` through `:has(.glance)`, 150 px bottom padding for the
+  floating round buttons; narrower, an ordinary block under Needs Your Attention (counters three across from 640 px). Always drawn (a 0 still shows). Same counts,
+  labels and rule as before: a counter opens its list drawer only when it has tasks; only Overdue is red. Table rows now read "Self tasks" / "Delegated tasks",
+  columns "7 days" / "30 days" (the bar's heading says "created"). The page no longer has `OperationalStatusPanel`.
 - URL list state: tab, search, filters, page live in the query string (`src/lib/listState.ts`, `useListUrlState`): defaults never written; unusable values parse to default;
   debounced search flushed on blur. Not converted on purpose: `/performance/team`, `/notifications`.
 - Return-to-source: Task Detail opens as `/tasks/<id>?returnTo=<encoded list path>`; `taskReturnPath.ts` re-exports `safeReturnPath` (module 08). After Submit for Approval:
@@ -147,7 +153,7 @@ assignmentNotification(.writer.server), attachmentStorage, commentAttachments, a
 `src/hooks/queries/{useMyTasks,useAssignedByMe,useCompletedTasks,useTaskReports,useTopTasks,useQuotationRequests}.ts`, `src/components/tasks/{AddToMeetingModal,
 CompletedHistory,CopyAssignModal,MyTaskViewTabs,QuotationDetailView,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
 (shell for the Task Management pages - 22 per memory; header Self/Delegate actions), `src/components/notifications/*`, `src/app/tasks/[id]/page.tsx` (3411 lines), `src/app/tasks/my/page.tsx`
-(1985), `src/app/dashboard/page.tsx` (1883). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
+(1985), `src/app/dashboard/page.tsx` (about 1800) with `src/app/dashboard/GlanceBar.tsx` (the At a glance bar). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
 
 ## 8. Decisions made & why
 
@@ -186,7 +192,7 @@ Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransition
 Source-contract/shape: `taskNavigationPerformance.test.ts`, `taskCreationPerformance.test.ts`, `taskDetailOpenFromDrawer.test.ts`, `myTasksLoadState.test.ts`, `myTasksRuntimeShape.test.ts`,
 `myTasksQuickAction.test.ts`, `dashboardViewAsReadOnly.test.ts`, `taskCreateFlow.test.ts`, `taskCreateActions.test.ts`, `assignmentWriteAuthority.test.ts`, `assignmentServerBoundary.test.ts`,
 `topTasksApproval.test.ts`, `changeTaskStatusMigration.test.ts`, `changeTaskStatusNotificationCompat.test.ts`, `acknowledgeCallers.test.ts`, `healthCheckMigrationAudit.test.ts`,
-`src/app/tasks/archiveListBounds.test.ts` (pins the two Completed pages as DB-paged), `src/app/tasks/quotation-requests/filters.test.ts`, component tests in `src/components/tasks/`.
+`src/app/tasks/archiveListBounds.test.ts` (pins the two Completed pages as DB-paged), `src/app/tasks/quotation-requests/filters.test.ts`, `src/app/dashboard/glanceBar.test.ts` (the At a glance bar: same counters and rule, docked at 280 px), component tests in `src/components/tasks/`.
 DB assertion scripts (WRITE rows; never on production): `supabase/tests/task_creator_approval_assertions.sql`. Run: `npx tsx --test src/lib/tasks/*.test.ts`; full: `npm test`.
 
 ## 11. Open items / next planned work

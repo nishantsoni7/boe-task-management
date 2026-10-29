@@ -212,7 +212,8 @@ Modules launcher (`src/app/modules/page.tsx`):
   (type · "Xh ago" from `submitted_at`, name, `requestSummary`, Review) then "N more requests ->"
   `/attendance/requests`. Decides through `/api/attendance-requests/[id]/decision`; no rule moved.
 
-Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", counters. Primary data is one
+Dashboard (`/dashboard`, Task Management home): bands "Top 3 Focus", "Needs Your Attention", and an "At a glance" bar (counters +
+Tasks Created) docked to the right edge from a 1132 px window, like the Modules "For you" panel (2026-10-29). Primary data is one
 React Query entry `['tasks','assigned-to',<effective uid>,'dashboard-active']`. Refresh uses `manualRefreshKey` only
 (tab visibility must never refetch it). It warms My Tasks (`warmMyTasksCaches`) and prefetches `/tasks/my`,
 `/notifications` (never under View As). Details in module 11.
