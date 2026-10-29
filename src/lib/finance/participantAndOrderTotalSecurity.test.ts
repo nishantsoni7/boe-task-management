@@ -1161,6 +1161,8 @@ describe('the applied migrations are frozen', () => {
       '20270502000000_order_number_rename.sql',
       '20270503000000_order_payment_plan_bdpi.sql',
       '20270504000000_order_payment_plan_line_costs.sql',
+      // PI payments popup: each payment row also carries its Payment ID. NOT APPLIED.
+      '20270505000000_pi_payment_summary_payment_id.sql',
       // Payments counted once, Step 1: a closed PI gives its money back; Use this money. APPLIED 2026-10-29.
       '20270506000000_order_submission_close_returns_payments.sql',
     ])
@@ -1575,6 +1577,8 @@ describe('the applied migrations are frozen', () => {
       '20270502000000_order_number_rename.sql',
       '20270503000000_order_payment_plan_bdpi.sql',
       '20270504000000_order_payment_plan_line_costs.sql',
+      // PI payments popup: each payment row also carries its Payment ID. NOT APPLIED.
+      '20270505000000_pi_payment_summary_payment_id.sql',
       // Payments counted once, Step 1: a closed PI gives its money back; Use this money. APPLIED 2026-10-29.
       '20270506000000_order_submission_close_returns_payments.sql',
     ])

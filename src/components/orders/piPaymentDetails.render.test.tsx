@@ -50,6 +50,7 @@ function row(over: Partial<PiPaymentSummaryRow>): PiPaymentSummaryRow {
     allocated_amount: '100000.00',
     payment_id: 'pay-1',
     request_number: 'PAY-REQ-2026-0001',
+    human_payment_id: 'P-AA-0001',
     amount: '100000.00',
     payment_date: '2026-08-05',
     payment_mode: 'hdfc',
@@ -72,13 +73,13 @@ function row(over: Partial<PiPaymentSummaryRow>): PiPaymentSummaryRow {
 // One of every kind of row the summary can return. `is_verified` is what the
 // database's finance_payment_status_is_verified() answered for the status.
 const ROWS: PiPaymentSummaryRow[] = [
-  row({ allocation_id: 'a-pending', payment_id: 'p-pending', request_number: 'PAY-REQ-2026-0101' }),
-  row({ allocation_id: 'a-clar', payment_id: 'p-clar', request_number: 'PAY-REQ-2026-0102', status: 'needs_clarification' }),
-  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', status: 'approved_unlinked', is_verified: true, remarks: 'Advance via NEFT' }),
-  row({ allocation_id: 'a-rej', payment_id: 'p-rej', request_number: 'PAY-REQ-2026-0104', status: 'rejected', admin_note: 'Duplicate of 0101' }),
-  row({ allocation_id: 'a-rev', payment_id: 'p-rev', request_number: 'PAY-REQ-2026-0105', allocation_status: 'reversed' }),
-  row({ allocation_id: 'a-split', payment_id: 'p-split', request_number: 'PAY-REQ-2026-0106', status: 'approved_linked', is_verified: true, amount: '250000.00', allocated_amount: '150000.00' }),
-  row({ allocation_id: 'a-rev-ok', payment_id: 'p-rev-ok', request_number: 'PAY-REQ-2026-0107', status: 'approved_unlinked', is_verified: true, allocation_status: 'reversed' }),
+  row({ allocation_id: 'a-pending', payment_id: 'p-pending', request_number: 'PAY-REQ-2026-0101', human_payment_id: 'P-AA-0101' }),
+  row({ allocation_id: 'a-clar', payment_id: 'p-clar', request_number: 'PAY-REQ-2026-0102', human_payment_id: 'P-AA-0102', status: 'needs_clarification' }),
+  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', human_payment_id: 'P-AA-0103', status: 'approved_unlinked', is_verified: true, remarks: 'Advance via NEFT' }),
+  row({ allocation_id: 'a-rej', payment_id: 'p-rej', request_number: 'PAY-REQ-2026-0104', human_payment_id: 'P-AA-0104', status: 'rejected', admin_note: 'Duplicate of 0101' }),
+  row({ allocation_id: 'a-rev', payment_id: 'p-rev', request_number: 'PAY-REQ-2026-0105', human_payment_id: 'P-AA-0105', allocation_status: 'reversed' }),
+  row({ allocation_id: 'a-split', payment_id: 'p-split', request_number: 'PAY-REQ-2026-0106', human_payment_id: 'P-AA-0106', status: 'approved_linked', is_verified: true, amount: '250000.00', allocated_amount: '150000.00' }),
+  row({ allocation_id: 'a-rev-ok', payment_id: 'p-rev-ok', request_number: 'PAY-REQ-2026-0107', human_payment_id: 'P-AA-0107', status: 'approved_unlinked', is_verified: true, allocation_status: 'reversed' }),
 ]
 
 const SUMMARY = {
@@ -161,8 +162,8 @@ describe('approve and reject are offered only to a payment verifier', () => {
 
   test('the row rule is the shared Finance rule, plus an allocation that still counts', () => {
     const decidable = ROWS.map(r => describePiPaymentRow(r, { canVerify: true }))
-      .filter(v => v.canDecide).map(v => v.requestNumber)
-    assert.deepEqual(decidable, ['PAY-REQ-2026-0101'],
+      .filter(v => v.canDecide).map(v => v.humanPaymentId)
+    assert.deepEqual(decidable, ['P-AA-0101'],
       'needs clarification, verified, rejected and a reversed allocation are all decided elsewhere')
     assert.deepEqual(ROWS.map(r => describePiPaymentRow(r, { canVerify: false })).filter(v => v.canDecide), [])
     const routing = readFileSync(join(process.cwd(), 'src/lib/finance/piPaymentView.ts'), 'utf8')
@@ -294,8 +295,8 @@ describe('the Confirmed view', () => {
   })
 
   test('shows only confirmed rows, and the database’s total for them', () => {
-    assert.ok(t.includes('PAY-REQ-2026-0103') && t.includes('PAY-REQ-2026-0106'))
-    for (const other of ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0107']) {
+    assert.ok(t.includes('P-AA-0103') && t.includes('P-AA-0106'))
+    for (const other of ['P-AA-0101', 'P-AA-0102', 'P-AA-0104', 'P-AA-0105', 'P-AA-0107']) {
       assert.ok(!t.includes(other), `${other} is not a confirmed payment`)
     }
     assert.ok(t.includes('Verified total ₹2,50,000'))
@@ -324,8 +325,8 @@ describe('the Awaiting verification view', () => {
     const t = text(html)
     assert.equal(PAYMENT_FILTER_TITLE.awaiting, 'Payments waiting for Finance')
     assert.ok(html.includes('aria-label="Payments waiting for Finance"'))
-    assert.ok(t.includes('PAY-REQ-2026-0101') && t.includes('PAY-REQ-2026-0102'))
-    for (const other of ['PAY-REQ-2026-0103', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0106', 'PAY-REQ-2026-0107']) {
+    assert.ok(t.includes('P-AA-0101') && t.includes('P-AA-0102'))
+    for (const other of ['P-AA-0103', 'P-AA-0104', 'P-AA-0105', 'P-AA-0106', 'P-AA-0107']) {
       assert.ok(!t.includes(other), `${other} is not awaiting verification`)
     }
     assert.ok(t.includes('Waiting for Finance total ₹2,00,000'))
@@ -365,7 +366,7 @@ describe('the views switch inside the one dialog', () => {
 
   test('All still lists every row, rejected and reversed history included', () => {
     const t = text(modal())
-    for (let n = 101; n <= 107; n += 1) assert.ok(t.includes(`PAY-REQ-2026-0${n}`))
+    for (let n = 101; n <= 107; n += 1) assert.ok(t.includes(`P-AA-0${n}`))
   })
 
   test('the dialog is reused, not duplicated, and a switch is held while a decision is open', () => {
@@ -496,10 +497,22 @@ describe('the progress bar: green confirmed, amber awaiting verification, red no
 describe('each row says when, how, how much and where it stands', () => {
   const t = text(modal())
 
-  test('date, mode, reference, request number, who recorded it', () => {
-    for (const part of ['05 Aug 2026', 'Ref UTR123', 'PAY-REQ-2026-0101', 'Recorded by Priya Rao']) {
+  test('date, mode, reference, Payment ID, who recorded it', () => {
+    for (const part of ['05 Aug 2026', 'Ref UTR123', 'P-AA-0101', 'Recorded by Priya Rao']) {
       assert.ok(t.includes(part), `${part} missing`)
     }
+  })
+
+  test('a payment is named by its Payment ID, never its request number (owner, 2026-10-29)', () => {
+    assert.ok(!t.includes('PAY-REQ-'), 'the request number is not shown')
+    assert.ok(modal().includes('class="boe-payment-id"'), 'drawn as Finance’s Payment ID chip')
+  })
+
+  test('a summary from a database without 20270505000000 still names the row', () => {
+    const older = describePiPaymentRow(row({ human_payment_id: undefined }), { canVerify: false })
+    assert.equal(older.humanPaymentId, 'PAY-REQ-2026-0001')
+    const neither = describePiPaymentRow(row({ human_payment_id: null, request_number: null }), { canVerify: false })
+    assert.equal(neither.humanPaymentId, '—')
   })
 
   test('the remarks typed with the payment', () => {
@@ -557,7 +570,10 @@ describe('deciding one row', () => {
 
   test('while a decision is in flight every control on the row is dead', () => {
     const html = armed({ armed: 'approve', busy: true, note: 'ok' })
+    // The Payment ID's copy button stays live: it only copies text and cannot
+    // touch the payment.
     const opens = [...html.matchAll(/<button\b([^>]*)>/g)].map(m => m[1])
+      .filter(attrs => !attrs.includes('boe-payment-id-copy'))
     assert.ok(opens.length >= 2)
     for (const attrs of opens) assert.ok(attrs.includes('disabled=""'))
     assert.ok(text(html).includes('Approving…'))
@@ -598,8 +614,8 @@ describe('Edit is offered beside Approve and Reject, to whoever the page allows'
     // allocation; not rejected or reversed
     assert.equal(labels.filter(l => l === EDIT_PAYMENT_LABEL).length, 4)
     const editable = ROWS.map(r => describePiPaymentRow(r, { canVerify: false, canEdit: true }))
-      .filter(v => v.canEdit).map(v => v.requestNumber)
-    assert.deepEqual(editable, ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102', 'PAY-REQ-2026-0103', 'PAY-REQ-2026-0106'])
+      .filter(v => v.canEdit).map(v => v.humanPaymentId)
+    assert.deepEqual(editable, ['P-AA-0101', 'P-AA-0102', 'P-AA-0103', 'P-AA-0106'])
   })
 
   test('it does not depend on being able to verify, and survives the own-payment rule', () => {
@@ -636,5 +652,33 @@ describe('Edit is offered beside Approve and Reject, to whoever the page allows'
     const afterSaved = page.slice(page.indexOf('<PiPaymentEditDialog'))
     assert.ok(afterSaved.slice(0, 700).includes('void loadOrder()'), 'the list is re-read after a save')
     assert.ok(workspace.includes('onEdit && isCorrectablePayment(row.status)'))
+  })
+})
+
+// ── 8. The summary sends the Payment ID ───────────────────────────────────────
+
+describe('20270505000000 adds the Payment ID and changes nothing else', () => {
+  const summaryFunction = (file: string): string[] => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations', file), 'utf8').replace(/\r\n/g, '\n')
+    const start = sql.indexOf('CREATE OR REPLACE FUNCTION public.pi_submission_payment_summary(p_submission_id uuid)')
+    const end = sql.indexOf('\n$function$;\n', start)
+    assert.ok(start >= 0 && end > start, `${file} defines pi_submission_payment_summary`)
+    return sql.slice(start, end).split('\n')
+  }
+
+  test('the 20270227000000 definition, verbatim, plus one human_payment_id key', () => {
+    const before = summaryFunction('20270227000000_order_submission_advance_on_total_before_gst.sql')
+    const after = summaryFunction('20270505000000_pi_payment_summary_payment_id.sql')
+    const added = "      'human_payment_id',  f.human_payment_id,"
+    assert.equal(after.filter(l => l === added).length, 1)
+    assert.deepEqual(after.filter(l => l !== added), before)
+  })
+
+  test('it is the latest definition of the function', () => {
+    const later = readdirSync(join(process.cwd(), 'supabase/migrations'))
+      .filter(f => f > '20270505000000_pi_payment_summary_payment_id.sql')
+      .filter(f => /function\s+public\.pi_submission_payment_summary\(/i
+        .test(readFileSync(join(process.cwd(), 'supabase/migrations', f), 'utf8')))
+    assert.deepEqual(later, [])
   })
 })

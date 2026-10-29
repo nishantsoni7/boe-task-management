@@ -101,6 +101,8 @@ export type PiPaymentSummaryRow = {
   allocated_amount: string | number
   payment_id: string
   request_number: string | null
+  /** The Payment ID (P-AA-0021), from 20270505000000. Optional so an older summary still types. */
+  human_payment_id?: string | null
   amount: string | number
   payment_date: string | null
   payment_mode: string | null
@@ -306,7 +308,12 @@ const displayMoney = (value: string | number | null | undefined): string => {
 export type PiPaymentRowView = {
   key: string
   paymentId: string
-  requestNumber: string
+  /**
+   * What the row is called: the Payment ID (P-AA-0021), the name Finance uses
+   * for a payment everywhere. The request number only when the summary came
+   * from a database without 20270505000000.
+   */
+  humanPaymentId: string
   date: string
   mode: string
   /** PNB, Paytm or Canara, not reversed: its cash journey is shown on the row (20270413000000). */
@@ -363,7 +370,7 @@ export function describePiPaymentRow(
   return {
     key: row.allocation_id,
     paymentId: row.payment_id,
-    requestNumber: row.request_number ?? '—',
+    humanPaymentId: (row.human_payment_id ?? '').trim() || row.request_number || '—',
     date: formatPaymentDate(row.payment_date),
     mode: paymentModeLabel(row.payment_mode),
     tracksCash: !reversed && isTrackedPaymentMode(row.payment_mode),
