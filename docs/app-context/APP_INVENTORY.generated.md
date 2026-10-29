@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `23591e6e` — Orders: the PI payments popup names each payment by its Payment ID
+- Commit: `1b50f285` — Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - Commits on this branch: 1074
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `23591e6e` 2026-10-29 Orders: the PI payments popup names each payment by its Payment ID
+- `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
 - `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
 - `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
