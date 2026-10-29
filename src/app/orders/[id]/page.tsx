@@ -153,6 +153,7 @@ import {
   OperationsReviewActions,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
+import { FabricFinishDrawer } from '@/components/orders/FabricFinishDrawer'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
 import {
@@ -954,6 +955,9 @@ export default function OrderDetailPage() {
   const [approvalOpen,  setApprovalOpen]  = useState(false)
   const [approvalBusy,  setApprovalBusy]  = useState(false)
   const [approvalError, setApprovalError] = useState<string | null>(null)
+  // The Fabric & Finish cost sheet (20270431000000), a panel that slides in
+  // from the right. Self-loading when opened: nothing of it runs at startup.
+  const [costSheetOpen, setCostSheetOpen] = useState(false)
   const [proofBusy,     setProofBusy]     = useState<string | null>(null)
   const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
   const [piDownloadError, setPiDownloadError] = useState<string | null>(null)
@@ -3096,6 +3100,7 @@ export default function OrderDetailPage() {
       orderId: order.id,
       canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
     }}
+    costSheet={order.source_order_submission_id && !viewAsUserId ? { onOpen: () => setCostSheetOpen(true) } : undefined}
   />
   )
 
@@ -3942,6 +3947,16 @@ export default function OrderDetailPage() {
           failure={approvalError}
           onClose={() => { if (!approvalBusy) setApprovalOpen(false) }}
           onConfirm={changes => { void recordApprovals(changes) }}
+        />
+      )}
+
+      {/* ── Fabric & Finish cost sheet (20270431000000): slides in from the right ── */}
+      {costSheetOpen && order.source_order_submission_id && (
+        <FabricFinishDrawer
+          submissionId={order.source_order_submission_id}
+          context={`Order ${shownOrderNumber}${order.client_name ? ` · ${order.client_name}` : ''}`}
+          openAsPageHref={`/orders/${order.id}/fabric-finish`}
+          onClose={() => setCostSheetOpen(false)}
         />
       )}
 
