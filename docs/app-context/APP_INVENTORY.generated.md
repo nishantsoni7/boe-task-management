@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `d20282e6` — Docs: Confirmed Payments column widths are PR #505
+- Commit: `cf417c79` — Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
 - Commits on this branch: 1071
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 383 (first `20260530_create_positions.sql`, latest `20270504000000_order_payment_plan_line_costs.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `d20282e6` 2026-10-29 Docs: Confirmed Payments column widths are PR #505
-- `0ce89629` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room
+- `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
+- `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 - `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
 - `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
