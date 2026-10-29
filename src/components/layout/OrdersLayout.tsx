@@ -2,8 +2,9 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, FileText, Bell, GraduationCap } from 'lucide-react'
+import { LayoutDashboard, List, FileText, Bell, GraduationCap, Archive } from 'lucide-react'
 import { LEARNING_PATH, canTrainCustomizeImage } from '@/lib/orders/customizationLearning'
+import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -65,6 +66,9 @@ export function OrdersLayout({
   // context this layout already resolves, so the link costs no query. Shows
   // the link only; the page's routes ask the database.
   const canTrain = canTrainCustomizeImage(role, permissionsByModule.get('orders') ?? [])
+  // Old orders (BDPI): the same reading of the context; the page and the
+  // database ask again (bdpi_list, view_payment_plan).
+  const canSeeOldOrders = deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? []).canViewPaymentPlan
   const { triggerRefresh } = useRefresh()
 
   // Orders-only unread count — drives both the sidebar "Notifications" badge
@@ -142,6 +146,9 @@ export function OrdersLayout({
     { label: 'Dashboard',        path: '/orders',        icon: <LayoutDashboard size={15} strokeWidth={1.8} />, key: 'dashboard' },
     { label: 'Confirmed Orders', path: '/orders/all',    icon: <List            size={15} strokeWidth={1.8} />, key: 'confirmed' },
     { label: 'PI Drafts',        path: '/orders/drafts', icon: <FileText        size={15} strokeWidth={1.8} />, key: 'drafts' },
+    ...(canSeeOldOrders
+      ? [{ label: 'Old orders (BDPI)', path: '/orders/bdpi', icon: <Archive size={15} strokeWidth={1.8} />, key: 'bdpi' as const }]
+      : []),
   ]
 
   return (
