@@ -1161,6 +1161,8 @@ describe('the applied migrations are frozen', () => {
       '20270502000000_order_number_rename.sql',
       '20270503000000_order_payment_plan_bdpi.sql',
       '20270504000000_order_payment_plan_line_costs.sql',
+      // Payments counted once, Step 1: a closed PI gives its money back; Use this money. NOT APPLIED.
+      '20270505000000_order_submission_close_returns_payments.sql',
     ])
   })
 
@@ -1573,6 +1575,8 @@ describe('the applied migrations are frozen', () => {
       '20270502000000_order_number_rename.sql',
       '20270503000000_order_payment_plan_bdpi.sql',
       '20270504000000_order_payment_plan_line_costs.sql',
+      // Payments counted once, Step 1: a closed PI gives its money back; Use this money. NOT APPLIED.
+      '20270505000000_order_submission_close_returns_payments.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -142,7 +142,7 @@ export function paymentVerification(status: string | null | undefined): PaymentV
 
 export const PAYMENT_VERIFICATION_LABEL: Record<PaymentVerification, string> = {
   verified: 'Verified',
-  awaiting: 'Awaiting Verification',
+  awaiting: 'Waiting for Finance',
   rejected: 'Rejected',
 }
 

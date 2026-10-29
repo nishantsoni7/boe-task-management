@@ -45,6 +45,7 @@ import { addressForCopy, sameAddress, splitAddress } from '@/lib/orders/addressL
 import { NOT_PROVIDED, type ClientDetails } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import { ACTIVITY_FILTERS, type ActivityCategory } from '@/lib/orders/orderActivityCategory'
 import { OrderModalShell } from './OrderStatusWorkspace'
+import { PaymentTracker } from '@/components/finance/PaymentTracker'
 import {
   activityToggleLabel,
   activityWindow,
@@ -447,7 +448,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList, facts = [] 
     },
     {
       kind: 'awaiting',
-      label: 'Awaiting verification',
+      label: 'Waiting for Finance',
       amount: formatMoney(finance.awaitingVerification),
       meta: finance.counts.awaiting > 0
         ? `${finance.counts.awaiting} payment${finance.counts.awaiting === 1 ? '' : 's'}`
@@ -516,7 +517,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList, facts = [] 
           thresholdPercent={null}
           height={10}
           palette={PAYMENT_BAR_COLORS_SUBDUED}
-          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the Total before GST -- ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} awaiting verification, ${formatMoney(finance.pendingBalance)} not received`}
+          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the Total before GST -- ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} waiting for Finance, ${formatMoney(finance.pendingBalance)} not received`}
         />
       )}
 
@@ -808,12 +809,10 @@ export function OrderPaymentListDialog({
                       one so says nothing; a row awaiting Finance may be
                       pending or may need clarification, which is a real
                       difference to the person chasing it. */}
-                  {kind === 'awaiting' && (
-                    <div className="order-pay-list-fact">
-                      <dt>Status</dt>
-                      <dd>{piPaymentStatusLabel(row.status)}</dd>
-                    </div>
-                  )}
+                  <div className="order-pay-list-fact">
+                    <dt>Status</dt>
+                    <dd><PaymentTracker status={row.status} /></dd>
+                  </div>
                 </dl>
                 {/* THE DOORS: View details (Finance entry) and Edit (an administrator). */}
                 <div className="order-pay-list-actions">

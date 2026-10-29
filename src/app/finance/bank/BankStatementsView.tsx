@@ -576,7 +576,7 @@ export function BankStatementsView() {
                           <td><span className="fin-primary-text">{p.client_name ?? 'Suspense payment'}</span></td>
                           <td className="fin-muted">{p.human_payment_id}</td>
                           <td className="fin-num"><span className="fin-amount">{formatMoney(p.remaining)}</span></td>
-                          <td className="fin-muted">{p.status === 'pending_approval' ? 'Awaiting verification' : p.status === 'needs_clarification' ? 'Needs clarification' : 'Verified'}</td>
+                          <td className="fin-muted">{p.status === 'pending_approval' ? 'Waiting for Finance' : p.status === 'needs_clarification' ? 'Needs Clarification' : 'Verified'}</td>
                         </tr>
                       ))}
                     </tbody>

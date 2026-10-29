@@ -240,6 +240,7 @@ import {
 } from '@/lib/orders/advanceRequirement'
 import { asPaymentPosition, readExceptionReason } from '@/lib/orders/paymentGate'
 import { notifyFinance, notifyPiSubmission } from '@/lib/notify'
+import { applyAvailableMoney, availableMoneyUsedNotice, piDecisionMoneyNote, searchAvailableMoney } from '@/lib/finance/availableMoney'
 import {
   describeApprovalReadiness,
   describeReviewDecision,
@@ -1190,6 +1191,25 @@ function PiDraftDetailPageInner() {
     }
   }, [supabase, submissionId, viewerId, loadPayments])
 
+  // MONEY ALREADY RECEIVED FROM THIS CLIENT (20270505000000): offered inside Add
+  // payment, so a transfer already in the system is moved here, never typed in
+  // again. The database decides who may and which money qualifies.
+  const draftReference = load.kind === 'ready' ? (load.draft.submission.draft_reference ?? null) : null
+  const availableMoney = useMemo(() => ({
+    search: (amount: string, paymentDate: string) =>
+      searchAvailableMoney(supabase, { submissionId }, amount, paymentDate),
+    use: async (paymentId: string) => {
+      const result = await applyAvailableMoney(supabase, paymentId, { submissionId })
+      if (!result.ok) return result.message
+      setPaymentDialog(null)
+      setPaymentNotice(availableMoneyUsedNotice(result, 'PI'))
+      // FINANCE HEARS OF IT, for information only: the money was already received.
+      void notifyFinance({ event: 'finance_payment_moved', requestNumber: result.requestNumber ?? '', entityId: paymentId, orderNumber: draftReference })
+      await loadPayments()
+      return null
+    },
+  }), [supabase, submissionId, loadPayments, draftReference])
+
   const openPaymentProof = useCallback(async (paymentId: string) => {
     const url = await paymentProofSignedUrl(supabase, paymentId)
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
@@ -2040,7 +2060,7 @@ function PiDraftDetailPageInner() {
     createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at),
     piApprovedLine: piApprovedText,
     rejectedLine: rejectedAt
-      ? `Rejected by ${draft.rejectedByName ?? 'a colleague'} · ${rejectedAt}`
+      ? `Closed by ${draft.rejectedByName ?? 'a colleague'} · ${rejectedAt}`
       : null,
     hasOrder: Boolean(submission.order_id),
   })
@@ -3200,6 +3220,7 @@ function PiDraftDetailPageInner() {
             if (!err) setPaymentDialog(null)
             return err
           }}
+          availableMoney={availableMoney}
         />
       )}
 
@@ -3313,6 +3334,7 @@ function PiDraftDetailPageInner() {
         <PiNoteModal
           intent={dialog}
           client={clientLabel}
+          moneyNote={piDecisionMoneyNote(dialog, payments?.attached_amount ?? null)}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}

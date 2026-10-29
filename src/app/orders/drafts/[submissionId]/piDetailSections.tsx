@@ -1700,7 +1700,7 @@ export const ACTIVITY_NAV_TITLE = 'Key events'
  * is a detail edit, a file or a picture. Display only.
  */
 export function isKeyPiEvent(label: string): boolean {
-  return /(submitted|approved|rejected|changes requested|order created|replaced|payment)/i.test(label)
+  return /(submitted|approved|rejected|closed|returned to sales|changes requested|order created|replaced|payment)/i.test(label)
 }
 export function isMinorPiEvent(label: string): boolean {
   return /(details updated|details changed|highlight|sample|attached file|file attached|picture|image|reordered|billing|terms updated|internal)/i.test(label)
