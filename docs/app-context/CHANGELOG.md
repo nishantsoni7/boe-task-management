@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-29 — Finance: Confirmed Payments columns spaced evenly (PR #505, open) · no migration · not merged yet
+- **Owner request.** On a wide screen the Client column was mostly empty (about 526px around "Not identified" on a ~1390px table) while the other seven sat at their minimum: "reduce the width of the Client Name and increase where required to make it look more spacious." Column widths were agreed first, shown as a diagram.
+- **What.** Client gets a width like every other column (`CONFIRMED_CLIENT_MIN_PX` = 180px, about 20 characters). With no auto column, `table-layout: fixed` shares the spare width across all eight columns in proportion; on the owner's screen Client is about 240px and the others grow by about a third. A longer name ends in "…" with the full name in the cell's tooltip (unchanged). Client's header and cell get a 20px left edge so the right-aligned Amount no longer touches the name.
+- **Consequence.** The table now needs a 1045px container (was 985): with the 64px hover rail, a window of about 1155px or wider; narrower windows get the cards. Phone cards unchanged.
+- **Files.** `lib/finance/paymentSurfaces.ts` (widths, threshold), `app/finance/received/receivedPaymentsTable.tsx` (Client left edge); tests `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx`.
+- **Rollback.** Revert the PR.
+- **Proof.** tsc 0; eslint 0 on the changed files; `paymentSurfaces.test.ts` + `menuPlacement.test.ts` + `allocatedAgainst.render.test.tsx` 225/225, and the other suites that read this table 131/131; the new Client-edge test fails with the change removed. Not seen in a browser.
+
 ## 2026-10-29 — Orders: dispatch payment sheet, layout v2 (PR #503) · no migration
 - **Owner feedback on the first redesign.** Horizontal scroll, did not look like a table, too much item detail, too many colours, the to-pay box confusing. Mockup redone twice and approved.
 - **What.** Full-width grid table with thin lines, product name only; one plain calculation table (Sent earlier | This lot | Still to come | Whole order) ending in what is needed in bank and in cash; "To pay before this dispatch" as one sum read across (Goods sent + Advance - Already received = Balance) with Bank / Cash / Total rows; whole rupees. Screen, Excel and PDF alike.

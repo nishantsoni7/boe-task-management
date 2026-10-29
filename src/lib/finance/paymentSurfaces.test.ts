@@ -204,15 +204,13 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
       'place-value alignment within the column is kept')
   })
 
-  test('the columns carry width hints so seven do not drift apart on a wide screen', () => {
+  test('every column carries a width, so a wide screen shares its spare room across all of them', () => {
+    // REVISED (owner, 2026-10-29): Client used to carry no width and took every
+    // spare pixel. Now it is sized like the rest and its cell truncates.
     const widths = CONFIRMED_PAYMENT_COLUMNS
       .filter(c => 'width' in c).map(c => c.key as string)
-    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'added_by', 'status', 'actions']) {
+    for (const sized of ['payment_id', 'amount', 'client', 'date', 'mode', 'added_by', 'status', 'actions']) {
       assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
-    }
-    // Client deliberately takes the slack; its cell truncates.
-    for (const flexible of ['client']) {
-      assert.ok(!widths.includes(flexible), `${flexible} should absorb remaining width`)
     }
   })
 
@@ -282,6 +280,8 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
   test('the threshold sits above the measured table minimum, with headroom', () => {
     // REVISED (owner's columns, 2026-10-19): 860px of fixed columns + the
     // 120px Client floor, computed from the column list, not browser-measured.
+    // REVISED (2026-10-29): Client is a fixed 180px now, so the sum is 1040px
+    // and the threshold 1045 — menuPlacement.test pins that arithmetic.
     const MEASURED_TABLE_MIN = 960
     assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX >= MEASURED_TABLE_MIN + 25)
   })
@@ -307,9 +307,11 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
   })
 
   test('a table seen to overflow is replaced by cards at that width and below', () => {
-    assert.equal(confirmedListMode(1000, 1000), 'cards')
-    assert.equal(confirmedListMode(990, 1000), 'cards')
-    assert.equal(confirmedListMode(1001, 1000), 'table')
+    // Widths above the threshold (1045 since 2026-10-29), so only the
+    // remembered overflow can be what draws the cards.
+    assert.equal(confirmedListMode(1100, 1100), 'cards')
+    assert.equal(confirmedListMode(1090, 1100), 'cards')
+    assert.equal(confirmedListMode(1101, 1100), 'table')
   })
 
   test('the list measures its own container and checks the rendered table for overflow', () => {
