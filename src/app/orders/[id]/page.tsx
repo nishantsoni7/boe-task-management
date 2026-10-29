@@ -96,6 +96,8 @@ import {
   ReviewChangeRequestModal,
 } from './OrderAmendmentModals'
 import { DeleteOrderModal } from './DeleteOrderModal'
+import { ChangeOrderNumberModal } from './ChangeOrderNumberModal'
+import { CHANGE_ORDER_NUMBER_ACTION_LABEL, canChangeOrderNumber } from '@/lib/orders/orderNumberChange'
 import { DELETE_ORDER_ACTION_LABEL, canDeleteOrder } from '@/lib/orders/orderDeletion'
 import {
   canAmendOrderDirectly,
@@ -771,6 +773,7 @@ export default function OrderDetailPage() {
   const [requestOpen,    setRequestOpen]    = useState(false)
   const [cancelOpen,     setCancelOpen]     = useState(false)
   const [deleteOrderOpen, setDeleteOrderOpen] = useState(false)
+  const [changeNumberOpen, setChangeNumberOpen] = useState(false)
   const [reviewing,      setReviewing]      = useState<OrderChangeRequest | null>(null)
 
   // ── The approved PI this Order came from ──
@@ -2998,6 +3001,7 @@ export default function OrderDetailPage() {
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
     canCleanUp: profile?.role === 'admin' && !viewAsUserId && canCleanUp,
+    canChangeOrderNumber: canChangeOrderNumber({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId }),
     canDeleteOrder: canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId }),
   })
 
@@ -3012,6 +3016,7 @@ export default function OrderDetailPage() {
         return pendingRequests.length === 1 ? 'Review change request' : `Review ${pendingRequests.length} change requests`
       case 'withdraw_acceptance': return WITHDRAW_ACCEPTANCE_LABEL
       case 'cleanup':             return 'Clean Up Test Transaction'
+      case 'change_number':       return CHANGE_ORDER_NUMBER_ACTION_LABEL
       case 'delete_order':        return DELETE_ORDER_ACTION_LABEL
     }
   }
@@ -3023,6 +3028,7 @@ export default function OrderDetailPage() {
     if (key === 'request_change' && myPendingEdit) return 'You already have a change request awaiting review'
     if (key === 'request_cancel' && myPendingCancel) return 'You already have a cancellation request awaiting review'
     if (key === 'cleanup') return 'This Order was created during system testing'
+    if (key === 'change_number') return 'Give this Order a different, unused number. The newest number goes back to the next Order.'
     if (key === 'delete_order') return 'Permanently delete this Order and its PI. Refused while any payment is allocated.'
     return undefined
   }
@@ -3061,6 +3067,9 @@ export default function OrderDetailPage() {
       // An administrator may permanently delete an Order (20270317000000). The
       // dialog asks for the Order number; the database checks the role, the
       // number and that no payment is allocated.
+      // An administrator may give the Order a different, unused number
+      // (20270502000000); the database checks the role and the number.
+      case 'change_number':        setChangeNumberOpen(true); return
       case 'delete_order':         setDeleteOrderOpen(true); return
     }
   }
@@ -3761,6 +3770,14 @@ export default function OrderDetailPage() {
           /* Nothing to announce: this RAISES a change request, and the Order
              itself has not moved. The decision on it does announce. */
           onDone={() => afterChange(null)}
+        />
+      )}
+      {changeNumberOpen && order && (
+        <ChangeOrderNumberModal
+          orderId={order.id}
+          displayNumber={String(order.display_number)}
+          onClose={() => setChangeNumberOpen(false)}
+          onChanged={() => { loadOrder() }}
         />
       )}
       {deleteOrderOpen && order && (
