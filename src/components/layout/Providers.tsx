@@ -13,6 +13,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
+import { RouteHealthReporter } from '@/components/layout/RouteHealthReporter'
 
 // Loaded on demand and never on the server: it is admin-only and must not weigh
 // on the root bundle every route ships.
@@ -48,6 +49,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Evidence for slow navigations and page errors — no user data; see
+          src/lib/telemetry/routeHealth.ts. Renders nothing. */}
+      <RouteHealthReporter />
       {/* Owns the single auth listener for THIS QueryClient, and must sit
           inside the provider so useQueryClient() resolves to that instance. */}
       <AuthIdentityBoundary>
