@@ -1157,7 +1157,7 @@ describe('the applied migrations are frozen', () => {
       '20270431000000_order_submission_fabric_finish_lines.sql',
       // Finance: Founders' payouts (owner-only, no admin branch). APPLIED 2026-10-29.
       '20270501000000_finance_founder_payouts.sql',
-      // Orders: an administrator changes an Order number; the newest goes back to the next Order. NOT APPLIED.
+      // Orders: an administrator changes an Order number; the newest goes back to the next Order. APPLIED 2026-10-29.
       '20270502000000_order_number_rename.sql',
     ])
   })
@@ -1567,7 +1567,7 @@ describe('the applied migrations are frozen', () => {
       '20270431000000_order_submission_fabric_finish_lines.sql',
       // Finance: Founders' payouts (owner-only, no admin branch). APPLIED 2026-10-29.
       '20270501000000_finance_founder_payouts.sql',
-      // Orders: an administrator changes an Order number; the newest goes back to the next Order. NOT APPLIED.
+      // Orders: an administrator changes an Order number; the newest goes back to the next Order. APPLIED 2026-10-29.
       '20270502000000_order_number_rename.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
