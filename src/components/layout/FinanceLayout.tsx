@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet, PiggyBank } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -70,6 +70,13 @@ export const REIMBURSEMENTS_PATH = '/finance/reimbursements'
  */
 export const HANDOVERS_PATH = '/finance/handovers'
 
+/**
+ * Founders' payouts: money paid into the partners' and their families'
+ * accounts. Drawn only for a holder of the protected finance.founder_payouts —
+ * administrators NOT included; the page and the database ask again.
+ */
+export const FOUNDER_PAYOUTS_PATH = '/finance/founders'
+
 /** The one count the sidebar draws. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
 
@@ -108,6 +115,7 @@ export function FinanceLayout({
   const financeCaps = deriveFinanceCapabilities(sessionRole, permissionsByModule.get('finance') ?? [])
   const canReconcileBank = financeCaps.canReconcileBank
   const canReimburseExpenses = financeCaps.canReimburseExpenses
+  const canSeeFounderPayouts = financeCaps.canSeeFounderPayouts
   const { triggerRefresh } = useRefresh()
   const queryClient = useQueryClient()
   const openHandovers = useOpenHandovers()
@@ -215,6 +223,11 @@ export function FinanceLayout({
       : []),
     // Cash handed between people, each needing acceptance. Open for everybody in Finance.
     { label: 'Cash journeys', path: HANDOVERS_PATH, icon: <Wallet size={15} strokeWidth={1.8} />, key: 'handovers' as const, alertBadge: openHandovers.mine.length },
+    // The founders' own money. Absent (not disabled) without an explicit
+    // finance.founder_payouts grant — being an admin is not enough.
+    ...(canSeeFounderPayouts
+      ? [{ label: "Founders' payouts", path: FOUNDER_PAYOUTS_PATH, icon: <PiggyBank size={15} strokeWidth={1.8} />, key: 'founders' as const }]
+      : []),
   ]
   const activeKey = activeFinanceNav(pathname)
 

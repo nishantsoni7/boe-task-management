@@ -329,8 +329,17 @@ describe('the acceptance conditions, as capabilities', () => {
   })
 
   test('admin behaviour is unchanged in both modules', () => {
+    // Finance has ONE exception, also deliberate: the founders' payouts
+    // (20270501000000) are the founders' own money, and the database door has
+    // no admin branch, so the role does not reach them.
     const finance = deriveFinanceCapabilities('admin', [])
-    for (const value of Object.values(finance)) assert.equal(value, true)
+    for (const [name, value] of Object.entries(finance)) {
+      if (name === 'canSeeFounderPayouts') {
+        assert.equal(value, false, 'founder_payouts is granted per person, not by the role')
+        continue
+      }
+      assert.equal(value, true, `admin must keep ${name}`)
+    }
 
     // Orders has ONE exception, and it is deliberate: 20261224000000 §4 took
     // approve_order off the admin role so the owner can withdraw PI approval
