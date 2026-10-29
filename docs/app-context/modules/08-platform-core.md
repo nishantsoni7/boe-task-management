@@ -167,28 +167,40 @@ Modules launcher (`src/app/modules/page.tsx`):
   Orders group.
   1. The newest UNREAD announcement (`latestAnnouncement` = first row of `useMyAnnouncements`, not while previewing),
      linking to `/announcements/[id]`, which is where it is acknowledged; then it leaves the panel.
-  2. "Cash handed to you" (light red ground), for EVERYONE: open handovers where `handoverRole === 'recipient' &&
-     canAccept`, with Accept right there -> `HandoverConfirmDialog` (exported from HandoverCard; "Yes, I received ₹X")
-     -> `useHandoverActions().accept` (`accept_cash_handover`). Custody only: accepting never approves a payment
-     (20270417000000), Finance still verifies.
-  3. "Cash not with the company": `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin / custodian /
-     view_all, else the viewer's own), minus payments whose open handover is TO the viewer (item 2), grouped by holder
-     (`totalsByHolder`, oldest first): "X holds ₹N" + "N payments, not handed over" / "Handed to X, not accepted" /
-     "X marked not received" + age. Review -> `/finance/handovers?holder=` ONLY when `financeAllowed` (Finance route).
+  2. The viewer's OWN cash, hand to hand until a company cash custodian (Nitish) accepts it, for EVERYONE (owner
+     2026-10-29: "both see it till it changes hands"):
+     - "Handed to you" (light red ground): open handovers where `handoverRole === 'recipient' && canAccept`, "₹N from
+       X · Not accepted yet", Accept -> `HandoverConfirmDialog` (exported from HandoverCard; "Yes, I received ₹X") ->
+       `useHandoverActions().accept` (`accept_cash_handover`). On success, unless `viewerIsCustodian` (from
+       `finance_unclosed_funds`; their accepting closes the journey), `HandoverModal` opens at once with the accepted
+       payments ticked (`initialPaymentIds`): who did you give it to? The modal's open state lives in the PANEL (the
+       card leaves the list once accepted) and is drawn even when the panel itself has nothing left to show.
+       Custody only: accepting never approves a payment (20270417000000), Finance still verifies.
+     - "Waiting for X" (`WaitingCard`): open handovers where the viewer is the giver, "You handed ₹N to X · X has not
+       accepted yet", Remind (`remind_cash_handover`, shown while `canRemind`; the server refuses within 4 hours and
+       its sentence is shown).
+     - "With you" (light red ground): the viewer's held payments in no open handover (`holderId === viewerId &&
+       !openHandover`), one card "You hold ₹N", Hand over -> `HandoverModal` (nothing ticked) when any `canHandOver`.
+       A custodian's cash is with the company, so it never appears.
+  3. "Cash not with the company", EVERYBODY ELSE's: `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin /
+     custodian / view_all, else the viewer's own), minus the viewer's own held payments and payments whose open
+     handover is TO the viewer (item 2), grouped by holder (`totalsByHolder`, oldest first): "X holds ₹N" + "N
+     payments, not handed over" / "Handed to X, not accepted" + age. Review -> `/finance/handovers?holder=` ONLY when
+     `financeAllowed` (Finance route).
   4. Leave and late arrival (admin): `PendingApprovals.tsx`, filtered to `LAUNCHER_REQUEST_TYPES` (late_arrival,
      half_day, full_day_leave); early departure and time out stay in Attendance.
   - Header "For you" + count + "Clear all": hides every card showing for 24 hours, in this browser per user
     (`src/lib/modules/forYouSnooze.ts`, localStorage `boe.forYou.cleared.<userId>`; a key names the thing AND what it
     says, so a new or changed item shows at once; a timer brings everything back at `until`; an event keeps the panel
     and the strip in step). Nothing is deleted, decided or marked read.
-  - NOTHING TO SHOW = NO PANEL (`itemCount === 0` and no read error): not drawn at all, no "caught up" line, and
+  - NOTHING TO SHOW = NO PANEL (`itemCount === 0` and no read error; only an open "Hand over cash" is still drawn): not drawn at all, no "caught up" line, and
     the reserved width goes with it, so the tiles take the whole width.
   - Layout: from 1132 px of window `.attention` is `position: fixed; top/right/bottom: 0; width: 280px`, own
     scroll, sticky head, 150 px bottom room for the app's floating round buttons; `.boe-main-content:has(.attention)`
     gives the page header and body `padding-right: 280px + 24px` (rules in attentionPanel.module.css). Narrower it
     is `flex: 1 1 100%` in `.launcherShell` (modules.module.css, flex-wrap; `.launcher` still the size container,
     `flex: 999 1 640px`), so it wraps BELOW the tiles, and `AttentionStrip` ("N waiting on you" = handovers to accept
-    + requests, `@media (max-width: 1131px)`) at the top jumps to `#for-you`. Not drawn while arranging cards.
+    + held cash to hand over + requests; not the viewer's "Waiting for" cards, `@media (max-width: 1131px)`) at the top jumps to `#for-you`. Not drawn while arranging cards.
   - The panel's CSS is its own `attentionPanel.module.css`, keeping the tiles' stylesheet free of anything its tests
     forbid (moduleCardSurface.test.ts). `useAttentionSummary` is shared by panel and strip; queries dedupe by key.
     The HandoverBanner is not on the launcher (Finance pages keep it). Pinned by `attentionPanel.test.ts`,

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f1b8d05c` — Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
-- Commits on this branch: 1060
+- Commit: `9fbab293` — Docs: Founders' payouts is PR #497
+- Commits on this branch: 1062
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 166
 - Migrations: 380 (first `20260530_create_positions.sql`, latest `20270501000000_finance_founder_payouts.sql`)
 - Tables ever created: 188 (dropped at some point: 7)   SQL functions: 835   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `9fbab293` 2026-10-29 Docs: Founders' payouts is PR #497
+- `1d2913b7` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
 - `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
 - `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
@@ -37,8 +39,6 @@
 - `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
 - `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
 - `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
-- `2e35cd72` 2026-10-28 Sidebar: rest as an icon rail on desktop, open over the page on hover
-- `ec765a59` 2026-10-28 Notifications: phone alerts (Web Push) for lock-screen banners without opening the app
 
 ## Pages by top-level area
 
