@@ -27,7 +27,24 @@ import { MultilineText } from '@/components/ui/MultilineText'
 import { OrderDatesTimelineCard, OrderTypeValue, ORDER_TYPE_STAGE_LABEL } from '@/app/orders/[id]/OrderRedesign'
 import type { OrderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
-import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
+import {
+  PI_CUSTOMIZATION_HEADER_RED,
+  PI_CUSTOMIZATION_TINT,
+  PiCard,
+  PiCardHeader,
+  PiDiagnosticList,
+} from '@/components/orders/piPreview'
+import { AS_APPLICABLE_TEXT, FABRIC_FINISH_OPEN_LABEL } from '@/lib/orders/fabricFinishCost'
+import {
+  APPROVAL_PENDING_TEXT,
+  APPROVALS_LABEL,
+  COST_SHEET_GROUP_LABEL,
+  NO_FABRIC_TEXT,
+  approvalsLine,
+  comparisonText,
+  type ProductCost,
+  type ProductCostSummary,
+} from '@/lib/orders/productCostColumns'
 import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
 import { WORKBOOK_SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
@@ -52,7 +69,7 @@ import {
   REJECT_EXCEPTION_BUTTON_LABEL,
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
-import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
+import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, formatInr, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import {
   NUMBER_LABEL,
   ORDER_CREATED_HEADLINE,
@@ -665,6 +682,14 @@ type PiPaymentStatusCardProps = {
  * NOTHING BELOW THE HEADER IS MOUNTED WHILE IT IS CLOSED: a reader who has not
  * opened the card cannot see an amount, a percentage, the bar, a payment count
  * or any of the three controls, because none of them is in the markup at all.
+ *
+ * THE RIGHT-COLUMN LAYOUT (owner, 2026-10-30): the amount received and its
+ * share, one bar with the advance tick and its label, then one row each for
+ * Verified, Waiting for Finance and what is still to reach the advance — and the
+ * controls last, under the figures they act on. `figures` (Product value and
+ * Total before GST) is no longer passed by the PI page: both are in the
+ * Commercial breakdown under the products, and the total the shares are of is
+ * named in the header.
  */
 export function PiPaymentStatusCardView({
   status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
@@ -703,28 +728,14 @@ export function PiPaymentStatusCardView({
         >
           <h2 className="pi-detail-paystatus-title">{PAYMENT_STATUS_TITLE}</h2>
           {!expanded && <span className="pi-detail-paystatus-hint">{PAYMENT_COLLAPSED_HINT}</span>}
+          {expanded && status && status.total !== '—' && (
+            <span className="pi-detail-paystatus-base">of {status.total} {PAYMENT_BASE_WORDS}</span>
+          )}
           <Chevron size={18} strokeWidth={2.2} className="pi-detail-paystatus-chevron" aria-hidden="true" />
         </button>
 
         {expanded && (
           <div id={PAYMENT_PANEL_ID} className="pi-detail-paystatus-panel">
-            <div className="pi-detail-paystatus-actions">
-              {canVerify && decidableCount > 0 && (
-                <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('awaiting')} aria-haspopup="dialog">
-                  <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-                  Verify {decidableCount} pending
-                </button>
-              )}
-              {canAdd && (
-                <button type="button" className="boe-btn boe-btn-primary" onClick={onAddPayment} aria-haspopup="dialog">
-                  Add payment
-                </button>
-              )}
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('all')} aria-haspopup="dialog">
-                {PAYMENT_DETAILS_LABEL}
-              </button>
-            </div>
-
             {status === null ? (
               <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
             ) : (
@@ -747,6 +758,23 @@ export function PiPaymentStatusCardView({
                 )}
               </>
             )}
+
+            <div className="pi-detail-paystatus-actions">
+              {canVerify && decidableCount > 0 && (
+                <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('awaiting')} aria-haspopup="dialog">
+                  <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
+                  Verify {decidableCount} pending
+                </button>
+              )}
+              {canAdd && (
+                <button type="button" className="boe-btn boe-btn-primary" onClick={onAddPayment} aria-haspopup="dialog">
+                  Add payment
+                </button>
+              )}
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('all')} aria-haspopup="dialog">
+                {PAYMENT_DETAILS_LABEL}
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -754,27 +782,48 @@ export function PiPaymentStatusCardView({
   )
 }
 
+/** What the shares are of, after the amount in the header. */
+export const PAYMENT_BASE_WORDS = 'before GST'
+
+/** "Still to reach 40%" — the row under the two parts, while the advance is short. */
+export const PAYMENT_SHORTFALL_LABEL = 'Still to reach'
+
+/**
+ * The bar's fills in the right column: green verified, amber waiting, and a
+ * quiet grey for what has not been received yet (owner, 2026-10-30) — the red
+ * track read as an alarm on every PI that had simply not been paid in full.
+ */
+export const PAYMENT_RAIL_BAR_COLORS = {
+  confirmed: PAYMENT_BAR_COLORS.confirmed,
+  awaiting: PAYMENT_BAR_COLORS.awaiting,
+  unpaid: '#E9E5DF',
+} as const
+
 const METRIC_ICON: Record<PaymentMetric['key'], typeof Clock> = {
   confirmed: CheckCircle2,
   awaiting: Clock,
 }
 
 /**
- * One part of the received figure. A real button — focusable, announced as
- * opening a dialog — when there are rows behind it; a plain block when there are
- * none, so a zero never looks like somewhere to press.
+ * One part of the received figure, as a row: its colour, its name and count,
+ * and its amount on the right. A real button — focusable, announced as opening
+ * a dialog — when there are rows behind it; a plain row when there are none, so
+ * a zero never looks like somewhere to press.
  */
 function PiPaymentMetric({ metric, onOpen }: { metric: PaymentMetric; onOpen: () => void }) {
   const Icon = METRIC_ICON[metric.key]
   const className = `pi-detail-paystatus-metric pi-detail-paystatus-metric-${metric.key}`
   const body = (
     <>
-      <span className="pi-detail-paystatus-metric-label">
-        <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
-        {metric.label}
+      <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_RAIL_BAR_COLORS[metric.key] }} aria-hidden="true" />
+      <span className="pi-detail-paystatus-metric-text">
+        <span className="pi-detail-paystatus-metric-label">
+          <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
+          {metric.label}
+        </span>
+        <span className="pi-detail-paystatus-metric-meta">{metric.meta}</span>
       </span>
       <span className="pi-detail-paystatus-metric-value">{metric.amount}</span>
-      <span className="pi-detail-paystatus-metric-meta">{metric.meta}</span>
     </>
   )
   if (!metric.interactive) {
@@ -788,57 +837,57 @@ function PiPaymentMetric({ metric, onOpen }: { metric: PaymentMetric; onOpen: ()
   )
 }
 
-/** The headline, its two parts, and the bar they make up — with the bar's key. */
+/** The amount received, the bar with the advance tick, and the rows it is made of. */
 function PiPaymentPosition({ status, onOpenDetails }: {
   status: PaymentStatusView
   onOpenDetails: (filter: PiPaymentFilter) => void
 }) {
   const headline = describeReceivedHeadline(status)
+  const hasPercent = status.receivedPercent !== '—'
   return (
     <div className="pi-detail-paystatus-body">
-      <div className="pi-detail-paystatus-grid">
-        <div className="pi-detail-paystatus-position">
-          <div className="pi-detail-paystatus-headline">
-            <span className="pi-detail-paystatus-percent">{headline.figure}</span>
-            <span className="pi-detail-paystatus-word">{PAYMENT_STATUS_LABEL.received}</span>
-          </div>
-          <div className="pi-detail-paystatus-of">{headline.line}</div>
+      <div className="pi-detail-paystatus-position">
+        <div className="pi-detail-paystatus-headline">
+          <span className="pi-detail-paystatus-percent">{status.received}</span>
+          <span className="pi-detail-paystatus-word">
+            {PAYMENT_STATUS_LABEL.received}{hasPercent ? ` · ${headline.figure}` : ''}
+          </span>
         </div>
-        <div className="pi-detail-paystatus-metrics">
-          {buildPaymentMetrics(status).map(metric => (
-            <PiPaymentMetric key={metric.key} metric={metric} onOpen={() => onOpenDetails(metric.key)} />
-          ))}
-        </div>
+        {!hasPercent && <div className="pi-detail-paystatus-of">{headline.line}</div>}
       </div>
 
-      <PiPaymentProgress
-        confirmedPercent={status.barPercent}
-        receivedPercent={status.receivedBarPercent}
-        thresholdPercent={status.thresholdPercent}
-        height={10}
-        label={`Received: ${status.receivedPercent} of the Total before GST — ${status.percent} confirmed, ${status.pendingPercent} awaiting verification`}
-      />
-
-      <ul className="pi-detail-paystatus-legend">
-        <li className="pi-detail-paystatus-legend-item">
-          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.confirmed }} aria-hidden="true" />
-          {PAYMENT_STATUS_LABEL.confirmed}
-        </li>
-        <li className="pi-detail-paystatus-legend-item">
-          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.awaiting }} aria-hidden="true" />
-          {PAYMENT_STATUS_LABEL.awaiting}
-        </li>
-        <li className="pi-detail-paystatus-legend-item">
-          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.unpaid }} aria-hidden="true" />
-          {PAYMENT_STATUS_LABEL.unpaid}
-        </li>
-        {status.thresholdLabel && (
-          <li className="pi-detail-paystatus-legend-item">
-            <span className="pi-detail-paystatus-tick" aria-hidden="true" />
-            {status.thresholdLabel} advance marker
-          </li>
+      <div className="pi-detail-paystatus-bar">
+        <PiPaymentProgress
+          confirmedPercent={status.barPercent}
+          receivedPercent={status.receivedBarPercent}
+          thresholdPercent={status.thresholdPercent}
+          height={10}
+          palette={PAYMENT_RAIL_BAR_COLORS}
+          label={`Received: ${status.receivedPercent} of the Total before GST — ${status.percent} confirmed, ${status.pendingPercent} awaiting verification`}
+        />
+        {status.thresholdLabel && status.thresholdPercent !== null && (
+          <span className="pi-detail-paystatus-tick-label" style={{ left: `${status.thresholdPercent}%` }}>
+            {status.thresholdLabel} advance
+          </span>
         )}
-      </ul>
+      </div>
+
+      <div className="pi-detail-paystatus-metrics">
+        {buildPaymentMetrics(status).map(metric => (
+          <PiPaymentMetric key={metric.key} metric={metric} onOpen={() => onOpenDetails(metric.key)} />
+        ))}
+        {status.shortfall && (
+          <div className="pi-detail-paystatus-metric pi-detail-paystatus-metric-shortfall is-empty" data-metric="shortfall">
+            <span className="pi-detail-paystatus-swatch pi-detail-paystatus-swatch--open" aria-hidden="true" />
+            <span className="pi-detail-paystatus-metric-text">
+              <span className="pi-detail-paystatus-metric-label">
+                {PAYMENT_SHORTFALL_LABEL} {status.thresholdLabel ?? 'the advance'}
+              </span>
+            </span>
+            <span className="pi-detail-paystatus-metric-value">{status.shortfall}</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -867,14 +916,96 @@ export const BREAKDOWN_TITLE = 'Commercial breakdown'
  * THE QUALIFIER IS NOT A COMMERCIAL ROW and is never built as one. It carries
  * no amount and enters no arithmetic; buildBreakdownView attaches it.
  */
-export function PiCommercialBreakdown({ view, commercialTerms, onEditTerms }: {
+export function PiCommercialBreakdown({ view, commercialTerms, onEditTerms, layout = 'card', note = null }: {
   view: BreakdownView
   /** The stored commercial terms note, or null. */
   commercialTerms?: string | null
   /** Opens the PI terms editor, where the viewer may change these. */
   onEditTerms?: (() => void) | null
+  /**
+   * 'invoice' (owner, 2026-10-30): drawn at the foot of the Products card, as
+   * an invoice draws its totals under its lines — the Commercial terms and
+   * `note` on the left, the figures on the right, and no card of its own.
+   */
+  layout?: 'card' | 'invoice'
+  /** Under the terms, in the invoice layout only. */
+  note?: React.ReactNode
 }) {
   const terms = commercialTermsNote(commercialTerms)
+
+  const rows = (
+    <dl className="pi-detail-breakdown-rows">
+      {view.rows.map(row => {
+        const classes = ['pi-detail-breakdown-row']
+        if (row.divider) classes.push('pi-detail-breakdown-subtotal')
+        if (row.deduction) classes.push('pi-detail-breakdown-deduction')
+        if (row.emphasis === 'total') classes.push('pi-detail-breakdown-grand')
+        return (
+          <div key={row.key} className={classes.join(' ')}>
+            <dt>
+              {row.label}
+              {/* Directly under the figure it explains. */}
+              {row.qualifier && <span className="pi-detail-breakdown-qualifier">{row.qualifier}</span>}
+            </dt>
+            <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
+              {row.value}
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+
+  /* ── What the prices cover ──
+     Beside or under the figures, because it qualifies all of them. Shown even
+     when it is the standard BOE wording: a reader checking what was quoted
+     needs to see the sentence, not to be told it is standard. */
+  const termsBlock = (
+    <div className="pi-detail-breakdown-terms">
+      <div className="pi-detail-breakdown-terms-head">
+        <span>{COMMERCIAL_TERMS_LABEL}</span>
+        {onEditTerms && (
+          <button
+            type="button"
+            onClick={onEditTerms}
+            className="pi-detail-summary-inline-action"
+            aria-haspopup="dialog"
+            aria-label="Edit PI terms and fabric responsibility"
+          >
+            <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+            Edit
+          </button>
+        )}
+      </div>
+      {terms
+        ? (
+          /* One point to a line: a run-together note reads as a list. */
+          <ul className="pi-detail-breakdown-terms-list">
+            {commercialTermsPoints(terms).map((point, i) => (
+              <li key={i} className="pi-detail-breakdown-terms-point">{point}</li>
+            ))}
+          </ul>
+        )
+        : (
+          <div className="pi-detail-breakdown-terms-absent">{COMMERCIAL_TERMS_ABSENT}</div>
+        )}
+    </div>
+  )
+
+  if (layout === 'invoice') {
+    return (
+      <section className="pi-detail-breakdown pi-detail-breakdown--invoice" aria-label={BREAKDOWN_TITLE}>
+        <div className="pi-detail-breakdown-side">
+          {termsBlock}
+          {note}
+        </div>
+        <div className="pi-detail-breakdown-figures">
+          <div className="pi-detail-breakdown-title">{BREAKDOWN_TITLE}</div>
+          {rows}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <PiCard>
@@ -882,60 +1013,8 @@ export function PiCommercialBreakdown({ view, commercialTerms, onEditTerms }: {
         <div className="pi-detail-breakdown-head">
           <div className="pi-detail-breakdown-title">{BREAKDOWN_TITLE}</div>
         </div>
-        <dl className="pi-detail-breakdown-rows">
-          {view.rows.map(row => {
-            const classes = ['pi-detail-breakdown-row']
-            if (row.divider) classes.push('pi-detail-breakdown-subtotal')
-            if (row.deduction) classes.push('pi-detail-breakdown-deduction')
-            if (row.emphasis === 'total') classes.push('pi-detail-breakdown-grand')
-            return (
-              <div key={row.key} className={classes.join(' ')}>
-                <dt>
-                  {row.label}
-                  {/* Directly under the figure it explains. */}
-                  {row.qualifier && <span className="pi-detail-breakdown-qualifier">{row.qualifier}</span>}
-                </dt>
-                <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
-                  {row.value}
-                </dd>
-              </div>
-            )
-          })}
-        </dl>
-
-        {/* ── What the prices cover ──
-            Under the figures, because it qualifies all of them. Shown even
-            when it is the standard BOE wording: a reader checking what was
-            quoted needs to see the sentence, not to be told it is standard. */}
-        <div className="pi-detail-breakdown-terms">
-          <div className="pi-detail-breakdown-terms-head">
-            <span>{COMMERCIAL_TERMS_LABEL}</span>
-            {onEditTerms && (
-              <button
-                type="button"
-                onClick={onEditTerms}
-                className="pi-detail-summary-inline-action"
-                aria-haspopup="dialog"
-                aria-label="Edit PI terms and fabric responsibility"
-              >
-                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
-                Edit
-              </button>
-            )}
-          </div>
-          {terms
-            ? (
-              /* One point to a line: a run-together note reads as a list. */
-              <ul className="pi-detail-breakdown-terms-list">
-                {commercialTermsPoints(terms).map((point, i) => (
-                  <li key={i} className="pi-detail-breakdown-terms-point">{point}</li>
-                ))}
-              </ul>
-            )
-            : (
-              <div className="pi-detail-breakdown-terms-absent">{COMMERCIAL_TERMS_ABSENT}</div>
-            )}
-        </div>
+        {rows}
+        {termsBlock}
       </section>
     </PiCard>
   )
@@ -1183,7 +1262,7 @@ export function PiWorkflowPanel({
 
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || resubmission || advanceRefusal
-    || approvedOrder || showPiApproved || (isReviewer && primaryNote),
+    || approvedOrder || showPiApproved,
   )
 
   /**
@@ -1272,73 +1351,10 @@ export function PiWorkflowPanel({
           </div>
         )}
 
-        {hasActions && (
-          <div className="pi-detail-workflow-actions">
-            {ownerActions && (
-              <>
-                <button className="boe-btn boe-btn-ghost" onClick={onChangePi} disabled={acting}>
-                  <Upload size={13} strokeWidth={2} />
-                  {CHANGE_PI_BUTTON_LABEL}
-                </button>
-                <button
-                  className="boe-btn boe-btn-primary"
-                  onClick={onSubmit}
-                  disabled={acting || blockingCount > 0 || submitBlocked}
-                  title={submitTitle}
-                >
-                  <Send size={13} strokeWidth={2} />
-                  {submitButtonLabel(status)}
-                </button>
-              </>
-            )}
-
-            {/* Drawn from the PI-review authority alone, and therefore still
-                here after an advance exception has been approved.
-
-                NEEDS CHANGES AND REJECT KEEP THEIR PLACE AFTER FINANCE HAS
-                VERIFIED. A verified PI is not an approved one, and a reviewer
-                who can no longer send back a document finance happened to sign
-                off has lost the decision, not gained one. */}
-            {isReviewer && (
-              <>
-                <button className="boe-btn boe-btn-ghost" onClick={onRequestChanges} disabled={acting}>
-                  <Undo2 size={13} strokeWidth={2} />
-                  {REQUEST_CHANGES_BUTTON_LABEL}
-                </button>
-                <button
-                  className="boe-btn boe-btn-ghost"
-                  onClick={onReject}
-                  disabled={acting}
-                  style={{ color: colors.red, borderColor: 'rgba(180,35,50,0.35)' }}
-                >
-                  <Ban size={13} strokeWidth={2} />
-                  {REJECT_BUTTON_LABEL}
-                </button>
-                {/* THE PRIMARY ACTION, and the last one, so the destructive
-                    choices are never the ones nearest the thumb.
-
-                    SHOWN AND DISABLED rather than hidden when a precondition is
-                    unmet: every blocker is somebody's outstanding task, and a
-                    reviewer who cannot see the control cannot see what is
-                    holding it up. `title` carries the same sentence the panel
-                    prints, so a pointer user gets it too. */}
-                <button
-                  className="boe-btn boe-btn-primary pi-approve-btn"
-                  onClick={onApprove}
-                  disabled={acting || primaryDisabled}
-                  title={primaryNote ?? undefined}
-                >
-                  <CheckCircle2 size={13} strokeWidth={2} />
-                  {primaryLabel}
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {hasBody && (
-        <div style={{
+        <div className="pi-detail-workflow-body" style={{
           padding: '0 20px 15px',
           display: 'flex', flexDirection: 'column', gap: '9px',
         }}>
@@ -1360,13 +1376,6 @@ export function PiWorkflowPanel({
             }}>
               <ShieldCheck size={13} strokeWidth={2} />
               <span>{piApprovedLine}</span>
-            </div>
-          )}
-          {/* Why the primary action cannot be pressed yet, or what it will and
-              will not do — for the reviewer it is addressed to, and nobody else. */}
-          {isReviewer && primaryNote && (
-            <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-              {primaryNote}
             </div>
           )}
           {panel.instruction && (
@@ -1412,7 +1421,80 @@ export function PiWorkflowPanel({
         </div>
       )}
 
+      {/* THE PENDING ADVANCE DECISION, BEFORE THE PI DECISION (owner,
+          2026-10-30): the Confirmed Order waits on it, so it is decided first. */}
       {advanceBand && <div className="pi-detail-workflow-band">{advanceBand}</div>}
+
+      {hasActions && (
+        <div className="pi-detail-workflow-actions">
+          {ownerActions && (
+            <>
+              <button className="boe-btn boe-btn-ghost" onClick={onChangePi} disabled={acting}>
+                <Upload size={13} strokeWidth={2} />
+                {CHANGE_PI_BUTTON_LABEL}
+              </button>
+              <button
+                className="boe-btn boe-btn-primary"
+                onClick={onSubmit}
+                disabled={acting || blockingCount > 0 || submitBlocked}
+                title={submitTitle}
+              >
+                <Send size={13} strokeWidth={2} />
+                {submitButtonLabel(status)}
+              </button>
+            </>
+          )}
+
+          {/* Drawn from the PI-review authority alone, and therefore still
+              here after an advance exception has been approved.
+
+              NEEDS CHANGES AND REJECT KEEP THEIR PLACE AFTER FINANCE HAS
+              VERIFIED. A verified PI is not an approved one, and a reviewer
+              who can no longer send back a document finance happened to sign
+              off has lost the decision, not gained one. */}
+          {isReviewer && (
+            <>
+              {/* THE PRIMARY ACTION FIRST, full width (owner's mockup,
+                  2026-10-30), with the sentence about it directly under it;
+                  Return and Close sit below as a pair, smaller and apart, so a
+                  destructive choice is never the big button.
+
+                  SHOWN AND DISABLED rather than hidden when a precondition is
+                  unmet: every blocker is somebody's outstanding task, and a
+                  reviewer who cannot see the control cannot see what is
+                  holding it up. `title` carries the same sentence the panel
+                  prints, so a pointer user gets it too. */}
+              <button
+                className="boe-btn boe-btn-primary pi-approve-btn"
+                onClick={onApprove}
+                disabled={acting || primaryDisabled}
+                title={primaryNote ?? undefined}
+              >
+                <CheckCircle2 size={13} strokeWidth={2} />
+                {primaryLabel}
+              </button>
+              {/* Why the primary action cannot be pressed yet, or what it will
+                  and will not do — for the reviewer it is addressed to. */}
+              {primaryNote && <p className="pi-detail-workflow-note">{primaryNote}</p>}
+              <div className="pi-detail-workflow-secondary">
+                <button className="boe-btn boe-btn-ghost" onClick={onRequestChanges} disabled={acting}>
+                  <Undo2 size={13} strokeWidth={2} />
+                  {REQUEST_CHANGES_BUTTON_LABEL}
+                </button>
+                <button
+                  className="boe-btn boe-btn-ghost"
+                  onClick={onReject}
+                  disabled={acting}
+                  style={{ color: colors.red, borderColor: 'rgba(180,35,50,0.35)' }}
+                >
+                  <Ban size={13} strokeWidth={2} />
+                  {REJECT_BUTTON_LABEL}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </ClassedCard>
   )
 }
@@ -1892,38 +1974,217 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
   )
 }
 
-// ── The lower grid ────────────────────────────────────────────────────────────
+// ── The product list's fabric and packing (owner, 2026-10-30) ─────────────────
+//
+// The Fabric & Finish cost sheet, merged into the product list: three figures
+// over the table, a Fabric and a Packing column on every line, and a totals row.
+// Every figure is productCostColumns.ts's, which takes them from the cost
+// sheet's own rules; nothing here does arithmetic. The cost sheet itself (typing
+// a blank, the finish pictures) still opens from "Open cost sheet".
+
+/** The PI page's product columns: the import preview's, with Dimensions and
+ *  Material moved under the product name to make room for Fabric and Packing. */
+export const PI_DETAIL_PRODUCT_COLUMNS: readonly { key: string; label: string; align: 'left' | 'right'; cost?: true; accent?: true }[] = [
+  { key: 'sequence', label: '#', align: 'left' },
+  { key: 'image', label: 'Image', align: 'left' },
+  { key: 'product', label: 'Product', align: 'left' },
+  { key: 'customization', label: 'Customization', align: 'left', accent: true },
+  { key: 'quantity', label: 'Qty', align: 'right' },
+  { key: 'cost', label: 'Cost / piece', align: 'right' },
+  { key: 'fabric', label: 'Fabric', align: 'right', cost: true },
+  { key: 'packing', label: 'Packing', align: 'right', cost: true },
+  { key: 'lineTotal', label: 'Line total', align: 'right' },
+]
 
 /**
- * Internal order details beside the commercial breakdown, as one band under
- * the products — the Order page's lower band (owner, 2026-10-29).
- *
- * THE DETAILS TAKE THE LEFT AND THE WIDTH. They are a property list and, while
- * editing, a form; both need room.
- *
- * THE BREAKDOWN TAKES THE RIGHT, the Order page's width. It is compact
- * label-value data, and on the right its figures land under the Cost / piece
- * and Line total columns of the products table directly above — which is the
- * way a reader moves anyway, from line totals down to order totals.
- *
- * STACKED, THE BREAKDOWN COMES FIRST. A phone reader has just finished the
- * product values and wants the total next. The DOM order is details-then-
- * breakdown so the desktop layout needs no reordering; the single column flips
- * it with `order`, which costs nothing and no JavaScript.
- *
- * Top-aligned and never stretched: an open form must not drag the breakdown
- * card down to its own height. The activity trail is no longer here: it is the
- * full-width card under this band.
+ * The head of the PI page's own product table. The import preview keeps its
+ * own head (piPreview.tsx is held byte-for-byte); this one adds the two cost
+ * columns under a "From the cost sheet" group heading.
  */
-export function PiLowerGrid({ commercial, details }: {
-  commercial: React.ReactNode
-  details: React.ReactNode
-}) {
+export function PiDetailProductHead() {
   return (
-    <div className="pi-detail-lower-grid">
-      <div className="pi-detail-details-col">{details}</div>
-      <div className="pi-detail-commercial-col">{commercial}</div>
+    <thead>
+      <tr className="pi-products-group-row">
+        <td colSpan={6} aria-hidden="true" />
+        <th colSpan={2} scope="colgroup" className="pi-products-costgroup">{COST_SHEET_GROUP_LABEL}</th>
+        <td aria-hidden="true" />
+      </tr>
+      <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+        {PI_DETAIL_PRODUCT_COLUMNS.map(column => (
+          <th
+            key={column.key}
+            scope="col"
+            className={column.cost ? 'pi-products-costcol' : undefined}
+            style={{
+              padding: '8px 14px',
+              textAlign: column.align,
+              fontSize: '12px', fontWeight: column.accent ? 700 : 600,
+              background: column.accent ? PI_CUSTOMIZATION_TINT : undefined,
+              color: column.accent ? PI_CUSTOMIZATION_HEADER_RED : colors.muted,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {column.label}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  )
+}
+
+const metresText = (metres: number): string =>
+  `${metres.toLocaleString('en-IN', { maximumFractionDigits: 2 })} m`
+
+function CostChoice({ choice }: { choice: ProductCost['choice'] }) {
+  if (!choice) return null
+  return choice.done
+    ? <span className="pi-cost-choice pi-cost-choice--done">{choice.text}</span>
+    : <span className="pi-cost-choice pi-cost-choice--pending">{APPROVAL_PENDING_TEXT}</span>
+}
+
+/** The fabric figure of one line: amount, metres × rate, and the fabric choice. */
+function FabricFigure({ cost }: { cost: ProductCost }) {
+  const hasMetres = cost.metres !== null && cost.metres > 0
+  return (
+    <>
+      {cost.fabricAmount !== null && hasMetres
+        ? <span className="pi-cost-amount">{formatInr(cost.fabricAmount)}</span>
+        : <span className="pi-cost-absent">{hasMetres ? 'Rate not given' : NO_FABRIC_TEXT}</span>}
+      {hasMetres && (
+        <span className="pi-cost-sub">
+          {metresText(cost.metres as number)}
+          {cost.pricePerMetre !== null && ` · ${formatInr(cost.pricePerMetre)}/m`}
+        </span>
+      )}
+      <CostChoice choice={cost.choice} />
+    </>
+  )
+}
+
+/** The packing figure of one line: amount, and its type and rate per piece. */
+function PackingFigure({ cost }: { cost: ProductCost }) {
+  const detail = [cost.packingType, cost.packingPerPiece !== null ? `${formatInr(cost.packingPerPiece)}/pc` : null]
+    .filter(Boolean).join(' · ')
+  return (
+    <>
+      {cost.packingAmount !== null
+        ? <span className="pi-cost-amount">{formatInr(cost.packingAmount)}</span>
+        : <span className="pi-cost-absent">Not given</span>}
+      {detail && <span className="pi-cost-sub">{detail}</span>}
+    </>
+  )
+}
+
+/**
+ * The two cost cells of one table row. `loaded` is false while the sheet is
+ * being read; a line the sheet has nothing for shows a dash.
+ */
+export function PiProductCostCells({ cost, loaded }: { cost: ProductCost | null; loaded: boolean }) {
+  const empty = <span className="pi-cost-absent">{loaded ? '—' : '…'}</span>
+  return (
+    <>
+      <td className="pi-products-costcol pi-cost-cell">{cost ? <FabricFigure cost={cost} /> : empty}</td>
+      <td className="pi-products-costcol pi-cost-cell">{cost ? <PackingFigure cost={cost} /> : empty}</td>
+    </>
+  )
+}
+
+/** The same two figures on a phone, as a box under the product. */
+export function PiProductCostBox({ cost }: { cost: ProductCost }) {
+  return (
+    <div className="pi-cost-box">
+      <div className="pi-cost-box-cell">
+        <span className="pi-cost-box-label">Fabric</span>
+        <FabricFigure cost={cost} />
+      </div>
+      <div className="pi-cost-box-cell">
+        <span className="pi-cost-box-label">Packing</span>
+        <PackingFigure cost={cost} />
+      </div>
     </div>
+  )
+}
+
+/**
+ * THE THREE FIGURES OVER THE TABLE — the fabric total and metres, the packing
+ * total, and how many products have their fabric and finish approved — with
+ * whether each total matches the PI's own line, and the way into the sheet.
+ */
+export function PiProductCostStrip({ summary, loaded, onOpen }: {
+  summary: ProductCostSummary | null
+  loaded: boolean
+  onOpen: () => void
+}) {
+  const open = (
+    <button type="button" className="boe-btn boe-btn-ghost pi-cost-strip-open" onClick={onOpen} aria-haspopup="dialog">
+      {FABRIC_FINISH_OPEN_LABEL}
+      <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
+    </button>
+  )
+  if (!summary) {
+    return (
+      <div className="pi-cost-strip pi-cost-strip--empty">
+        <span className="pi-cost-strip-note">{loaded ? 'The cost sheet could not be read.' : 'Reading the cost sheet…'}</span>
+        {open}
+      </div>
+    )
+  }
+  const total = (rounded: number | null) => (rounded === null ? AS_APPLICABLE_TEXT : formatInr(rounded))
+  const matchChip = (comparison: ProductCostSummary['fabric']['comparison']) => {
+    const text = comparisonText(comparison, formatInr)
+    return text ? <span className={`pi-cost-choice ${comparison.state === 'matches' ? 'pi-cost-choice--done' : 'pi-cost-choice--pending'}`}>{text}</span> : null
+  }
+  const lines = summary.approvals.total
+  return (
+    <div className="pi-cost-strip">
+      <div className="pi-cost-stat">
+        <span className="pi-cost-stat-label">Fabric</span>
+        <span className="pi-cost-stat-value">{total(summary.fabric.rounded)}</span>
+        <span className="pi-cost-stat-sub">
+          {summary.fabric.metres > 0 && <>{metresText(summary.fabric.metres)} across {summary.fabric.products} product{summary.fabric.products === 1 ? '' : 's'}</>}
+          {matchChip(summary.fabric.comparison)}
+        </span>
+      </div>
+      <div className="pi-cost-stat">
+        <span className="pi-cost-stat-label">Packing</span>
+        <span className="pi-cost-stat-value">{total(summary.packing.rounded)}</span>
+        <span className="pi-cost-stat-sub">
+          {lines > 0 && (summary.packing.products === lines ? `All ${lines} priced` : `${summary.packing.products} of ${lines} priced`)}
+          {matchChip(summary.packing.comparison)}
+        </span>
+      </div>
+      <div className="pi-cost-stat">
+        <span className="pi-cost-stat-label">{APPROVALS_LABEL}</span>
+        <span className="pi-cost-stat-value">{summary.approvals.done} of {lines}</span>
+        <span className="pi-cost-stat-sub">{approvalsLine(summary.approvals)}</span>
+      </div>
+      <div className="pi-cost-strip-go">{open}</div>
+    </div>
+  )
+}
+
+/** The table's last row: pieces, the two cost totals and the product value. */
+export function PiProductTotalsRow({ pieces, summary, productValue }: {
+  /** Pieces across the lines — a count, not money. */
+  pieces: number
+  summary: ProductCostSummary | null
+  /** The breakdown's own "Product value, before discount" figure, as text. */
+  productValue: string | null
+}) {
+  const total = (rounded: number | null | undefined) =>
+    rounded === undefined ? '' : rounded === null ? AS_APPLICABLE_TEXT : formatInr(rounded)
+  return (
+    <tfoot>
+      <tr className="pi-products-total">
+        <td colSpan={4}>Total</td>
+        <td style={{ textAlign: 'right' }}>{pieces}</td>
+        <td />
+        <td className="pi-products-costcol" style={{ textAlign: 'right' }}>{total(summary?.fabric.rounded)}</td>
+        <td className="pi-products-costcol" style={{ textAlign: 'right' }}>{total(summary?.packing.rounded)}</td>
+        <td style={{ textAlign: 'right' }}>{productValue ?? ''}</td>
+      </tr>
+    </tfoot>
   )
 }
 

@@ -237,7 +237,7 @@ describe('the page wires it through the header and around every figure it draws'
     const open = page.indexOf('<AmountMaskRegion hidden={amountsHidden}>')
     const close = page.indexOf('</AmountMaskRegion>')
     assert.ok(open > 0 && close > open)
-    for (const inside of ['<PiPaymentStatusCard', '<PiProductTableHead', '<PiCommercialBreakdown', '<PiSubmitConfirmModal',
+    for (const inside of ['<PiPaymentStatusCard', '<PiDetailProductHead', '<PiCommercialBreakdown', '<PiSubmitConfirmModal',
       '<PiPaymentDetailsModal', '<AddPiPaymentModal', '<PiApproveOrderModal', '<PiCompletionPanel']) {
       const at = page.indexOf(inside)
       assert.ok(at > open && at < close, `${inside} is inside the masked region`)

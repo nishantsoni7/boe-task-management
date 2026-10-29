@@ -5,17 +5,20 @@
 
 ## Snapshot
 
-- Commit: `1cc848a7` — Orders: PI payments popup as a table, with who verified each payment and a Details row
-- Commits on this branch: 1077
+- Commit: `b68fe055` — Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
+- Commits on this branch: 1080
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
-- Test files: 681   Next.js 16.2.6, React 19.2.4
+- Test files: 682   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `b68fe055` 2026-10-30 Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
+- `c7799b48` 2026-10-30 Merge main (#510, approving opens the Order) into fix/approve-popup-simple
 - `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
+- `d5fa10e8` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
@@ -36,9 +39,6 @@
 - `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
-- `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
-- `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
-- `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 97 source, 146 test
+- `src/lib/orders` — 98 source, 147 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

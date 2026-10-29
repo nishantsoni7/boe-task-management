@@ -27,7 +27,7 @@ import {
   type OrderDetailsReviewRow,
   type OrderDetailsRow,
 } from '@/lib/orders/salesOrderDetails'
-import { Choice, ChoiceGroup, FormField, FormGrid, RequiredMark, describedBy } from './PiFormParts'
+import { Choice, ChoiceGroup, FormField, FormGrid, RequiredMark, SectionChip, describedBy } from './PiFormParts'
 
 /** The id of a field's input, for the readiness checklist to focus. */
 export const orderDetailsInputId = (key: OrderDetailsFieldKey): string =>
@@ -298,6 +298,11 @@ export function PiOrderDetailsSection({
           <Lock size={10} strokeWidth={2.2} aria-hidden />
           Internal
         </span>
+        {/* The section's one status, for whoever is completing it: the same
+            gaps the cells below mark, counted. */}
+        {canEdit && !locked && (gaps.size > 0
+          ? <SectionChip tone="amber">{gaps.size} needed</SectionChip>
+          : <SectionChip tone="green">Complete</SectionChip>)}
         {canEdit && !editing && (
           <button type="button" className="boe-btn boe-btn-ghost pi-section-action" onClick={open}>
             <Pencil size={12} aria-hidden /> {gaps.size > 0 ? 'Complete details' : 'Edit details'}

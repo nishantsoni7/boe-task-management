@@ -70,48 +70,6 @@ const PARSER = 'src/lib/pi/masterSheetParser.ts'
 
 
 /**
- * The Products card with every editing affordance taken back out.
- *
- * A block is `{canEditProducts …}` through the `)}` that closes it at the same
- * indentation, together with the JSX comment introducing it and one blank line
- * separating it from what came before. Indentation-delimited rather than
- * brace-counted on purpose: the markup is formatted, and a scan that counted
- * braces would have to understand template literals and arrow bodies to be
- * right about where a block ends.
- */
-function withoutEditingBlocks(source: string): string {
-  const lines = source.split('\n')
-  const drop = new Set<number>()
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim().startsWith('{canEditProducts')) continue
-    const indent = lines[i].length - lines[i].trimStart().length
-    let end = -1
-    for (let j = i + 1; j < lines.length; j++) {
-      const l = lines[j]
-      if (l.trim() === ')}' && l.length - l.trimStart().length === indent) { end = j; break }
-    }
-    assert.notEqual(end, -1, `an editing block opened at line ${i} is never closed`)
-    for (let j = i; j <= end; j++) drop.add(j)
-
-    // The JSX comment above it, when there is one, and one blank separator.
-    let k = i - 1
-    if (k >= 0 && lines[k].trim().endsWith('*/}')) {
-      while (k >= 0) {
-        drop.add(k)
-        if (lines[k].trim().startsWith('{/*')) break
-        k--
-      }
-      k--
-    }
-    if (k >= 0 && lines[k].trim() === '' && !drop.has(k)) drop.add(k)
-    i = end
-  }
-
-  return lines.filter((_, i) => !drop.has(i)).join('\n')
-}
-
-/**
  * THE ISSUES-FIRST UPLOAD PASS (2026-09-27), set aside and only that. It moved
  * the Upload PI verdict, warnings and Save Draft above the document, reworded
  * the ready card (saving is not submitting), widened Save Draft on a phone,
@@ -126,22 +84,6 @@ function undoAll(src: string, undo: [string, string][], label: string): string {
     out = out.replace(is, () => was)
   }
   return out
-}
-
-function withoutIssuesFirstDetail(src: string): string {
-  return undoAll(src, [
-    [[
-      "                      {/* The code in the interface's sans, as on the upload",
-      '                          preview — the monospace set B001 as a heavy block. */}',
-      '                      <div style={{',
-      "                        fontSize: '12px', fontWeight: 600, color: colors.secondary,",
-      "                        fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',",
-      '                      }}>',
-    ].join('\n'),
-    "                      <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>"],
-    ["<td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>",
-     "<td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>"],
-  ], 'PI detail')
 }
 
 function withoutIssuesFirstReadyCard(card: string): string {
@@ -161,35 +103,34 @@ function withoutIssuesFirstReadyCard(card: string): string {
 // ── The product table ─────────────────────────────────────────────────────────
 
 describe('the PI product table is byte-for-byte what it was', () => {
-  test('the Products card gained editing controls and changed nothing else', () => {
-    const base = atBase(DETAIL_PAGE)
-    if (base === null) return
+  // The PI Draft page's Products card, from its heading comment to Activity.
+  const MARKERS = ['{/* ── 4. Products, with their fabric and packing', '{/* ── 6b. Activity, full width, last'] as const
 
-    // WHY THIS IS NO LONGER A PLAIN EQUALITY. The card was pinned byte-for-byte
-    // to prove a performance pass had not disturbed it. It has since been asked
-    // to carry the product editor — an Edit control on each line, a Reorder
-    // control, and the statement of what only a corrected workbook can fix.
-    //
-    // The guarantee is kept in the form that still has teeth: UNDO THE
-    // ADDITIONS AND THE ORIGINAL MUST COME BACK, line for line. Every editing
-    // affordance sits inside a `{canEditProducts && …}` block, so removing
-    // those blocks — and the JSX comments introducing them — must leave exactly
-    // what origin/main renders. A changed column, a moved style, a dropped
-    // mobile card or a figure rendered differently all survive the undo and
-    // show up here.
-    const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
-    const undone = withoutEditingBlocks(region(withoutIssuesFirstDetail(now(DETAIL_PAGE)), ...MARKERS, 'current'))
-
-    assert.equal(styleBlind(undone), styleBlind(region(base, ...MARKERS, 'base')),
-      'the mobile cards, the desktop table, every column and every style are unchanged')
+  test('the Products card was redesigned on purpose (owner, 2026-10-30): every figure is still the stored one, as text', () => {
+    // WHY THIS IS NO LONGER A COMPARISON WITH THE STARTING COMMIT. The card was
+    // held line for line against Phase C's base, editing controls undone, so
+    // that no later pass could reshape it unnoticed. The owner has since
+    // redesigned it in the open — a mockup agreed first — merging the Fabric &
+    // Finish cost sheet into the list: two cost columns, a strip of totals, a
+    // totals row and the breakdown as the card's foot. What the guard protected
+    // still holds and is asserted here: every figure on a line is the stored
+    // one, formatted, never computed, and the shared pieces it is drawn with are
+    // piPreview's, which stay byte-for-byte below.
+    const card = region(now(DETAIL_PAGE), ...MARKERS, 'current')
+    for (const figure of ['formatInr(p.costPerPiece)', 'formatInr(p.lineTotal)', "{p.quantity ?? '—'}"]) {
+      assert.ok(card.includes(figure), `${figure} is still drawn as stored`)
+    }
+    for (const shared of ['<PiProductThumbnail', '<PiCustomizationCell', 'PI_THUMBNAIL_SIZE.representativeCompact', '<PiFieldRow']) {
+      assert.ok(card.includes(shared), `${shared} is still the shared piece`)
+    }
+    assert.ok(!/p\.quantity\s*\*|\*\s*p\.costPerPiece/.test(card), 'no line total is recomputed in the browser')
   })
 
   test('and the editing controls really are there', () => {
-    const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
     const card = region(now(DETAIL_PAGE), ...MARKERS, 'current')
     // Four affordances, no more: reorder, the mobile line control, the desktop
-    // line control, and the note naming what needs a corrected workbook. A
-    // fifth would mean the undo above was written around something new.
+    // line control, and the note naming what needs a corrected workbook (now
+    // under the Commercial terms, at the card's foot).
     assert.equal((card.match(/\{canEditProducts /g) ?? []).length, 4)
     assert.ok(card.includes('setReorderOpen(true)'))
     assert.ok(card.includes('setProductEditId(p.id)'))

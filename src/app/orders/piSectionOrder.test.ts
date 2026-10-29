@@ -116,17 +116,26 @@ describe('the two PI screens put the answer above the product table', () => {
     // The panel is drawn in the commercial row when the completion area shows, and
     // in the decision row when it does not — so the EARLIEST section is the one the
     // reader meets first.
-    const firstPanel = s.findIndex(marks => marks.has('workflowPanel'))
-    assert.ok(at(s, 'PiTopCard') < firstPanel,
-      'who, when and how much paid — above the controls that act on them')
-    assert.ok(at(s, 'PiPaymentStatusCard') === firstPanel && firstPanel < at(s, 'PiCompletionPanel'),
-      'Management review sits beside the Finance card (figures + payment), above the Complete PI details area')
-    assert.ok(at(s, 'PiCompletionPanel') < at(s, 'PiProductTableHead'),
+    //
+    // ONE PLACE (owner, 2026-10-30): the details, the payment and Submit — or
+    // the management review — are one section; what management asked is read
+    // first by everybody who is not deciding it.
+    const panels = s.flatMap((marks, i) => marks.has('workflowPanel') ? [i] : [])
+    assert.equal(panels.length, 2, 'the workflow panel has two homes, and is placed in one of them')
+    assert.ok(panels[0] < at(s, 'PiTopCard'),
+      'what management asked comes first, above the top card')
+    assert.ok(at(s, 'PiTopCard') < at(s, 'PiCompletionPanel'), 'who and when, above the details')
+    assert.ok(at(s, 'PiCompletionPanel') === at(s, 'PiPaymentStatusCard')
+      && at(s, 'PiPaymentStatusCard') === at(s, 'PiSubmitCard') && at(s, 'PiSubmitCard') === panels[1],
+      'the details, the payment, Submit and the review are one place')
+    assert.ok(at(s, 'PiCompletionPanel') < at(s, 'PiDetailProductHead'),
       'the details a PI needs are completed above the products, not below them')
-    assert.ok(at(s, 'PiTopCard') < at(s, 'PiProductTableHead'),
+    assert.ok(at(s, 'PiTopCard') < at(s, 'PiDetailProductHead'),
       'the money received must not sit below the lines it was received against')
-    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiLowerGrid'),
-      'the commercial breakdown and Activity stay below the products')
+    assert.equal(at(s, 'PiCommercialBreakdown'), at(s, 'PiDetailProductHead'),
+      'the commercial breakdown is the foot of the Products card')
+    assert.ok(at(s, 'PiDetailProductHead') < at(s, 'PiActivityTimeline'),
+      'and Activity stays below the products')
   })
 
   // ── Upload PI: the verdict and the action come FIRST (2026-09-27) ──

@@ -28,6 +28,17 @@ export function RequiredMark() {
   return <span className="pi-form-req" aria-hidden="true" title="Required to submit">*</span>
 }
 
+export type SectionChipTone = 'green' | 'amber' | 'grey' | 'blue'
+
+/**
+ * One small status beside a section's title on the PI Draft page — "Complete",
+ * "1 needed", "Optional", "Locked while with management". Words, never a colour
+ * alone; the tone only repeats what the words say.
+ */
+export function SectionChip({ tone, children }: { tone: SectionChipTone; children: React.ReactNode }) {
+  return <span className={`pi-chip pi-chip--${tone}`}>{children}</span>
+}
+
 /**
  * A titled group. `aside` is one small status on the title's right (a count of
  * what is still needed) — never a paragraph.

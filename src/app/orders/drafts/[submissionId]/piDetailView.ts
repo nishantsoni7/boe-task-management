@@ -940,7 +940,8 @@ export function buildDateSummary(input: {
 
 // ── The payment status card ───────────────────────────────────────────────────
 
-export const PAYMENT_STATUS_TITLE = 'Finance'
+/** The payment block beside PI details (owner, 2026-10-30): the advance is what it tracks. */
+export const PAYMENT_STATUS_TITLE = 'Advance payment'
 
 /**
  * What the closed card says instead of the figures.
@@ -1014,6 +1015,12 @@ export type PaymentStatusView = {
   pendingAmount: string
   /** unverified_percent of the PI total, formatted. */
   pendingPercent: string
+  /**
+   * What is still to be received to reach the standard advance — the
+   * database's required figure less its received figure, formatted — or null
+   * when it is reached or either figure is unknown.
+   */
+  shortfall: string | null
 }
 
 /**
@@ -1046,6 +1053,8 @@ export function buildPaymentStatusView(input: {
   pendingAmount: string
   /** unverified_percent, formatted. */
   pendingPercent: string
+  /** Required less received, formatted, or null (see PaymentStatusView). */
+  shortfall?: string | null
 }): PaymentStatusView {
   const required = input.required ?? '—'
   const barPercent = barWidth(input.verifiedPercentValue)
@@ -1071,7 +1080,19 @@ export function buildPaymentStatusView(input: {
     pendingCount: Math.max(0, input.pendingCount),
     pendingAmount: input.pendingAmount,
     pendingPercent: input.pendingPercent,
+    shortfall: input.shortfall ?? null,
   }
+}
+
+/**
+ * What is still to be received to reach the standard advance: the database's
+ * required figure less its received (attached) figure, to the paisa — or null
+ * when it is reached, or when either figure is unknown. A subtraction of two
+ * stored numbers, never of formatted text.
+ */
+export function advanceShortfall(required: number | null, received: number | null): number | null {
+  if (required === null || received === null || required <= received) return null
+  return Math.round((required - received) * 100) / 100
 }
 
 /** The card's headline: how much of the PI total has been reported as received. */
