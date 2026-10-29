@@ -12502,6 +12502,137 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 }
 
 
+/* ── FOUNDERS' PAYOUTS (Finance › Founders' payouts, 20270501000000) ─────────
+   Same vocabulary as FINANCE LISTS: the stat cards, the board, the tabs, the
+   soft pills. Colour carries the kind of money and the side, nothing else. */
+.fp-topbar { margin-bottom: 16px; }
+.fp-topbar .fin-viewbar { border-bottom: 0; }
+.fp-year { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 12px; }
+.fp-year select { height: 32px; min-width: 150px; }
+.fp-small { font-size: 12px; margin: 6px 0 0; }
+.fp-good { color: #276247; }
+.fp-warn { color: #805B0D; }
+.fp-bad { color: #A12438; }
+.fp-section-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 22px 0 10px; }
+.fp-section-title h3 { margin: 0; font-size: 15px; color: #303536; }
+.fp-section-title span { font-size: 12px; }
+.fp-section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.fp-section-head p { margin: 0; font-size: 13px; }
+
+.fp-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .fp-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .fp-cards { grid-template-columns: minmax(0, 1fr); } }
+.fp-card { background: #FFFFFF; border: 1px solid #ECE7E0; border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.fp-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.fp-card-head b { font-size: 14px; color: #303536; }
+.fp-card-side { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #686D6C; }
+.fp-card-total { margin: 8px 0 6px; font-size: 22px; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
+.fp-stack { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #F1EEE9; }
+.fp-stack > span { display: block; height: 100%; }
+.fp-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 12px; color: #4C5352; }
+.fp-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.fp-legend b { font-variant-numeric: tabular-nums; color: #303536; }
+.fp-card-meter { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #E4DED7; }
+.fp-meter { height: 8px; border-radius: 4px; background: #F1EEE9; overflow: hidden; }
+.fp-meter-fill { display: block; height: 100%; border-radius: 4px; }
+.fp-meter-fill--good { background: #3F9B6E; }
+.fp-meter-fill--warn { background: #E2A93B; }
+.fp-meter-fill--bad  { background: #C9485B; }
+
+.fp-months-card { padding: 16px; }
+.fp-months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; height: 150px; align-items: end; }
+.fp-month { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; min-width: 0; }
+.fp-month-bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
+.fp-month-bars > span { display: block; width: 10px; min-height: 0; border-radius: 3px 3px 0 0; }
+.fp-month-label { font-size: 11px; color: #686D6C; }
+@media (max-width: 640px) { .fp-months { gap: 2px; } .fp-month-bars > span { width: 6px; } }
+
+.fp-filters { flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.fp-filters select { height: 34px; max-width: 220px; }
+.fp-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0 0 10px; font-size: 13px; color: #4C5352; }
+.fp-summary > span { display: inline-flex; align-items: center; gap: 6px; }
+.fp-summary b { font-size: 15px; color: #303536; font-variant-numeric: tabular-nums; }
+.fp-payout { background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.fp-payout-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 14px; background: #FBFAF7; border-bottom: 1px solid #ECE7E0; }
+.fp-payout-date { font-weight: 600; font-size: 13px; color: #303536; min-width: 96px; }
+.fp-payout-note { font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fp-payout-total { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; color: #303536; }
+.fp-payout-actions { display: inline-flex; gap: 10px; }
+.fp-payout-line { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 14px; border-top: 1px solid #F1EEE9; font-size: 13px; }
+.fp-payout-head + .fp-payout-line { border-top: 0; }
+.fp-payout-who { font-weight: 500; color: #303536; min-width: 0; }
+.fp-payout-kind { display: inline-flex; align-items: center; gap: 6px; color: #4C5352; min-width: 0; }
+.fp-payout-amount { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .fp-payout-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .fp-payout-kind { grid-column: 1; grid-row: 2; font-size: 12px; }
+  .fp-payout-amount { grid-row: 1 / span 2; grid-column: 2; }
+}
+.fp-link { border: 0; background: none; padding: 0; font: 500 13px var(--boe-font-body); color: #963B27; cursor: pointer; }
+.fp-link:hover { text-decoration: underline; }
+.fp-link--danger { color: #B42332; }
+
+.fp-form { display: flex; flex-direction: column; gap: 12px; }
+.fp-form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 520px) { .fp-form-row { grid-template-columns: minmax(0, 1fr); } }
+.fp-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fp-field > span { font-size: 12px; font-weight: 600; color: #4C5352; }
+.fp-field small { font-size: 12px; }
+.fp-amount-big { font-size: 20px; font-weight: 600; height: 44px; }
+.fp-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid #CFC8BF; border-radius: 9px; overflow: hidden; align-self: flex-start; }
+.fp-seg > button { border: 0; background: #FFFFFF; padding: 7px 12px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.fp-seg > button[aria-pressed="true"] { background: #F6E7E2; color: #963B27; font-weight: 600; }
+.fp-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.fp-pick > span > button, .fp-pick button { border: 1px solid #CFC8BF; background: #FFFFFF; border-radius: 999px; padding: 5px 12px; font: 500 13px var(--boe-font-body); color: #303536; cursor: pointer; }
+.fp-pick button[aria-pressed="true"] { border-color: #B9472E; background: #F6E7E2; color: #963B27; font-weight: 600; }
+.fp-pick-group { flex-basis: 100%; font-size: 11px; color: #686D6C; margin-top: 4px; }
+.fp-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.fp-line { border: 1px solid #ECE7E0; border-radius: 10px; padding: 10px; }
+.fp-line-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.fp-line-name { flex: 1 1 100px; font-weight: 600; font-size: 13px; color: #303536; min-width: 0; }
+.fp-line-row select { flex: 0 1 220px; height: 34px; }
+.fp-line-amount { flex: 0 0 130px; text-align: right; height: 34px; font-variant-numeric: tabular-nums; }
+.fp-line-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 12px; }
+.fp-sum { font-size: 13px; padding: 8px 10px; border-radius: 8px; }
+.fp-sum.is-ok { background: #E8F2EC; color: #276247; }
+.fp-sum.is-off { background: #FAF0DA; color: #805B0D; }
+.fp-error { margin: 0; padding: 8px 10px; border-radius: 8px; background: #FBE9EC; color: #A12438; font-size: 13px; }
+.fp-modal-foot { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.fp-modal-foot > span:first-child { flex: 1; font-size: 12px; }
+.fp-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #303536; }
+
+.fp-note { padding: 10px 12px; border-radius: 10px; font-size: 13px; background: #FFFFFF; border: 1px solid #ECE7E0; color: #4C5352; margin: 0 0 12px; }
+.fp-note--warn { background: #FAF0DA; border-color: #EBD9B0; color: #805B0D; }
+.fp-explain { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+@media (max-width: 900px) { .fp-explain { grid-template-columns: minmax(0, 1fr); } }
+.fp-explain .boe-card { padding: 14px; }
+.fp-explain h3 { margin: 0 0 4px; font-size: 14px; color: #303536; }
+.fp-explain p { margin: 0; font-size: 13px; color: #4C5352; }
+.fp-ceiling { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; padding: 14px 16px; margin-bottom: 14px; }
+.fp-ceiling .fp-field { flex: 1 1 260px; max-width: 360px; }
+.fp-ceiling > div { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.fp-ceiling > div b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fp-ceiling > p { flex-basis: 100%; }
+.fp-plan-board { overflow-x: auto; }
+.fp-plan-table { min-width: 980px; }
+.fp-plan-table tbody tr { cursor: default; }
+.fp-plan-table td { height: 56px; }
+.fp-plan-table select { height: 32px; width: 100%; }
+.fp-num-input { width: 110px; height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .fp-plan-table { min-width: 0; }
+  .fp-plan-table thead { display: none; }
+  .fp-plan-table, .fp-plan-table tbody { display: block; }
+  .fp-plan-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; padding: 12px; border-bottom: 1px solid #ECE7E0; }
+  .fp-plan-table td { display: block; height: auto; padding: 0; border: 0 !important; text-align: left !important; white-space: normal; }
+  .fp-plan-table td::before { content: attr(data-l); display: block; font-size: 11px; color: #686D6C; margin-bottom: 2px; }
+  .fp-plan-table td:first-child { grid-column: 1 / -1; }
+  .fp-num-input { width: 100%; text-align: left; }
+}
+.fp-rules { margin-top: 14px; font-size: 13px; color: #4C5352; }
+.fp-rules summary { cursor: pointer; font-weight: 600; color: #303536; padding: 6px 0; }
+.fp-rules li { margin: 6px 0; }
+
 
 /* ══ PI DETAIL — ORDER-PAGE PASS (owner, 2026-10-29) ═══════════════════════════
    The PI Draft page reads like the Confirmed Order page: one family of white

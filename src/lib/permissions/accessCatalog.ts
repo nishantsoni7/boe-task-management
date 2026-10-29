@@ -139,6 +139,7 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
       verify_own_payment: { label: 'Verify own payments', meaning: 'Record and verify a payment in one step, and decide payments they recorded themselves.' },
       reconcile: { label: 'Reconcile bank statements', meaning: 'Upload bank statements and match bank credits to payments.' },
       reimburse: { label: 'Reimburse expenses', meaning: 'Pay staff back for expenses and reverse a reimbursement; sees every reimbursement.' },
+      founder_payouts: { label: 'Founders’ payouts', meaning: 'See and record the money paid into the partners’ and their families’ accounts, and the tax planner. Administrators do not get it by role.' },
       manage: { label: 'Correct anyone’s payment records', meaning: 'Link, unlink and correct payment records entered by others, and edit or delete their expenses.' },
       delete: { label: 'Delete others’ unapproved requests', meaning: 'Remove another person’s payment request before it is verified. Deleting a confirmed payment stays Admin only.' },
     },

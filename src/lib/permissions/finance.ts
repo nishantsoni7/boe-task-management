@@ -112,6 +112,14 @@ export type FinanceCapabilities = {
   canReconcileBank: boolean
   /** May record and reverse expense reimbursements and see every one (protected `reimburse`, 20270403000000). Does NOT allow editing or deleting expenses. */
   canReimburseExpenses: boolean
+  /**
+   * May open Founders' payouts: the money paid into the partners' and their
+   * families' accounts (protected `founder_payouts`, 20270501000000). EXPLICIT
+   * GRANT ONLY — the one Finance capability an administrator does NOT hold by
+   * role, exactly as the database door (actor_has_permission, no admin branch)
+   * refuses one. Owner decision 2026-10-29: only the owner.
+   */
+  canSeeFounderPayouts: boolean
 }
 
 export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
@@ -129,12 +137,16 @@ export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
   canDecideOwnPayment: false,
   canReconcileBank: false,
   canReimburseExpenses: false,
+  canSeeFounderPayouts: false,
 }
 
 export function deriveFinanceCapabilities(
   role: string | null | undefined,
   permissions: readonly EffectivePermission[],
 ): FinanceCapabilities {
+  // Asked of the grants for EVERYBODY, administrators included: no role reaches it.
+  const holdsFounderPayouts = permissions.some(p => p.actionKey === 'founder_payouts' && p.allowed)
+
   if (role === 'admin') {
     return {
       canAccessFinanceModule: true,
@@ -156,6 +168,7 @@ export function deriveFinanceCapabilities(
       canDecideOwnPayment: true,
       canReconcileBank: true,
       canReimburseExpenses: true,
+      canSeeFounderPayouts: holdsFounderPayouts,
     }
   }
 
@@ -189,5 +202,6 @@ export function deriveFinanceCapabilities(
     canDecideOwnPayment: withEntry('verify_own_payment'),
     canReconcileBank: withEntry('reconcile'),
     canReimburseExpenses: withEntry('reimburse') && withEntry('view_all'),
+    canSeeFounderPayouts: canAccessFinanceModule && holdsFounderPayouts,
   }
 }
