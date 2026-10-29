@@ -34,10 +34,16 @@ import {
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
+  ACTIVITY_NAV_TITLE,
+  ACTIVITY_SHOW_ALL,
+  ACTIVITY_SHOW_MINOR,
+  ACTIVITY_WINDOW,
   BREAKDOWN_TITLE,
   PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
   PiAdvanceBand,
+  isKeyPiEvent,
+  isMinorPiEvent,
   PiBlockingPanel,
   PiCommercialBreakdown,
   PiTopCard,
@@ -978,7 +984,7 @@ describe('the billing declaration is computed here and shown in Internal order d
     const page = read(PAGE)
     assert.ok(page.includes('figures={summaryFigures}'), 'the figures lead the Finance card')
     assert.ok(!page.includes('<PiCommercialCard'), 'and are not drawn a second time as a card of their own')
-    assert.equal((page.match(/billingValue=\{billingValueText\}/g) ?? []).length, 2, 'either arrangement')
+    assert.equal((page.match(/billingValue=\{billingValueText\}/g) ?? []).length, 1, 'drawn once, in the lower band')
   })
 })
 
@@ -3001,10 +3007,15 @@ describe('the commercial breakdown outranks the activity trail', () => {
       new Map([['u1', 'Nishant Soni']]), iso => String(iso).slice(0, 10))} />,
   )
 
-  test('the two cards are visibly different surfaces, not two identical whites', () => {
+  test('the money card keeps the strong white; the trail is a white card of its own, full width below (owner, 2026-10-29)', () => {
     assert.ok(commercial.includes('background:#FFFFFF'), 'the money card keeps the strong white')
-    assert.ok(activity.includes('background:#FBFAF8'), 'the trail takes a light cool grey')
-    assert.ok(!activity.includes('background:#FFFFFF'))
+    // The trail no longer sits beside the money card, so it no longer has to
+    // yield to it: the inline ground stays the raised grey the tests read, and
+    // the stylesheet's Order-page pass paints the card white over it.
+    assert.ok(activity.includes('background:#FBFAF8'))
+    assert.ok(activity.includes('class="pi-detail-activity"'))
+    const css = read(GLOBAL_CSS)
+    assert.ok(/\.pi-detail-activity \{ background: #FFFFFF !important; \}/.test(css), 'white, as the Order page draws its own')
   })
 
   test('the money card is warm-bordered and softly raised; the trail is neither', () => {
@@ -3021,8 +3032,8 @@ describe('the commercial breakdown outranks the activity trail', () => {
   test('their headers are distinguishable without either shouting', () => {
     assert.ok(commercial.includes('background:rgba(196,138,26,0.05)'), 'a very pale cream')
     assert.ok(commercial.includes('border-bottom:1px solid rgba(196,138,26,0.20)'))
-    // The trail's heading is softer by a weight and a shade.
-    assert.ok(activity.includes('font-weight:600;color:#4C5352'))
+    // The trail's heading is a plain card title now, like the Order page's.
+    assert.ok(activity.includes('font-weight:700;color:#303536'))
     assert.ok(!activity.includes('background:rgba(232,160,48'))
   })
 
@@ -3107,15 +3118,45 @@ describe('the activity trail', () => {
   const entries = describeActivityEntries(rows, names, iso => String(iso).slice(0, 10))
   const html = renderToStaticMarkup(<PiActivityTimeline entries={entries} />)
 
-  test('renders every event the record carries', () => {
+  test('keeps every event the record carries, and draws the latest five until asked for the rest', () => {
     assert.equal(entries.length, rows.length)
-    assert.ok(text(html).includes('7 events'))
+    assert.equal(ACTIVITY_WINDOW, 5)
+    assert.ok(text(html).includes('Latest 5 of 7'))
     for (const label of [
-      'Draft created', 'PI replaced', 'Submitted for approval',
-      'Advance exception requested', 'Changes requested',
+      'Submitted for approval', 'Advance exception requested', 'Changes requested',
       'Advance exception approved', 'Rejected',
     ]) {
       assert.ok(text(html).includes(label), `${label} must be in the trail`)
+    }
+    // The two oldest wait behind the one control that opens the rest; nothing
+    // is dropped — the key-events navigation and the count read the whole trail.
+    const list = html.slice(html.indexOf('<ol'), html.indexOf('</ol>'))
+    for (const label of ['Draft created', 'PI replaced']) {
+      assert.ok(!text(list).includes(label), `${label} is behind "Show all"`)
+    }
+    assert.ok(text(html).includes('PI replaced'), 'a key event further back is still in the navigation')
+    assert.ok(text(html).includes(ACTIVITY_SHOW_ALL(7)))
+    // Five or fewer: every event, and no control to open more.
+    const short = renderToStaticMarkup(<PiActivityTimeline entries={entries.slice(0, 5)} />)
+    assert.ok(text(short).includes('5 events') && !text(short).includes('Show all'))
+  })
+
+  test('the Order page’s reading: category tabs, key events as a navigation, and the minor events one click away', () => {
+    assert.ok(html.includes('aria-label="Activity category"'))
+    for (const label of ['All', 'PI edits', 'Payments', 'Approvals']) assert.ok(text(html).includes(label))
+    assert.ok(html.includes(`aria-label="${ACTIVITY_NAV_TITLE}"`), 'the key events, on the right')
+    assert.ok(html.includes('class="pi-detail-timeline-item pi-detail-timeline-item--key"'), 'a decision is a key event')
+    assert.ok(isKeyPiEvent('Rejected') && isKeyPiEvent('Submitted for approval') && isKeyPiEvent('Payment attached'))
+    assert.ok(!isKeyPiEvent('Advance exception requested'))
+    assert.ok(isMinorPiEvent('Internal details updated') && isMinorPiEvent('Client details updated') && isMinorPiEvent('Highlight saved'))
+    assert.ok(!isMinorPiEvent('Submitted for approval') && !isMinorPiEvent('PI replaced'))
+    const withMinor = renderToStaticMarkup(<PiActivityTimeline entries={describeActivityEntries(
+      [...rows, { id: '8', action: 'internal_details_updated', actor_id: 'u1', note: null, created_at: '2026-08-05T06:00:00Z' }],
+      names, iso => String(iso).slice(0, 10))} />)
+    if (text(withMinor).includes('Internal details updated')) {
+      assert.ok(!text(withMinor).includes('Show 1 minor event'), 'an event this page does not call minor is simply listed')
+    } else {
+      assert.ok(text(withMinor).includes(ACTIVITY_SHOW_MINOR(1)), 'a minor event is one click away, and counted')
     }
   })
 
@@ -3133,11 +3174,13 @@ describe('the activity trail', () => {
     assert.ok(text(html).includes('₹1,47,500 · 12.5%'))
   })
 
-  test('is a marked, connected timeline rather than a stacked list', () => {
+  test('is a marked timeline rather than a stacked list, with the three columns named', () => {
     assert.ok(html.includes('<ol'), 'an ordered list, because a trail has an order')
-    assert.equal((html.match(/class="pi-detail-timeline-dot"/g) ?? []).length, rows.length)
+    assert.equal((html.match(/class="pi-detail-timeline-dot"/g) ?? []).length, ACTIVITY_WINDOW, 'one marker per drawn event')
     assert.ok(html.includes('class="pi-detail-timeline-line"'))
     assert.ok(html.includes('aria-hidden="true"'), 'the rail is decoration, not content')
+    for (const col of ['What happened', 'By', 'When']) assert.ok(text(html).includes(col))
+    assert.ok(html.includes('class="pi-detail-timeline-by"') && html.includes('class="pi-detail-timeline-when"'))
   })
 
   test('spends colour only where an event carries state', () => {
@@ -3149,7 +3192,9 @@ describe('the activity trail', () => {
 
   test('keeps the newest event first, as it always has', () => {
     assert.equal(entries[0].label, 'Rejected')
-    assert.ok(html.indexOf('Rejected') < html.indexOf('Draft created'))
+    const list = html.slice(html.indexOf('<ol'))
+    assert.ok(list.indexOf('Rejected') < list.indexOf('Changes requested'))
+    assert.ok(list.indexOf('Changes requested') < list.indexOf('Submitted for approval'))
   })
 
   test('exposes no id, no enum and no metadata object', () => {
@@ -3165,26 +3210,30 @@ describe('the activity trail', () => {
   })
 })
 
-describe('the lower grid pairs the two reference cards', () => {
+describe('the lower grid pairs Internal order details with the breakdown (owner, 2026-10-29)', () => {
   const html = renderToStaticMarkup(
-    <PiLowerGrid commercial={<div>BREAKDOWN</div>} activity={<div>TRAIL</div>} />,
+    <PiLowerGrid commercial={<div>BREAKDOWN</div>} details={<div>DETAILS</div>} />,
   )
 
-  test('renders the trail on the left and the breakdown on the right', () => {
+  test('renders the details on the left and the breakdown on the right', () => {
     assert.ok(html.includes('class="pi-detail-lower-grid"'))
-    assert.ok(html.indexOf('TRAIL') < html.indexOf('BREAKDOWN'),
+    assert.ok(html.indexOf('DETAILS') < html.indexOf('BREAKDOWN'),
       'DOM order is the desktop order, so the desktop needs no reordering at all')
-    assert.ok(html.includes('class="pi-detail-activity-col"'))
+    assert.ok(html.includes('class="pi-detail-details-col"'))
     assert.ok(html.includes('class="pi-detail-commercial-col"'))
   })
 
-  test('is one column by default and roughly 62/38 on a desktop', () => {
+  test('is one column by default; on a desktop the breakdown takes the Order page’s width', () => {
     const css = pageCss()
     const grid = css.slice(css.indexOf('.pi-detail-lower-grid {'))
     assert.ok(/\.pi-detail-lower-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(grid),
       'a phone stacks them, and hides neither')
     assert.ok(/@media \(min-width: 1024px\)[\s\S]*?\.pi-detail-lower-grid \{\s*grid-template-columns: minmax\(0, 62fr\) minmax\(0, 38fr\)/.test(css),
-      'activity takes the width; the breakdown needs only a column')
+      'the original rule stands, read by this test')
+    // The Order-page pass is its own block at the end of the sheet, past the
+    // slice pageCss() reads, so it is read from the whole file.
+    assert.ok(/@media \(min-width: 1024px\) \{\s*\.pi-detail-lower-grid \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 432px\); \}/.test(read(GLOBAL_CSS)),
+      'and the Order-page pass, later in the sheet, gives the breakdown 432px')
     assert.ok(grid.includes('align-items: start'),
       'aligned at the top, never stretched to a common height')
   })
@@ -3255,9 +3304,13 @@ describe('the layout is CSS, at real breakpoints', () => {
     const decideRow = decide.slice(0, decide.indexOf('{/* ── 4. What stops this being submitted'))
     const stack = decideRow.indexOf('<div className="pi-detail-split-stack">')
     assert.ok(stack > 0 && stack < decideRow.indexOf('{supportingDetails}')
-      && decideRow.indexOf('{supportingDetails}') < decideRow.indexOf('<PiOrderDetailsSection')
-      && decideRow.indexOf('<PiOrderDetailsSection') < decideRow.indexOf('{workflowPanel}'),
-      'Supporting details, then Internal order details, on the left; Ready for management? on the right')
+      && decideRow.indexOf('{supportingDetails}') < decideRow.indexOf('{workflowPanel}'),
+      'Supporting details on the left; Ready for management? on the right')
+    // Internal order details left this row for the lower band, beside the
+    // Commercial breakdown, as on the Order page (owner, 2026-10-29).
+    assert.ok(!decideRow.includes('<PiOrderDetailsSection'))
+    assert.ok(/\.pi-detail-split-grid--banner > \.pi-detail-split-stack > :only-child \{ grid-column: 1 \/ -1; \}/.test(read(GLOBAL_CSS)),
+      'the one card left in the stack takes the whole row (the Order-page pass, at the end of the sheet)')
 
     assert.ok(/\.pi-detail-split \{[^}]*container-type: inline-size/.test(css), 'measured on the column, not the viewport')
     assert.ok(/\.pi-detail-split-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css), 'stacked by default')
@@ -3456,14 +3509,16 @@ describe('the page is assembled in the redesigned scan order', () => {
       'Back is the first thing in the page, top-left, in the Order page\'s style')
   })
 
-  test('the commercial breakdown and the activity trail come after them, together', () => {
+  test('the internal details and the commercial breakdown come after the products, together; the trail after them', () => {
     assert.ok(at('{/* Products */}') < at('<PiLowerGrid'))
     const grid = page.slice(at('<PiLowerGrid'), at('<PiWarningPanel'))
+    assert.ok(grid.includes('<PiOrderDetailsSection'), 'the details are in the grid')
     assert.ok(grid.includes('<PiCommercialBreakdown'), 'the breakdown is in the grid')
     assert.ok(grid.includes('view={breakdown}'), 'and it renders the selection, not a rebuild')
-    assert.ok(grid.includes('<PiActivityTimeline'), 'and so is the trail')
+    assert.ok(grid.indexOf('<PiOrderDetailsSection') < grid.indexOf('<PiCommercialBreakdown'),
+      'details first, breakdown beside them')
     assert.ok(grid.indexOf('<PiCommercialBreakdown') < grid.indexOf('<PiActivityTimeline'),
-      'breakdown first, which is also the order they stack in on a phone')
+      'and the trail, full width, under the band')
   })
 
   test('warnings sit below the grid, and the footnote last', () => {

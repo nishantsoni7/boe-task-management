@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `a20dcee5` — Test: the employee permission read may also select the action id
+- Commit: `db606387` — Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - Commits on this branch: 1057
-- Pages (`page.tsx`): 155   API routes (`route.ts`): 165
+- Pages (`page.tsx`): 156   API routes (`route.ts`): 166
 - Migrations: 378 (first `20260530_create_positions.sql`, latest `20270430000000_order_payment_plan_account_cash.sql`)
 - Tables ever created: 182 (dropped at some point: 7)   SQL functions: 821   Enums: 0
-- Test files: 673   Next.js 16.2.6, React 19.2.4
+- Test files: 675   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a20dcee5` 2026-10-29 Test: the employee permission read may also select the action id
-- `3c7bab8b` 2026-10-29 Control Center Access: People, Modules and Authorities screens
+- `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
+- `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 - `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
 - `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
 - `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
@@ -66,7 +66,7 @@
 - **my-issues** (2): `/my-issues`, `/my-issues/notifications`
 - **my-payroll** (2): `/my-payroll`, `/my-payroll/[periodId]`
 - **notifications** (1): `/notifications`
-- **orders** (13): `/orders`, `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
+- **orders** (14): `/orders`, `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/drafts/[submissionId]/fabric-finish`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
 - **payroll** (10): `/payroll`, `/payroll/credits`, `/payroll/how-it-works`, `/payroll/monthly-review`, `/payroll/monthly-review/[userId]`, `/payroll/notifications`, `/payroll/results/[periodId]`, `/payroll/results/[periodId]/[employeeId]`, `/payroll/results/[periodId]/salary-report`, `/payroll/settings`
 - **performance** (2): `/performance`, `/performance/team`
 - **quick-start-guide** (1): `/quick-start-guide`
@@ -109,7 +109,7 @@
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (21): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (22): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/fabric-finish [GET]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -150,7 +150,7 @@
 - `src/lib/orders` — 92 source, 143 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
-- `src/lib/pi` — 7 source, 5 test
+- `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
@@ -188,13 +188,13 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (11 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (139 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (140 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (139 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (140 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 

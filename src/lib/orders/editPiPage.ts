@@ -18,6 +18,13 @@ export function draftEditPiPageHref(submissionId: string): string {
   return `/orders/drafts/${encodeURIComponent(submissionId)}/edit-pi`
 }
 
+export const FABRIC_FINISH_PAGE_TITLE = 'Fabric & finish cost'
+
+/** The Fabric & finish cost page of a PI: the workbook's own two sheets, read-only. */
+export function draftFabricFinishPageHref(submissionId: string): string {
+  return `/orders/drafts/${encodeURIComponent(submissionId)}/fabric-finish`
+}
+
 /** What the editor tells the record page when it returns. */
 export type EditPiOutcome = 'proposed' | 'in_force' | 'dates' | 'saved' | 'applied'
 

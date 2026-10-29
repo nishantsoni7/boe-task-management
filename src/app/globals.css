@@ -12131,3 +12131,380 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .opp { padding: 14px 12px; }
   .opp-sum > div { flex-direction: column; gap: 2px; }
 }
+
+/* ══ PI DETAIL — ORDER-PAGE PASS (owner, 2026-10-29) ═══════════════════════════
+   The PI Draft page reads like the Confirmed Order page: one family of white
+   12px cards, the Order page's property lists, its bordered Commercial
+   breakdown, its full-width Activity with key events, and one attention card
+   for what management asked. Appended LAST on purpose: every rule here wins
+   over the original PI DETAIL rules by cascade order and leaves those rules —
+   several are read by tests — exactly as they are. Every grid track is
+   minmax(0, …) or a fixed length, as that section requires.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── One family of cards ── the inline card styles are overridden by weight. */
+.pi-detail-stack > div[style],
+.pi-detail-split-grid > div[style],
+.pi-detail-details-col > div[style],
+.pi-detail-commercial-col > div[style] {
+  border-radius: 12px !important;
+  border-color: #ECE7E0 !important;
+}
+.pi-detail-stack .pi-form-card,
+.pi-detail-stack .pi-completion {
+  border-radius: 12px;
+  border-color: #ECE7E0;
+}
+
+/* ── What management asked: the Order page's attention card ──
+   A white card with one coloured edge in the panel's tone, the people's own
+   words as quotes behind a rule in that colour. */
+.pi-detail-workflow { border-radius: 12px !important; }
+.pi-detail-workflow--amber { border-color: #E6D2A0 !important; box-shadow: inset 4px 0 0 #C48A1A; }
+.pi-detail-workflow--red { border-color: #E9B9C1 !important; box-shadow: inset 4px 0 0 #B42332; }
+.pi-detail-workflow--blue { border-color: #C3D3E6 !important; box-shadow: inset 4px 0 0 #335A86; }
+.pi-detail-workflow--green { border-color: #BFDCCB !important; box-shadow: inset 4px 0 0 #276247; }
+.pi-detail-workflow .pi-detail-workflow-head { padding: 15px 20px 12px 24px; }
+.pi-detail-workflow .pi-detail-workflow-head + div[style] { padding-left: 24px !important; }
+
+/* ── Finance: one header row, one strip of figures, the bar ──
+   The markup is unchanged (the tests read it); the panel and its grids become
+   `display: contents`, so the figures, the position and the two parts are
+   placed by ONE grid on the section. Below 760px the original stack stands. */
+@container (min-width: 760px) {
+  .pi-detail-paystatus {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-areas:
+      'toggle toggle toggle actions actions'
+      'worth worth position confirmed awaiting'
+      'notice notice notice notice notice'
+      'bar bar bar bar bar'
+      'legend legend legend legend legend';
+    gap: 0;
+    padding: 0;
+    align-items: stretch;
+  }
+  .pi-detail-paystatus-toggle {
+    grid-area: toggle;
+    margin: 0;
+    padding: 12px 18px;
+    min-height: 50px;
+  }
+  .pi-detail-paystatus-title { font-size: 15px; }
+  .pi-detail-paystatus-panel,
+  .pi-detail-paystatus-body,
+  .pi-detail-paystatus-grid,
+  .pi-detail-paystatus-metrics { display: contents; }
+  /* The body is a container for the original rules; with no box of its own it
+     can answer no query, so it stops being one here and every rule below
+     answers to the split column, as the rules above do. */
+  .pi-detail-paystatus-body { container-type: normal; }
+  .pi-detail-paystatus-actions {
+    grid-area: actions;
+    justify-content: flex-end;
+    align-self: center;
+    padding: 8px 18px 8px 0;
+  }
+  .pi-detail-paystatus-actions > .boe-btn { height: 30px; min-height: 30px; padding: 0 12px; font-size: 12.5px; }
+  .pi-detail-paystatus-worth {
+    grid-area: worth;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid #ECE7E0;
+    border-bottom: 1px solid #ECE7E0;
+  }
+  .pi-detail-paystatus-worth .pi-detail-figure { padding: 12px 18px; gap: 2px; }
+  .pi-detail-paystatus-worth .pi-detail-figure + .pi-detail-figure { padding-left: 18px; border-left-color: #F3F0EB; }
+  .pi-detail-paystatus-worth .pi-detail-figure-value,
+  .pi-detail-paystatus-worth .pi-detail-figure-absent { font-size: 20px; }
+  .pi-detail-paystatus-position {
+    grid-area: position;
+    padding: 12px 18px;
+    gap: 2px;
+    border-top: 1px solid #ECE7E0;
+    border-bottom: 1px solid #ECE7E0;
+    border-left: 1px solid #F3F0EB;
+    justify-content: center;
+  }
+  .pi-detail-paystatus-headline { gap: 2px 6px; }
+  .pi-detail-paystatus-percent { font-size: 24px; }
+  .pi-detail-paystatus-word { font-size: 13px; font-weight: 500; color: #686D6C; }
+  .pi-detail-paystatus-of { font-size: 12px; }
+  .pi-detail-paystatus-metric {
+    margin: 0;
+    padding: 12px 32px 12px 18px;
+    border: 0;
+    border-top: 1px solid #ECE7E0;
+    border-bottom: 1px solid #ECE7E0;
+    border-left: 1px solid #F3F0EB;
+    border-radius: 0;
+    background: #FFFFFF;
+    gap: 2px;
+    justify-content: center;
+  }
+  .pi-detail-paystatus-metric[data-metric='confirmed'] { grid-area: confirmed; }
+  .pi-detail-paystatus-metric[data-metric='awaiting'] { grid-area: awaiting; }
+  .pi-detail-paystatus-metric.is-empty { background: #FFFFFF; padding-right: 18px; }
+  button.pi-detail-paystatus-metric-confirmed:hover,
+  button.pi-detail-paystatus-metric-awaiting:hover { background: #FAF8F5; border-color: #ECE7E0; border-left-color: #F3F0EB; }
+  .pi-detail-paystatus-metric-chevron { right: 12px; }
+  .pi-detail-paystatus-body > [role='progressbar'] {
+    grid-area: bar;
+    width: auto !important;
+    margin: 14px 18px 0;
+  }
+  .pi-detail-paystatus-notice { grid-area: notice; margin: 12px 18px 0; }
+  .pi-detail-paystatus-legend { grid-area: legend; margin: 0; padding: 10px 18px 16px; }
+  /* "Loading…" and anything else unplaced takes a full row of its own. */
+  .pi-detail-paystatus > div:not([class]):not([role]) { grid-column: 1 / -1; padding: 0 18px 14px; }
+}
+
+/* ── Supporting details: three property columns, as the Documents card ── */
+.pi-supporting .pi-support-row { margin-top: 10px; }
+.pi-supporting .pi-support-col + .pi-support-col { border-left-color: #ECE7E0; }
+.pi-supporting .pi-support-label,
+.pi-supporting .pi-detail-highlight--bare .pi-detail-highlight-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8F9392;
+}
+.pi-supporting .pi-support-panel { padding: 0; background: transparent; }
+.pi-supporting .pi-detail-highlight--bare .pi-detail-highlight-input { min-height: 64px; border-color: #E4DED7; }
+.pi-supporting .pi-sample-type { margin-top: 12px; padding-top: 10px; border-top: 1px solid #F3F0EB; }
+
+/* The details row with one card left in it takes the whole row. */
+.pi-detail-split-grid--banner > .pi-detail-split-stack > :only-child { grid-column: 1 / -1; }
+
+/* ── Internal order details, read view: the Order page's property rows ──
+   Two columns of label-left / value-right rows with hairlines between them,
+   instead of four bordered cells. The editing form is untouched. */
+.pi-order-details .pi-od-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+.pi-order-details .pi-od-cell {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-left: 0 !important;
+  border-top: 1px solid #F3F0EB;
+}
+.pi-order-details .pi-od-cell:nth-child(-n + 2) { border-top: 0; }
+.pi-order-details .pi-od-cell dt { flex: 0 0 auto; font-size: 13.5px; font-weight: 500; color: #686D6C; }
+.pi-order-details .pi-od-cell dd {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #303536;
+  overflow-wrap: anywhere;
+}
+.pi-order-details .pi-od-cell dd[data-empty='true'] { font-weight: 500; color: #686D6C; }
+.pi-order-details .pi-od-cell dd[data-empty='true'][data-required='true'] { color: #B42332; }
+.pi-order-details .pi-od-cell .pi-inline-save { justify-content: flex-end; }
+.pi-order-details .pi-od-sub { text-align: right; }
+@container (max-width: 760px) {
+  .pi-order-details .pi-od-grid { grid-template-columns: minmax(0, 1fr); }
+  .pi-order-details .pi-od-cell:nth-child(2) { border-top: 1px solid #F3F0EB; }
+}
+
+/* ── The lower band: details left, the money right at the Order page's width ── */
+@media (min-width: 1024px) {
+  .pi-detail-lower-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 432px); }
+}
+.pi-detail-details-col { min-width: 0; }
+
+/* ── Commercial breakdown: the Order page's bordered grid ──
+   Every row is a bordered label | amount pair, alternate rows carry a
+   barely-there tint, the Grand Total closes the grid on a blue ground. */
+.pi-detail-breakdown-head { padding: 14px 18px 0; border-bottom: 0; }
+.pi-detail-breakdown-title { font-size: 15px; }
+.pi-detail-breakdown-rows {
+  margin: 12px 18px 0;
+  padding: 0;
+  border: 1px solid #E4DED7;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+.pi-detail-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  column-gap: 0;
+  align-items: stretch;
+  padding: 0;
+  border-top: 1px solid #EDE8E1;
+}
+.pi-detail-breakdown-row:first-child { border-top: 0; }
+.pi-detail-breakdown-row:nth-child(even) { background: #FAF8F5; }
+.pi-detail-breakdown-row dt { padding: 7px 10px; border-right: 1px solid #EDE8E1; font-size: 13.5px; }
+.pi-detail-breakdown-row dd { padding: 7px 10px; font-size: 13.5px; }
+.pi-detail-breakdown-subtotal { margin-top: 0; padding-top: 0; border-top: 1px solid #EDE8E1; }
+.pi-detail-breakdown-grand {
+  margin-top: 0;
+  padding-top: 0;
+  background: rgba(51, 90, 134, 0.07) !important;
+  border-top-color: #D5DEE8;
+}
+.pi-detail-breakdown-grand dt,
+.pi-detail-breakdown-grand dd { padding-top: 10px; padding-bottom: 10px; }
+.pi-detail-breakdown-grand dt { font-size: 14px; }
+.pi-detail-breakdown-grand dd { font-size: 20px; }
+.pi-detail-breakdown-qualifier {
+  display: block;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #EEF2F7;
+  color: #335A86;
+  font-size: 10.5px;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.pi-detail-breakdown-terms { margin-top: 14px; border-top-color: #ECE7E0; }
+
+/* ── Activity, full width, as the Order page draws its own ── */
+.pi-detail-activity { background: #FFFFFF !important; }
+.pi-detail-activity-body { padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.pi-detail-activity-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.pi-detail-activity-filters > .boe-btn { height: 28px; min-height: 28px; padding: 0 12px; font-size: 12px; }
+.pi-detail-activity-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.pi-detail-activity-layout--nav { grid-template-columns: minmax(0, 1fr) 240px; }
+.pi-detail-activity-main { min-width: 0; }
+.pi-detail-activity-cols,
+.pi-detail-activity .pi-detail-timeline-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 170px 150px;
+  column-gap: 14px;
+  align-items: start;
+}
+.pi-detail-activity-cols {
+  padding: 0 0 6px;
+  border-bottom: 1px solid #ECE7E0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8F9392;
+}
+.pi-detail-activity-cols span:first-child { grid-column: 2; }
+.pi-detail-activity-cols span:nth-child(2) { grid-column: 3; }
+.pi-detail-activity-cols span:nth-child(3) { grid-column: 4; }
+.pi-detail-activity .pi-detail-timeline { padding: 0; }
+.pi-detail-activity .pi-detail-timeline-item {
+  padding: 12px 8px;
+  margin: 0 -8px;
+  border-bottom: 1px solid #F3EEE9;
+  border-radius: 8px;
+  transition: background-color 0.4s;
+}
+.pi-detail-activity .pi-detail-timeline-item:last-child { border-bottom: 0; }
+.pi-detail-activity .pi-detail-timeline-item.is-flash { background: #FFF3E8; }
+.pi-detail-activity .pi-detail-timeline-item--key .pi-detail-timeline-body > span:first-child { color: #9A3412; }
+.pi-detail-activity .pi-detail-timeline-line { display: none; }
+.pi-detail-activity .pi-detail-timeline-dot { margin-top: 6px; }
+.pi-detail-activity .pi-detail-timeline-body { padding-bottom: 0; }
+.pi-detail-activity-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+.pi-detail-activity-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #335A86;
+  cursor: pointer;
+}
+.pi-detail-activity-link:hover { text-decoration: underline; }
+.pi-detail-activity-nav { position: sticky; top: 76px; align-self: start; border-left: 1px solid #ECE7E0; padding-left: 18px; }
+.pi-detail-activity-nav-title { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8F9392; }
+.pi-detail-activity-nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pi-detail-activity-nav-link {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pi-detail-activity-nav-link:hover,
+.pi-detail-activity-nav-link:focus-visible { background: #FAF7F4; }
+.pi-detail-activity-nav-label { font-size: 13px; font-weight: 600; color: #303536; }
+.pi-detail-activity-nav-when { font-size: 12px; color: #6B7573; }
+@media (max-width: 900px) {
+  .pi-detail-activity-layout--nav { grid-template-columns: minmax(0, 1fr); }
+  .pi-detail-activity-nav { position: static; border-left: 0; border-top: 1px solid #ECE7E0; padding: 12px 0 0; order: -1; }
+}
+@media (max-width: 640px) {
+  .pi-detail-activity-cols { display: none; }
+  .pi-detail-activity .pi-detail-timeline-item { grid-template-columns: 16px minmax(0, 1fr); row-gap: 4px; }
+  .pi-detail-activity .pi-detail-timeline-by,
+  .pi-detail-activity .pi-detail-timeline-when { grid-column: 2; }
+}
+
+/* ── FABRIC & FINISH COST (/orders/drafts/[submissionId]/fabric-finish) ──
+   Tiles, two reconciliation lines and one wide table that scrolls inside its
+   card. Same cards, same captions, same hairlines as the PI page above. */
+.pi-ff-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; min-width: 0; }
+.pi-ff-title { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; color: #303536; }
+.pi-ff-meta { margin: 0; font-size: 13px; color: #686D6C; overflow-wrap: anywhere; }
+.pi-ff-card { background: #FFFFFF; border: 1px solid #ECE7E0; border-radius: 12px; min-width: 0; }
+.pi-ff-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 14px 18px 12px; }
+.pi-ff-card-title { margin: 0; font-size: 15px; font-weight: 700; color: #303536; }
+.pi-ff-card-note { font-size: 12px; color: #686D6C; }
+.pi-ff-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 760px) { .pi-ff-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.pi-ff-tile { min-width: 0; padding: 14px 18px; border-left: 1px solid #F3F0EB; }
+.pi-ff-tile:first-child { border-left: 0; }
+@media (max-width: 759px) {
+  .pi-ff-tile:nth-child(odd) { border-left: 0; }
+  .pi-ff-tile:nth-child(n + 3) { border-top: 1px solid #F3F0EB; }
+}
+.pi-ff-tile-label { font-size: 12px; color: #686D6C; }
+.pi-ff-tile-value { margin-top: 2px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: #303536; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pi-ff-tile-sub { margin-top: 1px; font-size: 12px; color: #686D6C; overflow-wrap: anywhere; }
+.pi-ff-recon { list-style: none; margin: 0; padding: 10px 18px 14px; border-top: 1px solid #F3F0EB; display: flex; flex-direction: column; gap: 6px; }
+.pi-ff-recon-line { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #4C5352; }
+.pi-ff-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: #8F9392; }
+.pi-ff-recon-line--green .pi-ff-dot { background: #276247; }
+.pi-ff-recon-line--amber .pi-ff-dot { background: #C48A1A; }
+.pi-ff-note, .pi-ff-empty { margin: 0; padding: 12px 18px 16px; font-size: 13px; color: #686D6C; }
+.pi-ff-table-wrap { overflow-x: auto; }
+.pi-ff-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pi-ff-table th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #E4DED7; font-size: 12px; font-weight: 600; color: #686D6C; white-space: nowrap; }
+.pi-ff-table .pi-ff-group-row th { padding: 6px 12px 2px; border-bottom: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8F9392; }
+.pi-ff-table th.pi-ff-group, .pi-ff-table td.pi-ff-group { border-left: 1px solid #F3F0EB; }
+.pi-ff-table .pi-ff-group-row th.pi-ff-group { border-left: 1px solid #E4DED7; }
+.pi-ff-table td { padding: 10px 12px; border-bottom: 1px solid #F3F0EB; vertical-align: top; }
+.pi-ff-table tbody tr:nth-child(even) { background: #FAF8F5; }
+.pi-ff-table tbody tr:last-child td { border-bottom: 0; }
+.pi-ff-table tfoot td { border-top: 2px solid #E4DED7; font-weight: 700; background: #FFFFFF; }
+.pi-ff-r { text-align: right; white-space: nowrap; }
+.pi-ff-num { font-variant-numeric: tabular-nums; }
+.pi-ff-zero { color: #8F9392; }
+.pi-ff-code { font-size: 12px; font-weight: 600; color: #4C5352; letter-spacing: 0.02em; white-space: nowrap; }
+.pi-ff-name { font-weight: 600; color: #303536; }
+.pi-ff-material { margin-top: 1px; font-size: 12px; color: #686D6C; max-width: 240px; white-space: pre-line; }
+.pi-ff-type { white-space: nowrap; }
+.pi-ff-warn { display: inline-flex; align-items: center; margin-top: 3px; padding: 1px 6px; border-radius: 6px; background: #FAF0DA; color: #805B0D; font-size: 11.5px; font-weight: 600; }
+.pi-ff-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pi-ff-pill--amber { background: #FAF0DA; color: #805B0D; }
+.pi-ff-pill--grey { background: #EEECE8; color: #595D5B; font-weight: 500; }
+.pi-ff-pill--green { background: #E8F2EC; color: #276247; }
+.pi-ff-text { font-size: 12.5px; color: #4C5352; white-space: pre-line; }
+.pi-ff-source { margin: 0; padding: 12px 18px 14px; border-top: 1px solid #F3F0EB; font-size: 12.5px; line-height: 1.6; color: #686D6C; }
+.pi-ff-source b { color: #4C5352; }
