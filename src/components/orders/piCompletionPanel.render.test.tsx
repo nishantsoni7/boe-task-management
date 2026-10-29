@@ -173,12 +173,15 @@ describe('the area: fields, then the action last', () => {
     assert.ok(html.includes('data-testid="groups"'))
   })
 
-  test('the page draws Client, Supporting details, then Internal order details inside the one container', () => {
+  test('the page draws Client, then Supporting details inside the one container; Internal order details sit below the products', () => {
     const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
     const at = page.indexOf('<PiCompletionPanel')
     const body = page.slice(at, at + 2600)
     assert.ok(body.indexOf('title="Client"') < body.indexOf('{supportingDetails}'))
-    assert.ok(body.indexOf('{supportingDetails}') < body.indexOf('<PiOrderDetailsSection'))
+    // Beside the Commercial breakdown, as on the Order page (owner, 2026-10-29):
+    // the one form is drawn once, in the lower band, for every arrangement.
+    assert.ok(!body.includes('<PiOrderDetailsSection'), 'not inside the completion area')
+    assert.ok(page.indexOf('<PiLowerGrid') < page.indexOf('<PiOrderDetailsSection'), 'in the lower band')
     assert.ok(!body.includes('PI terms') && !body.includes('Edit PI terms'))
   })
 })
@@ -247,7 +250,7 @@ describe('the middleman commission is one editable item', () => {
     const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
     assert.ok(!page.includes('PiCommissionSummary'), 'no repeat of the answer beside Product value and Total before GST')
     assert.ok(!page.includes('internal={'), 'the commercial card is given no commission block')
-    assert.equal((page.match(/<PiOrderDetailsSection/g) ?? []).length, 2, 'the one form, drawn in either arrangement')
+    assert.equal((page.match(/<PiOrderDetailsSection/g) ?? []).length, 1, 'the one form, drawn once in the lower band')
     assert.ok(!page.includes('internalSubmitBlock &&'), 'the middleman warning above the Submit dialog is gone')
     assert.ok(!page.includes('SUBMISSION_MIDDLEMAN_HINT'))
   })

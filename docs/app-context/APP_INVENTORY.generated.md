@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9fbab293` — Docs: Founders' payouts is PR #497
-- Commits on this branch: 1062
+- Commit: `4333034a` — Docs: migration 20270501000000 applied to production
+- Commits on this branch: 1065
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 166
 - Migrations: 380 (first `20260530_create_positions.sql`, latest `20270501000000_finance_founder_payouts.sql`)
 - Tables ever created: 188 (dropped at some point: 7)   SQL functions: 835   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `4333034a` 2026-10-29 Docs: migration 20270501000000 applied to production
+- `ca1662f5` 2026-10-29 Merge main (#495) into feat/founders-payouts
+- `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
 - `9fbab293` 2026-10-29 Docs: Founders' payouts is PR #497
 - `1d2913b7` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
@@ -36,9 +39,6 @@
 - `0ba1415f` 2026-10-28 Vendors: a list that shows what each vendor is, with filters for it
 - `1209de81` 2026-10-28 Backups: fix the pg_dump step found on the first live runs
 - `53136810` 2026-10-28 Backups: pg_dump step for the tables the service role cannot read
-- `9e328d53` 2026-10-28 Vendors: vendor base and visit log with photographs and location (#472)
-- `2ef35455` 2026-10-28 Docs: sidebar rail changelog entry marked merged (PR 475)
-- `241398cb` 2026-10-28 Docs: refresh the app inventory after rebasing onto main
 
 ## Pages by top-level area
 
