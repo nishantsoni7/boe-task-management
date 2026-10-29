@@ -25,6 +25,7 @@ import {
   describeOperationsHandoffEvent,
 } from './operationsHandoff'
 import { holdCauseText } from './advanceReadiness'
+import { displayOrderNumber } from '@/lib/orderNumbering'
 
 /** One row of order_activity_log, as the Order page reads it. */
 export type OrderActivityRow = {
@@ -78,6 +79,8 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_pendency_approved:          'Pendency approved',
   order_pendency_reopened:          'Pendency reopened',
   order_pendency_removed:           'Pendency removed',
+  // An administrator gave the Order a different number (20270502000000).
+  order_number_changed:             'Order number changed',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -97,6 +100,7 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   order_approval_recorded:          'green',
   order_pendency_approved:          'green',
   order_pendency_reopened:          'amber',
+  order_number_changed:             'blue',
 }
 
 const text = (value: unknown): string | null =>
@@ -158,6 +162,13 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     case 'order_pendency_reopened':
     case 'order_pendency_removed':
       return text(p.label)
+    case 'order_number_changed': {
+      const from = text(p.from), to = text(p.to)
+      if (!from || !to) return null
+      return [`${displayOrderNumber(from)} → ${displayOrderNumber(to)}`,
+        p.old_number_is_next === true ? `${displayOrderNumber(from)} goes to the next Order` : null]
+        .filter(Boolean).join(' · ')
+    }
     case 'factory_focus_selected':
       return [monthOf(p.selected_month), text(p.note)].filter(Boolean).join(' · ') || null
     case 'factory_focus_removed':
