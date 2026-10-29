@@ -1155,7 +1155,7 @@ describe('the applied migrations are frozen', () => {
       '20270430000000_order_payment_plan_account_cash.sql',
       // Orders: Fabric & Finish cost sheet per PI line (sheet + typed values). APPLIED 2026-10-29.
       '20270431000000_order_submission_fabric_finish_lines.sql',
-      // Finance: Founders' payouts (owner-only, no admin branch). NOT APPLIED.
+      // Finance: Founders' payouts (owner-only, no admin branch). APPLIED 2026-10-29.
       '20270501000000_finance_founder_payouts.sql',
     ])
   })
@@ -1563,7 +1563,7 @@ describe('the applied migrations are frozen', () => {
       '20270430000000_order_payment_plan_account_cash.sql',
       // Orders: Fabric & Finish cost sheet per PI line (sheet + typed values). APPLIED 2026-10-29.
       '20270431000000_order_submission_fabric_finish_lines.sql',
-      // Finance: Founders' payouts (owner-only, no admin branch). NOT APPLIED.
+      // Finance: Founders' payouts (owner-only, no admin branch). APPLIED 2026-10-29.
       '20270501000000_finance_founder_payouts.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
