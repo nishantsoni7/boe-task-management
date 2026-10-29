@@ -1,9 +1,11 @@
 name: Backup on merge
 
-# Every push to main (i.e. every merge) and a weekly schedule store a complete, verified
-# `git bundle` of ALL branches/tags as a workflow artifact (kept 90 days, the GitHub maximum).
-# Optionally also mirrors every branch and tag to a SECOND, PRIVATE repository so that deleting
-# or losing this repository does not lose the code. See docs/app-context/03_BACKUP_AND_RECOVERY.md.
+# A daily schedule stores a complete, verified `git bundle` of ALL branches/tags as a workflow
+# artifact (kept 7 days: every bundle holds every ref, so only the newest matters). Every push to
+# main (i.e. every merge) and the daily schedule also mirror every branch and tag to a SECOND,
+# PRIVATE repository so that deleting or losing this repository does not lose the code. The
+# bundle no longer runs per merge: ~20 merges a day at ~29 MB each piled up gigabytes of
+# identical copies. See docs/app-context/03_BACKUP_AND_RECOVERY.md.
 #
 # Optional mirror setup (one time, owner only):
 #   1. Create an empty PRIVATE repo, e.g. nishantsoni7/boe-task-management-mirror.
@@ -17,7 +19,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 2 * * 0'
+    - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -31,6 +33,8 @@ jobs:
   bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Daily schedule and manual runs only; a merge is covered by the mirror below.
+    if: ${{ github.event_name != 'push' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +55,7 @@ jobs:
           path: |
             boe-code-*.bundle
             boe-code-*.bundle.sha256
-          retention-days: 90
+          retention-days: 7
 
   mirror:
     runs-on: ubuntu-latest
