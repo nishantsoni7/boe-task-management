@@ -222,6 +222,11 @@ registerModule({
     // Protected; needs view_all (levels.ts). Separate from `manage`, which also
     // rewrites other people's expenses. Registered by 20270403000000.
     { actionKey: 'reimburse', displayName: 'Reimburse Expenses' },
+    // Founders' payouts: money paid into the partners' and their families'
+    // accounts, for income tax. Protected, and the database door has NO admin
+    // branch, so an administrator holds it only when granted. Seeded for the
+    // owner account alone. Registered by 20270501000000.
+    { actionKey: 'founder_payouts', displayName: "Founders' Payouts" },
   ],
 })
 

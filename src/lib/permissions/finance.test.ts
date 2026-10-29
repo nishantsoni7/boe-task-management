@@ -118,11 +118,13 @@ describe('levels produce the expected Finance capabilities', () => {
 })
 
 describe('admin compatibility', () => {
-  test('an admin holds every Finance capability with no rows at all', () => {
+  test('an admin holds every Finance capability with no rows at all — except the founders’ payouts', () => {
     const caps = deriveFinanceCapabilities('admin', [])
     for (const [name, value] of Object.entries(caps)) {
+      if (name === 'canSeeFounderPayouts') continue
       assert.equal(value, true, `admin missing ${name}`)
     }
+    assert.equal(caps.canSeeFounderPayouts, false)
   })
 
   test('only an admin may decide a payment they recorded — no grant confers it', () => {
@@ -136,6 +138,23 @@ describe('admin compatibility', () => {
     const caps = deriveFinanceCapabilities('admin', perms([]))
     assert.equal(caps.canApprovePayment, true)
     assert.equal(caps.canCorrectOrReversePayment, true)
+  })
+})
+
+describe('founders’ payouts: explicit grant only (20270501000000)', () => {
+  const grant = (actionKey: string, allowed = true): EffectivePermission => ({ actionKey, allowed, source: 'employee_override' as const })
+
+  test('an administrator needs the grant like anybody else', () => {
+    assert.equal(deriveFinanceCapabilities('admin', perms(FINANCE_ACTIONS)).canSeeFounderPayouts, false)
+    assert.equal(deriveFinanceCapabilities('admin', [grant('founder_payouts')]).canSeeFounderPayouts, true)
+    assert.equal(deriveFinanceCapabilities('admin', [grant('founder_payouts', false)]).canSeeFounderPayouts, false)
+  })
+
+  test('anyone else needs the grant AND Finance entry; no preset or other action reaches it', () => {
+    assert.equal(deriveFinanceCapabilities('member', [grant('view'), grant('founder_payouts')]).canSeeFounderPayouts, true)
+    assert.equal(deriveFinanceCapabilities('member', [grant('founder_payouts')]).canSeeFounderPayouts, false)
+    assert.equal(deriveFinanceCapabilities('manager', fromPreset('manager')).canSeeFounderPayouts, false)
+    assert.equal(deriveFinanceCapabilities('member', perms(FINANCE_ACTIONS)).canSeeFounderPayouts, false)
   })
 })
 
