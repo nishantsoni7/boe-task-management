@@ -426,7 +426,7 @@ export type WorkflowPanel = {
 export const WORKFLOW_HEADING = {
   reviewer: 'Management review',
   draftOwner: 'Ready for management?',
-  needsChangesOwner: 'Changes requested',
+  needsChangesOwner: 'Returned to Sales',
   /**
    * Sentence case, and deliberately NOT REVIEW_QUEUE_TITLE.
    *
@@ -436,11 +436,11 @@ export const WORKFLOW_HEADING = {
    * words it already had.
    */
   submitted: 'Submitted for review',
-  rejected: 'Rejected',
+  rejected: 'Closed (deal lost)',
   approved: 'Approved',
 } as const
 
-export const REJECTED_NOTE_HEADING = 'Why this was rejected'
+export const REJECTED_NOTE_HEADING = 'Why this was closed'
 export const CHANGES_NOTE_HEADING = 'What management asked for'
 
 /** The one instruction that survives: a draft nobody can submit yet. */
@@ -482,7 +482,7 @@ export function describeWorkflowPanel(input: {
 
   const noteHeading = status === 'rejected' ? REJECTED_NOTE_HEADING : CHANGES_NOTE_HEADING
   const submittedLine = actorLine('Submitted', input.submitterName, input.submittedAt)
-  const rejectedLine = actorLine('Rejected', input.rejectedByName, input.rejectedAt)
+  const rejectedLine = actorLine('Closed', input.rejectedByName, input.rejectedAt)
 
   if (isReviewer) {
     return {
@@ -1058,8 +1058,8 @@ export const PAYMENT_PANEL_ID = 'pi-detail-payment-panel'
 
 export const PAYMENT_STATUS_LABEL = {
   received: 'received',
-  confirmed: 'Confirmed',
-  awaiting: 'Awaiting verification',
+  confirmed: 'Verified',
+  awaiting: 'Waiting for Finance',
   unpaid: 'Not yet received',
   // The base every percentage on the card is a share of: the Total before GST.
   piTotal: 'Total before GST',

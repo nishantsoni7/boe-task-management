@@ -20,6 +20,8 @@ export type FinanceNotifyEvent =
   | 'finance_rejected'
   | 'finance_linked'
   | 'finance_status_corrected'
+  /** Use this money (20270506000000): already-received money moved onto a PI or Order. For information only. */
+  | 'finance_payment_moved'
 
 type NotifRow = {
   user_id: string
@@ -81,12 +83,13 @@ export async function POST(req: NextRequest) {
   }
 
   const rows: NotifRow[] = []
-  const push = (userId: string | null | undefined, title: string) => {
+  // `type` is a notifications.type enum value; it defaults to the event name.
+  const push = (userId: string | null | undefined, title: string, type: string = event) => {
     if (!userId || userId === user.id) return
-    rows.push({ user_id: userId, task_id: null, entity_id: entityId ?? null, type: event, title, body, is_push_sent: true })
+    rows.push({ user_id: userId, task_id: null, entity_id: entityId ?? null, type, title, body, is_push_sent: true })
   }
-  const toAdmins = async (title: string) => {
-    for (const id of await getAdmins()) push(id, title)
+  const toAdmins = async (title: string, type: string = event) => {
+    for (const id of await getAdmins()) push(id, title, type)
   }
 
   switch (event) {
@@ -110,6 +113,11 @@ export async function POST(req: NextRequest) {
       break
     case 'finance_linked':
       push(creatorId, `Payment request ${requestNumber} was linked to Order${orderSuffix}.`)
+      break
+    case 'finance_payment_moved':
+      // NO NEW ENUM VALUE: sent with the existing finance_linked type, which opens
+      // the payment like every other Finance notice.
+      await toAdmins(`Payment request ${requestNumber} was moved onto ${orderNumber ?? 'a PI'} from money already received.`, 'finance_linked')
       break
     case 'finance_status_corrected':
       push(creatorId, `Payment request ${requestNumber} status was updated to ${statusLabel ?? 'a new status'}.`)

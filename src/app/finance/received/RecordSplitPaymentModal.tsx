@@ -88,6 +88,8 @@ import {
   DestinationCards,
 } from '@/app/finance/components/PaymentEntryFields'
 import { DiscardConfirmation, useDiscardGuard } from '@/app/finance/components/DiscardGuard'
+import { AvailableMoneyPanel } from '@/components/finance/AvailableMoneyPanel'
+import { announcePaymentMoved, applyAvailableMoney, availableMoneyUsedNotice, searchAvailableMoney } from '@/lib/finance/availableMoney'
 import {
   DEFAULT_PAYMENT_MODE,
   SUSPENSE_NOTICE,
@@ -142,6 +144,7 @@ export function RecordSplitPaymentModal({
   onClose,
   onRecorded,
   initialTarget = null,
+  onUsedAvailable,
 }: {
   supabase: ReturnType<typeof createClient>
   /** Whoever is recording this. Seeds the first custody activity and the proof row. */
@@ -175,6 +178,13 @@ export function RecordSplitPaymentModal({
     reference: string
     clientName: string
   } | null
+  /**
+   * Money already received from this client (20270506000000). Given with an
+   * Order `initialTarget`, the form shows the client's free money once the amount
+   * and date are in, and "Use this money" moves it onto that Order instead of
+   * recording it again. Called with the sentence to show; the caller closes.
+   */
+  onUsedAvailable?: (notice: string) => void
 }) {
   // ── Where the money is for ──
   //
@@ -625,6 +635,22 @@ export function RecordSplitPaymentModal({
           modeHintId="rsp-mode-hint"
         />
       </FormStep>
+
+      {onUsedAvailable && initialTarget?.kind === 'order' && (
+        <AvailableMoneyPanel
+          amount={amount}
+          paymentDate={paymentDate}
+          search={(a, d) => searchAvailableMoney(supabase, { orderId: initialTarget.id }, a, d)}
+          onUse={async paymentId => {
+            const result = await applyAvailableMoney(supabase, paymentId, { orderId: initialTarget.id })
+            if (!result.ok) return result.message
+            announcePaymentMoved(paymentId, result.requestNumber, `Order ${initialTarget.reference}`)
+            onUsedAvailable(availableMoneyUsedNotice(result, 'Order'))
+            return null
+          }}
+          disabled={saving}
+        />
+      )}
 
       {/* ── 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara. ── */}
       {carriesCustody && (

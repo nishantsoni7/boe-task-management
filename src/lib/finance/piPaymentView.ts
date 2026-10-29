@@ -36,14 +36,10 @@ import {
   SUBMISSION_OUTCOME_UNKNOWN,
   isAmbiguousFailure,
 } from '@/lib/finance/submissionAttempt'
+import { PAYMENT_STATUS_WORD } from '@/lib/finance/paymentWords'
 
-export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = {
-  pending_approval:    'Awaiting Verification',
-  needs_clarification: 'Needs Clarification',
-  rejected:            'Rejected',
-  approved_unlinked:   'Verified',
-  approved_linked:     'Verified',
-}
+// THE FOUR WORDS every screen uses (lib/finance/paymentWords.ts, 2026-10-29).
+export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = PAYMENT_STATUS_WORD
 
 export type PiPaymentTone = 'amber' | 'blue' | 'red' | 'green' | 'neutral'
 
@@ -247,7 +243,7 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
       hint: 'the base for the advance' },
     { key: 'grand',      label: 'Grand total',           value: formatMoney(summary.grand_total) },
     { key: 'verified',   label: 'Verified payment',      value: formatMoney(summary.verified_amount) },
-    { key: 'unverified', label: 'Awaiting verification', value: formatMoney(summary.unverified_amount) },
+    { key: 'unverified', label: 'Waiting for Finance', value: formatMoney(summary.unverified_amount) },
     { key: 'percent',    label: 'Verified payment %',    value: formatPercent(summary.verified_percent),
       hint: 'of Total before GST, verified only' },
     { key: 'needed',     label: 'Needed for approval',   value: formatMoney(summary.needed_for_standard),
@@ -320,6 +316,8 @@ export type PiPaymentRowView = {
   amount: string
   /** The whole payment, only when it differs from the allocation. */
   paymentAmount: string | null
+  /** The stored status, for the tracker (components/finance/PaymentTracker). */
+  status: string
   statusLabel: string
   statusTone: PiPaymentTone
   /** A reversed allocation is history: shown, and visibly not counting. */
@@ -372,6 +370,7 @@ export function describePiPaymentRow(
     reference: (row.reference ?? '').trim() || null,
     amount,
     paymentAmount: whole !== amount && whole !== '—' ? whole : null,
+    status: row.status,
     statusLabel: piPaymentStatusLabel(row.status),
     statusTone: piPaymentStatusTone(row.status),
     reversed,

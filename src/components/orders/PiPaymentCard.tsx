@@ -32,6 +32,9 @@ import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode, moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
+import { PaymentTracker } from '@/components/finance/PaymentTracker'
+import { AvailableMoneyPanel } from '@/components/finance/AvailableMoneyPanel'
+import type { AvailablePayment } from '@/lib/finance/availableMoney'
 import {
   EMPTY_PI_PAYMENT_FORM,
   PI_PAYMENT_PROOF_FAILED,
@@ -58,20 +61,6 @@ const TONE_COLOR: Record<PiPaymentTone, { fg: string; bg: string; border: string
   red:     { fg: '#B42332',    bg: colors.redTint,   border: 'rgba(180,35,50,0.28)' },
   green:   { fg: '#276247',    bg: colors.greenTint, border: 'rgba(39,98,71,0.28)' },
   neutral: { fg: colors.tertiary, bg: colors.raised, border: colors.border },
-}
-
-function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
-  const t = TONE_COLOR[tone]
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap',
-      fontSize: '12px', fontWeight: 600,
-      color: t.fg, background: t.bg, border: `1px solid ${t.border}`,
-    }}>
-      {label}
-    </span>
-  )
 }
 
 // ── The progress bar ──────────────────────────────────────────────────────────
@@ -220,7 +209,7 @@ const LABEL: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
-export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorderId = null }: {
+export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorderId = null, availableMoney }: {
   todayIso: string
   saving: boolean
   onClose: () => void
@@ -228,6 +217,15 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
   onSubmit: (form: PiPaymentFormState, proof: File | null, handTo?: string | null) => Promise<string | null>
   /** Who is recording it (the default holder of the money). */
   recorderId?: string | null
+  /**
+   * Money already received from this client (20270506000000). `use` resolves to
+   * an error sentence, or null once the money is on the PI (the page then closes
+   * this form). Absent: the form is exactly as before.
+   */
+  availableMoney?: {
+    search: (amount: string, paymentDate: string) => Promise<AvailablePayment[]>
+    use: (paymentId: string) => Promise<string | null>
+  }
 }) {
   const [form, setForm] = useState<PiPaymentFormState>({ ...EMPTY_PI_PAYMENT_FORM, paymentDate: todayIso })
   const [proof, setProof] = useState<File | null>(null)
@@ -324,6 +322,16 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
           <FieldProblem message={touched ? errors.paymentMode ?? null : null} />
         </FormStep>
 
+        {availableMoney && (
+          <AvailableMoneyPanel
+            amount={form.amount}
+            paymentDate={form.paymentDate}
+            search={availableMoney.search}
+            onUse={availableMoney.use}
+            disabled={busy}
+          />
+        )}
+
         {tracked && (
           <FormStep number={2} title="Where is this money now?">
             <WhereIsMoneyNowField
@@ -401,20 +409,20 @@ export const EDIT_PAYMENT_LABEL = 'Edit'
  */
 export const PAYMENT_FILTER_TITLE: Record<PiPaymentFilter, string> = {
   all: PAYMENT_DETAILS_TITLE,
-  confirmed: 'Confirmed payments',
-  awaiting: 'Payments awaiting verification',
+  confirmed: 'Verified payments',
+  awaiting: 'Payments waiting for Finance',
 }
 
 export const PAYMENT_FILTER_TAB: Record<PiPaymentFilter, string> = {
   all: 'All',
-  confirmed: 'Confirmed',
-  awaiting: 'Awaiting verification',
+  confirmed: 'Verified',
+  awaiting: 'Waiting for Finance',
 }
 
 const PAYMENT_FILTER_EMPTY: Record<PiPaymentFilter, string> = {
   all: 'No payment has been recorded against this PI yet.',
-  confirmed: 'No payment against this PI has been confirmed yet.',
-  awaiting: 'No payment against this PI is awaiting verification.',
+  confirmed: 'No payment against this PI has been verified yet.',
+  awaiting: 'No payment against this PI is waiting for Finance.',
 }
 
 const PAYMENT_FILTERS: readonly PiPaymentFilter[] = ['all', 'confirmed', 'awaiting']
@@ -516,9 +524,10 @@ export function PiPaymentRow({
           <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
             {row.amount}
           </span>
-          <StatusChip label={row.statusLabel} tone={row.statusTone} />
         </div>
       </div>
+
+      <PaymentTracker status={row.status} />
 
       <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '12px', color: colors.tertiary }}>
         {row.reference && <span>Ref {row.reference}</span>}
@@ -792,9 +801,9 @@ export function PiPaymentDetailsModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
               <Figure label="Received" value={status.received} />
-              <Figure label="Confirmed" value={status.confirmed} tone="green" />
+              <Figure label="Verified" value={status.confirmed} tone="green" />
               <Figure
-                label="Awaiting verification"
+                label="Waiting for Finance"
                 value={status.pendingCount > 0 ? status.pendingAmount : '—'}
                 tone={status.pendingCount > 0 ? 'amber' : undefined}
               />
@@ -804,7 +813,7 @@ export function PiPaymentDetailsModal({
               confirmedPercent={status.barPercent}
               receivedPercent={status.receivedBarPercent}
               thresholdPercent={status.thresholdPercent}
-              label={`Received: ${status.receivedPercent} of the Total before GST, ${status.percent} confirmed`}
+              label={`Received: ${status.receivedPercent} of the Total before GST, ${status.percent} verified`}
             />
             <div style={{ fontSize: '12px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
               {status.receivedPercent} received of {status.total} · {status.percent} confirmed
@@ -814,7 +823,7 @@ export function PiPaymentDetailsModal({
 
         {status && filter === 'confirmed' && (
           <FilteredTotal
-            tone="green" label="Confirmed total"
+            tone="green" label="Verified total"
             amount={status.confirmed} count={status.confirmedCount}
             share={status.percent} total={status.total}
           />
@@ -822,7 +831,7 @@ export function PiPaymentDetailsModal({
 
         {status && filter === 'awaiting' && (
           <FilteredTotal
-            tone="amber" label="Awaiting verification total"
+            tone="amber" label="Waiting for Finance total"
             amount={status.pendingAmount} count={status.pendingCount}
             share={status.pendingPercent} total={status.total}
           />

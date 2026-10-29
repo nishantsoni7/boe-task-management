@@ -424,7 +424,7 @@ export function paymentPositionLines(input: {
     { key: 'grand',      label: 'Grand total',                 value: money(input.grandTotal) },
     { key: 'verified',   label: 'Verified payment',            value: money(input.verifiedAmount) },
     { key: 'percent',    label: 'Verified payment %',          value: pct(input.verifiedPercent) },
-    { key: 'unverified', label: 'Awaiting verification',       value: money(input.unverifiedAmount) },
+    { key: 'unverified', label: 'Waiting for Finance',         value: money(input.unverifiedAmount) },
   ]
   if (input.unverifiedPercent !== undefined) {
     lines.push({ key: 'unverifiedPercent', label: 'Awaiting verification %', value: pct(input.unverifiedPercent) })

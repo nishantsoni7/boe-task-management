@@ -4117,6 +4117,12 @@ export default function OrderDetailPage() {
             clientName: order.client_name ?? '—',
           }}
           onClose={() => setRecordingPayment(false)}
+          onUsedAvailable={notice => {
+            // MONEY ALREADY RECEIVED moved onto this Order (20270506000000).
+            setRecordingPayment(false)
+            setPaymentNotice(notice)
+            void loadOrder()
+          }}
           onRecorded={summary => {
             setRecordingPayment(false)
             setPaymentNotice(

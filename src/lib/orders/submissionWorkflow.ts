@@ -83,8 +83,8 @@ export function submitButtonLabel(status: string): string {
 }
 
 export const CHANGE_PI_BUTTON_LABEL = 'Change PI'
-export const REQUEST_CHANGES_BUTTON_LABEL = 'Needs Changes'
-export const REJECT_BUTTON_LABEL = 'Reject'
+export const REQUEST_CHANGES_BUTTON_LABEL = 'Return to Sales'
+export const REJECT_BUTTON_LABEL = 'Close: deal lost'
 /**
  * The final approval control, named for BOTH halves of what it does.
  *
@@ -571,8 +571,8 @@ export function describeSubmissionBanner(input: SubmissionBannerInput): Submissi
     case 'rejected':
       return {
         tone: 'red',
-        title: 'Rejected by management',
-        body: `Rejected by ${who(input.rejectedByName)} on ${when(input.rejectedAt)}. This record is closed and stays read-only.`,
+        title: 'Closed by management (deal lost)',
+        body: `Closed by ${who(input.rejectedByName)} on ${when(input.rejectedAt)}. This PI stays read-only. Any payments on it can be used on the client's next PI or Order.`,
       }
     case 'approved':
       return {

@@ -68,14 +68,14 @@ describe('the page', () => {
   test('nothing sent back or rejected: no attention block, both counts still shown as 0', () => {
     const out = html(parsed(base()))
     assert.ok(!out.includes('Needs your attention'))
-    assert.ok(out.includes('Sent Back for Changes'))
+    assert.ok(out.includes('Returned to Sales'))
     assert.ok(out.includes('Orders Pending Approval'))
   })
 
   test('a sent-back PI leads the page with the reviewer note and a link to the PI', () => {
     const out = html(parsed(base({ returned_total: 1, returned: [row()] })))
     assert.ok(out.indexOf('Needs your attention') < out.indexOf('Total Orders'))
-    assert.ok(out.includes('Changes requested'))
+    assert.ok(out.includes('Returned to Sales'))
     assert.ok(out.includes('Discount line wording does not match the workbook.'))
     assert.ok(out.includes('Sent back by Nishant Soni 2 h ago'))
     assert.ok(out.includes('/orders/drafts/sub-9'))
@@ -83,9 +83,9 @@ describe('the page', () => {
 
   test('a rejected PI is its own group, drawn as rejected', () => {
     const out = html(parsed(base({ rejected_total: 1, rejected: [row({ note: null })] })))
-    assert.ok(out.includes('Rejected'))
+    assert.ok(out.includes('Closed (deal lost)'))
     assert.ok(out.includes('No note was left.'))
-    assert.ok(!out.includes('Edit and resubmit</p>') || out.includes('Sent Back for Changes'))
+    assert.ok(!out.includes('Edit and resubmit</p>') || out.includes('Returned to Sales'))
   })
 
   test('a PI the reader cannot open is plain text, never a link', () => {

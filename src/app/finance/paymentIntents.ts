@@ -49,7 +49,7 @@ export type StoredIntent = {
 
 /** What the status MEANS on a screen, in the vocabulary the rest of Finance uses. */
 export const INTENT_STATUS_LABEL: Record<IntentStatus, string> = {
-  pending:   'Awaiting verification',
+  pending:   'Waiting for Finance',
   applied:   'Allocated on approval',
   cancelled: 'Cancelled',
 }

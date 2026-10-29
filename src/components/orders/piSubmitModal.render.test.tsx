@@ -208,7 +208,7 @@ describe('the advance step states the live payment position', () => {
   const html = advance()
 
   test('the figures a salesperson needs are all on screen', () => {
-    for (const label of ['Verified payment', 'Verified payment %', 'Awaiting verification', 'Needed for standard approval']) {
+    for (const label of ['Verified payment', 'Verified payment %', 'Waiting for Finance', 'Needed for standard approval']) {
       assert.ok(html.includes(label), `"${label}" is missing from the step`)
     }
   })
@@ -404,7 +404,7 @@ describe('payment awaiting Finance verification is never described as verified',
     const html = advance({ payment: awaiting() })
     const t = html.replace(/<[^>]+>/g, '|').replace(/\|+/g, '|')
     assert.ok(/Verified payment\|₹0\.00/.test(t), 'verified stays ₹0.00')
-    assert.ok(/Awaiting verification\|₹1,00,000\.00/.test(t))
+    assert.ok(/Waiting for Finance\|₹1,00,000\.00/.test(t))
     assert.ok(/Total attached payment\|₹1,00,000\.00/.test(t))
   })
 

@@ -88,8 +88,8 @@ export const PI_DRAFT_LIST_STATUSES: readonly PiDraftStatus[] = [
 export const PI_DRAFT_STATUS_LABEL: Record<PiDraftStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted for Review',
-  needs_changes: 'Needs Changes',
-  rejected: 'Rejected',
+  needs_changes: 'Returned to Sales',
+  rejected: 'Closed (deal lost)',
   approved: 'Approved',
 }
 

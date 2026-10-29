@@ -528,6 +528,13 @@ describe('the detail page renders only what it fetched', () => {
       // finance.verify_own_payment, through approve_finance_payment_request;
       // for everybody else it writes nothing.
       'completePaymentEntry',
+      // src/lib/finance/availableMoney.ts — use_available_payment (20270506000000):
+      // moves money already received from the SAME client onto this PI, through
+      // the same door as record_pi_submission_payment. Pinned in availableMoney.test.ts
+      // and proven on PGlite (supabase/tests/payments_counted_once_pglite.mjs).
+      'applyAvailableMoney',
+      // The Finance FYI notice after a move (POST /api/finance/notify).
+      'announcePaymentMoved',
     ] as const
 
     const READ_ONLY_HELPERS = [
@@ -536,6 +543,9 @@ describe('the detail page renders only what it fetched', () => {
       // Which pending payments this viewer recorded, so their own draw no
       // decision. Ids only, under the caller's own RLS.
       'loadOwnPaymentIds',
+      // client_available_payments: at most three of this client's payments with
+      // money free to use, for the amount and date typed (20270506000000).
+      'searchAvailableMoney',
     ] as const
 
     // Pure decisions. They touch no database at all — they only decide whether a
@@ -553,6 +563,10 @@ describe('the detail page renders only what it fetched', () => {
       // Today's date in the reader's own time zone, for the payment form's date
       // bound. It reads the clock only; the server re-checks the date.
       'localTodayIso',
+      // Sentences: what the page says after Use this money, and the line about the
+      // money on the PI in the Return / Close window.
+      'availableMoneyUsedNotice',
+      'piDecisionMoneyNote',
     ] as const
 
     // Anything imported from the Finance library must be on one of the
@@ -691,9 +705,9 @@ describe('the drafts list', () => {
       assert.equal(draftStatusLabel(status), label)
     }
     assert.equal(draftStatusLabel('draft'), 'Draft')
-    assert.equal(draftStatusLabel('needs_changes'), 'Needs Changes')
+    assert.equal(draftStatusLabel('needs_changes'), 'Returned to Sales')
     assert.equal(draftStatusLabel('submitted'), 'Submitted for Review')
-    assert.equal(draftStatusLabel('rejected'), 'Rejected')
+    assert.equal(draftStatusLabel('rejected'), 'Closed (deal lost)')
     assert.equal(draftStatusLabel('approved'), 'Approved')
   })
 
@@ -1768,7 +1782,7 @@ describe('the submitter and the submission time are shown', () => {
     assert.ok(sections.includes('{reviewNote && ('))
     assert.ok(sections.includes('heading={panel.noteHeading}'),
       'the same column carries both decisions, so the heading says which wrote it')
-    assert.ok(read(DETAIL_VIEW).includes("REJECTED_NOTE_HEADING = 'Why this was rejected'"))
+    assert.ok(read(DETAIL_VIEW).includes("REJECTED_NOTE_HEADING = 'Why this was closed'"))
     assert.ok(sections.includes('<MultilineText'), 'somebody’s own words, not collapsed')
   })
 })
@@ -2214,7 +2228,7 @@ describe('the submit dialog states the payment position and asks only what is un
   test('rejecting the advance is visibly NOT rejecting the PI', () => {
     const start = source.indexOf('reject_exception: {')
     const copy = source.slice(start, source.indexOf('\n  },', start))
-    assert.ok(copy.includes('The PI is NOT rejected'))
+    assert.ok(copy.includes('The PI is NOT closed'))
     assert.ok(copy.includes('Reject Advance Exception'), 'and its confirm says what it acts on')
     assert.ok(!copy.includes('cannot be undone'),
       'because it can: the employee resubmits with a new proposal')

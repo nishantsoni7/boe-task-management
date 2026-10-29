@@ -173,7 +173,7 @@ describe('the decision events are named for the decision', () => {
     // still written the way the badges write it, never as its column value.
     const label = paymentActivityLabel(
       row('status_changed', { from_status: 'pending_approval', to_status: 'archived' }))
-    assert.equal(label, 'Status changed from Pending Review to archived')
+    assert.equal(label, 'Status changed from Waiting for Finance to archived')
     assert.ok(!label.includes('pending_approval'))
   })
 })

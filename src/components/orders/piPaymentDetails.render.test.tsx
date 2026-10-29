@@ -206,7 +206,7 @@ describe('the dialog opens on the page’s own figures', () => {
     const html = modal()
     const t = text(html)
     for (const part of [
-      'Received ₹4,50,000', 'Confirmed ₹2,50,000', 'Awaiting verification ₹2,00,000', 'Total before GST ₹11,80,000',
+      'Received ₹4,50,000', 'Verified ₹2,50,000', 'Waiting for Finance ₹2,00,000', 'Total before GST ₹11,80,000',
     ]) {
       assert.ok(t.includes(part), `${part} missing`)
     }
@@ -220,7 +220,7 @@ describe('the dialog opens on the page’s own figures', () => {
 
   test('nothing pending reads as a dash, never ₹0 in amber', () => {
     const t = text(modal({ status: { ...STATUS, pendingCount: 0, pendingAmount: '₹0' } }))
-    assert.ok(/Awaiting verification\s+—/.test(t))
+    assert.ok(/Waiting for Finance\s+—/.test(t))
   })
 
   test('the component sums nothing and calls nothing', () => {
@@ -289,8 +289,8 @@ describe('the Confirmed view', () => {
   const t = text(html)
 
   test('is titled for what it holds', () => {
-    assert.equal(PAYMENT_FILTER_TITLE.confirmed, 'Confirmed payments')
-    assert.ok(html.includes('aria-label="Confirmed payments"'))
+    assert.equal(PAYMENT_FILTER_TITLE.confirmed, 'Verified payments')
+    assert.ok(html.includes('aria-label="Verified payments"'))
   })
 
   test('shows only confirmed rows, and the database’s total for them', () => {
@@ -298,9 +298,9 @@ describe('the Confirmed view', () => {
     for (const other of ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0107']) {
       assert.ok(!t.includes(other), `${other} is not a confirmed payment`)
     }
-    assert.ok(t.includes('Confirmed total ₹2,50,000'))
+    assert.ok(t.includes('Verified total ₹2,50,000'))
     assert.ok(t.includes('2 payments · 21.18% of ₹11,80,000 Total before GST'))
-    assert.ok(!t.includes('Awaiting verification total'))
+    assert.ok(!t.includes('Waiting for Finance total'))
   })
 
   test('is read-only, even for a payment verifier', () => {
@@ -314,7 +314,7 @@ describe('the Confirmed view', () => {
       summary: { ...SUMMARY, payments: filterPiPaymentRows(ROWS, 'awaiting') },
       status: { ...STATUS, confirmed: '₹0', confirmedCount: 0, percent: '0%' },
     }))
-    assert.ok(empty.includes('No payment against this PI has been confirmed yet.'))
+    assert.ok(empty.includes('No payment against this PI has been verified yet.'))
   })
 })
 
@@ -322,13 +322,13 @@ describe('the Awaiting verification view', () => {
   test('is titled for what it holds, and lists only pending rows with their total', () => {
     const html = modal({ initialFilter: 'awaiting' })
     const t = text(html)
-    assert.equal(PAYMENT_FILTER_TITLE.awaiting, 'Payments awaiting verification')
-    assert.ok(html.includes('aria-label="Payments awaiting verification"'))
+    assert.equal(PAYMENT_FILTER_TITLE.awaiting, 'Payments waiting for Finance')
+    assert.ok(html.includes('aria-label="Payments waiting for Finance"'))
     assert.ok(t.includes('PAY-REQ-2026-0101') && t.includes('PAY-REQ-2026-0102'))
     for (const other of ['PAY-REQ-2026-0103', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0106', 'PAY-REQ-2026-0107']) {
       assert.ok(!t.includes(other), `${other} is not awaiting verification`)
     }
-    assert.ok(t.includes('Awaiting verification total ₹2,00,000'))
+    assert.ok(t.includes('Waiting for Finance total ₹2,00,000'))
     assert.ok(t.includes('2 payments · 16.94% of ₹11,80,000 Total before GST'))
     assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'waiting money is never called failed or unpaid')
   })
@@ -357,7 +357,7 @@ describe('the views switch inside the one dialog', () => {
     const html = modal({ initialFilter: 'awaiting' })
     const toggles = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
       .filter(m => m[1].includes('pi-detail-payfilter'))
-    assert.deepEqual(toggles.map(m => text(m[2]).trim()), ['All 7', 'Confirmed 2', 'Awaiting verification 2'])
+    assert.deepEqual(toggles.map(m => text(m[2]).trim()), ['All 7', 'Verified 2', 'Waiting for Finance 2'])
     assert.deepEqual(toggles.map(m => /aria-pressed="true"/.test(m[1])), [false, false, true])
     for (const m of toggles) assert.ok(m[1].includes('type="button"'))
     assert.ok(html.includes('role="group" aria-label="Show payments"'))
@@ -513,7 +513,7 @@ describe('each row says when, how, how much and where it stands', () => {
   })
 
   test('statuses in the product’s words', () => {
-    for (const label of ['Awaiting Verification', 'Needs Clarification', 'Verified', 'Rejected']) {
+    for (const label of ['Waiting for Finance', 'Needs Clarification', 'Verified', 'Rejected']) {
       assert.ok(t.includes(label), `${label} missing`)
     }
   })

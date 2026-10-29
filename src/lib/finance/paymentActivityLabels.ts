@@ -98,11 +98,11 @@ function namedTarget(
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending_approval:    'Pending Review',
+  pending_approval:    'Waiting for Finance',
   needs_clarification: 'Needs Clarification',
   // THE SAME WORDS THE BADGES USE (src/lib/finance/paymentDestination.ts).
-  approved_unlinked:   'Received — Unallocated',
-  approved_linked:     'Received Payment',
+  approved_unlinked:   'Verified — not allocated',
+  approved_linked:     'Verified',
   rejected:            'Rejected',
 }
 

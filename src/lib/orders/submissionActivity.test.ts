@@ -137,7 +137,7 @@ describe('every action reads as English', () => {
     assert.equal(PI_ACTIVITY_LABEL['advance_exception_approved'], 'Advance exception approved')
     assert.equal(PI_ACTIVITY_LABEL['pi_approved'], 'PI approved')
     assert.equal(PI_ACTIVITY_LABEL['approved'], 'Confirmed Order created')
-    assert.equal(PI_ACTIVITY_LABEL['rejected'], 'Rejected',
+    assert.equal(PI_ACTIVITY_LABEL['rejected'], 'Closed (deal lost)',
       'and the PI’s own rejection stays distinct from the advance exception’s')
     assert.equal(PI_ACTIVITY_LABEL['advance_exception_rejected'], 'Advance exception rejected')
     assert.equal(PI_ACTIVITY_LABEL['pi_revision_rejected'], 'Revised PI rejected')
@@ -158,7 +158,7 @@ describe('the history is newest first, and stays that way', () => {
       row({ id: 'b', action: 'submitted', created_at: '2026-08-10T09:00:00.000Z' }),
     ])
     assert.deepEqual(entries.map(e => e.label),
-      ['Rejected', 'Submitted for approval', 'Draft created'])
+      ['Closed (deal lost)', 'Submitted for approval', 'Draft created'])
   })
 
   test('two events written in the same transaction keep a stable order', () => {

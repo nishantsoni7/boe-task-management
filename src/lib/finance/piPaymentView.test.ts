@@ -66,8 +66,8 @@ const form = (over: Partial<PiPaymentFormState> = {}): PiPaymentFormState => ({
 // ── Status wording ────────────────────────────────────────────────────────────
 
 describe('status wording maps the database vocabulary to the product one', () => {
-  test('pending_approval reads as Awaiting Verification', () => {
-    assert.equal(piPaymentStatusLabel('pending_approval'), 'Awaiting Verification')
+  test('pending_approval reads as Waiting for Finance', () => {
+    assert.equal(piPaymentStatusLabel('pending_approval'), 'Waiting for Finance')
   })
 
   test('both approved statuses read simply Verified', () => {

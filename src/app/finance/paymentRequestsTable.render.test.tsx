@@ -188,8 +188,9 @@ describe('2. Pending is stated once, in Status', () => {
   })
 
   test('2c. Pending is still visible — in the Status column', () => {
+    // In the shared words since 20270506000000: "Waiting for Finance".
     const cells = firstRowCells(render([row({ status: 'pending_approval' })]))
-    assert.match(cells[7], /Pending/i)
+    assert.match(cells[7], /Waiting for Finance/)
   })
 
   test('2d. the capability is no longer passed to the table at all', () => {

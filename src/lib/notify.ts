@@ -20,6 +20,7 @@ export type FinanceNotifyEvent =
   | 'finance_rejected'
   | 'finance_linked'
   | 'finance_status_corrected'
+  | 'finance_payment_moved'
 
 export type FinanceNotifyPayload = {
   event: FinanceNotifyEvent

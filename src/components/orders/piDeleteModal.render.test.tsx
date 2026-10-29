@@ -66,7 +66,7 @@ describe('the dialog states what is about to be destroyed', () => {
   })
 
   test('the current status is shown in words, not as an enum value', () => {
-    assert.ok(html.includes('Rejected'))
+    assert.ok(html.includes('Closed (deal lost)'))
     assert.ok(!html.includes('needs_changes'))
   })
 
@@ -96,8 +96,8 @@ describe('the dialog states what is about to be destroyed', () => {
 
   test('every status the rule allows renders in its own words', () => {
     assert.ok(render({ status: 'draft' }).includes('Draft'))
-    assert.ok(render({ status: 'needs_changes' }).includes('Needs Changes'))
-    assert.ok(render({ status: 'rejected' }).includes('Rejected'))
+    assert.ok(render({ status: 'needs_changes' }).includes('Returned to Sales'))
+    assert.ok(render({ status: 'rejected' }).includes('Closed (deal lost)'))
   })
 })
 

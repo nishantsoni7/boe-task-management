@@ -910,7 +910,12 @@ export function PiSubmitConfirmModal({
   )
 }
 
-// ── Needs Changes / Reject ────────────────────────────────────────────────────
+// ── Return to Sales / Close: deal lost ────────────────────────────────────────
+//
+// The owner's two choices (Payments counted once, 2026-10-29): anything that can
+// be fixed goes back to Sales on the SAME PI, with its payments still on it; a
+// deal that is off is closed, and closing hands its money back to the client
+// (reject_order_submission, 20270506000000).
 
 export type PiNoteIntent = 'needs_changes' | 'reject' | 'reject_exception'
 
@@ -926,30 +931,31 @@ const INTENT_COPY: Record<PiNoteIntent, {
 }> = {
   needs_changes: {
     title: REQUEST_CHANGES_BUTTON_LABEL,
-    confirm: 'Send Back for Changes',
-    busy: 'Sending back…',
+    confirm: 'Return to Sales',
+    busy: 'Returning…',
     label: 'What needs to change *',
     placeholder: 'Say exactly what must be corrected in the PI…',
     warning:
-      'The employee gets this note and can upload a corrected PI. Nothing is rejected and nothing is lost.',
+      'Sales get this note, correct this same PI and resubmit it. Its payments stay on it. Nothing is closed and nothing is lost.',
     tone: { background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)', color: '#805B0D' },
     button: '#805B0D',
   },
   reject: {
     title: REJECT_BUTTON_LABEL,
-    confirm: 'Reject This PI',
-    busy: 'Rejecting…',
-    label: 'Reason for rejection *',
-    placeholder: 'Say why this PI is being rejected…',
+    confirm: 'Close this PI',
+    busy: 'Closing…',
+    label: 'Why is the deal lost? *',
+    placeholder: 'Say why this PI is being closed…',
     // Stated plainly because it is true and irreversible: the database has no
-    // transition out of 'rejected' in this phase.
+    // transition out of 'rejected'. The money is not lost: closing hands it back
+    // to the client (20270506000000).
     warning:
-      'This cannot be undone. The PI is permanently marked Rejected, stays read-only, and cannot be resubmitted. Use Needs Changes if the employee should correct and resend it.',
+      'This is final. The PI is closed for good and stays read-only. Any payments on it go back to the client’s money, ready for their next PI or Order. If the PI only needs correcting, use Return to Sales.',
     tone: { background: colors.redTint, border: '1px solid rgba(180,35,50,0.3)', color: '#A12438' },
     button: '#A12438',
   },
   // REFUSING THE PROPOSED ADVANCE IS NOT REJECTING THE PI, and the warning says
-  // so first: this dialog sits beside "Reject This PI" in the same card, and the
+  // so first: this dialog sits beside "Close: deal lost" in the same card, and the
   // one thing a reader must not do is confuse them. The PI comes back to the
   // employee, who may return with the standard requirement or a new proposal.
   reject_exception: {
@@ -959,7 +965,7 @@ const INTENT_COPY: Record<PiNoteIntent, {
     label: REJECT_EXCEPTION_REASON_LABEL,
     placeholder: 'Say why the proposed advance cannot be accepted…',
     warning:
-      'The PI is NOT rejected. It goes back to the employee for correction with this reason, and they can resubmit under the standard advance or propose a different exception.',
+      'The PI is NOT closed. It goes back to the employee for correction with this reason, and they can resubmit under the standard advance or propose a different exception.',
     tone: { background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)', color: '#805B0D' },
     button: '#805B0D',
   },
@@ -979,6 +985,7 @@ const INTENT_COPY: Record<PiNoteIntent, {
 export function PiNoteModal({
   intent,
   client,
+  moneyNote = null,
   saving,
   failure,
   onCancel,
@@ -986,6 +993,8 @@ export function PiNoteModal({
 }: {
   intent: PiNoteIntent
   client: string
+  /** A line about the money on the PI (“₹50,000 is recorded on this PI…”), or null. */
+  moneyNote?: string | null
   saving: boolean
   failure: string | null
   onCancel: () => void
@@ -1029,6 +1038,16 @@ export function PiNoteModal({
             <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>{copy.warning}</span>
           </div>
+
+          {moneyNote && (
+            <div className="pi-note-money" style={{
+              fontSize: '13px', fontWeight: 600, color: colors.primary,
+              background: colors.raised, border: `1px solid ${colors.border}`,
+              borderRadius: '6px', padding: '9px 12px',
+            }}>
+              {moneyNote}
+            </div>
+          )}
 
           <label style={{
             display: 'flex', flexDirection: 'column', gap: '4px',

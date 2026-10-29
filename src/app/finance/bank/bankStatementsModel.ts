@@ -116,7 +116,7 @@ export const STATUS_TONE: Record<LineStatus, 'zero' | 'partial' | 'full' | 'over
 }
 
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {
-  pending_approval: 'Awaiting verification',
+  pending_approval: 'Waiting for Finance',
   approved_unlinked: 'Verified',
   approved_linked: 'Verified',
   needs_clarification: 'Needs clarification',
