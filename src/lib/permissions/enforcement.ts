@@ -255,14 +255,17 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   //   reimburse                     can_record_expense_reimbursement (20270403000000)
   //   create                        record an expense / add a bank credit as a
   //                                 Confirmed Payment (20270205120000, 20270419000000)
+  //   founder_payouts               assert_founder_payouts_door (20270501000000),
+  //                                 with NO admin branch
   // Edit and Export are still read by nothing.
   finance: {
     state: 'partial',
     enforcedActions: [
       'view', 'create', 'approve', 'manage', 'delete', 'view_all',
       'allocate', 'allocate_correct', 'verify_own_payment', 'reconcile', 'reimburse',
+      'founder_payouts',
     ],
-    detail: 'Opening the module, recording, verification, correction, deleting unapproved requests, company-wide sight, allocation, own-payment verification, bank reconciliation and reimbursement are enforced. Which records you see still follows ownership; Edit and Export decide nothing.',
+    detail: 'Opening the module, recording, verification, correction, deleting unapproved requests, company-wide sight, allocation, own-payment verification, bank reconciliation, reimbursement and the founders’ payouts are enforced. Which records you see still follows ownership; Edit and Export decide nothing.',
   },
 
   // The quotation actions are enforced in the app — the navigation, the

@@ -264,10 +264,14 @@ describe('Manager never receives a protected action', () => {
     // approved examples shape every AI image; it was Custom-only but a preset
     // cleared it without confirmation) and `orders.can_be_order_assignee`
     // (sales-candidate standing, re-registered under its honest meaning).
+    // And by one more in 20270501000000: `finance.founder_payouts`, the
+    // founders' own money paid into the partners' and their families'
+    // accounts. Granted to the owner account only, and the database door has
+    // no admin branch, so no preset and no role may reach it.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'can_be_order_assignee', 'close', 'delete',
-      'dispatch', 'edit_payment_plan', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
+      'dispatch', 'edit_payment_plan', 'founder_payouts', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
       'mark_lost', 'receive', 'reconcile', 'reimburse', 'train_customize_image', 'verify', 'verify_own_payment',
       'view_all', 'view_payment_plan', 'view_pi_commission', 'view_quotations', 'view_team',
     ])

@@ -159,6 +159,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // expense. Protected: granted per person in Control Center or not at all.
   // Registered by 20270403000000.
   'reimburse',
+  // The founders' own money: what BOE paid into the partners' and their
+  // families' accounts. Protected, and the only Finance authority an
+  // administrator does not hold by role (the database door asks
+  // actor_has_permission, no admin branch). Registered by 20270501000000.
+  'founder_payouts',
   // Aligning a Confirmed Order for production: the Head of Manufacturing's
   // statement that the factory can make it. Protected because it is the gate
   // between a commercial approval and work starting, and a preset must not

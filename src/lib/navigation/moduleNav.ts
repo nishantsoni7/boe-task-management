@@ -19,7 +19,7 @@
 // route's own guard and the database still decide what opens.
 
 export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed'
-export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank' | 'reimbursements' | 'handovers'
+export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses' | 'bank' | 'reimbursements' | 'handovers' | 'founders'
 
 // The destinations themselves (labels, paths, icons) stay in OrdersLayout and
 // FinanceLayout, where several retirement tests read them; this file only
@@ -63,6 +63,7 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
  *                                            it from a home-screen shortcut)
  *   /finance/bank                          → bank (Bank Statements)
  *   /finance/reimbursements                → reimbursements (every reimbursement ever done)
+ *   /finance/founders                      → founders (Founders' payouts)
  *   /finance/notifications                 → null
  */
 export function activeFinanceNav(pathname: string): FinanceNavKey | null {
@@ -74,6 +75,7 @@ export function activeFinanceNav(pathname: string): FinanceNavKey | null {
   if (section === 'bank') return 'bank'
   if (section === 'reimbursements') return 'reimbursements'
   if (section === 'handovers') return 'handovers'
+  if (section === 'founders') return 'founders'
   return null
 }
 
@@ -95,6 +97,7 @@ export function pendingModuleTitle(pathname: string): string {
     if (section === 'bank') return 'Bank Statements'
     if (section === 'reimbursements') return 'Reimbursements'
     if (section === 'handovers') return 'Cash journeys'
+    if (section === 'founders') return "Founders' payouts"
     if (section === 'notifications') return 'Notifications'
     return 'Finance'
   }
