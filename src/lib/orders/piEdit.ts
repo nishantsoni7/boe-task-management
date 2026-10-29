@@ -341,8 +341,33 @@ export type PricedEdit = {
   }
 }
 
+/**
+ * The Fabric cost and Packing cost the PI's own Fabric & Finish sheet gives
+ * for the quantities being edited (sheetCostsForEdit in fabricFinishCost.ts).
+ * A figure here is THE figure: the sheet is the PI's costing and the two
+ * lines must match it (owner, 2026-10-29). Null = the sheet has nothing for
+ * that line, so the PI keeps whatever it states or the editor typed.
+ */
+export type SheetCosts = { fabric: number | null; packing: number | null }
+
+/**
+ * The quantities an edit proposes, by the line's identity on the Fabric &
+ * Finish sheet: its item number, or its row id when it has none (a new line
+ * with neither has no sheet data yet and is left out). Removed lines are out.
+ */
+export function editQuantities(state: PiEditState): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const item of state.items) {
+    if (item.removed) continue
+    const key = item.item_sequence.trim() || item.id || ''
+    const quantity = parseAmount(item.quantity)
+    if (key !== '' && quantity !== null && !Number.isNaN(quantity) && quantity > 0) out.set(key, quantity)
+  }
+  return out
+}
+
 /** Assumes validateEdit(state) returned nothing. */
-export function priceEdit(current: PiContent, state: PiEditState): PricedEdit {
+export function priceEdit(current: PiContent, state: PiEditState, sheet: SheetCosts | null = null): PricedEdit {
   const s = current.submission
   const byId = new Map(current.items.map(i => [i.id, i]))
   const removedAny = state.items.some(i => i.removed && i.id !== null)
@@ -361,10 +386,14 @@ export function priceEdit(current: PiContent, state: PiEditState): PricedEdit {
 
   const c = state.commercial
   const fromState = (v: string) => parseAmount(v)
+  const sheetFabric = sheet?.fabric ?? null
+  const sheetPacking = sheet?.packing ?? null
   const commercialChanged =
     fromState(c.discount_amount) !== (num(s.discount_amount) ?? null)
-    || (c.fabric_cost !== '' && fromState(c.fabric_cost) !== num(s.fabric_cost))
-    || (c.packing_cost !== '' && fromState(c.packing_cost) !== num(s.packing_cost))
+    || (sheetFabric !== null ? sheetFabric !== num(s.fabric_cost) || (str(s.fabric_cost_meaning) || 'numeric') !== 'numeric'
+        : c.fabric_cost !== '' && fromState(c.fabric_cost) !== num(s.fabric_cost))
+    || (sheetPacking !== null ? sheetPacking !== num(s.packing_cost) || (str(s.packing_cost_meaning) || 'numeric') !== 'numeric'
+        : c.packing_cost !== '' && fromState(c.packing_cost) !== num(s.packing_cost))
     || (c.transportation_amount !== '' && fromState(c.transportation_amount) !== num(s.transportation_amount))
     || (() => {
       const tbg = num(s.total_before_gst); const gst = num(s.gst_amount)
@@ -378,8 +407,14 @@ export function priceEdit(current: PiContent, state: PiEditState): PricedEdit {
   const cost = (typed: string, amount: unknown, meaning: unknown, text: unknown) => typed.trim() === ''
     ? { amount: num(amount), meaning: str(meaning) || 'numeric', text: str(text) || null }
     : { amount: fromState(typed), meaning: 'numeric', text: null }
-  const fabric = cost(c.fabric_cost, s.fabric_cost, s.fabric_cost_meaning, s.fabric_cost_text)
-  const packing = cost(c.packing_cost, s.packing_cost, s.packing_cost_meaning, s.packing_cost_text)
+  // The Fabric & Finish sheet, when it has figures, IS the fabric and packing
+  // cost: the two lines follow it, whatever was typed here.
+  const fabric = sheetFabric !== null
+    ? { amount: sheetFabric, meaning: 'numeric', text: null }
+    : cost(c.fabric_cost, s.fabric_cost, s.fabric_cost_meaning, s.fabric_cost_text)
+  const packing = sheetPacking !== null
+    ? { amount: sheetPacking, meaning: 'numeric', text: null }
+    : cost(c.packing_cost, s.packing_cost, s.packing_cost_meaning, s.packing_cost_text)
   const transport = c.transportation_amount.trim() === ''
     ? { amount: num(s.transportation_amount), text: str(s.transportation_text) || null }
     : { amount: fromState(c.transportation_amount), text: null }

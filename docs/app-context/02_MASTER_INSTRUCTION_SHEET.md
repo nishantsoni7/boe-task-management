@@ -138,7 +138,7 @@ Follow in order; stop at any failure:
 | When | What |
 |---|---|
 | Every commit / merge / rebase / push (automatic) | git hooks refresh the local mirror (`post-commit`, `post-merge`, `post-rewrite`, `pre-push`) |
-| Every merge to `main` (automatic) | GitHub Action stores a verified bundle (90 days) and optionally mirrors to a private repo |
+| Every merge to `main` (automatic) | GitHub Action mirrors to the private repo; a verified bundle artifact is stored daily (kept 7 days), not per merge |
 | After every merge, and before any risky operation (manual) | `backup-all.mjs` then `verify-backups.mjs` |
 | Daily (scheduled, once installed) | `backup-all.mjs` |
 | Before any migration is applied to production | `backup-all.mjs` — the database export is your rollback data |

@@ -12131,6 +12131,377 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .opp { padding: 14px 12px; }
   .opp-sum > div { flex-direction: column; gap: 2px; }
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   FABRIC & FINISH COST SHEET — the slide-in panel and its own pages (20270431000000)
+   components/orders/FabricFinishSheet.tsx, FabricFinishDrawer.tsx,
+   orders/[id]/fabric-finish, orders/drafts/[submissionId]/fabric-finish.
+   Colours are the identity's own values (docs/BOE_VISUAL_IDENTITY.md).
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── The slide-in panel ── */
+.ff-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(48, 53, 54, 0.28);
+  z-index: 200;
+}
+.ff-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 980px;
+  max-width: 100vw;
+  z-index: 201;
+  background: #FFFFFF;
+  border-left: 1px solid #E4DED7;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.10);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: ffSlideIn 0.24s ease-out;
+}
+@keyframes ffSlideIn {
+  from { transform: translateX(48px); opacity: 0.4; }
+  to   { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-drawer { animation: none; }
+}
+.ff-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 20px 24px;
+}
+
+/* ── The page ── */
+.ff-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ff-back {
+  font: inherit;
+  font-size: 13px;
+  color: #B9472E;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.ff-page-card {
+  background: #FFFFFF;
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+  padding: 16px 20px 20px;
+}
+
+/* ── Header ── */
+.ff-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #E4DED7;
+}
+.ff-page-card .ff-head { padding: 0 0 12px; }
+.ff-title {
+  margin: 0;
+  font-family: var(--boe-font-heading, inherit);
+  font-size: 18px;
+  font-weight: 700;
+  color: #303536;
+}
+.ff-sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: #686D6C;
+}
+.ff-acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ff-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #CFC8BF;
+  background: #FFFFFF;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: #303536;
+  cursor: pointer;
+}
+
+/* ── Sections ── */
+.ff-section { margin: 0 0 20px; }
+.ff-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+.ff-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #303536;
+}
+.ff-section-note {
+  font-size: 12px;
+  color: #686D6C;
+}
+.ff-table-wrap { overflow-x: auto; }
+.ff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ff-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #686D6C;
+  padding: 7px 8px;
+  border-bottom: 1px solid #E4DED7;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.ff-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #E4DED7;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: #303536;
+}
+.ff-table tfoot td {
+  font-weight: 700;
+  border-bottom: 0;
+  background: #FAF8F4;
+  color: #1F2324;
+}
+.ff-num { text-align: right; }
+.ff-calc { color: #4C5352; }
+.ff-prod {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: normal;
+  min-width: 190px;
+}
+.ff-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #EEECE8;
+  border: 1px solid #E4DED7;
+  flex: none;
+}
+.ff-thumb-none {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: #EEECE8;
+  border: 1px solid #E4DED7;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: #8C8379;
+}
+.ff-code {
+  display: block;
+  font-size: 11.5px;
+  color: #686D6C;
+}
+
+/* ── Inputs ── */
+.ff-inp {
+  width: 84px;
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid #8C8379;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #FFFFFF;
+  color: #303536;
+  text-align: right;
+}
+.ff-inp-text { text-align: left; width: 130px; }
+.ff-inp-empty { border-style: dashed; }
+.ff-inp:disabled { background: #F7F5F1; color: #686D6C; border-color: #E4DED7; }
+.ff-inp-bad { border-color: #B42332; }
+
+/* ── Source chips ── */
+.ff-chip {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ff-chip-sheet { background: #EAF0F8; color: #335A86; }
+.ff-chip-typed { background: #FAF0DA; color: #805B0D; }
+.ff-chip-blank { background: #EEECE8; color: #595D5B; }
+.ff-chip-pend  { background: #FAF0DA; color: #805B0D; }
+.ff-chip-none  { background: #FBE9EC; color: #A12438; }
+
+/* ── Totals against the PI ── */
+.ff-match {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+.ff-match-box {
+  border: 1px solid #E4DED7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  background: #FAF8F4;
+  color: #303536;
+}
+.ff-match-box b { font-variant-numeric: tabular-nums; }
+.ff-ok { color: #276247; font-weight: 600; }
+.ff-diff { color: #A12438; font-weight: 600; }
+.ff-unknown { color: #805B0D; font-weight: 600; }
+.ff-legend {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #686D6C;
+}
+
+/* ── Finish cells ── */
+.ff-finish-cell {
+  white-space: normal;
+  max-width: 230px;
+  font-size: 12px;
+  vertical-align: top;
+}
+.ff-finish-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ff-finish-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #E4DED7;
+  background: #EEECE8;
+  flex: none;
+}
+.ff-finish-none {
+  font-size: 12px;
+  color: #A12438;
+  font-weight: 600;
+}
+.ff-pend { color: #805B0D; font-weight: 600; }
+.ff-img-btn {
+  font: inherit;
+  font-size: 11.5px;
+  color: #963B27;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Actions and notices ── */
+.ff-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.ff-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #686D6C;
+}
+.ff-alert {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #B42332;
+  font-weight: 600;
+}
+.ff-saved {
+  font-size: 12.5px;
+  color: #276247;
+  font-weight: 600;
+}
+.ff-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: #686D6C;
+  font-size: 13px;
+}
+
+/* ── Phone: cards instead of a table ── */
+.ff-cards { display: none; }
+@media (max-width: 760px) {
+  .ff-drawer { width: 100vw; border-left: 0; }
+  .ff-head { padding: 12px 16px; }
+  .ff-drawer-body { padding: 12px 16px 100px; }
+  .ff-page { padding: 12px; }
+  .ff-page-card { padding: 12px 14px 16px; border-radius: 10px; }
+  .ff-table-wrap { display: none; }
+  .ff-cards { display: flex; flex-direction: column; gap: 10px; }
+  .ff-match { grid-template-columns: minmax(0, 1fr); }
+  .ff-inp { font-size: 16px; padding: 7px 8px; width: 100%; text-align: left; }
+  .ff-inp-text { width: 100%; }
+}
+.ff-card {
+  background: #FFFFFF;
+  border: 1px solid #E4DED7;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.ff-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ff-card-top b { display: block; font-size: 14px; color: #303536; }
+.ff-card-top small { color: #686D6C; font-size: 12px; }
+.ff-kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  font-size: 13px;
+}
+.ff-kv span { color: #686D6C; font-size: 12px; display: block; }
+.ff-kv b { font-variant-numeric: tabular-nums; font-weight: 600; color: #303536; }
+.ff-kv-wide { grid-column: 1 / -1; }
+.ff-save-bar {
+  position: sticky;
+  bottom: 0;
+  background: #F7F5F1;
+  padding: 10px 0 2px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+
 
 /* ══ PI DETAIL — ORDER-PAGE PASS (owner, 2026-10-29) ═══════════════════════════
    The PI Draft page reads like the Confirmed Order page: one family of white
@@ -12455,56 +12826,3 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .pi-detail-activity .pi-detail-timeline-by,
   .pi-detail-activity .pi-detail-timeline-when { grid-column: 2; }
 }
-
-/* ── FABRIC & FINISH COST (/orders/drafts/[submissionId]/fabric-finish) ──
-   Tiles, two reconciliation lines and one wide table that scrolls inside its
-   card. Same cards, same captions, same hairlines as the PI page above. */
-.pi-ff-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; min-width: 0; }
-.pi-ff-title { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; color: #303536; }
-.pi-ff-meta { margin: 0; font-size: 13px; color: #686D6C; overflow-wrap: anywhere; }
-.pi-ff-card { background: #FFFFFF; border: 1px solid #ECE7E0; border-radius: 12px; min-width: 0; }
-.pi-ff-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 14px 18px 12px; }
-.pi-ff-card-title { margin: 0; font-size: 15px; font-weight: 700; color: #303536; }
-.pi-ff-card-note { font-size: 12px; color: #686D6C; }
-.pi-ff-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (min-width: 760px) { .pi-ff-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.pi-ff-tile { min-width: 0; padding: 14px 18px; border-left: 1px solid #F3F0EB; }
-.pi-ff-tile:first-child { border-left: 0; }
-@media (max-width: 759px) {
-  .pi-ff-tile:nth-child(odd) { border-left: 0; }
-  .pi-ff-tile:nth-child(n + 3) { border-top: 1px solid #F3F0EB; }
-}
-.pi-ff-tile-label { font-size: 12px; color: #686D6C; }
-.pi-ff-tile-value { margin-top: 2px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: #303536; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.pi-ff-tile-sub { margin-top: 1px; font-size: 12px; color: #686D6C; overflow-wrap: anywhere; }
-.pi-ff-recon { list-style: none; margin: 0; padding: 10px 18px 14px; border-top: 1px solid #F3F0EB; display: flex; flex-direction: column; gap: 6px; }
-.pi-ff-recon-line { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #4C5352; }
-.pi-ff-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: #8F9392; }
-.pi-ff-recon-line--green .pi-ff-dot { background: #276247; }
-.pi-ff-recon-line--amber .pi-ff-dot { background: #C48A1A; }
-.pi-ff-note, .pi-ff-empty { margin: 0; padding: 12px 18px 16px; font-size: 13px; color: #686D6C; }
-.pi-ff-table-wrap { overflow-x: auto; }
-.pi-ff-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.pi-ff-table th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #E4DED7; font-size: 12px; font-weight: 600; color: #686D6C; white-space: nowrap; }
-.pi-ff-table .pi-ff-group-row th { padding: 6px 12px 2px; border-bottom: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8F9392; }
-.pi-ff-table th.pi-ff-group, .pi-ff-table td.pi-ff-group { border-left: 1px solid #F3F0EB; }
-.pi-ff-table .pi-ff-group-row th.pi-ff-group { border-left: 1px solid #E4DED7; }
-.pi-ff-table td { padding: 10px 12px; border-bottom: 1px solid #F3F0EB; vertical-align: top; }
-.pi-ff-table tbody tr:nth-child(even) { background: #FAF8F5; }
-.pi-ff-table tbody tr:last-child td { border-bottom: 0; }
-.pi-ff-table tfoot td { border-top: 2px solid #E4DED7; font-weight: 700; background: #FFFFFF; }
-.pi-ff-r { text-align: right; white-space: nowrap; }
-.pi-ff-num { font-variant-numeric: tabular-nums; }
-.pi-ff-zero { color: #8F9392; }
-.pi-ff-code { font-size: 12px; font-weight: 600; color: #4C5352; letter-spacing: 0.02em; white-space: nowrap; }
-.pi-ff-name { font-weight: 600; color: #303536; }
-.pi-ff-material { margin-top: 1px; font-size: 12px; color: #686D6C; max-width: 240px; white-space: pre-line; }
-.pi-ff-type { white-space: nowrap; }
-.pi-ff-warn { display: inline-flex; align-items: center; margin-top: 3px; padding: 1px 6px; border-radius: 6px; background: #FAF0DA; color: #805B0D; font-size: 11.5px; font-weight: 600; }
-.pi-ff-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.pi-ff-pill--amber { background: #FAF0DA; color: #805B0D; }
-.pi-ff-pill--grey { background: #EEECE8; color: #595D5B; font-weight: 500; }
-.pi-ff-pill--green { background: #E8F2EC; color: #276247; }
-.pi-ff-text { font-size: 12.5px; color: #4C5352; white-space: pre-line; }
-.pi-ff-source { margin: 0; padding: 12px 18px 14px; border-top: 1px solid #F3F0EB; font-size: 12.5px; line-height: 1.6; color: #686D6C; }
-.pi-ff-source b { color: #4C5352; }

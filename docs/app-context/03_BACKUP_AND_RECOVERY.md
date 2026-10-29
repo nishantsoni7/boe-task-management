@@ -29,8 +29,8 @@ All local backups live in `%USERPROFILE%\BOE-Development\backups\boe-task-manage
 | L5 secrets | `secrets/*.enc` | full backup | every `.env*` (except `.env.example`) AES-256-GCM encrypted | newest 20 per file |
 | L6 database | `database/<UTC>/` | `backup-database.mjs` | every exposed table as `*.jsonl.gz.enc`, `_auth_users`, `rest-openapi.json` (schema snapshot), `MANIFEST.json` (row counts + sha256 + per-table count cross-check) | newest 14 |
 | L7 storage | `storage/<bucket>/…` | `backup-database.mjs` | byte-for-byte copy of every bucket object, incremental by size | cumulative |
-| L8 GitHub bundle | Actions artifact `boe-code-bundle-<sha>` | **every push to `main`** + weekly | verified bundle of all branches | 90 days |
-| L9 private mirror repo | `nishantsoni7/boe-task-management-mirror` (private) — **ACTIVE since 2026-10-18** | every push to `main` + weekly | all 241 branches + tags (verified equal to the source) | forever |
+| L8 GitHub bundle | Actions artifact `boe-code-bundle-<sha>` | **daily** 02:17 UTC + manual (no longer per merge, since 2026-10-28) | verified bundle of all branches | 7 days |
+| L9 private mirror repo | `nishantsoni7/boe-task-management-mirror` (private) — **ACTIVE since 2026-10-18** | every push to `main` + daily | all 241 branches + tags (verified equal to the source) | forever |
 | L10 second copy (recommended) | `BOE_BACKUP_COPY_TO` folder | `backup-all.mjs` | newest bundle, DB snapshot, secrets, memory, git mirror | per run |
 | L11 Supabase platform backups | Supabase dashboard → Database → Backups | provider, daily ~21:55 UTC | **Pro plan: 7 daily PHYSICAL backups confirmed 2026-10-18** (full database incl. the 5 tables the export cannot read; storage objects NOT included). **PITR deliberately NOT enabled (owner decision, cost)** | 7 days |
 
@@ -65,7 +65,7 @@ What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUP
 ## 4. Triggers — when does each backup happen?
 
 - **Automatic, offline, instant:** git hooks installed by `install-backup-system.mjs` → `backup-code.mjs --quick`. Hooks never block or fail a git command.
-- **Automatic on GitHub:** `.github/workflows/backup-on-merge.yml` on every push to `main`.
+- **Automatic on GitHub:** `.github/workflows/backup-on-merge.yml`: private mirror (L9) on every push to `main` and daily; bundle artifact (L8) daily only.
 - **Mandatory manual step after every merge:** `backup-all.mjs` then `verify-backups.mjs` (Master Instruction Sheet §8).
 - **Daily schedule (INSTALLED 2026-10-18):** Windows Task Scheduler task `BOE Backup`, every day 21:30, runs `backups	oolsoe-backup-daily.cmd` (backup-all + verify, log in `backupsdaily-backup.log`; also copies to `D:BOE-Backups` when that drive is plugged in; runs on next start if the laptop was off). Disable/inspect with `Get-ScheduledTask 'BOE Backup'`. Original command form, for reference:
   ```powershell
@@ -135,4 +135,4 @@ Any one of: the L10 second copy, a GitHub artifact + password manager, or the pr
 | Bad merge / force-push | any prior commit, via mirror/bundle/artifacts | any code layer |
 | Deleted/corrupted data | Supabase PITR if enabled, else last `backup-database.mjs` snapshot (≤ 24 h with the schedule; exact moment of the last merge if the ritual was followed) | L6/L7/L11 |
 | Vercel account lost | immediate (redeploy from git + env values) | secrets in password manager |
-| All of GitHub lost | last push to `main` (artifact/mirror) | L1/L2/L8/L9/L10 |
+| All of GitHub lost | last push to `main` (mirror); last daily bundle (artifact) | L1/L2/L8/L9/L10 |
