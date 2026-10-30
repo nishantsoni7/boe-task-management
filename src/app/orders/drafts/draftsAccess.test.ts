@@ -1208,8 +1208,10 @@ describe('what the server thought of the document is kept', () => {
     // checking is out of the way of it.
     // `read` strips comments, so the products section is located by the shared
     // table head it renders rather than by the comment above it.
-    assert.ok(source.indexOf('<PiBlockingPanel') < source.indexOf('<PiProductTableHead'))
-    assert.ok(source.indexOf('<PiWarningPanel') > source.indexOf('<PiProductTableHead'))
+    // The PI page draws its own head (the shared columns plus fabric and
+    // packing, owner 2026-10-30); the order around it is unchanged.
+    assert.ok(source.indexOf('<PiBlockingPanel') < source.indexOf('<PiDetailProductHead'))
+    assert.ok(source.indexOf('<PiWarningPanel') > source.indexOf('<PiDetailProductHead'))
   })
 
   test('a returned draft shows what the reviewer asked for', () => {

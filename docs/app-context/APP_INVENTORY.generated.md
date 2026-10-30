@@ -5,21 +5,29 @@
 
 ## Snapshot
 
-- Commit: `87695518` — Docs: PI payments popup table merged as PR #513 (f3058f0c)
-- Commits on this branch: 1081
+- Commit: `abce56ee` — Merge main (#512 docs) into feat/pi-draft-layout-pass2
+- Commits on this branch: 1089
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
-- Test files: 682   Next.js 16.2.6, React 19.2.4
+- Test files: 683   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `87695518` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c)
+- `abce56ee` 2026-10-30 Merge main (#512 docs) into feat/pi-draft-layout-pass2
+- `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
+- `0e4c0391` 2026-10-30 Merge main (#511, #513, #514, #517) into feat/pi-draft-layout-pass2
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
 - `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
+- `3e43c870` 2026-10-30 Orders: drop the unused two-figure summary after stacking on #511 and #513
+- `e82689b4` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list
+- `b68fe055` 2026-10-30 Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
+- `c7799b48` 2026-10-30 Merge main (#510, approving opens the Order) into fix/approve-popup-simple
+- `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
+- `d5fa10e8` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
@@ -31,14 +39,6 @@
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
-- `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
-- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
-- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
-- `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
-- `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
-- `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
-- `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
-- `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 98 source, 147 test
+- `src/lib/orders` — 99 source, 148 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

@@ -948,8 +948,10 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
       'the component takes no fabric prop: the answer is on the view')
     assert.ok(detail.includes('commercialTerms={submission.commercial_terms_note'),
       'the terms are passed, not derived')
-    assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
-      'and the summary card picks its two figures out of the same array')
+    // The two-figure summary beside the payment is gone (owner, 2026-10-30):
+    // Product value and Total before GST are the breakdown's rows alone.
+    assert.ok(!detail.includes('summaryCommercialFigures('),
+      'no second copy of the figures is picked out for a summary card')
   })
 
   test('the two screens share the reading of the figures; the variant is chrome only', () => {
@@ -1158,10 +1160,14 @@ describe('both PI tables share one head', () => {
   test('neither screen hand-rolls its own heading row any more', () => {
     for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
       const s = read(page)
-      assert.ok(s.includes('<PiProductTableHead />'), `${page} must render the shared head`)
       assert.ok(!s.includes("'Cost / piece'"),
         `${page} must not keep a second copy of the column list`)
     }
+    assert.ok(read(IMPORT_PAGE).includes('<PiProductTableHead />'), 'the import screen renders the shared head')
+    // The PI Draft page adds Fabric and Packing from the cost sheet (owner,
+    // 2026-10-30), so it draws its own head beside the page — from one list,
+    // PI_DETAIL_PRODUCT_COLUMNS — and leaves the shared one byte-for-byte.
+    assert.ok(read(DRAFT_DETAIL_PAGE).includes('<PiDetailProductHead />'), 'the PI Draft page renders its own head')
   })
 })
 

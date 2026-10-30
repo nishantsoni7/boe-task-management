@@ -121,6 +121,86 @@ export function joinItemNames(items: readonly { label: string }[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
+// ── The Submit card's checklist (owner, 2026-10-30) ──────────────────────────
+//
+// Beside the payment, one line per part of the PI: what is done, what Submit
+// still waits for, and what is optional. The SAME three lists as above, grouped
+// by where each item is filled in — so the checklist, the sections' own "needed"
+// marks and the Submit control can never disagree.
+
+export type SubmitCheckState = 'ok' | 'need' | 'optional'
+
+export type SubmitCheck = {
+  key: 'client' | 'details' | 'products' | 'supporting' | 'advance'
+  label: string
+  state: SubmitCheckState
+  text: string
+  /** The first item a form can fix, for the line's "Add"; null when none can. */
+  fix: CompletionItem | null
+}
+
+const CLIENT_WHERE: readonly CompletionWhere[] = ['client']
+const DETAILS_WHERE: readonly CompletionWhere[] = ['internal', 'schedule', 'terms']
+const PRODUCTS_WHERE: readonly CompletionWhere[] = ['products', 'workbook']
+const SUPPORTING_WHERE: readonly CompletionWhere[] = ['documents', 'highlight']
+
+const neededText = (items: readonly CompletionItem[]): string =>
+  `${joinItemNames(items)} ${items.length === 1 ? 'is' : 'are'} needed`
+
+const firstFixable = (items: readonly CompletionItem[]): CompletionItem | null =>
+  items.find(item => !item.needsReimport) ?? null
+
+export function buildSubmitChecks(input: {
+  completion: Pick<PiCompletion, 'requiredMissing' | 'optionalMissing'>
+  /** Workbook problems saved at parse time; only a corrected workbook clears them. */
+  blockingCount: number
+  /**
+   * Where the advance stands, as the database decided it — or null while the
+   * payment summary has not been read. Below the standard never blocks Submit:
+   * the Submit sequence asks for the reason instead.
+   */
+  advance: { met: boolean; receivedPercent: string; standard: string | null } | null
+}): SubmitCheck[] {
+  const required = (where: readonly CompletionWhere[]) =>
+    input.completion.requiredMissing.filter(item => where.includes(item.where))
+  const checks: SubmitCheck[] = []
+
+  const client = required(CLIENT_WHERE)
+  checks.push(client.length === 0
+    ? { key: 'client', label: 'Client', state: 'ok', text: 'Complete', fix: null }
+    : { key: 'client', label: 'Client', state: 'need', text: neededText(client), fix: firstFixable(client) })
+
+  const details = required(DETAILS_WHERE)
+  checks.push(details.length === 0
+    ? { key: 'details', label: 'Order details', state: 'ok', text: 'Complete', fix: null }
+    : { key: 'details', label: 'Order details', state: 'need', text: neededText(details), fix: firstFixable(details) })
+
+  // Drawn only when something is wrong: a clean product list is not news.
+  const products = required(PRODUCTS_WHERE)
+  if (input.blockingCount > 0 || products.length > 0) {
+    checks.push({
+      key: 'products',
+      label: 'Products and workbook',
+      state: 'need',
+      text: input.blockingCount > 0 ? 'Fix the issues in the PI first' : neededText(products),
+      fix: input.blockingCount > 0 ? null : firstFixable(products),
+    })
+  }
+
+  const supporting = input.completion.optionalMissing.filter(item => SUPPORTING_WHERE.includes(item.where))
+  checks.push(supporting.length === 0
+    ? { key: 'supporting', label: 'Supporting details', state: 'ok', text: 'All added', fix: null }
+    : { key: 'supporting', label: 'Supporting details', state: 'optional', text: 'Optional — you will be asked once when you submit', fix: null })
+
+  if (input.advance) {
+    const standard = input.advance.standard ?? 'the standard advance'
+    checks.push(input.advance.met
+      ? { key: 'advance', label: `Advance ${input.advance.receivedPercent}`, state: 'ok', text: `${standard} reached`, fix: null }
+      : { key: 'advance', label: `Advance ${input.advance.receivedPercent}`, state: 'need', text: `Below ${standard} — give the reason when you submit`, fix: null })
+  }
+  return checks
+}
+
 /** The question the Submit sequence asks when optional items are still empty. */
 export const PROCEED_WITHOUT_QUESTION = 'Would you like to proceed without these details?'
 export const PROCEED_WITHOUT_TITLE = 'Proceed without these details?'

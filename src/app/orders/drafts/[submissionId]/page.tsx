@@ -94,7 +94,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { FabricFinishDrawer } from '@/components/orders/FabricFinishDrawer'
-import { FABRIC_FINISH_OPEN_LABEL, FABRIC_FINISH_TITLE } from '@/components/orders/FabricFinishSheet'
+import { useProductCosts } from '@/components/orders/useProductCosts'
+import { costLineFor, productCost, productCostSummary } from '@/lib/orders/productCostColumns'
 import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
 import { usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
@@ -118,10 +119,13 @@ import {
   PiCompletionFacts,
   PiCompletionPanel,
   PiLockedNotice,
+  PiSubmitCard,
 } from '@/components/orders/PiCompletionPanel'
+import { SectionChip } from '@/components/orders/PiFormParts'
 import {
   PI_LOCKED_TITLE,
   buildCompletionFacts,
+  buildSubmitChecks,
   joinItemNames,
   describeLockedNotice,
   buildPiCompletion,
@@ -145,7 +149,6 @@ import {
   PiFieldRow,
   PiProductThumbnail,
   PiCustomizationCell,
-  PiProductTableHead,
   PiImageViewer,
   PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
@@ -300,18 +303,22 @@ import {
   buildPaymentStatusView,
   buildSubmissionContext,
   commercialBreakdownRows,
-  summaryCommercialFigures,
   describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
+  advanceShortfall,
 } from './piDetailView'
 import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
   PiCommercialBreakdown,
-  PiLowerGrid,
+  PiDetailProductHead,
   PiPaymentStatusCard,
+  PiProductCostBox,
+  PiProductCostCells,
+  PiProductCostStrip,
+  PiProductTotalsRow,
   PiTopCard,
   PiSavedStrip,
   PiStoredCopyNote,
@@ -517,6 +524,15 @@ function PiDraftDetailPageInner() {
    * submission binding happens to be derived.
    */
   const [rowVersion, setRowVersion] = useState<number | null>(null)
+  /** Bumped when the cost sheet panel closes: a value may have been typed there. */
+  const [costSheetCloses, setCostSheetCloses] = useState(0)
+  /**
+   * THE COST SHEET, for the product list's fabric and packing columns (owner,
+   * 2026-10-30): the sheet's own one read, taken by its own hook so the page's
+   * counted reads are unchanged. Re-read when the PI is (a quantity may have
+   * changed) and when the panel closes. Undefined while it is being read.
+   */
+  const productCosts = useProductCosts(submissionId, `${rowVersion ?? ''}:${costSheetCloses}`)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionSaving, setCorrectionSaving] = useState(false)
   const [correctionFailure, setCorrectionFailure] = useState<string | null>(null)
@@ -2259,15 +2275,13 @@ function PiDraftDetailPageInner() {
   })
 
   /**
-   * The commercial rows, built ONCE and shared.
-   *
-   * The top summary repeats two of them beside the payment; the Commercial
-   * breakdown below renders the lot. Both are handed this same array, so the
-   * figure in the card and the figure in the breakdown cannot drift apart —
-   * they are literally the same string.
+   * The commercial rows, built ONCE. The Commercial breakdown at the foot of
+   * the Products card renders them, and the products' totals row takes its
+   * "Product value, before discount" from the same selection — the same
+   * string, so the two cannot drift apart. The payment card no longer repeats
+   * any of them (owner, 2026-10-30).
    */
   const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
-  const summaryFigures = summaryCommercialFigures(commercialRows)
 
   /**
    * The billing declaration, and what it comes to.
@@ -2327,6 +2341,11 @@ function PiDraftDetailPageInner() {
     pendingCount: paymentRowCounts.awaiting,
     pendingAmount: formatInr(toNumber(payments.unverified_amount)),
     pendingPercent: formatPercent(payments.unverified_percent),
+    // REQUIRED LESS RECEIVED — the database's two figures — for "Still to reach
+    // 40%" under the parts (owner, 2026-10-30). Drawn only while it is short.
+    shortfall: (shortfall => (shortfall === null ? null : formatInr(shortfall)))(
+      advanceShortfall(toNumber(payments.required_payment), toNumber(payments.attached_amount)),
+    ),
   })
 
   /** The breakdown card's selection of the same shared rows. Nothing is recomputed. */
@@ -2395,7 +2414,7 @@ function PiDraftDetailPageInner() {
   /** The area is drawn for whoever can submit, and — locked — for everybody. */
   const showCompletion = actions.canSubmit || isLocked
   const completionFacts = buildCompletionFacts(submission)
-  /** Said by name beside Submit (PiCompletionPanel); this is the button's tooltip. */
+  /** Said under Submit in the Submit card, and as the button's tooltip. */
   const submitBlockedReason =
     draft.blocking.length > 0 ? 'Fix the issues in the PI first'
     : completion.requiredMissing.length > 0 ? `Needed to submit: ${joinItemNames(completion.requiredMissing)}`
@@ -2545,6 +2564,37 @@ function PiDraftDetailPageInner() {
     />
   )
 
+  /**
+   * WHERE THE WORKFLOW PANEL GOES. Under the payment for whoever is deciding —
+   * the PI, or a pending advance — so the decision sits beside the money it is
+   * about; at the very top of the page for everybody else, so what management
+   * asked is the first thing read (owner, 2026-10-29).
+   */
+  const panelInRail = actions.canRequestChanges || actions.canReject || advanceActions.canDecide
+  /** Client items Submit still waits for, for the Client section's status. */
+  const clientNeeded = completion.requiredMissing.filter(item => item.where === 'client').length
+  /** The Submit card's lines, from the same lists the sections mark. */
+  const submitChecks = buildSubmitChecks({
+    completion,
+    blockingCount: draft.blocking.length,
+    // No line about the advance while the summary is unread, or where no
+    // standard advance applies.
+    advance: paymentStatus === null || paymentStatus.thresholdPercent === null ? null : {
+      met: paymentStatus.requirementMet,
+      receivedPercent: paymentStatus.receivedPercent,
+      standard: paymentStatus.thresholdLabel,
+    },
+  })
+  const costSummary = productCosts ? productCostSummary(productCosts) : null
+  const costOf = (p: PersistedProduct) => {
+    const line = costLineFor(productCosts ?? null, p)
+    return line ? productCost(line) : null
+  }
+  /** Pieces across the lines — a count, not money. */
+  const piecesTotal = products.reduce((sum, p) => sum + (p.quantity ?? 0), 0)
+  /** The breakdown's own "Product value, before discount", for the table's totals row. */
+  const productValueBeforeDiscount = breakdown.rows.find(row => row.key === 'gross')?.value ?? null
+
   return (
     <OrdersLayout
       profile={profile}
@@ -2592,6 +2642,12 @@ function PiDraftDetailPageInner() {
             </button>
           </div>
         )}
+
+        {/* ── What management asked, or what became of the PI ──
+            For everybody who is not deciding it, at the very top: a returned
+            PI's correction, a closed PI's reason, the Order an approved PI
+            became. A reviewer reads the same panel under the payment. */}
+        {!panelInRail && workflowPanel}
 
         {/* ── 1. The top card ──
             Order | Client | Dates: three groups in one card on a
@@ -2648,65 +2704,18 @@ function PiDraftDetailPageInner() {
         {/* ── 1b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
 
-        {/* ── 2. Payment status beside what the PI is worth ──
-            ~60/40 on a wide column, stacked when narrow, payment first. Each
-            card keeps its own controls. */}
-        <div className="pi-detail-split">
-          <div className="pi-detail-split-grid">
-            {/* ── 2a. Payment status ──
-                Confirmed and how far along the PI total, and what is still with
-                Finance — with the ways in to every payment record. The verify
-                control is drawn only for a payment verifier; the decisions it
-                leads to run Finance's own doors. */}
-            <PiPaymentStatusCard
-              status={paymentStatus}
-              canAdd={canAddPayment}
-              canVerify={canApprovePayments}
-              decidableCount={paymentRowCounts.decidable}
-              onAddPayment={() => setPaymentDialog('add')}
-              onOpenDetails={filter => { setPaymentFilter(filter); setPaymentDialog('details') }}
-              notice={paymentNotice}
-              onDismissNotice={() => setPaymentNotice(null)}
-              /* Product value and Total before GST lead the Finance card. */
-              figures={summaryFigures}
-            />
-
-            {/* ── 2b. Product value, Total before GST, billing ──
-                The middleman commission is asked and shown once, in Internal
-                order details; it is not repeated here. */}
-            <div className="pi-detail-split-stack">
-              {/* ── 2b. Management review, beside Finance ──
-                  Row 3 keeps the panel when the completion area is not drawn. */}
-              {showCompletion && workflowPanel}
-              {/* ── 2c. Fabric & Finish cost sheet (20270431000000) ──
-                  Per product: fabric metres and price, packing, the finish
-                  choices and reference pictures, read from the workbook's own
-                  two sheets and typeable where they left blanks. A button: the
-                  sheet slides in from the right, and offers its own page. */}
-              <button type="button" className="opp-entry" onClick={() => setCostSheetOpen(true)}>
-                <span className="opp-entry-text">
-                  <strong>{FABRIC_FINISH_TITLE}</strong>
-                  <span>Fabric metres and price, packing and finish choices per product, from the PI workbook</span>
-                </span>
-                <span className="opp-entry-go" aria-hidden="true">{FABRIC_FINISH_OPEN_LABEL} →</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 3. Complete PI details, and what management is asking ──
-            For whoever can submit this PI — and, once it is with management, for
-            everybody, read-only — ONE area holds every detail, the live
-            checklist and the Submit control. The workflow panel above it keeps
-            management's notes and the reviewer's decisions. Viewers the area is
-            not drawn for keep the arrangement below it. */}
-        {showCompletion ? (
-          <>
+        {/* ── 2. THE ONE PLACE (owner, 2026-10-30) ──
+            Everything Submit for approval needs, together: the PI details card
+            on the left (Client, Order details, Supporting details — each with
+            its own status and its own editor), and on the right the payment
+            and, for whoever can submit, the Submit card; for a reviewer, the
+            management review under the payment. The same arrangement for every
+            viewer; what is editable is each editor's own answer. */}
+        <div className="pi-zone">
+          <div className="pi-zone-grid">
             <PiCompletionPanel
-              completion={completion}
-              locked={isLocked}
-              checklistDisabled={acting}
-              onFix={mayEditPi || canEditInternalDetails ? fixCompletionItem : null}
+              mode={actions.canSubmit ? 'complete' : isLocked ? 'locked' : 'read'}
+              neededCount={completion.requiredMissing.length}
               groups={<>
                 <PiCompletionFacts
                   title="Client"
@@ -2715,56 +2724,89 @@ function PiDraftDetailPageInner() {
                   canEdit={canEditInternalDetails}
                   locked={isLocked}
                   onEdit={() => { setClientFailure(null); setEditSection('client') }}
+                  chip={actions.canSubmit ? (clientNeeded > 0
+                    ? <SectionChip tone="amber">{clientNeeded} needed</SectionChip>
+                    : <SectionChip tone="green">Complete</SectionChip>) : null}
+                />
+                {/* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
+                    seen and entered together; each value saved by the RPC that
+                    already owns it. Editable exactly where can_edit_order_submission
+                    says; read-only for everybody else, and locked with management.
+                    Back in the one place, beside the payment (owner, 2026-10-30). */}
+                <PiOrderDetailsSection
+                  supabase={supabase}
+                  submissionId={submissionId}
+                  row={detailsRow}
+                  rowVersion={rowVersion}
+                  canEdit={canEditInternalDetails}
+                  locked={isLocked}
+                  salesDetailsAvailable={salesDetails.available}
+                  people={salespeople}
+                  grandTotal={grandTotalValue}
+                  fabricCost={toNumber(submission.fabric_cost)}
+                  focus={detailsFocus}
+                  onSaved={() => loadDraft({ quiet: true })}
+                  billingValue={billingValueText}
                 />
                 {supportingDetails}
-                {/* Internal order details sit below the products, beside the
-                    Commercial breakdown, as on the Order page (owner,
-                    2026-10-29); the checklist's "Add" scrolls down to them. */}
               </>}
-              submit={actions.canSubmit ? {
-                label: submitButtonLabel(submission.status),
-                disabled: acting || submitBlockedReason !== null,
-                reason: submitBlockedReason,
-                issues: draft.blocking.length > 0,
-                onSubmit: openSubmit,
-              } : null}
-              onChangePi={actions.canChangePi ? () => router.push(changePiHref(submissionId)) : null}
-              requestChange={null}
             />
-          </>
-        ) : (
-        <div className="pi-detail-split">
-          {/* A reviewer gets the decision panel as a sticky right rail; everyone
-              else gets it as a full-width banner above the details, which then
-              sit in two columns. A short panel beside a tall column left the
-              right half of the page empty. */}
-          <div className={actions.canRequestChanges || actions.canReject
-            ? 'pi-detail-split-grid pi-detail-split-grid--rail'
-            : 'pi-detail-split-grid pi-detail-split-grid--banner'}>
-            <div className="pi-detail-split-stack">
-              {/* ── SUPPORTING DETAILS ── the highlight, the sample choice and
-                  the files, as the Order page's Documents card. Internal order
-                  details are below the products, beside the breakdown. */}
-              {supportingDetails}
-            </div>
 
-            {/* ── Workflow and actions, ABOVE the products ──
-                Whatever is being asked of this viewer, in one coordinated panel,
-                so nobody scrolls a product table to find out that nothing is. */}
-            {workflowPanel}
+            <div className="pi-zone-rail">
+              {/* ── 2a. The payment ──
+                  How much of the Total before GST has been received, what it is
+                  made of, and what is still to reach the advance — with the ways
+                  in to every payment record. The verify control is drawn only for
+                  a payment verifier; the decisions it leads to run Finance's own
+                  doors. */}
+              <PiPaymentStatusCard
+                status={paymentStatus}
+                canAdd={canAddPayment}
+                canVerify={canApprovePayments}
+                decidableCount={paymentRowCounts.decidable}
+                onAddPayment={() => setPaymentDialog('add')}
+                onOpenDetails={filter => { setPaymentFilter(filter); setPaymentDialog('details') }}
+                notice={paymentNotice}
+                onDismissNotice={() => setPaymentNotice(null)}
+              />
+
+              {/* ── 2b. Submit, for whoever can submit ──
+                  One line per part of the PI, then the control. What stops it is
+                  said by name, and each name takes the person to its editor. */}
+              {actions.canSubmit && (
+                <PiSubmitCard
+                  checks={submitChecks}
+                  onFix={mayEditPi || canEditInternalDetails ? fixCompletionItem : null}
+                  disabled={acting}
+                  submit={{
+                    label: submitButtonLabel(submission.status),
+                    disabled: acting || submitBlockedReason !== null,
+                    reason: submitBlockedReason,
+                    onSubmit: openSubmit,
+                  }}
+                  onChangePi={actions.canChangePi ? () => router.push(changePiHref(submissionId)) : null}
+                />
+              )}
+
+              {/* ── 2c. The management review, under the payment it decides on ── */}
+              {panelInRail && workflowPanel}
+            </div>
           </div>
         </div>
 
-        )}
-
-        {/* ── 4. What stops this being submitted ──
+        {/* ── 3. What stops this being submitted ──
             Above the products, because it is the reason the primary action is
             disabled. Saved at parse time, so what the server thought of this
             document is still readable months later. */}
         {draft.blocking.length > 0 && (
           <PiBlockingPanel entries={draft.blocking} />
         )}
-        {/* Products */}
+
+        {/* ── 4. Products, with their fabric and packing, and what they add up to ──
+            The Fabric & Finish cost sheet merged into the list (owner,
+            2026-10-30): the three figures over the table, a Fabric and a
+            Packing column per line, a totals row, and under the lines — as an
+            invoice draws it — the Commercial terms beside the breakdown. */}
         <PiCard>
           <PiCardHeader
             title="Products"
@@ -2782,7 +2824,7 @@ function PiDraftDetailPageInner() {
                   </span>
                 )}
                 <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                  {products.length} line{products.length !== 1 ? 's' : ''}
+                  {products.length} line{products.length !== 1 ? 's' : ''} · {piecesTotal} piece{piecesTotal === 1 ? '' : 's'}
                 </span>
                 {/* Reordering is one write over every line, so it is its own
                     control and its own dialog — never a side effect of editing
@@ -2800,107 +2842,128 @@ function PiDraftDetailPageInner() {
             }
           />
 
+          {/* ── The cost sheet's three figures, and the way into it ──
+              Per product: fabric metres and price, packing, the finish choices
+              and their reference pictures, read from the workbook's own two
+              sheets and typeable where they left blanks (20270431000000). The
+              sheet slides in from the right and offers its own page. */}
+          <PiProductCostStrip summary={costSummary} loaded={productCosts !== undefined} onOpen={() => setCostSheetOpen(true)} />
+
           {products.length === 0 ? (
             <div style={{ padding: '20px', fontSize: '12px', color: colors.secondary }}>
               No product lines are stored against this draft.
             </div>
           ) : isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {products.map((p, i) => (
-                <div
-                  key={p.id}
-                  style={{
-                    padding: '14px 16px',
-                    borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-                    display: 'flex', flexDirection: 'column', gap: '10px',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                    <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
-                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      {/* The code in the interface's sans, as on the upload
-                          preview — the monospace set B001 as a heavy block. */}
-                      <div style={{
-                        fontSize: '12px', fontWeight: 600, color: colors.secondary,
-                        fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',
-                      }}>
-                        {orDash(p.itemSequence)}
-                      </div>
-                      <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
-                        {orDash(p.productName)}
-                      </MultilineText>
-                      <div style={{ fontSize: '12px', color: colors.secondary }}>
-                        {p.quantity ?? '—'} × {formatInr(p.costPerPiece)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <PiFieldRow label="Dimensions" value={orDash(p.dimensions)} />
-                    <PiFieldRow label="Material" value={orDash(p.material)} />
-                  </div>
-
-                  {/* The cell renders its own heading, so the accent follows the
-                      same rule it does on the desktop column. */}
-                  <PiCustomizationCell
-                    label="Customization"
-                    text={p.customization}
-                    thumbnails={customizationThumbnails(p.row)}
-                    compact
-                  />
-
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                    borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
-                  }}>
-                    <span style={{ fontSize: '12px', color: colors.muted }}>Line total</span>
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                      {formatInr(p.lineTotal)}
-                    </span>
-                  </div>
-
-                  {canEditProducts && (
-                    <button
-                      type="button"
-                      className="boe-btn boe-btn-ghost"
-                      style={{ alignSelf: 'flex-start' }}
-                      onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
-                    >
-                      Edit details
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                {/* The identical head the upload preview renders. */}
-                <PiProductTableHead />
-                <tbody>
-                  {products.map(p => (
-                    <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
-                        {orDash(p.itemSequence)}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <PiProductThumbnail {...representativeThumbnail(p.row)} />
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: '160px', maxWidth: '240px' }}>
+              {products.map((p, i) => {
+                const cost = costOf(p)
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      padding: '14px 16px',
+                      borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                      display: 'flex', flexDirection: 'column', gap: '10px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
+                      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {/* The code in the interface's sans, as on the upload
+                            preview — the monospace set B001 as a heavy block. */}
+                        <div style={{
+                          fontSize: '12px', fontWeight: 600, color: colors.secondary,
+                          fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',
+                        }}>
+                          {orDash(p.itemSequence)}
+                        </div>
                         <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                           {orDash(p.productName)}
                         </MultilineText>
-                        {/* INSIDE THE PRODUCT CELL, not in a tenth column.
-                            PiProductTableHead is shared with the upload preview,
-                            which has nothing to edit; a tenth cell here would
-                            leave that table one heading short of its rows, and
-                            widening the shared head would put an empty column on
-                            a screen that can never fill it. */}
+                        <div style={{ fontSize: '12px', color: colors.secondary }}>
+                          {p.quantity ?? '—'} × {formatInr(p.costPerPiece)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <PiFieldRow label="Dimensions" value={orDash(p.dimensions)} />
+                      <PiFieldRow label="Material" value={orDash(p.material)} />
+                    </div>
+
+                    {/* The cell renders its own heading, so the accent follows the
+                        same rule it does on the desktop column. */}
+                    <PiCustomizationCell
+                      label="Customization"
+                      text={p.customization}
+                      thumbnails={customizationThumbnails(p.row)}
+                      compact
+                    />
+
+                    {cost && <PiProductCostBox cost={cost} />}
+
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                      borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
+                    }}>
+                      <span style={{ fontSize: '12px', color: colors.muted }}>Line total</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                        {formatInr(p.lineTotal)}
+                      </span>
+                    </div>
+
+                    {canEditProducts && (
+                      <button
+                        type="button"
+                        className="boe-btn boe-btn-ghost"
+                        style={{ alignSelf: 'flex-start' }}
+                        onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
+                      >
+                        Edit details
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="pi-products-table" style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                {/* The PI page's own head: the preview's columns, with the two
+                    cost columns under "From the cost sheet". */}
+                <PiDetailProductHead />
+                <tbody>
+                  {products.map(p => (
+                    <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
+                        {orDash(p.itemSequence)}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <PiProductThumbnail {...representativeThumbnail(p.row)} />
+                      </td>
+                      <td style={{ padding: '12px 14px', minWidth: '180px', maxWidth: '280px' }}>
+                        <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
+                          {orDash(p.productName)}
+                        </MultilineText>
+                        {/* DIMENSIONS AND MATERIAL UNDER THE NAME (owner,
+                            2026-10-30), to make room for the two cost columns. */}
+                        {p.dimensions && (
+                          <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>
+                            {p.dimensions}
+                          </MultilineText>
+                        )}
+                        {p.material && (
+                          <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>
+                            {p.material}
+                          </MultilineText>
+                        )}
+                        {/* INSIDE THE PRODUCT CELL, not in a column of its own:
+                            an edit control is not a fact about the product. */}
                         {canEditProducts && (
                           <button
                             type="button"
                             className="boe-btn boe-btn-ghost"
-                            style={{ marginTop: '4px' }}
+                            style={{ marginTop: '6px' }}
                             aria-label={`Edit ${p.productName?.trim() || 'this product line'}`}
                             onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
                           >
@@ -2908,116 +2971,71 @@ function PiDraftDetailPageInner() {
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
-                        {p.quantity ?? '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: '130px', maxWidth: '200px' }}>
-                        <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-                          {orDash(p.dimensions)}
-                        </MultilineText>
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: '120px', maxWidth: '200px' }}>
-                        <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-                          {orDash(p.material)}
-                        </MultilineText>
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: '140px', maxWidth: '240px' }}>
+                      <td style={{ padding: '12px 14px', minWidth: '140px', maxWidth: '240px' }}>
                         <PiCustomizationCell
                           text={p.customization}
                           thumbnails={customizationThumbnails(p.row)}
                           compact={false}
                         />
                       </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                        {p.quantity ?? '—'}
+                      </td>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
                         {formatInr(p.costPerPiece)}
                       </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
+                      <PiProductCostCells cost={costOf(p)} loaded={productCosts !== undefined} />
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
                         {formatInr(p.lineTotal)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
+                <PiProductTotalsRow pieces={piecesTotal} summary={costSummary} productValue={productValueBeforeDiscount} />
               </table>
             </div>
           )}
 
-          {/* ── WHAT NO FORM ON THIS PAGE CAN FIX ──
-              Stated once, under the lines, wherever an editing control is
-              offered. Without it a reader who has just corrected a product name
-              reasonably concludes the quantity beside it is one click away —
-              and then hunts for a control that was never going to exist. It is
-              not a permission notice: nobody can type these figures, because
-              they are the output of formulas in the workbook that this system
-              transcribes rather than computes. */}
-          {canEditProducts && products.length > 0 && (
-            <div style={{
-              padding: '11px 16px 13px',
-              borderTop: `1px solid ${colors.border}`,
-              display: 'flex', flexDirection: 'column', gap: '6px',
-            }}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                Changing these needs a corrected PI workbook
+          {/* ── What the lines add up to, as an invoice draws it ──
+              The stored figures, through the shared rows builder, selected by
+              buildBreakdownView: the nine lines of the calculation in order,
+              ending in the Grand Total. Nothing on this page recomputes a total.
+              The Commercial terms sit on the left, and under them what no form
+              on this page can change. */}
+          <PiCommercialBreakdown
+            layout="invoice"
+            view={breakdown}
+            commercialTerms={submission.commercial_terms_note ?? null}
+            onEditTerms={null}
+            note={canEditProducts && products.length > 0 ? (
+              /* ── WHAT NO FORM ON THIS PAGE CAN FIX ──
+                 Stated once, under the lines, wherever an editing control is
+                 offered. It is not a permission notice: nobody can type these
+                 figures, because they are the output of formulas in the
+                 workbook that this system transcribes rather than computes. */
+              <div className="pi-workbook-note">
+                <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                  Changing these needs a corrected PI workbook
+                </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
+                  {PI_CHANGE_PI_ONLY.join(' · ')}
+                </div>
+                <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
+                  These come from the workbook’s own formulas. Upload a corrected
+                  file and everything on this PI is read again from it.
+                </div>
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost"
+                  style={{ alignSelf: 'flex-start', marginTop: '2px' }}
+                  onClick={() => router.push(changePiHref(submissionId))}
+                >
+                  Change PI
+                </button>
               </div>
-              <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
-                {PI_CHANGE_PI_ONLY.join(' · ')}
-              </div>
-              <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
-                These come from the workbook’s own formulas. Upload a corrected
-                file and everything on this PI is read again from it.
-              </div>
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost"
-                style={{ alignSelf: 'flex-start', marginTop: '2px' }}
-                onClick={() => router.push(changePiHref(submissionId))}
-              >
-                Change PI
-              </button>
-            </div>
-          )}
+            ) : null}
+          />
         </PiCard>
-
-        {/* ── 6. The lower information grid ──
-
-            How the total was reached, beside what has happened to the record.
-            Both are reference material a reader drops to AFTER the decisions,
-            which is why they are here and not above the table. Roughly 60/40 on
-            a desktop, aligned at the top and never stretched to a common height;
-            stacked in this order on anything narrower. */}
-        <PiLowerGrid
-          details={
-            /* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
-               seen and entered together; each value saved by the RPC that
-               already owns it. Editable exactly where can_edit_order_submission
-               says; read-only for everybody else, and locked with management.
-               Beside the breakdown, as on the Order page (owner, 2026-10-29). */
-            <PiOrderDetailsSection
-              supabase={supabase}
-              submissionId={submissionId}
-              row={detailsRow}
-              rowVersion={rowVersion}
-              canEdit={canEditInternalDetails}
-              locked={isLocked}
-              salesDetailsAvailable={salesDetails.available}
-              people={salespeople}
-              grandTotal={grandTotalValue}
-              fabricCost={toNumber(submission.fabric_cost)}
-              focus={detailsFocus}
-              onSaved={() => loadDraft({ quiet: true })}
-              billingValue={billingValueText}
-            />
-          }
-          commercial={
-            /* The stored figures, through the shared rows builder, selected by
-               buildBreakdownView: the nine lines of the calculation in order, ending
-               in the Grand Total. Nothing on this page recomputes a total. */
-            <PiCommercialBreakdown
-              view={breakdown}
-              commercialTerms={submission.commercial_terms_note ?? null}
-              onEditTerms={null}
-            />
-          }
-        />
 
         {/* ── 6b. Activity, full width, last — the current state is understood
             before the history that produced it (owner, 2026-10-29). */}
@@ -3053,7 +3071,7 @@ function PiDraftDetailPageInner() {
           submissionId={submissionId}
           context={submission.client_name ? `PI · ${submission.client_name}` : 'PI'}
           openAsPageHref={`/orders/drafts/${submissionId}/fabric-finish`}
-          onClose={() => setCostSheetOpen(false)}
+          onClose={() => { setCostSheetOpen(false); setCostSheetCloses(n => n + 1) }}
         />
       )}
 
