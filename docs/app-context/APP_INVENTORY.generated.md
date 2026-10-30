@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f3058f0c` — Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
-- Commits on this branch: 1080
+- Commit: `87695518` — Docs: PI payments popup table merged as PR #513 (f3058f0c)
+- Commits on this branch: 1081
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `87695518` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c)
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
@@ -38,7 +39,6 @@
 - `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
 - `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
-- `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
 
 ## Pages by top-level area
 
