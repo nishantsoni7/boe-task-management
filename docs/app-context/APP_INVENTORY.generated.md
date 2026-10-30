@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1cc848a7` — Orders: PI payments popup as a table, with who verified each payment and a Details row
-- Commits on this branch: 1077
+- Commit: `6362f390` — Merge remote-tracking branch 'origin/main' into feat/pi-payments-table
+- Commits on this branch: 1080
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `6362f390` 2026-10-30 Merge remote-tracking branch 'origin/main' into feat/pi-payments-table
+- `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
+- `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 - `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
@@ -36,9 +39,6 @@
 - `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
 - `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 - `118e01c0` 2026-10-29 Control Center Access: People, Modules and Authorities (#489)
-- `149db69e` 2026-10-29 Lint: drop an unused import in piApprovalModals.render.test
-- `ae641eb6` 2026-10-29 Finance: Cash journeys redesigned as the founders' board
-- `6b1a5a1c` 2026-10-29 Orders: Payment plan on its own page — pictures, account and cash apart (#488)
 
 ## Pages by top-level area
 
