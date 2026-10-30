@@ -155,7 +155,8 @@ import {
   OperationsReviewActions,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
-import { FabricFinishDrawer } from '@/components/orders/FabricFinishDrawer'
+import { useProductCosts } from '@/components/orders/useProductCosts'
+import type { ProductView } from '@/components/orders/ProductViews'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
 import {
@@ -958,9 +959,10 @@ export default function OrderDetailPage() {
   const [approvalOpen,  setApprovalOpen]  = useState(false)
   const [approvalBusy,  setApprovalBusy]  = useState(false)
   const [approvalError, setApprovalError] = useState<string | null>(null)
-  // The Fabric & Finish cost sheet (20270431000000), a panel that slides in
-  // from the right. Self-loading when opened: nothing of it runs at startup.
-  const [costSheetOpen, setCostSheetOpen] = useState(false)
+  // Product details, F&P Cost or Approvals (owner, 2026-10-30).
+  const [productView, setProductView] = useState<ProductView>('details')
+  const [productViewMoved, setProductViewMoved] = useState(false)
+  const [costSheetSaves, setCostSheetSaves] = useState(0)
   const [proofBusy,     setProofBusy]     = useState<string | null>(null)
   const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
   const [piDownloadError, setPiDownloadError] = useState<string | null>(null)
@@ -988,6 +990,11 @@ export default function OrderDetailPage() {
   const id         = params.id as string
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
+  // The sheet behind the product list's tabs. Nothing of it runs at startup:
+  // the one read is taken when a tab is first opened.
+  const costSubmissionId = viewAsUserId ? null : order?.source_order_submission_id ?? null
+  const productCosts = useProductCosts(costSubmissionId ?? '', costSheetSaves, costSubmissionId !== null && productView !== 'details')
+  const switchProductView = (view: ProductView) => { setProductView(view); setProductViewMoved(true) }
 
   // ── Design Files and Client PO submissions (20270112000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
@@ -3094,6 +3101,14 @@ export default function OrderDetailPage() {
       representativeThumbnail={representativeThumbnail}
       customizationThumbnails={customizationThumbnails}
       unresolvedImages={piImages.unresolved}
+      views={costSubmissionId ? {
+        submissionId: costSubmissionId,
+        view: productView,
+        onChange: switchProductView,
+        data: productCosts,
+        animate: productViewMoved,
+        onChanged: () => setCostSheetSaves(n => n + 1),
+      } : undefined}
     />
   )
 
@@ -3109,7 +3124,12 @@ export default function OrderDetailPage() {
       orderId: order.id,
       canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
     }}
-    costSheet={order.source_order_submission_id && !viewAsUserId ? { onOpen: () => setCostSheetOpen(true) } : undefined}
+    costSheet={costSubmissionId && piHandoff.kind === 'ready' ? {
+      onOpen: () => {
+        switchProductView('cost')
+        document.getElementById('order-products')?.scrollIntoView({ behavior: 'smooth' })
+      },
+    } : undefined}
   />
   )
 
@@ -3964,16 +3984,6 @@ export default function OrderDetailPage() {
           failure={approvalError}
           onClose={() => { if (!approvalBusy) setApprovalOpen(false) }}
           onConfirm={changes => { void recordApprovals(changes) }}
-        />
-      )}
-
-      {/* ── Fabric & Finish cost sheet (20270431000000): slides in from the right ── */}
-      {costSheetOpen && order.source_order_submission_id && (
-        <FabricFinishDrawer
-          submissionId={order.source_order_submission_id}
-          context={`Order ${shownOrderNumber}${order.client_name ? ` · ${order.client_name}` : ''}`}
-          openAsPageHref={`/orders/${order.id}/fabric-finish`}
-          onClose={() => setCostSheetOpen(false)}
         />
       )}
 

@@ -6,6 +6,7 @@ import { matchFabricFinishSheets } from '@/lib/pi/fabricFinishSheets'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
+import { saveFabricFinishSheets, sheetLinesFor } from '@/lib/orders/fabricFinishServer'
 import {
   buildSubmissionPlan,
   cityFromBillingAddress,
@@ -643,21 +644,8 @@ export async function processUnderLease(ctx: {
     for (const i of (storedItems ?? []) as { id: string; item_sequence: string | null; source_row: number }[]) {
       keyByRow.set(i.source_row, (i.item_sequence ?? '').trim() || i.id)
     }
-    const lines = match.products.flatMap(p => {
-      const key = keyByRow.get(p.productRow)
-      if (!key || (!p.cost && !p.finish)) return []
-      return [{
-        item_sequence: key,
-        fabric_metres_per_piece: p.cost?.fabricMetresPerPiece ?? null,
-        fabric_price_per_metre: p.cost?.fabricPricePerMetre ?? null,
-        packing_cost_per_piece: p.cost?.packingCostPerPiece ?? null,
-        packing_type: p.cost?.packingType ?? null,
-        finish: (p.finish?.specs ?? []).map(s => ({ heading: s.heading, value: s.value })),
-      }]
-    })
-    await service.rpc('order_submission_fabric_finish_save_sheet', {
-      p_submission_id: submissionId, p_workbook_sha256: workbookSha256, p_lines: lines,
-    })
+    await saveFabricFinishSheets(service, submissionId, workbookSha256,
+      sheetLinesFor(match, p => keyByRow.get(p.productRow)))
   }
 
   // ── 18b. What the workbook said about its own terms ──

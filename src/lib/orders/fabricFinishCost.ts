@@ -18,6 +18,10 @@
 //              value stays visible underneath
 //   finish     a product with no fabric or finish choice recorded reads
 //              "No Fabric and Finish approval done"; PENDING counts as none
+//   approved   every kind of approval this PI tracks is settled: a value, a
+//              picture or NA (owner, 2026-10-30). Headings of one kind count
+//              together, so a blank "Seat Fabric" beside a filled "Fabric 1"
+//              is not an open approval, but a PENDING one is
 //
 // Money here is in rupees with paise (numbers), the way the PI stores it; the
 // only rounding is the workbook's own, on the two totals.
@@ -26,8 +30,9 @@ export const FABRIC_FINISH_TITLE = 'Fabric & Finish cost'
 export const FABRIC_FINISH_OPEN_LABEL = 'Open cost sheet'
 export const AS_APPLICABLE_TEXT = 'As applicable'
 export const NO_FINISH_TEXT = 'No Fabric and Finish approval done'
-export const SHEET_SOURCE_LABEL = 'Sheet'
 export const TYPED_SOURCE_LABEL = 'Typed'
+/** The headings the finish sheet usually carries, offered when a PI has none yet. */
+export const DEFAULT_FINISH_HEADINGS = ['Fabric Approval', 'Wood Finish Approval', 'Metal Finish', 'Marble/Rope Approval'] as const
 
 export type FinishEntry = {
   heading: string
@@ -207,8 +212,6 @@ export type LineFigures = {
   packingAmount: number | null
   /** Nothing is known for this line, from the sheet or typed. */
   blank: boolean
-  /** No fabric or finish choice is recorded (or every one still says PENDING). */
-  finishMissing: boolean
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -228,8 +231,72 @@ export function lineFigures(line: FabricFinishLine): LineFigures {
     fabricAmount,
     packingAmount,
     blank: metresPerPiece === null && price === null && packing === null && finish.length === 0,
-    finishMissing: !finish.some(f => finishIsDone(f.entry.value) || f.entry.imagePath !== null),
   }
+}
+
+// ── Approvals, per kind ───────────────────────────────────────────────────────
+
+export type FinishFamily = 'fabric' | 'wood' | 'metal' | 'marble' | 'other'
+
+export const FINISH_FAMILY_LABELS: Readonly<Record<FinishFamily, string>> = {
+  fabric: 'Fabric approval',
+  wood: 'Wood finish',
+  metal: 'Metal finish',
+  marble: 'Marble / rope',
+  other: 'Other',
+}
+
+const FAMILY_ORDER: readonly FinishFamily[] = ['fabric', 'wood', 'metal', 'marble', 'other']
+
+export function finishFamily(heading: string): FinishFamily {
+  if (/fabric/i.test(heading)) return 'fabric'
+  if (/wood/i.test(heading)) return 'wood'
+  if (/metal/i.test(heading)) return 'metal'
+  if (/marble|rope|stone/i.test(heading)) return 'marble'
+  return 'other'
+}
+
+export const finishHeadingKey = (h: string): string => h.replace(/\s+/g, ' ').trim().toLowerCase()
+
+/** Every heading this PI uses, in first-seen order; the usual four when it has none. */
+export function finishHeadings(lines: readonly FabricFinishLine[]): string[] {
+  const seen: string[] = []
+  for (const l of lines) {
+    for (const f of [...(l.sheet?.finish ?? []), ...(l.typed?.finish ?? [])]) {
+      if (!seen.some(s => finishHeadingKey(s) === finishHeadingKey(f.heading))) seen.push(f.heading.replace(/\s+/g, ' ').trim())
+    }
+  }
+  return seen.length > 0 ? seen : [...DEFAULT_FINISH_HEADINGS]
+}
+
+/** The kinds of approval this PI tracks, in reading order. */
+export function finishFamilies(lines: readonly FabricFinishLine[]): FinishFamily[] {
+  const used = new Set(finishHeadings(lines).map(finishFamily))
+  return FAMILY_ORDER.filter(f => used.has(f))
+}
+
+/** One entry counts when it says something other than PENDING, or has a picture. */
+const entrySettled = (e: FinishEntry): boolean => finishIsDone(e.value) || e.imagePath !== null
+
+export type FamilyCell = {
+  family: FinishFamily
+  entries: { entry: FinishEntry; source: 'typed' | 'sheet' }[]
+  settled: boolean
+}
+
+export type ApprovalState = 'approved' | 'partial' | 'none'
+
+export type LineApproval = { state: ApprovalState; cells: FamilyCell[] }
+
+export function lineApproval(line: FabricFinishLine, families: readonly FinishFamily[]): LineApproval {
+  const finish = effectiveFinish(line)
+  const cells = families.map(family => {
+    const entries = finish.filter(f => finishFamily(f.entry.heading) === family)
+    return { family, entries, settled: entries.length > 0 && entries.every(f => entrySettled(f.entry)) }
+  })
+  const settled = cells.filter(c => c.settled).length
+  const state: ApprovalState = settled === 0 ? 'none' : settled === cells.length ? 'approved' : 'partial'
+  return { state, cells }
 }
 
 // ── Totals, the workbook's way ────────────────────────────────────────────────
@@ -384,6 +451,3 @@ export function typedPayload(input: {
     },
   }
 }
-
-/** The headings the finish sheet usually carries, offered when a product has none yet. */
-export const DEFAULT_FINISH_HEADINGS = ['Fabric Approval', 'Wood Finish Approval', 'Metal Finish', 'Marble/Rope Approval'] as const

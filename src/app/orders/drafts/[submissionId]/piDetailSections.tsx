@@ -34,17 +34,6 @@ import {
   PiCardHeader,
   PiDiagnosticList,
 } from '@/components/orders/piPreview'
-import { AS_APPLICABLE_TEXT, FABRIC_FINISH_OPEN_LABEL } from '@/lib/orders/fabricFinishCost'
-import {
-  APPROVAL_PENDING_TEXT,
-  APPROVALS_LABEL,
-  COST_SHEET_GROUP_LABEL,
-  NO_FABRIC_TEXT,
-  approvalsLine,
-  comparisonText,
-  type ProductCost,
-  type ProductCostSummary,
-} from '@/lib/orders/productCostColumns'
 import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
 import { WORKBOOK_SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
@@ -69,7 +58,7 @@ import {
   REJECT_EXCEPTION_BUTTON_LABEL,
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
-import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, formatInr, type PiDiagnosticEntry } from '@/lib/pi/previewView'
+import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import {
   NUMBER_LABEL,
   ORDER_CREATED_HEADLINE,
@@ -1974,47 +1963,35 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
   )
 }
 
-// ── The product list's fabric and packing (owner, 2026-10-30) ─────────────────
+// ── The product list's Product details tab (owner, 2026-10-30) ───────────────
 //
-// The Fabric & Finish cost sheet, merged into the product list: three figures
-// over the table, a Fabric and a Packing column on every line, and a totals row.
-// Every figure is productCostColumns.ts's, which takes them from the cost
-// sheet's own rules; nothing here does arithmetic. The cost sheet itself (typing
-// a blank, the finish pictures) still opens from "Open cost sheet".
+// F&P Cost and Approvals are ProductViews.tsx's; this is the head and the totals
+// of the first tab. Code, Image, Product and Qty stay put across all three, so
+// Qty sits beside Product and everything to its right is what changes.
 
 /** The PI page's product columns: the import preview's, with Dimensions and
- *  Material moved under the product name to make room for Fabric and Packing. */
-export const PI_DETAIL_PRODUCT_COLUMNS: readonly { key: string; label: string; align: 'left' | 'right'; cost?: true; accent?: true }[] = [
+ *  Material under the product name. */
+export const PI_DETAIL_PRODUCT_COLUMNS: readonly { key: string; label: string; align: 'left' | 'right'; swap?: true; accent?: true }[] = [
   { key: 'sequence', label: '#', align: 'left' },
   { key: 'image', label: 'Image', align: 'left' },
   { key: 'product', label: 'Product', align: 'left' },
-  { key: 'customization', label: 'Customization', align: 'left', accent: true },
   { key: 'quantity', label: 'Qty', align: 'right' },
-  { key: 'cost', label: 'Cost / piece', align: 'right' },
-  { key: 'fabric', label: 'Fabric', align: 'right', cost: true },
-  { key: 'packing', label: 'Packing', align: 'right', cost: true },
-  { key: 'lineTotal', label: 'Line total', align: 'right' },
+  { key: 'customization', label: 'Customization', align: 'left', swap: true, accent: true },
+  { key: 'cost', label: 'Cost / piece', align: 'right', swap: true },
+  { key: 'lineTotal', label: 'Line total', align: 'right', swap: true },
 ]
 
-/**
- * The head of the PI page's own product table. The import preview keeps its
- * own head (piPreview.tsx is held byte-for-byte); this one adds the two cost
- * columns under a "From the cost sheet" group heading.
- */
+/** The head of the PI page's own product table. The import preview keeps its
+ *  own (piPreview.tsx is held byte-for-byte). */
 export function PiDetailProductHead() {
   return (
     <thead>
-      <tr className="pi-products-group-row">
-        <td colSpan={6} aria-hidden="true" />
-        <th colSpan={2} scope="colgroup" className="pi-products-costgroup">{COST_SHEET_GROUP_LABEL}</th>
-        <td aria-hidden="true" />
-      </tr>
       <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
         {PI_DETAIL_PRODUCT_COLUMNS.map(column => (
           <th
             key={column.key}
             scope="col"
-            className={column.cost ? 'pi-products-costcol' : undefined}
+            className={column.swap ? 'pv-swap' : undefined}
             style={{
               padding: '8px 14px',
               textAlign: column.align,
@@ -2033,156 +2010,21 @@ export function PiDetailProductHead() {
   )
 }
 
-const metresText = (metres: number): string =>
-  `${metres.toLocaleString('en-IN', { maximumFractionDigits: 2 })} m`
-
-function CostChoice({ choice }: { choice: ProductCost['choice'] }) {
-  if (!choice) return null
-  return choice.done
-    ? <span className="pi-cost-choice pi-cost-choice--done">{choice.text}</span>
-    : <span className="pi-cost-choice pi-cost-choice--pending">{APPROVAL_PENDING_TEXT}</span>
-}
-
-/** The fabric figure of one line: amount, metres × rate, and the fabric choice. */
-function FabricFigure({ cost }: { cost: ProductCost }) {
-  const hasMetres = cost.metres !== null && cost.metres > 0
-  return (
-    <>
-      {cost.fabricAmount !== null && hasMetres
-        ? <span className="pi-cost-amount">{formatInr(cost.fabricAmount)}</span>
-        : <span className="pi-cost-absent">{hasMetres ? 'Rate not given' : NO_FABRIC_TEXT}</span>}
-      {hasMetres && (
-        <span className="pi-cost-sub">
-          {metresText(cost.metres as number)}
-          {cost.pricePerMetre !== null && ` · ${formatInr(cost.pricePerMetre)}/m`}
-        </span>
-      )}
-      <CostChoice choice={cost.choice} />
-    </>
-  )
-}
-
-/** The packing figure of one line: amount, and its type and rate per piece. */
-function PackingFigure({ cost }: { cost: ProductCost }) {
-  const detail = [cost.packingType, cost.packingPerPiece !== null ? `${formatInr(cost.packingPerPiece)}/pc` : null]
-    .filter(Boolean).join(' · ')
-  return (
-    <>
-      {cost.packingAmount !== null
-        ? <span className="pi-cost-amount">{formatInr(cost.packingAmount)}</span>
-        : <span className="pi-cost-absent">Not given</span>}
-      {detail && <span className="pi-cost-sub">{detail}</span>}
-    </>
-  )
-}
-
-/**
- * The two cost cells of one table row. `loaded` is false while the sheet is
- * being read; a line the sheet has nothing for shows a dash.
- */
-export function PiProductCostCells({ cost, loaded }: { cost: ProductCost | null; loaded: boolean }) {
-  const empty = <span className="pi-cost-absent">{loaded ? '—' : '…'}</span>
-  return (
-    <>
-      <td className="pi-products-costcol pi-cost-cell">{cost ? <FabricFigure cost={cost} /> : empty}</td>
-      <td className="pi-products-costcol pi-cost-cell">{cost ? <PackingFigure cost={cost} /> : empty}</td>
-    </>
-  )
-}
-
-/** The same two figures on a phone, as a box under the product. */
-export function PiProductCostBox({ cost }: { cost: ProductCost }) {
-  return (
-    <div className="pi-cost-box">
-      <div className="pi-cost-box-cell">
-        <span className="pi-cost-box-label">Fabric</span>
-        <FabricFigure cost={cost} />
-      </div>
-      <div className="pi-cost-box-cell">
-        <span className="pi-cost-box-label">Packing</span>
-        <PackingFigure cost={cost} />
-      </div>
-    </div>
-  )
-}
-
-/**
- * THE THREE FIGURES OVER THE TABLE — the fabric total and metres, the packing
- * total, and how many products have their fabric and finish approved — with
- * whether each total matches the PI's own line, and the way into the sheet.
- */
-export function PiProductCostStrip({ summary, loaded, onOpen }: {
-  summary: ProductCostSummary | null
-  loaded: boolean
-  onOpen: () => void
-}) {
-  const open = (
-    <button type="button" className="boe-btn boe-btn-ghost pi-cost-strip-open" onClick={onOpen} aria-haspopup="dialog">
-      {FABRIC_FINISH_OPEN_LABEL}
-      <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
-    </button>
-  )
-  if (!summary) {
-    return (
-      <div className="pi-cost-strip pi-cost-strip--empty">
-        <span className="pi-cost-strip-note">{loaded ? 'The cost sheet could not be read.' : 'Reading the cost sheet…'}</span>
-        {open}
-      </div>
-    )
-  }
-  const total = (rounded: number | null) => (rounded === null ? AS_APPLICABLE_TEXT : formatInr(rounded))
-  const matchChip = (comparison: ProductCostSummary['fabric']['comparison']) => {
-    const text = comparisonText(comparison, formatInr)
-    return text ? <span className={`pi-cost-choice ${comparison.state === 'matches' ? 'pi-cost-choice--done' : 'pi-cost-choice--pending'}`}>{text}</span> : null
-  }
-  const lines = summary.approvals.total
-  return (
-    <div className="pi-cost-strip">
-      <div className="pi-cost-stat">
-        <span className="pi-cost-stat-label">Fabric</span>
-        <span className="pi-cost-stat-value">{total(summary.fabric.rounded)}</span>
-        <span className="pi-cost-stat-sub">
-          {summary.fabric.metres > 0 && <>{metresText(summary.fabric.metres)} across {summary.fabric.products} product{summary.fabric.products === 1 ? '' : 's'}</>}
-          {matchChip(summary.fabric.comparison)}
-        </span>
-      </div>
-      <div className="pi-cost-stat">
-        <span className="pi-cost-stat-label">Packing</span>
-        <span className="pi-cost-stat-value">{total(summary.packing.rounded)}</span>
-        <span className="pi-cost-stat-sub">
-          {lines > 0 && (summary.packing.products === lines ? `All ${lines} priced` : `${summary.packing.products} of ${lines} priced`)}
-          {matchChip(summary.packing.comparison)}
-        </span>
-      </div>
-      <div className="pi-cost-stat">
-        <span className="pi-cost-stat-label">{APPROVALS_LABEL}</span>
-        <span className="pi-cost-stat-value">{summary.approvals.done} of {lines}</span>
-        <span className="pi-cost-stat-sub">{approvalsLine(summary.approvals)}</span>
-      </div>
-      <div className="pi-cost-strip-go">{open}</div>
-    </div>
-  )
-}
-
-/** The table's last row: pieces, the two cost totals and the product value. */
-export function PiProductTotalsRow({ pieces, summary, productValue }: {
+/** The table's last row: pieces and the product value. */
+export function PiProductTotalsRow({ pieces, productValue }: {
   /** Pieces across the lines — a count, not money. */
   pieces: number
-  summary: ProductCostSummary | null
   /** The breakdown's own "Product value, before discount" figure, as text. */
   productValue: string | null
 }) {
-  const total = (rounded: number | null | undefined) =>
-    rounded === undefined ? '' : rounded === null ? AS_APPLICABLE_TEXT : formatInr(rounded)
   return (
     <tfoot>
       <tr className="pi-products-total">
-        <td colSpan={4}>Total</td>
+        <td colSpan={3}>Total</td>
         <td style={{ textAlign: 'right' }}>{pieces}</td>
-        <td />
-        <td className="pi-products-costcol" style={{ textAlign: 'right' }}>{total(summary?.fabric.rounded)}</td>
-        <td className="pi-products-costcol" style={{ textAlign: 'right' }}>{total(summary?.packing.rounded)}</td>
-        <td style={{ textAlign: 'right' }}>{productValue ?? ''}</td>
+        <td className="pv-swap" />
+        <td className="pv-swap" />
+        <td className="pv-swap" style={{ textAlign: 'right' }}>{productValue ?? ''}</td>
       </tr>
     </tfoot>
   )
