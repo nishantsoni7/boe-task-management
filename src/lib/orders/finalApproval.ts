@@ -282,14 +282,6 @@ export const APPROVE_ORDER_FINAL_NOTE =
 export const APPROVE_ORDER_NOT_A_PAYMENT =
   'This does not record receipt of any payment.'
 
-export const APPROVE_SUMMARY_LABEL = {
-  client: 'Client',
-  grandTotal: 'Grand total',
-  advance: 'Advance condition',
-  finance: 'Finance verification',
-  lines: 'Product lines',
-} as const
-
 export const FINANCE_SUMMARY_VERIFIED = 'Verified'
 export const FINANCE_SUMMARY_PENDING = 'Pending'
 
@@ -311,17 +303,18 @@ export function orderHref(orderId: string): string {
  * screen only when it has something the Order page cannot say:
  *
  *   no outcome            the RPC answer was unreadable; the PI re-reads the record
- *   pendencies not saved  the PI says so, and says to add them from the Order
  *   Order not readable    the approver may not SELECT it under RLS; the PI still
  *                         shows the number, where the Order page would say
  *                         "not available"
+ *
+ * (Pendencies are no longer entered in the approval dialog since 2026-10-30,
+ * so there is no unsaved list to stay and report.)
  */
 export function orderToOpenAfterApproval(input: {
   outcome: ApprovalOutcome | null
-  pendenciesSaved: boolean
   orderReadable: boolean
 }): string | null {
-  if (!input.outcome || !input.pendenciesSaved || !input.orderReadable) return null
+  if (!input.outcome || !input.orderReadable) return null
   return orderHref(input.outcome.orderId)
 }
 

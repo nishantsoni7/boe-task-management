@@ -129,45 +129,31 @@ describe('what is required for submission — each one a gate the database alrea
   })
 })
 
-describe('what is required only LATER — never a submission blocker', () => {
+describe('the salesperson is never "missing" (owner, 2026-10-30)', () => {
   const approval = migration('20261201000000_order_submission_confirmation_required_fields.sql')
 
-  test('the salesperson is needed to create the Order (approve_order_submission), not to submit; the lead source IS needed to submit', () => {
+  test('an empty salesperson blocks nothing and is listed nowhere: Submit names the person submitting', () => {
     assert.ok(approval.includes('ORDER_CONFIRMATION_SALESPERSON_REQUIRED') && approval.includes('ORDER_CONFIRMATION_LEAD_SOURCE_REQUIRED'))
     const c = completion()
-    assert.deepEqual(c.laterMissing.map(i => i.key), ['salesperson_id'])
-    assert.ok(c.laterMissing.every(i => i.need === 'later'))
+    assert.deepEqual(c.laterMissing, [], 'not "needed later": the approver is not asked')
     assert.ok(!c.requiredMissing.some(i => i.field === 'salesperson_id'))
-    assert.equal(c.readyToSubmit, true, 'with the lead source chosen, the salesperson alone does not hold Submit')
+    assert.ok(!c.optionalMissing.some(i => i.key === 'salesperson_id'), 'nor "skipped": empty means the submitter')
+    assert.equal(c.readyToSubmit, true)
+  })
+
+  test('the lead source IS needed to submit', () => {
     const none = completion({ details: { lead_source: null } })
     assert.ok(none.requiredMissing.some(i => i.field === 'lead_source'), 'no lead source holds the Submit control')
     assert.equal(none.readyToSubmit, false)
   })
 
-  test('once chosen they leave the list', () => {
-    const c = completion({ details: { salesperson_id: 'u-1', lead_source: 'website' } })
-    assert.deepEqual(c.laterMissing, [])
-  })
-
-  test('before the database has the two columns they cannot be asked for', () => {
-    assert.deepEqual(completion({ salesDetailsAvailable: false }).laterMissing, [])
-  })
-
-  test('they are listed in the "proceed without these?" step, in their own group, apart from the optional ones', () => {
-    const c = completion()
-    assert.ok(!c.optionalMissing.some(i => i.key === 'salesperson_id' || i.key === 'lead_source'), 'not mislabelled Optional')
-    assert.deepEqual(c.laterMissing.map(i => i.label), ['BOE salesperson assigned to Order'])
-    assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
-  })
-
-  test('with only later items empty the step still appears', () => {
+  test('with nothing optional empty, the "proceed without these?" step is skipped', () => {
     const c = completion({
       details: { billing_percentage: 65, billing_terms: 'x', payment_terms: 'y' },
       highlight: { available: true, remark: 'x' },
     })
     assert.deepEqual(c.optionalMissing, [])
-    assert.equal(c.laterMissing.length, 1)
-    assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
+    assert.notEqual(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
   })
 })
 

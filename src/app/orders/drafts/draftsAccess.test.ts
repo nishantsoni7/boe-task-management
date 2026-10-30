@@ -1731,15 +1731,15 @@ describe('the record page draws controls from one rule, and from nothing else', 
   })
 
   test('creating the Order opens it instead of re-reading the PI (owner, 2026-10-30)', () => {
-    // The approval asks the rule where to go, after the pendencies are saved
-    // and only for an Order this approver may read under their own RLS.
+    // The approval asks the rule where to go, only for an Order this approver
+    // may read under their own RLS. (Since 2026-10-30 the dialog collects no
+    // pendencies, so nothing is saved first.)
     const approve = source.slice(source.indexOf('const approveSubmission = useCallback'))
     const approveBody = approve.slice(0, approve.indexOf('const approvePiReview'))
     assert.ok(approveBody.includes("supabase.from('orders').select('id').eq('id', outcome.orderId).maybeSingle()"))
     assert.ok(approveBody.includes('orderToOpenAfterApproval({'))
     assert.ok(approveBody.includes('if (leaveFor) return { error, leaveFor }'))
-    assert.ok(approveBody.indexOf('saveNewOrderPendencies') < approveBody.indexOf('orderToOpenAfterApproval({'),
-      'the pendencies are saved before the page is left')
+    assert.ok(!approveBody.includes('saveNewOrderPendencies'), 'no pendency write after approval')
     // The PI-only decision creates no Order, so it still re-reads the PI.
     const piOnly = approve.slice(approve.indexOf('const approvePiReview'), approve.indexOf('const closeDialog'))
     assert.ok(!piOnly.includes('leaveFor'))
@@ -1987,8 +1987,11 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // made by the supporting-documents sender: it runs submit_pi_for_review()
     // unchanged and records the attached files in the same transaction.
     // (Since 2026-09-27 the call is named once and made either directly or
-    // after the internal dates are saved — still one call, with all three.)
-    assert.ok(source.includes('const send = () => supporting.send({ note, terms, acknowledgedMissing })'))
+    // after the internal dates are saved — still one call, with all three.
+    // Since 2026-10-30 it is preceded, when Sales chose nobody, by naming the
+    // person submitting as the salesperson — a separate field write.)
+    assert.ok(source.includes('return supporting.send({ note, terms, acknowledgedMissing })'))
+    assert.ok(source.includes('nameSubmitterAsSalesperson(supabase, submissionId, salesDetails, viewerId)'))
     assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
     assert.ok(supportingSource.includes('p_note: input.note,'))
     assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))

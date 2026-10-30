@@ -118,18 +118,17 @@ export function isCalendarDate(value: string | null | undefined): value is strin
   return d.toISOString().slice(0, 10) === s
 }
 
-// ── The salesperson on a PI, and on a legacy PI without one ──────────────────
+// ── The salesperson on a PI, and on a PI without one ─────────────────────────
 //
 // Since 20270211000000 Sales saves the salesperson on the PI itself
-// (order_submissions.salesperson_id), and the Create Confirmed Order dialog
-// offers that saved id. A PI saved before then has none.
+// (order_submissions.salesperson_id). Since 2026-10-30 Submit saves the person
+// submitting when Sales chose nobody, so a newly submitted PI always names one.
 //
-// A LEGACY PI HAS NO SAVED ID. Its only trace of a salesperson is
-// source_created_by — the NAME the workbook prints. The dialog preselects a
-// person from it ONLY when the name matches exactly ONE BOE user (see
-// matchWorkbookSalesperson); an unmatched or ambiguous name is shown as a hint
-// and management chooses. Either way the selector stays editable and the
-// database re-checks the id it is given.
+// MANAGEMENT IS NOT ASKED AGAIN (owner, 2026-10-30). The approval dialog takes
+// the salesperson from orderSalespersonFor — the saved one, else the one BOE
+// user the workbook name points at, else whoever submitted the PI — and draws
+// a selector only when none of the three exists or the database refused the
+// one it was given. The database re-checks the id either way.
 
 /**
  * THE NAME THE WORKBOOK PRINTS as its author (source_created_by), for a PI that
@@ -158,22 +157,26 @@ export function matchWorkbookSalesperson(
 }
 
 /**
- * The line under the Salesperson selector in the Create Confirmed Order dialog.
- * A PI with a saved salesperson says whom Sales saved; a legacy PI says nobody
- * is selected and, when the workbook prints a name, offers it as a hint only.
+ * THE SALESPERSON AN ORDER IS CREATED FOR, in this order: the one saved on the
+ * PI, the one BOE user the workbook name points at, the person who submitted
+ * the PI. Null only when the PI has none of the three.
  */
-export function salespersonSelectorNote(input: {
-  /** The name of the salesperson saved on the PI, or null for a legacy PI. */
-  savedName: string | null
-  /** workbookSalespersonHint(source_created_by). */
-  workbookName: string | null
-  /** The person preselected from the workbook name (matchWorkbookSalesperson), if any. */
-  suggestedName?: string | null
-}): string {
-  if (input.suggestedName) return `Preselected from the PI workbook, which names ${input.suggestedName}. Choose someone else only if that is wrong.`
-  if (input.savedName) return `Sales saved ${input.savedName} on this PI. Choose someone else only if that is wrong.`
+export function orderSalespersonFor(input: {
+  saved: { id: string; name: string } | null
+  workbookMatch: { id: string; name: string } | null
+  submitter: { id: string; name: string } | null
+}): { id: string; name: string } | null {
+  return input.saved ?? input.workbookMatch ?? input.submitter
+}
+
+/**
+ * The line under the Salesperson selector, which the approval dialog draws only
+ * when the PI names nobody: nobody is selected and, when the workbook prints a
+ * name, it is offered as a hint only.
+ */
+export function salespersonSelectorNote(workbookName: string | null): string {
   const base = 'This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.'
-  return input.workbookName ? `${base} The workbook names “${input.workbookName}” — a hint only.` : base
+  return workbookName ? `${base} The workbook names “${workbookName}” — a hint only.` : base
 }
 
 /**

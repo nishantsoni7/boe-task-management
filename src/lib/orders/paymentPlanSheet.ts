@@ -54,6 +54,11 @@ export type PaymentPlanSheet = {
 const pct = (n: number) => `${(Math.round(n * 100) / 100).toString()}%`
 export const gstRateText = (rate: number) => pct(rate * 100)
 
+/** The first note: what bank and cash mean. The screen says it under its own working table. */
+export const BANK_CASH_NOTE = 'Bank = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara). Amounts rounded to the rupee.'
+/** The screen draws this one as a warning instead of a note. */
+export const BILLING_MISSING_NOTE = 'No billing percentage is set on the PI or on this plan, so everything is shown as cash and no GST is included.'
+
 /** Paise as whole rupees with Indian grouping, no symbol; a minus sign for negatives. */
 export function wholeRupees(paise: number): string {
   const r = Math.round(paise / 100)
@@ -143,8 +148,8 @@ export function buildPaymentPlanSheet(
   const fabricMetres = Math.round(result.lines.reduce((sum, l) => sum + l.plannedFabricMetres, 0) * 1000) / 1000
 
   const notes: string[] = []
-  notes.push('Bank = payments into the company bank account (HDFC). Cash = all other payments (PNB, Paytm, Canara). Amounts rounded to the rupee.')
-  if (result.billingMissing) notes.push('No billing percentage is set on the PI or on this plan, so everything is shown as cash and no GST is included.')
+  notes.push(BANK_CASH_NOTE)
+  if (result.billingMissing) notes.push(BILLING_MISSING_NOTE)
   if (s.movedFromAccount.excessPaise > 0) {
     notes.push(`More was paid in bank than needed. The extra ${wholeRupees(s.movedFromAccount.excessPaise)} is billed: ${wholeRupees(s.movedFromAccount.goodsPaise)} of goods (taken off the cash balance) and ${wholeRupees(s.movedFromAccount.gstPaise)} of GST.`)
   }
