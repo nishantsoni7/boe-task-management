@@ -4,12 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-30 — Incoming Minop data: table redesigned around punch time, delay and name (PR #531) · no migration
+## 2026-10-30 — Incoming Minop data: table redesigned around punch time, delay and name (PR #531, squash-merged as a4e60f5c, 18:43 UTC, by the owner) · no migration · Production deployment 7446208639 success 18:46 UTC · backup bundle 20261030T185317Z, database 20261030T185335Z (201 tables, 100,530 rows), verified
 - **Owner request.** Punch time first and primary, then Received, then Delay. A name in place of Punch ID. Mode, Device ID, Name in message and Data reading removed. Mockup approved first.
 - **What.** Columns are Punch time, Received, Delay, Name, Transaction ID, Payload, with phone cards to match. Delay is received time minus punch time, the machine's clock read as IST. Names come from `users.minop_user_id`, read in `incomingQuery.ts` and handed to `buildIncomingRows`. An ID linked to nobody reads "ID 1000 · not linked"; a message with no punch says so. Search also finds a name. The small message reference left the row: View payload shows it in full.
 - **Unchanged.** Filters, sort, paging, View payload, admin-only access. The CSV and raw download keep every field; the CSV adds Employee name and Delay. Duplicate flags and read statuses now appear only in the CSV.
 - **Rollback.** Revert the PR.
-- **Proof.** `incomingRegister.test.ts`: exact-text name match, delay with and without a zone, an unreadable time, a clock running ahead, name search, the CSV columns, and both routes passing the names.
+- **Proof.** `incomingRegister.test.ts`: exact-text name match, delay with and without a zone, an unreadable time, a clock running ahead, name search, the CSV columns, and both routes passing the names. The merged tree is identical to the tested commit, the live bundle carries the new page's text and not the old, and the route answers 401 signed out. The building session did not see the page signed in.
 
 ## 2026-10-30 — Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (PR #532, squash-merged as 03346ec0, 17:30 UTC, by the owner after their preview check) · no migration · Production deployment 7444828368 success 17:32 UTC · backup bundle 20261030T173223Z, database 20261030T173246Z (201 tables, 100,530 rows), verified
 - **Owner request.** See who is doing well in attendance and who is not. Preview approved first.
