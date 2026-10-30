@@ -1171,7 +1171,7 @@ describe('the applied migrations are frozen', () => {
       '20270508000000_salesperson_dashboard_last_month.sql',
       // PI returned / closed notice: one line, not the whole note. APPLIED 2026-10-30.
       '20270509000000_pi_review_notice_short.sql',
-      // Attendance machine: each punch kept once, and each person's Machine ID. NOT APPLIED.
+      // Attendance machine: each punch kept once, and each person's Machine ID. APPLIED 2026-10-30.
       '20270510000000_minop_punches.sql',
       '20270510000100_users_minop_user_id.sql',
     ])
@@ -1596,7 +1596,7 @@ describe('the applied migrations are frozen', () => {
       '20270508000000_salesperson_dashboard_last_month.sql',
       // PI returned / closed notice: one line, not the whole note. APPLIED 2026-10-30.
       '20270509000000_pi_review_notice_short.sql',
-      // Attendance machine: each punch kept once, and each person's Machine ID. NOT APPLIED.
+      // Attendance machine: each punch kept once, and each person's Machine ID. APPLIED 2026-10-30.
       '20270510000000_minop_punches.sql',
       '20270510000100_users_minop_user_id.sql',
     ])

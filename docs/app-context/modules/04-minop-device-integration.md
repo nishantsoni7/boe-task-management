@@ -20,8 +20,8 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | `/attendance/minop` ("Attendance Sync") diagnostics | Shipped, Retry action removed; unprocessed rows read "Stored only" |
 | `/attendance/minop/incoming` "Incoming Minop data" register + CSV/raw export | Shipped (#271, 2026-10-01) |
 | Live device -> BOE delivery | PROVEN on production 2026-10-30: 246 deliveries, latest punch 12:59 IST received 7 minutes later. Not real time: 2 minutes to 2 hours on 28 Oct, about 2 days on 25-26 Oct, and nothing at all 13-25 Oct |
-| `minop_punches`: each punch kept once | Built on `feat/minop-punches-machine-id`, migration not applied. Written by the path-token route only; the migration loads everything already received |
-| Machine ID (`users.minop_user_id`) + unlinked-IDs notice on Employee Master | Built on `feat/minop-punches-machine-id`, migration not applied |
+| `minop_punches`: each punch kept once | Shipped (#523), migration APPLIED 2026-10-30, 45 punches loaded. Written by the path-token route only; the migration loaded everything already received |
+| Machine ID (`users.minop_user_id`) + unlinked-IDs notice on Employee Master | Shipped (#523), migration APPLIED 2026-10-30. 10 staff linked from the owner's list |
 | Machine punches -> `attendance_records` (switch-on) | NOT BUILT, see section 11 |
 
 ## 3. Pages and API routes

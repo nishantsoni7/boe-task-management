@@ -4,9 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (branch `feat/minop-punches-machine-id`, not merged) · migrations 20270510000000, 20270510000100 → NOT APPLIED
+## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (PR #523, on the owner's yes after their preview check) · migrations 20270510000000, 20270510000100 → APPLIED 2026-10-30 (by the owner from the worktree: backup 20261030T081638Z verified first, dry run listed exactly these two, migration list shows both remote, 45 punches loaded)
 - **Owner decision.** From 1 November 2026 the new machine is the only attendance source, with no parallel period. October stays on the old machine's Excel.
-- **What.** `minop_punches` keeps each punch once, keyed by device + person + punch time. Employee Master gains a Machine ID (column, edit field, 409 if already used) and a notice listing IDs that have punched but belong to nobody. Nothing writes attendance or payroll: `MINOP_COLLECTION_ONLY` stays true.
+- **What.** `minop_punches` keeps each punch once, keyed by device + person + punch time. Employee Master gains a Machine ID (column, edit field, 409 if already used) and a notice listing IDs that have punched but belong to nobody. Nothing writes attendance or payroll: `MINOP_COLLECTION_ONLY` stays true. Machine IDs for 10 staff were saved from the owner's list after the migrations.
 - **Why rebuilt.** The 2026-10-25 work (`docs/minop-shadow-mode-spec`, a5aa0687) was never merged. It keyed on `txnId`, which production proved is reused, so it would have dropped real punches; its migration number was also taken.
 - **Apply order.** Backup, apply 0510 and 0510 0100, then merge. `/api/employee-list` names the new column and falls back to base columns without it, so code first would strip Employee Master.
 - **Rollback.** Revert the PR. The table and column are additive and can stay, or be removed by a later migration.
