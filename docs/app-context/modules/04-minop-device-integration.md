@@ -25,16 +25,19 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | Machine punches -> `attendance_records` | Shipped (#526). No migration needed. From 2026-11-01, linked and active people only |
 | Nightly sync `GET /api/attendance/minop-sync` (Vercel Cron, 00:15 IST) | Shipped (#526) |
 | Excel import and preview for months from November 2026 | Refused (400), #526 |
+| Today tab `/attendance/today` + machine status | Built on `feat/attendance-today`, not merged |
+| Stopped-machine alert `GET /api/attendance/machine-alert` (Vercel Cron, 11:05 IST) | Built on the same branch. Needs 20270511000000 applied first |
 
 ## 3. Pages and API routes
 
-- Pages: `/attendance/minop` (Attendance Sync, `src/app/attendance/minop/page.tsx`), `/attendance/minop/incoming` (second tab of the "Issues" sidebar section). Both behind `AttendanceGuard` (admin).
+- Pages: `/attendance/today` (Today, first tab of the Attendance section and where its sidebar link lands), `/attendance/minop` (Attendance Sync, `src/app/attendance/minop/page.tsx`), `/attendance/minop/incoming` (second tab of the "Issues" sidebar section). All behind `AttendanceGuard` (admin).
 - Inbound (public, no session):
   - `POST /api/integrations/minop/webhook` - `authenticateMinopWebhook`: `Authorization: Bearer <secret>`, or `x-minop-webhook-secret`, or JSON `AuthToken` / `RealTime.AuthToken`, constant-time compared with `MINOP_WEBHOOK_SECRET`. Unset secret -> 503 (stores nothing); wrong -> 401. Invalid JSON is stored `quarantined_invalid_json` and answered 400; failed insert -> 500 (so Minop retries). Reads `?stgid` into `service_tag_id`.
   - `POST /api/integrations/minop/webhook/[token]` - `handleMinopPathTokenWebhook` (`src/lib/minop/pathTokenWebhook.ts`). `MINOP_WEBHOOK_PATH_TOKEN` must be >= 32 chars (`MINOP_MIN_PATH_TOKEN_LENGTH`); unset/short/wrong -> 404 with EMPTY body and nothing stored (indistinguishable). After the token is proven failures answer `{"status":0}` with 413/400/500. Never logs the URL.
   - Both: `MINOP_MAX_WEBHOOK_BYTES = 256 KiB` (413 over); `runtime = 'nodejs'`.
-- Admin APIs (all `requireAdmin`, read-only): `GET /api/attendance/minop-deliveries` (latest 100, optional `?status=`), `GET /api/attendance/minop-incoming` (50/page, search by Minop user id / punch id / device, IST date range, `?sort=punch_time|received&dir=asc|desc`, default latest punch time first), `GET /api/attendance/minop-incoming/export?format=csv|raw` (all matching records, same `sort`/`dir`, up to 20,000 messages per request, hitting the ceiling shows a notice), `GET /api/attendance/minop-incoming/[deliveryId]`, `GET /api/attendance/minop-unmapped` (machine IDs that have punched and belong to no employee).
+- Admin APIs (all `requireAdmin`, read-only): `GET /api/attendance/minop-deliveries` (latest 100, optional `?status=`), `GET /api/attendance/minop-incoming` (50/page, search by Minop user id / punch id / device, IST date range, `?sort=punch_time|received&dir=asc|desc`, default latest punch time first), `GET /api/attendance/minop-incoming/export?format=csv|raw` (all matching records, same `sort`/`dir`, up to 20,000 messages per request, hitting the ceiling shows a notice), `GET /api/attendance/minop-incoming/[deliveryId]`, `GET /api/attendance/minop-unmapped` (machine IDs that have punched and belong to no employee), `GET /api/attendance/machine-day?date=YYYY-MM-DD` (one day for the Today tab; today when left out; 400 outside the days the machine covers), `GET /api/attendance/machine-status` (is the machine sending, for the For you card).
 - `GET /api/attendance/minop-sync` (Vercel Cron, `Authorization: Bearer $CRON_SECRET`; unset secret -> 503): copies any punch the webhook missed, then works out every machine day of this month and last month again.
+- `GET /api/attendance/machine-alert` (Vercel Cron, same secret; unset -> 503): tells every active admin once a day when the machine has stopped. Writes only `notifications`.
 - Employee Master (`/attendance/employees`): Machine ID column and edit field, notice listing unlinked IDs. Saves through `PATCH /api/update-employee` (admin); an ID already in use answers 409.
 
 ## 4. Database
@@ -79,10 +82,14 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - Credentials (`AuthToken`, `authorization`, `secret`, `password`, `api key`, `token` values) are blanked in payload view, CSV and raw export. CSV: UTF-8 BOM, CRLF; digit-only IDs written as `="0012"`; cells starting `= + - @` prefixed with `'`.
 - Received time shown in Asia/Kolkata with seconds; punch time shown exactly as sent (not converted).
 - Say-Hello callback is documented as POST every minute when online; it has never been observed to fire.
+- The machine has stopped (`judgeMachineHealth`) on a working day from 2026-11-01, past 11:00 IST (`MACHINE_STOPPED_AFTER_MINUTES`), when no real punch has reached BOE since midnight. "Reached" is `first_seen_at`: a late punch from yesterday still proves it is connected. Minop's sample message does not count. Sundays and full-day holidays are days off; a half-day holiday is not.
+- Today lists active people with a Machine ID plus active payroll people with none, inside their joining and exit dates. Statuses: In office, Left, No punch yet, No punch, Can't tell yet, On leave, Day off, Morning punch missing, Evening punch missing, No Machine ID. Only approved requests count.
+- "Can't tell yet" replaces a no-punch row today while the machine has stopped, and on a past working day nobody at all punched, so a quiet machine never reads as absences.
+- "Late" on Today is the payroll rule: past `grace_end_minutes` (10:15), counted from `scheduled_in_minutes` (10:00). Information only. The month views' `is_late` has no grace period, so 10:05 is late there and not on Today. Hours are `computeWorkedDuration`, after lunch.
 - A punch time more than 30 days before BOE received it, or more than 1 hour after, is not a real punch (`isPlausiblePunchTime`): the unlinked-IDs list leaves it out and it stays visible in the register. The longest real delay seen is 6 days.
 
 ## 7. Key components & lib files
-`src/lib/minop/`: `webhook.ts` (auth, capture, limits), `pathTokenWebhook.ts`, `incomingRegister.ts`, `incomingQuery.ts`, `incomingCsv.ts`, `punches.ts`, `unmapped.ts`, `machineDay.ts`, `machineAttendance.ts`. Routes under `src/app/api/integrations/minop/` and `src/app/api/attendance/minop-*`. Pages `src/app/attendance/minop/{page.tsx,incoming/page.tsx}`. Simulator: `scripts/minop-webhook-simulator.mjs` (payload-agnostic; use only an unmistakably synthetic UserId). Doc: `docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md` (historical below its first section).
+`src/lib/minop/`: `webhook.ts` (auth, capture, limits), `pathTokenWebhook.ts`, `incomingRegister.ts`, `incomingQuery.ts`, `incomingCsv.ts`, `punches.ts`, `unmapped.ts`, `machineDay.ts`, `machineAttendance.ts`, `machineHealth.ts`, `machineDayView.ts`. Routes under `src/app/api/integrations/minop/` and `src/app/api/attendance/minop-*`. Pages `src/app/attendance/minop/{page.tsx,incoming/page.tsx}`. Simulator: `scripts/minop-webhook-simulator.mjs` (payload-agnostic; use only an unmistakably synthetic UserId). Doc: `docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md` (historical below its first section).
 
 ## 8. Decisions made and why
 - Raw-first: store the exact body, hash it, never dedupe on the hash (a genuine second punch can serialise identically); idempotency belongs to the (future) merge.
@@ -95,6 +102,9 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - The header-authenticated route does not record punches: the real machine cannot reach it, so only the simulator would write there.
 - The new writer replaced the old processor rather than reviving it: the old one read `RealTime.PunchLog` and CheckIn/CheckOut types the machine never sends, and handled one punch at a time.
 - A month the machine supplies stops at yesterday (`machineLatestDate`): today is not a row until the day is over, so nobody reads as absent or missing a punch while it is going. My Attendance shows today as a separate "so far" line.
+- Today reads punches through `buildMachineDay`, not `attendance_records`, so it also works before the start date and shows what attendance will hold. It does not read corrections: it says what the machine recorded, and a missing punch is still fixed in Monthly Review.
+- The stopped check is worked out when a screen opens, so it turns red at 11:00. The cron only reaches an admin who is not looking. Its schedule is 11:05 IST because Vercel has started the handover reminder 49 minutes late (03:30 UTC -> 04:19 UTC), so the notification can come nearly an hour later, and the body says "today" rather than naming 11:00.
+- The alert goes to active admins, which on 2026-10-30 is the owner alone. It is one row a day per admin (checked by a read, so a rare double run could send two). The bell row stays as a record after the machine recovers; the screens clear themselves.
 
 ## 9. Known traps / gotchas / unfixed defects
 - `txnId` is NOT unique. On production txn 21 and 22 each carried two different punches. Never key on it. The acknowledgement still echoes it, because that is Minop's contract.
@@ -113,19 +123,19 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - The Supabase test environment `boe-minop-test-disposable` (ap-south-1, Mumbai) exists; production `boe-task-management` and `badminton-fund-manager` are off-limits for experiments. `db push`/`db reset`/`db query -f` were rejected for that disposable project; the chosen route was the Dashboard SQL Editor in an explicit BEGIN/COMMIT. Its database password is held by the owner, never in files.
 
 ## 10. Tests that guard it
-Run `npx tsx --test src/lib/minop/*.test.ts` (or the full suite, see 03 section 10). Files: `webhook.test.ts`, `pathTokenWebhook.test.ts`, `incomingRegister.test.ts`, `stage2Security.test.ts`, `punches.test.ts`, `machineDay.test.ts`, `machineAttendance.test.ts` (the rules, then the real reads and writes on `MemorySupabase`). Also `src/lib/attendance/monthAvailability.test.ts` (machine months stop at yesterday) and `src/components/layout/attendancePayrollNav.test.tsx` (the nav entries resolve to real pages). Migration ledger tests must list each new migration filename. The table itself: `node supabase/tests/minop_punches_pglite.mjs <dir with pglite>` (not in `npm test`; expected last line "all 10 checks passed").
+Run `npx tsx --test src/lib/minop/*.test.ts` (or the full suite, see 03 section 10). Files: `webhook.test.ts`, `pathTokenWebhook.test.ts`, `incomingRegister.test.ts`, `stage2Security.test.ts`, `punches.test.ts`, `machineDay.test.ts`, `machineAttendance.test.ts`, `machineHealth.test.ts`, `machineDayView.test.ts` (the rules, then the real reads and writes on `MemorySupabase`). Also `src/lib/attendance/monthAvailability.test.ts` (machine months stop at yesterday) and `src/components/layout/attendancePayrollNav.test.tsx` (the nav entries resolve to real pages). Migration ledger tests must list each new migration filename. The table itself: `node supabase/tests/minop_punches_pglite.mjs <dir with pglite>` (not in `npm test`; expected last line "all 10 checks passed").
 
 ## 11. Open items / next planned work
 Machine-only attendance from 1 November 2026. Every punch is kept in `minop_webhook_deliveries` meanwhile, so nothing is lost if a step lands after that date: the nightly sync loads November from the raw messages.
 1. Clean punches and link staff: DONE (#523).
 2. Switch-on: DONE (#526). Its first real test is the first day of punches: check the rows on 2 November.
-3. **Daily machine screen for admins**: each person's in and out, plus an alert when punches stop arriving (they stopped for 12 days in October). Show the owner a mockup first.
+3. Daily machine screen and stopped-punches alert: built on `feat/attendance-today`, not merged. The migration must be applied before the preview is tested. Phone alerts are not switched on, so the alert stops at For you and the bell until they are.
 4. Later: the employee "punch recorded" banner (`docs/minop-shadow-mode-spec`, section 7).
 - Owner reminder for the Minop subscription renewal: it lapsed once, and a lapse now stops attendance. Needs the date from the owner.
 - Open with the owner: a Machine ID for the one payroll employee not yet on the list; who is punching on the leaver's ID.
 
 ## 12. Recheck before changing this module
-1. `src/lib/minop/machineDay.ts`, `machineAttendance.ts`, `webhook.ts`, `pathTokenWebhook.ts`, and both route files.
+1. `src/lib/minop/machineDay.ts`, `machineAttendance.ts`, `machineHealth.ts`, `machineDayView.ts`, `webhook.ts`, `pathTokenWebhook.ts`, and both route files.
 2. `supabase/migrations/20261113000000`, `20261115000000`, `20261210000000` (CHECK lists), `20270510000000`, `20270510000100`.
 3. `docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md` top section.
 4. Read-only prod checks: delivery count/date range; the three env var NAMES exist (never print values); `migration list --linked`.

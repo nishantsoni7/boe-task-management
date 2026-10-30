@@ -171,6 +171,9 @@ export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
   // the admin's decision back to the employee. Same two-ended shape.
   'attendance_request_submitted',
   'attendance_request_decided',
+  // The attendance machine has stopped sending (20270511000000), to every active
+  // admin, once a day. The one row here nobody raised: see machineHealth.ts.
+  'attendance_machine_stopped',
 ] as const
 
 // PostgREST `type.in.(...)` fragment for an enum column — the safe equivalent

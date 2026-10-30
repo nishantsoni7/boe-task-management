@@ -166,12 +166,29 @@ describe('the newest announcement', () => {
   })
 })
 
+describe('the attendance machine has stopped (owner, 2026-10-30)', () => {
+  test('read only for the signed-in admin', () => {
+    assert.match(PANEL, /useMachineHealth\(showAttendance\)/)
+    assert.match(PANEL, /machineError: showAttendance && machineHealth\.isError/)
+  })
+
+  test('only while stopped, keyed by the day, and one way to act', () => {
+    assert.match(PANEL, /machineHealth\.data\?\.state === 'stopped' && shown\(itemKeys\.machineStopped\(machineHealth\.data\.today\)\)/)
+    assert.match(PANEL, /href="\/attendance\/today"/)
+    assert.match(PANEL, />\s*Open Today\s*</)
+  })
+
+  test('it waits on the viewer, so a phone counts it', () => {
+    assert.match(PANEL, /const actCount = .*\(machine \? 1 : 0\)$/m)
+  })
+})
+
 describe('Clear all', () => {
   test('hides every card showing, through the snooze helpers', () => {
     assert.match(PANEL, /clearAll: \(\) => snooze\.clear\(visibleKeys\)/)
     assert.match(PANEL, /onClick=\{s\.clearAll\}/)
     // Every kind of card is filtered by it, the requests included.
-    for (const k of ['itemKeys.announcement(', 'itemKeys.returnedPi(', 'itemKeys.handover(', 'itemKeys.holder(', 'itemKeys.request(']) {
+    for (const k of ['itemKeys.announcement(', 'itemKeys.machineStopped(', 'itemKeys.returnedPi(', 'itemKeys.handover(', 'itemKeys.holder(', 'itemKeys.request(']) {
       assert.ok(PANEL.includes(k), `${k} is filtered`)
     }
     assert.match(CARD, /queue\.rows\.filter\(r => isShown\(itemKeys\.request\(r\.id\)\)\)/)

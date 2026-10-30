@@ -1174,6 +1174,8 @@ describe('the applied migrations are frozen', () => {
       // Attendance machine: each punch kept once, and each person's Machine ID. APPLIED 2026-10-30.
       '20270510000000_minop_punches.sql',
       '20270510000100_users_minop_user_id.sql',
+      // Attendance machine: the notification sent when punches stop arriving.
+      '20270511000000_attendance_machine_stopped_notification_type.sql',
     ])
   })
 
@@ -1599,6 +1601,8 @@ describe('the applied migrations are frozen', () => {
       // Attendance machine: each punch kept once, and each person's Machine ID. APPLIED 2026-10-30.
       '20270510000000_minop_punches.sql',
       '20270510000100_users_minop_user_id.sql',
+      // Attendance machine: the notification sent when punches stop arriving.
+      '20270511000000_attendance_machine_stopped_notification_type.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
