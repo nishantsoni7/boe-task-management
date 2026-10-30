@@ -22,9 +22,9 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | Live device -> BOE delivery | PROVEN on production 2026-10-30: 246 deliveries, latest punch 12:59 IST received 7 minutes later. Not real time: 2 minutes to 2 hours on 28 Oct, about 2 days on 25-26 Oct, and nothing at all 13-25 Oct |
 | `minop_punches`: each punch kept once | Shipped (#523), migration APPLIED 2026-10-30, 45 punches loaded. Written by the path-token route only; the migration loaded everything already received |
 | Machine ID (`users.minop_user_id`) + unlinked-IDs notice on Employee Master | Shipped (#523), migration APPLIED 2026-10-30. 10 staff linked from the owner's list |
-| Machine punches -> `attendance_records` | Built on `feat/minop-attendance-switch-on`, not merged. No migration needed. From 2026-11-01, linked and active people only |
-| Nightly sync `GET /api/attendance/minop-sync` (Vercel Cron, 00:15 IST) | Built on the same branch |
-| Excel import and preview for months from November 2026 | Refused (400), same branch |
+| Machine punches -> `attendance_records` | Shipped (#526). No migration needed. From 2026-11-01, linked and active people only |
+| Nightly sync `GET /api/attendance/minop-sync` (Vercel Cron, 00:15 IST) | Shipped (#526) |
+| Excel import and preview for months from November 2026 | Refused (400), #526 |
 
 ## 3. Pages and API routes
 
@@ -118,7 +118,7 @@ Run `npx tsx --test src/lib/minop/*.test.ts` (or the full suite, see 03 section 
 ## 11. Open items / next planned work
 Machine-only attendance from 1 November 2026. Every punch is kept in `minop_webhook_deliveries` meanwhile, so nothing is lost if a step lands after that date: the nightly sync loads November from the raw messages.
 1. Clean punches and link staff: DONE (#523).
-2. Switch-on: built on `feat/minop-attendance-switch-on`, not merged.
+2. Switch-on: DONE (#526). Its first real test is the first day of punches: check the rows on 2 November.
 3. **Daily machine screen for admins**: each person's in and out, plus an alert when punches stop arriving (they stopped for 12 days in October). Show the owner a mockup first.
 4. Later: the employee "punch recorded" banner (`docs/minop-shadow-mode-spec`, section 7).
 - Owner reminder for the Minop subscription renewal: it lapsed once, and a lapse now stops attendance. Needs the date from the owner.

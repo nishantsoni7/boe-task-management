@@ -25,7 +25,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | Attendance Requests (employee request -> another admin decides) | Shipped in code (#239, #264, #266, #267). Migrations in repo; prod apply-state unverified (see section 4) |
 | Monthly "Salary decisions" review (day reviews -> payroll correction) | Shipped in code, same migration |
 | Manual check-in / check-out | REMOVED: both routes return HTTP 410 ("use the attendance CSV import") |
-| Minop device feed | The attendance source from 2026-11-01 once the switch-on ships (see 04). Writes `attendance_records` with `source = 'minop'`; the engine reads them like any other row |
+| Minop device feed | The attendance source from 2026-11-01 (see 04). Writes `attendance_records` with `source = 'minop'`; the engine reads them like any other row |
 | Leave types, balances, per-employee shifts, mid-day punch collection, admin editing of a request | NOT BUILT (stated in ATTENDANCE_REQUESTS.md section 10). `ATTENDANCE_MODULE_PLAN.md` is a "Planning only" document: its leave_requests / salary-concern tables do not exist |
 
 ## 3. Pages and API routes

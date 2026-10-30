@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-30 — Attendance machine: punches become attendance from 1 November (branch `feat/minop-attendance-switch-on`, not merged) · no migration
+## 2026-10-30 — Attendance machine: punches become attendance from 1 November (PR #526, on the owner's yes after their preview check) · no migration
 - **Owner decision.** The new machine is the only attendance source from 1 November 2026, with no parallel period.
 - **What.** `machineDay.ts` turns a person's punches into a day by the Excel import's rules, and two taps under 5 minutes apart count as one. `machineAttendance.ts` writes `attendance_records` with `source = 'minop'` for linked, active people, never before the start date or in a locked month, and only when a row would change. The webhook does this as messages arrive; `/api/attendance/minop-sync` repairs it nightly; saving a Machine ID fills that person's days.
 - **Screens.** A machine month stops at yesterday, so today never reads as absent or missing a punch; My Attendance shows today as a "so far" line. Excel import and preview refuse months from November 2026.
