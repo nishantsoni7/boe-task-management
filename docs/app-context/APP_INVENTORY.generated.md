@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0e4c0391` — Merge main (#511, #513, #514, #517) into feat/pi-draft-layout-pass2
-- Commits on this branch: 1087
+- Commit: `abce56ee` — Merge main (#512 docs) into feat/pi-draft-layout-pass2
+- Commits on this branch: 1089
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `abce56ee` 2026-10-30 Merge main (#512 docs) into feat/pi-draft-layout-pass2
+- `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
 - `0e4c0391` 2026-10-30 Merge main (#511, #513, #514, #517) into feat/pi-draft-layout-pass2
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
@@ -37,8 +39,6 @@
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
-- `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
-- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
 
 ## Pages by top-level area
 
