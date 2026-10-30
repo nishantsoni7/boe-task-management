@@ -96,7 +96,6 @@ import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { useProductCosts } from '@/components/orders/useProductCosts'
 import {
   ProductViewBody,
-  ProductViewSummary,
   ProductViewTabs,
   WorkbookRefresh,
   type ProductView,
@@ -2839,12 +2838,9 @@ function PiDraftDetailPageInner() {
               </span>
             }
             right={productView !== 'details' ? (
-              <div className="pv-summary">
-                {costSummary && <ProductViewSummary summary={costSummary} />}
-                {productCosts?.canEdit && (
-                  <WorkbookRefresh submissionId={submissionId} onDone={() => setCostSheetSaves(n => n + 1)} />
-                )}
-              </div>
+              productCosts?.canEdit && (
+                <WorkbookRefresh submissionId={submissionId} onDone={() => setCostSheetSaves(n => n + 1)} />
+              )
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {draft.unresolvedImages > 0 && (

@@ -27,6 +27,7 @@ import {
   finishIsDone,
   lineApproval,
   lineFigures,
+  type Comparison,
   type FabricFinishData,
   type FabricFinishLine,
   type FamilyCell,
@@ -38,7 +39,6 @@ import {
   comparisonText,
   costLineFor,
   productCostSummary,
-  type ProductCostSummary,
 } from '@/lib/orders/productCostColumns'
 import { FabricFinishLineEditor } from './FabricFinishLineEditor'
 
@@ -95,35 +95,14 @@ export function ProductViewTabs({ view, onChange, pending }: {
 const metresText = (metres: number): string =>
   `${metres.toLocaleString('en-IN', { maximumFractionDigits: 2 })} m`
 
-function CostStat({ label, rounded, comparison }: {
-  label: string
-  rounded: number | null
-  comparison: ProductCostSummary['fabric']['comparison']
-}) {
+/** "Fabric matches the PI", under the totals; amber when it does not. */
+function MatchChip({ label, comparison }: { label: string; comparison: Comparison }) {
   const text = comparisonText(comparison, formatInr)
+  if (!text) return null
   return (
-    <span className="pv-stat">
-      <span className="pv-stat-label">{label}</span>
-      <span className="pv-stat-value">
-        {rounded === null ? AS_APPLICABLE_TEXT : formatInr(rounded)}
-        {text && <span className={comparison.state === 'matches' ? 'pv-chip-ok' : 'pv-pill'}>{text}</span>}
-      </span>
+    <span className={comparison.state === 'matches' ? 'pv-chip-ok' : 'pv-pill'}>
+      {label} {text.charAt(0).toLowerCase()}{text.slice(1)}
     </span>
-  )
-}
-
-/** The figures in the card's header, while either tab is open. */
-export function ProductViewSummary({ summary }: { summary: ProductCostSummary }) {
-  const lines = summary.approvals.total
-  return (
-    <>
-      <CostStat label={summary.fabric.metres > 0 ? `Fabric · ${metresText(summary.fabric.metres)}` : 'Fabric'} rounded={summary.fabric.rounded} comparison={summary.fabric.comparison} />
-      <CostStat label={`Packing · ${summary.packing.products === lines ? `all ${lines}` : `${summary.packing.products} of ${lines}`} priced`} rounded={summary.packing.rounded} comparison={summary.packing.comparison} />
-      <span className="pv-stat">
-        <span className="pv-stat-label">{APPROVALS_LABEL}</span>
-        <span className="pv-stat-value">{approvalsText(summary.approvals)}</span>
-      </span>
-    </>
   )
 }
 
@@ -324,12 +303,26 @@ export function ProductViewBody({ view, rows, data, isMobile, variant, submissio
     </button>
   ) : null)
 
-  const legend = (
-    <p className="pv-legend">
-      {data.sheetReadAt ? `Read from the PI workbook ${new Date(data.sheetReadAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}. ` : 'Not read from a workbook yet. '}
-      {view === 'cost' ? 'Totals are rounded to ₹10, like the workbook. ' : ''}
-      {canEdit ? '' : 'Values can be typed by the PI’s salesperson, admins and managers.'}
-    </p>
+  const fabricTotal = summary.fabric.rounded === null ? AS_APPLICABLE_TEXT : formatInr(summary.fabric.rounded)
+  const packingTotal = summary.packing.rounded === null ? AS_APPLICABLE_TEXT : formatInr(summary.packing.rounded)
+  const approved = approvalsText(summary.approvals)
+
+  // UNDER THE TOTALS (owner, 2026-10-30): the card's header keeps only the tabs
+  // and Update from workbook, because figures up there crowded the list.
+  const foot = (
+    <div className="pv-foot">
+      {view === 'cost' && (
+        <>
+          <MatchChip label="Fabric" comparison={summary.fabric.comparison} />
+          <MatchChip label="Packing" comparison={summary.packing.comparison} />
+        </>
+      )}
+      <p className="pv-legend">
+        {data.sheetReadAt ? `Read from the PI workbook ${new Date(data.sheetReadAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}. ` : 'Not read from a workbook yet. '}
+        {view === 'cost' ? 'Totals are rounded to ₹10, like the workbook. ' : ''}
+        {canEdit ? '' : 'Values can be typed by the PI’s salesperson, admins and managers.'}
+      </p>
+    </div>
   )
 
   if (isMobile) {
@@ -376,7 +369,20 @@ export function ProductViewBody({ view, rows, data, isMobile, variant, submissio
             </div>
           )
         })}
-        {legend}
+        <div className="pv-card pv-card-total">
+          <dl className="pv-kv">
+            <dt>Total pieces</dt><dd><b>{pieces}</b></dd>
+            {view === 'cost' ? (
+              <>
+                <dt>Fabric</dt><dd><b>{fabricTotal}</b>{summary.fabric.metres > 0 && <span className="pv-muted"> {metresText(summary.fabric.metres)}</span>}</dd>
+                <dt>Packing</dt><dd><b>{packingTotal}</b></dd>
+              </>
+            ) : (
+              <><dt>{APPROVALS_LABEL}</dt><dd><b>{approved}</b></dd></>
+            )}
+          </dl>
+        </div>
+        {foot}
       </div>
     )
   }
@@ -445,16 +451,16 @@ export function ProductViewBody({ view, rows, data, isMobile, variant, submissio
                 <td className="pv-swap" />
                 <td className="pv-swap pv-num">{summary.fabric.metres > 0 ? metresText(summary.fabric.metres) : ''}</td>
                 <td className="pv-swap" />
-                <td className="pv-swap pv-num">{summary.fabric.rounded === null ? AS_APPLICABLE_TEXT : formatInr(summary.fabric.rounded)}</td>
+                <td className="pv-swap pv-num">{fabricTotal}</td>
                 <td className="pv-swap" />
-                <td className="pv-swap pv-num">{summary.packing.rounded === null ? AS_APPLICABLE_TEXT : formatInr(summary.packing.rounded)}</td>
+                <td className="pv-swap pv-num">{packingTotal}</td>
                 <td className="pv-swap" />
               </>
-            ) : <td className="pv-swap" colSpan={swapColumns}>{approvalsText(summary.approvals)}</td>}
+            ) : <td className="pv-swap" colSpan={swapColumns}>{approved}</td>}
           </tr>
         </tfoot>
       </table>
-      {legend}
+      {foot}
     </div>
   )
 }

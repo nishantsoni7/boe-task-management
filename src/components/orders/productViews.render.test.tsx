@@ -9,8 +9,7 @@ import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { FabricFinishData, FabricFinishLine, LineValues } from '@/lib/orders/fabricFinishCost'
-import { PRODUCT_VIEWS, ProductViewBody, ProductViewSummary, ProductViewTabs, type ProductViewRow } from './ProductViews'
-import { productCostSummary } from '@/lib/orders/productCostColumns'
+import { PRODUCT_VIEWS, ProductViewBody, ProductViewTabs, type ProductViewRow } from './ProductViews'
 
 const values = (over: Partial<LineValues> = {}): LineValues => ({
   fabricMetresPerPiece: null, fabricPricePerMetre: null, packingCostPerPiece: null, packingType: null, finish: [], ...over,
@@ -169,10 +168,30 @@ describe('who may type, and the states around it', () => {
   })
 })
 
-describe('the figures in the header', () => {
-  test('both totals, whether each matches the PI, and the approved count', () => {
-    const html = renderToStaticMarkup(<ProductViewSummary summary={productCostSummary(data())} />)
-    assert.ok(html.includes('Matches the PI'))
-    assert.ok(html.includes('1 of 3 approved'))
+describe('the totals, at the foot (owner, 2026-10-30)', () => {
+  const afterTable = (html: string) => html.slice(html.indexOf('</tbody>'))
+
+  test('F&P Cost: both totals in the last row, and whether each matches the PI under them', () => {
+    const foot = afterTable(body('cost'))
+    assert.ok(foot.includes('₹22,500') && foot.includes('₹16,450'))
+    assert.ok(foot.includes('Fabric matches the PI') && foot.includes('Packing matches the PI'))
+  })
+
+  test('a total that disagrees with the PI says by how much, in amber', () => {
+    const html = body('cost', { data: data({ piPackingCost: { amount: 16440, meaning: 'numeric', text: null } }) })
+    assert.ok(/pv-pill">Packing differs from the PI by ₹10 more/.test(html))
+  })
+
+  test('Approvals: the approved count in the last row, and no cost figures', () => {
+    const foot = afterTable(body('approvals'))
+    assert.ok(foot.includes('1 of 3 approved'))
+    assert.ok(!foot.includes('matches the PI'))
+  })
+
+  test('a phone has no table, so the totals close the list as a card of their own', () => {
+    const html = body('cost', { isMobile: true })
+    assert.ok(html.indexOf('pv-card-total') > html.lastIndexOf('Product BE0003'))
+    assert.ok(html.includes('₹22,500') && html.includes('₹16,450'))
+    assert.ok(body('approvals', { isMobile: true }).includes('1 of 3 approved'))
   })
 })

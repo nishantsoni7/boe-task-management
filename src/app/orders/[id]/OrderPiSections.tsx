@@ -38,7 +38,6 @@ import {
 import { MultilineText } from '@/components/ui/MultilineText'
 import {
   ProductViewBody,
-  ProductViewSummary,
   ProductViewTabs,
   WorkbookRefresh,
   type ProductView,
@@ -608,10 +607,7 @@ export function OrderPiProducts({
         ) : ORDER_PI_PRODUCTS_TITLE}
         style={views ? { ...SECTION_HEADER_STYLE, flexWrap: 'wrap' } : SECTION_HEADER_STYLE}
         right={open ? (
-          <div className="pv-summary">
-            {summary && <ProductViewSummary summary={summary} />}
-            {open.data?.canEdit && <WorkbookRefresh submissionId={open.submissionId} onDone={open.onChanged} />}
-          </div>
+          open.data?.canEdit && <WorkbookRefresh submissionId={open.submissionId} onDone={open.onChanged} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {unresolvedImages > 0 && (

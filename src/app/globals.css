@@ -13101,10 +13101,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 }
 .pv-tab.is-on { background: #FFFFFF; color: #963B27; box-shadow: 0 1px 2px rgba(48, 53, 54, 0.14); }
 .pv-count { padding: 1px 6px; border-radius: 6px; background: #FAF0DA; color: #805B0D; font-size: 12px; font-weight: 600; }
-.pv-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 22px; min-width: 0; font-weight: 400; }
-.pv-stat { display: flex; flex-direction: column; gap: 1px; white-space: nowrap; }
-.pv-stat-label { font-size: 12px; color: #686D6C; }
-.pv-stat-value { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
 .pv-chip-ok { padding: 1px 6px; border-radius: 6px; background: #E8F2EC; color: #276247; font-size: 12px; font-weight: 600; }
 .pv-pill { display: inline-block; padding: 3px 8px; border-radius: 6px; background: #FAF0DA; color: #805B0D; font-size: 12px; font-weight: 600; }
 .pv-refresh { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
@@ -13112,7 +13108,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pv-problem { margin: 8px 0 0; font-size: 12px; color: #B42332; }
 .pv-refresh .pv-problem { margin: 0; }
 .pv-note { margin: 0; padding: 20px; font-size: 13px; color: #686D6C; }
-.pv-legend { margin: 0; padding: 10px 14px; font-size: 12px; color: #686D6C; }
+.pv-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 14px; }
+.pv-legend { margin: 0; font-size: 12px; color: #686D6C; }
 
 .pv-scroll { overflow: hidden; }
 .pv-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -13178,6 +13175,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .pv-table--order col.pv-col-code { width: 80px; }
   .pv-table--order col.pv-col-image { width: 100px; }
 }
+.pv-card-total { background: #FBFAF8; }
 /* A narrow window scrolls inside the card rather than crushing the columns. */
 @media (max-width: 1200px) {
   .pv-scroll { overflow-x: auto; }
@@ -13189,6 +13187,5 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .pv-tabs { display: flex; width: 100%; }
   .pv-tab { flex: 1; justify-content: center; padding: 0 6px; }
   .pv-count-word { display: none; }
-  .pv-summary { justify-content: flex-start; }
   .pv-editor-grid { grid-template-columns: minmax(0, 1fr); }
 }

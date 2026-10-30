@@ -3656,6 +3656,7 @@ describe('the products section: the preview’s columns, with fabric and packing
     assert.ok(products.includes('<ProductViewTabs'), 'three tabs on the list')
     assert.ok(products.includes('<ProductViewBody'), 'and F&P Cost and Approvals drawn by the shared body')
     assert.ok(products.includes('<PiProductTotalsRow'), 'with a totals row')
+    assert.ok(!products.includes('Summary summary='), 'and no totals in the card header: they sit at the foot of each tab')
     assert.ok(!page.includes('FabricFinishDrawer'), 'the panel that slid over the page is gone')
   })
 })
