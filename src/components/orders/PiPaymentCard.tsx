@@ -33,7 +33,6 @@ import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode, moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
-import { PaymentTracker } from '@/components/finance/PaymentTracker'
 import { AvailableMoneyPanel } from '@/components/finance/AvailableMoneyPanel'
 import type { AvailablePayment } from '@/lib/finance/availableMoney'
 import {
@@ -45,6 +44,7 @@ import {
   describePaymentCount,
   describePiPaymentRow,
   filterPiPaymentRows,
+  isAwaitingVerification,
   OWN_PAYMENT_DECISION_NOTE,
   piPaymentErrorMessage,
   piPaymentTermLines,
@@ -404,6 +404,21 @@ export const REJECT_PAYMENT_LABEL = 'Reject'
 export const EDIT_PAYMENT_LABEL = 'Edit'
 
 /**
+ * THE TABLE'S COLUMNS, left to right (owner, 2026-10-30): the date and the mode
+ * lead because they are what a reader checks first; the amount is right-aligned
+ * so the figures line up. A narrow screen draws each row as a card instead, from
+ * the same markup (globals.css, .pi-pay-table).
+ */
+export const PAYMENT_TABLE_COLUMNS = ['Date', 'Mode', 'Amount', 'Payment ID', 'Recorded by', 'Verification', 'Actions'] as const
+
+/** The Details control, named for the payment it opens or closes. */
+export const paymentDetailsToggleLabel = (open: boolean, humanPaymentId: string): string =>
+  `${open ? 'Hide' : 'Show'} details of ${humanPaymentId}`
+
+/** Said inside Details when the payment came with no reference, remarks or proof. */
+export const PAYMENT_DETAILS_NOTHING_ADDED = 'No reference, remarks or proof were added with this payment.'
+
+/**
  * The dialog's three views, each titled for what it holds. Payment details is
  * every row recorded against the PI; the other two are exactly the rows behind
  * the status card's Confirmed and Awaiting verification figures.
@@ -487,12 +502,71 @@ function FilteredTotal({ tone, label, amount, count, share, total }: {
   )
 }
 
+/** A payment's state as a pill: the shared word (paymentWords.ts), in its colour. */
+function PaymentStatusPill({ label, tone }: { label: string; tone: PiPaymentTone }) {
+  return (
+    <span className={`pi-pay-pill pi-pay-pill--${tone}`}>
+      <span className="pi-pay-pill-dot" aria-hidden="true" />
+      {label}
+    </span>
+  )
+}
+
+// The date and mode chips carry an icon on a phone card; a wide table hides it
+// (globals.css) and prints the plain words.
+function CalendarIcon() {
+  return (
+    <svg className="pi-pay-chip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  )
+}
+
+function BankIcon() {
+  return (
+    <svg className="pi-pay-chip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 10l9-6 9 6" />
+      <path d="M5 10v9M9.5 10v9M14.5 10v9M19 10v9M3 21h18" />
+    </svg>
+  )
+}
+
+function ProofIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="M21 15l-5-5L5 21" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ up }: { up: boolean }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={up ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
+    </svg>
+  )
+}
+
 /**
- * One payment against this PI: when, how, how much, and where it stands —
- * with Approve and Reject only where this viewer may decide it.
+ * One payment against this PI, as a table row: when, how, how much, who
+ * recorded it and who verified it — with Approve and Reject only where this
+ * viewer may decide it, and Details under the row once it is opened.
+ *
+ * A FRAGMENT OF ROWS. The payment's own row, then the decision being confirmed,
+ * then Details, each a full-width row of its own so the columns above stay
+ * aligned. On a narrow screen the CSS draws the row as a card and the two extra
+ * rows as its continuation (globals.css, .pi-pay-table).
  */
 export function PiPaymentRow({
-  row, armed, note, busy, error, onOpenProof, onArm, onNote, onCancel, onConfirm, onEdit,
+  row, armed, note, busy, error, open = false, onToggle, activity = null,
+  onOpenProof, onArm, onNote, onCancel, onConfirm, onEdit,
 }: {
   row: PiPaymentRowView
   /** The decision started on THIS row, or null. */
@@ -500,6 +574,15 @@ export function PiPaymentRow({
   note: string
   busy: boolean
   error: string | null
+  /** Whether this row's Details are showing. */
+  open?: boolean
+  /** Opens or closes Details. Absent: the row has nothing more to show and draws no control. */
+  onToggle?: () => void
+  /**
+   * The payment's history, drawn inside Details. The page supplies it, and only
+   * to a reader with Finance access; this file reads nothing itself.
+   */
+  activity?: React.ReactNode
   onOpenProof: (paymentId: string) => void
   onArm: (decision: PaymentDecision) => void
   onNote: (value: string) => void
@@ -509,158 +592,203 @@ export function PiPaymentRow({
   onEdit?: () => void
 }) {
   const noteId = `pi-payment-note-${row.key}`
+  const detailsId = `pi-payment-details-${row.key}`
   const reasonMissing = armed === 'reject' && note.trim() === ''
+  const showDetails = open && Boolean(onToggle)
+  const pill = <PaymentStatusPill label={row.statusLabel} tone={row.statusTone} />
+  const rowClass = ['pi-pay-row', showDetails ? 'is-open' : '', row.reversed ? 'is-reversed' : '']
+    .filter(Boolean).join(' ')
+  const nothingAdded = !row.reference && !row.remarks && !row.canOpenProof
   return (
-    <li style={{
-      listStyle: 'none', padding: '12px 0', borderTop: `1px solid ${colors.border}`,
-      display: 'flex', flexDirection: 'column', gap: '5px',
-      opacity: row.reversed ? 0.55 : 1,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, fontSize: '12.5px', color: colors.primary, fontWeight: 600 }}>
-          {row.date}
-          <span style={{ color: colors.tertiary, fontWeight: 400 }}> · {row.mode}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-            {row.amount}
-          </span>
-        </div>
-      </div>
-
-      <PaymentTracker status={row.status} />
-
-      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '12px', color: colors.tertiary }}>
-        {row.reference && <span>Ref {row.reference}</span>}
-        <PaymentIdChip>{row.humanPaymentId}</PaymentIdChip>
-        {row.recordedBy && <span>Recorded by {row.recordedBy}</span>}
-        {row.paymentAmount && <span>Part of a {row.paymentAmount} payment</span>}
-        {row.reversed && <span>Allocation reversed</span>}
-        {row.canOpenProof && (
-          <button
-            type="button"
-            onClick={() => onOpenProof(row.paymentId)}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: '12px', color: colors.brandInk, textDecoration: 'underline',
-            }}
-          >
-            Proof
-          </button>
-        )}
-      </div>
-
-      {row.tracksCash && <PaymentCashLine paymentId={row.paymentId} />}
-
-      {row.remarks && (
-        <div style={{ fontSize: '12px', lineHeight: 1.45, color: colors.secondary, overflowWrap: 'anywhere' }}>
-          Remarks: {row.remarks}
-        </div>
-      )}
-
-      {row.note && (
-        <div style={{
-          fontSize: '12px', lineHeight: 1.45, borderRadius: '6px', padding: '6px 10px',
-          color: row.note.rejected ? '#B42332' : colors.secondary,
-          background: row.note.rejected ? colors.redTint : colors.raised,
-          border: `1px solid ${row.note.rejected ? 'rgba(180,35,50,0.2)' : colors.border}`,
-        }}>
-          {row.note.heading}: {row.note.text}
-        </div>
-      )}
-
-      {row.ownPending && (
-        <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
-          {OWN_PAYMENT_DECISION_NOTE}
-        </div>
-      )}
-
-      {(row.canDecide || (row.canEdit && onEdit)) && armed === null && (
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '2px' }}>
-          {row.canDecide && (
-            <>
+    <>
+      <tr className={rowClass}>
+        <td className="pi-pay-cell pi-pay-date">
+          <span className="pi-pay-chip"><CalendarIcon />{row.date}</span>
+        </td>
+        <td className="pi-pay-cell pi-pay-mode">
+          <span className="pi-pay-chip"><BankIcon />{row.mode}</span>
+          {row.tracksCash && <div className="pi-pay-cash"><PaymentCashLine paymentId={row.paymentId} /></div>}
+        </td>
+        <td className="pi-pay-cell pi-pay-amount">
+          <span className="pi-pay-amount-value">{row.amount}</span>
+          {/* The state sits beside the amount on a phone card; on a wide
+              screen the Verification column carries it instead. */}
+          <span className="pi-pay-status-narrow">{pill}</span>
+          {row.paymentAmount && <span className="pi-pay-sub">Part of a {row.paymentAmount} payment</span>}
+          {row.reversed && <span className="pi-pay-sub">Allocation reversed</span>}
+        </td>
+        <td className="pi-pay-cell pi-pay-id">
+          <span className="pi-pay-cell-label">Payment ID</span>
+          <PaymentIdChip>{row.humanPaymentId}</PaymentIdChip>
+        </td>
+        <td className="pi-pay-cell pi-pay-recorded">
+          <span className="pi-pay-cell-label">Recorded by</span>
+          <span className="pi-pay-person">{row.recordedBy ?? '—'}</span>
+          {row.recordedAt && <span className="pi-pay-sub">{row.recordedAt}</span>}
+        </td>
+        <td className="pi-pay-cell pi-pay-verification">
+          <span className="pi-pay-cell-label">{row.status === 'rejected' ? 'Rejected' : 'Verified by'}</span>
+          <span className="pi-pay-status-wide">{pill}</span>
+          {row.verifiedBy && <span className="pi-pay-person pi-pay-person--verified">{row.verifiedBy}</span>}
+          {row.verifiedAt && <span className="pi-pay-sub">{row.verifiedAt}</span>}
+          {row.rejectedAt && <span className="pi-pay-sub">{row.rejectedAt}</span>}
+          {!row.reversed && isAwaitingVerification(row.status) && <span className="pi-pay-sub">Not verified yet</span>}
+          {row.note && (
+            <span className={row.note.rejected ? 'pi-pay-note is-rejected' : 'pi-pay-note'}>
+              {row.note.heading}: {row.note.text}
+            </span>
+          )}
+          {row.ownPending && <span className="pi-pay-sub pi-pay-own">{OWN_PAYMENT_DECISION_NOTE}</span>}
+        </td>
+        <td className="pi-pay-cell pi-pay-actions-cell">
+          <div className="pi-pay-actions">
+            {row.canDecide && armed === null && (
+              <>
+                <button
+                  type="button"
+                  className="pi-pay-btn"
+                  onClick={() => onArm('approve')}
+                  disabled={busy}
+                  style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
+                >
+                  {APPROVE_PAYMENT_LABEL}
+                </button>
+                <button
+                  type="button"
+                  className="pi-pay-btn"
+                  onClick={() => onArm('reject')}
+                  disabled={busy}
+                  style={{ ...SMALL_BUTTON, border: '1px solid rgba(180,35,50,0.35)', background: colors.base, color: colors.red }}
+                >
+                  {REJECT_PAYMENT_LABEL}
+                </button>
+              </>
+            )}
+            {row.canEdit && onEdit && armed === null && (
               <button
                 type="button"
-                onClick={() => onArm('approve')}
+                className="pi-pay-btn"
+                onClick={onEdit}
                 disabled={busy}
-                style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
+                style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
               >
-                {APPROVE_PAYMENT_LABEL}
+                {EDIT_PAYMENT_LABEL}
               </button>
+            )}
+            {onToggle && (
               <button
                 type="button"
-                onClick={() => onArm('reject')}
+                className="pi-pay-btn pi-pay-toggle"
+                onClick={onToggle}
                 disabled={busy}
-                style={{ ...SMALL_BUTTON, border: '1px solid rgba(180,35,50,0.35)', background: colors.base, color: colors.red }}
+                aria-expanded={showDetails}
+                aria-controls={showDetails ? detailsId : undefined}
+                aria-label={paymentDetailsToggleLabel(showDetails, row.humanPaymentId)}
+                title={showDetails ? 'Hide details' : 'Show details'}
               >
-                {REJECT_PAYMENT_LABEL}
+                <ChevronIcon up={showDetails} />
               </button>
-            </>
-          )}
-          {row.canEdit && onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              disabled={busy}
-              style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
-            >
-              {EDIT_PAYMENT_LABEL}
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        </td>
+      </tr>
 
       {row.canDecide && armed !== null && (
-        <div style={{
-          marginTop: '4px', padding: '10px 12px', borderRadius: '8px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
-          display: 'flex', flexDirection: 'column', gap: '8px',
-        }}>
-          <label htmlFor={noteId} style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
-            {armed === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'}
-          </label>
-          <textarea
-            id={noteId}
-            value={note}
-            onChange={e => onNote(e.target.value)}
-            rows={2}
-            disabled={busy}
-            style={{
-              width: '100%', boxSizing: 'border-box', resize: 'vertical',
-              padding: '7px 9px', fontSize: '12.5px', fontFamily: 'inherit',
-              border: `1px solid ${colors.borderSoft}`, borderRadius: '6px', background: colors.base,
-            }}
-          />
-          {error && (
-            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>
-          )}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={busy}
-              style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={busy || reasonMissing}
-              style={{
-                ...SMALL_BUTTON, border: 'none', color: '#fff',
-                background: armed === 'reject' ? colors.red : '#276247',
-                opacity: busy || reasonMissing ? 0.6 : 1,
-              }}
-            >
-              {busy
-                ? (armed === 'reject' ? 'Rejecting…' : 'Approving…')
-                : (armed === 'reject' ? 'Confirm rejection' : 'Confirm approval')}
-            </button>
-          </div>
-        </div>
+        <tr className="pi-pay-extra">
+          <td colSpan={PAYMENT_TABLE_COLUMNS.length}>
+            <div style={{
+              padding: '10px 12px', borderRadius: '8px',
+              background: colors.raised, border: `1px solid ${colors.border}`,
+              display: 'flex', flexDirection: 'column', gap: '8px',
+            }}>
+              <label htmlFor={noteId} style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
+                {armed === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'}
+              </label>
+              <textarea
+                id={noteId}
+                value={note}
+                onChange={e => onNote(e.target.value)}
+                rows={2}
+                disabled={busy}
+                style={{
+                  width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                  padding: '7px 9px', fontSize: '12.5px', fontFamily: 'inherit',
+                  border: `1px solid ${colors.borderSoft}`, borderRadius: '6px', background: colors.base,
+                }}
+              />
+              {error && (
+                <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>
+              )}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="pi-pay-btn"
+                  onClick={onCancel}
+                  disabled={busy}
+                  style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="pi-pay-btn"
+                  onClick={onConfirm}
+                  disabled={busy || reasonMissing}
+                  style={{
+                    ...SMALL_BUTTON, border: 'none', color: '#fff',
+                    background: armed === 'reject' ? colors.red : '#276247',
+                    opacity: busy || reasonMissing ? 0.6 : 1,
+                  }}
+                >
+                  {busy
+                    ? (armed === 'reject' ? 'Rejecting…' : 'Approving…')
+                    : (armed === 'reject' ? 'Confirm rejection' : 'Confirm approval')}
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
       )}
-    </li>
+
+      {showDetails && (
+        <tr className="pi-pay-extra" id={detailsId}>
+          <td colSpan={PAYMENT_TABLE_COLUMNS.length}>
+            <div className="pi-pay-details">
+              <div className="pi-pay-details-col">
+                {row.reference && (
+                  <div>
+                    <div className="pi-pay-details-head">Reference / UTR</div>
+                    <div className="pi-pay-details-value">{row.reference}</div>
+                  </div>
+                )}
+                {row.remarks && (
+                  <div>
+                    <div className="pi-pay-details-head">Remarks</div>
+                    <div className="pi-pay-details-text">{row.remarks}</div>
+                  </div>
+                )}
+                {row.canOpenProof && (
+                  <div>
+                    <div className="pi-pay-details-head">Proof</div>
+                    <button
+                      type="button"
+                      className="pi-pay-proof"
+                      onClick={() => onOpenProof(row.paymentId)}
+                      disabled={busy}
+                    >
+                      <ProofIcon />
+                      View proof
+                    </button>
+                  </div>
+                )}
+                {nothingAdded && <div className="pi-pay-details-text">{PAYMENT_DETAILS_NOTHING_ADDED}</div>}
+              </div>
+              {activity && <div className="pi-pay-details-col pi-pay-details-activity">{activity}</div>}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -681,6 +809,7 @@ export function PiPaymentRow({
  */
 export function PiPaymentDetailsModal({
   summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds, onEdit, initialFilter = 'all',
+  paymentActivity = null,
 }: {
   summary: PiPaymentSummary | null
   /** The page's own status figures, so the dialog and the card cannot disagree. */
@@ -702,8 +831,17 @@ export function PiPaymentDetailsModal({
   onEdit?: ((paymentId: string) => void) | null
   /** Which rows the dialog opens on. */
   initialFilter?: PiPaymentFilter
+  /**
+   * Finance's history of one payment, for its Details. The page passes it only
+   * to a reader with Finance access (the Order page's rule for View details);
+   * null for everybody else, whose Details show what the summary already holds.
+   * Called only for a row whose Details are open, so nothing is read before.
+   */
+  paymentActivity?: ((paymentId: string) => React.ReactNode) | null
 }) {
   const [filter, setFilter] = useState<PiPaymentFilter>(initialFilter)
+  // Which rows have Details open, by allocation. Any number at once.
+  const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(() => new Set())
   const [armed, setArmed] = useState<ArmedDecision | null>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -739,6 +877,16 @@ export function PiPaymentDetailsModal({
     setFilter(next)
   }
 
+  const toggleDetails = (key: string) => {
+    if (busyRef.current) return
+    setOpenKeys(current => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const arm = (row: PiPaymentRowView, decision: PaymentDecision) => {
     if (busyRef.current) return
     setArmed({ paymentId: row.paymentId, humanPaymentId: row.humanPaymentId, decision })
@@ -769,7 +917,9 @@ export function PiPaymentDetailsModal({
     <FinanceModal
       title={PAYMENT_FILTER_TITLE[filter]}
       onClose={close}
-      width="640px"
+      // Wide enough for the table's seven columns; FinanceModal caps it at the
+      // window, and a phone draws the rows as cards.
+      width="1160px"
       // A typed reason is unsaved input: a backdrop click must not discard it.
       closeOnBackdropClick={armed === null}
     >
@@ -852,27 +1002,52 @@ export function PiPaymentDetailsModal({
             {loading ? 'Loading payments…' : PAYMENT_FILTER_EMPTY[filter]}
           </div>
         ) : (
-          <ul style={{ margin: 0, padding: 0 }}>
-            {rows.map(row => {
-              const mine = armed !== null && armed.paymentId === row.paymentId
-              return (
-                <PiPaymentRow
-                  key={row.key}
-                  row={row}
-                  armed={mine ? armed.decision : null}
-                  note={mine ? note : ''}
-                  busy={busy}
-                  error={mine ? error : null}
-                  onOpenProof={onOpenProof}
-                  onArm={decision => arm(row, decision)}
-                  onNote={setNote}
-                  onCancel={() => { if (!busyRef.current) { setArmed(null); setError(null) } }}
-                  onConfirm={() => { void confirm() }}
-                  onEdit={onEdit ? () => onEdit(row.paymentId) : undefined}
-                />
-              )
-            })}
-          </ul>
+          <div className="pi-pay-table-wrap">
+            <table className="pi-pay-table">
+              <thead>
+                <tr>
+                  {PAYMENT_TABLE_COLUMNS.map(column => (
+                    <th
+                      key={column}
+                      scope="col"
+                      className={column === 'Amount' ? 'pi-pay-th-amount' : column === 'Actions' ? 'pi-pay-th-actions' : undefined}
+                    >
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const mine = armed !== null && armed.paymentId === row.paymentId
+                  const open = openKeys.has(row.key)
+                  // DETAILS ONLY WHERE THERE IS SOMETHING MORE TO SHOW: the
+                  // reference, the remarks, the proof, or — for a reader with
+                  // Finance access — the payment's history.
+                  const hasDetails = Boolean(row.reference || row.remarks || row.canOpenProof || paymentActivity)
+                  return (
+                    <PiPaymentRow
+                      key={row.key}
+                      row={row}
+                      armed={mine ? armed.decision : null}
+                      note={mine ? note : ''}
+                      busy={busy}
+                      error={mine ? error : null}
+                      open={open}
+                      onToggle={hasDetails ? () => toggleDetails(row.key) : undefined}
+                      activity={open && paymentActivity ? paymentActivity(row.paymentId) : null}
+                      onOpenProof={onOpenProof}
+                      onArm={decision => arm(row, decision)}
+                      onNote={setNote}
+                      onCancel={() => { if (!busyRef.current) { setArmed(null); setError(null) } }}
+                      onConfirm={() => { void confirm() }}
+                      onEdit={onEdit ? () => onEdit(row.paymentId) : undefined}
+                    />
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {/* The agreed commercial terms, when there are any. Plain text, printed
