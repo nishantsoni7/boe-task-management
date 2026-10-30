@@ -1,19 +1,17 @@
-// PIs SENT BACK FOR CHANGES / REJECTED on the salesperson's dashboard (20270328000200),
-// and the notification badge that tells the two apart.
+// PIs RETURNED TO SALES / CLOSED: what the page parses, the one definition the
+// dashboard and the Modules card share (20270507000000), the short notice
+// (20270509000000) and the badge that tells its outcomes apart.
 //
-// The database half (the lists, the 7-day rejected window, ownership) is executed SQL and
-// is proved by the migration's own rehearsal; these tests pin the page's half: parsing,
-// the counts being separate from "pending", and what the salesperson reads.
+// The database half is executed SQL, proven on PGlite by
+// supabase/tests/sales_dashboard_returned_pis_pglite.mjs (old and new answers on
+// the same rows) and on real rows by sales_dashboard_rehearsal_footer.sql.
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- fixtures stand in for an untyped RPC payload and a notification row */
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { parseSalespersonDashboard, decidedAgoText, type SalespersonDashboard } from './salespersonDashboard'
-import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
+import { parseSalespersonDashboard, type SalespersonDashboard } from './salespersonDashboard'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -36,18 +34,16 @@ function parsed(raw: unknown): SalespersonDashboard {
   assert.ok(r.ok && r.applicable)
   return r.dashboard
 }
-const html = (d: SalespersonDashboard) => renderToStaticMarkup(createElement(SalespersonDashboardView, { data: d }))
 
 describe('parsing', () => {
-  test('an answer from a database without the new lists means none, not an error', () => {
+  test('an answer from a database without the lists means none, not an error', () => {
     const d = parsed(base())
     assert.equal(d.returnedTotal, 0)
     assert.equal(d.rejectedTotal, 0)
   })
 
-  test('returned and rejected are read with note, reviewer and age', () => {
+  test('returned and rejected are read with reviewer and age', () => {
     const d = parsed(base({ returned_total: 1, returned: [row()], rejected_total: 1, rejected: [row({ submission_id: 'sub-10' })] }))
-    assert.equal(d.returned[0].note, 'Discount line wording does not match the workbook.')
     assert.equal(d.returned[0].byName, 'Nishant Soni')
     assert.equal(d.returned[0].sinceSeconds, 7200)
     assert.equal(d.rejected[0].submissionId, 'sub-10')
@@ -59,74 +55,65 @@ describe('parsing', () => {
   })
 
   test('the pending number is not touched by returned or rejected', () => {
-    const d = parsed(base({ returned_total: 1, returned: [row()] }))
-    assert.equal(d.pendingTotal, 0)
-  })
-})
-
-describe('the page', () => {
-  test('nothing sent back or rejected: no attention block, both counts still shown as 0', () => {
-    const out = html(parsed(base()))
-    assert.ok(!out.includes('Needs your attention'))
-    assert.ok(out.includes('Returned to Sales'))
-    assert.ok(out.includes('Orders Pending Approval'))
-  })
-
-  test('a sent-back PI leads the page with the reviewer note and a link to the PI', () => {
-    const out = html(parsed(base({ returned_total: 1, returned: [row()] })))
-    assert.ok(out.indexOf('Needs your attention') < out.indexOf('Total Orders'))
-    assert.ok(out.includes('Returned to Sales'))
-    assert.ok(out.includes('Discount line wording does not match the workbook.'))
-    assert.ok(out.includes('Sent back by Nishant Soni 2 h ago'))
-    assert.ok(out.includes('/orders/drafts/sub-9'))
-  })
-
-  test('a rejected PI is its own group, drawn as rejected', () => {
-    const out = html(parsed(base({ rejected_total: 1, rejected: [row({ note: null })] })))
-    assert.ok(out.includes('Closed (deal lost)'))
-    assert.ok(out.includes('No note was left.'))
-    assert.ok(!out.includes('Edit and resubmit</p>') || out.includes('Returned to Sales'))
-  })
-
-  test('a PI the reader cannot open is plain text, never a link', () => {
-    const out = html(parsed(base({ returned_total: 1, returned: [row({ can_open: false })] })))
-    assert.ok(!out.includes('/orders/drafts/sub-9'))
-  })
-
-  test('elapsed text', () => {
-    assert.equal(decidedAgoText('Sent back', 30, null), 'Sent back just now')
-    assert.equal(decidedAgoText('Rejected', 3 * 86400 + 5, 'A'), 'Rejected by A 3 days ago')
+    assert.equal(parsed(base({ returned_total: 1, returned: [row()] })).pendingTotal, 0)
   })
 })
 
 describe('the notification badge', () => {
   const n = (title: string) => ({ id: 'n1', type: 'pi_review_decided', title, entity_id: 'sub-9', task_id: null } as any)
 
-  test('sent back is amber "Changes requested"', () => {
-    const m = getNotificationMeta(n('Changes were requested on the PI for Hotel Surya Garden by Nishant.'))
-    assert.equal(m.badge.label, 'Changes requested')
-    assert.equal(m.href, '/orders/drafts/sub-9')
+  test('the one-line notice since 20270509000000: amber "Returned to Sales" and red "Closed: deal lost"', () => {
+    const returned = getNotificationMeta(n('PID-00021 · IBC was returned to you by Nishant Soni.'))
+    assert.equal(returned.badge.label, 'Returned to Sales')
+    assert.equal(returned.href, '/orders/drafts/sub-9')
+    assert.equal(getNotificationMeta(n('The PI for IBC was returned to you.')).badge.label, 'Returned to Sales')
+    assert.equal(getNotificationMeta(n('PID-00019 · Studio Arc was closed (deal lost) by Nishant Soni.')).badge.label, 'Closed: deal lost')
   })
 
-  test('rejected is red "Rejected"', () => {
-    const m = getNotificationMeta(n('The PI for Hotel Surya Garden was rejected by Nishant.'))
-    assert.equal(m.badge.label, 'Rejected')
+  test('notices written before keep their badges: amber "Changes requested", red "Rejected"', () => {
+    assert.equal(getNotificationMeta(n('Changes were requested on the PI for Hotel Surya Garden by Nishant.')).badge.label, 'Changes requested')
+    assert.equal(getNotificationMeta(n('The PI for Hotel Surya Garden was rejected by Nishant.')).badge.label, 'Rejected')
+  })
+
+  test('a client whose name contains "returned" does not change the badge of a closed PI', () => {
+    assert.equal(getNotificationMeta(n('PID-00030 · Returned Goods Co was closed (deal lost) by Nishant Soni.')).badge.label, 'Closed: deal lost')
   })
 })
 
 describe('the migrations', () => {
   const dir = join(process.cwd(), 'supabase', 'migrations')
-  const notify = readFileSync(join(dir, '20270328000100_order_submission_review_notify_salesperson.sql'), 'utf8')
-  const dash = readFileSync(join(dir, '20270328000200_order_submission_returned_rejected_dashboard.sql'), 'utf8')
+  const sql = (f: string) => readFileSync(join(dir, f), 'utf8').replace(/\r/g, '')
+  const rule = sql('20270507000000_returned_pis_for_sales.sql')
+  const dash = sql('20270508000000_salesperson_dashboard_last_month.sql')
+  const notify = sql('20270509000000_pi_review_notice_short.sql')
+  const code = (s: string) => s.replace(/^\s*--.*$/gm, '')
 
-  test('the notice also reaches the salesperson named on the PI', () => {
-    assert.match(notify, /array\[new\.submitted_by, new\.created_by, new\.salesperson_id\]/)
+  test('one definition of "returned to you": salesperson, creator or submitter; needs_changes; not being deleted', () => {
+    assert.match(rule, /\(s\.salesperson_id = p_user or s\.submitted_by = p_user or s\.created_by = p_user\)/)
+    assert.match(rule, /and s\.status = 'needs_changes'\s+and s\.deletion_claim_token is null/)
+    assert.match(rule, /revoke all on function public\.order_submissions_returned_to\(uuid\) from public, anon, authenticated;/)
   })
 
-  test('the dashboard lists returned PIs and rejected PIs of the last 7 days', () => {
-    assert.match(dash, /s\.status = 'needs_changes'/)
-    assert.match(dash, /s\.status = 'rejected'/)
-    assert.match(dash, /interval '7 days'/)
+  test('the dashboard and the Modules card both read it; the card never sends the note', () => {
+    assert.match(code(dash), /from public\.order_submissions_returned_to\(v_actor\) t/)
+    assert.doesNotMatch(code(dash), /s\.status = 'needs_changes'/, 'the dashboard no longer states the rule itself')
+    const card = /create or replace function public\.my_returned_pis\(\)[\s\S]*?\n\$\$;/.exec(rule)?.[0] ?? ''
+    assert.match(card, /from public\.order_submissions_returned_to\(v_actor\) r/)
+    assert.doesNotMatch(card, /review_note|'note'/)
+    assert.match(card, /if not public\.module_entry_open\('orders'\) then\s+return '\[\]'::jsonb;/)
+  })
+
+  test('the notice: same people, same type, one line, no note', () => {
+    assert.match(notify, /array\[new\.submitted_by, new\.created_by, new\.salesperson_id\], v_actor, new\.id, 'pi_review_decided'/)
+    assert.match(notify, /'%s was returned to you%s\.'/)
+    assert.match(notify, /'%s was closed \(deal lost\)%s\.'/)
+    assert.doesNotMatch(code(notify), /new\.review_note/)
+  })
+
+  test('the badge reads the words the notice writes', () => {
+    const meta = readFileSync(join(process.cwd(), 'src/lib/notificationMeta.ts'), 'utf8')
+    assert.match(meta, /was returned to you/)
+    assert.match(meta, /was closed \\\(deal lost\\\)/)
   })
 
   test('"pending" keeps its original rule', () => {
