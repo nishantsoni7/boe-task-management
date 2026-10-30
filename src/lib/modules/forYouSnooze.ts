@@ -59,4 +59,6 @@ export const itemKeys = {
   request: (id: string) => `request:${id}`,
   /** A PI returned to Sales; returned again later is a new item, shown at once. */
   returnedPi: (id: string, since: string | null) => `returned-pi:${id}:${since ?? ''}`,
+  /** The attendance machine has stopped; still stopped tomorrow is a new item. */
+  machineStopped: (date: string) => `machine-stopped:${date}`,
 }

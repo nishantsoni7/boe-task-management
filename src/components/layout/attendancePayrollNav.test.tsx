@@ -138,7 +138,7 @@ describe('the admin sidebar is exactly six sections', () => {
   test('the grouped sections carry the agreed tabs', () => {
     const tabs = (key: string) =>
       ATTENDANCE_PAYROLL_ADMIN_SECTIONS.find(s => s.key === key)?.tabs?.map(t => t.label)
-    assert.deepEqual(tabs('attendance'), ['Records', 'Upload', 'Monthly Review', 'Requests'])
+    assert.deepEqual(tabs('attendance'), ['Today', 'Records', 'Upload', 'Monthly Review', 'Requests'])
     assert.deepEqual(tabs('payroll'), ['Monthly Preview', 'Payroll Runs', 'BOE Credits'])
     assert.deepEqual(tabs('settings'), ['Payroll Rules', 'Holidays'])
     assert.deepEqual(tabs('issues'), ['Attendance Sync', 'Incoming Minop data'])
@@ -279,7 +279,7 @@ describe('active state', () => {
   test('exactly one section owns every admin route', () => {
     for (const pathname of [
       '/attendance', '/attendance/employees', '/attendance/employees/abc',
-      '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
+      '/attendance/today', '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
       '/attendance/monthly-review/user-1', '/attendance/requests', '/attendance/minop', '/attendance/minop/incoming',
       '/attendance/holidays', '/attendance/correction-log',
       '/payroll', '/payroll/monthly-review', '/payroll/monthly-review/user-1',
@@ -293,6 +293,7 @@ describe('active state', () => {
 
   test('a section root does not claim the pages beneath it', () => {
     assert.equal(adminSectionFor('/attendance')?.label, 'Overview')
+    assert.equal(adminSectionFor('/attendance/today')?.label, 'Attendance')
     assert.equal(adminSectionFor('/attendance/records')?.label, 'Attendance')
     assert.equal(adminSectionFor('/payroll')?.label, 'Payroll')
     assert.equal(adminSectionFor('/payroll/settings')?.label, 'Settings')

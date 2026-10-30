@@ -15,6 +15,10 @@
     {
       "path": "/api/attendance/minop-sync",
       "schedule": "45 18 * * *"
+    },
+    {
+      "path": "/api/attendance/machine-alert",
+      "schedule": "35 5 * * *"
     }
   ]
 }

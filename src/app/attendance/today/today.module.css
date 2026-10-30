@@ -1,0 +1,73 @@
+/* The Today tab. The list itself uses the shared table and cards in ui.module.css;
+ * only the machine strip and the day bar are particular to this page. */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.stripGood { color: var(--boe-completed-fg); background: var(--boe-completed-bg); border-color: var(--boe-success-border); }
+.stripQuiet { color: var(--boe-pending-fg); background: var(--boe-pending-bg); border-color: var(--boe-border-strong); }
+.stripBad { color: var(--boe-blocked-fg); background: var(--boe-blocked-bg); border-color: var(--boe-error-border); }
+
+.stripHead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.stripText { margin: 0; flex: 1 1 320px; min-width: 0; font-size: 13.5px; line-height: 1.45; }
+.stripText strong { font-weight: 700; }
+.stripLink { font-size: 13px; font-weight: 600; color: inherit; text-decoration: none; }
+.stripLink:hover { text-decoration: underline; }
+.stripLink:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; border-radius: 6px; }
+
+.steps { margin: 0; padding-left: 40px; font-size: 13px; line-height: 1.6; color: var(--boe-text); }
+.reassure { margin: 0; padding-left: 22px; font-size: 12.5px; line-height: 1.5; color: var(--boe-text-strong); }
+
+.dayBar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dayPicker { display: flex; align-items: center; gap: 6px; }
+.dayLabel { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--boe-text); }
+.dayHint { font-size: 12.5px; color: var(--boe-text-muted); }
+
+.dayBtn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--boe-text-strong);
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dayBtn:hover:not(:disabled) { background: var(--boe-surface-quiet); }
+.dayBtn:disabled { color: var(--boe-text-muted); background: var(--boe-surface-sunken); border-color: var(--boe-border); cursor: default; }
+.dayBtn:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 1px; }
+
+.backToday {
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--boe-brand-ink);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.backToday:hover { text-decoration: underline; }
+.backToday:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; border-radius: 6px; }
+
+.filterEnd { margin-left: auto; min-width: 0; max-width: 100%; }
+
+.badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.foot { margin: 0; font-size: 12.5px; color: var(--boe-text-muted); }
+
+@media (max-width: 767px) {
+  .dayPicker { width: 100%; justify-content: space-between; }
+  .dayBtn { width: 44px; height: 44px; }
+  .dayLabel { text-align: center; }
+  .filterEnd { width: 100%; margin-left: 0; }
+}

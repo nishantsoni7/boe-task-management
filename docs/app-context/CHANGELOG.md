@@ -11,7 +11,17 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Rollback.** Revert the PR.
 - **Proof.** `piSentFiles.dom.test.tsx` presses the names in a real DOM, including through the locked `PiSupportingDetails`.
 
-## 2026-10-30 — Attendance machine: punches become attendance from 1 November (PR #526, on the owner's yes after their preview check) · no migration
+## 2026-10-30 — Attendance machine: Today tab, and an alert when punches stop (PR #528, on the owner's yes after their preview check) · migration 20270511000000 → APPLIED 2026-10-30 (by the owner from the worktree: backup bundle 20261030T144936Z, database 20261030T145001Z verified first, dry run listed exactly this file, migration list shows it remote)
+- **Owner request.** A daily screen for the machine and a warning when it stops. Mockup approved first.
+- **What.** New first tab `/attendance/today` under Attendance, where the sidebar now lands: each listed person's In, Out, Hours and status for today or any day back to 2026-11-01, the machine's state on top, punches on IDs that give nobody attendance underneath. Read-only. The Overview page gains a shortcut and no longer says attendance is an Excel import.
+- **Alert.** On a working day from 2026-11-01, past 11:00 IST, with no real punch reaching BOE since midnight, the machine has stopped. Today and a For you card turn red as soon as they are opened; `/api/attendance/machine-alert` (Vercel Cron, 11:05 IST, can run up to about an hour late) writes one `attendance_machine_stopped` notification per active admin, once a day. Every screen clears by itself on the next punch; the bell row stays as a record. While the machine has stopped, or on a past working day nobody punched, no-punch rows read "Can't tell yet", never absent.
+- **Apply order.** 20270511000000 went first, before the preview was tested: the Attendance & Payroll feed filters on this enum value, an unknown value fails the whole feed, and previews read the production database.
+- **Not changed.** Attendance writing, payroll, corrections, and the month views.
+- **Phone alerts** are not on (0 Vault secrets, 0 registered devices on 2026-10-30), so nothing reaches a phone until that setup is finished.
+- **Rollback.** Revert the PR. The enum value cannot be dropped and does no harm.
+- **Proof.** `machineHealth.test.ts` and `machineDayView.test.ts`, including the real reads on `MemorySupabase`.
+
+## 2026-10-30 — Attendance machine: punches become attendance from 1 November (PR #526, squash-merged as 00e79b56, 10:27 UTC, on the owner's yes after their preview check) · no migration · Production deployment 7436109229 success 10:31 UTC · backup bundle 20261030T102810Z, database 20261030T102828Z (201 tables, 100,496 rows), verified
 - **Owner decision.** The new machine is the only attendance source from 1 November 2026, with no parallel period.
 - **What.** `machineDay.ts` turns a person's punches into a day by the Excel import's rules, and two taps under 5 minutes apart count as one. `machineAttendance.ts` writes `attendance_records` with `source = 'minop'` for linked, active people, never before the start date or in a locked month, and only when a row would change. The webhook does this as messages arrive; `/api/attendance/minop-sync` repairs it nightly; saving a Machine ID fills that person's days.
 - **Screens.** A machine month stops at yesterday, so today never reads as absent or missing a punch; My Attendance shows today as a "so far" line. Excel import and preview refuse months from November 2026.

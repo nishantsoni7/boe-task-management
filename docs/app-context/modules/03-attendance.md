@@ -31,9 +31,9 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 ## 3. Pages and API routes
 
 ### Pages (admin, behind `AttendanceGuard` in `src/app/attendance/layout.tsx`)
-`/attendance` (Overview), `/attendance/employees` + `/attendance/employees/[id]` (Employee Master), `/attendance/upload`, `/attendance/records`, `/attendance/monthly-review` + `/[userId]` (supports `?view=decisions` = Salary decisions), `/attendance/requests` (request queue only), `/attendance/holidays`, `/attendance/correction-log`, `/attendance/notifications`, `/attendance/minop`, `/attendance/minop/incoming` (04).
+`/attendance` (Overview), `/attendance/employees` + `/attendance/employees/[id]` (Employee Master), `/attendance/today` (04), `/attendance/upload`, `/attendance/records`, `/attendance/monthly-review` + `/[userId]` (supports `?view=decisions` = Salary decisions), `/attendance/requests` (request queue only), `/attendance/holidays`, `/attendance/correction-log`, `/attendance/notifications`, `/attendance/minop`, `/attendance/minop/incoming` (04).
 - `next.config.ts` 307-redirects `/attendance/requests?tab=review` to `/attendance/monthly-review?view=decisions`.
-- Admin sidebar = six sections (`src/components/layout/attendancePayrollNav.tsx`): Overview, Employees, Attendance (tabs Records/Upload/Monthly Review/Requests), Payroll (tabs Monthly Preview/Payroll Runs/BOE Credits + help How Payroll Works), Issues (Attendance Sync/Incoming Minop data), Settings (Payroll Rules/Holidays).
+- Admin sidebar = six sections (`src/components/layout/attendancePayrollNav.tsx`): Overview, Employees, Attendance (tabs Today/Records/Upload/Monthly Review/Requests; the sidebar lands on Today), Payroll (tabs Monthly Preview/Payroll Runs/BOE Credits + help How Payroll Works), Issues (Attendance Sync/Incoming Minop data), Settings (Payroll Rules/Holidays).
 ### Pages (employee)
 `/my-attendance` (own month view; auto-refresh every 45 s ONLY when the current IST month is open; Refresh button; Raise Issue per day; own requests panel), `/my-issues`, `/my-issues/notifications`. There is NO `/my-attendance/request` route on this checkout (ATTENDANCE_PAYROLL_MODULE.md still mentions it; the request form is the modal `AttendanceRequestFlow`, opened from Modules quick action, desktop sidebar quick action, and My Attendance).
 
@@ -49,6 +49,8 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | `/api/attendance/holidays` | GET/POST/DELETE | own inline admin check (no edit verb) |
 | `/api/attendance/check-in`, `/check-out` | POST | none; static 410 |
 | `/api/attendance/minop-deliveries`, `/minop-incoming*` | GET | `requireAdmin` (04) |
+| `/api/attendance/machine-day`, `/machine-status` | GET | `requireAdmin` (04) |
+| `/api/attendance/machine-alert` | GET | Vercel Cron, `CRON_SECRET` (04) |
 | `/api/attendance-requests` | GET/POST | `resolveCaller`; employee own, admin `?scope=queue` |
 | `/api/attendance-requests/[id]/decision` | POST | admin, never own request |
 | `/api/attendance-requests/[id]/cancel`, `/[id]/history` | POST / GET | owner or admin |
