@@ -383,7 +383,8 @@ export const SP_CHIP = {
   ready: 'Ready to dispatch',
   pending: 'Waiting approval',
 } as const
-export const SP_ADVANCE_COLUMNS = ['Order', 'Client', 'Verified', 'Short of 40%', 'Confirmed'] as const
+/** "Confirmed N days ago" is drawn under the client, so the table fits a third of a wide screen. */
+export const SP_ADVANCE_COLUMNS = ['Order', 'Client', 'Verified', 'Short of 40%'] as const
 
 export const SP_EMPTY = {
   pending: 'No PIs are waiting for approval.',

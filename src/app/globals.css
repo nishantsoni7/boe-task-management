@@ -9349,22 +9349,29 @@ a.od-strip-item:hover { border-color: #CFC8BF; color: #303536; }
 .od-error p { margin: 0; font-size: 13px; color: #303536; }
 .od-error-title { margin: 0; font-size: 14px; font-weight: 700; color: #B42332; }
 
-/* ── The salesperson's own dashboard (owner, 2026-10-30, layout A) ──
-   Returned-PI strip → two sales figures → jump chips (phones only) → two
-   independent columns, Advance below 40% (wide) | Ready for dispatch + Waiting
-   for approval, with no row alignment so a short list leaves no gap. Below
-   900px the columns dissolve into one stack in that same order. Phone rules sit
-   at 560px, after the tablet rule. */
+/* ── The salesperson's own dashboard (owner, 2026-10-30, layout A; in columns
+   after the preview: "too wide, convert it into columns") ──
+   Three independent columns, so nothing stretches edge to edge and a short list
+   leaves no gap: your PIs [returned to you, Waiting for approval] · your sales
+   [This month | Last month, chips, Ready for dispatch] · money to chase
+   [Advance below 40%]. From 1400px all three side by side; 900–1399px the first
+   two side by side with Advance below 40% full width underneath; below 900px one
+   stack in priority order (CSS `order`). Phone rules sit at 560px, after the
+   tablet rule. */
 .spd { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .spd a:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
 
-/* A PI returned to you: one line each, never the note (it is on the PI page). */
-.spd-returned { display: flex; flex-direction: column; gap: 8px; background: #FAF0DA; border: 1px solid #EBD9AE; border-radius: 12px; padding: 12px 14px; min-width: 0; }
-.spd-returned-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+/* A PI returned to you: a two-line card each — the PI, then who returned it and
+   how long it has waited; Open PI beside both lines. Never the note (it is on
+   the PI page). */
+.spd-returned { display: flex; flex-direction: column; gap: 8px; background: #FAF0DA; border: 1px solid #EBD9AE; border-radius: 12px; padding: 12px 14px 14px; min-width: 0; }
+.spd-returned-head { display: flex; flex-direction: column; gap: 2px; }
 .spd-returned-title { margin: 0; font-size: 15px; font-weight: 700; color: #805B0D; }
 .spd-returned-hint { font-size: 13px; color: #4C5352; }
 .spd-returned-rows { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
-.spd-returned-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px 8px 14px; background: #FFFFFF; border: 1px solid #EBD9AE; border-radius: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.spd-returned-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 10px 10px 10px 14px; background: #FFFFFF; border: 1px solid #EBD9AE; border-radius: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.spd-ret-meta { grid-column: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.spd-returned-row > .spd-open, .spd-returned-row > .spd-restricted { grid-column: 2; grid-row: 1 / span 2; }
 a.spd-returned-row:hover { border-color: #D3B26A; }
 .spd-open { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 8px; background: #303536; color: #FFFFFF; font-size: 13px; font-weight: 600; white-space: nowrap; }
 a.spd-returned-row:hover .spd-open { background: #1E2223; }
@@ -9385,9 +9392,16 @@ a.spd-returned-row:hover .spd-open { background: #1E2223; }
 .spd-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid #CFC8BF; border-radius: 999px; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #303536; text-decoration: none; }
 .spd-chip span { padding: 0 6px; border-radius: 999px; background: #F1EEE9; font-size: 12px; font-variant-numeric: tabular-nums; }
 
-/* The three lists. */
-.spd-lists { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+/* The three columns. */
+.spd-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .spd-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.spd-col[data-col='advance'] { grid-column: 1 / -1; }
+@media (min-width: 1400px) {
+  .spd-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
+  .spd-col[data-col='advance'] { grid-column: auto; }
+}
+
+/* The lists. */
 .spd-list { background: #FFFFFF; border: 1px solid #E4DED7; border-radius: 12px; padding: 14px 16px 6px; min-width: 0; scroll-margin-top: 88px; }
 .spd-list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .spd-list-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; color: #303536; }
@@ -9402,7 +9416,6 @@ a.spd-row:hover { background: #F1EEE9; }
 .spd-num { font-weight: 600; color: #303536; font-variant-numeric: tabular-nums; }
 .spd-client { font-size: 13px; color: #4C5352; overflow-wrap: anywhere; min-width: 0; }
 .spd-meta { font-size: 12px; color: #686D6C; }
-.spd-grow { flex: 1 1 auto; }
 .spd-restricted { font-style: italic; }
 .spd-pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 .spd-pill[data-tone='warn'] { color: #805B0D; background: #FFF4E0; }
@@ -9415,20 +9428,25 @@ a.spd-row:hover { background: #F1EEE9; }
 .spd-unchecked { margin-top: 14px; padding-top: 4px; border-top: 1px dashed #CFC8BF; }
 .spd-gap { margin: 4px 0 10px; font-size: 12px; color: #805B0D; }
 
-/* Advance below 40%: five columns — Order, Client, Verified, Short of 40%, Confirmed. */
-.spd-list[data-area='advance'] { --spd-adv-cols: 52px minmax(0, 1fr) 96px 112px 132px; }
+/* Advance below 40%: Order, Client (with "Confirmed N days ago" under it), Verified, Short of 40%. */
+.spd-list[data-area='advance'] { --spd-adv-cols: 48px minmax(0, 1fr) 92px 116px; }
 .spd-adv-head { display: grid; grid-template-columns: var(--spd-adv-cols); gap: 12px; margin: 10px -6px 0; padding: 6px; border-bottom: 1px solid #E4DED7; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #686D6C; }
 .spd-adv-head span:nth-child(n+3) { text-align: right; }
 .spd-adv-head + .spd-rows { margin-top: 0; }
 .spd-adv-row { display: grid; grid-template-columns: var(--spd-adv-cols); gap: 12px; }
-.spd-adv-row .spd-pct, .spd-adv-row .spd-short, .spd-adv-row .spd-meta { text-align: right; white-space: nowrap; }
+.spd-adv-row .spd-pct, .spd-adv-row .spd-short { text-align: right; white-space: nowrap; }
 .spd-pct { font-size: 13px; font-weight: 600; color: #B42332; font-variant-numeric: tabular-nums; }
 .spd-short { font-size: 13px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 899px) {
-  .spd-lists { display: flex; flex-direction: column; }
+  .spd-grid { display: flex; flex-direction: column; gap: 12px; }
   .spd-col { display: contents; }
-  .spd-chips { display: flex; }
+  .spd-returned { order: 1; }
+  .spd-sales { order: 2; }
+  .spd-chips { display: flex; order: 3; }
+  .spd-list[data-area='advance'] { order: 4; }
+  .spd-list[data-area='ready'] { order: 5; }
+  .spd-list[data-area='pending'] { order: 6; }
 }
 
 @media (max-width: 559px) {
@@ -9438,9 +9456,8 @@ a.spd-row:hover { background: #F1EEE9; }
   .spd-list { padding-left: 12px; padding-right: 12px; }
   .spd-adv-head { display: none; }
   .spd-adv-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-  .spd-adv-row .spd-client { flex: 1 1 60%; }
-  .spd-adv-row .spd-pct, .spd-adv-row .spd-short, .spd-adv-row .spd-meta { text-align: left; }
-  .spd-returned-row .spd-grow { flex-basis: 100%; order: 3; }
+  .spd-adv-row .spd-stack { flex: 1 1 60%; }
+  .spd-adv-row .spd-pct, .spd-adv-row .spd-short { text-align: left; }
 }
 
 /* Wide screens: two selections per row. */

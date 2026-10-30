@@ -277,19 +277,27 @@ describe('the page body: returned strip, two sales figures, three lists', () => 
     }
   })
 
-  test('three lists with the stated titles and full counts, wide column first', () => {
+  test('three lists with the stated titles and full counts', () => {
     const out = html(parsed(payload()))
     const lists = [...out.matchAll(/data-area="(\w+)"[^>]*><header class="spd-list-head"><h2[^>]*>([^<]+)<\/h2><span[^>]*>([^<]+)<\/span>/g)]
     assert.deepEqual(lists.map(l => [l[1], l[2], l[3]]), [
-      ['advance', 'Advance below 40%', '2'],
-      ['ready', 'Ready for dispatch', '3'],
       ['pending', 'Waiting for approval', '2'],
+      ['ready', 'Ready for dispatch', '3'],
+      ['advance', 'Advance below 40%', '2'],
     ])
-    const cols = out.split('<div class="spd-col').slice(1)
-    assert.equal(cols.length, 2)
-    assert.match(cols[0], /data-area="advance"/)
-    assert.doesNotMatch(cols[0], /data-area="(ready|pending)"/)
-    assert.match(cols[1], /data-area="ready"[\s\S]*data-area="pending"/)
+  })
+
+  test('three columns (owner, after the preview): your PIs, your sales, money to chase', () => {
+    const out = html(parsed(payload({ returned_total: 1, returned: [returnedRow()] })))
+    const cols = out.split('<div class="spd-col" data-col="').slice(1)
+    assert.deepEqual(cols.map(c => c.slice(0, c.indexOf('"'))), ['pis', 'sales', 'advance'])
+    const [pis, sales, advance] = cols
+    assert.match(pis, /class="spd-returned"[\s\S]*data-area="pending"/)
+    assert.doesNotMatch(pis, /spd-sales|data-area="(ready|advance)"/)
+    assert.match(sales, /class="spd-sales"[\s\S]*class="spd-chips"[\s\S]*data-area="ready"/)
+    assert.doesNotMatch(sales, /spd-returned|data-area="(pending|advance)"/)
+    assert.match(advance, /data-area="advance"/)
+    assert.doesNotMatch(advance, /spd-returned|spd-sales|data-area="(pending|ready)"/)
   })
 
   test('the phone chips jump to each list and carry the same counts', () => {
@@ -300,11 +308,11 @@ describe('the page body: returned strip, two sales figures, three lists', () => 
     for (const id of ['spd-advance', 'spd-ready', 'spd-pending']) assert.match(out, new RegExp(`id="${id}"`))
   })
 
-  test('advance rows: order, client, verified, rupees short, confirmed — and the exception said', () => {
+  test('advance rows: order, client (confirmed under it), verified, rupees short — and the exception said', () => {
     const list = listOf(html(parsed(payload())), 'advance')
-    assert.match(list, /Order<\/span><span>Client<\/span><span>Verified<\/span><span>Short of 40%<\/span><span>Confirmed/)
-    assert.match(list, />0509<[\s\S]*Sharma &amp; Sons Furnishing Private Limited \(Bandra West Showroom, Mumbai\)[\s\S]*Exception approved[\s\S]*0% verified[\s\S]*₹48,000 short[\s\S]*Confirmed 34 days ago/)
-    assert.match(list, />0518<[\s\S]*Kapoor Interiors[\s\S]*12% verified[\s\S]*₹1,86,400.50 short[\s\S]*Confirmed 21 days ago/)
+    assert.match(list, /<span>Order<\/span><span>Client<\/span><span>Verified<\/span><span>Short of 40%<\/span><\/div>/)
+    assert.match(list, />0509<[\s\S]*Sharma &amp; Sons Furnishing Private Limited \(Bandra West Showroom, Mumbai\)[\s\S]*Exception approved[\s\S]*Confirmed 34 days ago[\s\S]*0% verified[\s\S]*₹48,000 short/)
+    assert.match(list, />0518<[\s\S]*Kapoor Interiors[\s\S]*Confirmed 21 days ago[\s\S]*12% verified[\s\S]*₹1,86,400.50 short/)
     assert.equal(list.match(/Exception approved/g)?.length, 1)
   })
 
@@ -526,13 +534,23 @@ describe('the code', () => {
     assert.match(page, /NEW_ORDER_ACTION\.href/)
   })
 
-  test('below 900px the columns dissolve and the chips appear; phone rules sit after the tablet rule', () => {
-    const tablet = css.indexOf('@media (max-width: 899px) {\n  .spd-lists')
+  test('wide screens: three columns side by side; laptops: two, with Advance below 40% full width underneath', () => {
+    assert.match(css, /\.spd-grid \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+    assert.match(css, /\.spd-col\[data-col='advance'\] \{ grid-column: 1 \/ -1; \}/)
+    assert.match(css, /@media \(min-width: 1400px\) \{\s*\.spd-grid \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.15fr\); \}\s*\.spd-col\[data-col='advance'\] \{ grid-column: auto; \}/)
+  })
+
+  test('below 900px the columns dissolve into one stack in priority order; phone rules sit after the tablet rule', () => {
+    const tablet = css.indexOf('@media (max-width: 899px) {\n  .spd-grid')
     const phone = css.indexOf('@media (max-width: 559px) {\n  .spd-fig')
     assert.ok(tablet > 0 && phone > tablet)
     const block = css.slice(tablet, phone)
     assert.match(block, /\.spd-col \{ display: contents; \}/)
-    assert.match(block, /\.spd-chips \{ display: flex; \}/)
     assert.match(css, /\.spd-chips \{ display: none;/)
+    const order = (sel: string) => Number(new RegExp(`${sel.replace(/[.[\]']/g, m => '\\' + m)} \\{ (?:display: flex; )?order: (\\d); \\}`).exec(block)?.[1])
+    assert.deepEqual(
+      ['.spd-returned', '.spd-sales', '.spd-chips', ".spd-list[data-area='advance']", ".spd-list[data-area='ready']", ".spd-list[data-area='pending']"].map(order),
+      [1, 2, 3, 4, 5, 6],
+    )
   })
 })
