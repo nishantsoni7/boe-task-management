@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3d438df2` — Merge origin/main into feat/sales-dashboard-redesign
-- Commits on this branch: 1083
+- Commit: `b741e88d` — Orders: sales dashboard in three columns instead of full-width bands
+- Commits on this branch: 1088
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 388 (first `20260530_create_positions.sql`, latest `20270509000000_pi_review_notice_short.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,11 @@
 
 ## Latest 25 commits
 
+- `b741e88d` 2026-10-30 Orders: sales dashboard in three columns instead of full-width bands
+- `dd2b75c7` 2026-10-30 Docs: migrations 20270507000000-20270509000000 applied to production
+- `903e86d7` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
+- `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
+- `cc3a60a8` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c) (#518)
 - `3d438df2` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
 - `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
 - `9566538b` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places
@@ -34,11 +39,6 @@
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
 - `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
-- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
-- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
-- `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
-- `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
-- `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
 
 ## Pages by top-level area
 
