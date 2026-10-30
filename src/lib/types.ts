@@ -98,6 +98,9 @@ export type UserProfile = {
   payroll_notes?: string | null
   office_timing: string | null
   fingerprint_employee_code: string | null
+  // ID on the new Minop machine. Admin-only and never in USER_PROFILE_COLUMNS:
+  // present only on /api/employee-list for an admin caller.
+  minop_user_id?: string | null
   // Payroll configuration fields (V2)
   payroll_active: boolean
   employment_type: 'permanent' | 'contract' | null

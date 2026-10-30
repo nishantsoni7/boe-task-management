@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (PR #523, on the owner's yes after their preview check) · migrations 20270510000000, 20270510000100 → APPLIED 2026-10-30 (by the owner from the worktree: backup 20261030T081638Z verified first, dry run listed exactly these two, migration list shows both remote, 45 punches loaded)
+- **Owner decision.** From 1 November 2026 the new machine is the only attendance source, with no parallel period. October stays on the old machine's Excel.
+- **What.** `minop_punches` keeps each punch once, keyed by device + person + punch time. Employee Master gains a Machine ID (column, edit field, 409 if already used) and a notice listing IDs that have punched but belong to nobody. Nothing writes attendance or payroll: `MINOP_COLLECTION_ONLY` stays true. Machine IDs for 10 staff were saved from the owner's list after the migrations.
+- **Why rebuilt.** The 2026-10-25 work (`docs/minop-shadow-mode-spec`, a5aa0687) was never merged. It keyed on `txnId`, which production proved is reused, so it would have dropped real punches; its migration number was also taken.
+- **Apply order.** Backup, apply 0510 and 0510 0100, then merge. `/api/employee-list` names the new column and falls back to base columns without it, so code first would strip Employee Master.
+- **Rollback.** Revert the PR. The table and column are additive and can stay, or be removed by a later migration.
+- **Proof.** PGlite `minop_punches_pglite.mjs` 10/10 on the real migration files, using production's cases: a replayed message, a reused `txnId`, the 2018 sample message, a message with no punches.
+
 ## 2026-10-30 — Orders: Product details, F&P Cost and Approvals tabs on the product list; approval pictures read from the workbook (PR #522, squash-merged as 3807938b on the owner's yes, 08:15 UTC) · no migration · Production deployment 7433873595 success 08:22 UTC · backup bundle 20261030T081627Z, database 20261030T081638Z (200 tables, 100,438 rows), verified
 - **Owner request.** The Fabric & Finish panel needed scrolling sideways and did not look professional; fabric and packing should leave the main list and open in place, and approvals should come from the uploaded sheet. Layout agreed first (three tabs).
 - **What.** Three tabs on the PI Draft and Confirmed Order Products card: Code, Image, Product and Qty stay still and the rest slides in. Edit opens one product at a time under its row. Approved now means every kind of approval is settled (value, picture or NA), so Roots & Rituals reads 0 of 33, not 1. Pictures in the approval columns are read and stored (83 on 7 stored workbooks). Update from workbook re-reads only the two side sheets.
