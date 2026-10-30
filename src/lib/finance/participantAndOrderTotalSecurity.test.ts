@@ -1165,11 +1165,11 @@ describe('the applied migrations are frozen', () => {
       '20270505000000_pi_payment_summary_payment_id.sql',
       // Payments counted once, Step 1: a closed PI gives its money back; Use this money. APPLIED 2026-10-29.
       '20270506000000_order_submission_close_returns_payments.sql',
-      // Sales dashboard: one definition of a PI returned to you, and the Modules card's read. NOT YET APPLIED.
+      // Sales dashboard: one definition of a PI returned to you, and the Modules card's read. APPLIED 2026-10-30.
       '20270507000000_returned_pis_for_sales.sql',
-      // Sales dashboard: last month's sales, rupees short of 40%, ready since. NOT YET APPLIED.
+      // Sales dashboard: last month's sales, rupees short of 40%, ready since. APPLIED 2026-10-30.
       '20270508000000_salesperson_dashboard_last_month.sql',
-      // PI returned / closed notice: one line, not the whole note. NOT YET APPLIED.
+      // PI returned / closed notice: one line, not the whole note. APPLIED 2026-10-30.
       '20270509000000_pi_review_notice_short.sql',
     ])
   })
@@ -1587,11 +1587,11 @@ describe('the applied migrations are frozen', () => {
       '20270505000000_pi_payment_summary_payment_id.sql',
       // Payments counted once, Step 1: a closed PI gives its money back; Use this money. APPLIED 2026-10-29.
       '20270506000000_order_submission_close_returns_payments.sql',
-      // Sales dashboard: one definition of a PI returned to you, and the Modules card's read. NOT YET APPLIED.
+      // Sales dashboard: one definition of a PI returned to you, and the Modules card's read. APPLIED 2026-10-30.
       '20270507000000_returned_pis_for_sales.sql',
-      // Sales dashboard: last month's sales, rupees short of 40%, ready since. NOT YET APPLIED.
+      // Sales dashboard: last month's sales, rupees short of 40%, ready since. APPLIED 2026-10-30.
       '20270508000000_salesperson_dashboard_last_month.sql',
-      // PI returned / closed notice: one line, not the whole note. NOT YET APPLIED.
+      // PI returned / closed notice: one line, not the whole note. APPLIED 2026-10-30.
       '20270509000000_pi_review_notice_short.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
