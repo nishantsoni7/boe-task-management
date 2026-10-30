@@ -5,7 +5,9 @@ import { loadMonthRequests } from '@/lib/attendance/requestsServer'
 import {
   isFutureMonth,
   attendanceCoverageThrough,
-  effectiveLatestImportedDate,
+  isMachineMonth,
+  istToday,
+  machineLatestDate,
   withinCoverage,
 } from '@/lib/attendance/monthAvailability'
 
@@ -107,18 +109,13 @@ export async function GET(req: NextRequest) {
   // per-date "processed" marker to read — the furthest day anyone in the
   // company was scanned on is how far the file reached.
   //
-  // EXCLUDING Minop-sourced rows (attendance_records.source = 'minop') from
-  // this company-wide read. A live device punch is per-employee, not a batch
-  // upload — one mapped employee punching in today must not make every OTHER,
-  // still-CSV-only employee's unprocessed today read as "covered". The company
-  // signal therefore stays exactly what it always was: how far the CSV/manual
-  // side has got. See src/lib/minop/runProcessing.ts for the writer.
+  // A month the machine supplies stops at yesterday at the latest: see
+  // machineLatestDate for why today cannot be read yet.
   const { data: latestRows, error: importErr } = await svc
     .from('attendance_records')
     .select('attendance_date')
     .gte('attendance_date', from)
     .lte('attendance_date', to)
-    .is('source', null)
     .order('attendance_date', { ascending: false })
     .limit(1)
 
@@ -126,26 +123,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: importErr.message }, { status: 500 })
   }
 
-  // This EMPLOYEE'S own live coverage, separately. A mapped employee's Minop
-  // punches are real processed data for THEM specifically, so their own
-  // coverage should reflect it even on a day the CSV side has not reached yet.
-  const { data: latestMinopRows, error: minopErr } = await svc
-    .from('attendance_records')
-    .select('attendance_date')
-    .eq('user_id', employeeId)
-    .eq('source', 'minop')
-    .gte('attendance_date', from)
-    .lte('attendance_date', to)
-    .order('attendance_date', { ascending: false })
-    .limit(1)
-
-  if (minopErr) {
-    return NextResponse.json({ error: minopErr.message }, { status: 500 })
-  }
-
-  const companyLatestCsv  = latestRows?.[0]?.attendance_date ?? null
-  const employeeLatestLive = latestMinopRows?.[0]?.attendance_date ?? null
-  const latestImported = effectiveLatestImportedDate(companyLatestCsv, employeeLatestLive)
+  const companyLatest = latestRows?.[0]?.attendance_date ?? null
+  const machineMonth  = isMachineMonth(year, month)
+  const latestImported = machineMonth ? machineLatestDate(companyLatest) : companyLatest
   const monthImported   = latestImported !== null
   const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
 
@@ -279,6 +259,10 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  // Today in a machine month is still going, so it is not one of the records.
+  // It is handed over separately, as what has been punched so far.
+  const todayRow = machineMonth ? recByDate.get(istToday()) : undefined
+
   return NextResponse.json({
     employee: {
       id:            empRes.data.id,
@@ -293,6 +277,7 @@ export async function GET(req: NextRequest) {
     // stops on the 5th reads as "uploaded this far" rather than as a gap.
     coverage_through: coverageThrough,
     records,
+    today_so_far: todayRow ? { check_in_at: todayRow.check_in_at, check_out_at: todayRow.check_out_at } : null,
     ...requestsPart,
   })
 }

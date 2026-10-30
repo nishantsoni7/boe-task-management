@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import { handleMinopPathTokenWebhook, type MinopRawDeliveryRow } from '@/lib/minop/pathTokenWebhook'
+import { machineRangeOf, rebuildMachineDays } from '@/lib/minop/machineAttendance'
 import { recordMinopPunches } from '@/lib/minop/punches'
 
 export const runtime = 'nodejs'
@@ -47,5 +48,15 @@ async function insertRawDelivery(row: MinopRawDeliveryRow): Promise<{ ok: boolea
 
 async function recordPunches(receivedAt: string, payload: unknown): Promise<void> {
   const svc = serviceClient()
-  if (svc) await recordMinopPunches(svc, receivedAt, payload)
+  if (!svc) return
+  await recordMinopPunches(svc, receivedAt, payload)
+
+  // The raw message is safe, so a failure here is logged and left to the nightly sync.
+  const range = machineRangeOf(payload)
+  if (!range) return
+  try {
+    await rebuildMachineDays(svc, range)
+  } catch (error) {
+    console.error('[minop/webhook/path-token] attendance not updated:', error instanceof Error ? error.message : 'unknown error')
+  }
 }

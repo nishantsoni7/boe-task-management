@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `1d4a8492` — Tasks: redesign both Cancelled pages, grouped by month (#525)
-- Commits on this branch: 1090
-- Pages (`page.tsx`): 158   API routes (`route.ts`): 173
+- Commit: `1a382f1c` — Docs: the machine switch-on is PR #526
+- Commits on this branch: 1092
+- Pages (`page.tsx`): 158   API routes (`route.ts`): 174
 - Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 687   Next.js 16.2.6, React 19.2.4
+- Test files: 684   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `1a382f1c` 2026-10-30 Docs: the machine switch-on is PR #526
+- `ddc3ad42` 2026-10-30 Attendance machine: punches become attendance from 1 November
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
@@ -37,8 +39,6 @@
 - `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 - `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
 - `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
-- `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
-- `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 
 ## Pages by top-level area
 
@@ -87,7 +87,7 @@
 - **admin-members** (1): ` [GET]`
 - **admin-tasks** (1): ` [GET]`
 - **assets** (2): `/notify [POST]`, `/warranty-sweep [POST]`
-- **attendance** (16): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
+- **attendance** (17): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
@@ -143,7 +143,7 @@
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
-- `src/lib/minop` — 13 source, 10 test
+- `src/lib/minop` — 9 source, 7 test
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
@@ -176,7 +176,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `BOE_MEMORY_DIR` (1 reads)
 - `BOE_PERF_DEBUG` (1 reads)
 - `BOE_REHEARSAL_IMAGE` (1 reads)
-- `CRON_SECRET` (2 reads)
+- `CRON_SECRET` (3 reads)
 - `EXHIBITION_SCAN_MODEL` (2 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (6 reads)
@@ -188,13 +188,13 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (11 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (139 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (140 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (139 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (140 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 

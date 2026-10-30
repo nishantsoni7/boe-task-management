@@ -11,6 +11,7 @@ import {
   parseManualMappings,
   resolveEmployeeMapping,
 } from '@/lib/attendance/employeeMapping'
+import { MACHINE_MONTH_UPLOAD_REFUSED, isMachineMonth } from '@/lib/attendance/monthAvailability'
 import type { PunchDirectionSource } from '@/lib/attendance/punchDirection'
 import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest) {
 
   if (blocks.length === 0) {
     return NextResponse.json({ error: 'No employee blocks found in the file' }, { status: 400 })
+  }
+
+  // The machine owns these dates. This route updates rows in place and never sets
+  // `source`, so an upload here would silently overwrite machine attendance.
+  if (isMachineMonth(blocks[0].year, blocks[0].month)) {
+    return NextResponse.json({ error: MACHINE_MONTH_UPLOAD_REFUSED }, { status: 400 })
   }
 
   // Fetch all fingerprint_employee_code → user mappings (include name for the report)

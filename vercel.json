@@ -11,6 +11,10 @@
     {
       "path": "/api/finance/handovers/remind",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/attendance/minop-sync",
+      "schedule": "45 18 * * *"
     }
   ]
 }

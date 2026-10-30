@@ -248,7 +248,7 @@ export default function IncomingMinopDataPage() {
     <AttendancePayrollLayout
       profile={profile}
       title="Incoming Minop data"
-      subtitle="Data received from Minop for verification. New incoming data is stored only and is not used for attendance."
+      subtitle="Everything received from the machine, exactly as it arrived. Punches from 1 November 2026 become attendance for linked employees."
       onSignOut={handleSignOut}
       actions={
         <button

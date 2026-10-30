@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { istToday } from '@/lib/attendance/monthAvailability'
+import { machineSyncFrom, rebuildMachineDays } from '@/lib/minop/machineAttendance'
 
 // Admin only. This route writes monthly_salary and payroll_notes among other
 // employee-master fields, so a manager holding it meant a manager could set any
@@ -80,6 +82,19 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: `Machine ID ${patch.minop_user_id} is already linked to another employee` }, { status: 409 })
     }
     return NextResponse.json({ error: updateError.message }, { status: 500 })
+  }
+
+  // A person linked after they punched gets those days now, not tonight. The
+  // save has already succeeded, so a failure here is left to the nightly sync.
+  if (patch.minop_user_id) {
+    const today = istToday()
+    await rebuildMachineDays(serviceClient, {
+      from: machineSyncFrom(today),
+      to: today,
+      minopUserIds: [String(patch.minop_user_id)],
+    }).catch(error => {
+      console.error('[update-employee] attendance not updated:', error instanceof Error ? error.message : 'unknown error')
+    })
   }
 
   return NextResponse.json({ success: true })

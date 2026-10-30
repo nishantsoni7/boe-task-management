@@ -2,8 +2,8 @@
 //
 // Reads ONLY the real device shape, `{"trans":[{txnId, dvcId, dvcIP, punchId,
 // txnDateTime, mode}]}`. It never decides anything about employees, attendance
-// or payroll: the result is written to public.minop_punches, which no payroll
-// code reads. Minop stays collection-only (collectionMode.ts).
+// or payroll: the result is written to public.minop_punches, and
+// ./machineAttendance decides what those punches mean for a day.
 
 /** The machine's clock is IST (+05:30): production punches arrive 2 minutes after their stated time. */
 export const MINOP_DEVICE_UTC_OFFSET_MINUTES = 330
@@ -94,10 +94,26 @@ export function extractMinopPunches(payload: unknown): MinopPunchRow[] {
   return rows
 }
 
+export type MinopPunchWithFirstSeen = MinopPunchRow & { first_seen_at: string }
+
+/**
+ * One row per punch across several messages, keeping the earliest receipt. An
+ * upsert may not carry the same key twice in one call.
+ */
+export function mergePunchRows(rows: MinopPunchWithFirstSeen[]): MinopPunchWithFirstSeen[] {
+  const byKey = new Map<string, MinopPunchWithFirstSeen>()
+  for (const row of rows) {
+    const key = JSON.stringify([row.dvc_id, row.minop_user_id, row.punch_local])
+    const held = byKey.get(key)
+    if (!held || row.first_seen_at < held.first_seen_at) byKey.set(key, row)
+  }
+  return [...byKey.values()]
+}
+
 type PunchWriter = {
   from: (table: 'minop_punches') => {
     upsert: (
-      rows: (MinopPunchRow & { first_seen_at: string })[],
+      rows: MinopPunchWithFirstSeen[],
       options: { onConflict: string; ignoreDuplicates: boolean },
     ) => PromiseLike<{ error: { message: string } | null }>
   }

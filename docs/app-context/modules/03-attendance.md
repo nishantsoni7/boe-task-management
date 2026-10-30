@@ -4,7 +4,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 
 ## 1. Purpose & users
 
-- Attendance is the INPUT of payroll: daily punch pairs per employee per IST date, imported from the fingerprint machine's Excel export, corrected by admins, reviewed monthly, and consumed by the payroll engine.
+- Attendance is the INPUT of payroll: daily punch pairs per employee per IST date, from the new machine from 2026-11-01 (see 04) and from the old machine's Excel export before that, corrected by admins, reviewed monthly, and consumed by the payroll engine.
 - One product to the user ("Attendance & Payroll" launcher card), two code domains: `/attendance/*` + `/api/attendance*` and `/payroll/*` + `/api/payroll*`.
 - Roles:
   - **Admin** (`users.role = 'admin'`): everything under `/attendance/*` (management surface, whole company).
@@ -25,7 +25,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | Attendance Requests (employee request -> another admin decides) | Shipped in code (#239, #264, #266, #267). Migrations in repo; prod apply-state unverified (see section 4) |
 | Monthly "Salary decisions" review (day reviews -> payroll correction) | Shipped in code, same migration |
 | Manual check-in / check-out | REMOVED: both routes return HTTP 410 ("use the attendance CSV import") |
-| Minop device feed | Collection-only (see 04). Does NOT write attendance |
+| Minop device feed | The attendance source from 2026-11-01 (see 04). Writes `attendance_records` with `source = 'minop'`; the engine reads them like any other row |
 | Leave types, balances, per-employee shifts, mid-day punch collection, admin editing of a request | NOT BUILT (stated in ATTENDANCE_REQUESTS.md section 10). `ATTENDANCE_MODULE_PLAN.md` is a "Planning only" document: its leave_requests / salary-concern tables do not exist |
 
 ## 3. Pages and API routes
@@ -115,7 +115,7 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - Excluded members (`payroll_active = false`) still get rows imported (so re-including needs no re-upload) but are hidden from calculation, dashboards and counts (`src/lib/payroll/participation.ts`).
 
 ### Month coverage (`src/lib/attendance/monthAvailability.ts`)
-- No per-date "processed" marker exists. Coverage = nothing imported -> null; future -> null; historical month -> month end; CURRENT month -> earlier of (latest imported `attendance_date`, today IST). Dates past the cut-off are dropped from responses, never returned as "unknown". Rows with `source='minop'` are excluded from the company-wide MAX (`effectiveLatestImportedDate`).
+- No per-date "processed" marker exists. Coverage = nothing imported -> null; future -> null; historical month -> month end; CURRENT month -> earlier of (latest imported `attendance_date`, today IST). Dates past the cut-off are dropped from responses, never returned as "unknown". In a month the machine supplies the latest date is capped at yesterday (`machineLatestDate`), so today is never classified; the employee route returns it as `today_so_far` instead.
 
 ### Holidays
 - Full-day holiday: date leaves the working-day calendar. Half-day holiday: date STAYS in the calendar; `classifySingleDay` recurses with half-window settings (`halfDayHoliday.ts`, thresholds halved, lunch boundary splits the day); raw punches are CLIPPED to the working half first (`clipAttendanceToWorkingHalf`); a no-show for the working half is capped at `half_day` (never full absence); `raw_check_*` are restored to true punches afterwards. A manual correction outranks the holiday branch. Create + delete only (no edit).
@@ -172,7 +172,7 @@ Run: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"` (the `.ts`-only glo
 - Adding ANY migration breaks ledger-pinning tests unless the named-successor helper (`assertNamedSuccessors`) covers them; since #327 new files at the end are allowed.
 
 ## 11. Open items / next planned work
-- **Machine-only attendance from 2026-11-01 (owner decision 2026-10-30).** The Excel import stops being the source from that date. What must change here is listed in 04 section 11: import refused from the start date, month coverage counting machine rows, today shown as in progress. Until that ships, section 6 stays accurate.
+- **Machine-only attendance from 2026-11-01 (owner decision 2026-10-30).** Excel import and preview refuse months from November 2026 (`MACHINE_MONTH_UPLOAD_REFUSED`), because the import updates rows in place and would overwrite machine rows. Details in 04 section 11.
 - Confirm prod apply-state of 20270215000000/…100/20270222000000 and the payroll-owner sign-off on the new lock acknowledgement step.
 - Policy decisions still open: final-settlement path for leavers; extra half-day deduction after the 4th uninformed late; per-employee shifts.
 - Control Center / attendance review roadmap (10-item backlog) in memory `project_control_center_attendance_review_roadmap.md` (unverified, from memory).

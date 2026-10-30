@@ -10,8 +10,9 @@ export const runtime = 'nodejs'
 
 /**
  * Raw Minop transport boundary: authenticate the callback, preserve the exact
- * vendor request, and acknowledge it in the format Minop documents. Minop is
- * collection-only for now, so nothing here turns a delivery into attendance.
+ * vendor request, and acknowledge it in the format Minop documents. The real
+ * machine cannot reach this route (it sends no authentication), so nothing here
+ * turns a delivery into attendance. That happens on the path-token route.
  */
 export async function POST(req: NextRequest) {
   const declaredLength = Number(req.headers.get('content-length') ?? '0')
@@ -89,9 +90,6 @@ export async function POST(req: NextRequest) {
     // successfully accepted so the sender may retry instead of silently losing it.
     return NextResponse.json({ error: 'Invalid webhook payload' }, { status: 400 })
   }
-
-  // Collection-only: the delivery is stored and nothing else happens. No
-  // attendance processing runs from this route (see src/lib/minop/collectionMode.ts).
 
   // Minop's callback protocol requires this exact success shape. If status "1"
   // is not returned, Minop documents that it will retry the request.

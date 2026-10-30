@@ -40,6 +40,7 @@
 //
 // Only the third one licenses the sentence "this employee was absent".
 
+import { MACHINE_ATTENDANCE_FROM } from '../minop/machineDay'
 import { monthRange } from './monthCalendar'
 
 /** IST is UTC+05:30, and the whole product reasons about attendance in IST. */
@@ -111,29 +112,31 @@ export function attendanceCoverageThrough(
   return latestImportedDate < today ? latestImportedDate : today
 }
 
+/** Does the attendance machine supply this month, rather than the Excel upload? */
+export function isMachineMonth(year: number, month: number): boolean {
+  return monthRange(year, month).to >= MACHINE_ATTENDANCE_FROM
+}
+
+export const MACHINE_MONTH_UPLOAD_REFUSED =
+  'Attendance from November 2026 comes from the new machine, so this month cannot be uploaded from Excel.'
+
 /**
- * The `latestImportedDate` input to attendanceCoverageThrough(), when a live
- * Minop punch feed exists alongside the CSV/manual import this file was
- * written for.
+ * The `latestImportedDate` input to attendanceCoverageThrough() for a month the
+ * machine supplies.
  *
- * `companyLatestCsv` must stay scoped to CSV/manual rows only (the caller
- * excludes attendance_records.source = 'minop') — that is what keeps ONE
- * employee's live punch from making every OTHER, still-CSV-only employee's
- * unprocessed today read as "covered". `employeeLatestLive` is that one
- * employee's own latest Minop-sourced date, which is real processed data for
- * THEM specifically even on a day the CSV side has not reached.
+ * An upload arrives whole, so its newest date is finished. A machine day fills in
+ * as people punch, so TODAY cannot be read yet: anyone who has not punched is not
+ * absent, and anyone who has punched in has not missed their punch-out. So the
+ * cut-off stops at yesterday at the latest.
  *
- * The answer is simply the later of the two: whichever source got further for
- * this employee is the one whose coverage they should see.
+ * It stays capped at the newest date the company has as well. If the machine goes
+ * quiet, the days it has not sent are unprocessed, not absences, and they stay out
+ * of the answer until the punches arrive.
  */
-export function effectiveLatestImportedDate(
-  companyLatestCsv: string | null,
-  employeeLatestLive: string | null,
-): string | null {
-  return [companyLatestCsv, employeeLatestLive]
-    .filter((d): d is string => d !== null)
-    .sort()
-    .at(-1) ?? null
+export function machineLatestDate(companyLatest: string | null, now: Date = new Date()): string | null {
+  if (!companyLatest) return null
+  const yesterday = istToday(new Date(now.getTime() - 86_400_000))
+  return companyLatest < yesterday ? companyLatest : yesterday
 }
 
 /**
@@ -197,4 +200,14 @@ export function monthNotImportedMessage(monthLabel: string): string {
 export function coverageNoticeMessage(dateLabel: string): string {
   return `Attendance has been uploaded up to ${dateLabel}. Later days of this month have not ` +
     `been processed yet, so they are not shown — and none of them count as an absence.`
+}
+
+/** The same two notices for a month the machine supplies, where nobody uploads anything. */
+export function machineMonthEmptyMessage(monthLabel: string): string {
+  return `No attendance has come from the machine for ${monthLabel} yet.`
+}
+
+export function machineCoverageNoticeMessage(dateLabel: string): string {
+  return `Attendance is complete up to ${dateLabel}. Today is still going, and punches can reach BOE ` +
+    `a few hours late, so later days are not shown yet — and none of them count as an absence.`
 }
