@@ -690,6 +690,7 @@ export default function BoeOsHomePage() {
   const attentionSources: AttentionSources = {
     userId,
     financeAllowed: mayOpenFinance,
+    ordersAllowed: mayOpenOrders,
     showAttendance: showPendingApprovals,
     latestAnnouncement: showAnnouncements ? myAnnouncements[0] ?? null : null,
   }
@@ -910,7 +911,7 @@ export default function BoeOsHomePage() {
           {!editingOrder && <AttentionStrip {...attentionSources} />}
 
           {/* The modules on the left, "For you" on the right (a new
-              announcement, cash handed to you, cash not with the company,
+              announcement, a PI returned to you, cash handed to you, cash not with the company,
               leave and late arrival). Beside the tiles rather than above them
               so nothing pushes the modules down; on a phone it falls below
               them. */}

@@ -7,6 +7,12 @@
 //
 //   1. THE NEWEST UNREAD ANNOUNCEMENT — Read. Opening it marks it read (the
 //      announcement page acknowledges), and it leaves the panel.
+//   1b. PI RETURNED TO YOU (owner, 2026-10-30) — one card per PI in Returned to
+//      Sales where the viewer is its salesperson, creator or submitter, from
+//      my_returned_pis() (20270507000000). Open PI. It stays until the PI is
+//      submitted again or deleted — reading the notification does not remove
+//      it — and turns red from the third day. Never the approver's note. Not
+//      notification previews: those stay out of this panel (2026-10-29).
 //   2. THE VIEWER'S OWN CASH, for everyone, as it passes hand to hand until a
 //      company cash custodian (Nitish) accepts it (owner, 2026-10-29). Both
 //      people in an open handover see it until it changes hands:
@@ -34,15 +40,19 @@
 // A PLACEMENT AND NOTHING ELSE. Every card reads an existing query and every
 // write goes through an existing door (accept_cash_handover,
 // remind_cash_handover, create_cash_handover via HandoverModal, the attendance
-// decision route). Accepting custody never approves a payment: Finance still
+// decision route; a returned PI opens the existing PI page). Accepting custody never approves a payment: Finance still
 // verifies it (20270417000000).
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, Banknote, Clock, HandCoins, Megaphone, Wallet } from 'lucide-react'
+import { ArrowDown, Banknote, Clock, HandCoins, Megaphone, Undo2, Wallet } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
+import { useMyReturnedPis } from '@/hooks/queries/useMyReturnedPis'
+import {
+  isReturnedPiUrgent, returnedAge, returnedBrief, returnedDetail, type ReturnedPi,
+} from '@/lib/orders/returnedPis'
 import { HandoverConfirmDialog } from '@/components/finance/HandoverCard'
 import { HandoverModal } from '@/components/finance/HandoverModal'
 import { CASH_JOURNEYS_PATH } from '@/components/finance/UnclosedFundsCard'
@@ -59,6 +69,8 @@ export type AttentionSources = {
   userId: string | null
   /** The viewer may open Finance, so a cash card can link to Cash journeys. */
   financeAllowed: boolean
+  /** The viewer may open Order Management: PIs returned to them are read. */
+  ordersAllowed: boolean
   /** The signed-in admin, not previewing: leave and late requests are theirs. */
   showAttendance: boolean
   /** The newest announcement this person may see, or null. */
@@ -145,9 +157,10 @@ function useSnooze(userId: string | null) {
  * Everything the panel and the phone strip need, from one set of queries (each
  * deduped by its key, so calling this twice costs nothing).
  */
-export function useAttentionSummary({ userId, showAttendance, latestAnnouncement }: AttentionSources) {
+export function useAttentionSummary({ userId, ordersAllowed, showAttendance, latestAnnouncement }: AttentionSources) {
   const { viewerId, mine, isError: handoversError } = useOpenHandovers()
   const unclosed = useUnclosedFunds()
+  const returnedPis = useMyReturnedPis(ordersAllowed)
   const approvals = usePendingApprovalQueue(userId, showAttendance)
   const snooze = useSnooze(userId)
   // The state is only ever unexpired (readSnooze on load, the timer after), so
@@ -156,6 +169,9 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
 
   const announcement = latestAnnouncement && !latestAnnouncement.read_at
     && shown(itemKeys.announcement(latestAnnouncement.id)) ? latestAnnouncement : null
+
+  // PIs returned to the viewer: each is waiting on them until they submit it again.
+  const returned = (returnedPis.data ?? []).filter(r => shown(itemKeys.returnedPi(r.submissionId, r.since)))
 
   const toAccept = mine
     .filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
@@ -209,11 +225,12 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
 
   // Waiting on the viewer: accepting, handing on, deciding. Not their own
   // "Waiting for" cards: that is somebody else's move.
-  const actCount = toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length
-  const itemCount = (announcement ? 1 : 0) + toAccept.length + handedOut.length + (held ? 1 : 0)
+  const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length
+  const itemCount = (announcement ? 1 : 0) + returned.length + toAccept.length + handedOut.length + (held ? 1 : 0)
     + holders.length + requests.length
   const visibleKeys = [
     ...(announcement ? [itemKeys.announcement(announcement.id)] : []),
+    ...returned.map(r => itemKeys.returnedPi(r.submissionId, r.since)),
     ...toAccept.map(h => itemKeys.handover(h.id)),
     ...handedOut.map(h => itemKeys.handover(h.id)),
     ...(held ? [held.key] : []),
@@ -222,8 +239,9 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
   ]
 
   return {
-    announcement, toAccept, handedOut, held, holders, requests,
+    announcement, returned, toAccept, handedOut, held, holders, requests,
     viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
+    returnedError: ordersAllowed && returnedPis.isError,
     handoversError, cashError: unclosed.isError, approvalsError: showAttendance && approvals.isError,
     actCount, itemCount, visibleKeys, shown, clearAll: () => snooze.clear(visibleKeys),
   }
@@ -232,7 +250,7 @@ export function useAttentionSummary({ userId, showAttendance, latestAnnouncement
 export function AttentionPanel(props: AttentionSources) {
   const { userId, financeAllowed } = props
   const s = useAttentionSummary(props)
-  const errors = s.handoversError || s.cashError || s.approvalsError
+  const errors = s.returnedError || s.handoversError || s.cashError || s.approvalsError
   // "Hand over cash", opened from a card. Kept here, not in the card: the card
   // it was opened from leaves the list the moment its handover is accepted.
   // `paymentIds` = the payments to tick first (null = none).
@@ -270,6 +288,13 @@ export function AttentionPanel(props: AttentionSources) {
 
       <ul className={styles.cards}>
         {s.announcement && <AnnouncementCard latest={s.announcement} />}
+
+        {s.returnedError && (
+          <ErrorCard icon={<Undo2 size={13} strokeWidth={2} />} label="PIs returned to you">
+            Could not be loaded, so one waiting for you may be missing.
+          </ErrorCard>
+        )}
+        {s.returned.map(r => <ReturnedPiCard key={r.submissionId} r={r} />)}
 
         {s.handoversError && (
           <ErrorCard icon={<HandCoins size={13} strokeWidth={2} />} label="Cash handovers">
@@ -375,6 +400,36 @@ function AnnouncementCard({ latest }: { latest: MyAnnouncement }) {
       >
         Read
       </Link>
+    </li>
+  )
+}
+
+// ── One PI returned to the viewer ────────────────────────────────────────────
+//
+// Which PI, who returned it, how long ago; Open PI goes to the existing PI page,
+// whose attention card shows the approver's note. Red from the third day. A PI
+// the existing rules would not let the viewer open gets no button.
+function ReturnedPiCard({ r }: { r: ReturnedPi }) {
+  const urgent = isReturnedPiUrgent(r.waitingSeconds)
+  return (
+    <li className={urgent ? `${styles.card} ${styles.cardUrgent}` : styles.card}>
+      <span className={urgent ? styles.cardLabelUrgent : styles.cardLabel}>
+        <Undo2 size={13} strokeWidth={2} aria-hidden="true" />
+        PI returned to you · {returnedAge(r.waitingSeconds)}
+      </span>
+      <span className={styles.cardBrief}>{returnedBrief(r)}</span>
+      <span className={styles.cardDetail}>{returnedDetail(r)}</span>
+      {r.canOpen ? (
+        <Link
+          href={`/orders/drafts/${r.submissionId}`}
+          className={styles.buttonPrimary}
+          aria-label={`Open PI: ${returnedBrief(r)}`}
+        >
+          Open PI
+        </Link>
+      ) : (
+        <span className={styles.cardDetail}>Opens only for whoever filed it</span>
+      )}
     </li>
   )
 }

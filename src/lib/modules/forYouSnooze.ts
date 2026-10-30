@@ -57,4 +57,6 @@ export const itemKeys = {
   handover: (id: string) => `handover:${id}`,
   holder: (holderId: string, amount: number, detail: string) => `cash:${holderId}:${amount}:${detail}`,
   request: (id: string) => `request:${id}`,
+  /** A PI returned to Sales; returned again later is a new item, shown at once. */
+  returnedPi: (id: string, since: string | null) => `returned-pi:${id}:${since ?? ''}`,
 }

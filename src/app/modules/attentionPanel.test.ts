@@ -1,7 +1,7 @@
 /**
  * The Modules launcher's "For you" panel (owner, 2026-10-29): a 280px column
- * docked to the window's right edge, holding only a new announcement, your own
- * cash as it passes hand to hand (handed to you, waiting for the person you
+ * docked to the window's right edge, holding only a new announcement, a PI
+ * returned to you (owner, 2026-10-30), your own cash as it passes hand to hand (handed to you, waiting for the person you
  * gave it to, held by you), everybody else's cash not with the company, and
  * leave and late-arrival
  * requests — each one brief card with one action — plus Clear all. With
@@ -121,6 +121,44 @@ describe('cash not with the company', () => {
   })
 })
 
+describe('a PI returned to you (owner, 2026-10-30)', () => {
+  test('one card per PI, read from the one definition, only with the Orders module', () => {
+    assert.match(PAGE, /ordersAllowed: mayOpenOrders,/)
+    assert.match(PANEL, /const returnedPis = useMyReturnedPis\(ordersAllowed\)/)
+    const HOOK = read('src/hooks/queries/useMyReturnedPis.ts')
+    assert.match(HOOK, /createClient\(\)\.rpc\('my_returned_pis'\)/)
+    // Not while previewing someone: the read is the signed-in person's own.
+    assert.match(HOOK, /enabled: enabled && !!userId && !viewMode/)
+  })
+
+  test('right after a new announcement, before cash handed to you', () => {
+    const order = ['<AnnouncementCard', '<ReturnedPiCard', '<AcceptCard'].map(s => PANEL.indexOf(s))
+    assert.ok(order.every(i => i >= 0))
+    assert.deepEqual([...order].sort((a, b) => a - b), order)
+  })
+
+  test('Open PI goes to the existing PI page; no button for a PI the viewer may not open', () => {
+    assert.match(PANEL, /\{r\.canOpen \? \(\s*<Link\s*href=\{`\/orders\/drafts\/\$\{r\.submissionId\}`\}/)
+    assert.match(PANEL, />\s*Open PI\s*</)
+    assert.match(PANEL, /Opens only for whoever filed it/)
+  })
+
+  test('red from the third day, and it counts as waiting on the viewer (the phone strip)', () => {
+    assert.match(PANEL, /const urgent = isReturnedPiUrgent\(r\.waitingSeconds\)/)
+    assert.match(PANEL, /const actCount = returned\.length \+/)
+  })
+
+  test('never the approver\'s note, and still no notification previews', () => {
+    const code = PANEL.replace(/\/\/.*$/gm, '')
+    assert.equal(/\bnote\b|review_note|useNotifications/i.test(code), false)
+  })
+
+  test('a failed read says so instead of showing nothing', () => {
+    assert.match(PANEL, /returnedError: ordersAllowed && returnedPis\.isError/)
+    assert.match(PANEL, /label="PIs returned to you"/)
+  })
+})
+
 describe('the newest announcement', () => {
   test('only while unread, and Read opens its page', () => {
     assert.match(PANEL, /latestAnnouncement && !latestAnnouncement\.read_at/)
@@ -133,7 +171,7 @@ describe('Clear all', () => {
     assert.match(PANEL, /clearAll: \(\) => snooze\.clear\(visibleKeys\)/)
     assert.match(PANEL, /onClick=\{s\.clearAll\}/)
     // Every kind of card is filtered by it, the requests included.
-    for (const k of ['itemKeys.announcement(', 'itemKeys.handover(', 'itemKeys.holder(', 'itemKeys.request(']) {
+    for (const k of ['itemKeys.announcement(', 'itemKeys.returnedPi(', 'itemKeys.handover(', 'itemKeys.holder(', 'itemKeys.request(']) {
       assert.ok(PANEL.includes(k), `${k} is filtered`)
     }
     assert.match(CARD, /queue\.rows\.filter\(r => isShown\(itemKeys\.request\(r\.id\)\)\)/)

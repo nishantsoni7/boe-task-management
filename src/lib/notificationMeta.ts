@@ -407,10 +407,15 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
     // ONE TYPE, TWO OUTCOMES: pi_review_decided covers "sent back" and "rejected"
     // (order_submission_review_notify writes both under it). The salesperson must
     // see at a glance which, so the badge follows the title the trigger wrote.
+    // Since 20270509000000 the titles are one line ("… was returned to you",
+    // "… was closed (deal lost)"); notices written before keep their old words
+    // and their old badges.
     let badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
     if (type === 'pi_review_decided') {
       const title = n.title ?? ''
-      if (/^Changes were requested/i.test(title)) badge = { label: 'Changes requested', color: colors.amber, bg: colors.amberTint }
+      if (/was returned to you/i.test(title)) badge = { label: 'Returned to Sales', color: colors.amber, bg: colors.amberTint }
+      else if (/was closed \(deal lost\)/i.test(title)) badge = { label: 'Closed: deal lost', color: colors.red, bg: colors.redTint }
+      else if (/^Changes were requested/i.test(title)) badge = { label: 'Changes requested', color: colors.amber, bg: colors.amberTint }
       else if (/was rejected/i.test(title)) badge = { label: 'Rejected', color: colors.red, bg: colors.redTint }
     }
     return {

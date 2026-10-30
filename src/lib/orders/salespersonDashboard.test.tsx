@@ -1,12 +1,14 @@
-// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE READS IT (20270228000000).
+// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE READS IT (20270228000000;
+// layout A and last month since 20270508000000, owner 2026-10-30).
 //
 // The database decides what counts; supabase/tests/salesperson_orders_dashboard_assertions.sql
-// pins the rules (ownership, confirmed orders, revenue windows, the 40% line, fabric/finish,
-// ready for dispatch). These pin the other half: that the page validates the database's answer,
-// draws EVERY row it was given (no preview cap), keeps card and panel in agreement, says a failed
-// read is an error, and leaves the dashboard everybody else has exactly where it was.
+// and supabase/tests/sales_dashboard_returned_pis_pglite.mjs pin the rules (ownership, confirmed
+// orders, revenue months, the 40% line, ready for dispatch). These pin the other half: that the
+// page validates the database's answer, draws EVERY row it was given (no preview cap), draws each
+// figure once, says a failed read is an error, and leaves the dashboard everybody else has exactly
+// where it was.
 //
-// Run with: npx tsx --test "src/lib/orders/salespersonDashboard.test.tsx"
+// Run with: npm run test:file -- src/lib/orders/salespersonDashboard.test.tsx
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the malformed-payload cases reach into an untyped fixture on purpose */
 import { describe, test } from 'node:test'
@@ -19,16 +21,16 @@ import {
   SP_EMPTY,
   advanceCountText,
   advancePercentText,
-  dispatchDateText,
-  fabricCountText,
-  unknownKindsText,
+  confirmedAgoText,
   isDashboardFunctionMissing,
+  plannedDispatchText,
+  readyForText,
   resolvePersonalRead,
   parseSalespersonDashboard,
-  pendingKindsText,
-  pendingWaitText,
+  returnedTitle,
   revenueNotes,
-  sinceConfirmationText,
+  shortfallText,
+  waitingText,
   type SalespersonDashboard,
 } from './salespersonDashboard'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
@@ -44,35 +46,47 @@ function rows<T>(n: number, make: (i: number) => T): T[] {
 function payload(over: Record<string, unknown> = {}): any {
   return {
     applicable: true,
-    today: '2026-10-03',
-    now: '2026-10-03T10:00:00Z',
+    today: '2026-10-30',
+    now: '2026-10-30T10:00:00Z',
     month_from: '2026-10-01',
     total_orders: 42,
-    revenue: { amount: 1234567.5, orders: 3, no_product_value: 0, before_discount: 0 },
+    revenue: { amount: 482500, orders: 3, no_product_value: 0, before_discount: 0 },
+    revenue_last_month: { month_from: '2026-09-01', amount: 1136000, orders: 7, no_product_value: 0, before_discount: 0 },
     pending_total: 2,
     pending: [
-      { submission_id: 'sub-1', reference: 'PID-00006', client_name: 'Kalyan Interiors', since: '2026-09-28T10:00:00Z', waiting_seconds: 5 * 86400 + 60, can_open: true },
-      { submission_id: 'sub-2', reference: 'PID-00007', client_name: 'Meera Textiles', since: '2026-10-03T08:00:00Z', waiting_seconds: 7200, can_open: false },
+      { submission_id: 'sub-1', reference: 'PID-00024', client_name: 'Nest Studio', since: '2026-10-28T10:00:00Z', waiting_seconds: 2 * 86400 + 60, can_open: true },
+      { submission_id: 'sub-2', reference: 'PID-00026', client_name: 'Casa Bella', since: '2026-10-30T05:00:00Z', waiting_seconds: 5 * 3600, can_open: false },
+    ],
+    returned_total: 0,
+    returned: [],
+    rejected_total: 1,
+    rejected: [
+      { submission_id: 'sub-9', reference: 'PID-00019', client_name: 'Studio Arc', note: 'Client went elsewhere', by_name: 'Nishant Soni', since: '2026-10-29T10:00:00Z', waiting_seconds: 86400, can_open: true },
     ],
     advance: [
-      { order_id: 'ord-a1', display_number: '0524', client_name: 'Sharma & Sons Furnishing Private Limited (Bandra West Showroom, Mumbai)', status: 'running', verified: 0, percent: 0, exception_approved: false, confirm_date: '2026-09-01' },
-      { order_id: 'ord-a2', display_number: '0525', client_name: 'Iyer Homes', status: 'running', verified: 399999.99, percent: 39.99, exception_approved: true, confirm_date: '2026-09-02' },
+      { order_id: 'ord-a1', display_number: '0509', client_name: 'Sharma & Sons Furnishing Private Limited (Bandra West Showroom, Mumbai)', status: 'running', verified: 0, percent: 0, shortfall: 48000, exception_approved: true, confirm_date: '2026-09-26', days_since_confirmation: 34 },
+      { order_id: 'ord-a2', display_number: '0518', client_name: 'Kapoor Interiors', status: 'running', verified: 79900, percent: 12, shortfall: 186400.5, exception_approved: false, confirm_date: '2026-10-09', days_since_confirmation: 21 },
     ],
     advance_unchecked: [],
     fabric_finish: [
       { order_id: 'ord-f1', display_number: '0510', client_name: 'Patel Retail', status: 'running', confirm_date: '2026-09-01', days_since_confirmation: 32, over_15_days: true,
-        pending: [{ kind: 'fabric', status: 'not_approved' }, { kind: 'finish', status: 'no_approval_recorded' }], unknown: [] },
-      { order_id: 'ord-f2', display_number: '0530', client_name: 'Rao Studio', status: 'running', confirm_date: '2026-10-02', days_since_confirmation: 1, over_15_days: false,
-        pending: [{ kind: 'finish', status: 'partially_approved' }], unknown: [] },
+        pending: [{ kind: 'fabric', status: 'not_approved' }], unknown: [] },
     ],
     fabric_finish_unknown: [],
     ready_for_dispatch: [
-      { order_id: 'ord-r1', display_number: '0501', client_name: 'Desai Group', status: 'ready_for_dispatch', planned_dispatch_date: '2026-10-12' },
-      { order_id: 'ord-r2', display_number: '0502', client_name: 'Nair Exports', status: 'ready_for_dispatch', planned_dispatch_date: null },
+      { order_id: 'ord-r1', display_number: '0497', client_name: 'Sharma Villa', status: 'ready_for_dispatch', planned_dispatch_date: '2026-10-28', ready_since: '2026-10-19T08:00:00Z', ready_days: 11 },
+      { order_id: 'ord-r2', display_number: '0501', client_name: 'Meraki Cafe', status: 'ready_for_dispatch', planned_dispatch_date: '2026-11-02', ready_since: '2026-10-24T08:00:00Z', ready_days: 6 },
+      { order_id: 'ord-r3', display_number: '0512', client_name: 'The Oak Room', status: 'ready_for_dispatch', planned_dispatch_date: null, ready_since: null, ready_days: null },
     ],
     ...over,
   }
 }
+
+const returnedRow = (over: Record<string, unknown> = {}) => ({
+  submission_id: 'sub-21', reference: 'PID-00021', client_name: 'IBC',
+  note: 'In 003 and 004 (20 mm will be quartz and 20mm will be wood) … nine paragraphs', by_name: 'Nishant Soni',
+  since: '2026-10-27T10:00:00Z', waiting_seconds: 3 * 86400, can_open: true, ...over,
+})
 
 function parsed(raw: unknown): SalespersonDashboard {
   const r = parseSalespersonDashboard(raw)
@@ -84,6 +98,8 @@ function html(d: SalespersonDashboard) {
   return renderToStaticMarkup(createElement(SalespersonDashboardView, { data: d }))
 }
 
+const listOf = (out: string, area: string) => out.split(`data-area="${area}"`)[1].split('</section>')[0]
+
 // ── Validation ────────────────────────────────────────────────────────────────
 
 describe('the answer is validated, never trusted', () => {
@@ -91,14 +107,31 @@ describe('the answer is validated, never trusted', () => {
     assert.deepEqual(parseSalespersonDashboard({ applicable: false }), { ok: true, applicable: false })
   })
 
-  test('a valid payload parses to the page model', () => {
+  test('a valid payload parses to the page model, with last month, the shortfall and ready since', () => {
     const d = parsed(payload())
-    assert.equal(d.totalOrders, 42)
-    assert.equal(d.revenue.amount, 1234567.5)
+    assert.equal(d.revenue.amount, 482500)
+    assert.deepEqual(d.revenueLastMonth, { monthFrom: '2026-09-01', amount: 1136000, orders: 7, noProductValue: 0, beforeDiscount: 0 })
+    assert.equal(d.today, '2026-10-30')
     assert.equal(d.pending.length, 2)
-    assert.equal(d.advance[1].percent, 39.99)
-    assert.deepEqual(d.fabricFinish[0].pending, ['fabric', 'finish'])
-    assert.equal(d.readyForDispatch[1].plannedDispatchDate, null)
+    assert.equal(d.advance[1].shortfall, 186400.5)
+    assert.equal(d.advance[1].daysSinceConfirmation, 21)
+    assert.equal(d.readyForDispatch[0].readyDays, 11)
+    assert.equal(d.readyForDispatch[2].readyDays, null)
+  })
+
+  test('a database without 20270508000000 is "not sent", never an error and never zero', () => {
+    const p = payload()
+    delete p.revenue_last_month
+    for (const a of p.advance) { delete a.shortfall; delete a.days_since_confirmation }
+    for (const r of p.ready_for_dispatch) { delete r.ready_since; delete r.ready_days }
+    const d = parsed(p)
+    assert.equal(d.revenueLastMonth, null)
+    assert.equal(d.advance[0].shortfall, null)
+    assert.equal('readyDays' in d.readyForDispatch[0], false)
+    const out = html(d)
+    assert.match(out, /Last month<\/h2><p class="spd-fig-value">–<\/p><p class="spd-fig-sub">Not available yet</)
+    assert.doesNotMatch(out, /₹0</)
+    assert.doesNotMatch(out, /Ready date not recorded|Ready for \d|Ready today/)
   })
 
   test('numeric strings from the database are accepted; anything else is refused, never zeroed', () => {
@@ -109,8 +142,12 @@ describe('the answer is validated, never trusted', () => {
       payload({ total_orders: null }),
       payload({ revenue: null }),
       payload({ revenue: { amount: 'NaN', orders: 0, no_product_value: 0, before_discount: 0 } }),
+      payload({ revenue_last_month: { month_from: '2026-09-01', amount: 'lots', orders: 1, no_product_value: 0, before_discount: 0 } }),
+      payload({ revenue_last_month: { amount: 1, orders: 1, no_product_value: 0, before_discount: 0 } }),
       payload({ pending: null }),
       payload({ advance: [{ order_id: 'x', display_number: '1', client_name: 'c', percent: 'abc' }] }),
+      payload({ advance: [{ order_id: 'x', display_number: '1', client_name: 'c', percent: 10, shortfall: 'abc' }] }),
+      payload({ ready_for_dispatch: [{ order_id: 'x', display_number: '1', client_name: 'c', planned_dispatch_date: null, ready_days: 'soon' }] }),
       payload({ month_from: 'October' }),
       payload({ applicable: undefined }),
       'a string', null, [], {},
@@ -120,12 +157,12 @@ describe('the answer is validated, never trusted', () => {
     }
   })
 
-  test('the card and the panel are one number: a mismatch is refused', () => {
+  test('the pending number and its list are one number: a mismatch is refused', () => {
     assert.equal(parseSalespersonDashboard(payload({ pending_total: 3 })).ok, false)
     assert.equal(parseSalespersonDashboard(payload({ pending_total: 1 })).ok, false)
   })
 
-  test('a fabric row with nothing pending is refused', () => {
+  test('a fabric row with nothing pending is still refused (the database still sends the list)', () => {
     const p = payload()
     p.fabric_finish[0].pending = []
     assert.equal(parseSalespersonDashboard(p).ok, false)
@@ -143,8 +180,7 @@ describe('the answer is validated, never trusted', () => {
     assert.deepEqual(resolvePersonalRead({ data: null, error: null }), { kind: 'error' }, 'no data and no error is unreadable, not an empty dashboard')
     assert.deepEqual(resolvePersonalRead({ data: { applicable: true }, error: null }), { kind: 'error' }, 'a malformed answer is an error')
     assert.deepEqual(resolvePersonalRead({ data: { applicable: false }, error: null }), { kind: 'other' })
-    const ok = resolvePersonalRead({ data: payload(), error: null })
-    assert.equal(ok.kind, 'ready')
+    assert.equal(resolvePersonalRead({ data: payload(), error: null }).kind, 'ready')
   })
 
   test('only a MISSING function falls back; every other failure is an error', () => {
@@ -159,25 +195,17 @@ describe('the answer is validated, never trusted', () => {
 // ── Words ─────────────────────────────────────────────────────────────────────
 
 describe('the words', () => {
-  test('pending wait', () => {
-    assert.equal(pendingWaitText(3 * 86400 + 100), 'Pending 3 days')
-    assert.equal(pendingWaitText(86400), 'Pending 1 day')
-    assert.equal(pendingWaitText(5 * 3600), 'Pending 5 h')
-    assert.equal(pendingWaitText(30), 'Pending <1 h')
-    assert.equal(pendingWaitText(-5), 'Pending <1 h')
+  test('waiting', () => {
+    assert.equal(waitingText(3 * 86400 + 100), 'Waiting 3 days')
+    assert.equal(waitingText(86400), 'Waiting 1 day')
+    assert.equal(waitingText(5 * 3600), 'Waiting 5 h')
+    assert.equal(waitingText(30), 'Waiting <1 h')
+    assert.equal(waitingText(-5), 'Waiting <1 h')
   })
 
-  test('what is pending, in the three combinations', () => {
-    assert.equal(pendingKindsText(['fabric']), 'Fabric')
-    assert.equal(pendingKindsText(['finish']), 'Finish')
-    assert.equal(pendingKindsText(['fabric', 'finish']), 'Fabric + Finish')
-  })
-
-  test('time since confirmation, including no date', () => {
-    assert.equal(sinceConfirmationText(32), '32 days since confirmation')
-    assert.equal(sinceConfirmationText(1), '1 day since confirmation')
-    assert.equal(sinceConfirmationText(0), 'Confirmed today')
-    assert.equal(sinceConfirmationText(null), 'Confirmation date not recorded')
+  test('the returned strip names how many', () => {
+    assert.equal(returnedTitle(1), '1 PI returned to you')
+    assert.equal(returnedTitle(3), '3 PIs returned to you')
   })
 
   test('advance percent: never NaN, never Infinity, no false precision', () => {
@@ -187,92 +215,115 @@ describe('the words', () => {
     assert.doesNotMatch(advancePercentText(0), /NaN|Infinity/)
   })
 
-  test('dispatch date, with and without one', () => {
-    assert.equal(dispatchDateText('2026-10-12'), 'Dispatch 12 Oct 2026')
-    assert.equal(dispatchDateText(null), 'No dispatch date')
+  test('the shortfall is rupees to ask for; not sent is a dash, never ₹0', () => {
+    assert.equal(shortfallText(186400), '₹1,86,400 short')
+    assert.equal(shortfallText(6300.5), '₹6,300.50 short')
+    assert.equal(shortfallText(null), '–')
   })
 
-  test('pending and unknown are two numbers, never one', () => {
-    assert.equal(fabricCountText(7, 0), '7')
-    assert.equal(fabricCountText(7, 2), '7 pending · 2 unknown')
-    assert.equal(fabricCountText(0, 3), '0 pending · 3 unknown')
-    assert.equal(unknownKindsText(['fabric']), 'Fabric status unknown')
-    assert.equal(unknownKindsText(['fabric', 'finish']), 'Fabric + Finish status unknown')
+  test('time since confirmation, including no date', () => {
+    assert.equal(confirmedAgoText(21), 'Confirmed 21 days ago')
+    assert.equal(confirmedAgoText(1), 'Confirmed 1 day ago')
+    assert.equal(confirmedAgoText(0), 'Confirmed today')
+    assert.equal(confirmedAgoText(null), 'Confirmation date not recorded')
   })
 
-  test('what could not be assessed is said, not folded into a clean list', () => {
+  test('ready since: days, today, not recorded, or nothing when not sent', () => {
+    assert.equal(readyForText(6), 'Ready for 6 days')
+    assert.equal(readyForText(1), 'Ready for 1 day')
+    assert.equal(readyForText(0), 'Ready today')
+    assert.equal(readyForText(null), 'Ready date not recorded')
+    assert.equal(readyForText(undefined), null)
+  })
+
+  test('planned dispatch: a passed date is said, by India\'s today', () => {
+    assert.deepEqual(plannedDispatchText('2026-10-28', '2026-10-30'), { text: 'Planned 28 Oct 2026 · passed', tone: 'alert' })
+    assert.deepEqual(plannedDispatchText('2026-10-30', '2026-10-30'), { text: 'Planned 30 Oct 2026', tone: 'good' })
+    assert.deepEqual(plannedDispatchText('2026-11-02', '2026-10-30'), { text: 'Planned 2 Nov 2026', tone: 'good' })
+    assert.deepEqual(plannedDispatchText(null, '2026-10-30'), { text: 'No dispatch date', tone: 'muted' })
+    assert.deepEqual(plannedDispatchText('2026-10-28', null), { text: 'Planned 28 Oct 2026', tone: 'good' }, 'no today: nothing is called passed')
+  })
+
+  test('what could not be assessed is said under its own month', () => {
     assert.deepEqual(revenueNotes({ amount: 1, orders: 1, noProductValue: 0, beforeDiscount: 0 }), [])
     assert.match(revenueNotes({ amount: 1, orders: 1, noProductValue: 2, beforeDiscount: 1 }).join(' '), /2 orders.*are not counted.*1 order this month carries/)
+    assert.match(revenueNotes({ amount: 1, orders: 1, noProductValue: 1, beforeDiscount: 0 }, 'last month').join(' '), /1 order last month with no product value on record is not counted/)
   })
 })
 
 // ── What is drawn ─────────────────────────────────────────────────────────────
 
-describe('the page body: three cards and four panels, in order', () => {
-  test('five summary cards, in order, with the stated figures and labels (the last two count PIs sent back / rejected, never pending)', () => {
+describe('the page body: returned strip, two sales figures, three lists', () => {
+  test('nothing returned: no strip at all', () => {
     const out = html(parsed(payload()))
-    const cards = [...out.matchAll(/<section class="spd-card"[^>]*><h2[^>]*>([^<]+)<\/h2><p class="spd-card-value">([^<]*)<\/p><p class="spd-card-sub">([^<]*)<\/p>/g)]
-    assert.deepEqual(cards.map(c => c[1]), ['Total Orders', 'Current Month Revenue', 'Orders Pending Approval', 'Returned to Sales', 'Closed'])
-    assert.equal(cards[0][2], '42')
-    assert.equal(cards[0][3], 'All-time confirmed orders')
-    assert.equal(cards[1][2], '₹12,34,567.50')
-    assert.match(cards[1][3], /^October 2026/)
-    assert.equal(cards[2][2], '2')
-    assert.equal(cards[3][2], '0')
-    assert.equal(cards[4][2], '0')
+    assert.doesNotMatch(out, /spd-returned|returned to you/)
   })
 
-  test('four panels with the stated titles, each carrying its full count', () => {
+  test('the sales figures: this month so far beside last month, each once', () => {
     const out = html(parsed(payload()))
-    const panels = [...out.matchAll(/data-area="(\w+)"[^>]*><header class="spd-panel-head"><h2[^>]*>([^<]+)<\/h2><span[^>]*>(\d+)<\/span>/g)]
-    assert.deepEqual(panels.map(p => [p[1], p[2], p[3]]), [
-      ['pending', 'Orders Pending Approval', '2'],
-      ['fabric', 'Fabric / Finish Pending Approval', '2'],
-      ['advance', 'Advance Below 40%', '2'],
-      ['ready', 'Ready for Dispatch', '2'],
+    const figs = [...out.matchAll(/<h2 class="spd-fig-label">([^<]+)<\/h2><p class="spd-fig-value">([^<]*)<\/p><p class="spd-fig-sub">([^<]*)<\/p>/g)]
+    assert.deepEqual(figs.map(f => [f[1], f[2], f[3]]), [
+      ['This month so far', '₹4,82,500', 'October 2026 · 3 orders'],
+      ['Last month', '₹11,36,000', 'September 2026 · 7 orders'],
     ])
-    assert.equal(out.match(/<section class="spd-card"/g)?.length, 5)
-    assert.equal(out.match(/<section class="spd-panel"/g)?.length, 4)
+    assert.match(out, /product value after discount, excluding GST/)
   })
 
-  test('left column holds Pending + Fabric/Finish, right holds Advance + Ready, so no panel waits on another', () => {
+  test('what was removed by the owner (2026-10-30) is not drawn', () => {
     const out = html(parsed(payload()))
-    const cols = out.split('<div class="spd-col">').slice(1)
+    for (const gone of ['Total Orders', 'All-time', 'Current Month Revenue', 'Orders Pending Approval', 'Returned to Sales',
+      'Closed', 'Studio Arc', 'Fabric', 'Finish', 'Patel Retail', 'Needs your attention']) {
+      assert.ok(!out.includes(gone), gone)
+    }
+  })
+
+  test('three lists with the stated titles and full counts, wide column first', () => {
+    const out = html(parsed(payload()))
+    const lists = [...out.matchAll(/data-area="(\w+)"[^>]*><header class="spd-list-head"><h2[^>]*>([^<]+)<\/h2><span[^>]*>([^<]+)<\/span>/g)]
+    assert.deepEqual(lists.map(l => [l[1], l[2], l[3]]), [
+      ['advance', 'Advance below 40%', '2'],
+      ['ready', 'Ready for dispatch', '3'],
+      ['pending', 'Waiting for approval', '2'],
+    ])
+    const cols = out.split('<div class="spd-col').slice(1)
     assert.equal(cols.length, 2)
-    assert.match(cols[0], /data-area="pending"[\s\S]*data-area="fabric"/)
-    assert.doesNotMatch(cols[0], /data-area="(advance|ready)"/)
-    assert.match(cols[1], /data-area="advance"[\s\S]*data-area="ready"/)
+    assert.match(cols[0], /data-area="advance"/)
+    assert.doesNotMatch(cols[0], /data-area="(ready|pending)"/)
+    assert.match(cols[1], /data-area="ready"[\s\S]*data-area="pending"/)
   })
 
-  test('the card total and the panel count agree', () => {
-    const d = parsed(payload())
-    assert.equal(d.pendingTotal, d.pending.length)
-  })
-
-  test('rows carry what the brief asks for', () => {
+  test('the phone chips jump to each list and carry the same counts', () => {
     const out = html(parsed(payload()))
-    // Pending: PI reference (no invented order number), client, status, wait.
-    assert.match(out, /PID-00006[\s\S]*Kalyan Interiors[\s\S]*Pending approval[\s\S]*Pending 5 days/)
-    // Advance: number, client, ACTUAL percentage, indicator.
-    assert.match(out, /0524[\s\S]*Sharma &amp; Sons[\s\S]*0% verified[\s\S]*Below 40%/)
-    assert.match(out, /0525[\s\S]*39\.99% verified[\s\S]*Below 40%[\s\S]*Exception approved/)
-    // Fabric/Finish: what is pending, time since confirmation, the urgency flag only where it applies.
-    assert.match(out, /0510[\s\S]*Fabric \+ Finish[\s\S]*32 days since confirmation[\s\S]*Over 15 days/)
-    assert.match(out, /0530[\s\S]*>Finish<[\s\S]*1 day since confirmation/)
-    assert.equal(out.match(/Over 15 days/g)?.length, 1)
-    // Ready: status, planned date or its absence.
-    assert.match(out, /0501[\s\S]*Ready for dispatch[\s\S]*Dispatch 12 Oct 2026/)
-    assert.match(out, /0502[\s\S]*No dispatch date/)
+    assert.match(out, /href="#spd-advance">Below 40% <span>2<\/span>/)
+    assert.match(out, /href="#spd-ready">Ready to dispatch <span>3<\/span>/)
+    assert.match(out, /href="#spd-pending">Waiting approval <span>2<\/span>/)
+    for (const id of ['spd-advance', 'spd-ready', 'spd-pending']) assert.match(out, new RegExp(`id="${id}"`))
+  })
+
+  test('advance rows: order, client, verified, rupees short, confirmed — and the exception said', () => {
+    const list = listOf(html(parsed(payload())), 'advance')
+    assert.match(list, /Order<\/span><span>Client<\/span><span>Verified<\/span><span>Short of 40%<\/span><span>Confirmed/)
+    assert.match(list, />0509<[\s\S]*Sharma &amp; Sons Furnishing Private Limited \(Bandra West Showroom, Mumbai\)[\s\S]*Exception approved[\s\S]*0% verified[\s\S]*₹48,000 short[\s\S]*Confirmed 34 days ago/)
+    assert.match(list, />0518<[\s\S]*Kapoor Interiors[\s\S]*12% verified[\s\S]*₹1,86,400.50 short[\s\S]*Confirmed 21 days ago/)
+    assert.equal(list.match(/Exception approved/g)?.length, 1)
+  })
+
+  test('ready rows: how long it has been ready, and a passed planned date in red', () => {
+    const list = listOf(html(parsed(payload())), 'ready')
+    assert.match(list, />0497<[\s\S]*Ready for 11 days[\s\S]*data-tone="alert">Planned 28 Oct 2026 · passed</)
+    assert.match(list, />0501<[\s\S]*Ready for 6 days[\s\S]*data-tone="good">Planned 2 Nov 2026</)
+    assert.match(list, />0512<[\s\S]*Ready date not recorded[\s\S]*data-tone="muted">No dispatch date</)
+  })
+
+  test('waiting-for-approval rows: PI reference (no invented order number), client, how long', () => {
+    const list = listOf(html(parsed(payload())), 'pending')
+    assert.match(list, /PID-00024[\s\S]*Nest Studio[\s\S]*Waiting 2 days/)
+    assert.match(list, /PID-00026[\s\S]*Casa Bella[\s\S]*Waiting 5 h/)
   })
 
   test('order numbers keep their leading zeros', () => {
     const out = html(parsed(payload()))
-    for (const n of ['0524', '0525', '0510', '0530', '0501', '0502']) assert.match(out, new RegExp(`>${n}<`))
-  })
-
-  test('a long client name is drawn whole', () => {
-    const out = html(parsed(payload()))
-    assert.match(out, /Sharma &amp; Sons Furnishing Private Limited \(Bandra West Showroom, Mumbai\)/)
+    for (const n of ['0509', '0518', '0497', '0501', '0512']) assert.match(out, new RegExp(`>${n}<`))
   })
 
   test('rows open the existing detail pages, keeping the way back to the dashboard', () => {
@@ -286,96 +337,75 @@ describe('the page body: three cards and four panels, in order', () => {
     const out = html(parsed(payload()))
     assert.doesNotMatch(out, /href="\/orders\/drafts\/sub-2/)
     assert.match(out, /data-static="true"[^>]*title="Only the person who filed this PI, its reviewer or an approver can open it"/)
-    assert.match(out, /Meera Textiles[\s\S]*Opens only for whoever filed it/)
-    // …and a PI they CAN open carries no such text.
+    assert.match(out, /Casa Bella[\s\S]*Opens only for whoever filed it/)
     assert.equal(out.match(/Opens only for whoever filed it/g)?.length, 1)
   })
 
-  describe('approval status unknown is shown, apart from the known pending', () => {
-    const withUnknown = () => parsed(payload({
-      fabric_finish: [{
-        order_id: 'ord-f1', display_number: '0510', client_name: 'Patel Retail', status: 'running', confirm_date: '2026-09-01',
-        days_since_confirmation: 32, over_15_days: true,
-        pending: [{ kind: 'fabric', status: 'not_approved' }], unknown: ['finish'],
-      }],
-      fabric_finish_unknown: [
-        { order_id: 'ord-u1', display_number: '0441', client_name: 'Old Record House', status: 'running', confirm_date: '2026-06-01', days_since_confirmation: 124, unknown: ['fabric', 'finish'] },
-        { order_id: 'ord-u2', display_number: '0442', client_name: 'Older Still Traders', status: 'running', confirm_date: null, days_since_confirmation: null, unknown: ['finish'] },
-      ],
-    }))
+  test('each row is one link, so there is one keyboard stop per record', () => {
+    const out = html(parsed(payload()))
+    // 2 advance + 3 ready + 1 openable pending
+    assert.equal(out.match(/<a [^>]*class="spd-row[ "]/g)?.length, 6)
+  })
+})
 
-    test('the heading says pending and unknown separately', () => {
-      const out = html(withUnknown())
-      assert.match(out, /Fabric \/ Finish Pending Approval<\/h2><span class="spd-panel-count"[^>]*>1 pending · 2 unknown</)
-    })
+describe('a PI returned to you: one line, never the note', () => {
+  const withReturned = (...r: Record<string, unknown>[]) => parsed(payload({ returned_total: r.length, returned: r }))
 
-    test('unknown orders sit in their own section, under their own heading, with the no-assumption rule', () => {
-      const out = html(withUnknown())
-      const panel = out.split('data-area="fabric"')[1].split('</section>')[0]
-      const [known, unknown] = panel.split('spd-unknown')
-      assert.match(known, />0510</)
-      assert.doesNotMatch(known, />044[12]</)
-      assert.match(unknown, /Approval status unknown/)
-      assert.match(unknown, /neither approved nor pending/)
-      assert.match(unknown, />0441<[\s\S]*Fabric \+ Finish status unknown[\s\S]*124 days since confirmation/)
-      assert.match(unknown, />0442<[\s\S]*Finish status unknown[\s\S]*Confirmation date not recorded/)
-    })
-
-    test('an order with one item pending and the other unknown stays in pending and names the unknown item', () => {
-      const out = html(withUnknown())
-      assert.match(out, />0510<[\s\S]*Fabric[\s\S]*Finish status unknown/)
-    })
-
-    test('no invented state: unknown is never worded as approved or not applicable', () => {
-      const out = html(withUnknown())
-      const unknown = out.split('spd-unknown')[1].split('</section>')[0]
-      assert.doesNotMatch(unknown, /approved(?! nor)|not applicable|n\/a/i)
-    })
-
-    test('only unknown rows (no known pending): the pending side says so, the unknown rows still show', () => {
-      const out = html(parsed(payload({
-        fabric_finish: [],
-        fabric_finish_unknown: [{ order_id: 'ord-u1', display_number: '0441', client_name: 'Old Record House', status: 'running', confirm_date: '2026-06-01', days_since_confirmation: 124, unknown: ['fabric'] }],
-      })))
-      assert.match(out, />0 pending · 1 unknown</)
-      assert.match(out, /No order has a recorded pending approval/)
-      assert.match(out, />0441</)
-    })
-
-    test('an unknown row with nothing unknown is refused', () => {
-      const p = payload({ fabric_finish_unknown: [{ order_id: 'x', display_number: '1', client_name: 'c', unknown: [], days_since_confirmation: 1 }] })
-      assert.equal(parseSalespersonDashboard(p).ok, false)
-    })
+  test('the strip leads the page, names the PI, who returned it, how long, and opens the PI', () => {
+    const out = html(withReturned(returnedRow()))
+    assert.ok(out.indexOf('1 PI returned to you') < out.indexOf('This month so far'))
+    assert.match(out, /Open it to see what to change, then submit it again\./)
+    assert.match(out, /href="\/orders\/drafts\/sub-21\?returnTo=%2Forders"[^>]*>[\s\S]*PID-00021[\s\S]*IBC[\s\S]*Returned by Nishant Soni[\s\S]*Waiting 3 days[\s\S]*Open PI/)
   })
 
-  test('each row is one link, so there is one keyboard stop per order', () => {
-    const out = html(parsed(payload()))
-    // 2 pending (1 openable) + 2 advance + 2 fabric + 2 ready
-    assert.equal(out.match(/<a [^>]*class="spd-row"/g)?.length, 7)
+  test('the approver\'s note is not drawn: it is on the PI page', () => {
+    const out = html(withReturned(returnedRow()))
+    assert.doesNotMatch(out, /nine paragraphs|quartz/)
+  })
+
+  test('red from the third day (two full days waited), amber before', () => {
+    const urgent = html(withReturned(returnedRow({ waiting_seconds: 2 * 86400 })))
+    assert.match(urgent, /data-tone="alert">Waiting 2 days</)
+    const fresh = html(withReturned(returnedRow({ waiting_seconds: 2 * 86400 - 1 })))
+    assert.match(fresh, /data-tone="warn">Waiting 1 day</)
+  })
+
+  test('several: one line each, oldest first as the database sent them', () => {
+    const out = html(withReturned(returnedRow(), returnedRow({ submission_id: 'sub-22', reference: 'PID-00022', client_name: 'Made By A' })))
+    assert.match(out, /2 PIs returned to you/)
+    assert.match(out, /Open each one to see what to change/)
+    assert.ok(out.indexOf('PID-00021') < out.indexOf('PID-00022'))
+  })
+
+  test('a PI the reader cannot open is plain text, never a link', () => {
+    const out = html(withReturned(returnedRow({ can_open: false })))
+    assert.doesNotMatch(out, /\/orders\/drafts\/sub-21/)
+    assert.match(out, /PID-00021[\s\S]*Opens only for whoever filed it/)
+  })
+
+  test('the returned total and its list are one number', () => {
+    assert.equal(parseSalespersonDashboard(payload({ returned_total: 2, returned: [returnedRow()] })).ok, false)
   })
 })
 
 describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
   for (const n of [0, 1, 5, 6, 25]) {
-    test(`${n} orders in a panel: heading says ${n}, ${n} rows drawn, nothing hidden`, () => {
+    test(`${n} orders in a list: heading says ${n}, ${n} rows drawn, nothing hidden`, () => {
       const d = parsed(payload({
-        ready_for_dispatch: rows(n, i => ({ order_id: `r${i}`, display_number: String(1000 + i), client_name: `Client ${i}`, status: 'ready_for_dispatch', planned_dispatch_date: null })),
+        ready_for_dispatch: rows(n, i => ({ order_id: `r${i}`, display_number: String(1000 + i), client_name: `Client ${i}`, status: 'ready_for_dispatch', planned_dispatch_date: null, ready_days: null })),
       }))
-      const out = html(d)
-      const panel = out.split('data-area="ready"')[1].split('</section>')[0]
-      assert.match(panel, new RegExp(`class="spd-panel-count"[^>]*>${n}<`))
-      assert.equal(panel.match(/<li>/g)?.length ?? 0, n)
-      assert.doesNotMatch(panel, /Show all|View all|Show more|\+\d+ more/i)
-      if (n === 0) assert.match(panel, new RegExp(SP_EMPTY.ready))
+      const list = listOf(html(d), 'ready')
+      assert.match(list, new RegExp(`class="spd-count"[^>]*>${n}<`))
+      assert.equal(list.match(/<li>/g)?.length ?? 0, n)
+      assert.doesNotMatch(list, /Show all|View all|Show more|\+\d+ more/i)
+      if (n === 0) assert.match(list, new RegExp(SP_EMPTY.ready))
     })
   }
 
-  test('every panel has its own specific empty state', () => {
-    const out = html(parsed(payload({
-      pending_total: 0, pending: [], advance: [], fabric_finish: [], ready_for_dispatch: [],
-    })))
+  test('every list has its own specific empty state', () => {
+    const out = html(parsed(payload({ pending_total: 0, pending: [], advance: [], ready_for_dispatch: [] })))
     for (const text of Object.values(SP_EMPTY)) assert.ok(out.includes(text), text)
-    assert.equal(new Set(Object.values(SP_EMPTY)).size, 4)
+    assert.equal(new Set(Object.values(SP_EMPTY)).size, 3)
   })
 
   describe('orders whose advance cannot be checked are LISTED, never just counted', () => {
@@ -386,14 +416,13 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
     const withUnchecked = (advance: unknown[] = payload().advance) => html(parsed(payload({ advance_unchecked: unchecked, advance })))
 
     test('the heading counts the two groups separately', () => {
-      assert.match(withUnchecked(), /Advance Below 40%<\/h2><span class="spd-panel-count"[^>]*>2 below 40% · 2 not checked</)
+      assert.match(withUnchecked(), /Advance below 40%<\/h2><span class="spd-count"[^>]*>2 below 40% · 2 not checked</)
       assert.equal(advanceCountText(0, 3), '0 below 40% · 3 not checked')
       assert.equal(advanceCountText(5, 0), '5')
     })
 
-    test('each unchecked order has its own row, the "Advance not checked" label and an accessible link', () => {
-      const out = withUnchecked()
-      const section = out.split('spd-unknown')[1].split('</section>')[0]
+    test('each unchecked order has its own row, the "Advance not checked" label and a link', () => {
+      const section = withUnchecked().split('spd-unchecked')[1].split('</section>')[0]
       assert.match(section, /Advance not checked <span>2<\/span>/)
       assert.match(section, /<a [^>]*href="\/orders\/ord-u1\?returnTo=%2Forders"/)
       assert.match(section, /<a [^>]*href="\/orders\/ord-u2\?returnTo=%2Forders"/)
@@ -402,26 +431,15 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
       assert.equal(section.match(/<a /g)?.length, 2, 'one keyboard stop per order')
     })
 
-    test('they are drawn apart from the known below-40% rows and never among them', () => {
-      const out = withUnchecked()
-      const [known, rest] = out.split('data-area="advance"')[1].split('spd-unknown')
-      assert.match(known, />0524</)
-      assert.doesNotMatch(known, />044[12]</)
-      assert.match(rest, />0441</)
+    test('with nothing below 40% but unchecked orders, the list does NOT say everything is fine', () => {
+      const list = listOf(withUnchecked([]), 'advance')
+      assert.match(list, /No checked order is below 40%/)
+      assert.doesNotMatch(list, /Every active order has at least 40% verified advance/)
+      assert.match(list, />0441</)
     })
 
-    test('with nothing below 40% but unchecked orders, the panel does NOT say everything is fine', () => {
-      const out = withUnchecked([])
-      const panel = out.split('data-area="advance"')[1].split('</section>')[0]
-      assert.match(panel, /No checked order is below 40%/)
-      assert.doesNotMatch(panel, /Every active order has at least 40% verified advance/)
-      assert.match(panel, /0 below 40% · 2 not checked/)
-      assert.match(panel, />0441</)
-    })
-
-    test('no unchecked orders: the panel reads exactly as before', () => {
-      const out = html(parsed(payload()))
-      assert.doesNotMatch(out, /not checked|Advance not checked/)
+    test('no unchecked orders: nothing about them is drawn', () => {
+      assert.doesNotMatch(html(parsed(payload())), /not checked|Advance not checked/)
     })
 
     test('a payload whose unchecked list is not a list is refused, never read as none', () => {
@@ -430,9 +448,13 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
     })
   })
 
-  test('revenue gaps are said under the revenue card', () => {
-    const out = html(parsed(payload({ revenue: { amount: 10, orders: 1, no_product_value: 1, before_discount: 0 } })))
+  test('revenue gaps are said under their own month', () => {
+    const out = html(parsed(payload({
+      revenue: { amount: 10, orders: 1, no_product_value: 1, before_discount: 0 },
+      revenue_last_month: { month_from: '2026-09-01', amount: 10, orders: 1, no_product_value: 2, before_discount: 0 },
+    })))
     assert.match(out, /1 order this month with no product value on record is not counted/)
+    assert.match(out, /2 orders last month with no product value on record are not counted/)
   })
 })
 
@@ -445,23 +467,29 @@ describe('the code', () => {
   const page = read('src/app/orders/page.tsx')
   const css = read('src/app/globals.css')
 
-  test('the advance list follows the shared helper: it takes ITS percentage and divides by nothing of its own', () => {
-    const sql = read('supabase/migrations/20270228000000_salesperson_orders_dashboard.sql')
+  test('the advance list follows the shared helper: it takes ITS percentage and shortfall and divides by nothing of its own', () => {
+    const sql = read('supabase/migrations/20270508000000_salesperson_dashboard_last_month.sql')
     const stripped = sql.replace(/^\s*--.*$/gm, '')
     const advance = /advance as \([\s\S]*?\n  \),/.exec(stripped)?.[0] ?? ''
     assert.ok(advance.length > 100, 'found the advance CTE')
     assert.match(advance, /\(p\.pos ->> 'percent'\)::numeric as percent/)
-    assert.doesNotMatch(advance, /total_value|order_value|total_before_gst|\/\s*\(?p\.pos|trunc\(100/, 'no denominator, no arithmetic: the rule has one definition')
-    assert.match(sql, /DEPENDENCY MISSING: 20270227000000_order_submission_advance_on_total_before_gst \(PR #281\) must be applied before this migration/)
-    assert.match(sql, /order_advance_base\(uuid\)/)
-    assert.ok('20270226000000' < '20270228000000', 'this migration sorts after the one that corrects the helper')
+    assert.match(advance, /\(p\.pos ->> 'shortfall'\)::numeric as shortfall/)
+    assert.doesNotMatch(advance, /total_value|order_value|total_before_gst|\/\s*\(?p\.pos|trunc\(100|\* ?0?\.4/, 'no denominator, no arithmetic: the rule has one definition')
+  })
+
+  test('last month is the same revenue rule, one month earlier, split at the first in India time', () => {
+    const sql = read('supabase/migrations/20270508000000_salesperson_dashboard_last_month.sql')
+    assert.match(sql, /v_prev_from  date := \(date_trunc\('month', timezone\('Asia\/Kolkata', now\(\)\)\) - interval '1 month'\)::date;/)
+    assert.match(sql, /where c\.confirm_date >= v_prev_from and c\.confirm_date < v_month_to/)
+    assert.match(sql, /'amount', coalesce\(\(select sum\(pv\) from rev where this_month\), 0\)/)
+    assert.match(sql, /'amount', coalesce\(\(select sum\(pv\) from rev where not this_month\), 0\)/)
   })
 
   test('no row cap anywhere in the personal dashboard', () => {
     assert.doesNotMatch(view, /\.slice\(/)
     assert.doesNotMatch(view, /VISIBLE_ROWS|show all|view all|max-height|overflow-y/i)
     // (the one `.slice(0, 10)` in the parser trims a date string, not a list)
-    assert.doesNotMatch(lib, /(pending|advance|fabricFinish|readyForDispatch|rows)\b[^\n]*\.slice\(/)
+    assert.doesNotMatch(lib, /(pending|advance|returned|readyForDispatch|rows)\b[^\n]*\.slice\(/)
     const start = css.indexOf('.spd {')
     const spd = css.slice(start, css.indexOf('/* Wide screens', start))
     assert.ok(spd.length > 500, 'found the personal dashboard CSS')
@@ -476,7 +504,7 @@ describe('the code', () => {
 
   test('the personal read is the database function, scoped there, with no client-side owner filter', () => {
     assert.match(page, /supabase\.rpc\('salesperson_orders_dashboard'\)/)
-    assert.doesNotMatch(view + lib,/\.eq\(\s*['"](assigned_to|salesperson_id|requested_by|created_by)['"]/)
+    assert.doesNotMatch(view + lib, /\.eq\(\s*['"](assigned_to|salesperson_id|requested_by|created_by)['"]/)
   })
 
   test('a failed or unreadable read is an error state, never zeros', () => {
@@ -498,12 +526,13 @@ describe('the code', () => {
     assert.match(page, /NEW_ORDER_ACTION\.href/)
   })
 
-  test('phone rules sit after the tablet rule and stack the panels in the stated order', () => {
-    const tablet = css.indexOf('@media (max-width: 899px) {\n  .spd-panels')
-    const phone = css.indexOf('@media (max-width: 559px) {\n  .spd-cards')
+  test('below 900px the columns dissolve and the chips appear; phone rules sit after the tablet rule', () => {
+    const tablet = css.indexOf('@media (max-width: 899px) {\n  .spd-lists')
+    const phone = css.indexOf('@media (max-width: 559px) {\n  .spd-fig')
     assert.ok(tablet > 0 && phone > tablet)
     const block = css.slice(tablet, phone)
-    const orders = ['pending', 'advance', 'fabric', 'ready'].map(a => Number(new RegExp(`data-area='${a}'\\]\\s*\\{ order: (\\d); \\}`).exec(block)?.[1]))
-    assert.deepEqual(orders, [1, 2, 3, 4])
+    assert.match(block, /\.spd-col \{ display: contents; \}/)
+    assert.match(block, /\.spd-chips \{ display: flex; \}/)
+    assert.match(css, /\.spd-chips \{ display: none;/)
   })
 })

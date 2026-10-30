@@ -1,310 +1,292 @@
 'use client'
 
-// THE SALESPERSON'S OWN ORDERS DASHBOARD: three figures, then four complete lists.
+// THE SALESPERSON'S OWN ORDERS DASHBOARD (owner, 2026-10-30, layout A).
+//
+// Top to bottom, the questions a salesperson asks:
+//   1. Was anything sent back to me?  One line per PI returned to Sales, with
+//      Open PI. The approver's note is NOT drawn: it is at the top of the PI
+//      page, where the change is made. No PI returned = no strip.
+//   2. How are my sales?              This month so far beside last month.
+//   3. What must I chase?             Advance below 40% (the wide column) and
+//                                     Ready for dispatch.
+//   4. What am I waiting on?          Waiting for approval.
+// Closed (deal lost) PIs, the all-time total and Fabric / Finish are not drawn
+// (owner's decisions, 2026-10-30); the database still sends them.
 //
 // Every list shows EVERY matching order — no preview cap, no "view all" link, no
-// fixed-height scroll box — and its heading carries the full count. An order may
-// sit in more than one list; within one list it appears once (the database
-// returns one row per order). The page body holds nothing else.
+// fixed-height scroll box — and its heading carries the full count. Each figure
+// appears once on the page.
 //
-// A ROW IS ONE LINK to the order's existing detail page, which re-checks access on
-// its own. The only exception is a pending PI the reader cannot open under the
-// existing PI rules: it is drawn as plain text, never as a link that would refuse.
+// A ROW IS ONE LINK to the record's existing page, which re-checks access on its
+// own. A PI the reader cannot open under the existing PI rules is plain text,
+// never a link that would refuse.
 //
-// LAYOUT: two independent columns, left [Pending approval, Fabric/Finish] and
-// right [Advance below 40%, Ready for dispatch], so a short panel never leaves a
-// gap under it. Below 900px the columns dissolve and the panels stack in the
-// order Pending → Advance → Fabric/Finish → Ready (CSS `order`).
+// LAYOUT: two independent columns, left [Advance below 40%] and right [Ready for
+// dispatch, Waiting for approval], so a short list never leaves a gap. Below 900px
+// the columns dissolve and the lists stack in that same order; chips under the
+// figures jump to each list.
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
-  SP_ATTENTION_TITLE,
-  SP_CARD_REJECTED,
-  SP_CARD_REJECTED_SUB,
-  SP_CARD_RETURNED,
-  SP_CARD_RETURNED_SUB,
-  SP_NO_NOTE,
-  SP_REJECTED_HINT,
-  SP_REJECTED_STATUS,
-  SP_RETURNED_HINT,
-  SP_RETURNED_STATUS,
-  decidedAgoText,
-  type SpReviewedRow,
   SP_ADVANCE_BELOW_NONE_KNOWN,
+  SP_ADVANCE_COLUMNS,
   SP_ADVANCE_UNCHECKED_HEADING,
   SP_ADVANCE_UNCHECKED_PILL,
   SP_ADVANCE_UNCHECKED_RULE,
-  SP_BELOW_40,
-  SP_CARD_PENDING,
-  SP_CARD_PENDING_SUB,
-  SP_CARD_REVENUE,
-  SP_CARD_TOTAL,
-  SP_CARD_TOTAL_SUB,
+  SP_CHIP,
   SP_EMPTY,
-  SP_FABRIC_NO_KNOWN_PENDING,
-  SP_FABRIC_PENDING_HEADING,
+  SP_EXCEPTION_APPROVED,
+  SP_HINT,
+  SP_LIST_ADVANCE,
+  SP_LIST_PENDING,
+  SP_LIST_READY,
   SP_NOT_OPENABLE,
   SP_NOT_OPENABLE_SHORT,
-  SP_UNKNOWN_HEADING,
-  SP_UNKNOWN_RULE,
-  SP_OVER_15,
-  SP_PANEL_ADVANCE,
-  SP_PANEL_FABRIC,
-  SP_PANEL_PENDING,
-  SP_PANEL_READY,
-  SP_PENDING_STATUS,
-  SP_READY_STATUS,
-  SP_REVENUE_BASIS,
-  advancePercentText,
+  SP_OPEN_PI,
+  SP_RETURNED_HINT_MANY,
+  SP_RETURNED_HINT_ONE,
+  SP_SALES_BASIS,
+  SP_SALES_LAST_MONTH,
+  SP_SALES_NOT_AVAILABLE,
+  SP_SALES_THIS_MONTH,
   advanceCountText,
-  dispatchDateText,
-  fabricCountText,
-  pendingKindsText,
-  pendingWaitText,
+  advancePercentText,
+  confirmedAgoText,
+  plannedDispatchText,
+  readyForText,
+  returnedByText,
+  returnedTitle,
   revenueMonthLabel,
   revenueNotes,
   revenueText,
-  sinceConfirmationText,
-  unknownKindsText,
+  shortfallText,
+  waitingText,
   type SalespersonDashboard,
+  type SpReviewedRow,
 } from '@/lib/orders/salespersonDashboard'
+import { plural } from '@/lib/orders/orderDashboardSummary'
+// One rule for "red from the third day", shared with the Modules card.
+import { isReturnedPiUrgent } from '@/lib/orders/returnedPis'
 
 const RETURN_TO = '/orders'
 
-function Card({ id, label, value, sub, notes }: { id: string; label: string; value: ReactNode; sub: string; notes?: string[] }) {
-  return (
-    <section className="spd-card" aria-labelledby={id}>
-      <h2 id={id} className="spd-card-label">{label}</h2>
-      <p className="spd-card-value">{value}</p>
-      <p className="spd-card-sub">{sub}</p>
-      {notes && notes.length > 0 ? (
-        <ul className="spd-notes">{notes.map(n => <li key={n}>{n}</li>)}</ul>
-      ) : null}
-    </section>
-  )
-}
+type Area = 'advance' | 'ready' | 'pending'
 
-function Panel({ id, area, title, count, countText, empty, notes, raw, children }: {
-  id: string
-  area: 'pending' | 'advance' | 'fabric' | 'ready'
+function List({ area, title, hint, count, countText, empty, children }: {
+  area: Area
   title: string
-  /** How many rows the panel holds; zero draws the empty state. */
+  hint: string
+  /** How many rows the list holds; zero draws the empty state. */
   count: number
-  /** What the heading says when it is not just `count` (known pending and unknown are two numbers). */
+  /** What the heading says when it is not just `count` (below 40% and not checked are two numbers). */
   countText?: string
   empty: string
-  notes?: (string | null)[]
-  /** The children are already their own lists. */
-  raw?: boolean
   children: ReactNode
 }) {
-  const shown = (notes ?? []).filter((n): n is string => !!n)
   return (
-    <section className="spd-panel" data-area={area} aria-labelledby={id}>
-      <header className="spd-panel-head">
-        <h2 id={id} className="spd-panel-title">{title}</h2>
-        <span className="spd-panel-count" aria-label={`${countText ?? count} matching`}>{countText ?? count}</span>
+    <section className="spd-list" id={`spd-${area}`} data-area={area} aria-labelledby={`spd-${area}-title`}>
+      <header className="spd-list-head">
+        <h2 id={`spd-${area}-title`} className="spd-list-title">{title}</h2>
+        <span className="spd-count" aria-label={`${countText ?? count} matching`}>{countText ?? count}</span>
+        <span className="spd-list-hint">{hint}</span>
       </header>
-      {count === 0 ? <p className="spd-empty">{empty}</p> : raw ? children : <ul className="spd-rows">{children}</ul>}
-      {shown.map(n => <p key={n} className="spd-gap">{n}</p>)}
+      {count === 0 ? <p className="spd-empty">{empty}</p> : children}
     </section>
   )
 }
 
-function RowBody({ number, client, children }: { number: string; client: string; children: ReactNode }) {
+/** Number and client, the same two first cells in every row. */
+function Who({ number, client, children }: { number: string; client: string; children?: ReactNode }) {
   return (
-    <>
-      <span className="spd-row-main">
-        <span className="spd-row-num">{number}</span>
-        <span className="spd-row-client">{client || 'Client not recorded'}</span>
-      </span>
-      <span className="spd-row-meta">{children}</span>
-    </>
+    <span className="spd-who">
+      <span className="spd-num">{number}</span>
+      <span className="spd-client">{client || 'Client not recorded'}</span>
+      {children}
+    </span>
   )
 }
 
-function OrderRow({ orderId, number, client, children }: { orderId: string; number: string; client: string; children: ReactNode }) {
+function OrderLink({ orderId, className, children }: { orderId: string; className: string; children: ReactNode }) {
   return (
     <li>
-      <Link href={withReturnTo(`/orders/${orderId}`, RETURN_TO)} className="spd-row" prefetch={false}>
-        <RowBody number={number} client={client}>{children}</RowBody>
-      </Link>
+      <Link href={withReturnTo(`/orders/${orderId}`, RETURN_TO)} className={className} prefetch={false}>{children}</Link>
     </li>
   )
 }
 
-/** One PI the reviewer sent back or rejected: the note is read in full, the whole row opens the PI. */
-function ReviewedRow({ r, verb, status, tone }: { r: SpReviewedRow; verb: string; status: string; tone: 'warn' | 'alert' }) {
+/** One PI returned to Sales: which PI, who returned it, how long it has waited, Open PI. */
+function ReturnedRow({ r }: { r: SpReviewedRow }) {
   const body = (
     <>
-      <RowBody number={r.reference} client={r.clientName}>
-        <span className="spd-pill" data-tone={tone}>{status}</span>
-        <span className="spd-meta-text">{decidedAgoText(verb, r.sinceSeconds, r.byName)}</span>
-      </RowBody>
-      <span className="spd-note">{r.note ?? SP_NO_NOTE}</span>
+      <Who number={r.reference} client={r.clientName} />
+      <span className="spd-meta spd-grow">{returnedByText(r.byName)}</span>
+      <span className="spd-pill" data-tone={isReturnedPiUrgent(r.sinceSeconds) ? 'alert' : 'warn'}>{waitingText(r.sinceSeconds)}</span>
+      {r.canOpen
+        ? <span className="spd-open" aria-hidden="true">{SP_OPEN_PI}</span>
+        : <span className="spd-meta spd-restricted">{SP_NOT_OPENABLE_SHORT}</span>}
     </>
   )
   return (
     <li>
       {r.canOpen ? (
-        <Link href={withReturnTo(`/orders/drafts/${r.submissionId}`, RETURN_TO)} className="spd-row spd-row--note" prefetch={false}>{body}</Link>
+        <Link href={withReturnTo(`/orders/drafts/${r.submissionId}`, RETURN_TO)} className="spd-returned-row" prefetch={false}>{body}</Link>
       ) : (
-        <div className="spd-row spd-row--note" data-static="true" title={SP_NOT_OPENABLE}>{body}</div>
+        <div className="spd-returned-row" data-static="true" title={SP_NOT_OPENABLE}>{body}</div>
       )}
     </li>
   )
 }
 
+function SalesFigure({ label, amount, month, orders, notes }: {
+  label: string
+  amount: number | null
+  month: string | null
+  orders: number | null
+  notes: string[]
+}) {
+  return (
+    <div className="spd-fig">
+      <h2 className="spd-fig-label">{label}</h2>
+      <p className="spd-fig-value">{amount === null ? '–' : revenueText(amount)}</p>
+      <p className="spd-fig-sub">
+        {month === null || orders === null ? SP_SALES_NOT_AVAILABLE : `${revenueMonthLabel(month)} · ${plural(orders, 'order')}`}
+      </p>
+      {notes.length > 0 ? <ul className="spd-notes">{notes.map(n => <li key={n}>{n}</li>)}</ul> : null}
+    </div>
+  )
+}
+
 export function SalespersonDashboardView({ data }: { data: SalespersonDashboard }) {
-  const notes = revenueNotes(data.revenue)
+  const last = data.revenueLastMonth
+  const returned = data.returned
+  const advanceCount = advanceCountText(data.advance.length, data.advanceUnchecked.length)
+
   return (
     <div className="spd">
-      {data.returned.length + data.rejected.length > 0 ? (
-        <section className="spd-attention" aria-labelledby="spd-attention-title">
-          <h2 id="spd-attention-title" className="spd-attention-title">{SP_ATTENTION_TITLE}</h2>
-          {data.returned.length > 0 ? (
-            <>
-              <h3 className="spd-subhead">{SP_RETURNED_STATUS} <span>{data.returned.length}</span></h3>
-              <p className="spd-gap">{SP_RETURNED_HINT}</p>
-              <ul className="spd-rows">
-                {data.returned.map(r => <ReviewedRow key={r.submissionId} r={r} verb="Sent back" status={SP_RETURNED_STATUS} tone="warn" />)}
-              </ul>
-            </>
-          ) : null}
-          {data.rejected.length > 0 ? (
-            <>
-              <h3 className="spd-subhead">{SP_REJECTED_STATUS} <span>{data.rejected.length}</span></h3>
-              <p className="spd-gap">{SP_REJECTED_HINT}</p>
-              <ul className="spd-rows">
-                {data.rejected.map(r => <ReviewedRow key={r.submissionId} r={r} verb="Rejected" status={SP_REJECTED_STATUS} tone="alert" />)}
-              </ul>
-            </>
-          ) : null}
+      {returned.length > 0 ? (
+        <section className="spd-returned" aria-labelledby="spd-returned-title">
+          <header className="spd-returned-head">
+            <h2 id="spd-returned-title" className="spd-returned-title">{returnedTitle(returned.length)}</h2>
+            <span className="spd-returned-hint">{returned.length === 1 ? SP_RETURNED_HINT_ONE : SP_RETURNED_HINT_MANY}</span>
+          </header>
+          <ul className="spd-returned-rows">
+            {returned.map(r => <ReturnedRow key={r.submissionId} r={r} />)}
+          </ul>
         </section>
       ) : null}
 
-      <div className="spd-cards">
-        <Card id="spd-total" label={SP_CARD_TOTAL} value={data.totalOrders} sub={SP_CARD_TOTAL_SUB} />
-        <Card
-          id="spd-revenue" label={SP_CARD_REVENUE} value={revenueText(data.revenue.amount)}
-          sub={`${revenueMonthLabel(data.monthFrom)} · ${SP_REVENUE_BASIS}`} notes={notes}
+      <section className="spd-sales" aria-label="Your sales">
+        <SalesFigure
+          label={SP_SALES_THIS_MONTH}
+          amount={data.revenue.amount}
+          month={data.monthFrom}
+          orders={data.revenue.orders}
+          notes={revenueNotes(data.revenue)}
         />
-        <Card id="spd-pending" label={SP_CARD_PENDING} value={data.pendingTotal} sub={SP_CARD_PENDING_SUB} />
-      </div>
-      <div className="spd-cards spd-cards--two">
-        <Card id="spd-returned" label={SP_CARD_RETURNED} value={data.returnedTotal} sub={SP_CARD_RETURNED_SUB} />
-        <Card id="spd-rejected" label={SP_CARD_REJECTED} value={data.rejectedTotal} sub={SP_CARD_REJECTED_SUB} />
-      </div>
+        <SalesFigure
+          label={SP_SALES_LAST_MONTH}
+          amount={last ? last.amount : null}
+          month={last ? last.monthFrom : null}
+          orders={last ? last.orders : null}
+          notes={last ? revenueNotes(last, 'last month') : []}
+        />
+        <p className="spd-sales-basis">{SP_SALES_BASIS}</p>
+      </section>
 
-      <div className="spd-panels">
-        <div className="spd-col">
-          <Panel id="spd-p-pending" area="pending" title={SP_PANEL_PENDING} count={data.pending.length} empty={SP_EMPTY.pending}>
-            {data.pending.map(r => (
-              <li key={r.submissionId}>
-                {r.canOpen ? (
-                  <Link href={withReturnTo(`/orders/drafts/${r.submissionId}`, RETURN_TO)} className="spd-row" prefetch={false}>
-                    <RowBody number={r.reference} client={r.clientName}>
-                      <span className="spd-pill" data-tone="warn">{SP_PENDING_STATUS}</span>
-                      <span className="spd-meta-text">{pendingWaitText(r.waitingSeconds)}</span>
-                    </RowBody>
-                  </Link>
-                ) : (
-                  <div className="spd-row" data-static="true" title={SP_NOT_OPENABLE}>
-                    <RowBody number={r.reference} client={r.clientName}>
-                      <span className="spd-pill" data-tone="warn">{SP_PENDING_STATUS}</span>
-                      <span className="spd-meta-text">{pendingWaitText(r.waitingSeconds)}</span>
-                      <span className="spd-meta-text spd-restricted">{SP_NOT_OPENABLE_SHORT}</span>
-                    </RowBody>
-                  </div>
-                )}
-              </li>
-            ))}
-          </Panel>
+      <nav className="spd-chips" aria-label="Jump to a list">
+        <a className="spd-chip" href="#spd-advance">{SP_CHIP.advance} <span>{data.advance.length}</span></a>
+        <a className="spd-chip" href="#spd-ready">{SP_CHIP.ready} <span>{data.readyForDispatch.length}</span></a>
+        <a className="spd-chip" href="#spd-pending">{SP_CHIP.pending} <span>{data.pending.length}</span></a>
+      </nav>
 
-          <Panel
-            id="spd-p-fabric" area="fabric" title={SP_PANEL_FABRIC} raw
-            count={data.fabricFinish.length + data.fabricFinishUnknown.length}
-            countText={fabricCountText(data.fabricFinish.length, data.fabricFinishUnknown.length)}
-            empty={SP_EMPTY.fabric}
-          >
-            {data.fabricFinishUnknown.length > 0 ? (
-              <h3 className="spd-subhead">{SP_FABRIC_PENDING_HEADING} <span>{data.fabricFinish.length}</span></h3>
-            ) : null}
-            {data.fabricFinish.length > 0 ? (
-              <ul className="spd-rows">
-                {data.fabricFinish.map(r => (
-                  <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                    <span className="spd-pill" data-tone="warn">{pendingKindsText(r.pending)}</span>
-                    <span className="spd-meta-text">{sinceConfirmationText(r.daysSinceConfirmation)}</span>
-                    {r.unknown.length > 0 ? <span className="spd-meta-text">{unknownKindsText(r.unknown)}</span> : null}
-                    {r.over15Days ? <span className="spd-pill" data-tone="alert">{SP_OVER_15}</span> : null}
-                  </OrderRow>
-                ))}
-              </ul>
-            ) : <p className="spd-empty">{SP_FABRIC_NO_KNOWN_PENDING}</p>}
-            {data.fabricFinishUnknown.length > 0 ? (
-              <div className="spd-unknown">
-                <h3 className="spd-subhead">{SP_UNKNOWN_HEADING} <span>{data.fabricFinishUnknown.length}</span></h3>
-                <p className="spd-gap">{SP_UNKNOWN_RULE}</p>
-                <ul className="spd-rows">
-                  {data.fabricFinishUnknown.map(r => (
-                    <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                      <span className="spd-pill" data-tone="muted">{unknownKindsText(r.unknown)}</span>
-                      <span className="spd-meta-text">{sinceConfirmationText(r.daysSinceConfirmation)}</span>
-                    </OrderRow>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </Panel>
-        </div>
-
-        <div className="spd-col">
-          <Panel
-            id="spd-p-advance" area="advance" title={SP_PANEL_ADVANCE} raw
-            count={data.advance.length + data.advanceUnchecked.length}
-            countText={advanceCountText(data.advance.length, data.advanceUnchecked.length)}
+      <div className="spd-lists">
+        <div className="spd-col spd-col--wide">
+          <List
+            area="advance" title={SP_LIST_ADVANCE} hint={SP_HINT.advance}
+            count={data.advance.length + data.advanceUnchecked.length} countText={advanceCount}
             empty={SP_EMPTY.advance}
           >
-            {data.advanceUnchecked.length > 0 ? (
-              <h3 className="spd-subhead">{SP_PANEL_ADVANCE} <span>{data.advance.length}</span></h3>
-            ) : null}
             {data.advance.length > 0 ? (
-              <ul className="spd-rows">
-                {data.advance.map(r => (
-                  <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                    <span className="spd-meta-text spd-strong">{advancePercentText(r.percent)}</span>
-                    <span className="spd-pill" data-tone="warn">{SP_BELOW_40}</span>
-                    {r.exceptionApproved ? <span className="spd-meta-text">Exception approved</span> : null}
-                  </OrderRow>
-                ))}
-              </ul>
+              <>
+                <div className="spd-adv-head" aria-hidden="true">
+                  {SP_ADVANCE_COLUMNS.map(c => <span key={c}>{c}</span>)}
+                </div>
+                <ul className="spd-rows">
+                  {data.advance.map(r => (
+                    <OrderLink key={r.orderId} orderId={r.orderId} className="spd-row spd-adv-row">
+                      <span className="spd-num">{r.displayNumber}</span>
+                      <span className="spd-client">
+                        {r.clientName || 'Client not recorded'}
+                        {r.exceptionApproved ? <>{' '}<span className="spd-pill" data-tone="muted">{SP_EXCEPTION_APPROVED}</span></> : null}
+                      </span>
+                      <span className="spd-pct">{advancePercentText(r.percent)}</span>
+                      <span className="spd-short">{shortfallText(r.shortfall)}</span>
+                      <span className="spd-meta">{confirmedAgoText(r.daysSinceConfirmation)}</span>
+                    </OrderLink>
+                  ))}
+                </ul>
+              </>
             ) : <p className="spd-empty">{SP_ADVANCE_BELOW_NONE_KNOWN}</p>}
             {data.advanceUnchecked.length > 0 ? (
-              <div className="spd-unknown">
+              <div className="spd-unchecked">
                 <h3 className="spd-subhead">{SP_ADVANCE_UNCHECKED_HEADING} <span>{data.advanceUnchecked.length}</span></h3>
                 <p className="spd-gap">{SP_ADVANCE_UNCHECKED_RULE}</p>
                 <ul className="spd-rows">
                   {data.advanceUnchecked.map(r => (
-                    <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
+                    <OrderLink key={r.orderId} orderId={r.orderId} className="spd-row">
+                      <Who number={r.displayNumber} client={r.clientName} />
                       <span className="spd-pill" data-tone="muted">{SP_ADVANCE_UNCHECKED_PILL}</span>
-                    </OrderRow>
+                    </OrderLink>
                   ))}
                 </ul>
               </div>
             ) : null}
-          </Panel>
+          </List>
+        </div>
 
-          <Panel id="spd-p-ready" area="ready" title={SP_PANEL_READY} count={data.readyForDispatch.length} empty={SP_EMPTY.ready}>
-            {data.readyForDispatch.map(r => (
-              <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                <span className="spd-pill" data-tone="good">{SP_READY_STATUS}</span>
-                <span className="spd-meta-text">{dispatchDateText(r.plannedDispatchDate)}</span>
-              </OrderRow>
-            ))}
-          </Panel>
+        <div className="spd-col">
+          <List area="ready" title={SP_LIST_READY} hint={SP_HINT.ready} count={data.readyForDispatch.length} empty={SP_EMPTY.ready}>
+            <ul className="spd-rows">
+              {data.readyForDispatch.map(r => {
+                const planned = plannedDispatchText(r.plannedDispatchDate, data.today)
+                const since = readyForText(r.readyDays)
+                return (
+                  <OrderLink key={r.orderId} orderId={r.orderId} className="spd-row">
+                    <span className="spd-stack">
+                      <Who number={r.displayNumber} client={r.clientName} />
+                      {since ? <span className="spd-meta">{since}</span> : null}
+                    </span>
+                    <span className="spd-pill" data-tone={planned.tone}>{planned.text}</span>
+                  </OrderLink>
+                )
+              })}
+            </ul>
+          </List>
+
+          <List area="pending" title={SP_LIST_PENDING} hint={SP_HINT.pending} count={data.pending.length} empty={SP_EMPTY.pending}>
+            <ul className="spd-rows">
+              {data.pending.map(r => {
+                const body = (
+                  <>
+                    <Who number={r.reference} client={r.clientName} />
+                    <span className="spd-pill" data-tone="warn">{waitingText(r.waitingSeconds)}</span>
+                    {r.canOpen ? null : <span className="spd-meta spd-restricted">{SP_NOT_OPENABLE_SHORT}</span>}
+                  </>
+                )
+                return (
+                  <li key={r.submissionId}>
+                    {r.canOpen ? (
+                      <Link href={withReturnTo(`/orders/drafts/${r.submissionId}`, RETURN_TO)} className="spd-row" prefetch={false}>{body}</Link>
+                    ) : (
+                      <div className="spd-row" data-static="true" title={SP_NOT_OPENABLE}>{body}</div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </List>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 // THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE USES IT (20270228000000).
 //
-// public.salesperson_orders_dashboard() returns the three figures and the four
-// complete lists for THE CALLER ONLY, in one round trip. This module VALIDATES
+// public.salesperson_orders_dashboard() returns the figures and the complete
+// lists for THE CALLER ONLY, in one round trip. This module VALIDATES
 // that payload, owns the words, and turns elapsed days into text. It computes
 // nothing about orders: which orders are confirmed, what revenue is, what "below
 // 40%" means and who owns an order are the database's, stated once in the
@@ -13,6 +13,11 @@
 //
 // THE CARD AND THE PANEL ARE ONE NUMBER: `pendingTotal` must equal the length of
 // the pending list, or the payload is refused.
+//
+// 20270508000000 (owner, 2026-10-30) adds last month's sales, the rupees each
+// below-40% order is short, and since when each ready order has been ready. A
+// database without that migration simply does not send them: the page then says
+// "–" or nothing, never an error and never a zero.
 
 import { formatDate, formatMonth, formatRupees, plural } from './orderDashboardSummary'
 
@@ -48,6 +53,10 @@ export type SpAdvanceRow = {
   clientName: string
   /** Verified advance as a percent of the current Order value, truncated to 2 places. */
   percent: number
+  /** Rupees still needed to reach 40% — the advance rule's own figure; null when not sent. */
+  shortfall: number | null
+  /** Whole days since confirmation (India time); null when no date is on record or not sent. */
+  daysSinceConfirmation: number | null
   exceptionApproved: boolean
 }
 
@@ -88,13 +97,24 @@ export type SpReadyRow = {
   clientName: string
   /** `YYYY-MM-DD`, or null when no date is planned. */
   plannedDispatchDate: string | null
+  /**
+   * Whole days since it last became ready (India time). null: no status-history
+   * entry, so the date is not recorded. undefined: the database did not send it.
+   */
+  readyDays?: number | null
 }
+
+export type SpRevenue = { amount: number; orders: number; noProductValue: number; beforeDiscount: number }
 
 export type SalespersonDashboard = {
   /** `YYYY-MM-01`, the month the revenue card is for. */
   monthFrom: string
+  /** `YYYY-MM-DD`, today in India, as the database saw it; null when not sent. */
+  today: string | null
   totalOrders: number
-  revenue: { amount: number; orders: number; noProductValue: number; beforeDiscount: number }
+  revenue: SpRevenue
+  /** The previous calendar month by the same rule; null when the database did not send it. */
+  revenueLastMonth: (SpRevenue & { monthFrom: string }) | null
   pendingTotal: number
   pending: SpPendingRow[]
   /** PIs sent back for changes: waiting on the salesperson, no age limit. */
@@ -150,6 +170,16 @@ const dateOnly = (v: unknown, what: string): string => {
   return s.slice(0, 10)
 }
 const optDate = (v: unknown, what: string): string | null => (v === null || v === undefined ? null : dateOnly(v, what))
+const optNum = (v: unknown, what: string): number | null => (v === null || v === undefined ? null : num(v, what))
+const revenueOf = (v: unknown, what: string): SpRevenue => {
+  const r = obj(v, what)
+  return {
+    amount: num(r.amount, what + ' amount'),
+    orders: count(r.orders, what + ' orders'),
+    noProductValue: count(r.no_product_value, what + ' no_product_value'),
+    beforeDiscount: count(r.before_discount, what + ' before_discount'),
+  }
+}
 const kindsOf = (v: unknown, what: string): SpPendingKind[] => {
   const seen = new Set<SpPendingKind>()
   for (const k of arr(v ?? [], what)) {
@@ -167,7 +197,11 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
     if (root.applicable === false) return { ok: true, applicable: false }
     if (root.applicable !== true) throw new Bad('applicable')
 
-    const rev = obj(root.revenue, 'revenue')
+    // Absent before 20270508000000: "not available", never an error and never ₹0.
+    const lastMonth = root.revenue_last_month === undefined || root.revenue_last_month === null
+      ? null
+      : { ...revenueOf(root.revenue_last_month, 'revenue_last_month'),
+          monthFrom: dateOnly(obj(root.revenue_last_month, 'revenue_last_month').month_from, 'revenue_last_month month_from') }
     const pending = arr(root.pending, 'pending').map((x): SpPendingRow => {
       const o = obj(x, 'pending row')
       return {
@@ -195,13 +229,10 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
     const rejected = reviewed(root.rejected, 'rejected')
     const dashboard: SalespersonDashboard = {
       monthFrom: dateOnly(root.month_from, 'month_from'),
+      today: optDate(root.today, 'today'),
       totalOrders: count(root.total_orders, 'total_orders'),
-      revenue: {
-        amount: num(rev.amount, 'revenue amount'),
-        orders: count(rev.orders, 'revenue orders'),
-        noProductValue: count(rev.no_product_value, 'no_product_value'),
-        beforeDiscount: count(rev.before_discount, 'before_discount'),
-      },
+      revenue: revenueOf(root.revenue, 'revenue'),
+      revenueLastMonth: lastMonth,
       pendingTotal: count(root.pending_total, 'pending_total'),
       pending,
       returnedTotal: count(root.returned_total ?? returned.length, 'returned_total'),
@@ -215,6 +246,8 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
           displayNumber: str(o.display_number, 'display_number'),
           clientName: clientOf(o.client_name),
           percent: num(o.percent, 'percent'),
+          shortfall: optNum(o.shortfall, 'shortfall'),
+          daysSinceConfirmation: optNum(o.days_since_confirmation, 'days_since_confirmation'),
           exceptionApproved: o.exception_approved === true,
         }
       }),
@@ -263,6 +296,7 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
           displayNumber: str(o.display_number, 'display_number'),
           clientName: clientOf(o.client_name),
           plannedDispatchDate: optDate(o.planned_dispatch_date, 'planned_dispatch_date'),
+          ...('ready_days' in o ? { readyDays: optNum(o.ready_days, 'ready_days') } : {}),
         }
       }),
     }
@@ -323,40 +357,41 @@ export const SP_ERROR_BODY =
 export const SP_RETRY_LABEL = 'Try again'
 export const SP_LOADING_LABEL = 'Loading your orders'
 
-export const SP_CARD_TOTAL = 'Total Orders'
-export const SP_CARD_TOTAL_SUB = 'All-time confirmed orders'
-export const SP_CARD_REVENUE = 'Current Month Revenue'
-export const SP_CARD_PENDING = 'Orders Pending Approval'
-export const SP_CARD_PENDING_SUB = 'Submitted, awaiting approval'
-export const SP_REVENUE_BASIS = 'Product value after discount, excl. GST'
+// The sales figures (owner, 2026-10-30): this month so far beside last month.
+export const SP_SALES_THIS_MONTH = 'This month so far'
+export const SP_SALES_LAST_MONTH = 'Last month'
+export const SP_SALES_BASIS = 'Your confirmed orders, by confirmation date · product value after discount, excluding GST'
+export const SP_SALES_NOT_AVAILABLE = 'Not available yet'
 
-export const SP_CARD_RETURNED = 'Returned to Sales'
-export const SP_CARD_RETURNED_SUB = 'Edit and resubmit'
-export const SP_CARD_REJECTED = 'Closed'
-export const SP_CARD_REJECTED_SUB = 'Last 7 days'
-export const SP_ATTENTION_TITLE = 'Needs your attention'
-export const SP_RETURNED_STATUS = 'Returned to Sales'
-export const SP_REJECTED_STATUS = 'Closed (deal lost)'
-export const SP_RETURNED_HINT = 'Open the PI, make the changes asked for and submit it again.'
-export const SP_REJECTED_HINT = 'Rejected PIs stay here for 7 days.'
-export const SP_NO_NOTE = 'No note was left.'
+// A PI returned to Sales: one line each. The approver's note is NOT drawn here;
+// it is at the top of the PI page, where the change is made.
+export const SP_RETURNED_HINT_ONE = 'Open it to see what to change, then submit it again.'
+export const SP_RETURNED_HINT_MANY = 'Open each one to see what to change, then submit it again.'
+export const SP_OPEN_PI = 'Open PI'
 
-export const SP_PANEL_PENDING = 'Orders Pending Approval'
-export const SP_PANEL_ADVANCE = 'Advance Below 40%'
-export const SP_PANEL_FABRIC = 'Fabric / Finish Pending Approval'
-export const SP_PANEL_READY = 'Ready for Dispatch'
+export const SP_LIST_ADVANCE = 'Advance below 40%'
+export const SP_LIST_READY = 'Ready for dispatch'
+export const SP_LIST_PENDING = 'Waiting for approval'
+export const SP_HINT = {
+  advance: 'Call these clients for payment',
+  ready: 'Not dispatched yet',
+  pending: 'Submitted, not decided yet',
+} as const
+/** The phone's jump chips, one per list. */
+export const SP_CHIP = {
+  advance: 'Below 40%',
+  ready: 'Ready to dispatch',
+  pending: 'Waiting approval',
+} as const
+export const SP_ADVANCE_COLUMNS = ['Order', 'Client', 'Verified', 'Short of 40%', 'Confirmed'] as const
 
 export const SP_EMPTY = {
-  pending: 'No orders are waiting for approval.',
+  pending: 'No PIs are waiting for approval.',
   advance: 'Every active order has at least 40% verified advance.',
-  fabric: 'No fabric or finish approvals are pending.',
   ready: 'No orders are ready for dispatch.',
 } as const
 
-export const SP_PENDING_STATUS = 'Pending approval'
-export const SP_BELOW_40 = 'Below 40%'
-export const SP_READY_STATUS = 'Ready for dispatch'
-export const SP_OVER_15 = 'Over 15 days'
+export const SP_EXCEPTION_APPROVED = 'Exception approved'
 export const SP_ADVANCE_UNCHECKED_HEADING = 'Advance not checked'
 export const SP_ADVANCE_UNCHECKED_PILL = 'Advance not checked'
 export const SP_ADVANCE_UNCHECKED_RULE =
@@ -364,50 +399,36 @@ export const SP_ADVANCE_UNCHECKED_RULE =
 export const SP_ADVANCE_BELOW_NONE_KNOWN = 'No checked order is below 40%.'
 export const SP_NOT_OPENABLE = 'Only the person who filed this PI, its reviewer or an approver can open it'
 export const SP_NOT_OPENABLE_SHORT = 'Opens only for whoever filed it'
-export const SP_FABRIC_PENDING_HEADING = 'Pending approval'
-export const SP_UNKNOWN_HEADING = 'Approval status unknown'
-export const SP_UNKNOWN_RULE = 'No approval record exists for these orders, so they are neither approved nor pending. Nothing is assumed.'
-export const SP_FABRIC_NO_KNOWN_PENDING = 'No order has a recorded pending approval.'
 
 /** `2026-10-01` → `October 2026`. */
 export const revenueMonthLabel = (monthFrom: string): string => formatMonth(monthFrom)
 
 export const revenueText = (amount: number): string => formatRupees(amount)
 
-export function revenueNotes(r: SalespersonDashboard['revenue']): string[] {
+/** What a month's figure leaves out, said under it; `when` is `this month` or `last month`. */
+export function revenueNotes(r: SpRevenue, when = 'this month'): string[] {
   const notes: string[] = []
-  if (r.noProductValue > 0) notes.push(`${plural(r.noProductValue, 'order')} this month with no product value on record ${r.noProductValue === 1 ? 'is' : 'are'} not counted.`)
-  if (r.beforeDiscount > 0) notes.push(`${plural(r.beforeDiscount, 'order')} this month ${r.beforeDiscount === 1 ? 'carries' : 'carry'} a value before discount.`)
+  if (r.noProductValue > 0) notes.push(`${plural(r.noProductValue, 'order')} ${when} with no product value on record ${r.noProductValue === 1 ? 'is' : 'are'} not counted.`)
+  if (r.beforeDiscount > 0) notes.push(`${plural(r.beforeDiscount, 'order')} ${when} ${r.beforeDiscount === 1 ? 'carries' : 'carry'} a value before discount.`)
   return notes
 }
 
-/** `Pending 3 days`, `Pending 5 h`, `Pending <1 h`. */
-export function pendingWaitText(seconds: number): string {
+/** `1 PI returned to you`, `3 PIs returned to you`. */
+export function returnedTitle(n: number): string {
+  return `${n} ${n === 1 ? 'PI' : 'PIs'} returned to you`
+}
+
+export function returnedByText(byName: string | null): string {
+  return byName ? `Returned by ${byName}` : 'Returned'
+}
+
+/** `Waiting 3 days`, `Waiting 1 day`, `Waiting 5 h`, `Waiting <1 h`. */
+export function waitingText(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds))
   const days = Math.floor(s / 86400)
-  if (days >= 1) return `Pending ${plural(days, 'day')}`
+  if (days >= 1) return `Waiting ${plural(days, 'day')}`
   const hours = Math.floor(s / 3600)
-  return hours >= 1 ? `Pending ${hours} h` : 'Pending <1 h'
-}
-
-/** `Sent back 3 days ago`, `Sent back 5 h ago`, `Sent back just now`; `verb` is `Sent back` or `Rejected`. */
-export function decidedAgoText(verb: string, seconds: number, byName: string | null): string {
-  const s = Math.max(0, Math.floor(seconds))
-  const days = Math.floor(s / 86400)
-  const hours = Math.floor(s / 3600)
-  const when = days >= 1 ? `${plural(days, 'day')} ago` : hours >= 1 ? `${hours} h ago` : 'just now'
-  return `${verb}${byName ? ` by ${byName}` : ''} ${when}`
-}
-
-/** `Fabric`, `Finish` or `Fabric + Finish`. */
-export function pendingKindsText(kinds: readonly SpPendingKind[]): string {
-  return kinds.map(k => (k === 'fabric' ? 'Fabric' : 'Finish')).join(' + ')
-}
-
-export function sinceConfirmationText(days: number | null): string {
-  if (days === null) return 'Confirmation date not recorded'
-  if (days < 0) return 'Confirmation date is ahead'
-  return days === 0 ? 'Confirmed today' : `${plural(days, 'day')} since confirmation`
+  return hours >= 1 ? `Waiting ${hours} h` : 'Waiting <1 h'
 }
 
 /** `87.5% verified`; two places at most, never more precision than the database truncated to. */
@@ -415,21 +436,32 @@ export function advancePercentText(percent: number): string {
   return `${percent.toFixed(2).replace(/\.?0+$/, '')}% verified`
 }
 
-export function dispatchDateText(iso: string | null): string {
-  return iso ? `Dispatch ${formatDate(iso)}` : 'No dispatch date'
+/** `₹1,86,400 short`; `–` when the database did not send the figure (never ₹0). */
+export function shortfallText(shortfall: number | null): string {
+  return shortfall === null ? '–' : `${formatRupees(shortfall)} short`
+}
+
+export function confirmedAgoText(days: number | null): string {
+  if (days === null) return 'Confirmation date not recorded'
+  if (days < 0) return 'Confirmation date is ahead'
+  return days === 0 ? 'Confirmed today' : `Confirmed ${plural(days, 'day')} ago`
+}
+
+/** `Ready for 6 days`, `Ready today`, `Ready date not recorded`; nothing when the database did not send it. */
+export function readyForText(days: number | null | undefined): string | null {
+  if (days === undefined) return null
+  if (days === null) return 'Ready date not recorded'
+  return days <= 0 ? 'Ready today' : `Ready for ${plural(days, 'day')}`
+}
+
+/** The planned dispatch date, and whether it has passed (by India's today, as the database saw it). */
+export function plannedDispatchText(iso: string | null, today: string | null): { text: string; tone: 'good' | 'alert' | 'muted' } {
+  if (!iso) return { text: 'No dispatch date', tone: 'muted' }
+  if (today && iso < today) return { text: `Planned ${formatDate(iso)} · passed`, tone: 'alert' }
+  return { text: `Planned ${formatDate(iso)}`, tone: 'good' }
 }
 
 /** The advance heading's count: orders known to be below 40% and orders NOT CHECKED are two numbers, never one. */
 export function advanceCountText(below: number, unchecked: number): string {
   return unchecked > 0 ? `${below} below 40% · ${unchecked} not checked` : String(below)
-}
-
-/** `Fabric status unknown`, `Finish status unknown`, `Fabric + Finish status unknown`. */
-export function unknownKindsText(kinds: readonly SpPendingKind[]): string {
-  return `${pendingKindsText(kinds)} status unknown`
-}
-
-/** The fabric/finish heading's count: known pending and unknown are two numbers, never one. */
-export function fabricCountText(pending: number, unknown: number): string {
-  return unknown > 0 ? `${pending} pending · ${unknown} unknown` : String(pending)
 }
