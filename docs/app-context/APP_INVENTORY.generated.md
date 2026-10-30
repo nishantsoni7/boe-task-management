@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4a5a3502` — Tasks: redesign both Cancelled pages, grouped by month
-- Commits on this branch: 1088
+- Commit: `1d4a8492` — Tasks: redesign both Cancelled pages, grouped by month (#525)
+- Commits on this branch: 1090
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 173
 - Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `4a5a3502` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month
+- `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
+- `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
+- `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
 - `3807938b` 2026-10-30 Orders: Product details, F&P Cost and Approvals tabs on the product list (#522)
 - `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
 - `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
@@ -37,8 +39,6 @@
 - `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 - `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
-- `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
-- `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
 
 ## Pages by top-level area
 
