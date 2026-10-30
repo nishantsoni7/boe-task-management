@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Tasks: both Cancelled pages redesigned, grouped by month (PR open) · no migration
+- **Owner request.** Redesign My Tasks - Cancelled with the UI/UX Pro Max skill; preview approved first.
+- **What.** `/tasks/cancelled` and `/tasks/assigned-by-me/cancelled` share one new look: a full-width list under month headings, rows at full contrast (the old rows were dimmed), a labelled "Reason:" line, priority dot, column headings, a chevron to open, keyboard-operable rows, the open task highlighted, taller search and filters. The side "About" panel is now a one-line note above the list. Phone rows stack.
+- **Unchanged.** Reads, paging, ordering, filters kept in the URL, load-error banner, empty state, drawer link and who can see which task. Presentation only.
+- **Files.** New `src/components/tasks/CancelledArchive.tsx`; both pages now use it. `archiveListBounds.test.ts` still pins the reads and the banner in each page.
+- **Rollback.** Revert the PR.
+
 ## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (PR #523, on the owner's yes after their preview check) · migrations 20270510000000, 20270510000100 → APPLIED 2026-10-30 (by the owner from the worktree: backup 20261030T081638Z verified first, dry run listed exactly these two, migration list shows both remote, 45 punches loaded)
 - **Owner decision.** From 1 November 2026 the new machine is the only attendance source, with no parallel period. October stays on the old machine's Excel.
 - **What.** `minop_punches` keeps each punch once, keyed by device + person + punch time. Employee Master gains a Machine ID (column, edit field, 409 if already used) and a notice listing IDs that have punched but belong to nobody. Nothing writes attendance or payroll: `MINOP_COLLECTION_ONLY` stays true. Machine IDs for 10 staff were saved from the owner's list after the migrations.

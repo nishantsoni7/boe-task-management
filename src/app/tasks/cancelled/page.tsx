@@ -8,8 +8,11 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import {
+  ArchiveHeading, ArchiveNote, ArchiveToolbar, ArchiveSelect, ArchiveList, ArchiveEmpty,
+  type ArchivePerson,
+} from '@/components/tasks/CancelledArchive'
 import { useViewAs } from '@/hooks/useViewAs'
-import { ExternalLink, Star, Search, Ban } from 'lucide-react'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
@@ -36,12 +39,6 @@ const TASK_COLUMNS = [
   'cancelled_by', 'cancelled_at', 'cancellation_reason',
 ].join(', ')
 
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#A12438'    },
-  medium: { label: 'Med',  color: '#805B0D'    },
-  low:    { label: 'Low',  color: colors.muted },
-}
-
 // ─── URL-backed list state ────────────────────────────────────────────────────
 // Search and both filters live in the query string so Back from a task detail
 // returns to the same filtered list.
@@ -53,208 +50,11 @@ const LIST_PARAMS = {
   q:          textParam(),
 }
 
-// ─── Info panel ───────────────────────────────────────────────────────────────
-function InfoPanel() {
-  return (
-    <div style={{
-      width: '220px', flexShrink: 0,
-      background: 'rgba(104,109,108,0.04)',
-      border: '1.5px solid rgba(104,109,108,0.18)',
-      borderRadius: '8px', padding: '16px 14px',
-      display: 'flex', flexDirection: 'column', gap: '14px', alignSelf: 'flex-start',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-        <Ban size={14} color="#686D6C" />
-        <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-          About Cancelled Tasks
-        </span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {[
-          'Cancelled tasks are removed from active workflow and do not count toward performance.',
-          'You can restore a cancelled task from its detail page to return it to active work.',
-        ].map((text, i) => (
-          <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <span style={{
-              marginTop: '3px', flexShrink: 0,
-              width: '5px', height: '5px', borderRadius: '50%',
-              background: 'rgba(104,109,108,0.4)',
-              display: 'inline-block',
-            }} />
-            <span style={{ fontSize: '12px', color: colors.secondary, lineHeight: '1.5' }}>
-              {text}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Task card ────────────────────────────────────────────────────────────────
-function CancelledTaskCard({
-  task, userId, userMap, onClick, isMobile,
-}: {
-  task: Task
-  userId: string
-  userMap: Record<string, string>
-  onClick: () => void
-  isMobile?: boolean
-}) {
-  const [hovered,     setHovered]     = useState(false)
-  const [hoveredView, setHoveredView] = useState(false)
-
-  const priority     = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
-  const isSelf       = task.created_by === userId
-  const assignerName = isSelf ? null : (userMap[task.created_by] ?? 'member')
-
-  const cancelledLabel = task.cancelled_at
-    ? new Date(task.cancelled_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    : (task.last_update_at
-      ? new Date(task.last_update_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-      : 'Unknown')
-
-  if (isMobile) {
-    return (
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onClick={onClick}
-        style={{
-          background: hovered ? colors.raised : colors.base,
-          border: `1.5px solid ${colors.border}`,
-          borderRadius: '8px',
-          opacity: 0.82,
-          cursor: 'pointer',
-          padding: '10px 12px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
-          <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 500, color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {task.title}
-          </div>
-          <button
-            onClick={e => { e.stopPropagation(); onClick() }}
-            onMouseEnter={() => setHoveredView(true)}
-            onMouseLeave={() => setHoveredView(false)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(104,109,108,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(104,109,108,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#686D6C' : colors.muted, flexShrink: 0 }}
-          >
-            <ExternalLink size={12} />
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {!isSelf && assignerName && (
-            <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#335A86', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>{assignerName}</span>
-          )}
-          <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
-          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>{cancelledLabel}</span>
-          {task.cancellation_reason && (
-            <span style={{ fontSize: '12px', color: '#686D6C', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
-              {task.cancellation_reason}
-            </span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center',
-        background: hovered ? colors.raised : colors.base,
-        border: `1.5px solid ${colors.border}`,
-        borderRadius: '8px',
-        boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.09)' : '0 1px 3px rgba(0,0,0,0.04)',
-        opacity: 0.72,
-        transition: 'background 0.12s, box-shadow 0.12s',
-        minHeight: '48px',
-        cursor: 'pointer',
-      }}
-    >
-      {/* Star */}
-      <div style={{ width: '28px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {task.is_urgent ? <Star size={11} fill="#B7892A" color="#B7892A" /> : <div style={{ width: '11px' }} />}
-      </div>
-
-      {/* Title + reason */}
-      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
-        <div style={{ fontSize: '13px', fontWeight: 500, color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
-          {task.title}
-        </div>
-        {task.cancellation_reason && (
-          <div style={{ fontSize: '12px', color: '#686D6C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px', fontStyle: 'italic' }}>
-            {task.cancellation_reason}
-          </div>
-        )}
-      </div>
-
-      {/* Assigned by — fixed 140px */}
-      <div style={{ flexShrink: 0, width: '140px', display: 'flex', alignItems: 'center', paddingLeft: '8px', paddingRight: '6px', overflow: 'hidden' }}>
-        <span
-          title={isSelf ? 'Self-assigned' : `Assigned by ${assignerName}`}
-          style={{
-            display: 'inline-block', maxWidth: '100%',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
-            ...(isSelf
-              ? { color: colors.secondary, background: 'rgba(0,0,0,0.05)' }
-              : { color: '#335A86', background: 'rgba(155,111,212,0.10)' }),
-          }}
-        >
-          {isSelf ? 'Self' : assignerName}
-        </span>
-      </div>
-
-      {/* Priority — fixed 52px */}
-      <div style={{ flexShrink: 0, width: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
-      </div>
-
-      {/* Cancelled on — fixed 140px */}
-      <div style={{ flexShrink: 0, width: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', paddingLeft: '4px' }}>
-        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-          <span style={{ opacity: 0.6 }}>Cancelled: </span>{cancelledLabel}
-        </span>
-      </div>
-
-      {/* View button — fixed 80px */}
-      <div style={{ flexShrink: 0, width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '10px' }}>
-        <button
-          onClick={e => { e.stopPropagation(); onClick() }}
-          onMouseEnter={() => setHoveredView(true)}
-          onMouseLeave={() => setHoveredView(false)}
-          title="View task details"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '28px', height: '28px', borderRadius: '6px',
-            background: hoveredView ? 'rgba(104,109,108,0.12)' : 'transparent',
-            border: `1px solid ${hoveredView ? 'rgba(104,109,108,0.35)' : 'transparent'}`,
-            cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? '#686D6C' : colors.muted,
-          }}
-        >
-          <ExternalLink size={12} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', gap: '6px' }}>
-      <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#E4DED7', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
-        <Ban size={14} color={colors.muted} />
-      </span>
-      <span style={{ fontSize: '13px', fontWeight: 500, color: colors.secondary }}>No cancelled tasks</span>
-      <span style={{ fontSize: '12px', color: colors.muted }}>Cancelled tasks will appear here.</span>
-    </div>
-  )
+// ─── Who the task is tied to ──────────────────────────────────────────────────
+const personFor = (userId: string, userMap: Record<string, string>) => (task: Task): ArchivePerson => {
+  if (task.created_by === userId) return { label: 'Self', tone: 'self', title: 'Self-assigned' }
+  const name = userMap[task.created_by] ?? 'member'
+  return { label: name, tone: 'other', title: `Assigned by ${name}` }
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -376,93 +176,61 @@ function MyCancelledTasksContent() {
     <>
       <DashboardLayout profile={profile} title="My Tasks – Cancelled" onSignOut={handleLogout}>
 
-        <div style={{ marginBottom: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#686D6C' }}>Cancelled Tasks</div>
-          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-            {allTasks.length} task{allTasks.length !== 1 ? 's' : ''} cancelled
-          </div>
-        </div>
+        <ArchiveHeading
+          title="Cancelled tasks"
+          subtitle={`${allTasks.length} task${allTasks.length !== 1 ? 's' : ''} removed from active work. Newest first.`}
+        />
 
-        {/* Search + filter toolbar */}
-        <div style={{
-          background: colors.raised, border: `1.5px solid ${colors.borderInput}`,
-          borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
-          display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
-        }}>
-          <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Find tasks…"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            onBlur={flushSearch}
-            style={{ flex: 1, minWidth: '140px', padding: '4px 6px', background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
-          />
+        <ArchiveNote>
+          <strong style={{ fontWeight: 600, color: colors.primary }}>Cancelled tasks don&apos;t count toward performance.</strong>{' '}
+          Open one to restore it to active work.
+        </ArchiveNote>
+
+        <ArchiveToolbar searchInput={searchInput} onSearch={setSearchInput} onSearchBlur={flushSearch}>
           {assignerOptions.length > 1 && (
-            <select
-              value={filterAssignedBy}
-              onChange={e => setState({ assignedBy: e.target.value })}
-              style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterAssignedBy ? colors.primary : colors.muted, cursor: 'pointer' }}
-            >
-              <option value="">All Assigners</option>
+            <ArchiveSelect value={filterAssignedBy} label="Assigned by" onChange={v => setState({ assignedBy: v })}>
+              <option value="">All assigners</option>
               {assignerOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </ArchiveSelect>
           )}
-          <select
-            value={filterPriority}
-            onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
-            style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
-          >
-            <option value="">All Priority</option>
+          <ArchiveSelect value={filterPriority} label="Priority" onChange={v => setState({ priority: v as typeof filterPriority })}>
+            <option value="">All priorities</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
-          </select>
-        </div>
+          </ArchiveSelect>
+        </ArchiveToolbar>
 
-        {/* Two-column: task list + info panel */}
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without this the
-                screen shows its empty state — a statement about somebody's work
-                — when the truth is that the request did not finish. Above the
-                list, not instead of it, so whatever loaded stays usable. */}
-            {loadError && (
-              <div
-                role="alert"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                  padding: '10px 14px', marginBottom: '10px', borderRadius: '8px',
-                  background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
-                }}
-              >
-                <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
-              </div>
-            )}
-            {visibleTasks.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {visibleTasks.map(task => (
-                  <CancelledTaskCard
-                    key={task.id}
-                    task={task}
-                    userId={userId}
-                    userMap={userMap}
-                    onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    isMobile={isMobile}
-                  />
-                ))}
-                <div style={{ padding: '4px', fontSize: '12px', color: colors.muted }}>
-                  {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
-                </div>
-              </div>
-            )}
+        {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without this the
+            screen shows its empty state — a statement about somebody's work
+            — when the truth is that the request did not finish. Above the
+            list, not instead of it, so whatever loaded stays usable. */}
+        {loadError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+              padding: '10px 14px', marginBottom: '10px', borderRadius: '8px',
+              background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
+            }}
+          >
+            <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
           </div>
-          {!isMobile && <InfoPanel />}
-        </div>
+        )}
+        {visibleTasks.length === 0 ? (
+          <ArchiveEmpty title="No cancelled tasks" hint="Cancelled tasks will appear here." />
+        ) : (
+          <ArchiveList
+            tasks={visibleTasks}
+            selectedId={selectedTask?.id ?? null}
+            personHeader="Assigned by"
+            personFor={personFor(userId, userMap)}
+            isMobile={isMobile}
+            onOpen={task => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+          />
+        )}
 
       </DashboardLayout>
 

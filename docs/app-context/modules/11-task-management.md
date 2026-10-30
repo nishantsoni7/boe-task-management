@@ -151,9 +151,11 @@ Statuses and transitions:
 `src/lib/tasks/*` (taskDetailAccess, reviewTransitions, statusChange, acknowledgeTask, taskCreateFlow, taskCreateActions, taskReporting, myTaskTabs, taskReturnPath,
 assignmentNotification(.writer.server), attachmentStorage, commentAttachments, activityHeadings, addToMeetingAccess, taskGallery, taskDetailLoad, healthCheckMigrationAudit, quotationSend),
 `src/hooks/queries/{useMyTasks,useAssignedByMe,useCompletedTasks,useTaskReports,useTopTasks,useQuotationRequests}.ts`, `src/components/tasks/{AddToMeetingModal,
-CompletedHistory,CopyAssignModal,MyTaskViewTabs,QuotationDetailView,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
+CancelledArchive,CompletedHistory,CopyAssignModal,MyTaskViewTabs,QuotationDetailView,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
 (shell for the Task Management pages - 22 per memory; header Self/Delegate actions), `src/components/notifications/*`, `src/app/tasks/[id]/page.tsx` (3411 lines), `src/app/tasks/my/page.tsx`
 (1985), `src/app/dashboard/page.tsx` (about 1800) with `src/app/dashboard/GlanceBar.tsx` (the At a glance bar). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
+
+Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancelled` render through `CancelledArchive.tsx` (month groups, rows, heading, note, toolbar, empty state); the pages keep their own paged read, filters, load-error banner and empty-state branch because `archiveListBounds.test.ts` reads those from the page source.
 
 ## 8. Decisions made & why
 
