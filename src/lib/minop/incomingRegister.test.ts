@@ -1,6 +1,6 @@
 /**
- * The incoming-data register: payload expansion, duplicate flags, filters,
- * redaction and the Excel-safe CSV, all against local fixtures.
+ * The incoming-data register: payload expansion, names and delay, duplicate
+ * flags, filters, redaction and the Excel-safe CSV, all against local fixtures.
  *
  * Run:
  *   npx tsx --test src/lib/minop/incomingRegister.test.ts
@@ -8,8 +8,9 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
-  buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, redactRawBody, redactSecrets,
+  buildIncomingRows, filterIncomingRows, formatDelay, sortIncomingRows, parseIncomingSort, redactRawBody, redactSecrets,
   type MinopDeliveryRow,
 } from './incomingRegister'
 import { buildIncomingCsv, buildRawPayloadExport, csvCell, formatIst, INCOMING_CSV_COLUMNS } from './incomingCsv'
@@ -148,6 +149,115 @@ describe('a message with no punches is distinguishable from real punches', () =>
       assert.equal(r.entryNumber, null)
       assert.equal(r.entryJson, null)
     }
+  })
+})
+
+describe('who punched, and how long it took to reach BOE', () => {
+  const names = new Map([['5', 'Asha Rao']])
+
+  test('the name comes from the Machine ID, matched as exact text', () => {
+    const rows = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', {
+      trans: [txn({ punchId: '5' }), txn({ punchId: '05' }), txn({ punchId: '1000' })],
+    })], names)
+    assert.deepEqual(rows.map(r => r.employeeName), ['Asha Rao', null, null])
+  })
+
+  test('a name written inside the message is not taken as the employee', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [txn({ name: 'Someone Else' })] })], names)
+    assert.equal(row.employeeName, null)
+    assert.equal(row.nameSupplied, 'Someone Else')
+  })
+
+  test('a message with no punch has no name and no delay', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [] })], names)
+    assert.equal(row.employeeName, null)
+    assert.equal(row.punchAt, null)
+    assert.equal(row.delayMs, null)
+  })
+
+  test('delay is received time minus punch time, with the machine clock read as IST', () => {
+    // Punched 16:49:55 IST, stored 13:41:03 UTC, which is 19:11:03 IST.
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [txn({ txnDateTime: '2026-10-28 16:49:55' })] })])
+    assert.equal(row.punchAt, '2026-10-28T11:19:55.000Z')
+    assert.equal(row.delayMs, 8_468_000)
+    assert.equal(formatDelay(row.delayMs), '2 h 21 min')
+    assert.equal(row.punchTimeRaw, '2026-10-28 16:49:55')
+  })
+
+  test('a punch time that carries a zone uses that exact instant', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-09-30T04:17:00+00:00', {
+      RealTime: { OperationID: 77, PunchLog: { UserId: '5', LogTime: '2026-09-30T04:15:00Z', Type: 'CheckIn' } },
+    })], names)
+    assert.equal(row.punchAt, '2026-09-30T04:15:00.000Z')
+    assert.equal(row.delayMs, 120_000)
+    assert.equal(row.employeeName, 'Asha Rao')
+  })
+
+  test('a punch time that cannot be read has no delay and stays as sent', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [txn({ txnDateTime: 'yesterday' })] })])
+    assert.equal(row.punchTimeRaw, 'yesterday')
+    assert.equal(row.punchAt, null)
+    assert.equal(row.delayMs, null)
+    assert.equal(formatDelay(row.delayMs), '—')
+  })
+
+  test('a machine clock running ahead reads as ahead, not as a minus', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T11:19:55+00:00', { trans: [txn({ txnDateTime: '2026-10-28 16:51:55' })] })])
+    assert.equal(row.delayMs, -120_000)
+    assert.equal(formatDelay(row.delayMs), 'Ahead by 2 min')
+  })
+
+  test('the delay is written in the largest units that fit', () => {
+    const second = 1000
+    const minute = 60 * second
+    const hour = 60 * minute
+    const day = 24 * hour
+    assert.equal(formatDelay(0), '0 s')
+    assert.equal(formatDelay(45 * second), '45 s')
+    assert.equal(formatDelay(minute), '1 min')
+    assert.equal(formatDelay(35 * minute + 38 * second), '35 min')
+    assert.equal(formatDelay(hour), '1 h 0 min')
+    assert.equal(formatDelay(2 * hour + 6 * minute + 8 * second), '2 h 6 min')
+    assert.equal(formatDelay(day), '1 d 0 h')
+    assert.equal(formatDelay(2 * day + 3 * hour + 59 * minute), '2 d 3 h')
+  })
+
+  test('search finds a person by name, in any case', () => {
+    const rows = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', {
+      trans: [txn({ txnId: '1', punchId: '5' }), txn({ txnId: '2', punchId: '6' })],
+    })], names)
+    assert.deepEqual(filterIncomingRows(rows, { q: 'asha' }).map(r => r.eventId), ['1'])
+  })
+
+  test('the CSV adds the name and delay and keeps every field the screen no longer shows', () => {
+    const headers = INCOMING_CSV_COLUMNS.map(c => c.header)
+    for (const header of ['Employee name', 'Delay', 'Punch ID (punchId)', 'Mode (raw)', 'Device ID (dvcId)', 'Name supplied in message', 'Data reading', 'Duplicate flags']) {
+      assert.ok(headers.includes(header), header)
+    }
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [txn({ punchId: '5', txnDateTime: '2026-10-28 16:49:55' })] })], names)
+    const value = (header: string) => INCOMING_CSV_COLUMNS.find(c => c.header === header)?.value(row)
+    assert.equal(value('Employee name'), 'Asha Rao')
+    assert.equal(value('Delay'), '2 h 21 min')
+  })
+
+  test('a row with no delay leaves the CSV cell empty, not a dash', () => {
+    const [row] = buildIncomingRows([delivery('d1', '2026-10-28T13:41:03+00:00', { trans: [] })])
+    assert.equal(INCOMING_CSV_COLUMNS.find(c => c.header === 'Delay')?.value(row), null)
+  })
+
+  test('the screen and the download both read the names', () => {
+    for (const path of ['src/app/api/attendance/minop-incoming/route.ts', 'src/app/api/attendance/minop-incoming/export/route.ts']) {
+      assert.match(readFileSync(path, 'utf8'), /buildIncomingRows\(read\.deliveries, names\)/, path)
+    }
+  })
+
+  test('the page shows the agreed columns in order, and not the removed ones', () => {
+    const page = readFileSync('src/app/attendance/minop/incoming/page.tsx', 'utf8')
+    assert.deepEqual(
+      [...page.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m => m[1]),
+      ['Punch time', 'Received', 'Delay', 'Name', 'Transaction ID', 'Payload'],
+    )
+    assert.doesNotMatch(page, /Mode \(raw\)|Device ID|Name in message|Data reading/)
   })
 })
 

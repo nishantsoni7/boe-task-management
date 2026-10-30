@@ -2,15 +2,16 @@
 // inspectable row per punch, without interpreting them as attendance.
 //
 // Rules this module keeps:
-//   - Pure. It reads nothing, writes nothing, and never maps an employee.
+//   - Pure. It reads nothing and writes nothing. Employee names are handed in
+//     by the caller, keyed by machine ID; it never works one out.
 //   - Reads only fields that are actually present. A field the payload does not
 //     carry stays null; nothing is invented, defaulted or inferred (IN/OUT is
 //     never worked out from punch order).
 //   - IDs stay strings exactly as received, so leading zeros survive.
 //   - Received time (when BOE stored the message) and punch time (what the
 //     device says) are separate fields. A punch time with no zone marker is
-//     kept exactly as sent and is NOT converted: guessing the device's zone is
-//     a fact this module does not have.
+//     kept exactly as sent in punchTimeRaw. The machine's clock is IST, so
+//     punchAt and delayMs read it as IST (docs/app-context/modules/04).
 //   - Credentials are removed from everything that is displayed or exported.
 //
 // Shapes read (both observed or documented in this repo):
@@ -56,9 +57,8 @@ export type IncomingRegisterRow = {
   /** Which field set the punch was read from. */
   format: MessageFormat
   /**
-   * `punchId` on the device callback, `PunchLog.UserId` on the real-time one.
-   * Whether it is the person's fingerprint/employee ID is NOT confirmed by Minop;
-   * the register labels it by its field name.
+   * `punchId` on the device callback, `PunchLog.UserId` on the real-time one:
+   * the person's ID on the machine, the same text as `users.minop_user_id`.
    */
   minopUserId: string | null
   /** `txnId` on the device callback, `OperationID` on the real-time one. Separate from the punch ID. */
@@ -69,6 +69,10 @@ export type IncomingRegisterRow = {
   punchTimeHasZone: boolean
   /** ISO instant, set only when punchTimeHasZone. */
   punchTimeInstant: string | null
+  /** The punch as an ISO instant, a zone-less time read as IST. Null when there is no usable punch time. */
+  punchAt: string | null
+  /** Received time minus punch time. Negative when the machine's clock runs ahead; null without a usable punch time. */
+  delayMs: number | null
   /** The device's own punch-type value as sent (`mode` or `Type`). Not translated. */
   punchTypeRaw: string | null
   punchTypeSource: 'mode' | 'Type' | null
@@ -77,6 +81,8 @@ export type IncomingRegisterRow = {
   deviceName: string | null
   /** A person's name, only when the payload itself carries one. */
   nameSupplied: string | null
+  /** The employee whose Machine ID equals minopUserId, exact text; null when nobody is linked. */
+  employeeName: string | null
   readStatus: ReadStatus
   /** Exact reason when the row is partial or unreadable; null when fully read. */
   readReason: string | null
@@ -181,7 +187,7 @@ function missingFields(entry: Entry, labels: { user: string; time: string }): st
   return missing
 }
 
-type Expanded = Omit<IncomingRegisterRow, 'duplicateFlags'>
+type Expanded = Omit<IncomingRegisterRow, 'duplicateFlags' | 'employeeName' | 'punchAt' | 'delayMs'>
 
 function baseRow(delivery: MinopDeliveryRow, entryCount: number): Omit<
   Expanded,
@@ -331,8 +337,13 @@ export function expandDelivery(delivery: MinopDeliveryRow): Expanded[] {
  * Whether an event ID is unique per punch on the real device is unconfirmed
  * (docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md), so the second flag says
  * only what it observed.
+ *
+ * `names` is machine ID → employee name. An ID missing from it stays unnamed.
  */
-export function buildIncomingRows(deliveries: MinopDeliveryRow[]): IncomingRegisterRow[] {
+export function buildIncomingRows(
+  deliveries: MinopDeliveryRow[],
+  names: ReadonlyMap<string, string> = new Map(),
+): IncomingRegisterRow[] {
   const rows = deliveries.flatMap(expandDelivery)
 
   const deliveriesPerBody = new Map<string, Set<string>>()
@@ -354,8 +365,29 @@ export function buildIncomingRows(deliveries: MinopDeliveryRow[]): IncomingRegis
       && (rowsPerDeviceEvent.get(JSON.stringify([row.deviceId, row.eventId])) ?? 0) > 1) {
       flags.push('same_device_event_id_seen_again')
     }
-    return { ...row, duplicateFlags: flags }
+    const punchMs = punchTimeMs(row)
+    return {
+      ...row,
+      duplicateFlags: flags,
+      employeeName: row.minopUserId === null ? null : names.get(row.minopUserId) ?? null,
+      punchAt: punchMs === null ? null : new Date(punchMs).toISOString(),
+      delayMs: punchMs === null ? null : Date.parse(row.receivedAt) - punchMs,
+    }
   })
+}
+
+/** "45 s", "35 min", "2 h 6 min", "2 d 3 h"; "Ahead by 2 min" when the machine's clock runs ahead. */
+export function formatDelay(delayMs: number | null): string {
+  if (delayMs === null) return '—'
+  const seconds = Math.floor(Math.abs(delayMs) / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  const text = days > 0 ? `${days} d ${hours % 24} h`
+    : hours > 0 ? `${hours} h ${minutes % 60} min`
+    : minutes > 0 ? `${minutes} min`
+    : `${seconds} s`
+  return delayMs < 0 ? `Ahead by ${text}` : text
 }
 
 export const DUPLICATE_FLAG_LABEL: Record<DuplicateFlag, string> = {
@@ -366,7 +398,7 @@ export const DUPLICATE_FLAG_LABEL: Record<DuplicateFlag, string> = {
 // ── Filtering ────────────────────────────────────────────────────────────────
 
 export type IncomingFilters = {
-  /** Matches user ID, event ID, or device ID / IP / name (case-insensitive, substring). */
+  /** Matches employee name, user ID, event ID, or device ID / IP / name (case-insensitive, substring). */
   q?: string
   /** Received-date range, IST calendar dates, YYYY-MM-DD, inclusive. */
   from?: string
@@ -397,7 +429,7 @@ export function filterIncomingRows(rows: IncomingRegisterRow[], filters: Incomin
     if (startMs !== null && received < startMs) return false
     if (endMs !== null && received >= endMs) return false
     if (!needle) return true
-    return [row.minopUserId, row.eventId, row.deviceId, row.deviceIp, row.deviceName]
+    return [row.employeeName, row.minopUserId, row.eventId, row.deviceId, row.deviceIp, row.deviceName]
       .some(field => field !== null && field.toLowerCase().includes(needle))
   })
 }
@@ -419,11 +451,10 @@ export function parseIncomingSort(field: string | null | undefined, dir: string 
 const NAIVE_PUNCH_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/
 
 /**
- * Comparable instant for a punch. A punch time sent without a time zone is
- * read as IST (the register's display zone) only so it can be ordered; it is
- * never shown or stored as an instant. Null when there is no usable punch time.
+ * The punch as an exact instant. A punch time sent without a time zone is read
+ * as IST, the machine's clock. Null when there is no usable punch time.
  */
-function punchTimeMs(row: IncomingRegisterRow): number | null {
+function punchTimeMs(row: Expanded): number | null {
   if (row.punchTimeHasZone && row.punchTimeInstant) {
     const ms = Date.parse(row.punchTimeInstant)
     return Number.isFinite(ms) ? ms : null

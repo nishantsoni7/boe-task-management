@@ -10,17 +10,7 @@
 
 .summary { margin: 0; font-size: 12.5px; line-height: 1.5; color: #4C5352; }
 
-/* Nine columns have to fit a laptop without sideways scrolling: tighter cells,
-   headers allowed to wrap. Doubled class beats the shared table rule. */
-.table.table th { padding: 8px 8px; white-space: normal; letter-spacing: 0.02em; vertical-align: top; }
-.table.table td { padding: 8px 8px; vertical-align: top; font-size: 12.5px; }
-.table.table th:first-child, .table.table td:first-child { padding-left: 14px; }
-.table.table th:last-child, .table.table td:last-child { padding-right: 14px; }
 .mono { font-variant-numeric: tabular-nums; word-break: break-all; }
-.ref { font-size: 12px; color: #686D6C; font-variant-numeric: tabular-nums; }
-
-.reading { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.reason { margin: 0; font-size: 12px; line-height: 1.45; color: #4C5352; max-width: 32ch; }
 
 .payload > summary {
   cursor: pointer;
@@ -59,6 +49,8 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.cardPunch { margin-top: 6px; font-size: 14px; }
 
 .cardFacts {
   margin: 8px 0;

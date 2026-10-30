@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Incoming Minop data: table redesigned around punch time, delay and name (PR #531) · no migration
+- **Owner request.** Punch time first and primary, then Received, then Delay. A name in place of Punch ID. Mode, Device ID, Name in message and Data reading removed. Mockup approved first.
+- **What.** Columns are Punch time, Received, Delay, Name, Transaction ID, Payload, with phone cards to match. Delay is received time minus punch time, the machine's clock read as IST. Names come from `users.minop_user_id`, read in `incomingQuery.ts` and handed to `buildIncomingRows`. An ID linked to nobody reads "ID 1000 · not linked"; a message with no punch says so. Search also finds a name. The small message reference left the row: View payload shows it in full.
+- **Unchanged.** Filters, sort, paging, View payload, admin-only access. The CSV and raw download keep every field; the CSV adds Employee name and Delay. Duplicate flags and read statuses now appear only in the CSV.
+- **Rollback.** Revert the PR.
+- **Proof.** `incomingRegister.test.ts`: exact-text name match, delay with and without a zone, an unreadable time, a clock running ahead, name search, the CSV columns, and both routes passing the names.
+
 ## 2026-10-30 — Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (PR #532, squash-merged as 03346ec0, 17:30 UTC, by the owner after their preview check) · no migration · Production deployment 7444828368 success 17:32 UTC · backup bundle 20261030T173223Z, database 20261030T173246Z (201 tables, 100,530 rows), verified
 - **Owner request.** See who is doing well in attendance and who is not. Preview approved first.
 - **What.** `/attendance` was a list of shortcuts. It now shows a company score, Doing great and Needs attention with a plain reason for each person, everyone's month as one block per day, a line about today and links to every page. New read-only `/api/attendance/overview`, admins only. Points: on time 1; late, left early or one punch missing ¾; half day ½; absent 0. Approved leave, Sundays and holidays are not counted, and a waived or approved day never lowers a score. Great is 95 or more, Needs attention is under 85. Rules in dossier 03 section 6.
