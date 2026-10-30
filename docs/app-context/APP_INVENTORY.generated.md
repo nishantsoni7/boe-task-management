@@ -5,20 +5,20 @@
 
 ## Snapshot
 
-- Commit: `b68fe055` — Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
+- Commit: `f3058f0c` — Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - Commits on this branch: 1080
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 850   Enums: 0
-- Test files: 682   Next.js 16.2.6, React 19.2.4
+- Test files: 683   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b68fe055` 2026-10-30 Merge remote-tracking branch 'origin/fix/approve-popup-simple' into stack/pi-payments-table-on-511
-- `c7799b48` 2026-10-30 Merge main (#510, approving opens the Order) into fix/approve-popup-simple
-- `1cc848a7` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row
+- `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
+- `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
+- `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
+- `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
-- `d5fa10e8` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 98 source, 147 test
+- `src/lib/orders` — 99 source, 148 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
