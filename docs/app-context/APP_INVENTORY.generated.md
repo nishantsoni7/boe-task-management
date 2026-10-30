@@ -5,23 +5,21 @@
 
 ## Snapshot
 
-- Commit: `b741e88d` — Orders: sales dashboard in three columns instead of full-width bands
-- Commits on this branch: 1088
-- Pages (`page.tsx`): 160   API routes (`route.ts`): 171
-- Migrations: 388 (first `20260530_create_positions.sql`, latest `20270509000000_pi_review_notice_short.sql`)
-- Tables ever created: 191 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 684   Next.js 16.2.6, React 19.2.4
+- Commit: `14a3fc5a` — Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
+- Commits on this branch: 1086
+- Pages (`page.tsx`): 160   API routes (`route.ts`): 172
+- Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
+- Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
+- Test files: 685   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b741e88d` 2026-10-30 Orders: sales dashboard in three columns instead of full-width bands
-- `dd2b75c7` 2026-10-30 Docs: migrations 20270507000000-20270509000000 applied to production
-- `903e86d7` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
+- `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
+- `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
+- `d26778f4` 2026-10-30 Docs: PI Draft layout pass 2 merged as PR #515 (4e817da6) (#520)
 - `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
 - `cc3a60a8` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c) (#518)
-- `3d438df2` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
 - `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
-- `9566538b` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
@@ -39,6 +37,8 @@
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
 - `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
+- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
+- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
 
 ## Pages by top-level area
 
@@ -87,7 +87,7 @@
 - **admin-members** (1): ` [GET]`
 - **admin-tasks** (1): ` [GET]`
 - **assets** (2): `/notify [POST]`, `/warranty-sweep [POST]`
-- **attendance** (15): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
+- **attendance** (16): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
@@ -143,7 +143,7 @@
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
-- `src/lib/minop` — 11 source, 9 test
+- `src/lib/minop` — 13 source, 10 test
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
@@ -305,6 +305,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `meeting_orders` — 20260814000000
 - `meeting_update_history` — 20260814000000
 - `meetings` — 20260814000000
+- `minop_punches` — 20270510000000
 - `minop_webhook_deliveries` — 20261113000000
 - `module_permission_actions` — 20260660_creat
 - `order_activity_log` — 20260656_creat
@@ -398,8 +399,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270411000000_order_submission_reorder_renumbers_lines.sql`
-- `20270412000000_finance_handover_cash_balance.sql`
 - `20270413000000_finance_cash_journeys.sql`
 - `20270414000000_order_submission_cash_exceptions.sql`
 - `20270415000000_finance_payment_cash_handover_lock.sql`
@@ -428,6 +427,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270507000000_returned_pis_for_sales.sql`
 - `20270508000000_salesperson_dashboard_last_month.sql`
 - `20270509000000_pi_review_notice_short.sql`
+- `20270510000000_minop_punches.sql`
+- `20270510000100_users_minop_user_id.sql`
 
 ## All SQL function names
 

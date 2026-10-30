@@ -172,6 +172,7 @@ Run: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"` (the `.ts`-only glo
 - Adding ANY migration breaks ledger-pinning tests unless the named-successor helper (`assertNamedSuccessors`) covers them; since #327 new files at the end are allowed.
 
 ## 11. Open items / next planned work
+- **Machine-only attendance from 2026-11-01 (owner decision 2026-10-30).** The Excel import stops being the source from that date. What must change here is listed in 04 section 11: import refused from the start date, month coverage counting machine rows, today shown as in progress. Until that ships, section 6 stays accurate.
 - Confirm prod apply-state of 20270215000000/…100/20270222000000 and the payroll-owner sign-off on the new lock acknowledgement step.
 - Policy decisions still open: final-settlement path for leavers; extra half-day deduction after the 4th uninformed late; per-employee shifts.
 - Control Center / attendance review roadmap (10-item backlog) in memory `project_control_center_attendance_review_roadmap.md` (unverified, from memory).

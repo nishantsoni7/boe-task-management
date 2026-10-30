@@ -18,7 +18,8 @@ const BASE_COLUMNS = 'id, full_name, team, position, is_active'
 // was returning every employee's salary to any authenticated caller. It is now
 // added only for an admin, verified server-side below.
 const FULL_COLUMNS  = BASE_COLUMNS + ', employee_code, joining_date, office_timing, fingerprint_employee_code, performance_tracking_enabled'
-const ADMIN_COLUMNS = FULL_COLUMNS + ', monthly_salary'
+// minop_user_id (20270510000100) is admin-only for the same reason.
+const ADMIN_COLUMNS = FULL_COLUMNS + ', monthly_salary, minop_user_id'
 
 export async function GET(req: NextRequest) {
   const authHeader  = req.headers.get('authorization') ?? ''
