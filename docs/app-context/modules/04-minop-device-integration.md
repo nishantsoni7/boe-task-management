@@ -18,7 +18,7 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | Old attendance processor (`runProcessing.ts`, `processDelivery.ts`, `punchEvent.ts`, `employeeMapping.ts`, `attendanceMerge.ts`, `collectionMode.ts`) | DELETED. It read a message shape the machine never sends, and two ways to write attendance is one too many |
 | Retry/reprocess route `POST /api/attendance/minop-deliveries/[id]/reprocess` | DELETED (only `GET` route.ts remains in that folder) |
 | `/attendance/minop` ("Attendance Sync") diagnostics | Shipped, Retry action removed; rows read "Stored" |
-| `/attendance/minop/incoming` "Incoming Minop data" register + CSV/raw export | Shipped (#271, 2026-10-01). Redesigned 2026-10-30 (PR open): columns are Punch time, Received, Delay, Name, Transaction ID, Payload; the CSV keeps every field and adds Employee name and Delay |
+| `/attendance/minop/incoming` "Incoming Minop data" register + CSV/raw export | Shipped (#271, 2026-10-01). Redesigned 2026-10-30 (#531): columns are Punch time, Received, Delay, Name, Transaction ID, Payload; the CSV keeps every field and adds Employee name and Delay |
 | Live device -> BOE delivery | PROVEN on production 2026-10-30: 246 deliveries, latest punch 12:59 IST received 7 minutes later. Not real time: 2 minutes to 2 hours on 28 Oct, about 2 days on 25-26 Oct, and nothing at all 13-25 Oct |
 | `minop_punches`: each punch kept once | Shipped (#523), migration APPLIED 2026-10-30, 45 punches loaded. Written by the path-token route only; the migration loaded everything already received |
 | Machine ID (`users.minop_user_id`) + unlinked-IDs notice on Employee Master | Shipped (#523), migration APPLIED 2026-10-30. 10 staff linked from the owner's list |
@@ -85,7 +85,7 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - The machine has stopped (`judgeMachineHealth`) on a working day from 2026-11-01, past 11:00 IST (`MACHINE_STOPPED_AFTER_MINUTES`), when no real punch has reached BOE since midnight. "Reached" is `first_seen_at`: a late punch from yesterday still proves it is connected. Minop's sample message does not count. Sundays and full-day holidays are days off; a half-day holiday is not.
 - Today lists active people with a Machine ID plus active payroll people with none, inside their joining and exit dates. Statuses: In office, Left, No punch yet, No punch, Can't tell yet, On leave, Day off, Morning punch missing, Evening punch missing, No Machine ID. Only approved requests count.
 - "Can't tell yet" replaces a no-punch row today while the machine has stopped, and on a past working day nobody at all punched, so a quiet machine never reads as absences.
-- "Late" on Today is the payroll rule: past `grace_end_minutes` (10:15), counted from `scheduled_in_minutes` (10:00). Information only. The month views' `is_late` has no grace period, so 10:05 is late there and not on Today. Hours are `computeWorkedDuration`, after lunch.
+- "Late" on Today is the payroll rule: past `grace_end_minutes` (10:15), counted from `scheduled_in_minutes` (10:00). Information only. The month views use the same rule since the Overview score (03 section 6). Hours are `computeWorkedDuration`, after lunch.
 - A punch time more than 30 days before BOE received it, or more than 1 hour after, is not a real punch (`isPlausiblePunchTime`): the unlinked-IDs list leaves it out and it stays visible in the register. The longest real delay seen is 6 days.
 
 ## 7. Key components & lib files

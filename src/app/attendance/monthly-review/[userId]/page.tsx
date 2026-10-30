@@ -10,6 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
+import type { ScoreDayKind } from '@/lib/attendance/attendanceScore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ type DayRecord = {
   is_late:          boolean
   is_missing_punch: boolean
   penalty:          string | null
+  day_kind:         ScoreDayKind
 }
 
 type EmployeeDetail = {
@@ -226,22 +228,17 @@ export default function EmployeeMonthlyDetailPage() {
 
         {/* ── Summary stats ── */}
         {!fetching && records.length > 0 && (() => {
-          let present = 0, half_day = 0, missing_punch = 0, late = 0, totalHours = 0
-          for (const r of records) {
-            totalHours += r.hours_worked ?? 0
-            if (r.is_missing_punch) {
-              missing_punch++
-              present++
-            } else if (r.status === 'half_day') {
-              half_day++
-            } else if (r.status === 'present' || r.status === 'checked_in' || r.status === 'late') {
-              present++
-            }
-            if (r.is_late) late++
-          }
-          const absent = records.filter(r => r.status === 'absent').length
-          const total_records = records.length
-          const pct = total_records > 0 ? Math.round((present + half_day * 0.5) / total_records * 1000) / 10 : 0
+          // Counted by what payroll reads each day as, the same as the month's summary.
+          const count = (kind: ScoreDayKind) => records.filter(r => r.day_kind === kind).length
+          const totalHours = records.reduce((sum, r) => sum + (r.hours_worked ?? 0), 0)
+          const late = count('late')
+          const half_day = count('half')
+          const absent = count('absent')
+          const leave = count('leave')
+          const missing_punch = count('miss')
+          const present = count('ok') + late + count('early') + missing_punch
+          const total_records = records.length - leave
+          const pct =total_records > 0 ? Math.round((present + half_day * 0.5) / total_records * 1000) / 10 : 0
           const pctColor = pct >= 90 ? '#276247' : pct >= 75 ? '#805B0D' : '#B42332'
           const hrs = Math.floor(totalHours); const mins = Math.round((totalHours - hrs) * 60)
           const hoursLabel = totalHours <= 0 ? '—' : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`
@@ -251,7 +248,8 @@ export default function EmployeeMonthlyDetailPage() {
                 { label: 'Present',        value: String(present),       color: '#335A86' },
                 { label: 'Half Day',       value: String(half_day),      color: '#595D5B' },
                 { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#B42332' : '#686D6C' },
-                { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#A12438' : '#686D6C' },
+                { label: 'Approved Leave', value: String(leave),         color: leave > 0 ? '#335A86' : '#686D6C' },
+                { label: 'Missing Punch', value: String(missing_punch), color: missing_punch > 0 ? '#A12438' : '#686D6C' },
                 { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#805B0D' : '#686D6C' },
                 { label: 'Productive Hrs', value: hoursLabel,            color: '#276247' },
                 { label: 'Attendance %',   value: total_records === 0 ? '—' : `${pct}%`, color: pctColor },

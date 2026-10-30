@@ -146,11 +146,10 @@ export default function EmployeeDetailPage() {
   const summary = useMemo(() => {
     const total    = filtered.length
     const present  = filtered.filter(r => r.status === 'present').length
-    const late     = filtered.filter(r => r.status === 'late').length
     const dates    = filtered.map(r => r.attendance_date).sort()
     const earliest = dates[0]   ?? null
     const latest   = dates[dates.length - 1] ?? null
-    return { total, present, late, earliest, latest }
+    return { total, present, earliest, latest }
   }, [filtered])
 
   // ── Pagination ──
@@ -279,7 +278,7 @@ export default function EmployeeDetailPage() {
           </div>
 
           <p className={styles.total} aria-live="polite">
-            {summary.total} record{summary.total !== 1 ? 's' : ''} · {summary.present} present · {summary.late} late
+            {summary.total} record{summary.total !== 1 ? 's' : ''} · {summary.present} present
             {summary.earliest && (
               <> · {formatDate(summary.earliest)}{summary.latest && summary.latest !== summary.earliest ? ` to ${formatDate(summary.latest)}` : ''}</>
             )}

@@ -1,41 +1,169 @@
-/* Overview: grouped shortcut lists. Presentation only. */
+/* Overview: who is doing well, who needs attention, and everyone's month. Presentation only. */
 
-.groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
+/* ── Today ─────────────────────────────────────────────────────────────── */
+
+.band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  padding: 10px 18px;
 }
-.wideGroup { grid-column: 1 / -1; }
-
-.intro {
-  margin: 0 0 16px;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: #4C5352;
-  max-width: 72ch;
+.bandBad { background: #FBE9EC; border-color: #E9B8C0; }
+.bandText { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 420px; }
+.bandText p { margin: 0; font-size: 13px; line-height: 1.5; color: #4C5352; }
+.bandText strong { color: #303536; font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #276247; flex: none; }
+.dotBad { background: #A12438; }
+.bandLinks { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #CFC8BF;
+  border-radius: 8px;
+  background: #fff;
+  color: #303536;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
 }
+.chip:hover { background: #FBFAF8; }
 
-.list { list-style: none; margin: 0; padding: 0; }
-.list li + li { border-top: 1px solid #E4DED7; }
+/* ── Tiles ─────────────────────────────────────────────────────────────── */
 
-.item {
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; }
+.tile { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px 13px; }
+.tileLabel { margin: 0; font-size: 12.5px; font-weight: 600; color: #4C5352; }
+.tileMain { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.tileValue { font-family: var(--boe-font-heading); font-size: 34px; font-weight: 700; line-height: 1.15; color: #303536; }
+.tileHero { font-size: 48px; line-height: 1.05; letter-spacing: -0.01em; }
+.tileSub { margin: 0; font-size: 12.5px; line-height: 1.45; color: #686D6C; }
+
+.spark { display: block; flex: none; }
+.sparkLine { fill: none; stroke: #8C8379; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sparkDot { fill: #303536; stroke: #fff; stroke-width: 2; }
+
+/* ── Doing great / Needs attention ─────────────────────────────────────── */
+
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 14px; align-items: start; }
+.panelHead { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
+.panelEmpty { margin: 0; padding: 14px 18px; border-top: 1px solid #E4DED7; font-size: 13px; color: #686D6C; }
+.mark { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex: none; }
+.markGood { background: #E8F2EC; color: #276247; }
+.markBad { background: #FBE9EC; color: #A12438; }
+
+.personRow {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 18px;
-  min-height: 44px;
-  text-decoration: none;
+  min-height: 60px;
+  padding: 8px 18px;
+  box-sizing: border-box;
+  border-top: 1px solid #E4DED7;
   color: inherit;
+  text-decoration: none;
 }
-.item:hover { background: #FBFAF8; }
-.item:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
-.itemText { flex: 1; min-width: 0; }
-.itemTitle { font-size: 14px; font-weight: 600; color: #303536; }
-.itemDesc { font-size: 12.5px; color: #686D6C; line-height: 1.45; margin-top: 2px; }
-.chevron { flex-shrink: 0; color: #686D6C; font-size: 18px; line-height: 1; }
+.personRow:hover { background: #FBFAF8; }
+.personRow:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
+.personText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.personName { font-size: 14px; font-weight: 600; color: #303536; }
+.personWhy { font-size: 12.5px; line-height: 1.45; color: #4C5352; }
+.personScore { font-family: var(--boe-font-heading); font-size: 22px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
+.chev { flex: none; color: #686D6C; }
+
+/* ── Legend and day blocks ─────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 10px 18px;
+  background: #FBFAF8;
+  border-bottom: 1px solid #E4DED7;
+}
+.legendItem { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4C5352; white-space: nowrap; }
+.legendItem b { font-weight: 700; color: #303536; }
+.legendNote { flex-basis: 100%; margin: 0; font-size: 12.5px; line-height: 1.45; color: #686D6C; }
+
+.strip { --day-w: 12px; display: grid; gap: 2px; }
+.d { display: block; width: var(--day-w, 12px); height: 22px; border-radius: 3px; box-sizing: border-box; flex: none; }
+/* Worse days are darker, so the blocks read in order without relying on hue. */
+.dOk { background: #B9D6C6; }
+.dLate { background: #B4780A; }
+.dMiss { background: #fff; border: 2px solid #B4780A; }
+.dHalf { background: linear-gradient(to top, #A12438 50%, #B9D6C6 50%); }
+.dAbsent { background: #A12438; }
+.dLeave { background: #4F7CAB; }
+.dOff { background: radial-gradient(circle at center, #CFC8BF 2px, transparent 2.5px); }
+.dPending { background: #fff; border: 1px solid #8C8379; }
+.dUnknown { background: #EEECE8; }
+
+/* ── Everyone ──────────────────────────────────────────────────────────── */
+
+.table { min-width: 1120px; }
+.table td { vertical-align: middle; }
+.table th { line-height: 1.25; }
+.name { font-weight: 600; color: #303536; text-decoration: none; }
+.name:hover { color: #963B27; text-decoration: underline; }
+.bad { color: #B42332; font-weight: 600; }
+.warn { color: #805B0D; font-weight: 600; }
+.sort {
+  padding: 4px 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: right;
+  white-space: normal;
+  cursor: pointer;
+}
+.sort:hover { color: #303536; }
+.sortOn { color: #303536; font-weight: 700; }
+.trend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.up, .down, .flat { min-width: 24px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.up { color: #276247; }
+.down { color: #B42332; }
+.flat { color: #686D6C; }
+.go { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: #686D6C; }
+.go:hover { color: #963B27; }
+
+.phoneCards { padding: 0; gap: 0; }
+.phoneCard { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid #E4DED7; }
+.phoneCard:first-child { border-top: 0; }
+.phoneCard .strip { --day-w: 8px; }
+.phoneRank { margin-right: 6px; color: #686D6C; font-weight: 500; font-variant-numeric: tabular-nums; }
+.phoneLine { margin: 0; font-size: 12.5px; line-height: 1.45; color: #4C5352; }
+
+/* ── All attendance pages ──────────────────────────────────────────────── */
+
+.links { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px 24px; padding: 14px 18px; }
+.linksTitle { margin: 0 0 6px; font-size: 12.5px; font-weight: 700; color: #303536; }
+.linksRow { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.linksRow a { display: inline-flex; align-items: center; min-height: 28px; color: #963B27; font-size: 13px; font-weight: 600; text-decoration: none; }
+.linksRow a:hover { text-decoration: underline; }
 
 @media (max-width: 767px) {
-  .groups { grid-template-columns: minmax(0, 1fr); }
-  .item { padding: 12px 14px; }
+  .band { padding: 12px 14px; }
+  .bandText { flex-basis: 100%; align-items: flex-start; }
+  .dot { margin-top: 6px; }
+  .chip { min-height: 44px; font-size: 13px; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tiles > :first-child { grid-column: 1 / -1; }
+  .tile { padding: 12px 14px; }
+  .tileValue { font-size: 28px; }
+  .tileHero { font-size: 48px; }
+  /* On a phone the people who need a look come first. */
+  .greatPanel { order: 2; }
+  .panelHead, .personRow, .panelEmpty { padding-left: 14px; padding-right: 14px; }
+  .legend { padding: 12px 14px; gap: 7px 14px; }
+  .legendItem { white-space: normal; }
+  .linksRow a { min-height: 40px; font-size: 14px; }
 }
