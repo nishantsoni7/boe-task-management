@@ -4,14 +4,22 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-30 — Orders: Payment plan screen, layout B (PR pending, not merged) · no migration
+## 2026-10-30 — Orders: the Approve popup is one sentence and two buttons; the salesperson is never asked again (PR #511, not merged) · no migration
+- **Owner request.** Approving a PI showed a summary, the four Order fields with Change links, billing/fabric/commission and a Pending-from-client box, all already on the page; and it asked for a salesperson although the salesperson had submitted the PI. "This popup should not be there in first place and if required, need to be super simplified." Mockup approved first.
+- **What.** The popup says approval is final, an Order number will be assigned, no payment is recorded, and who the salesperson is; the Payments check stays (it has content only when cash has not reached the company). Nothing else is restated; no Change links. A field is asked only when an older PI lacks it. Pending-from-client reminders are added on the Order page. Submit names the person submitting as the BOE salesperson when Sales chose nobody; the approval uses saved → exact workbook-name match → submitter.
+- **Files.** `components/orders/piReviewModals.tsx`, `app/orders/drafts/[submissionId]/page.tsx`, `piDetailView.ts`, `lib/orders/{orderConfirmation,salesOrderDetails,piCompletion,orderPendencies,finalApproval}.ts` and their tests.
+- **With #510.** #510 (approving opens the Order) merged first; its `orderToOpenAfterApproval` lost the `pendenciesSaved` input, since the dialog no longer collects pendencies.
+- **Rollback.** Revert the PR. Salespeople saved by Submit in the meantime stay saved (they are the people who submitted).
+- **Proof.** tsc 0; eslint 0 on the changed files; full `npm test` (offline env) 18,494 tests, 0 fail (9 skipped); three mutations caught. Not seen in a browser.
+
+## 2026-10-30 — Orders: Payment plan screen, layout B (PR #514, merged as 9930c575) · no migration
 - **Owner request.** After comparing the page with and without the UI/UX Pro Max design skill, the owner chose the skill's version and approved the plan: Excel and PDF unchanged, the advance % box back, the product table still scrolls sideways on phones.
 - **What.** The balance comes first (goods sent + advance − already received = balance to pay now, bank and cash under each, from the same rows as Excel and PDF); a warning with an icon when the PI has no billing %; Plan settings with labels and help that stay visible (what a blank box uses, with the confirmed amount) and problems in words under the box; the goods table cut from 16 to 11 columns under three headings, rates under the name, empty amounts "—", a wrong quantity explained under its box; "How the amount is worked out" folded; Save in a bar at the bottom of the window (desktop), with an "Unsaved changes" status; Excel / PDF say "Save first to download" instead of a hover-only tooltip.
 - **Fixed.** The "Pending goods to pay in advance (%)" box was dropped by #503, so the advance % could not be changed on screen; it is back. A second `.opp-mark` CSS rule drew the "Mark this lot as dispatched" row as a small terracotta pill; removed with the old pay table.
 - **Rollback.** Revert the PR. No data, schema or permission change.
 - **Proof.** See the PR (type check, lint, full test suite, production build). Not seen signed in or on a phone.
 
-## 2026-10-30 — Orders: approving a PI opens the Order it created (PR pending) · no migration
+## 2026-10-30 — Orders: approving a PI opens the Order it created (PR #510, merged as 33e4472e) · no migration
 - **Owner request.** After approving a PI for a Confirmed Order the page stayed on the PI showing "Order created · 0541" with an Open Order button; it should go to the Confirmed Order page.
 - **What.** When **Approve PI & Create Order** / **Create Confirmed Order** succeeds, the PI Draft page replaces itself with `/orders/[id]` (the dialog keeps saying "Approving…" until it goes; Back from the Order goes where the PI was opened from). It stays on the PI, as before, only when the RPC answer was unreadable, the pendencies typed in the dialog failed to save (the PI says so), or the approver cannot read the new Order under their own access. **Approve PI** on its own creates no Order and is unchanged.
 - **Files.** `app/orders/drafts/[submissionId]/page.tsx` (`runAction` takes an optional `leaveFor`; `approveSubmission` asks `orderToOpenAfterApproval` after one `orders.select('id')` under the caller's RLS), `lib/orders/finalApproval.ts` (`orderToOpenAfterApproval`); tests `finalApproval.test.ts`, `draftsAccess.test.ts`.

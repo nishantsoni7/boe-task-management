@@ -29,7 +29,7 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -46,10 +46,8 @@ import {
   type SubmitStage,
 } from '@/lib/orders/piCompletion'
 import { useScrollLock } from '@/hooks/useScrollLock'
-import { PENDENCIES_TITLE, PENDENCY_MAX_LENGTH, addPendencyDraft } from '@/lib/orders/orderPendencies'
 import { PiSubmissionDetailsReview } from '@/components/orders/PiInternalDetails'
-import { formatIsoDay as fmtDay } from '@/lib/orders/piInternalDetails'
-import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsAbsent, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
+import { SUBMISSION_DETAILS_INCOMPLETE, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
 import {
   SUBMISSION_CONFIRM_REQUIRED,
   formatIsoDay,
@@ -69,10 +67,9 @@ import {
   fabricResponsibilityNeedsConfirmation,
 } from '@/lib/orders/piTerms'
 import {
-  ORDER_CONFIRMATION_LABEL,
+  ORDER_CONFIRMATION_FIELDS,
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
-  leadSourceLabel,
   salespersonSelectorNote,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
@@ -119,7 +116,6 @@ import {
   VERIFY_FINANCE_DIALOG_TITLE,
   VERIFY_FINANCE_NOT_A_PAYMENT,
 } from '@/lib/orders/finalApproval'
-import type { ApprovalSummaryRow } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import {
   DELETE_PI_BUSY_LABEL,
   DELETE_PI_CANCEL_LABEL,
@@ -1234,22 +1230,25 @@ export function PiFinanceVerifyModal({
 /**
  * The last decision, and the only one on this screen that cannot be undone.
  *
- * WHAT IT SHOWS: three facts, from buildApprovalSummary — the client, the total
- * product value and the confirmed advance. Between them they answer "am I
- * creating the Order I think I am creating", which is what a confirmation
- * dialog is for. It does NOT restate the commercial breakdown, the addresses or
- * the products; those are on the page behind it in full, and a truncated copy
- * here helps nobody.
+ * ONE SENTENCE AND TWO BUTTONS (owner, 2026-10-30). The reviewer has just read
+ * the whole PI on the page behind this dialog, so it restates nothing: no
+ * client / value / advance summary, no billing or fabric review, and no Change
+ * links on what Sales already provided. It says that approval is final, that an
+ * official Order number will be assigned, that NO PAYMENT IS BEING RECORDED (an
+ * approval beside a grand total invites the assumption), and who the
+ * salesperson will be.
  *
- * AND IT DOES NOT RESTATE THE TWO DATES. Confirm date and Due date are editable
- * inputs in the block below, and THOSE INPUTS ARE THE VERIFICATION: a read-only
- * copy above them would print the same date twice and leave a reader unsure
- * which one the Order will carry.
+ * IT ASKS ONLY FOR WHAT IS GENUINELY MISSING. The four fields an Order is built
+ * from — salesperson, confirm date, due date, lead source — come from the PI.
+ * A control is drawn for one only when the PI does not have it (an older PI) or
+ * the database has just refused the value it was given. The salesperson is the
+ * one orderSalespersonFor resolved (saved, workbook match, or the submitter), so
+ * on a PI submitted today nothing is asked at all.
  *
- * WHAT IT SAYS, in three plain clauses: approval is final, an official Order
- * number will be assigned and the confirmed Order created, and NO PAYMENT IS
- * BEING RECORDED. The last is stated for the same reason it is stated on the
- * verification dialog — an approval beside a grand total invites the assumption.
+ * THE PAYMENTS CHECK STAYS (cashCheck): when cash has not reached the company
+ * the database refuses the Order without the approver's tick and reason.
+ * Pending-from-client reminders are added on the Order page, under Fabric &
+ * Finish, not here.
  *
  * IT CANNOT BE SUBMITTED TWICE, in three independent ways: `saving` disables
  * both buttons, the × control and Escape; the page holds a ref that refuses a
@@ -1261,12 +1260,12 @@ export function PiFinanceVerifyModal({
  * misplaced click cannot dismiss a decision somebody is in the middle of taking.
  *
  * NOTHING HERE DECIDES AUTHORITY. The RPC re-derives the actor, the permission,
- * the status, the finance verification, the advance requirement, the diagnostics
- * and the stored files, under a row lock, before it creates anything.
+ * the status, the advance requirement, the diagnostics, the stored files and
+ * each of the four fields, under a row lock, before it creates anything.
  */
 /**
  * The three doors one dialog serves (20261119000000). The words change; the
- * rows, the shape and the guards do not.
+ * shape and the guards do not.
  *
  *   approve_and_create   the one-press path: PI approved AND Order created
  *   approve_pi           the PI only — the Order waits for the payment condition
@@ -1300,55 +1299,8 @@ const APPROVE_DIALOG_COPY: Record<ApproveDialogMode, {
   },
 }
 
-/** The convert dialog's "Pending from client" list: type, press Enter or Add. */
-function PendenciesInput({ items, disabled, onChange }: {
-  items: readonly string[]
-  disabled: boolean
-  onChange: (next: string[]) => void
-}) {
-  const [text, setText] = useState('')
-  const [problem, setProblem] = useState<string | null>(null)
-  const commit = () => {
-    const next = addPendencyDraft(items, text)
-    setProblem(next.problem)
-    if (!next.problem) { onChange(next.list); setText('') }
-  }
-  return (
-    <div data-testid="pi-approve-pendencies" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <span className="boe-input-label">{PENDENCIES_TITLE} (optional)</span>
-      {items.length > 0 && (
-        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {items.map(item => (
-            <li key={item} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', fontSize: '13px', color: colors.primary }}>
-              <span style={{ overflowWrap: 'anywhere' }}>{item}</span>
-              <button type="button" disabled={disabled} aria-label={`Remove ${item}`}
-                onClick={() => onChange(items.filter(i => i !== item))}
-                style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.brand, cursor: disabled ? 'default' : 'pointer', flexShrink: 0 }}>
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <input className="boe-input" style={{ flex: 1, minWidth: 0 }} value={text} disabled={disabled}
-          maxLength={PENDENCY_MAX_LENGTH} aria-label="Add a pendency"
-          placeholder="e.g. Fabric swatch from client, finish confirmation"
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }} />
-        <button type="button" className="boe-btn boe-btn-ghost" disabled={disabled || text.trim() === ''} onClick={commit}>Add</button>
-      </div>
-      {problem && <span role="alert" style={{ fontSize: '12px', color: '#A12438' }}>{problem}</span>}
-      <span style={{ fontSize: '12px', color: colors.muted }}>
-        Reminders of what the client still has to send. They show on the Order under Fabric &amp; Finish until cleared.
-      </span>
-    </div>
-  )
-}
-
 export function PiApproveOrderModal({
   client,
-  rows,
   saving,
   failure,
   onCancel,
@@ -1360,9 +1312,6 @@ export function PiApproveOrderModal({
   confirmationField,
   provided,
   workbookSalesperson,
-  detailsReview,
-  pendencies,
-  onPendenciesChange,
   cashCheck,
 }: {
   client: string
@@ -1372,52 +1321,40 @@ export function PiApproveOrderModal({
    * only in the modes that create an Order.
    */
   cashCheck?: React.ReactNode
-  /** What is still pending from the client; owned by the page. Optional. */
-  pendencies?: readonly string[]
-  onPendenciesChange?: (next: string[]) => void
-  /** buildApprovalSummary's rows. This component chooses no wording of its own. */
-  rows: readonly ApprovalSummaryRow[]
   saving: boolean
   failure: string | null
   onCancel: () => void
   onConfirm: () => void
   mode?: ApproveDialogMode
   /**
-   * Who may be named as the salesperson. The page reads them; this list only
-   * decides what the control offers, and the database re-checks the id it is
-   * given. Omitted in the modes that create no Order.
+   * Who may be named as the salesperson, for the selector drawn only when the
+   * PI names nobody. The database re-checks the id it is given.
    */
   salespeople?: readonly { id: string; name: string }[]
   /** The four fields, owned by the page so a refusal can keep what was typed. */
   confirmation?: OrderConfirmationDraft
   onConfirmationChange?: (next: OrderConfirmationDraft) => void
-  /** Which field the last refusal named, so it can be focused and marked. */
+  /** Which field the last refusal named, so it can be drawn, focused and marked. */
   confirmationField?: OrderConfirmationField | null
   /**
-   * WHAT SALES ALREADY PROVIDED ON THE PI (the Internal order details). Each
-   * one present is shown as a review value with a Change control, and the page
-   * has already put it in `confirmation`; a control is drawn only for what is
-   * missing or what the approver chooses to change. Null for a legacy PI.
+   * WHAT THE PI ALREADY PROVIDES, which the page has already put in
+   * `confirmation`. Each one present is used as it is and not shown again; a
+   * control is drawn only for what is missing.
    */
   provided?: {
+    /** orderSalespersonFor: saved, else the workbook match, else the submitter. */
     salesperson: { id: string; name: string } | null
-    /** True when the salesperson was matched from the workbook's name, not saved by Sales. */
-    salespersonFromWorkbook?: boolean
     leadSource: string | null
     confirmDate: string | null
     dueDate: string | null
   }
   /**
-   * A LEGACY PI's workbook author name (workbookSalespersonHint), shown under the
-   * selector as a hint only — never matched, never selected.
+   * The workbook's author name (workbookSalespersonHint), shown under the
+   * selector as a hint only, when the PI names no salesperson at all.
    */
   workbookSalesperson?: string | null
-  /** Billing, fabric and commission as Sales entered them — review only. */
-  detailsReview?: readonly OrderDetailsReviewRow[]
 }) {
   useScrollLock(true)
-  // The fields the approver has chosen to change rather than accept.
-  const [changing, setChanging] = useState<ReadonlySet<OrderConfirmationField>>(() => new Set())
 
   const dismiss = (reason: ModalDismissReason) => {
     if (saving) return
@@ -1429,9 +1366,9 @@ export function PiApproveOrderModal({
 
   // ── THE FOUR FIELDS AN ORDER CANNOT BE BUILT WITHOUT ──
   //
-  // Asked for only where an Order is actually created. `approve_pi` records a
-  // decision about the document and creates nothing, so it asks nothing.
-  const asksForOrderFields = mode !== 'approve_pi' && !!confirmation && !!onConfirmationChange
+  // Only where an Order is actually created. `approve_pi` records a decision
+  // about the document and creates nothing, so it asks nothing.
+  const createsOrder = mode !== 'approve_pi' && !!confirmation && !!onConfirmationChange
   const draft = confirmation ?? { salesperson: null, confirmDate: null, dueDate: null, leadSource: null }
   const set = (patch: Partial<OrderConfirmationDraft>) => onConfirmationChange?.({ ...draft, ...patch })
   const fieldRefs = useRef<Partial<Record<OrderConfirmationField, HTMLElement | null>>>({})
@@ -1447,46 +1384,17 @@ export function PiApproveOrderModal({
     borderColor: confirmationField === field ? 'rgba(180,35,50,0.65)' : undefined,
   })
 
-  /**
-   * A field is a REVIEW when Sales provided it, the draft still holds exactly
-   * that value, the approver has not asked to change it, and the database did
-   * not just refuse it. Otherwise it is the ordinary control.
-   */
   const providedValue: Record<OrderConfirmationField, string | null> = {
     salesperson: provided?.salesperson?.id ?? null,
     confirm_date: provided?.confirmDate ?? null,
     due_date: provided?.dueDate ?? null,
     lead_source: provided?.leadSource ?? null,
   }
-  const draftValue: Record<OrderConfirmationField, string | null> = {
-    salesperson: draft.salesperson, confirm_date: draft.confirmDate, due_date: draft.dueDate, lead_source: draft.leadSource,
-  }
-  const reviewing = (field: OrderConfirmationField): boolean =>
-    !!providedValue[field] && draftValue[field] === providedValue[field]
-    && !changing.has(field) && confirmationField !== field
-  const reviewText: Record<OrderConfirmationField, string | null> = {
-    salesperson: provided?.salesperson?.name ?? null,
-    confirm_date: fmtDay(provided?.confirmDate ?? null),
-    due_date: fmtDay(provided?.dueDate ?? null),
-    lead_source: leadSourceLabel(provided?.leadSource ?? null),
-  }
-  const reviewRow = (field: OrderConfirmationField, wide: boolean) => (
-    <div key={field} data-review={field} style={{
-      display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: wide ? '1 / -1' : undefined, minWidth: 0,
-    }}>
-      <span className="boe-input-label">{ORDER_CONFIRMATION_LABEL[field]}</span>
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-        <strong style={{ fontSize: '13.5px', color: colors.primary, overflowWrap: 'anywhere' }}>{reviewText[field]}</strong>
-        <span style={{ fontSize: '12px', color: colors.muted }}>{field === 'salesperson' && provided?.salespersonFromWorkbook ? 'From the PI workbook' : 'From the PI'}</span>
-        <button type="button" disabled={saving}
-          onClick={() => setChanging(current => new Set(current).add(field))}
-          aria-label={`Change ${ORDER_CONFIRMATION_LABEL[field].toLowerCase()}`}
-          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.brand, cursor: saving ? 'default' : 'pointer' }}>
-          Change
-        </button>
-      </span>
-    </div>
-  )
+  /** A control only for what the PI lacks, or what the database just refused. */
+  const asks = (field: OrderConfirmationField): boolean =>
+    createsOrder && (!providedValue[field] || confirmationField === field)
+  const anyAsked = ORDER_CONFIRMATION_FIELDS.some(asks)
+  const salespersonName = createsOrder && !asks('salesperson') ? provided?.salesperson?.name ?? null : null
 
   return (
     <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={copy.title}>
@@ -1499,178 +1407,110 @@ export function PiApproveOrderModal({
         />
 
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* ── The compact verification block ──
-              Three short rows on one soft ground, so the eye takes them in as a
-              group and lands on the fields below. The label holds its line; the
-              VALUE is what wraps, because a long client name or a long currency
-              string must break rather than push the label off the row or open a
-              horizontal scrollbar on a phone. */}
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: '5px',
-            padding: '11px 13px', borderRadius: '8px', background: colors.raised,
-          }}>
-            {rows.map(row => (
-              <div
-                key={row.key}
-                style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'baseline', gap: '10px 14px',
-                  flexWrap: 'wrap', minWidth: 0, fontSize: '13px',
-                }}
-              >
-                <span style={{ ...KEY_STYLE, flexShrink: 0 }}>{row.label}</span>
-                <span style={{
-                  minWidth: 0,
-                  color: colors.primary,
-                  fontWeight: row.strong ? 700 : 600,
-                  textAlign: 'right',
-                  overflowWrap: 'anywhere',
-                  fontVariantNumeric: row.strong ? 'tabular-nums' : undefined,
-                }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
+          <p data-testid="pi-approve-note" style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.55, color: colors.primary }}>
+            {copy.note}
+            {copy.notAPayment && (
+              <>
+                {' '}
+                <strong>{copy.notAPayment}</strong>
+              </>
+            )}
+          </p>
 
-          {/* ── The four fields the Order is built from ──
+          {salespersonName && (
+            <p data-testid="pi-approve-salesperson" style={{ margin: 0, fontSize: '13px', color: colors.muted, overflowWrap: 'anywhere' }}>
+              Salesperson: <strong style={{ color: colors.primary }}>{salespersonName}</strong>
+            </p>
+          )}
+
+          {/* ── Only what the PI is missing ──
               Required in the database by approve_order_submission
               (20261201000000), which validates all four before it reads or
               moves anything. These controls are the courtesy; the gate is
               there. */}
-          {asksForOrderFields && (
+          {anyAsked && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px 12px' }}>
-              {reviewing('salesperson') ? reviewRow('salesperson', true) : (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
-                <span className="boe-input-label">{SALESPERSON_LABEL} *</span>
-                <select
-                  ref={el => { fieldRefs.current.salesperson = el }}
-                  className="boe-input"
-                  value={draft.salesperson ?? ''}
-                  disabled={saving}
-                  onChange={e => set({ salesperson: e.target.value || null })}
-                  style={fieldStyle('salesperson')}
-                  aria-invalid={confirmationField === 'salesperson' || undefined}
-                >
-                  <option value="">Select a salesperson…</option>
-                  {provided?.salesperson && !(salespeople ?? []).some(p => p.id === provided.salesperson?.id) && (
-                    <option value={provided.salesperson.id}>{provided.salesperson.name}</option>
+              {asks('salesperson') && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
+                  <span className="boe-input-label">{SALESPERSON_LABEL} *</span>
+                  <select
+                    ref={el => { fieldRefs.current.salesperson = el }}
+                    className="boe-input"
+                    value={draft.salesperson ?? ''}
+                    disabled={saving}
+                    onChange={e => set({ salesperson: e.target.value || null })}
+                    style={fieldStyle('salesperson')}
+                    aria-invalid={confirmationField === 'salesperson' || undefined}
+                  >
+                    <option value="">Select a salesperson…</option>
+                    {provided?.salesperson && !(salespeople ?? []).some(p => p.id === provided.salesperson?.id) && (
+                      <option value={provided.salesperson.id}>{provided.salesperson.name}</option>
+                    )}
+                    {(salespeople ?? []).map(person => (
+                      <option key={person.id} value={person.id}>{person.name}</option>
+                    ))}
+                  </select>
+                  {!provided?.salesperson && (
+                    <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '12px', color: colors.muted }}>
+                      {salespersonSelectorNote(workbookSalesperson ?? null)}
+                    </span>
                   )}
-                  {(salespeople ?? []).map(person => (
-                    <option key={person.id} value={person.id}>{person.name}</option>
-                  ))}
-                </select>
-                <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '12px', color: colors.muted }}>
-                  {salespersonSelectorNote({
-                    savedName: provided?.salespersonFromWorkbook ? null : provided?.salesperson?.name ?? null,
-                    workbookName: workbookSalesperson ?? null,
-                    suggestedName: provided?.salespersonFromWorkbook ? provided.salesperson?.name ?? null : null,
-                  })}
-                </span>
-              </label>
+                </label>
               )}
 
-              {reviewing('confirm_date') ? reviewRow('confirm_date', false) : (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span className="boe-input-label">Confirm date *</span>
-                <input
-                  ref={el => { fieldRefs.current.confirm_date = el }}
-                  type="date"
-                  className="boe-input"
-                  value={draft.confirmDate ?? ''}
-                  disabled={saving}
-                  onChange={e => set({ confirmDate: e.target.value || null })}
-                  style={fieldStyle('confirm_date')}
-                  aria-invalid={confirmationField === 'confirm_date' || undefined}
-                />
-              </label>
+              {asks('confirm_date') && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span className="boe-input-label">Confirm date *</span>
+                  <input
+                    ref={el => { fieldRefs.current.confirm_date = el }}
+                    type="date"
+                    className="boe-input"
+                    value={draft.confirmDate ?? ''}
+                    disabled={saving}
+                    onChange={e => set({ confirmDate: e.target.value || null })}
+                    style={fieldStyle('confirm_date')}
+                    aria-invalid={confirmationField === 'confirm_date' || undefined}
+                  />
+                </label>
               )}
 
-              {reviewing('due_date') ? reviewRow('due_date', false) : (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span className="boe-input-label">Due date *</span>
-                <input
-                  ref={el => { fieldRefs.current.due_date = el }}
-                  type="date"
-                  className="boe-input"
-                  value={draft.dueDate ?? ''}
-                  disabled={saving}
-                  onChange={e => set({ dueDate: e.target.value || null })}
-                  style={fieldStyle('due_date')}
-                  aria-invalid={confirmationField === 'due_date' || undefined}
-                />
-              </label>
+              {asks('due_date') && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span className="boe-input-label">Due date *</span>
+                  <input
+                    ref={el => { fieldRefs.current.due_date = el }}
+                    type="date"
+                    className="boe-input"
+                    value={draft.dueDate ?? ''}
+                    disabled={saving}
+                    onChange={e => set({ dueDate: e.target.value || null })}
+                    style={fieldStyle('due_date')}
+                    aria-invalid={confirmationField === 'due_date' || undefined}
+                  />
+                </label>
               )}
 
-              {reviewing('lead_source') ? reviewRow('lead_source', true) : (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
-                <span className="boe-input-label">Lead source *</span>
-                <select
-                  ref={el => { fieldRefs.current.lead_source = el }}
-                  className="boe-input"
-                  value={draft.leadSource ?? ''}
-                  disabled={saving}
-                  onChange={e => set({ leadSource: e.target.value || null })}
-                  style={fieldStyle('lead_source')}
-                  aria-invalid={confirmationField === 'lead_source' || undefined}
-                >
-                  <option value="">Select a lead source…</option>
-                  {ORDER_LEAD_SOURCES.map(source => (
-                    <option key={source.value} value={source.value}>{source.label}</option>
-                  ))}
-                </select>
-              </label>
+              {asks('lead_source') && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
+                  <span className="boe-input-label">Lead source *</span>
+                  <select
+                    ref={el => { fieldRefs.current.lead_source = el }}
+                    className="boe-input"
+                    value={draft.leadSource ?? ''}
+                    disabled={saving}
+                    onChange={e => set({ leadSource: e.target.value || null })}
+                    style={fieldStyle('lead_source')}
+                    aria-invalid={confirmationField === 'lead_source' || undefined}
+                  >
+                    <option value="">Select a lead source…</option>
+                    {ORDER_LEAD_SOURCES.map(source => (
+                      <option key={source.value} value={source.value}>{source.label}</option>
+                    ))}
+                  </select>
+                </label>
               )}
             </div>
           )}
-
-          {/* ── Pending from client ──
-              Any number of free-text reminders for what the client still owes
-              (fabric, finish, ...). Saved on the new Order by
-              add_order_pendencies() right after it exists; optional. */}
-          {asksForOrderFields && onPendenciesChange && (
-            <PendenciesInput
-              items={pendencies ?? []}
-              disabled={saving}
-              onChange={onPendenciesChange}
-            />
-          )}
-
-          {/* ── What Sales entered about billing, fabric and commission ──
-              Review only: management approves the PI, it does not re-enter it. */}
-          {detailsReview && detailsReview.length > 0 && (
-            <dl data-testid="pi-approve-details-review" style={{
-              margin: 0, padding: '10px 13px', borderRadius: '8px', border: `1px solid ${colors.border}`,
-              display: 'grid', gap: '5px 14px', gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)',
-            }}>
-              {detailsReview.map(row => (
-                <Fragment key={row.key}>
-                  <dt style={{ ...KEY_STYLE, fontSize: '12px' }}>{row.label}</dt>
-                  <dd style={{ margin: 0, fontSize: '12.5px', fontWeight: row.value ? 600 : 500, color: row.value ? colors.primary : colors.muted, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-                    {row.value ?? orderDetailsAbsent(row.need, row.key)}
-                  </dd>
-                </Fragment>
-              ))}
-            </dl>
-          )}
-
-          <div style={{
-            display: 'flex', gap: '9px', alignItems: 'flex-start',
-            fontSize: '12px', lineHeight: 1.5, color: colors.primary,
-            background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)',
-            borderRadius: '6px', padding: '9px 12px',
-          }}>
-            <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
-            <span>
-              {copy.note}
-              {copy.notAPayment && (
-                <>
-                  {' '}
-                  <strong>{copy.notAPayment}</strong>
-                </>
-              )}
-            </span>
-          </div>
 
           {cashCheck}
 

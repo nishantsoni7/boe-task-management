@@ -21,7 +21,8 @@
 // (with the due date on or after the confirmation date), fabric responsibility
 // and the middleman answer are needed to SUBMIT; the salesperson and lead source
 // are needed to CREATE THE ORDER; billing is optional. Nothing here makes an
-// optional field mandatory.
+// optional field mandatory. Since 2026-10-30 Submit saves the person submitting
+// as the salesperson when Sales chose nobody, so the field reads as optional.
 
 import {
   BILLING_MAX,
@@ -92,7 +93,7 @@ export type OrderDetailsField = { key: OrderDetailsFieldKey; label: string; need
 export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'order_confirmation_date', label: SUBMISSION_DATE_LABEL.order_confirmation_date, need: 'submission' },
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
-  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson named in the PI workbook.' },
+  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'optional', hint: 'Left empty, the person who submits the PI becomes the salesperson. Not printed on the client PDF, which shows the salesperson named in the PI workbook.' },
   { key: 'lead_source',             label: 'Lead source',                                 need: 'submission' },
   { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `How much of the order should be billed, from ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },
@@ -147,6 +148,30 @@ export function readSalesDetails(data: unknown): SalesDetails {
   const id = typeof d.salesperson_id === 'string' && d.salesperson_id.trim() ? d.salesperson_id : null
   const lead = typeof d.lead_source === 'string' && d.lead_source.trim() ? d.lead_source : null
   return { available: true, salesperson_id: id, lead_source: lead, sample_type: readSampleType(d.sample_type) }
+}
+
+/**
+ * NAMES THE PERSON SUBMITTING as the PI's BOE salesperson when Sales chose
+ * nobody (owner, 2026-10-30), run just before the PI is sent, while it is still
+ * editable. Lives here, not on the PI page, because that page's writes are
+ * pinned to the status RPCs (draftsAccess.test.ts). Makes no call when a
+ * salesperson is already saved. No version check: it only fills an empty
+ * field, and the lead source is sent back as loaded.
+ */
+export async function nameSubmitterAsSalesperson(
+  client: { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ error: unknown }> },
+  submissionId: string,
+  details: SalesDetails,
+  submitterId: string | null,
+): Promise<{ error: unknown }> {
+  if (!details.available || details.salesperson_id || !submitterId) return { error: null }
+  const { error } = await client.rpc('set_order_submission_sales_details', {
+    p_submission_id: submissionId,
+    p_salesperson_id: submitterId,
+    p_lead_source: details.lead_source,
+    p_expected_version: null,
+  })
+  return { error }
 }
 
 export type OrderDetailsForm = PiInternalDetailsForm & {
