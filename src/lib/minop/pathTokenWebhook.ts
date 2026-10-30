@@ -7,14 +7,11 @@
 // header, no custom header, no AuthToken in the body. So the secret is the last
 // path segment, and that is the only thing this route authenticates.
 //
-// This is deliberately narrower than the header-authenticated webhook beside
-// it. The machine calling it is a TEST device, not an official attendance
-// source, so this route stores the exact request in minop_webhook_deliveries
-// and stops. It never runs attendance processing — not even when
-// MINOP_ATTENDANCE_PROCESSING_ENABLED is true — and it does not map an employee
-// or touch attendance_records or payroll. It can write only through the two
-// callbacks its caller hands it: the raw insert, then a best-effort copy of the
-// punches into minop_punches.
+// This is the only route the real machine can reach. It stores the exact request
+// in minop_webhook_deliveries, and can write only through the two callbacks its
+// caller hands it: the raw insert, then a best-effort step that records the
+// punches and works out attendance (./machineAttendance). What Minop is told
+// depends on the raw insert alone.
 //
 // Nothing here logs the request URL: it contains the token.
 
@@ -38,10 +35,11 @@ export type MinopPathTokenDeps = {
   /** Insert one row into public.minop_webhook_deliveries. */
   insertDelivery: (row: MinopRawDeliveryRow) => Promise<{ ok: boolean; receivedAt?: string }>
   /**
-   * Optional, best-effort: copy the punches of a delivery that is already
-   * stored into public.minop_punches. Should not throw; if it does anyway the
-   * error is swallowed here, because the raw delivery is safe and Minop's
-   * acknowledgement never depends on this derived data.
+   * Optional, best-effort: record the punches of a delivery that is already
+   * stored and work out attendance from them. Should not throw; if it does
+   * anyway the error is swallowed here, because the raw delivery is safe,
+   * Minop's acknowledgement never depends on this derived data, and the nightly
+   * sync repairs it.
    */
   recordPunches?: (receivedAt: string, payload: unknown) => Promise<void>
 }

@@ -20,7 +20,10 @@ import {
   istToday,
   isFutureMonth,
   attendanceCoverageThrough,
-  effectiveLatestImportedDate,
+  isMachineMonth,
+  machineLatestDate,
+  machineMonthEmptyMessage,
+  machineCoverageNoticeMessage,
   withinCoverage,
   selectableMonths,
   selectableMonthsInYear,
@@ -226,32 +229,48 @@ describe('the not-uploaded empty state names the month', () => {
   })
 })
 
-describe('effectiveLatestImportedDate — one employee live, the rest still CSV-only', () => {
-  test('neither source has anything: no coverage', () => {
-    assert.equal(effectiveLatestImportedDate(null, null), null)
+describe('a month the machine supplies', () => {
+  // 11:00 IST on Tuesday 3 November 2026.
+  const tuesdayMorning = new Date('2026-11-03T05:30:00.000Z')
+
+  test('it starts with November 2026; earlier months stay with the Excel upload', () => {
+    assert.equal(isMachineMonth(2026, 10), false)
+    assert.equal(isMachineMonth(2026, 11), true)
+    assert.equal(isMachineMonth(2027, 1), true)
   })
 
-  test('CSV only, no live punch for this employee: the CSV date', () => {
-    assert.equal(effectiveLatestImportedDate('2026-08-05', null), '2026-08-05')
+  test('nothing from the machine yet: no coverage', () => {
+    assert.equal(machineLatestDate(null, tuesdayMorning), null)
   })
 
-  test('a live punch with no CSV import yet: the live date', () => {
-    assert.equal(effectiveLatestImportedDate(null, '2026-08-08'), '2026-08-08')
+  test('today is never covered, so nobody reads as absent while the day is going', () => {
+    const latest = machineLatestDate('2026-11-03', tuesdayMorning)
+    assert.equal(latest, '2026-11-02')
+    assert.equal(attendanceCoverageThrough(2026, 11, latest, tuesdayMorning), '2026-11-02')
   })
 
-  test('the live punch is AHEAD of the CSV import: the live date wins', () => {
-    // This is the whole point of the fix — one mapped employee punching today
-    // must extend THEIR OWN coverage without the company-wide CSV number
-    // moving, which is exactly what keeps every other employee's unprocessed
-    // today from reading as "covered".
-    assert.equal(effectiveLatestImportedDate('2026-08-05', '2026-08-08'), '2026-08-08')
+  test('a machine that went quiet leaves its days unprocessed, not absent', () => {
+    const friday = new Date('2026-11-06T05:30:00.000Z')
+    assert.equal(machineLatestDate('2026-11-03', friday), '2026-11-03')
   })
 
-  test('the CSV import is AHEAD of this employee\'s live punch: the CSV date wins', () => {
-    assert.equal(effectiveLatestImportedDate('2026-08-08', '2026-08-05'), '2026-08-08')
+  test('a finished month is covered to its last day', () => {
+    const december = new Date('2026-12-10T05:30:00.000Z')
+    const latest = machineLatestDate('2026-11-30', december)
+    assert.equal(attendanceCoverageThrough(2026, 11, latest, december), '2026-11-30')
   })
 
-  test('the two sources agree: that date, not a duplicate or a range', () => {
-    assert.equal(effectiveLatestImportedDate('2026-08-05', '2026-08-05'), '2026-08-05')
+  test('on the 1st, yesterday is last month, so this month shows no days at all', () => {
+    const firstOfDecember = new Date('2026-12-01T05:30:00.000Z')
+    const coverage = attendanceCoverageThrough(2026, 12, machineLatestDate('2026-12-01', firstOfDecember), firstOfDecember)
+    assert.deepEqual(withinCoverage(['2026-12-01', '2026-12-02'], coverage), [])
+  })
+
+  test('the wording names the machine, not an upload, and still denies the absence reading', () => {
+    assert.doesNotMatch(machineMonthEmptyMessage('November 2026'), /upload/i)
+    const notice = machineCoverageNoticeMessage('02 Nov, Mon')
+    assert.match(notice, /02 Nov, Mon/)
+    assert.match(notice, /none of them count as an absence/i)
+    assert.doesNotMatch(notice, /upload/i)
   })
 })

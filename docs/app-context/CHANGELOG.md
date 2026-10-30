@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Attendance machine: punches become attendance from 1 November (branch `feat/minop-attendance-switch-on`, not merged) · no migration
+- **Owner decision.** The new machine is the only attendance source from 1 November 2026, with no parallel period.
+- **What.** `machineDay.ts` turns a person's punches into a day by the Excel import's rules, and two taps under 5 minutes apart count as one. `machineAttendance.ts` writes `attendance_records` with `source = 'minop'` for linked, active people, never before the start date or in a locked month, and only when a row would change. The webhook does this as messages arrive; `/api/attendance/minop-sync` repairs it nightly; saving a Machine ID fills that person's days.
+- **Screens.** A machine month stops at yesterday, so today never reads as absent or missing a punch; My Attendance shows today as a "so far" line. Excel import and preview refuse months from November 2026.
+- **Removed.** The old processor and `MINOP_COLLECTION_ONLY`: it read a message shape the machine never sends.
+- **Rollback.** Revert the PR, then delete rows with `source = 'minop'` if any were written. The payroll engine and corrections are unchanged.
+- **Proof.** `machineDay.test.ts` and `machineAttendance.test.ts`, including the real reads and writes on `MemorySupabase`: first write, a re-run writing nothing, a late punch updating the same row, a locked month, a leaver's ID, a punch recovered from the raw messages.
+
 ## 2026-10-30 — Tasks: both Cancelled pages redesigned, grouped by month (PR open) · no migration
 - **Owner request.** Redesign My Tasks - Cancelled with the UI/UX Pro Max skill; preview approved first.
 - **What.** `/tasks/cancelled` and `/tasks/assigned-by-me/cancelled` share one new look: a full-width list under month headings, rows at full contrast (the old rows were dimmed), a labelled "Reason:" line, priority dot, column headings, a chevron to open, keyboard-operable rows, the open task highlighted, taller search and filters. The side "About" panel is now a one-line note above the list. Phone rows stack.
@@ -11,7 +19,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Files.** New `src/components/tasks/CancelledArchive.tsx`; both pages now use it. `archiveListBounds.test.ts` still pins the reads and the banner in each page.
 - **Rollback.** Revert the PR.
 
-## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (PR #523, on the owner's yes after their preview check) · migrations 20270510000000, 20270510000100 → APPLIED 2026-10-30 (by the owner from the worktree: backup 20261030T081638Z verified first, dry run listed exactly these two, migration list shows both remote, 45 punches loaded)
+## 2026-10-30 — Attendance machine: each punch kept once, and a Machine ID per employee (PR #523, squash-merged as f8c05835, 09:07 UTC, on the owner's yes after their preview check) · Production deployment 7434666819 success 09:10 UTC · backup bundle 20261030T090745Z, database 20261030T090758Z (201 tables, 100,493 rows), verified · migrations 20270510000000, 20270510000100 → APPLIED 2026-10-30 (by the owner from the worktree: backup 20261030T081638Z verified first, dry run listed exactly these two, migration list shows both remote, 45 punches loaded)
 - **Owner decision.** From 1 November 2026 the new machine is the only attendance source, with no parallel period. October stays on the old machine's Excel.
 - **What.** `minop_punches` keeps each punch once, keyed by device + person + punch time. Employee Master gains a Machine ID (column, edit field, 409 if already used) and a notice listing IDs that have punched but belong to nobody. Nothing writes attendance or payroll: `MINOP_COLLECTION_ONLY` stays true. Machine IDs for 10 staff were saved from the owner's list after the migrations.
 - **Why rebuilt.** The 2026-10-25 work (`docs/minop-shadow-mode-spec`, a5aa0687) was never merged. It keyed on `txnId`, which production proved is reused, so it would have dropped real punches; its migration number was also taken.

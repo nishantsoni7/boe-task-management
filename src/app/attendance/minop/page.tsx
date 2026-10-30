@@ -2,10 +2,9 @@
 
 // Attendance Sync (the "Issues" section) — the smallest useful admin view of
 // what the fingerprint system (Minop) sent and what BOE did with it. No
-// analytics, no charts. Minop is collection-only for now (see
-// src/lib/minop/collectionMode.ts), so there is no retry action here and new
-// messages are never turned into attendance; the full register is the
-// "Incoming Minop data" tab. Deliberately inside the existing Attendance admin surface
+// analytics, no charts. Attendance is worked out from the punches, not from these
+// messages (src/lib/minop/machineAttendance.ts), so there is no retry action here;
+// the full register is the "Incoming Minop data" tab. Deliberately inside the existing Attendance admin surface
 // rather than a new module — see docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -96,10 +95,10 @@ const STATUS_INFO: Record<string, StatusInfo> = {
   },
 }
 
-/** Valid JSON that BOE stored and has not processed — every message while Minop is collection-only. */
+/** Valid JSON that BOE stored. This status is about the message; attendance is worked out from its punches. */
 const STORED_ONLY: StatusInfo = {
-  label: 'Stored only', tone: 'neutral',
-  meaning: 'BOE stored this message. Minop data is collection-only for now, so it is not used for attendance.',
+  label: 'Stored', tone: 'neutral',
+  meaning: 'BOE stored this message. Punches from 1 November 2026 become attendance for linked employees.',
   next: 'See the Incoming Minop data tab to inspect it.',
 }
 
@@ -252,8 +251,8 @@ export default function MinopDiagnosticsPage() {
           </Notice>
         )}
         <Notice kind="info">
-          Minop is collection-only for now: new messages are stored and shown, and are not used for attendance.
-          Results below that mention attendance describe earlier behaviour.
+          The machine is the attendance source from 1 November 2026. Its punches from that date become attendance
+          for linked employees. This list shows each message as it arrived.
         </Notice>
 
         {/* Plain-language key, closed by default so the list stays the focus. */}

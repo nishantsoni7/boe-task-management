@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
-import { attendanceCoverageThrough, withinCoverage } from '@/lib/attendance/monthAvailability'
+import { attendanceCoverageThrough, isMachineMonth, machineLatestDate, withinCoverage } from '@/lib/attendance/monthAvailability'
 import { onlyParticipating } from '@/lib/payroll/participation'
 import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 
@@ -119,10 +119,11 @@ export async function GET(req: NextRequest) {
   // it as absent for every employee — and would then be looking at a different
   // month from the one the employee sees on /my-attendance. The latest date is
   // taken from the rows already fetched above, so this costs no extra query.
-  const latestImported = (records ?? []).reduce<string | null>(
+  const latestInMonth = (records ?? []).reduce<string | null>(
     (max, r) => (!max || r.attendance_date > max ? r.attendance_date : max),
     null,
   )
+  const latestImported = isMachineMonth(year, month) ? machineLatestDate(latestInMonth) : latestInMonth
   const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
 
   const workingDates = withinCoverage(

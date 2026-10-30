@@ -218,7 +218,3 @@ test('the Machine ID stays out of every browser-readable path', () => {
 test('the unlinked-IDs route is admin-only', () => {
   assert.match(readFileSync('src/app/api/attendance/minop-unmapped/route.ts', 'utf8'), /requireAdmin\(req\)/)
 })
-
-test('the collection-only guard is still on', () => {
-  assert.match(readFileSync('src/lib/minop/collectionMode.ts', 'utf8'), /export const MINOP_COLLECTION_ONLY = true/)
-})

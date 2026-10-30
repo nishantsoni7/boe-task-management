@@ -2,6 +2,8 @@
 
 Last Updated: 1 October 2026
 
+**Superseded for the current design.** `docs/app-context/modules/04-minop-device-integration.md` is the live description: the machine is the attendance source from 1 November 2026, and the processor and the collection-only switch described below are gone.
+
 ## Current phase: collection-only (1 October 2026)
 
 **Minop data is stored and inspected, never used for attendance.** This overrides the Stage 2 sections below, which describe the processor that is now switched off.

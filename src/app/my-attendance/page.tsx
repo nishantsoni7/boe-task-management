@@ -39,10 +39,13 @@ import {
 } from '@/lib/objections'
 import {
   istCurrentYearMonth,
+  isMachineMonth,
   selectableMonthsInYear,
   MONTH_NOT_IMPORTED_TITLE,
   monthNotImportedMessage,
   coverageNoticeMessage,
+  machineMonthEmptyMessage,
+  machineCoverageNoticeMessage,
 } from '@/lib/attendance/monthAvailability'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -128,6 +131,8 @@ export default function MyAttendancePage() {
   // The last date the answer speaks for. Null for a finished month, where the
   // cut-off is the month end and there is nothing to explain.
   const [coverageThrough, setCoverageThrough] = useState<string | null>(null)
+  // What the machine has so far today. Today is not a row until the day is over.
+  const [todaySoFar, setTodaySoFar] = useState<{ check_in_at: string | null; check_out_at: string | null } | null>(null)
   // The month's attendance requests, shown beside (never inside) the punches.
   const [monthRequests, setMonthRequests] = useState<MonthRequest[]>([])
   const [requestsError, setRequestsError] = useState<string | null>(null)
@@ -174,6 +179,7 @@ export default function MyAttendancePage() {
       setRequestsError(null)
       setMonthImported(true)
       setCoverageThrough(null)
+      setTodaySoFar(null)
     } else {
       setRows(json.records ?? [])
       setMonthRequests(json.requests ?? [])
@@ -182,6 +188,7 @@ export default function MyAttendancePage() {
       // false is the not-uploaded state.
       setMonthImported(json.month_imported !== false)
       setCoverageThrough(json.coverage_through ?? null)
+      setTodaySoFar(json.today_so_far ?? null)
     }
 
     if (objRes.ok) {
@@ -300,6 +307,10 @@ export default function MyAttendancePage() {
   // month an employee opens.
   const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
   const partiallyUploaded = monthImported && coverageThrough != null && coverageThrough < monthEnd
+  const machineMonth = isMachineMonth(year, month)
+  // Neutral on purpose: a lone morning punch is an arrival by the rule, but today
+  // nobody can know yet which punch will be the last.
+  const todayTimes = [todaySoFar?.check_in_at, todaySoFar?.check_out_at].filter((t): t is string => !!t)
 
   const statusPill = (effective: string) => {
     const tone = statusTone(effective)
@@ -392,8 +403,10 @@ export default function MyAttendancePage() {
             empty row inside it: a table of dates with no data still reads as a
             statement about those dates, and there is no statement to make yet. */}
         {!monthImported && !busy && (
-          <StateBlock kind="empty" title={MONTH_NOT_IMPORTED_TITLE}>
-            {monthNotImportedMessage(`${MONTHS[month - 1]} ${year}`)}
+          <StateBlock kind="empty" title={machineMonth ? 'No attendance yet' : MONTH_NOT_IMPORTED_TITLE}>
+            {machineMonth
+              ? machineMonthEmptyMessage(`${MONTHS[month - 1]} ${year}`)
+              : monthNotImportedMessage(`${MONTHS[month - 1]} ${year}`)}
             <div style={{ marginTop: 8 }}>
               Nothing here counts as an absence — pick an earlier month to see your record.
             </div>
@@ -404,7 +417,15 @@ export default function MyAttendancePage() {
             are not in the table at all — they have not been processed, and some
             have not happened, so neither one is something to be absent on. */}
         {partiallyUploaded && !busy && (
-          <Notice kind="warning">{coverageNoticeMessage(dayLabel(coverageThrough!))}</Notice>
+          <Notice kind="warning">
+            {(machineMonth ? machineCoverageNoticeMessage : coverageNoticeMessage)(dayLabel(coverageThrough!))}
+          </Notice>
+        )}
+
+        {todayTimes.length > 0 && !busy && (
+          <Notice kind="info">
+            Today so far: punched at {todayTimes.map(clock).join(' and ')}. Today is counted once the day is over.
+          </Notice>
         )}
 
         {monthImported && rows.length === 0 && !busy && (
