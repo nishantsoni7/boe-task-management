@@ -11,7 +11,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Rollback.** Revert the PR.
 - **Proof.** `incomingRegister.test.ts`: exact-text name match, delay with and without a zone, an unreadable time, a clock running ahead, name search, the CSV columns, and both routes passing the names.
 
-## 2026-10-30 — Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (PR open) · no migration
+## 2026-10-30 — Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (PR #532, squash-merged as 03346ec0, 17:30 UTC, by the owner after their preview check) · no migration · Production deployment 7444828368 success 17:32 UTC · backup bundle 20261030T173223Z, database 20261030T173246Z (201 tables, 100,530 rows), verified
 - **Owner request.** See who is doing well in attendance and who is not. Preview approved first.
 - **What.** `/attendance` was a list of shortcuts. It now shows a company score, Doing great and Needs attention with a plain reason for each person, everyone's month as one block per day, a line about today and links to every page. New read-only `/api/attendance/overview`, admins only. Points: on time 1; late, left early or one punch missing ¾; half day ½; absent 0. Approved leave, Sundays and holidays are not counted, and a waived or approved day never lowers a score. Great is 95 or more, Needs attention is under 85. Rules in dossier 03 section 6.
 - **Defect fixed.** `attendance_records.status` only ever holds present or checked_in, so Late and Half day in Monthly Review's summary were always 0, and the Attendance % only showed who punched at all. Monthly Review and the person page now read each day through the payroll engine (`classifyDayForAttendance`), counting corrections, approved leave, half-day holidays, and joining and exit dates. Figures for past months in Monthly Review will change as a result. Monthly Review gains a Leave column.
@@ -19,7 +19,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Also.** The false "0 late" is gone from the Employee record line.
 - **Not changed.** Pay, payroll results, the engine's rules, and any table.
 - **Rollback.** Revert the PR.
-- **Proof.** `attendanceScoreboard.test.ts` runs the real engine; `overviewBoard.render.test.tsx` renders the page; the route is in the paged-read and admin-only guards. Live figures not seen: production reads were refused in the building session.
+- **Proof.** `attendanceScoreboard.test.ts` runs the real engine; `overviewBoard.render.test.tsx` renders the page; the route is in the paged-read and admin-only guards. The merged tree is identical to the tested commit, the live bundle carries the new Overview and not the old shortcuts, and the route answers 401 signed out. The owner checked the preview on real data; the building session could not, because production reads were refused and previews sit behind Vercel login.
 
 ## 2026-10-30 — Orders: Client PO and Design Files open on a submitted PI (PR open) · no migration
 - **Owner request.** On a PI waiting for approval the Client PO and Design Files could not be opened, so there was nothing to approve it on.
