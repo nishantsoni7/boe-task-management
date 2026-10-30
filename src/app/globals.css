@@ -9872,11 +9872,6 @@ textarea.pi-form-input,
   margin-top: 2px;
 }
 
-.pi-attach-plain {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 /* A long file name wraps instead of being cut off. */
 .pi-attach-files .pi-attach-name {
   min-width: 0;

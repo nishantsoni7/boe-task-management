@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `00e79b56` — Attendance machine: punches become attendance from 1 November (#526)
-- Commits on this branch: 1092
+- Commit: `0de6c68f` — Docs and lint: inventory refreshed, unused test import removed
+- Commits on this branch: 1094
 - Pages (`page.tsx`): 159   API routes (`route.ts`): 177
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 686   Next.js 16.2.6, React 19.2.4
+- Test files: 687   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0de6c68f` 2026-10-30 Docs and lint: inventory refreshed, unused test import removed
+- `f1a259ca` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI
 - `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
 - `03229e8c` 2026-10-30 Docs: Approve popup simplified merged as PR #511 (86af9b34) (#527)
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
@@ -37,8 +39,6 @@
 - `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
 - `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
 - `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
-- `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
-- `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
 
 ## Pages by top-level area
 

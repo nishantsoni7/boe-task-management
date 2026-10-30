@@ -321,6 +321,14 @@ export const DRAFT_ATTACHMENT_RESTRICTIONS = 'PDF, PNG, JPEG or WebP, up to 10 M
 /** Client PO first: it is one document; Design Files may be many. */
 const ATTACH_ORDER = ['client_po', 'design_files'] as const
 
+/** Opens a stored file in a new tab; answers with what to say when it cannot. */
+async function openPiDocument(supabase: SupabaseClient, path: string): Promise<string | null> {
+  const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60)
+  if (!data?.signedUrl) return 'That file could not be opened just now.'
+  window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  return null
+}
+
 /**
  * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270114000000), as two columns of
  * the Supporting details row.
@@ -363,12 +371,6 @@ function PiAttachmentColumn({ supabase, state, canEdit, category }: {
   const many = category === 'design_files'
   const addLabel = files.length === 0 ? (many ? 'Add files' : 'Add file') : (many ? 'Add more' : 'Add another')
 
-  const open = async (path: string) => {
-    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-    else setFailure('That file could not be opened just now.')
-  }
-
   return (
     <div
       id={category === 'client_po' ? 'pi-draft-attachments' : undefined}
@@ -387,7 +389,8 @@ function PiAttachmentColumn({ supabase, state, canEdit, category }: {
           {files.map(f => (
             <li key={f.storage_path}>
               <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#686D6C' }} />
-              <button type="button" className="pi-attach-name" title={f.file_name} onClick={() => void open(f.storage_path)}>
+              <button type="button" className="pi-attach-name" title={f.file_name}
+                      onClick={() => void openPiDocument(supabase, f.storage_path).then(setFailure)}>
                 {f.file_name}
               </button>
               {canEdit && (
@@ -420,38 +423,55 @@ function PiAttachmentColumn({ supabase, state, canEdit, category }: {
 }
 
 /**
- * The same two columns for a PI that is with management: what it was sent with,
- * read-only. Nothing is offered to add or remove.
+ * The same two columns for a PI that is with management: what it was sent with.
+ * Every file opens, because the approver decides on them (read by anyone who can
+ * open the PI, can_read_pi_document_file); nothing is offered to add or remove.
  */
-export function PiSentColumns({ shown }: { shown: ReturnType<typeof sentWithPi> }) {
+export function PiSentColumns({ supabase, shown }: {
+  supabase: SupabaseClient
+  shown: ReturnType<typeof sentWithPi>
+}) {
   const files = shown?.submission.files ?? []
   return (
     <>
-      {ATTACH_ORDER.map(category => {
-        const inCategory = files.filter(f => f.category === category)
-        return (
-          <div key={category} role="group" aria-label={CATEGORY_LABEL[category]} className="pi-support-col">
-            <div className="pi-support-col-head">
-              <span className="pi-support-label">{CATEGORY_LABEL[category]}</span>
-            </div>
-            <div className="pi-support-panel">
-            {inCategory.length === 0 ? (
-              <span className="pi-attach-state">None attached</span>
-            ) : (
-              <ul className="pi-attach-files">
-                {inCategory.map(f => (
-                  <li key={f.storage_path}>
-                    <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#686D6C' }} />
-                    <span className="pi-attach-plain">{f.file_name}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            </div>
-          </div>
-        )
-      })}
+      {ATTACH_ORDER.map(category => (
+        <PiSentColumn key={category} supabase={supabase} category={category}
+                      files={files.filter(f => f.category === category)} />
+      ))}
     </>
+  )
+}
+
+function PiSentColumn({ supabase, category, files }: {
+  supabase: SupabaseClient
+  category: (typeof ATTACH_ORDER)[number]
+  files: readonly PersistedDocumentFile[]
+}) {
+  const [failure, setFailure] = useState<string | null>(null)
+  return (
+    <div role="group" aria-label={CATEGORY_LABEL[category]} className="pi-support-col">
+      <div className="pi-support-col-head">
+        <span className="pi-support-label">{CATEGORY_LABEL[category]}</span>
+      </div>
+      <div className="pi-support-panel">
+      {files.length === 0 ? (
+        <span className="pi-attach-state">None attached</span>
+      ) : (
+        <ul className="pi-attach-files">
+          {files.map(f => (
+            <li key={f.storage_path}>
+              <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#686D6C' }} />
+              <button type="button" className="pi-attach-name" title={f.file_name}
+                      onClick={() => void openPiDocument(supabase, f.storage_path).then(setFailure)}>
+                {f.file_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      </div>
+      {failure && <div role="alert" className="pi-form-error">{failure}</div>}
+    </div>
   )
 }
 

@@ -19,7 +19,8 @@ export const SUPPORTING_DETAILS_TITLE = 'Supporting details'
  * PRESENTATION AND ORCHESTRATION ONLY: `canEditFiles` and `canEditHighlight` are
  * the page's can_edit_order_submission answers and every RPC re-derives them.
  *
- * Locked (with management): the same three areas, read-only — no Add, no Save.
+ * Locked (with management): the same areas, read-only — no Add, no Save — and
+ * each file still opens.
  */
 export function PiSupportingDetails({
   supabase, submissionId, rowVersion, canEditFiles, canEditHighlight, locked, supporting, submittedAt,
@@ -74,7 +75,7 @@ export function PiSupportingDetails({
           />
         </div>
         {locked
-          ? <PiSentColumns shown={sent} />
+          ? <PiSentColumns supabase={supabase} shown={sent} />
           : <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditFiles} />}
       </div>
     </section>

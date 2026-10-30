@@ -51,7 +51,6 @@ import {
   TOP_ORDER_LABEL,
   TOP_DATES_LABEL,
   PI_DETAIL_PRODUCT_COLUMNS,
-  PiDetailProductHead,
   PiPaymentStatusCard,
   PiPaymentStatusCardView,
   PiCommercialCard,

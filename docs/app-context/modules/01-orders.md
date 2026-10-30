@@ -186,7 +186,7 @@ Other modules' tables Orders depends on: `finance_payment_requests`, `finance_pa
 ### 4.7 Storage buckets
 | Bucket | Limit / types | Notes |
 | --- | --- | --- |
-| `order-files` (private) | 10 MB; xlsx, png, jpeg, webp, pdf | PI workbook under `submissions/{id}/original/`, product images (incl. Customize image results), Customize image learning example copies under `customize-learning/examples/{id}/before|after.*` (service role only), `pi-documents/{pi}/{submission}/{category}/{file}`, `order-documents/{order}/{submission}/{category}/{file}`, confirmed Excel/PDF. No UPDATE policy for any role (workbook immutable once submitted); object readable only when named by a ready version row |
+| `order-files` (private) | 10 MB; xlsx, png, jpeg, webp, pdf | PI workbook under `submissions/{id}/original/`, product images (incl. Customize image results), Customize image learning example copies under `customize-learning/examples/{id}/before|after.*` (service role only), `pi-documents/{pi}/{submission}/{category}/{file}`, `order-documents/{order}/{submission}/{category}/{file}`, confirmed Excel/PDF. No UPDATE policy for any role (workbook immutable once submitted); object readable only when named by a ready version row, except `pi-documents/*`, readable by anyone who can open the PI or its Order (`can_read_pi_document_file`) |
 | `order-approval-evidence` (private) | 5 MB; png, jpeg, webp | Fabric/finish screenshots; read follows Order visibility, write follows `can_record_order_approval`, delete reaches only an unclaimed orphan |
 | `order-request-attachments` | legacy | retired workflow |
 
@@ -525,3 +525,7 @@ Read first, in this order:
 - **Removed.** `FabricFinishSheet.tsx`, `FabricFinishDrawer.tsx`, `/orders/[id]/fabric-finish`, `/orders/drafts/[submissionId]/fabric-finish`, the `.ff-*` block, the Fabric and Packing columns, the three-figure strip and `productCost`. The Order card's "Open cost sheet" now opens the F&P Cost tab and scrolls to it. The Order's own Fabric / Finish sign-off with its ERP screenshot (`order_approval_events`) is separate and unchanged.
 - **Reads.** `useProductCosts` takes `enabled`: the Order page reads the sheet only when a tab is first opened, so its counted startup reads do not move. The PI Draft page reads it at load, as before, for the pending count.
 - **Traps.** Template row 2 ships sample values (NA, a brass finish, two pictures) and 5 stored PIs kept them on their first product, so that product can read as settled; `pi-format.xlsx` is byte-pinned by `/api/orders/pi-format`, so cleaning it needs a storage upload and a new pin. Two pictures of workbook 13696197 sit in column F, under no heading, and are left out.
+
+
+## Client PO and Design Files on a submitted PI (2026-10-30, no SQL)
+- Every viewer of a PI with management can open its files: `PiSentColumns` draws each name as the `.pi-attach-name` button and `openPiDocument` asks for a 60-second signed link. Nothing is offered to add or remove. Storage already allowed this; only the screen did not.

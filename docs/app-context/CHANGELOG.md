@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Orders: Client PO and Design Files open on a submitted PI (PR open) · no migration
+- **Owner request.** On a PI waiting for approval the Client PO and Design Files could not be opened, so there was nothing to approve it on.
+- **Why.** `PiSentColumns` drew the names as plain text. Storage already allowed the read: `can_read_pi_document_file` admits anyone who can open the PI.
+- **What.** Each name is now the same button the draft view has, opening a 60-second signed link in a new tab, for every viewer of the PI. A refused link says so under that column. `openPiDocument` is the one open for both views. `.pi-attach-plain` removed.
+- **Rollback.** Revert the PR.
+- **Proof.** `piSentFiles.dom.test.tsx` presses the names in a real DOM, including through the locked `PiSupportingDetails`.
+
 ## 2026-10-30 — Attendance machine: Today tab, and an alert when punches stop (PR #528, on the owner's yes after their preview check) · migration 20270511000000 → APPLIED 2026-10-30 (by the owner from the worktree: backup bundle 20261030T144936Z, database 20261030T145001Z verified first, dry run listed exactly this file, migration list shows it remote)
 - **Owner request.** A daily screen for the machine and a warning when it stops. Mockup approved first.
 - **What.** New first tab `/attendance/today` under Attendance, where the sidebar now lands: each listed person's In, Out, Hours and status for today or any day back to 2026-11-01, the machine's state on top, punches on IDs that give nobody attendance underneath. Read-only. The Overview page gains a shortcut and no longer says attendance is an Excel import.
