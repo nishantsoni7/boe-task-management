@@ -42,6 +42,7 @@ import { readFileSync } from 'node:fs'
 /** Every route that reads a set of attendance rows large enough to be capped. */
 const PAGED_READS = [
   { label: 'the monthly attendance summary', file: 'src/app/api/attendance/monthly-summary/route.ts' },
+  { label: 'the attendance Overview',         file: 'src/app/api/attendance/overview/route.ts' },
   { label: 'the payroll monthly review',     file: 'src/app/api/payroll/monthly-review/route.ts' },
   { label: 'the attendance import',          file: 'src/app/api/attendance/import/route.ts' },
   { label: 'the import preview',             file: 'src/app/api/attendance/preview/route.ts' },

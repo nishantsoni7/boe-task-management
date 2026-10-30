@@ -29,6 +29,7 @@ import { GET as employeeRecords }      from '@/app/api/attendance/employee-recor
 import { GET as attendanceRecords }    from '@/app/api/attendance/records/route'
 import { GET as monthlyDetail }        from '@/app/api/attendance/employee-monthly-detail/route'
 import { GET as monthlySummary }       from '@/app/api/attendance/monthly-summary/route'
+import { GET as attendanceOverview }   from '@/app/api/attendance/overview/route'
 import { GET as attendanceDashboard }  from '@/app/api/attendance/dashboard/route'
 import { GET as payrollResults }       from '@/app/api/payroll/results/route'
 import { GET as payrollResultDetail }  from '@/app/api/payroll/results/detail/route'
@@ -259,6 +260,13 @@ describe('company-wide attendance routes are admin only', () => {
   test('monthly-summary answers an admin', async () => {
     const res = await monthlySummary(req(`/api/attendance/monthly-summary?year=${TEST_YEAR}&month=${TEST_MONTH}`, actors.admin.token))
     assert.equal(res.status, 200)
+  })
+
+  test('the Overview ranking refuses an employee and a manager, and answers an admin', async () => {
+    const path = `/api/attendance/overview?year=${TEST_YEAR}&month=${TEST_MONTH}`
+    assert.equal((await attendanceOverview(req(path, actors.a.token))).status, 403)
+    assert.equal((await attendanceOverview(req(path, actors.manager.token))).status, 403)
+    assert.equal((await attendanceOverview(req(path, actors.admin.token))).status, 200)
   })
 
   test('the attendance dashboard refuses an employee and answers an admin', async () => {

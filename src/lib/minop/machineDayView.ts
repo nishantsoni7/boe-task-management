@@ -15,7 +15,7 @@
 // not sent stays unprocessed rather than becoming an absence.
 //
 // "Late" is the payroll rule: past the grace period, counted from the scheduled
-// start. It is information only. The month views' own "late" has no grace period.
+// start. It is information only. The month views use the same rule.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isWeeklyOff } from '../attendance/monthCalendar'

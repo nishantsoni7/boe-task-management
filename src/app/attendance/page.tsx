@@ -1,192 +1,184 @@
 'use client'
 
-// Overview: where an admin starts. It holds no numbers of its own; it groups the
-// module's pages by the job they do, in the order the month's work happens.
+// Overview: where an admin starts. It shows who is doing well and who needs
+// attention this month, and keeps a link to every page of the module. The month is
+// in the address (?year=&month=); with none, the route picks the newest month with
+// enough complete days to rank. Admins only: AttendanceGuard sends everyone else to
+// /my-attendance, and the route checks requireAdmin itself.
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { ui } from '@/components/attendancePayroll/ui'
-import styles from './overview.module.css'
+import { MONTH_NAMES, MonthPicker, Notice, StateBlock, istCurrentYearMonth, ui } from '@/components/attendancePayroll/ui'
+import type { OverviewData } from '@/lib/attendance/attendanceScore'
+import {
+  isFutureMonth, isMachineMonth, machineMonthEmptyMessage, monthNotImportedMessage, selectableYears,
+} from '@/lib/attendance/monthAvailability'
+import type { MachineDayView } from '@/lib/minop/machineDayView'
+import { OverviewBoard, PageLinks } from './OverviewBoard'
 
-// Importing the machine export WRITES raw attendance, so /api/attendance/import
-// and /api/attendance/preview both admit `admin` and nothing else
-// (ALLOWED_ROLES in each route). A member Control Center granted the module to
-// can read every screen here, but module access is read access — it must not be
-// shown a card whose first request is a 403. This list mirrors the routes
-// exactly; widen both together or neither.
-const IMPORT_ROLES = ['admin']
+/** The month in the address, or null when it is absent or not one we allow. */
+function monthFromParams(params: URLSearchParams): { year: number; month: number } | null {
+  const year = Number(params.get('year'))
+  const month = Number(params.get('month'))
+  const allowed = selectableYears().includes(year) && Number.isInteger(month) && month >= 1 && month <= 12
+  return allowed && !isFutureMonth(year, month) ? { year, month } : null
+}
 
-type Shortcut = { title: string; description: string; href: string; adminOnly?: boolean; importOnly?: boolean }
-type Group = { title: string; subtitle: string; items: Shortcut[]; wide?: boolean }
+async function fetchOverview(token: string, query: string): Promise<{ data: OverviewData } | { error: string }> {
+  try {
+    const res = await fetch(`/api/attendance/overview${query}`, { headers: { Authorization: `Bearer ${token}` } })
+    const json = await res.json().catch(() => ({}))
+    if (res.ok) return { data: json as OverviewData }
+    return { error: json.error ?? 'Could not load this month.' }
+  } catch {
+    return { error: 'Could not reach the server. Check your connection and try again.' }
+  }
+}
 
-const GROUPS: Group[] = [
-  {
-    title: 'Each month',
-    subtitle: 'Bring the month in, check it, then move on to pay.',
-    items: [
-      {
-        title: 'Upload Monthly Attendance',
-        description: 'Import monthly attendance data from the fingerprint machine Excel export.',
-        href: '/attendance/upload',
-        importOnly: true,
-      },
-      {
-        title: 'View Imported Records',
-        description: 'Browse and verify attendance records imported from Excel.',
-        href: '/attendance/records',
-      },
-      {
-        title: 'Monthly Attendance Review',
-        description: 'Per-employee summary: present, half-day, absent, late, and missing punch counts.',
-        href: '/attendance/monthly-review',
-      },
-      {
-        title: 'Attendance Requests',
-        description: 'Approve or reject employees’ requests about their attendance.',
-        href: '/attendance/requests',
-        adminOnly: true,
-      },
-      {
-        title: 'Payroll',
-        description: 'Preview the month’s pay, generate payroll runs and read each payslip.',
-        href: '/payroll',
-        adminOnly: true,
-      },
-    ],
-  },
-  {
-    title: 'Keep an eye on',
-    subtitle: 'Checks and history behind the numbers.',
-    items: [
-      {
-        title: 'Today',
-        description: 'Who has punched on the machine, and whether the machine is sending.',
-        href: '/attendance/today',
-        adminOnly: true,
-      },
-      {
-        title: 'Attendance Sync',
-        description: 'Punches the fingerprint machine sent, and any that need an admin’s attention.',
-        href: '/attendance/minop',
-        adminOnly: true,
-      },
-      {
-        title: 'Correction Log',
-        description: 'Audit trail of attendance records created or modified during import.',
-        href: '/attendance/correction-log',
-        adminOnly: true,
-      },
-    ],
-  },
-  {
-    title: 'Set up',
-    subtitle: 'People and rules the calculations rely on.',
-    items: [
-      {
-        title: 'Employee Fingerprint Mapping',
-        description: 'Map employee codes to fingerprint device IDs.',
-        href: '/attendance/employees',
-      },
-      {
-        title: 'Holiday Management',
-        description: 'Add or remove public holidays excluded from working days.',
-        href: '/attendance/holidays',
-        adminOnly: true,
-      },
-      {
-        title: 'Payroll Rules',
-        description: 'Working hours, lateness and deduction rules used to calculate pay.',
-        href: '/payroll/settings',
-        adminOnly: true,
-      },
-    ],
-  },
-]
+/** Today's line is extra: when it cannot be read the rest of the page still stands. */
+async function fetchToday(token: string): Promise<MachineDayView | null> {
+  try {
+    const res = await fetch('/api/attendance/machine-day', { headers: { Authorization: `Bearer ${token}` } })
+    return res.ok ? (await res.json() as MachineDayView) : null
+  } catch {
+    return null
+  }
+}
 
+function coverageLine(data: OverviewData): string {
+  const name = `${MONTH_NAMES[data.month - 1]} ${data.year}`
+  if (!data.coverageThrough) return `${name}. No attendance yet.`
+  const days = `${data.workingDaysCounted} working ${data.workingDaysCounted === 1 ? 'day' : 'days'} counted`
+  const lastOfMonth = new Date(Date.UTC(data.year, data.month, 0)).toISOString().slice(0, 10)
+  if (data.coverageThrough >= lastOfMonth) return `${name}. ${days}.`
+  const through = new Date(`${data.coverageThrough}T00:00:00Z`).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  })
+  return `${name}. Complete through ${through}, ${days}.`
+}
+
+// useSearchParams needs a Suspense boundary; same shape as Monthly Review.
 export default function AttendancePage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <OverviewScreen />
+    </Suspense>
+  )
+}
 
-  const router   = useRouter()
+function OverviewScreen() {
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [token, setToken] = useState('')
+  const [data, setData] = useState<OverviewData | null>(null)
+  const [today, setToday] = useState<MachineDayView | null>(null)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+
+  const router = useRouter()
+  const params = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
   const { refreshKey } = useRefresh()
+
+  const asked = monthFromParams(params)
+  const query = asked ? `?year=${asked.year}&month=${asked.month}` : ''
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-
+      const { data: me } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      if (!me) { router.push('/login'); return }
       setProfile(me as UserProfile)
-      setLoading(false)
+      setToken(session.access_token)
     }
-    init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey])
+    void init()
+  }, [supabase, router])
+
+  useEffect(() => {
+    if (!token) return
+    // Only the newest request may fill the page: months can be picked quickly.
+    let superseded = false
+    void fetchOverview(token, query).then(result => {
+      if (superseded) return
+      if ('data' in result) {
+        setData(result.data)
+        setError('')
+      } else {
+        setError(result.error)
+      }
+    })
+    void fetchToday(token).then(view => {
+      if (!superseded) setToday(view)
+    })
+    return () => { superseded = true }
+  }, [token, query, refreshKey, attempt])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
   }
 
-  if (loading) return <LoadingScreen />
+  if (!profile) return <LoadingScreen />
 
-  const isAdmin = profile?.role === 'admin'
-  const canImport = IMPORT_ROLES.includes(profile?.role ?? '')
-  const visible = (s: Shortcut) => (!s.adminOnly || isAdmin) && (!s.importOnly || canImport)
+  const shown = asked ?? data ?? istCurrentYearMonth()
 
   return (
     <AttendancePayrollLayout
       profile={profile}
       title="Overview"
-      subtitle="From November 2026 attendance comes from the fingerprint machine; start here and follow the month."
+      subtitle={data ? coverageLine(data) : 'Who is doing well this month, and who needs attention.'}
       onSignOut={handleSignOut}
+      actions={
+        <MonthPicker
+          year={shown.year}
+          month={shown.month}
+          idPrefix="overview-month"
+          onChange={(year, month) => router.replace(`/attendance?year=${year}&month=${month}`, { scroll: false })}
+        />
+      }
     >
-      <p className={styles.intro}>
-        The machine’s punches become attendance as they arrive. Months up to October 2026 came from its Excel export.
-        Review the month, then move on to payroll.
-      </p>
+      <div className={ui.stack}>
+        {error && (
+          <StateBlock
+            kind="error"
+            title="Could not load this month"
+            action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => setAttempt(a => a + 1)}>Try again</button>}
+          >
+            {error}
+          </StateBlock>
+        )}
 
-      <div className={styles.groups}>
-        {GROUPS.map(group => {
-          const items = group.items.filter(visible)
-          if (items.length === 0) return null
-          return (
-            <section key={group.title} className={`${ui.surface} ${group.wide ? styles.wideGroup : ''}`} aria-labelledby={`ov-${group.title}`}>
-              <div className={ui.surfaceHead}>
-                <div>
-                  <h2 className={ui.surfaceTitle} id={`ov-${group.title}`}>{group.title}</h2>
-                  <p className={ui.surfaceSub}>{group.subtitle}</p>
-                </div>
-              </div>
-              <ul className={styles.list}>
-                {items.map(item => (
-                  <li key={item.href}>
-                    <Link href={item.href} className={styles.item}>
-                      <span className={styles.itemText}>
-                        <span className={styles.itemTitle}>{item.title}</span>
-                        <span className={styles.itemDesc} style={{ display: 'block' }}>{item.description}</span>
-                      </span>
-                      <span className={styles.chevron} aria-hidden="true">›</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )
-        })}
+        {!data && !error && <StateBlock kind="loading">Loading the month…</StateBlock>}
+
+        {data?.fellBackFrom && (
+          <Notice kind="info">
+            {MONTH_NAMES[data.fellBackFrom.month - 1]} has too few complete days to rank yet, so this shows{' '}
+            {MONTH_NAMES[data.month - 1]}.
+          </Notice>
+        )}
+
+        {data && !error && (
+          data.coverageThrough && data.people.length > 0
+            ? <OverviewBoard data={data} today={today} />
+            : (
+              <>
+                <StateBlock kind="empty" title={`No attendance for ${MONTH_NAMES[data.month - 1]} yet`}>
+                  {isMachineMonth(data.year, data.month)
+                    ? machineMonthEmptyMessage(`${MONTH_NAMES[data.month - 1]} ${data.year}`)
+                    : monthNotImportedMessage(`${MONTH_NAMES[data.month - 1]} ${data.year}`)}
+                </StateBlock>
+                <PageLinks />
+              </>
+            )
+        )}
+
+        {error && <PageLinks />}
       </div>
     </AttendancePayrollLayout>
   )
