@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
+import type { UnmappedMinopId } from '@/lib/minop/unmapped'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
@@ -24,6 +25,7 @@ type EmployeeRow = Pick<
   | 'monthly_salary'
   | 'office_timing'
   | 'fingerprint_employee_code'
+  | 'minop_user_id'
   | 'payroll_active'
   | 'employment_type'
   | 'payroll_notes'
@@ -34,6 +36,7 @@ type EmployeeRow = Pick<
 type EditState = {
   employee_code: string
   fingerprint_employee_code: string
+  minop_user_id: string
   joining_date: string
   monthly_salary: string
   office_timing: string
@@ -77,6 +80,12 @@ function fmtDate(val: string | null | undefined) {
 
 function canEdit(role: string | undefined) {
   return role === 'admin' || role === 'manager'
+}
+
+/** "2026-10-30 12:59:24" (the machine's own text) as "30 Oct, 12:59". */
+function fmtMachineTime(local: string) {
+  const date = new Date(`${local.slice(0, 10)}T00:00:00`)
+  return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${local.slice(11, 16)}`
 }
 
 // ─── Dialog shell ─────────────────────────────────────────────────────────────
@@ -231,6 +240,7 @@ function EditModal({
   const [form, setForm] = useState<EditState>({
     employee_code:             emp.employee_code             ?? '',
     fingerprint_employee_code: emp.fingerprint_employee_code ?? '',
+    minop_user_id:             emp.minop_user_id             ?? '',
     joining_date:              emp.joining_date              ?? '',
     monthly_salary:            emp.monthly_salary != null ? String(emp.monthly_salary) : '',
     office_timing:             emp.office_timing             ?? '',
@@ -268,6 +278,7 @@ function EditModal({
           id:                        emp.id,
           employee_code:             form.employee_code,
           fingerprint_employee_code: form.fingerprint_employee_code,
+          minop_user_id:             form.minop_user_id,
           joining_date:              form.joining_date,
           monthly_salary:            form.monthly_salary,
           office_timing:             form.office_timing,
@@ -284,6 +295,7 @@ function EditModal({
       onSaved({
         employee_code:             form.employee_code             || null,
         fingerprint_employee_code: form.fingerprint_employee_code || null,
+        minop_user_id:             form.minop_user_id.trim()      || null,
         joining_date:              form.joining_date              || null,
         monthly_salary:            form.monthly_salary !== '' ? Number(form.monthly_salary) : null,
         office_timing:             form.office_timing             || null,
@@ -322,6 +334,13 @@ function EditModal({
       <div className={ui.field}>
         <label className={ui.label} htmlFor="edit-fp">Fingerprint code</label>
         <input id="edit-fp" className={ui.input} value={form.fingerprint_employee_code} onChange={set('fingerprint_employee_code')} placeholder="e.g. 0014" />
+        <div className={ui.hint}>Old machine code, used by the Excel upload.</div>
+      </div>
+
+      <div className={ui.field}>
+        <label className={ui.label} htmlFor="edit-machine">Machine ID</label>
+        <input id="edit-machine" className={ui.input} inputMode="numeric" value={form.minop_user_id} onChange={set('minop_user_id')} placeholder="e.g. 4" />
+        <div className={ui.hint}>This person&rsquo;s ID on the new attendance machine, exactly as the machine shows it.</div>
       </div>
 
       <div className={ui.field}>
@@ -443,6 +462,8 @@ export default function EmployeeMasterPage() {
   const [token, setToken]         = useState('')
   const [editEmp, setEditEmp]     = useState<EmployeeRow | null>(null)
   const [showAdd, setShowAdd]     = useState(false)
+  // Machine IDs that have punched but are not linked to anyone yet.
+  const [unlinked, setUnlinked]   = useState<UnmappedMinopId[]>([])
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { refreshKey } = useRefresh()
@@ -455,6 +476,13 @@ export default function EmployeeMasterPage() {
 
         setToken(session.access_token)
         setFetchError(null)
+
+        // Best-effort: a failure here never holds up the directory.
+        fetch('/api/attendance/minop-unmapped', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }).then(r => (r.ok ? r.json() : null)).then(json => {
+          if (Array.isArray(json?.unmapped)) setUnlinked(json.unmapped)
+        }).catch(() => {})
 
         const [{ data: me }, empRes] = await Promise.all([
           supabase
@@ -490,6 +518,7 @@ export default function EmployeeMasterPage() {
 
   const handleSaved = (id: string, updated: Partial<EmployeeRow>) => {
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e))
+    if (updated.minop_user_id) setUnlinked(prev => prev.filter(u => u.minopUserId !== updated.minop_user_id))
   }
 
   const handleCreated = (emp: EmployeeRow) => {
@@ -545,6 +574,14 @@ export default function EmployeeMasterPage() {
           </Notice>
         )}
 
+        {unlinked.length > 0 && (
+          <Notice kind="warning">
+            <strong>Machine IDs not linked to anyone:</strong>{' '}
+            {unlinked.map(u => `${u.minopUserId} (last punch ${fmtMachineTime(u.lastPunchLocal)})`).join(', ')}.
+            {' '}Choose Edit on the right person and enter their Machine ID.
+          </Notice>
+        )}
+
         <div className={ui.toolbar} style={{ marginBottom: 0 }}>
           <StatusFilter
             label="Filter employees by status"
@@ -589,6 +626,7 @@ export default function EmployeeMasterPage() {
                     <thead>
                       <tr>
                         <th scope="col">Emp. code</th>
+                        <th scope="col">Machine ID</th>
                         <th scope="col">Name</th>
                         <th scope="col">Department</th>
                         <th scope="col">Joining date</th>
@@ -601,6 +639,7 @@ export default function EmployeeMasterPage() {
                       {visible.map(emp => (
                         <tr key={emp.id}>
                           <td className={`${styles.code} ${ui.nowrap}`}>{fmt(emp.employee_code)}</td>
+                          <td className={`${styles.code} ${ui.nowrap}`}>{fmt(emp.minop_user_id)}</td>
                           <td>
                             <div className={styles.name}>{emp.full_name}</div>
                             {emp.position && <div className={ui.sub}>{emp.position}</div>}
@@ -641,6 +680,7 @@ export default function EmployeeMasterPage() {
                       <Badge tone={emp.is_active ? 'good' : 'neutral'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
                     </div>
                     <dl className={ui.facts}>
+                      <dt>Machine ID</dt><dd>{fmt(emp.minop_user_id)}</dd>
                       <dt>Department</dt><dd className={styles.cap}>{fmt(emp.team)}</dd>
                       <dt>Joined</dt><dd>{fmtDate(emp.joining_date)}</dd>
                       <dt>Salary</dt><dd>{fmtSalary(emp.monthly_salary)}</dd>

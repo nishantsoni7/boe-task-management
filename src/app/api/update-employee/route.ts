@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body?.id) return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
 
-  const { id, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, payroll_active, employment_type, payroll_notes, performance_tracking_enabled, performance_tracking_note } = body
+  const { id, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, minop_user_id, payroll_active, employment_type, payroll_notes, performance_tracking_enabled, performance_tracking_note } = body
 
   // Confirm employee exists in users table
   const { data: target, error: targetError } = await serviceClient
@@ -53,6 +53,9 @@ export async function PATCH(req: NextRequest) {
   if (monthly_salary            !== undefined) patch.monthly_salary            = monthly_salary !== '' ? Number(monthly_salary) : null
   if (office_timing             !== undefined) patch.office_timing             = office_timing             || null
   if (fingerprint_employee_code !== undefined) patch.fingerprint_employee_code = fingerprint_employee_code || null
+  // The ID on the new Minop machine, separate from the old machine's fingerprint
+  // code on purpose. Exact text as the machine shows it ("1", not "01").
+  if (minop_user_id             !== undefined) patch.minop_user_id             = String(minop_user_id ?? '').trim() || null
   if (payroll_active            !== undefined) patch.payroll_active            = Boolean(payroll_active)
   if (employment_type           !== undefined) patch.employment_type           = employment_type || null
   if (payroll_notes             !== undefined) patch.payroll_notes             = payroll_notes   || null
@@ -71,7 +74,13 @@ export async function PATCH(req: NextRequest) {
     .update(patch)
     .eq('id', id)
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (updateError) {
+    // users_minop_user_id_key: the machine ID already belongs to someone else.
+    if (updateError.code === '23505' && updateError.message.includes('minop_user_id')) {
+      return NextResponse.json({ error: `Machine ID ${patch.minop_user_id} is already linked to another employee` }, { status: 409 })
+    }
+    return NextResponse.json({ error: updateError.message }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }

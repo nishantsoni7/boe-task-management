@@ -11,9 +11,10 @@
 // it. The machine calling it is a TEST device, not an official attendance
 // source, so this route stores the exact request in minop_webhook_deliveries
 // and stops. It never runs attendance processing — not even when
-// MINOP_ATTENDANCE_PROCESSING_ENABLED is true — and it does not read trans[],
-// map an employee, or touch attendance_records or payroll. The only write it can
-// make is the one insert its caller hands it.
+// MINOP_ATTENDANCE_PROCESSING_ENABLED is true — and it does not map an employee
+// or touch attendance_records or payroll. It can write only through the two
+// callbacks its caller hands it: the raw insert, then a best-effort copy of the
+// punches into minop_punches.
 //
 // Nothing here logs the request URL: it contains the token.
 
@@ -35,7 +36,14 @@ export type MinopRawDeliveryRow = MinopWebhookCapture & {
 export type MinopPathTokenDeps = {
   configuredToken: string | undefined
   /** Insert one row into public.minop_webhook_deliveries. */
-  insertDelivery: (row: MinopRawDeliveryRow) => Promise<{ ok: boolean }>
+  insertDelivery: (row: MinopRawDeliveryRow) => Promise<{ ok: boolean; receivedAt?: string }>
+  /**
+   * Optional, best-effort: copy the punches of a delivery that is already
+   * stored into public.minop_punches. Should not throw; if it does anyway the
+   * error is swallowed here, because the raw delivery is safe and Minop's
+   * acknowledgement never depends on this derived data.
+   */
+  recordPunches?: (receivedAt: string, payload: unknown) => Promise<void>
 }
 
 /**
@@ -119,6 +127,14 @@ export async function handleMinopPathTokenWebhook(
   // Invalid JSON is preserved but not acknowledged as accepted, exactly as the
   // header-authenticated route treats it.
   if (capture.processing_status !== 'received') return refuse(400)
+
+  if (deps.recordPunches && stored.receivedAt) {
+    try {
+      await deps.recordPunches(stored.receivedAt, capture.payload)
+    } catch {
+      // Derived data only; never changes what Minop is told.
+    }
+  }
 
   return NextResponse.json(minopSuccessReply(capture.payload))
 }
