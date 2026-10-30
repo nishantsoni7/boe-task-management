@@ -110,7 +110,8 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - `txnId` is NOT unique. On production txn 21 and 22 each carried two different punches. Never key on it. The acknowledgement still echoes it, because that is Minop's contract.
 - Changing or clearing a Machine ID does not remove rows already written for that ID. A wrong link needs those days corrected by hand.
 - No Excel fallback exists for machine months: the upload is refused. If the machine is down for a day, fix the days with attendance corrections.
-- An inactive person's punches write nothing. ID 2 punched on 2026-10-30 although its owner has left: nobody gets attendance from it until that is settled.
+- An inactive person's punches write nothing. Today shows them as a warning, so somebody can act.
+- A merge can reach production late: Vercel made no deployment for #528's merge, and it went live with the next commit on main. Check the deployment rather than assume it.
 - Punches dated 2018-05-11 with IDs 1000 and 1001 are Minop's own sample message (the same values as its Developer Dashboard example), not a machine fault. Testing or saving the callback URL in the dashboard can send them again.
 - The header-authenticated route 401s the real device (it sends no auth); only the path-token route can receive from it.
 - `vercel logs` keeps only minutes of history; a wrong token stores nothing and logs nothing useful. `vercel link` silently pulls the Development env into `.env.local` in the cwd - run it only in a scratch directory and delete that file.
@@ -132,7 +133,7 @@ Machine-only attendance from 1 November 2026. Every punch is kept in `minop_webh
 3. Daily machine screen and stopped-punches alert: DONE (#528). The red state and the alert have not been seen for real: they need a quiet working day from 2 November. Phone alerts are not switched on, so the alert stops at For you and the bell until they are.
 4. Later: the employee "punch recorded" banner (`docs/minop-shadow-mode-spec`, section 7).
 - Owner reminder for the Minop subscription renewal: it lapsed once, and a lapse now stops attendance. Needs the date from the owner.
-- Open with the owner: a Machine ID for the one payroll employee not yet on the list; who is punching on the leaver's ID.
+- Open with the owner: a Machine ID for the one payroll employee not yet on the list.
 
 ## 12. Recheck before changing this module
 1. `src/lib/minop/machineDay.ts`, `machineAttendance.ts`, `machineHealth.ts`, `machineDayView.ts`, `webhook.ts`, `pathTokenWebhook.ts`, and both route files.
