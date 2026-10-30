@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `0de6c68f` — Docs and lint: inventory refreshed, unused test import removed
+- Commit: `52998fff` — Orders: Client PO and Design Files open on a submitted PI (#529)
 - Commits on this branch: 1094
 - Pages (`page.tsx`): 159   API routes (`route.ts`): 177
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `0de6c68f` 2026-10-30 Docs and lint: inventory refreshed, unused test import removed
-- `f1a259ca` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI
+- `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
+- `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
 - `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
 - `03229e8c` 2026-10-30 Docs: Approve popup simplified merged as PR #511 (86af9b34) (#527)
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
