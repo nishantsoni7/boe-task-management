@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `14a3fc5a` — Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
-- Commits on this branch: 1086
+- Commit: `3807938b` — Orders: Product details, F&P Cost and Approvals tabs on the product list (#522)
+- Commits on this branch: 1087
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 172
 - Migrations: 388 (first `20260530_create_positions.sql`, latest `20270509000000_pi_review_notice_short.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `3807938b` 2026-10-30 Orders: Product details, F&P Cost and Approvals tabs on the product list (#522)
 - `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
 - `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
 - `d26778f4` 2026-10-30 Docs: PI Draft layout pass 2 merged as PR #515 (4e817da6) (#520)
@@ -38,7 +39,6 @@
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
 - `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
 - `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
-- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
 
 ## Pages by top-level area
 

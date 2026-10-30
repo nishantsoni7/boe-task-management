@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Tasks: both Cancelled pages redesigned, grouped by month (PR open) · no migration
+- **Owner request.** Redesign My Tasks - Cancelled with the UI/UX Pro Max skill; preview approved first.
+- **What.** `/tasks/cancelled` and `/tasks/assigned-by-me/cancelled` share one new look: a full-width list under month headings, rows at full contrast (the old rows were dimmed), a labelled "Reason:" line, priority dot, column headings, a chevron to open, keyboard-operable rows, the open task highlighted, taller search and filters. The side "About" panel is now a one-line note above the list. Phone rows stack.
+- **Unchanged.** Reads, paging, ordering, filters kept in the URL, load-error banner, empty state, drawer link and who can see which task. Presentation only.
+- **Files.** New `src/components/tasks/CancelledArchive.tsx`; both pages now use it. `archiveListBounds.test.ts` still pins the reads and the banner in each page.
+- **Rollback.** Revert the PR.
+
 ## 2026-10-30 — Orders: Product details, F&P Cost and Approvals tabs on the product list; approval pictures read from the workbook (PR #522, draft) · no migration
 - **Owner request.** The Fabric & Finish panel needed scrolling sideways and did not look professional; fabric and packing should leave the main list and open in place, and approvals should come from the uploaded sheet. Layout agreed first (three tabs).
 - **What.** Three tabs on the PI Draft and Confirmed Order Products card: Code, Image, Product and Qty stay still and the rest slides in. Edit opens one product at a time under its row. Approved now means every kind of approval is settled (value, picture or NA), so Roots & Rituals reads 0 of 33, not 1. Pictures in the approval columns are read and stored (83 on 7 stored workbooks). Update from workbook re-reads only the two side sheets.
