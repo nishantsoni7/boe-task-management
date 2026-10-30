@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `1a382f1c` — Docs: the machine switch-on is PR #526
+- Commit: `00e79b56` — Attendance machine: punches become attendance from 1 November (#526)
 - Commits on this branch: 1092
-- Pages (`page.tsx`): 158   API routes (`route.ts`): 174
-- Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
+- Pages (`page.tsx`): 159   API routes (`route.ts`): 177
+- Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 684   Next.js 16.2.6, React 19.2.4
+- Test files: 686   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `1a382f1c` 2026-10-30 Docs: the machine switch-on is PR #526
-- `ddc3ad42` 2026-10-30 Attendance machine: punches become attendance from 1 November
+- `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
+- `03229e8c` 2026-10-30 Docs: Approve popup simplified merged as PR #511 (86af9b34) (#527)
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
@@ -47,7 +47,7 @@
 - **admin** (11): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/test-data-cleanup`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
-- **attendance** (13): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/upload`
+- **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
 - **coming-soon** (1): `/coming-soon`
 - **customer-reviews** (11): `/customer-reviews`, `/customer-reviews/[id]`, `/customer-reviews/batches`, `/customer-reviews/custom`, `/customer-reviews/history`, `/customer-reviews/images`, `/customer-reviews/mine`, `/customer-reviews/notifications`, `/customer-reviews/progress`, `/customer-reviews/reports`, `/customer-reviews/reviews`
 - **dashboard** (1): `/dashboard`
@@ -87,7 +87,7 @@
 - **admin-members** (1): ` [GET]`
 - **admin-tasks** (1): ` [GET]`
 - **assets** (2): `/notify [POST]`, `/warranty-sweep [POST]`
-- **attendance** (17): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
+- **attendance** (20): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/machine-alert [GET]`, `/machine-day [GET]`, `/machine-status [GET]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
@@ -143,7 +143,7 @@
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
-- `src/lib/minop` — 9 source, 7 test
+- `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
@@ -176,7 +176,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `BOE_MEMORY_DIR` (1 reads)
 - `BOE_PERF_DEBUG` (1 reads)
 - `BOE_REHEARSAL_IMAGE` (1 reads)
-- `CRON_SECRET` (3 reads)
+- `CRON_SECRET` (4 reads)
 - `EXHIBITION_SCAN_MODEL` (2 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (6 reads)
@@ -188,13 +188,13 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (11 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (140 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (141 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (140 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (141 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 
@@ -399,7 +399,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270413000000_finance_cash_journeys.sql`
 - `20270414000000_order_submission_cash_exceptions.sql`
 - `20270415000000_finance_payment_cash_handover_lock.sql`
 - `20270416000000_finance_accept_handover_confirms_payment.sql`
@@ -429,6 +428,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270509000000_pi_review_notice_short.sql`
 - `20270510000000_minop_punches.sql`
 - `20270510000100_users_minop_user_id.sql`
+- `20270511000000_attendance_machine_stopped_notification_type.sql`
 
 ## All SQL function names
 

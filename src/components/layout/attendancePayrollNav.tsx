@@ -81,7 +81,7 @@ export type AttendancePayrollSection = AttendancePayrollNavItem & {
  * the configuration behind all of it.
  *
  * Section paths are where clicking the sidebar lands:
- *   Attendance → Records (the everyday view, and cheap to open)
+ *   Attendance → Today (the everyday view since the machine became the source)
  *   Payroll    → Payroll Runs (`/payroll`, the module's historic front door)
  *
  * Not tabs, deliberately:
@@ -112,13 +112,14 @@ export const ATTENDANCE_PAYROLL_ADMIN_SECTIONS: AttendancePayrollSection[] = [
   {
     key: 'attendance',
     label: 'Attendance',
-    path: '/attendance/records',
+    path: '/attendance/today',
     // Nothing under /attendance/* that another section owns.
     alsoActiveFor: [
-      '/attendance/upload', '/attendance/monthly-review', '/attendance/requests',
+      '/attendance/records', '/attendance/upload', '/attendance/monthly-review', '/attendance/requests',
     ],
     icon: <CalendarDays size={15} strokeWidth={1.8} />,
     tabs: [
+      { label: 'Today',          path: '/attendance/today' },
       { label: 'Records',        path: '/attendance/records' },
       { label: 'Upload',         path: '/attendance/upload' },
       { label: 'Monthly Review', path: '/attendance/monthly-review' },

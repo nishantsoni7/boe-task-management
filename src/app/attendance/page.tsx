@@ -66,6 +66,12 @@ const GROUPS: Group[] = [
     subtitle: 'Checks and history behind the numbers.',
     items: [
       {
+        title: 'Today',
+        description: 'Who has punched on the machine, and whether the machine is sending.',
+        href: '/attendance/today',
+        adminOnly: true,
+      },
+      {
         title: 'Attendance Sync',
         description: 'Punches the fingerprint machine sent, and any that need an admin’s attention.',
         href: '/attendance/minop',
@@ -145,12 +151,12 @@ export default function AttendancePage() {
     <AttendancePayrollLayout
       profile={profile}
       title="Overview"
-      subtitle="Attendance is managed through a monthly fingerprint Excel import; start here and follow the month."
+      subtitle="From November 2026 attendance comes from the fingerprint machine; start here and follow the month."
       onSignOut={handleSignOut}
     >
       <p className={styles.intro}>
-        Upload the export from your fingerprint device software each month to record employee attendance,
-        review it, then move on to payroll.
+        The machine’s punches become attendance as they arrive. Months up to October 2026 came from its Excel export.
+        Review the month, then move on to payroll.
       </p>
 
       <div className={styles.groups}>

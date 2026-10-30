@@ -13,6 +13,9 @@
 //      submitted again or deleted — reading the notification does not remove
 //      it — and turns red from the third day. Never the approver's note. Not
 //      notification previews: those stay out of this panel (2026-10-29).
+//   1c. THE ATTENDANCE MACHINE HAS STOPPED SENDING — for the signed-in admin
+//      (owner, 2026-10-30). Open Today. It leaves by itself on the next punch
+//      (src/lib/minop/machineHealth.ts).
 //   2. THE VIEWER'S OWN CASH, for everyone, as it passes hand to hand until a
 //      company cash custodian (Nitish) accepts it (owner, 2026-10-29). Both
 //      people in an open handover see it until it changes hands:
@@ -45,11 +48,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, Banknote, Clock, HandCoins, Megaphone, Undo2, Wallet } from 'lucide-react'
+import { ArrowDown, Banknote, Clock, Fingerprint, HandCoins, Megaphone, Undo2, Wallet } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
+import { useMachineHealth } from '@/hooks/queries/useMachineHealth'
 import { useMyReturnedPis } from '@/hooks/queries/useMyReturnedPis'
+import { formatPunchMoment, type MachineHealth } from '@/lib/minop/machineHealth'
 import {
   isReturnedPiUrgent, returnedAge, returnedBrief, returnedDetail, type ReturnedPi,
 } from '@/lib/orders/returnedPis'
@@ -162,6 +167,7 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
   const unclosed = useUnclosedFunds()
   const returnedPis = useMyReturnedPis(ordersAllowed)
   const approvals = usePendingApprovalQueue(userId, showAttendance)
+  const machineHealth = useMachineHealth(showAttendance)
   const snooze = useSnooze(userId)
   // The state is only ever unexpired (readSnooze on load, the timer after), so
   // the check needs no clock here.
@@ -172,6 +178,10 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
 
   // PIs returned to the viewer: each is waiting on them until they submit it again.
   const returned = (returnedPis.data ?? []).filter(r => shown(itemKeys.returnedPi(r.submissionId, r.since)))
+
+  const machine = machineHealth.data?.state === 'stopped' && shown(itemKeys.machineStopped(machineHealth.data.today))
+    ? machineHealth.data
+    : null
 
   const toAccept = mine
     .filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
@@ -225,11 +235,12 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
 
   // Waiting on the viewer: accepting, handing on, deciding. Not their own
   // "Waiting for" cards: that is somebody else's move.
-  const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length
-  const itemCount = (announcement ? 1 : 0) + returned.length + toAccept.length + handedOut.length + (held ? 1 : 0)
-    + holders.length + requests.length
+  const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length + (machine ? 1 : 0)
+  const itemCount = (announcement ? 1 : 0) + (machine ? 1 : 0) + returned.length + toAccept.length + handedOut.length
+    + (held ? 1 : 0) + holders.length + requests.length
   const visibleKeys = [
     ...(announcement ? [itemKeys.announcement(announcement.id)] : []),
+    ...(machine ? [itemKeys.machineStopped(machine.today)] : []),
     ...returned.map(r => itemKeys.returnedPi(r.submissionId, r.since)),
     ...toAccept.map(h => itemKeys.handover(h.id)),
     ...handedOut.map(h => itemKeys.handover(h.id)),
@@ -239,8 +250,9 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
   ]
 
   return {
-    announcement, returned, toAccept, handedOut, held, holders, requests,
+    announcement, machine, returned, toAccept, handedOut, held, holders, requests,
     viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
+    machineError: showAttendance && machineHealth.isError,
     returnedError: ordersAllowed && returnedPis.isError,
     handoversError, cashError: unclosed.isError, approvalsError: showAttendance && approvals.isError,
     actCount, itemCount, visibleKeys, shown, clearAll: () => snooze.clear(visibleKeys),
@@ -250,7 +262,7 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
 export function AttentionPanel(props: AttentionSources) {
   const { userId, financeAllowed } = props
   const s = useAttentionSummary(props)
-  const errors = s.returnedError || s.handoversError || s.cashError || s.approvalsError
+  const errors = s.machineError || s.returnedError || s.handoversError || s.cashError || s.approvalsError
   // "Hand over cash", opened from a card. Kept here, not in the card: the card
   // it was opened from leaves the list the moment its handover is accepted.
   // `paymentIds` = the payments to tick first (null = none).
@@ -288,6 +300,13 @@ export function AttentionPanel(props: AttentionSources) {
 
       <ul className={styles.cards}>
         {s.announcement && <AnnouncementCard latest={s.announcement} />}
+
+        {s.machineError && (
+          <ErrorCard icon={<Fingerprint size={13} strokeWidth={2} />} label="Attendance machine">
+            Could not be checked.
+          </ErrorCard>
+        )}
+        {s.machine && <MachineStoppedCard health={s.machine} />}
 
         {s.returnedError && (
           <ErrorCard icon={<Undo2 size={13} strokeWidth={2} />} label="PIs returned to you">
@@ -399,6 +418,29 @@ function AnnouncementCard({ latest }: { latest: MyAnnouncement }) {
         aria-label={`Read announcement: ${latest.title}`}
       >
         Read
+      </Link>
+    </li>
+  )
+}
+
+// ── The attendance machine has stopped sending ───────────────────────────────
+//
+// Today says what to check. Nothing here decides anything, and the next punch
+// removes the card.
+function MachineStoppedCard({ health }: { health: MachineHealth }) {
+  const last = health.lastPunch
+  return (
+    <li className={`${styles.card} ${styles.cardUrgent}`}>
+      <span className={styles.cardLabelUrgent}>
+        <Fingerprint size={13} strokeWidth={2} aria-hidden="true" />
+        Attendance machine
+      </span>
+      <span className={styles.cardBrief}>Machine has stopped sending</span>
+      <span className={styles.cardDetail}>
+        No punch has reached BOE today.{last ? ` Last one ${formatPunchMoment(last.punchAt, health.today)}.` : ''}
+      </span>
+      <Link href="/attendance/today" className={styles.buttonPrimary} aria-label="Open Today: machine has stopped sending">
+        Open Today
       </Link>
     </li>
   )

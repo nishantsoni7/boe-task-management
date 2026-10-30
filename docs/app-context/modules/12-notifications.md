@@ -48,7 +48,7 @@ order handoff, document submissions, customer review events, attendance requests
   `20260731000000` (15 asset), `20260802000000` (11 asset/access), `20260824000000` + `20260825000000` (attendance/payroll issue raised/reviewed), `20260921000000`
   (`pi_exception_requested/approved/rejected`), `20261119000000` (`pi_revision_proposed/approved/rejected`), `20261202000000` (`order_update_status/amended/production/payment`),
   `20261206000000` (`customer_review_submitted/reapplied`), `20261229000000` (`order_operations_review_requested/decided`), `20270112000000`
-  (`order_document_review_requested/decided`), `20270215000100` (`attendance_request_submitted/decided`), `20270314000000` (`inventory_booking_requested/decided`).
+  (`order_document_review_requested/decided`), `20270215000100` (`attendance_request_submitted/decided`), `20270314000000` (`inventory_booking_requested/decided`), `20270511000000` (`attendance_machine_stopped`, to active admins, written by a daily cron rather than by anybody acting).
   Base task values (not in migrations): `task_acknowledged` (generic, meaning in the title), `task_assigned`, `overdue`, `escalation`, `stale_flag`, `morning_digest`,
   `evening_digest`.
 - `entity_id` is a uuid: `''` is a malformed uuid and fails the whole INSERT (22P02) for every recipient; `normalizeNotificationEntityId` in `src/lib/assets/assetNotifications.ts` is the chokepoint.

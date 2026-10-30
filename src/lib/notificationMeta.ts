@@ -201,6 +201,7 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // which (approved or rejected) is stated in the title.
   attendance_request_submitted: { label: 'Request',         color: colors.amber, bg: colors.amberTint },
   attendance_request_decided:   { label: 'Request decided', color: colors.blue,  bg: colors.blueTint  },
+  attendance_machine_stopped:   { label: 'Machine',         color: colors.red,   bg: colors.redTint   },
   // Inventory bookings. Amber = waiting for an approver; blue = the decision, whose outcome is in the title.
   inventory_booking_requested:  { label: 'Needs a decision', color: colors.amber, bg: colors.amberTint },
   inventory_booking_decided:    { label: 'Booking update',   color: colors.blue,  bg: colors.blueTint  },
@@ -311,6 +312,19 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
         ? (n.entity_id ? `/attendance/requests?request=${n.entity_id}` : '/attendance/requests')
         : (n.entity_id ? `/my-attendance?request=${n.entity_id}#my-requests` : '/my-attendance#my-requests'),
       actionLabel: toAdmin ? 'Review request' : 'View request',
+    }
+  }
+
+  // ── Attendance machine ─────────────────────────────────────────────────────
+  // Addressed to admins only, who land on the screen that says what to check.
+  if (type === 'attendance_machine_stopped') {
+    return {
+      category: 'other',
+      heading: 'Attendance',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: '/attendance/today',
+      actionLabel: 'Open Today',
     }
   }
 

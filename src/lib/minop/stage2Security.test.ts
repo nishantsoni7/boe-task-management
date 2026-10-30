@@ -89,6 +89,39 @@ test('the nightly sync is scheduled and answers only to the cron secret', () => 
   assert.match(source, /status: 503/)
 })
 
+test('the Today tab reads as an admin and writes nothing', () => {
+  for (const path of ['src/app/api/attendance/machine-day/route.ts', 'src/app/api/attendance/machine-status/route.ts']) {
+    const source = read(path)
+    const gate = source.indexOf('requireAdmin(req)')
+    assert.ok(gate > 0 && gate < source.indexOf('await readMachine'), `${path} checks the caller first`)
+    assert.match(source, /isResponse\(auth\)/, path)
+  }
+  for (const path of ['src/app/api/attendance/machine-day/route.ts', 'src/app/api/attendance/machine-status/route.ts', 'src/lib/minop/machineDayView.ts']) {
+    assert.doesNotMatch(read(path), /\.(insert|update|upsert|delete)\(/, path)
+  }
+})
+
+test('the stopped-machine check is scheduled, answers only to the cron secret and writes only notifications', () => {
+  assert.match(read('vercel.json'), /"path": "\/api\/attendance\/machine-alert"/)
+  const source = read('src/app/api/attendance/machine-alert/route.ts')
+  assert.match(source, /process\.env\.CRON_SECRET/)
+  assert.match(source, /timingSafeEqual/)
+  const gate = source.indexOf('secretMatches(provided, expected)')
+  assert.ok(gate > 0 && gate < source.indexOf('readMachineHealth(svc'), 'the secret is checked before any work')
+  assert.match(source, /status: 503/)
+
+  const writes = [...read('src/lib/minop/machineHealth.ts').matchAll(/\.from\('(\w+)'\)\s*\.(?:insert|update|upsert|delete)\(/g)]
+  assert.deepEqual(writes.map(m => m[1]), ['notifications'])
+})
+
+test('the notification type is added by its own migration, before the feed filters on it', () => {
+  assert.match(
+    read('supabase/migrations/20270511000000_attendance_machine_stopped_notification_type.sql'),
+    /^ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'attendance_machine_stopped';\r?$/m,
+  )
+  assert.match(read('src/lib/notifications.ts'), /'attendance_machine_stopped',/)
+})
+
 test('an Excel upload cannot overwrite a month the machine supplies', () => {
   for (const path of ['src/app/api/attendance/import/route.ts', 'src/app/api/attendance/preview/route.ts']) {
     const source = read(path)
