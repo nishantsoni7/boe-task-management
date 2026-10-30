@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Orders: Client PO and Design Files open on a submitted PI (PR open) · no migration
+- **Owner request.** On a PI waiting for approval the Client PO and Design Files could not be opened, so there was nothing to approve it on.
+- **Why.** `PiSentColumns` drew the names as plain text. Storage already allowed the read: `can_read_pi_document_file` admits anyone who can open the PI.
+- **What.** Each name is now the same button the draft view has, opening a 60-second signed link in a new tab, for every viewer of the PI. A refused link says so under that column. `openPiDocument` is the one open for both views. `.pi-attach-plain` removed.
+- **Rollback.** Revert the PR.
+- **Proof.** `piSentFiles.dom.test.tsx` presses the names in a real DOM, including through the locked `PiSupportingDetails`.
+
 ## 2026-10-30 — Attendance machine: punches become attendance from 1 November (PR #526, on the owner's yes after their preview check) · no migration
 - **Owner decision.** The new machine is the only attendance source from 1 November 2026, with no parallel period.
 - **What.** `machineDay.ts` turns a person's punches into a day by the Excel import's rules, and two taps under 5 minutes apart count as one. `machineAttendance.ts` writes `attendance_records` with `source = 'minop'` for linked, active people, never before the start date or in a locked month, and only when a row would change. The webhook does this as messages arrive; `/api/attendance/minop-sync` repairs it nightly; saving a Machine ID fills that person's days.
