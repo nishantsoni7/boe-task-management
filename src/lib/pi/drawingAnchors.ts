@@ -268,6 +268,51 @@ export function harvestProductImages(opts: HarvestOptions): PiImageHarvest {
   return { representativeByRow, customizationByRow, issues }
 }
 
+// ── Pictures in the cells of a side sheet ─────────────────────────────────────
+
+/** A picture the Fabric & Finish key can hold: PNG, JPEG or WebP only. */
+export type PiCellPicture = {
+  bytes: Uint8Array
+  format: 'png' | 'jpeg' | 'webp'
+  mimeType: string
+  extension: 'png' | 'jpg' | 'webp'
+}
+
+const CELL_PICTURE_EXTENSION = { png: 'png', jpeg: 'jpg', webp: 'webp' } as const
+
+export const cellPictureKey = (row: number, col: number): string => `${row}:${col}`
+
+/**
+ * The picture anchored in each cell of one drawing part, keyed by
+ * cellPictureKey (1-based row, 0-based column). The anchor's origin cell
+ * decides, as it does for the Master; several pictures in one cell keep the
+ * first. A picture that is unsafe, missing or in another format is left out:
+ * the side sheets are optional, so this is never a blocking issue.
+ */
+export function harvestCellPictures(entries: ArchiveEntries, drawingPart: string): Map<string, PiCellPicture> {
+  const relsPath = relsPathFor(drawingPart)
+  const rels = relationshipMap(partText(entries, relsPath))
+  const pictures = new Map<string, PiCellPicture>()
+  const mediaCache = new Map<string, MediaFacts>()
+  for (const anchor of parseDrawingAnchors(partText(entries, drawingPart))) {
+    if (!anchor.isPicture) continue
+    const key = cellPictureKey(anchor.fromRow + 1, anchor.fromCol)
+    if (pictures.has(key)) continue
+    const target = anchor.embedId ? rels.get(anchor.embedId) : undefined
+    const resolved = target ? resolveRelTarget(relsPath, target) : null
+    if (!resolved || isUnsafeEntryName(resolved) || !resolved.startsWith(MEDIA_PREFIX) || !(resolved in entries)) continue
+    let facts = mediaCache.get(resolved)
+    if (!facts) {
+      facts = readMedia(entries, resolved)
+      mediaCache.set(resolved, facts)
+    }
+    const { format, mimeType, bytes } = facts
+    if ((format !== 'png' && format !== 'jpeg' && format !== 'webp') || !mimeType) continue
+    pictures.set(key, { bytes, format, mimeType, extension: CELL_PICTURE_EXTENSION[format] })
+  }
+  return pictures
+}
+
 type MediaFacts = {
   bytes: Uint8Array
   format: PiProductImage['format']

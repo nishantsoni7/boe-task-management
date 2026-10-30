@@ -32,7 +32,6 @@ import {
 } from '@/lib/orders/amountMask'
 
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
-import { COST_SHEET_GROUP_LABEL } from '@/lib/orders/productCostColumns'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
   ACTIVITY_NAV_TITLE,
@@ -370,7 +369,7 @@ const PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
 const SECTIONS = 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'
 const GLOBAL_CSS = 'src/app/globals.css'
 /** Where the Products card begins on the page (owner, 2026-10-30). */
-const PRODUCTS_MARKER = '{/* ── 4. Products, with their fabric and packing'
+const PRODUCTS_MARKER = '{/* ── 4. Products, and what they add up to'
 
 /**
  * This page's own block of the global stylesheet.
@@ -3592,21 +3591,20 @@ describe('the products section: the preview’s columns, with fabric and packing
 
   test('the page draws its own head; the import preview keeps the shared one', () => {
     assert.ok(products.includes('<PiDetailProductHead />'))
-    assert.ok(!products.includes('<PiProductTableHead'), 'the shared head has no cost columns, and piPreview is held byte-for-byte')
+    assert.ok(!products.includes('<PiProductTableHead'), 'piPreview is held byte-for-byte, and Qty moved')
     assert.deepEqual(PI_DETAIL_PRODUCT_COLUMNS.map(c => c.label),
-      ['#', 'Image', 'Product', 'Customization', 'Qty', 'Cost / piece', 'Fabric', 'Packing', 'Line total'])
-    const head = renderToStaticMarkup(<table><PiDetailProductHead /></table>)
-    assert.ok(text(head).includes(COST_SHEET_GROUP_LABEL), 'the two cost columns sit under their own heading')
-    assert.ok(head.includes('colSpan="2"') || head.includes('colspan="2"'))
+      ['#', 'Image', 'Product', 'Qty', 'Customization', 'Cost / piece', 'Line total'])
+    assert.deepEqual(PI_DETAIL_PRODUCT_COLUMNS.filter(c => c.swap).map(c => c.label),
+      ['Customization', 'Cost / piece', 'Line total'], 'everything right of Qty is what the tabs change')
   })
 
-  test('the desktop row: dimensions and material under the name, the two cost cells before the line total', () => {
+  test('the desktop row: dimensions and material under the name, Qty beside Product, no fabric or packing', () => {
     const table = products.slice(products.indexOf('<tbody>'), products.indexOf('</tbody>'))
-    assert.equal([...table.matchAll(/<td\b/g)].length, 7, 'seven cells of its own')
-    assert.equal((table.match(/<PiProductCostCells/g) ?? []).length, 1, 'and the two cost cells')
+    assert.equal([...table.matchAll(/<td\b/g)].length, 7, 'seven cells')
+    assert.ok(!/fabric|packing/i.test(table), 'no cost shows until F&P Cost is opened')
     const order = [
       'p.itemSequence', '<PiProductThumbnail', 'p.productName', 'p.dimensions', 'p.material',
-      '<PiCustomizationCell', 'p.quantity', 'p.costPerPiece', '<PiProductCostCells', 'p.lineTotal',
+      'p.quantity', '<PiCustomizationCell', 'p.costPerPiece', 'p.lineTotal',
     ].map(marker => {
       const index = table.indexOf(marker)
       assert.ok(index > 0, `${marker} must still be in the row`)
@@ -3634,17 +3632,17 @@ describe('the products section: the preview’s columns, with fabric and packing
       'one on the table row, one on the phone card — and no third rendering')
   })
 
-  test('the phone cards keep their parts and gain the fabric and packing box', () => {
+  test('the phone cards keep their parts', () => {
     for (const part of [
       'isMobile ? (', 'label="Dimensions"', 'label="Material"', 'Line total',
-      'formatInr(p.lineTotal)', 'formatInr(p.costPerPiece)', '<PiProductCostBox',
+      'formatInr(p.lineTotal)', 'formatInr(p.costPerPiece)',
     ]) {
       assert.ok(products.includes(part), `${part} must be on the phone card`)
     }
   })
 
-  test('the table keeps its own horizontal scroll, and never the page’s', () => {
-    assert.ok(products.includes("overflowX: 'auto'"))
+  test('the table scrolls inside its own card, and never the page', () => {
+    assert.ok(products.includes('pv-scroll'))
   })
 
   test('the unresolved-image badge and the empty state are unchanged', () => {
@@ -3655,10 +3653,10 @@ describe('the products section: the preview’s columns, with fabric and packing
   test('the cost figures come from the cost sheet’s own read and rules, and nothing else', () => {
     assert.ok(page.includes('useProductCosts(submissionId,'), 'the sheet’s own one read, through its hook')
     assert.ok(!/\.rpc\('order_submission_fabric_finish_read'/.test(page), 'never a read of the page’s own')
-    assert.ok(products.includes('<PiProductCostStrip'), 'the three figures over the table')
-    assert.ok(products.includes('<PiProductTotalsRow'), 'and a totals row under it')
-    assert.ok(!products.includes('opp-entry'), 'the separate cost sheet card is gone')
-    assert.ok(!page.includes('FABRIC_FINISH_TITLE'), 'its title went with it')
+    assert.ok(products.includes('<ProductViewTabs'), 'three tabs on the list')
+    assert.ok(products.includes('<ProductViewBody'), 'and F&P Cost and Approvals drawn by the shared body')
+    assert.ok(products.includes('<PiProductTotalsRow'), 'with a totals row')
+    assert.ok(!page.includes('FabricFinishDrawer'), 'the panel that slid over the page is gone')
   })
 })
 

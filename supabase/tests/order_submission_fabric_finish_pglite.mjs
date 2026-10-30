@@ -172,7 +172,27 @@ const expectError = async (fn, pattern, name) => {
   assert.equal(b1.sheet.packing_type, 'BCF'); assert.equal(b1.sheet.finish.length, 2); assert.equal(b1.typed, null)
   assert.ok(r.submission.sheet_read_at)
   ok('the import route’s save_sheet stores every line with its finish, and the read says when')
+  // A workbook's own pictures need no new door: the sheet's entries already
+  // carry them, under the same key check typed ones pass (owner, 2026-10-30).
+  const pictureSha = 'b'.repeat(64)
+  const pictureKey = `submissions/${PI_ORDER}/fabric-finish/B002/${pictureSha}.png`
+  const sheetWith = finish => JSON.stringify([
+    { item_sequence: 'B001', fabric_metres_per_piece: 0.75, fabric_price_per_metre: 650, packing_cost_per_piece: 550, packing_type: 'BCF',
+      finish: [{ heading: 'Fabric Approval', value: 'PENDING' }, { heading: 'Wood Finish Approval', value: 'Acacia natural' }] },
+    { item_sequence: 'B002', fabric_metres_per_piece: 0, packing_cost_per_piece: 450, finish },
+  ])
   await as(null)
+  await rpc(`select public.order_submission_fabric_finish_save_sheet($1, $2, $3::jsonb)`, [PI_ORDER, SHA,
+    sheetWith([{ heading: 'Metal Finish', value: '', image_path: pictureKey, image_sha256: pictureSha }])])
+  await as(U.sales)
+  r = (await rpc(`select public.order_submission_fabric_finish_read($1) as r`, [PI_ORDER])).r
+  assert.deepEqual(r.lines.find(l => l.item_sequence === 'B002').sheet.finish.map(f => [f.heading, f.value, f.image_path]), [['Metal Finish', '', pictureKey]])
+  ok('a picture read from a workbook is stored on the sheet entry and comes back from the read, with or without text')
+  await as(null)
+  await expectError(() => rpc(`select public.order_submission_fabric_finish_save_sheet($1, $2, $3::jsonb)`, [PI_ORDER, SHA,
+    sheetWith([{ heading: 'Metal Finish', value: 'VW-011', image_path: `submissions/other/fabric-finish/B002/${pictureSha}.png`, image_sha256: pictureSha }])]),
+    /FABRIC_FINISH_IMAGE_INVALID/, 'a sheet picture outside this PI’s own key is refused')
+  await rpc(`select public.order_submission_fabric_finish_save_sheet($1, $2, $3::jsonb)`, [PI_ORDER, SHA, sheetWith([])])
   await expectError(() => rpc(`select public.order_submission_fabric_finish_save_sheet($1, $2, $3::jsonb)`, [PI_ORDER, SHA, JSON.stringify([{ item_sequence: 'B001', fabric_metres_per_piece: -1 }])]),
     /FABRIC_FINISH_VALUE_INVALID/, 'a negative figure from a sheet is refused')
   await expectError(() => rpc(`select public.order_submission_fabric_finish_save_sheet($1, $2, $3::jsonb)`, [PI_ORDER, SHA, JSON.stringify([{ item_sequence: 'B001' }, { item_sequence: 'B001' }])]),

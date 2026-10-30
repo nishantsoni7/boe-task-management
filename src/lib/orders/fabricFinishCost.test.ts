@@ -15,6 +15,9 @@ import {
   compareWithPi,
   effective,
   effectiveFinish,
+  finishFamilies,
+  finishHeadings,
+  lineApproval,
   lineFigures,
   parseFabricFinishData,
   parseTypedFigure,
@@ -82,11 +85,56 @@ describe('finish choices', () => {
     ])
   })
 
-  test('PENDING and blanks mean no approval is done; NA, a name or a picture means one is', () => {
-    assert.equal(lineFigures(line('B001', 1, { finish: [{ heading: 'Fabric Approval', value: 'PENDING', imagePath: null }] })).finishMissing, true)
-    assert.equal(lineFigures(line('B001', 1, { finish: [] })).finishMissing, true)
-    assert.equal(lineFigures(line('B001', 1, { finish: [{ heading: 'Metal Finish', value: 'NA', imagePath: null }] })).finishMissing, false)
-    assert.equal(lineFigures(line('B001', 1, null, { finish: [{ heading: 'Fabric', value: '', imagePath: 'submissions/x/fabric-finish/B001/abc.jpg' }] })).finishMissing, false)
+})
+
+describe('what approved means (owner, 2026-10-30)', () => {
+  const entry = (heading: string, value: string, imagePath: string | null = null) => ({ heading, value, imagePath })
+  const FOUR = finishFamilies([])
+  const PICTURE = 'submissions/x/fabric-finish/B001/abc.jpg'
+
+  test('a PI with no headings tracks the usual four kinds', () => {
+    assert.deepEqual(finishHeadings([]), ['Fabric Approval', 'Wood Finish Approval', 'Metal Finish', 'Marble/Rope Approval'])
+    assert.deepEqual(FOUR, ['fabric', 'wood', 'metal', 'marble'])
+  })
+
+  test('nothing but PENDING and blanks is none', () => {
+    assert.equal(lineApproval(line('B001', 1, { finish: [entry('Fabric Approval', 'PENDING')] }), FOUR).state, 'none')
+    assert.equal(lineApproval(line('B001', 1, { finish: [] }), FOUR).state, 'none')
+    assert.equal(lineApproval(line('B001', 1, null), FOUR).state, 'none')
+  })
+
+  test('one NA with the rest blank is only part of the way: the "1 of 33" on Roots & Rituals', () => {
+    const l = line('BE0001', 20, { finish: [entry('Fabric Approval', 'NA'), entry('Marble/Rope Approval', 'NA')] })
+    assert.equal(lineApproval(l, FOUR).state, 'partial')
+  })
+
+  test('every kind settled by a value, a picture or NA is approved', () => {
+    const l = line('B001', 1, { finish: [
+      entry('Fabric Approval', 'Tony 115'), entry('Wood Finish Approval', '', PICTURE),
+      entry('Metal Finish', 'NA'), entry('Marble/Rope Approval', 'n/a'.toUpperCase()),
+    ] })
+    const approval = lineApproval(l, FOUR)
+    assert.equal(approval.state, 'approved')
+    assert.deepEqual(approval.cells.map(c => c.settled), [true, true, true, true])
+  })
+
+  test('headings of one kind count together: a blank Seat Fabric beside a filled Fabric 1 is not open', () => {
+    const lines = [line('B001', 1, { finish: [entry('Fabric 1', 'Morocco 03'), entry('Wood Finish Approval', 'Acacia')] }),
+      line('B002', 1, { finish: [entry('Fabric 1', 'Morocco 03'), entry('Fabric 2', 'Pirates 108'), entry('Seat Fabric', 'Morocco 07'), entry('Wood Finish Approval', 'Acacia')] })]
+    const families = finishFamilies(lines)
+    assert.deepEqual(families, ['fabric', 'wood'])
+    assert.equal(lineApproval(lines[0], families).state, 'approved')
+    assert.equal(lineApproval(lines[1], families).cells[0].entries.length, 3)
+  })
+
+  test('but a PENDING one is', () => {
+    const lines = [line('B001', 1, { finish: [entry('Fabric 1', 'Morocco 03'), entry('Fabric 2', 'PENDING')] })]
+    assert.equal(lineApproval(lines[0], finishFamilies(lines)).state, 'none')
+  })
+
+  test('a typed value settles what the sheet left open', () => {
+    const l = line('B001', 1, { finish: [entry('Fabric Approval', 'PENDING')] }, { finish: [entry('Fabric Approval', 'Tony 115')] })
+    assert.equal(lineApproval(l, ['fabric']).state, 'approved')
   })
 })
 

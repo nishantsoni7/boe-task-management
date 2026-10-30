@@ -50,7 +50,7 @@ function cellXml(address: string, cell: Cell): string {
   }
 }
 
-function sheetXml(cells: Record<string, Cell>): string {
+function sheetXml(cells: Record<string, Cell>, drawing = false): string {
   const rows = new Map<number, string[]>()
   for (const [address, cell] of Object.entries(cells)) {
     const row = Number(/\d+$/.exec(address)?.[0])
@@ -61,11 +61,39 @@ function sheetXml(cells: Record<string, Cell>): string {
   const body = [...rows.entries()].sort((a, b) => a[0] - b[0])
     .map(([r, cs]) => `<row r="${r}">${cs.join('')}</row>`).join('')
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-    + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`
+    + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+    + `<sheetData>${body}</sheetData>${drawing ? '<drawing r:id="rId1"/>' : ''}</worksheet>`
+}
+
+/** A picture anchored at a 0-based cell, pointing at a relationship of the drawing. */
+const anchor = (col: number, row: number, rel: string) =>
+  `<xdr:oneCellAnchor><xdr:from><xdr:col>${col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`
+  + `<xdr:pic><xdr:blipFill><a:blip r:embed="${rel}"/></xdr:blipFill></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 2, 3])
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+/** The drawing, its media and its links, for the sheet at the given position. */
+function drawingParts(position: number, anchors: string[], media: Record<string, Uint8Array>): Record<string, Uint8Array> {
+  const parts: Record<string, Uint8Array> = {
+    [`xl/worksheets/_rels/sheet${position}.xml.rels`]: enc.encode(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + `<Relationship Id="rId1" Type="${REL}/drawing" Target="../drawings/drawing1.xml"/></Relationships>`),
+    'xl/drawings/drawing1.xml': enc.encode(
+      `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${REL}">`
+      + `${anchors.join('')}</xdr:wsDr>`),
+    'xl/drawings/_rels/drawing1.xml.rels': enc.encode(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + Object.keys(media).map((name, i) => `<Relationship Id="rId${i + 1}" Type="${REL}/image" Target="../media/${name}"/>`).join('')
+      + `</Relationships>`),
+  }
+  for (const [name, bytes] of Object.entries(media)) parts[`xl/media/${name}`] = bytes
+  return parts
 }
 
 /** A workbook whose sheets are the given name → cells, in that order. */
-function workbook(sheets: Record<string, Record<string, Cell>>): Uint8Array {
+function workbook(sheets: Record<string, Record<string, Cell>>, extra: Record<string, Uint8Array> = {}): Uint8Array {
   const names = Object.keys(sheets)
   const parts: Record<string, Uint8Array> = {
     '[Content_Types].xml': enc.encode(
@@ -91,12 +119,14 @@ function workbook(sheets: Record<string, Record<string, Cell>>): Uint8Array {
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
       + `<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"></sst>`),
   }
-  names.forEach((n, i) => { parts[`xl/worksheets/sheet${i + 1}.xml`] = enc.encode(sheetXml(sheets[n])) })
-  return zipSync(parts)
+  names.forEach((n, i) => {
+    parts[`xl/worksheets/sheet${i + 1}.xml`] = enc.encode(sheetXml(sheets[n], `xl/worksheets/_rels/sheet${i + 1}.xml.rels` in extra))
+  })
+  return zipSync({ ...parts, ...extra })
 }
 
-async function read(sheets: Record<string, Record<string, Cell>>): Promise<FabricFinishSheets> {
-  const opened = await openPiArchive(workbook(sheets))
+async function read(sheets: Record<string, Record<string, Cell>>, extra: Record<string, Uint8Array> = {}): Promise<FabricFinishSheets> {
+  const opened = await openPiArchive(workbook(sheets, extra))
   assert.ok(opened.ok, 'the synthetic archive opens')
   return readFabricFinishSheets(opened.archive.entries)
 }
@@ -317,5 +347,49 @@ describe('matching sheet rows to the Master products', () => {
     const m = matchFabricFinishSheets(sheets, [product(32, '100-B001', 'B001', 25), product(33, '100-B001', 'B002', 25)])
     assert.equal(m.products[0].cost?.sheetRow, 2)
     assert.equal(m.products[1].cost, null)
+  })
+})
+
+describe('approval pictures on the "Fabric and Finish" sheet', () => {
+  const FINISH: Record<string, Cell> = {
+    A1: text('Code'), B1: text('Name'), C1: text('Quantity'), D1: text('Dimensions'), E1: text('Representative Image'),
+    G1: text('Fabric Approval'), H1: text('Wood Finish Approval'), I1: text('Metal Finish'),
+    A2: fText("Master!A32", '359-B001'), B2: fText("Master!B32", 'Chair'), C2: fNum("Master!C32", 4),
+    G2: text('Tony 115'), H2: text('PENDING'),
+  }
+  const specsOf = async (anchors: string[], media: Record<string, Uint8Array>) => {
+    const sheets = await read({ [FINISH_SHEET_NAME]: FINISH }, drawingParts(1, anchors, media))
+    assert.equal(sheets.finish.found, true)
+    return sheets.finish.lines[0].specs
+  }
+
+  test('a picture joins the text in its own cell, and stands alone in a blank one', async () => {
+    const specs = await specsOf([anchor(6, 1, 'rId1'), anchor(8, 1, 'rId2')], { 'image1.png': PNG, 'image2.png': PNG })
+    assert.deepEqual(specs.map(s => [s.heading, s.value, s.picture?.extension ?? null]), [
+      ['Fabric Approval', 'Tony 115', 'png'],
+      ['Wood Finish Approval', 'PENDING', null],
+      ['Metal Finish', '', 'png'],
+    ])
+  })
+
+  test('the product picture beside them is not an approval picture', async () => {
+    const specs = await specsOf([anchor(4, 1, 'rId1')], { 'image1.png': PNG })
+    assert.ok(specs.every(s => !s.picture))
+  })
+
+  test('a picture under no heading, or in a format the key cannot hold, is left out and the text stays', async () => {
+    const specs = await specsOf([anchor(5, 1, 'rId1'), anchor(6, 1, 'rId2')], { 'image1.png': PNG, 'image2.gif': GIF })
+    assert.deepEqual(specs.map(s => [s.heading, s.value, s.picture ?? null]), [
+      ['Fabric Approval', 'Tony 115', null],
+      ['Wood Finish Approval', 'PENDING', null],
+    ])
+  })
+
+  test('a sheet with no drawing reads exactly as before', async () => {
+    const sheets = await read({ [FINISH_SHEET_NAME]: FINISH })
+    assert.deepEqual(sheets.finish.lines[0].specs, [
+      { heading: 'Fabric Approval', value: 'Tony 115' },
+      { heading: 'Wood Finish Approval', value: 'PENDING' },
+    ])
   })
 })
