@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1d4a8492` — Tasks: redesign both Cancelled pages, grouped by month (#525)
-- Commits on this branch: 1090
+- Commit: `1a382f1c` — Docs: the machine switch-on is PR #526
+- Commits on this branch: 1092
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 174
 - Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `1a382f1c` 2026-10-30 Docs: the machine switch-on is PR #526
+- `ddc3ad42` 2026-10-30 Attendance machine: punches become attendance from 1 November
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
@@ -37,8 +39,6 @@
 - `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 - `f7c35de7` 2026-10-29 Docs: Change Order number merged as PR #502 (217a69b2) (#504)
 - `217a69b2` 2026-10-29 Orders: an administrator can change an Order number (newest number goes back to the next Order) (#502)
-- `cd6445cd` 2026-10-29 Docs: Dashboard "At a glance" bar merged as PR #500 (c79bb1a6) (#501)
-- `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 
 ## Pages by top-level area
 
