@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `c7799b48` — Merge main (#510, approving opens the Order) into fix/approve-popup-simple
+- Commit: `86af9b34` — Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
 - Commits on this branch: 1078
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 385 (first `20260530_create_positions.sql`, latest `20270506000000_order_submission_close_returns_payments.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `c7799b48` 2026-10-30 Merge main (#510, approving opens the Order) into fix/approve-popup-simple
+- `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
+- `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
-- `d5fa10e8` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson
 - `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 - `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
