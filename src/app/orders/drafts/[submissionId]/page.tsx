@@ -93,9 +93,15 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
-import { FabricFinishDrawer } from '@/components/orders/FabricFinishDrawer'
 import { useProductCosts } from '@/components/orders/useProductCosts'
-import { costLineFor, productCost, productCostSummary } from '@/lib/orders/productCostColumns'
+import {
+  ProductViewBody,
+  ProductViewTabs,
+  WorkbookRefresh,
+  type ProductView,
+  type ProductViewRow,
+} from '@/components/orders/ProductViews'
+import { productCostSummary } from '@/lib/orders/productCostColumns'
 import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
 import { usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
@@ -315,9 +321,6 @@ import {
   PiCommercialBreakdown,
   PiDetailProductHead,
   PiPaymentStatusCard,
-  PiProductCostBox,
-  PiProductCostCells,
-  PiProductCostStrip,
   PiProductTotalsRow,
   PiTopCard,
   PiSavedStrip,
@@ -466,9 +469,10 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
-  // The Fabric & Finish cost sheet (20270431000000), a panel that slides in
-  // from the right. Self-loading when opened: nothing of it runs at startup.
-  const [costSheetOpen, setCostSheetOpen] = useState(false)
+  // Product details, F&P Cost or Approvals (owner, 2026-10-30). The slide only
+  // plays once someone has switched, never when the page first draws.
+  const [productView, setProductView] = useState<ProductView>('details')
+  const [productViewMoved, setProductViewMoved] = useState(false)
   // The payment whose Edit form is open (the payments dialog is hidden meanwhile).
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   // Which rows Payment details opens on: every one, or the rows behind one of
@@ -525,14 +529,14 @@ function PiDraftDetailPageInner() {
    */
   const [rowVersion, setRowVersion] = useState<number | null>(null)
   /** Bumped when the cost sheet panel closes: a value may have been typed there. */
-  const [costSheetCloses, setCostSheetCloses] = useState(0)
+  const [costSheetSaves, setCostSheetSaves] = useState(0)
   /**
    * THE COST SHEET, for the product list's fabric and packing columns (owner,
    * 2026-10-30): the sheet's own one read, taken by its own hook so the page's
    * counted reads are unchanged. Re-read when the PI is (a quantity may have
    * changed) and when the panel closes. Undefined while it is being read.
    */
-  const productCosts = useProductCosts(submissionId, `${rowVersion ?? ''}:${costSheetCloses}`)
+  const productCosts = useProductCosts(submissionId, `${rowVersion ?? ''}:${costSheetSaves}`)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionSaving, setCorrectionSaving] = useState(false)
   const [correctionFailure, setCorrectionFailure] = useState<string | null>(null)
@@ -2586,14 +2590,31 @@ function PiDraftDetailPageInner() {
     },
   })
   const costSummary = productCosts ? productCostSummary(productCosts) : null
-  const costOf = (p: PersistedProduct) => {
-    const line = costLineFor(productCosts ?? null, p)
-    return line ? productCost(line) : null
-  }
   /** Pieces across the lines — a count, not money. */
   const piecesTotal = products.reduce((sum, p) => sum + (p.quantity ?? 0), 0)
   /** The breakdown's own "Product value, before discount", for the table's totals row. */
   const productValueBeforeDiscount = breakdown.rows.find(row => row.key === 'gross')?.value ?? null
+  const switchProductView = (view: ProductView) => { setProductView(view); setProductViewMoved(true) }
+  /** What stays put while F&P Cost or Approvals is open. */
+  const productViewRows: ProductViewRow[] = products.map(p => ({
+    id: p.id,
+    itemSequence: p.itemSequence,
+    label: p.productName?.trim() || 'this product line',
+    code: <span className="pv-code">{orDash(p.itemSequence)}</span>,
+    image: compact => (compact
+      ? <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
+      : <PiProductThumbnail {...representativeThumbnail(p.row)} />),
+    product: (
+      <>
+        <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
+          {orDash(p.productName)}
+        </MultilineText>
+        {p.dimensions && <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>{p.dimensions}</MultilineText>}
+        {p.material && <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>{p.material}</MultilineText>}
+      </>
+    ),
+    quantity: p.quantity ?? '—',
+  }))
 
   return (
     <OrdersLayout
@@ -2802,15 +2823,25 @@ function PiDraftDetailPageInner() {
           <PiBlockingPanel entries={draft.blocking} />
         )}
 
-        {/* ── 4. Products, with their fabric and packing, and what they add up to ──
-            The Fabric & Finish cost sheet merged into the list (owner,
-            2026-10-30): the three figures over the table, a Fabric and a
-            Packing column per line, a totals row, and under the lines — as an
-            invoice draws it — the Commercial terms beside the breakdown. */}
+        {/* ── 4. Products, and what they add up to ──
+            Three tabs (owner, 2026-10-30): Product details, F&P Cost and
+            Approvals. No cost shows until one of the last two is opened, and
+            the columns right of Qty are what change. Under the lines, as an
+            invoice draws it, the Commercial terms beside the breakdown. */}
         <PiCard>
           <PiCardHeader
-            title="Products"
-            right={
+            style={{ flexWrap: 'wrap' }}
+            title={
+              <span className="pv-title">
+                Products
+                <ProductViewTabs view={productView} onChange={switchProductView} pending={costSummary?.approvals.pending ?? null} />
+              </span>
+            }
+            right={productView !== 'details' ? (
+              productCosts?.canEdit && (
+                <WorkbookRefresh submissionId={submissionId} onDone={() => setCostSheetSaves(n => n + 1)} />
+              )
+            ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {draft.unresolvedImages > 0 && (
                   <span style={{
@@ -2839,24 +2870,28 @@ function PiDraftDetailPageInner() {
                   </button>
                 )}
               </div>
-            }
+            )}
           />
-
-          {/* ── The cost sheet's three figures, and the way into it ──
-              Per product: fabric metres and price, packing, the finish choices
-              and their reference pictures, read from the workbook's own two
-              sheets and typeable where they left blanks (20270431000000). The
-              sheet slides in from the right and offers its own page. */}
-          <PiProductCostStrip summary={costSummary} loaded={productCosts !== undefined} onOpen={() => setCostSheetOpen(true)} />
 
           {products.length === 0 ? (
             <div style={{ padding: '20px', fontSize: '12px', color: colors.secondary }}>
               No product lines are stored against this draft.
             </div>
+          ) : productView !== 'details' ? (
+            <ProductViewBody
+              view={productView}
+              rows={productViewRows}
+              data={productCosts}
+              isMobile={isMobile}
+              variant="pi"
+              submissionId={submissionId}
+              pieces={piecesTotal}
+              animate={productViewMoved}
+              onChanged={() => setCostSheetSaves(n => n + 1)}
+            />
           ) : isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {products.map((p, i) => {
-                const cost = costOf(p)
                 return (
                   <div
                     key={p.id}
@@ -2900,8 +2935,6 @@ function PiDraftDetailPageInner() {
                       compact
                     />
 
-                    {cost && <PiProductCostBox cost={cost} />}
-
                     <div style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                       borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
@@ -2927,10 +2960,14 @@ function PiDraftDetailPageInner() {
               })}
             </div>
           ) : (
-            <div className="pi-products-table" style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                {/* The PI page's own head: the preview's columns, with the two
-                    cost columns under "From the cost sheet". */}
+            <div className={`pi-products-table pv-scroll${productViewMoved ? ' pv-animate' : ''}`}>
+              <table className="pv-table pv-table--pi" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <colgroup>
+                  <col className="pv-col-code" /><col className="pv-col-image" /><col className="pv-col-product" /><col className="pv-col-qty" />
+                  <col /><col className="pv-col-cost" /><col className="pv-col-total" />
+                </colgroup>
+                {/* The PI page's own head: Qty beside Product, so everything
+                    to its right is what the tabs change. */}
                 <PiDetailProductHead />
                 <tbody>
                   {products.map(p => (
@@ -2946,7 +2983,7 @@ function PiDraftDetailPageInner() {
                           {orDash(p.productName)}
                         </MultilineText>
                         {/* DIMENSIONS AND MATERIAL UNDER THE NAME (owner,
-                            2026-10-30), to make room for the two cost columns. */}
+                            2026-10-30), so they stay in every tab. */}
                         {p.dimensions && (
                           <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>
                             {p.dimensions}
@@ -2971,27 +3008,26 @@ function PiDraftDetailPageInner() {
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', minWidth: '140px', maxWidth: '240px' }}>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                        {p.quantity ?? '—'}
+                      </td>
+                      <td className="pv-swap" style={{ padding: '12px 14px' }}>
                         <PiCustomizationCell
                           text={p.customization}
                           thumbnails={customizationThumbnails(p.row)}
                           compact={false}
                         />
                       </td>
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
-                        {p.quantity ?? '—'}
-                      </td>
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                      <td className="pv-swap" style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
                         {formatInr(p.costPerPiece)}
                       </td>
-                      <PiProductCostCells cost={costOf(p)} loaded={productCosts !== undefined} />
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
+                      <td className="pv-swap" style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
                         {formatInr(p.lineTotal)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                <PiProductTotalsRow pieces={piecesTotal} summary={costSummary} productValue={productValueBeforeDiscount} />
+                <PiProductTotalsRow pieces={piecesTotal} productValue={productValueBeforeDiscount} />
               </table>
             </div>
           )}
@@ -3063,16 +3099,6 @@ function PiDraftDetailPageInner() {
           No request: clientDetails came off the submission already on screen. */}
       {clientDialog && (
         <PiClientDetailsModal client={clientDetails} onClose={() => setClientDialog(false)} />
-      )}
-
-      {/* ── Fabric & Finish cost sheet (20270431000000): slides in from the right ── */}
-      {costSheetOpen && (
-        <FabricFinishDrawer
-          submissionId={submissionId}
-          context={submission.client_name ? `PI · ${submission.client_name}` : 'PI'}
-          openAsPageHref={`/orders/drafts/${submissionId}/fabric-finish`}
-          onClose={() => { setCostSheetOpen(false); setCostSheetCloses(n => n + 1) }}
-        />
       )}
 
       {billingDialog && (

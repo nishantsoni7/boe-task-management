@@ -1,7 +1,7 @@
 /**
- * The product list's fabric and packing (owner, 2026-10-30): every figure is
- * the cost sheet's own rule, picked out per product and summed the workbook's
- * way. Pure; no database.
+ * What the product list's F&P Cost and Approvals tabs add up to (owner,
+ * 2026-10-30): every figure is the sheet's own rule, summed the workbook's way.
+ * Pure; no database.
  *
  * Run:
  *   npx tsx --test src/lib/orders/productCostColumns.test.ts
@@ -11,10 +11,9 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import type { FabricFinishData, FabricFinishLine, LineValues } from './fabricFinishCost'
 import {
-  approvalsLine,
+  approvalsText,
   comparisonText,
   costLineFor,
-  productCost,
   productCostSummary,
 } from './productCostColumns'
 
@@ -52,40 +51,6 @@ const data = (over: Partial<FabricFinishData> = {}): FabricFinishData => ({
   ...over,
 })
 
-describe('one product’s fabric and packing', () => {
-  test('metres, amount and rate for the fabric; amount, type and rate for the packing', () => {
-    const cost = productCost(LINES[0])
-    assert.equal(cost.metres, 32)
-    assert.equal(cost.fabricAmount, 15360)
-    assert.equal(cost.pricePerMetre, 480)
-    assert.equal(cost.packingAmount, 10000)
-    assert.equal(cost.packingType, 'Carton + foam')
-    assert.equal(cost.packingPerPiece, 250)
-    assert.deepEqual(cost.choice, { text: 'Velvet Teal V-214', done: true })
-  })
-
-  test('PENDING is a pending approval, not a choice', () => {
-    assert.deepEqual(productCost(LINES[3]).choice, { text: 'PENDING', done: false })
-  })
-
-  test('no fabric heading: the first finish choice stands for the line', () => {
-    const cost = productCost(LINES[4])
-    assert.equal(cost.fabricAmount, null)
-    assert.equal(cost.metres, null)
-    assert.deepEqual(cost.choice, { text: 'Statuario', done: true })
-  })
-
-  test('nothing recorded: no choice at all', () => {
-    assert.equal(productCost(line({ itemSequence: 'X' })).choice, null)
-  })
-
-  test('a typed value wins over the sheet’s, as on the cost sheet', () => {
-    const typed = productCost({ ...LINES[0], typed: values({ fabricPricePerMetre: 500 }) })
-    assert.equal(typed.pricePerMetre, 500)
-    assert.equal(typed.fabricAmount, 16000)
-  })
-})
-
 describe('matching a sheet line to its product row', () => {
   test('by the item row’s id first, then by the item number', () => {
     assert.equal(costLineFor(data(), { id: 'i3', itemSequence: 'B999' })?.itemSequence, 'B003')
@@ -95,7 +60,7 @@ describe('matching a sheet line to its product row', () => {
   })
 })
 
-describe('the three figures over the table', () => {
+describe('the figures in the card’s header', () => {
   test('fabric and packing totals the workbook’s way, and whether each matches the PI', () => {
     const summary = productCostSummary(data())
     assert.equal(summary.fabric.sum, 58884)
@@ -113,14 +78,18 @@ describe('the three figures over the table', () => {
     assert.equal(comparisonText(summary.packing.comparison, n => `₹${n}`), 'Differs from the PI by ₹10 more')
   })
 
-  test('approvals: the products whose fabric and finish are approved, and the one that is not', () => {
-    const { approvals } = productCostSummary(data())
-    assert.equal(approvals.done, 4)
-    assert.equal(approvals.total, 5)
-    assert.deepEqual(approvals.pending, ['B004 Lounge armchair'])
-    assert.equal(approvalsLine(approvals), '1 pending: B004 Lounge armchair')
-    assert.equal(approvalsLine({ done: 5, total: 5, pending: [] }), 'All approved')
-    assert.equal(approvalsLine({ done: 2, total: 5, pending: ['a', 'b', 'c'] }), '3 pending')
+  test('approved means every kind of approval this PI tracks is settled', () => {
+    const finish = (fabricValue: string, marbleValue: string) => ({ sheet: values({ finish: [
+      { heading: 'Fabric Approval', value: fabricValue, imagePath: null },
+      { heading: 'Marble/Rope Approval', value: marbleValue, imagePath: null },
+    ] }) })
+    const { approvals } = productCostSummary(data({ lines: [
+      line({ itemSequence: 'B1', ...finish('Tony 115', 'NA') }),
+      line({ itemSequence: 'B2', ...finish('NA', 'PENDING') }),
+      line({ itemSequence: 'B3', ...finish('PENDING', 'PENDING') }),
+    ] }))
+    assert.deepEqual(approvals, { approved: 1, total: 3, pending: 2 })
+    assert.equal(approvalsText(approvals), '1 of 3 approved')
   })
 
   test('nothing quoted is "as applicable" — a null total, never ₹0', () => {

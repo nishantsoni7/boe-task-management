@@ -104,7 +104,7 @@ function withoutIssuesFirstReadyCard(card: string): string {
 
 describe('the PI product table is byte-for-byte what it was', () => {
   // The PI Draft page's Products card, from its heading comment to Activity.
-  const MARKERS = ['{/* ── 4. Products, with their fabric and packing', '{/* ── 6b. Activity, full width, last'] as const
+  const MARKERS = ['{/* ── 4. Products, and what they add up to', '{/* ── 6b. Activity, full width, last'] as const
 
   test('the Products card was redesigned on purpose (owner, 2026-10-30): every figure is still the stored one, as text', () => {
     // WHY THIS IS NO LONGER A COMPARISON WITH THE STARTING COMMIT. The card was

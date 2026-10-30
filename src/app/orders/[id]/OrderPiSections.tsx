@@ -9,7 +9,8 @@
 // imported from where it already lives and is untouched.
 //
 // EVERY COMPONENT BELOW IS A FUNCTION OF ITS PROPS. Nothing here fetches,
-// writes, authorizes or decides. What may be SEEN is decided by
+// authorizes or decides, and the only write is the product list's own F&P
+// editor, which the database re-checks. What may be SEEN is decided by
 // can_view_order_submission_via_order (migration 20260924000000); what a figure
 // MEANS is decided by the shared PI helpers; which figures are printed at all is
 // decided by ../../../lib/orders/orderPiHandoff. These draw the answers.
@@ -36,6 +37,13 @@ import {
 } from '@/lib/orders/orderPiVersions'
 import { MultilineText } from '@/components/ui/MultilineText'
 import {
+  ProductViewBody,
+  ProductViewTabs,
+  WorkbookRefresh,
+  type ProductView,
+  type ProductViewRow,
+} from '@/components/orders/ProductViews'
+import {
   PiCard,
   PiCardHeader,
   PiFieldRow,
@@ -52,6 +60,8 @@ import {
 import { formatCustomization, formatInr, orDash } from '@/lib/pi/previewView'
 import { SECTION_HEADER_STYLE } from './OrderWorkspace'
 import type { PersistedProduct } from '@/lib/orders/draftsView'
+import type { FabricFinishData } from '@/lib/orders/fabricFinishCost'
+import { productCostSummary } from '@/lib/orders/productCostColumns'
 import {
   BILLING_LABEL,
   BILLING_VALUE_LABEL,
@@ -548,7 +558,7 @@ export function OrderCommercialBreakdown({ lines, embedded = false }: {
  * approved treatment, unchanged.
  */
 export function OrderPiProducts({
-  products, isMobile, representativeThumbnail, customizationThumbnails, unresolvedImages,
+  products, isMobile, representativeThumbnail, customizationThumbnails, unresolvedImages, views,
 }: {
   products: readonly PersistedProduct[]
   isMobile: boolean
@@ -556,13 +566,49 @@ export function OrderPiProducts({
   customizationThumbnails: (row: number) => { key: string; props: PiThumbnailProps }[]
   /** Pictures the record names that could not be signed. Reported, never faked. */
   unresolvedImages: number
+  /** The F&P Cost and Approvals tabs, when this Order has a PI behind it (owner, 2026-10-30). */
+  views?: {
+    submissionId: string
+    view: ProductView
+    onChange: (view: ProductView) => void
+    /** The sheet, read only once a tab has been opened. */
+    data: FabricFinishData | null | undefined
+    animate: boolean
+    onChanged: () => void
+  }
 }) {
+  const open = views && views.view !== 'details' ? views : null
+  const summary = views?.data ? productCostSummary(views.data) : null
+  const pieces = products.reduce((sum, p) => sum + (p.quantity ?? 0), 0)
+  const viewRows: ProductViewRow[] = products.map(p => ({
+    id: p.id,
+    itemSequence: p.itemSequence,
+    label: p.productName?.trim() || 'this product line',
+    code: <span className="order-product-code">{orDash(p.orderProductCode ?? p.itemSequence)}</span>,
+    image: compact => (compact
+      ? <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
+      : <PiProductThumbnail {...representativeThumbnail(p.row)} />),
+    product: (
+      <MultilineText className="order-product-name" style={{ margin: 0, overflowWrap: 'anywhere' }}>
+        {orDash(p.productName)}
+      </MultilineText>
+    ),
+    quantity: p.quantity ?? '—',
+  }))
   return (
     <PiCard>
+      <span id="order-products" style={{ display: 'block', scrollMarginTop: '80px' }} />
       <PiCardHeader
-        title={ORDER_PI_PRODUCTS_TITLE}
-        style={SECTION_HEADER_STYLE}
-        right={
+        title={views ? (
+          <span className="pv-title">
+            {ORDER_PI_PRODUCTS_TITLE}
+            <ProductViewTabs view={views.view} onChange={views.onChange} pending={summary?.approvals.pending ?? null} />
+          </span>
+        ) : ORDER_PI_PRODUCTS_TITLE}
+        style={views ? { ...SECTION_HEADER_STYLE, flexWrap: 'wrap' } : SECTION_HEADER_STYLE}
+        right={open ? (
+          open.data?.canEdit && <WorkbookRefresh submissionId={open.submissionId} onDone={open.onChanged} />
+        ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {unresolvedImages > 0 && (
               <span style={{
@@ -579,13 +625,25 @@ export function OrderPiProducts({
               {products.length} line{products.length !== 1 ? 's' : ''}
             </span>
           </div>
-        }
+        )}
       />
 
       {products.length === 0 ? (
         <div style={{ padding: '20px', fontSize: '12px', color: colors.secondary }}>
           No product lines are stored against the approved PI.
         </div>
+      ) : open && open.view !== 'details' ? (
+        <ProductViewBody
+          view={open.view}
+          rows={viewRows}
+          data={open.data}
+          isMobile={isMobile}
+          variant="order"
+          submissionId={open.submissionId}
+          pieces={pieces}
+          animate={open.animate}
+          onChanged={open.onChanged}
+        />
       ) : isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {products.map((p, i) => (
@@ -643,7 +701,7 @@ export function OrderPiProducts({
           ))}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className={`pv-scroll${views?.animate ? ' pv-animate' : ''}`}>
           {/* FIXED LAYOUT, so nine columns always fit the card and the prose
               columns wrap rather than widening the table. The narrow columns
               are sized in pixels for what they hold — an item code, an 84px
@@ -683,27 +741,27 @@ export function OrderPiProducts({
                   <td style={{ whiteSpace: 'nowrap', color: colors.primary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                     {p.quantity ?? '—'}
                   </td>
-                  <td>
+                  <td className="pv-swap">
                     <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.dimensions)}
                     </MultilineText>
                   </td>
-                  <td>
+                  <td className="pv-swap">
                     <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.material)}
                     </MultilineText>
                   </td>
-                  <td>
+                  <td className="pv-swap">
                     <OrderCustomizationCell
                       text={p.customization}
                       thumbnails={customizationThumbnails(p.row)}
                       compact={false}
                     />
                   </td>
-                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="pv-swap" style={{ whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.costPerPiece)}
                   </td>
-                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="pv-swap" style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.lineTotal)}
                   </td>
                 </tr>

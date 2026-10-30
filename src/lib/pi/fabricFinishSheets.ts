@@ -5,6 +5,7 @@
 //                                    piece, packing type
 //   "Fabric and Finish"              per product: the chosen fabric and the
 //                                    wood / metal / marble finishes, as text
+//                                    and as pictures anchored in those cells
 //
 // WHY THEY MATTER. The Master's own "(A) Total Fabric Cost" and "(B) Total
 // Packing Cost" lines are formulas over the first sheet — ROUND(SUM(K:K), -1)
@@ -26,6 +27,7 @@
 //
 // Pure: bytes in, values out. No React, no network, nothing written.
 
+import { cellPictureKey, harvestCellPictures, resolveDrawingPart, type PiCellPicture } from './drawingAnchors'
 import { labelKey } from './layout'
 import {
   partText,
@@ -66,15 +68,17 @@ export type FabricFinishCostLine = {
 export type FabricFinishSpec = {
   /** The column heading as typed, whitespace collapsed ("Wood Finish Approval"). */
   heading: string
-  /** The cell's text, trimmed. Never blank. */
+  /** The cell's text, trimmed. Blank only when the cell holds a picture alone. */
   value: string
+  /** The picture anchored in this cell, when there is one. */
+  picture?: PiCellPicture
 }
 
 export type FabricFinishSpecLine = {
   sheetRow: number
   code: string | null
   quantity: number
-  /** Every non-blank text cell to the right of the product columns, in column order. */
+  /** Every cell to the right of the product columns with text or a picture, in column order. */
   specs: readonly FabricFinishSpec[]
 }
 
@@ -199,7 +203,7 @@ function findSheetName(sheetNames: readonly string[], wanted: string): string | 
 }
 
 type OpenedSheet =
-  | { ok: true; sheet: PiSheet }
+  | { ok: true; sheet: PiSheet; part: string }
   | { ok: false; reason: 'missing' | 'unreadable'; detail: string }
 
 function openSheet(entries: ArchiveEntries, sharedStrings: readonly string[], wanted: string): OpenedSheet {
@@ -217,7 +221,7 @@ function openSheet(entries: ArchiveEntries, sharedStrings: readonly string[], wa
   if (!xml) {
     return { ok: false, reason: 'unreadable', detail: `The "${wanted}" worksheet part is empty or unreadable.` }
   }
-  return { ok: true, sheet: readSheet(xml, sharedStrings) }
+  return { ok: true, sheet: readSheet(xml, sharedStrings), part: resolution.part }
 }
 
 function readCostSheet(entries: ArchiveEntries, sharedStrings: readonly string[]): FabricFinishSheetReport<FabricFinishCostLine> {
@@ -262,6 +266,8 @@ function readFinishSheet(entries: ArchiveEntries, sharedStrings: readonly string
     headings.push({ col: c.col, heading })
   }
   headings.sort((a, b) => a.col - b.col)
+  const drawingPart = resolveDrawingPart(entries, opened.part)
+  const pictures = drawingPart ? harvestCellPictures(entries, drawingPart) : new Map<string, PiCellPicture>()
   const lines: FabricFinishSpecLine[] = []
   for (let row = located.row + 1; row <= sheet.maxRow; row++) {
     const quantity = numberOf(sheet.cells.get(addr(cols.quantity, row)))
@@ -270,9 +276,10 @@ function readFinishSheet(entries: ArchiveEntries, sharedStrings: readonly string
     for (const h of headings) {
       const c = sheet.cells.get(addr(h.col, row))
       // A formula here is a product column that was moved, not a typed choice.
-      if (!c || c.hasFormula) continue
-      const value = textOf(c)
-      if (value !== null) specs.push({ heading: h.heading, value })
+      const value = !c || c.hasFormula ? null : textOf(c)
+      const picture = pictures.get(cellPictureKey(row, h.col))
+      if (value === null && !picture) continue
+      specs.push(picture ? { heading: h.heading, value: value ?? '', picture } : { heading: h.heading, value: value as string })
     }
     lines.push({ sheetRow: row, code: codeOf(sheet.cells.get(addr(cols.code, row))), quantity, specs })
   }
@@ -316,7 +323,8 @@ export type FabricFinishMatch = {
   unmatched: readonly { sheet: 'cost' | 'finish'; sheetRow: number; code: string | null }[]
 }
 
-const normCode = (code: string | null | undefined): string => (code ?? '').replace(/\s+/g, '').toUpperCase()
+export const normProductCode = (code: string | null | undefined): string => (code ?? '').replace(/\s+/g, '').toUpperCase()
+const normCode = normProductCode
 
 /**
  * Pair each Master product with its row on each sheet: by the product code the

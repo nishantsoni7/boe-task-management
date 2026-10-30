@@ -5,23 +5,21 @@
 
 ## Snapshot
 
-- Commit: `b741e88d` — Orders: sales dashboard in three columns instead of full-width bands
-- Commits on this branch: 1088
-- Pages (`page.tsx`): 160   API routes (`route.ts`): 171
+- Commit: `14a3fc5a` — Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
+- Commits on this branch: 1086
+- Pages (`page.tsx`): 158   API routes (`route.ts`): 172
 - Migrations: 388 (first `20260530_create_positions.sql`, latest `20270509000000_pi_review_notice_short.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 684   Next.js 16.2.6, React 19.2.4
+- Test files: 686   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b741e88d` 2026-10-30 Orders: sales dashboard in three columns instead of full-width bands
-- `dd2b75c7` 2026-10-30 Docs: migrations 20270507000000-20270509000000 applied to production
-- `903e86d7` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
+- `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
+- `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
+- `d26778f4` 2026-10-30 Docs: PI Draft layout pass 2 merged as PR #515 (4e817da6) (#520)
 - `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
 - `cc3a60a8` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c) (#518)
-- `3d438df2` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
 - `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
-- `9566538b` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
@@ -39,6 +37,8 @@
 - `c79bb1a6` 2026-10-29 Dashboard: counters and Tasks Created in an "At a glance" bar on the right (#500)
 - `24b0a720` 2026-10-29 Docs: Founders' payouts merged as PR #497 (1a17b86b)
 - `59cc8042` 2026-10-29 Docs: PI Draft page redesign merged as PR #493 (e69d51ed) (#498)
+- `1a17b86b` 2026-10-29 Finance: Founders' payouts — money paid into the partners' and family accounts, with a tax planner (#497)
+- `e69d51ed` 2026-10-29 Orders: PI Draft page laid out like the Order page (#493)
 
 ## Pages by top-level area
 
@@ -66,7 +66,7 @@
 - **my-issues** (2): `/my-issues`, `/my-issues/notifications`
 - **my-payroll** (2): `/my-payroll`, `/my-payroll/[periodId]`
 - **notifications** (1): `/notifications`
-- **orders** (17): `/orders`, `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/[id]/fabric-finish`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/drafts/[submissionId]/fabric-finish`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
+- **orders** (15): `/orders`, `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
 - **payroll** (10): `/payroll`, `/payroll/credits`, `/payroll/how-it-works`, `/payroll/monthly-review`, `/payroll/monthly-review/[userId]`, `/payroll/notifications`, `/payroll/results/[periodId]`, `/payroll/results/[periodId]/[employeeId]`, `/payroll/results/[periodId]/salary-report`, `/payroll/settings`
 - **performance** (2): `/performance`, `/performance/team`
 - **quick-start-guide** (1): `/quick-start-guide`
@@ -109,7 +109,7 @@
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (27): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (28): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 100 source, 149 test
+- `src/lib/orders` — 100 source, 150 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

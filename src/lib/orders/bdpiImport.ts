@@ -136,7 +136,7 @@ export function bdpiFromWorkbook(
       fabric_price_per_metre: match?.cost?.fabricPricePerMetre ?? null,
       packing_cost_per_piece: match?.cost?.packingCostPerPiece ?? null,
       packing_type: clean(match?.cost?.packingType),
-      finish_specs: (match?.finish?.specs ?? []).map(s => ({ heading: s.heading, value: s.value })),
+      finish_specs: (match?.finish?.specs ?? []).filter(s => s.value !== '').map(s => ({ heading: s.heading, value: s.value })),
     })
     const img = p.representativeImage
     if (img && STORABLE.has(img.format)) pictures.push({ itemSequence: seq, image: img })

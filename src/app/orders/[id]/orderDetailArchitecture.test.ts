@@ -798,14 +798,14 @@ describe('the business rules this pass must not touch', () => {
     const sections = code(SECTIONS)
     // Both layouts, one treatment: the code is its own class and the name is
     // one step quieter, rather than the code being the palest thing in the row.
-    assert.equal((sections.match(/className="order-product-code/g) ?? []).length, 2)
-    assert.equal((sections.match(/className="order-product-name"/g) ?? []).length, 2)
+    assert.equal((sections.match(/className="order-product-code/g) ?? []).length, 3, 'the table, the phone card and the F&P tabs')
+    assert.equal((sections.match(/className="order-product-name"/g) ?? []).length, 3)
     const css = read(CSS)
     assert.match(css, /\.order-product-code \{[\s\S]*?font-weight: 700;/)
     assert.match(css, /\.order-product-name \{[\s\S]*?font-weight: 500;/)
     // NOTHING WAS DROPPED: the name is still rendered whole, through the shared
     // multi-line renderer, which never truncates.
-    assert.equal((sections.match(/<MultilineText className="order-product-name"/g) ?? []).length, 2)
+    assert.equal((sections.match(/<MultilineText className="order-product-name"/g) ?? []).length, 3)
   })
 
   test('the products table keeps its full-width fixed layout and all nine columns', () => {
