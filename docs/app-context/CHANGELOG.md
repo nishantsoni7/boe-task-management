@@ -4,11 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-30 — Attendance machine: Today tab, and an alert when punches stop (branch `feat/attendance-today`, not merged) · migration 20270511000000 → NOT applied
+## 2026-10-30 — Attendance machine: Today tab, and an alert when punches stop (PR #528, on the owner's yes after their preview check) · migration 20270511000000 → APPLIED 2026-10-30 (by the owner from the worktree: backup bundle 20261030T144936Z, database 20261030T145001Z verified first, dry run listed exactly this file, migration list shows it remote)
 - **Owner request.** A daily screen for the machine and a warning when it stops. Mockup approved first.
 - **What.** New first tab `/attendance/today` under Attendance, where the sidebar now lands: each listed person's In, Out, Hours and status for today or any day back to 2026-11-01, the machine's state on top, punches on IDs that give nobody attendance underneath. Read-only. The Overview page gains a shortcut and no longer says attendance is an Excel import.
 - **Alert.** On a working day from 2026-11-01, past 11:00 IST, with no real punch reaching BOE since midnight, the machine has stopped. Today and a For you card turn red as soon as they are opened; `/api/attendance/machine-alert` (Vercel Cron, 11:05 IST, can run up to about an hour late) writes one `attendance_machine_stopped` notification per active admin, once a day. Every screen clears by itself on the next punch; the bell row stays as a record. While the machine has stopped, or on a past working day nobody punched, no-punch rows read "Can't tell yet", never absent.
-- **Apply order.** Apply 20270511000000 BEFORE the preview is tested and before merge: the Attendance & Payroll feed filters on this enum value, and an unknown value fails the whole feed. Previews read the production database.
+- **Apply order.** 20270511000000 went first, before the preview was tested: the Attendance & Payroll feed filters on this enum value, an unknown value fails the whole feed, and previews read the production database.
 - **Not changed.** Attendance writing, payroll, corrections, and the month views.
 - **Phone alerts** are not on (0 Vault secrets, 0 registered devices on 2026-10-30), so nothing reaches a phone until that setup is finished.
 - **Rollback.** Revert the PR. The enum value cannot be dropped and does no harm.

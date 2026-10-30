@@ -25,8 +25,8 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | Machine punches -> `attendance_records` | Shipped (#526). No migration needed. From 2026-11-01, linked and active people only |
 | Nightly sync `GET /api/attendance/minop-sync` (Vercel Cron, 00:15 IST) | Shipped (#526) |
 | Excel import and preview for months from November 2026 | Refused (400), #526 |
-| Today tab `/attendance/today` + machine status | Built on `feat/attendance-today`, not merged |
-| Stopped-machine alert `GET /api/attendance/machine-alert` (Vercel Cron, 11:05 IST) | Built on the same branch. Needs 20270511000000 applied first |
+| Today tab `/attendance/today` + machine status | Shipped (#528). Seen by the owner on the preview with real punches |
+| Stopped-machine alert `GET /api/attendance/machine-alert` (Vercel Cron, 11:05 IST) | Shipped (#528), 20270511000000 APPLIED 2026-10-30. Has not fired for real yet |
 
 ## 3. Pages and API routes
 
@@ -129,7 +129,7 @@ Run `npx tsx --test src/lib/minop/*.test.ts` (or the full suite, see 03 section 
 Machine-only attendance from 1 November 2026. Every punch is kept in `minop_webhook_deliveries` meanwhile, so nothing is lost if a step lands after that date: the nightly sync loads November from the raw messages.
 1. Clean punches and link staff: DONE (#523).
 2. Switch-on: DONE (#526). Its first real test is the first day of punches: check the rows on 2 November.
-3. Daily machine screen and stopped-punches alert: built on `feat/attendance-today`, not merged. The migration must be applied before the preview is tested. Phone alerts are not switched on, so the alert stops at For you and the bell until they are.
+3. Daily machine screen and stopped-punches alert: DONE (#528). The red state and the alert have not been seen for real: they need a quiet working day from 2 November. Phone alerts are not switched on, so the alert stops at For you and the bell until they are.
 4. Later: the employee "punch recorded" banner (`docs/minop-shadow-mode-spec`, section 7).
 - Owner reminder for the Minop subscription renewal: it lapsed once, and a lapse now stops attendance. Needs the date from the owner.
 - Open with the owner: a Machine ID for the one payroll employee not yet on the list; who is punching on the leaver's ID.
