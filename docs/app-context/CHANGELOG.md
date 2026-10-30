@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Orders: Payment plan screen, layout B (PR pending, not merged) · no migration
+- **Owner request.** After comparing the page with and without the UI/UX Pro Max design skill, the owner chose the skill's version and approved the plan: Excel and PDF unchanged, the advance % box back, the product table still scrolls sideways on phones.
+- **What.** The balance comes first (goods sent + advance − already received = balance to pay now, bank and cash under each, from the same rows as Excel and PDF); a warning with an icon when the PI has no billing %; Plan settings with labels and help that stay visible (what a blank box uses, with the confirmed amount) and problems in words under the box; the goods table cut from 16 to 11 columns under three headings, rates under the name, empty amounts "—", a wrong quantity explained under its box; "How the amount is worked out" folded; Save in a bar at the bottom of the window (desktop), with an "Unsaved changes" status; Excel / PDF say "Save first to download" instead of a hover-only tooltip.
+- **Fixed.** The "Pending goods to pay in advance (%)" box was dropped by #503, so the advance % could not be changed on screen; it is back. A second `.opp-mark` CSS rule drew the "Mark this lot as dispatched" row as a small terracotta pill; removed with the old pay table.
+- **Rollback.** Revert the PR. No data, schema or permission change.
+- **Proof.** See the PR (type check, lint, full test suite, production build). Not seen signed in or on a phone.
+
 ## 2026-10-30 — Orders: approving a PI opens the Order it created (PR pending) · no migration
 - **Owner request.** After approving a PI for a Confirmed Order the page stayed on the PI showing "Order created · 0541" with an Open Order button; it should go to the Confirmed Order page.
 - **What.** When **Approve PI & Create Order** / **Create Confirmed Order** succeeds, the PI Draft page replaces itself with `/orders/[id]` (the dialog keeps saying "Approving…" until it goes; Back from the Order goes where the PI was opened from). It stays on the PI, as before, only when the RPC answer was unreadable, the pendencies typed in the dialog failed to save (the PI says so), or the approver cannot read the new Order under their own access. **Approve PI** on its own creates no Order and is unchanged.
