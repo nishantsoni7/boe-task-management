@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `1a382f1c` — Docs: the machine switch-on is PR #526
+- Commit: `00e79b56` — Attendance machine: punches become attendance from 1 November (#526)
 - Commits on this branch: 1092
 - Pages (`page.tsx`): 158   API routes (`route.ts`): 174
 - Migrations: 390 (first `20260530_create_positions.sql`, latest `20270510000100_users_minop_user_id.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 684   Next.js 16.2.6, React 19.2.4
+- Test files: 685   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `1a382f1c` 2026-10-30 Docs: the machine switch-on is PR #526
-- `ddc3ad42` 2026-10-30 Attendance machine: punches become attendance from 1 November
+- `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
+- `03229e8c` 2026-10-30 Docs: Approve popup simplified merged as PR #511 (86af9b34) (#527)
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
