@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `9566538b` — Orders: sales team dashboard, and a one-line returned-PI notice in three places
-- Commits on this branch: 1081
+- Commit: `3d438df2` — Merge origin/main into feat/sales-dashboard-redesign
+- Commits on this branch: 1083
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 171
 - Migrations: 388 (first `20260530_create_positions.sql`, latest `20270509000000_pi_review_notice_short.sql`)
 - Tables ever created: 191 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 683   Next.js 16.2.6, React 19.2.4
+- Test files: 684   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `3d438df2` 2026-10-30 Merge origin/main into feat/sales-dashboard-redesign
+- `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
 - `9566538b` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
@@ -37,8 +39,6 @@
 - `b256609c` 2026-10-29 Modules: For you follows your cash hand to hand until Nitish accepts it (#495)
 - `f1b8d05c` 2026-10-29 Docs: Fabric & Finish cost sheet merged as PR #494 (31c1b37e), migration 20270431000000 applied
 - `31c1b37e` 2026-10-29 Orders: Fabric & Finish cost sheet per PI, read from the workbook, typeable where blank
-- `e9382456` 2026-10-29 ci: daily backup bundle kept 7 days, run CI on pull requests only
-- `db606387` 2026-10-29 Docs: Cash journeys board merged as PR #490 (ae641eb6 + 149db69e)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 2 source, 3 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 99 source, 148 test
+- `src/lib/orders` — 100 source, 149 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

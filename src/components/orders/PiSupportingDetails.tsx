@@ -4,13 +4,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { PiHighlightRemark } from './PiHighlightRemark'
 import { PiSampleType } from './PiSampleType'
 import { PiDraftAttachments, PiSentColumns, useSentWithPi, type SupportingState } from './PiSupportingDocuments'
+import { SectionChip } from './PiFormParts'
 
 export const SUPPORTING_DETAILS_TITLE = 'Supporting details'
 
 /**
- * SUPPORTING DETAILS: the optional things around a PI, in one row of three
- * areas — Order highlight (40%), Client PO (30%) and Design files (30%) — above
- * Internal order details.
+ * SUPPORTING DETAILS: the optional things around a PI, in one row of four
+ * tiles — Order highlight, Sample, Client PO and Design files — the last
+ * section of the PI details card (owner, 2026-10-30).
  *
  * Nothing here is needed to submit. Each part keeps the door it always had: the
  * files go through the staging table and the highlight through its own RPC. The
@@ -49,6 +50,7 @@ export function PiSupportingDetails({
     >
       <div className="pi-form-card-head">
         <h2 className="pi-form-card-title">{SUPPORTING_DETAILS_TITLE}</h2>
+        {!locked && <SectionChip tone="grey">Optional</SectionChip>}
       </div>
 
       <div className="pi-support-row" data-files={filesOffered ? 'on' : 'off'}>

@@ -1,43 +1,53 @@
 'use client'
 
-// ── Complete PI details: one place to finish a PI, then submit it ────────────
+// ── PI details, and the Submit card beside the payment ───────────────────────
 //
-// This replaces four separate prompts that used to sit in different cards (the
-// readiness list in the workflow panel, the Internal order details card, the
-// Client PO / Design Files box and the middleman warning in the summary). It is
-// presentation only: every field is still saved by the editor and the RPC that
-// already owns it, and every requirement it names is one the code and database
-// already enforce (see piCompletion.ts). It decides nothing about authority —
-// `canEdit` and `locked` come from the page's own answers and each RPC re-derives
-// them.
+// THE ONE PLACE (owner, 2026-10-30): everything Submit for approval needs sits
+// together near the top of the PI Draft page. The left card holds the details —
+// Client, Order details, Supporting details — each section with its own status
+// and its own editor; the right column holds the payment and, for whoever can
+// submit, this file's Submit card: one line per part of the PI and the Submit
+// control under them.
+//
+// It is presentation only: every field is still saved by the editor and the RPC
+// that already owns it, and every requirement it names is one the code and the
+// database already enforce (see piCompletion.ts). It decides nothing about
+// authority — `canEdit`, `locked` and `submit` come from the page's own answers
+// and each RPC re-derives them.
 
-import { ClipboardCheck, Lock, Pencil, Send, Upload } from 'lucide-react'
+import { AlertCircle, Check, ClipboardCheck, FileText, Lock, Minus, Pencil, Send, Upload } from 'lucide-react'
 import { colors } from '@/lib/tokens'
-import { RequiredMark } from './PiFormParts'
+import { RequiredMark, SectionChip } from './PiFormParts'
 import {
   type CompletionFact,
   type CompletionItem,
+  type SubmitCheck,
 } from '@/lib/orders/piCompletion'
 
-export const COMPLETION_TITLE = 'Complete PI details'
+export const COMPLETION_TITLE = 'PI details'
 export const COMPLETION_LOCKED_TITLE = 'PI details'
 export const COMPLETION_LOCKED_HINT = 'Locked while this PI is with management.'
+export const COMPLETION_SUBTITLE = 'Everything Submit for approval needs'
+export const COMPLETION_LOCKED_SUBTITLE = 'What Sales submitted'
+export const COMPLETION_LOCKED_CHIP = 'Locked while with management'
+export const SUBMIT_CARD_TITLE = 'Submit for approval'
 
 /**
  * One read-out group (the client) with its single edit control.
  *
- * Each fact is a label and its value on one line — the label bold on the left,
- * the value regular beside it — so the values of a row start at the same place.
- * The first three facts share the top row and the addresses the second; the
- * grid answers to the section's own width (see .pi-client-facts in globals.css).
+ * Each fact is a small label over its value, and the five facts share one row
+ * on a wide card (see .pi-client-facts in globals.css), so no value sits a page
+ * width away from its label. `chip` is the section's one status — "Complete" or
+ * "1 needed" — drawn beside the title.
  */
-export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, onEdit }: {
+export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, onEdit, chip = null }: {
   title: string
   facts: readonly CompletionFact[]
   editLabel: string
   canEdit: boolean
   locked: boolean
   onEdit: () => void
+  chip?: React.ReactNode
 }) {
   const isAddress = (f: CompletionFact) => f.key === 'billing_address' || f.key === 'shipping_address'
   const details = facts.filter(f => !isAddress(f))
@@ -57,6 +67,7 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
     <section aria-label={title} className="pi-client-facts">
       <div className="pi-section-head">
         <h3 className="pi-section-title">{title}</h3>
+        {chip}
         {(canEdit || locked) && (
           <button
             type="button"
@@ -71,9 +82,8 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
           </button>
         )}
       </div>
-      {/* THREE BLOCKS, NOT ONE RAGGED GRID: the client's own details as aligned
-          label/value rows, then the billing address and the shipping address
-          each as a labelled block. Same five facts, same order, same words. */}
+      {/* The client's own details, then the billing address and the shipping
+          address. Same five facts, same order, same words. */}
       <div className="pi-client-body">
         <dl className="pi-client-col pi-client-col--details">{details.map(fact)}</dl>
         {addresses.map(a => <dl key={a.key} className="pi-client-col pi-client-col--address">{fact(a)}</dl>)}
@@ -83,35 +93,25 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
 }
 
 /**
- * THE AREA. Header first, then the grouped sections separated by thin rules, and
- * the action last — directly under the last field, which on a phone is where the
- * thumb already is.
+ * THE DETAILS CARD. Header first — the title, one line on what the card is for,
+ * and the card's one status — then the grouped sections separated by thin rules.
  *
- * What stops Submit is said beside the Submit control, by name, and each name
- * takes the person to the editor that owns it. There is no banner and no
- * checklist: the fields themselves show what is missing.
+ *   complete  the viewer can submit: "N needed to submit" or "Ready to submit"
+ *   locked    the PI is with management: every section legible, editing muted
+ *   read      anybody else: the same sections, read-only, no status
  *
- * Locked: the same fields, legible and read-only, the editing controls muted and
- * disabled, and the submit/upload actions replaced by the one route back —
- * Request change.
+ * The Submit control is NOT here: it is the Submit card's, beside the payment.
  */
-export function PiCompletionPanel({
-  completion, locked, checklistDisabled, onFix, groups, submit, onChangePi, requestChange,
-}: {
-  completion: { requiredMissing: readonly CompletionItem[] }
-  locked: boolean
-  checklistDisabled: boolean
-  onFix: ((item: CompletionItem) => void) | null
-  /** The grouped fields: the facts, the supporting details and the internal order details. */
+export function PiCompletionPanel({ mode, neededCount, groups }: {
+  mode: 'complete' | 'locked' | 'read'
+  /** Items Submit still waits for, from piCompletion's requiredMissing. */
+  neededCount: number
+  /** The grouped sections: Client, Order details, Supporting details. */
   groups: React.ReactNode
-  /** The Submit control's state — omitted when the viewer cannot submit. */
-  submit: { label: string; disabled: boolean; reason: string | null; issues: boolean; onSubmit: () => void } | null
-  onChangePi: (() => void) | null
-  /** Request change, when this viewer may ask — locked PIs only. */
-  requestChange: (() => void) | null
 }) {
+  const locked = mode === 'locked'
   const title = locked ? COMPLETION_LOCKED_TITLE : COMPLETION_TITLE
-  const missing = locked ? [] : completion.requiredMissing
+  const Icon = locked ? Lock : mode === 'complete' ? ClipboardCheck : FileText
   return (
     <section
       id="pi-complete-details"
@@ -120,55 +120,77 @@ export function PiCompletionPanel({
       className="pi-completion"
     >
       <div className="pi-completion-head">
-        {locked
-          ? <Lock size={16} aria-hidden="true" style={{ color: colors.secondary }} />
-          : <ClipboardCheck size={16} aria-hidden="true" style={{ color: colors.brand }} />}
+        <Icon size={18} aria-hidden="true" style={{ color: locked ? colors.blue : mode === 'complete' ? colors.brand : colors.secondary }} />
         <h2 className="pi-completion-title">{title}</h2>
+        {mode !== 'read' && (
+          <span className="pi-completion-subtitle">{locked ? COMPLETION_LOCKED_SUBTITLE : COMPLETION_SUBTITLE}</span>
+        )}
+        {locked && <SectionChip tone="blue">{COMPLETION_LOCKED_CHIP}</SectionChip>}
+        {mode === 'complete' && (neededCount > 0
+          ? <SectionChip tone="amber">{neededCount} needed to submit</SectionChip>
+          : <SectionChip tone="green">Ready to submit</SectionChip>)}
       </div>
 
       <div className="pi-completion-groups">{groups}</div>
+    </section>
+  )
+}
 
-      {(submit || requestChange) && (
-        <div className="pi-completion-actions">
-          {(submit?.issues || missing.length > 0) && (
-            <span data-testid="pi-submit-reason" className="pi-submit-reason">
-              {submit?.issues && <>Fix the issues in the PI first.{missing.length > 0 ? ' ' : ''}</>}
-              {missing.length > 0 && (
-                <>
-                  Needed to submit:{' '}
-                  {missing.map((item, i) => (
-                    <span key={item.key}>
-                      {i > 0 && ', '}
-                      {onFix && item.where !== 'products' ? (
-                        <button type="button" className="pi-submit-reason-item" disabled={checklistDisabled} onClick={() => onFix(item)}>
-                          {item.label}
-                        </button>
-                      ) : item.label}
-                      {item.needsReimport ? ' (a corrected workbook is needed)' : ''}
-                    </span>
-                  ))}
-                  .
-                </>
+const CHECK_ICON = { ok: Check, need: AlertCircle, optional: Minus } as const
+
+/**
+ * THE SUBMIT CARD, beside the payment, for whoever can submit this PI.
+ *
+ * One line per part of the PI — done, still needed, or optional — then the
+ * Submit control, full width, and under it the one sentence that says why it
+ * cannot be pressed yet. Each "Add" takes the person to the editor that owns the
+ * item. Change PI (a corrected workbook) is the quiet control at the foot.
+ */
+export function PiSubmitCard({ checks, onFix, disabled, submit, onChangePi }: {
+  checks: readonly SubmitCheck[]
+  /** Takes the person to an item's editor; null when this viewer may not edit. */
+  onFix: ((item: CompletionItem) => void) | null
+  /** While anything is being sent. */
+  disabled: boolean
+  submit: { label: string; disabled: boolean; reason: string | null; onSubmit: () => void }
+  onChangePi: (() => void) | null
+}) {
+  return (
+    <section aria-label={SUBMIT_CARD_TITLE} className="pi-submit-card">
+      <h2 className="pi-submit-title">{submit.label}</h2>
+      <ul className="pi-submit-checks">
+        {checks.map(check => {
+          const Icon = CHECK_ICON[check.state]
+          return (
+            <li key={check.key} className={`pi-submit-check pi-submit-check--${check.state}`} data-check={check.key}>
+              <span className="pi-submit-check-icon" aria-hidden="true"><Icon size={12} strokeWidth={3} /></span>
+              <span className="pi-submit-check-text">
+                <strong>{check.label}</strong>
+                <span>{check.text}</span>
+              </span>
+              {check.fix && onFix && (
+                <button type="button" className="pi-submit-check-fix" disabled={disabled} onClick={() => onFix(check.fix as CompletionItem)}>
+                  Add
+                </button>
               )}
-            </span>
-          )}
-          {onChangePi && (
-            <button type="button" className="boe-btn boe-btn-ghost" onClick={onChangePi} disabled={checklistDisabled}>
-              <Upload size={13} strokeWidth={2} aria-hidden="true" /> Change PI
-            </button>
-          )}
-          {submit && (
-            <button type="button" className="boe-btn boe-btn-primary" onClick={submit.onSubmit} disabled={submit.disabled}
-              title={submit.reason ?? undefined}>
-              <Send size={13} strokeWidth={2} aria-hidden="true" /> {submit.label}
-            </button>
-          )}
-          {requestChange && (
-            <button type="button" className="boe-btn boe-btn-primary" onClick={requestChange} aria-haspopup="dialog">
-              Request change
-            </button>
-          )}
-        </div>
+            </li>
+          )
+        })}
+      </ul>
+      <button
+        type="button"
+        className="boe-btn boe-btn-primary pi-submit-button"
+        onClick={submit.onSubmit}
+        disabled={submit.disabled}
+        title={submit.reason ?? undefined}
+      >
+        <Send size={14} strokeWidth={2} aria-hidden="true" /> {submit.label}
+      </button>
+      {submit.reason && <p data-testid="pi-submit-reason" className="pi-submit-reason">{submit.reason}.</p>}
+      {onChangePi && (
+        <button type="button" className="boe-btn boe-btn-ghost pi-submit-change" onClick={onChangePi} disabled={disabled}>
+          <Upload size={13} strokeWidth={2} aria-hidden="true" /> Change PI
+        </button>
       )}
     </section>
   )

@@ -30,14 +30,18 @@ const supporting = (over: Partial<Parameters<typeof PiSupportingDetails>[0]> = {
 )
 
 describe('Supporting details', () => {
-  test('one row of three areas — Order highlight, Client PO, Design files — all optional, no star, no billing', () => {
+  test('one row of tiles — Order highlight, Sample, Client PO, Design files — all optional, no star, no billing', () => {
     const html = supporting()
     assert.match(html, /aria-label="Supporting details"/)
     assert.equal((html.match(/class="pi-support-col"/g) ?? []).length, 2, 'Client PO and Design files; the highlight is the third area')
     assert.ok(html.includes('pi-support-highlight'))
     assert.ok(html.indexOf('Client PO') < html.indexOf('Design Files'))
     assert.ok(!html.includes('Billing percentage') && !html.includes('Save percentage'), 'billing lives in Internal order details')
-    assert.ok(!html.includes('Optional'), 'no "Optional" explanation')
+    // One word beside the title (owner, 2026-10-30) — a status, never an explanation.
+    assert.equal((html.match(/Optional/g) ?? []).length, 1, 'only the section’s one status says "Optional"')
+    assert.ok(html.includes('class="pi-chip pi-chip--grey">Optional</span>'))
+    assert.ok(!supporting({ locked: true, canEditFiles: false, canEditHighlight: false }).includes('Optional'),
+      'and not on a locked PI, where nothing is asked of anybody')
     assert.ok(!html.includes('pi-form-req'), 'nothing here is needed to submit')
   })
 
@@ -182,9 +186,9 @@ describe('the page and the stylesheet', () => {
   const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
   const css = read('src/app/globals.css')
 
-  test('Supporting details come before Internal order details, in both arrangements', () => {
-    assert.ok(page.indexOf('{supportingDetails}') < page.indexOf('<PiOrderDetailsSection'))
-    assert.equal((page.match(/\{supportingDetails\}/g) ?? []).length, 2)
+  test('Order details come before Supporting details, in the one PI details card (owner, 2026-10-30)', () => {
+    assert.ok(page.indexOf('<PiOrderDetailsSection') < page.indexOf('{supportingDetails}'))
+    assert.equal((page.match(/\{supportingDetails\}/g) ?? []).length, 1, 'one arrangement for every viewer')
   })
 
   test('the payment status opens open and nothing persists it closed', () => {

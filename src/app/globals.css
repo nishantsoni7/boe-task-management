@@ -13107,10 +13107,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── One family of cards ── the inline card styles are overridden by weight. */
-.pi-detail-stack > div[style],
-.pi-detail-split-grid > div[style],
-.pi-detail-details-col > div[style],
-.pi-detail-commercial-col > div[style] {
+.pi-detail-stack > div[style] {
   border-radius: 12px !important;
   border-color: #ECE7E0 !important;
 }
@@ -13131,158 +13128,242 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pi-detail-workflow .pi-detail-workflow-head { padding: 15px 20px 12px 24px; }
 .pi-detail-workflow .pi-detail-workflow-head + div[style] { padding-left: 24px !important; }
 
-/* ── Finance: one header row, one strip of figures, the bar ──
-   The markup is unchanged (the tests read it); the panel and its grids become
-   `display: contents`, so the figures, the position and the two parts are
-   placed by ONE grid on the section. Below 760px the original stack stands. */
-@container (min-width: 760px) {
-  .pi-detail-paystatus {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    grid-template-areas:
-      'toggle toggle toggle actions actions'
-      'worth worth position confirmed awaiting'
-      'notice notice notice notice notice'
-      'bar bar bar bar bar'
-      'legend legend legend legend legend';
-    gap: 0;
-    padding: 0;
-    align-items: stretch;
-  }
-  .pi-detail-paystatus-toggle {
-    grid-area: toggle;
-    margin: 0;
-    padding: 12px 18px;
-    min-height: 50px;
-  }
-  .pi-detail-paystatus-title { font-size: 15px; }
-  .pi-detail-paystatus-panel,
-  .pi-detail-paystatus-body,
-  .pi-detail-paystatus-grid,
-  .pi-detail-paystatus-metrics { display: contents; }
-  /* The body is a container for the original rules; with no box of its own it
-     can answer no query, so it stops being one here and every rule below
-     answers to the split column, as the rules above do. */
-  .pi-detail-paystatus-body { container-type: normal; }
-  .pi-detail-paystatus-actions {
-    grid-area: actions;
-    justify-content: flex-end;
-    align-self: center;
-    padding: 8px 18px 8px 0;
-  }
-  .pi-detail-paystatus-actions > .boe-btn { height: 30px; min-height: 30px; padding: 0 12px; font-size: 12.5px; }
-  .pi-detail-paystatus-worth {
-    grid-area: worth;
-    margin: 0;
-    padding: 0;
-    border-top: 1px solid #ECE7E0;
-    border-bottom: 1px solid #ECE7E0;
-  }
-  .pi-detail-paystatus-worth .pi-detail-figure { padding: 12px 18px; gap: 2px; }
-  .pi-detail-paystatus-worth .pi-detail-figure + .pi-detail-figure { padding-left: 18px; border-left-color: #F3F0EB; }
-  .pi-detail-paystatus-worth .pi-detail-figure-value,
-  .pi-detail-paystatus-worth .pi-detail-figure-absent { font-size: 20px; }
-  .pi-detail-paystatus-position {
-    grid-area: position;
-    padding: 12px 18px;
-    gap: 2px;
-    border-top: 1px solid #ECE7E0;
-    border-bottom: 1px solid #ECE7E0;
-    border-left: 1px solid #F3F0EB;
-    justify-content: center;
-  }
-  .pi-detail-paystatus-headline { gap: 2px 6px; }
-  .pi-detail-paystatus-percent { font-size: 24px; }
-  .pi-detail-paystatus-word { font-size: 13px; font-weight: 500; color: #686D6C; }
-  .pi-detail-paystatus-of { font-size: 12px; }
-  .pi-detail-paystatus-metric {
-    margin: 0;
-    padding: 12px 32px 12px 18px;
-    border: 0;
-    border-top: 1px solid #ECE7E0;
-    border-bottom: 1px solid #ECE7E0;
-    border-left: 1px solid #F3F0EB;
-    border-radius: 0;
-    background: #FFFFFF;
-    gap: 2px;
-    justify-content: center;
-  }
-  .pi-detail-paystatus-metric[data-metric='confirmed'] { grid-area: confirmed; }
-  .pi-detail-paystatus-metric[data-metric='awaiting'] { grid-area: awaiting; }
-  .pi-detail-paystatus-metric.is-empty { background: #FFFFFF; padding-right: 18px; }
-  button.pi-detail-paystatus-metric-confirmed:hover,
-  button.pi-detail-paystatus-metric-awaiting:hover { background: #FAF8F5; border-color: #ECE7E0; border-left-color: #F3F0EB; }
-  .pi-detail-paystatus-metric-chevron { right: 12px; }
-  .pi-detail-paystatus-body > [role='progressbar'] {
-    grid-area: bar;
-    width: auto !important;
-    margin: 14px 18px 0;
-  }
-  .pi-detail-paystatus-notice { grid-area: notice; margin: 12px 18px 0; }
-  .pi-detail-paystatus-legend { grid-area: legend; margin: 0; padding: 10px 18px 16px; }
-  /* "Loading…" and anything else unplaced takes a full row of its own. */
-  .pi-detail-paystatus > div:not([class]):not([role]) { grid-column: 1 / -1; padding: 0 18px 14px; }
+/* ── THE ONE PLACE (owner, 2026-10-30) ──
+   PI details on the left; on the right the payment and, under it, the Submit
+   card or the management review. One column, details first, until the page
+   column is 1040px wide. The wrapper is the container and the grid inside it
+   answers to it, as .pi-detail-split did. */
+.pi-zone { container-type: inline-size; min-width: 0; }
+.pi-zone-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@container (min-width: 1040px) {
+  .pi-zone-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 384px); gap: 20px; }
+}
+.pi-zone-rail { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.pi-zone-rail > div[style]:not(.pi-detail-workflow) {
+  border-radius: 12px !important;
+  border-color: #ECE7E0 !important;
 }
 
-/* ── Supporting details: three property columns, as the Documents card ── */
-.pi-supporting .pi-support-row { margin-top: 10px; }
-.pi-supporting .pi-support-col + .pi-support-col { border-left-color: #ECE7E0; }
-.pi-supporting .pi-support-label,
-.pi-supporting .pi-detail-highlight--bare .pi-detail-highlight-title {
+/* The one status beside a section's title. Words first; the tone repeats them. */
+.pi-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8F9392;
+  line-height: 1;
+  white-space: nowrap;
 }
-.pi-supporting .pi-support-panel { padding: 0; background: transparent; }
-.pi-supporting .pi-detail-highlight--bare .pi-detail-highlight-input { min-height: 64px; border-color: #E4DED7; }
-.pi-supporting .pi-sample-type { margin-top: 12px; padding-top: 10px; border-top: 1px solid #F3F0EB; }
+.pi-chip--green { background: #E8F2EC; color: #276247; }
+.pi-chip--amber { background: #FAF0DA; color: #805B0D; }
+.pi-chip--grey { background: #EEECE8; color: #595D5B; }
+.pi-chip--blue { background: #EAF0F8; color: #335A86; }
 
-/* The details row with one card left in it takes the whole row. */
-.pi-detail-split-grid--banner > .pi-detail-split-stack > :only-child { grid-column: 1 / -1; }
+/* ── The PI details card: a title row, then three sections under hairlines ── */
+.pi-zone .pi-completion { border-color: #ECE7E0; border-radius: 12px; }
+.pi-zone .pi-completion-head { flex-wrap: wrap; gap: 6px 10px; padding: 18px 24px 16px; }
+.pi-completion-subtitle { font-size: 13px; color: #686D6C; }
+.pi-completion-head > .pi-chip { margin-left: auto; }
+.pi-zone .pi-completion-groups > .pi-client-facts,
+.pi-zone .pi-completion .pi-form-card { padding: 18px 24px 20px; border-top-color: #ECE7E0; }
+.pi-zone .pi-section-head,
+.pi-zone .pi-completion .pi-form-card-head { gap: 6px 10px; margin-bottom: 12px; }
+.pi-zone .pi-section-title,
+.pi-zone .pi-completion .pi-form-card-title { font-size: 15px; }
 
-/* ── Internal order details, read view: the Order page's property rows ──
-   Two columns of label-left / value-right rows with hairlines between them,
-   instead of four bordered cells. The editing form is untouched. */
-.pi-order-details .pi-od-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
-.pi-order-details .pi-od-cell {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-  padding: 8px 0;
-  border-left: 0 !important;
-  border-top: 1px solid #F3F0EB;
+/* Every fact is a small label over its value — no value a card-width away
+   from its label. */
+.pi-zone .pi-client-fact dt,
+.pi-zone .pi-od-cell dt { font-size: 12px; font-weight: 500; line-height: 1.4; color: #686D6C; }
+.pi-zone .pi-client-fact dd,
+.pi-zone .pi-od-cell dd { font-size: 14px; font-weight: 600; color: #303536; }
+.pi-zone .pi-client-fact dd[data-empty='true'],
+.pi-zone .pi-od-cell dd[data-empty='true'] { font-weight: 400; color: #686D6C; }
+/* A required value still missing: amber in a dashed box — the next thing to
+   do, not an error. */
+.pi-zone .pi-client-fact dd[data-required='true'],
+.pi-zone .pi-od-cell dd[data-empty='true'][data-required='true'] { font-weight: 600; color: #805B0D; }
+.pi-zone .pi-client-fact:has(> dd[data-required='true']),
+.pi-zone .pi-od-cell:has(> dd[data-empty='true'][data-required='true']) {
+  margin: -6px -10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #FFF9EC;
+  outline: 1px dashed #E2C98F;
+  outline-offset: -1px;
 }
-.pi-order-details .pi-od-cell:nth-child(-n + 2) { border-top: 0; }
-.pi-order-details .pi-od-cell dt { flex: 0 0 auto; font-size: 13.5px; font-weight: 500; color: #686D6C; }
-.pi-order-details .pi-od-cell dd {
-  margin: 0;
-  min-width: 0;
+
+/* Client: the five facts on one row. */
+.pi-zone .pi-client-body { margin-top: 0; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 20px; }
+.pi-zone .pi-client-col { display: contents; }
+.pi-zone .pi-client-col--details .pi-client-fact,
+.pi-zone .pi-client-col--address .pi-client-fact {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #303536;
-  overflow-wrap: anywhere;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
 }
-.pi-order-details .pi-od-cell dd[data-empty='true'] { font-weight: 500; color: #686D6C; }
-.pi-order-details .pi-od-cell dd[data-empty='true'][data-required='true'] { color: #B42332; }
-.pi-order-details .pi-od-cell .pi-inline-save { justify-content: flex-end; }
-.pi-order-details .pi-od-sub { text-align: right; }
-@container (max-width: 760px) {
-  .pi-order-details .pi-od-grid { grid-template-columns: minmax(0, 1fr); }
-  .pi-order-details .pi-od-cell:nth-child(2) { border-top: 1px solid #F3F0EB; }
-}
+.pi-zone .pi-client-col--address dt { margin-bottom: 0; }
+@container (max-width: 760px) { .pi-zone .pi-client-body { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 480px) { .pi-zone .pi-client-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* ── The lower band: details left, the money right at the Order page's width ── */
-@media (min-width: 1024px) {
-  .pi-detail-lower-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 432px); }
+/* Order details: four columns over two rows, no rules between the cells. */
+.pi-zone .pi-od-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; }
+.pi-zone .pi-od-cell,
+.pi-zone .pi-od-cell:nth-child(n) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 0;
+  border: 0 !important;
 }
-.pi-detail-details-col { min-width: 0; }
+.pi-zone .pi-od-cell dd { display: block; text-align: left; }
+.pi-zone .pi-od-sub { text-align: left; }
+@container (max-width: 760px) { .pi-zone .pi-od-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 400px) { .pi-zone .pi-od-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Supporting details: one row of equal tiles — Order highlight, Sample,
+   Client PO, Design files — wrapping on a narrow card. */
+.pi-zone .pi-support-row,
+.pi-zone .pi-support-row[data-files] {
+  margin-top: 0;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.pi-zone .pi-support-highlight { display: contents; }
+.pi-zone .pi-support-row > .pi-support-col,
+.pi-zone .pi-support-highlight > .pi-detail-highlight,
+.pi-zone .pi-support-highlight > .pi-sample-type {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #ECE7E0 !important;
+  border-radius: 10px;
+  background: #FBFAF8;
+}
+.pi-zone .pi-support-panel { padding: 0; background: transparent; }
+.pi-zone .pi-support-label,
+.pi-zone .pi-detail-highlight--bare .pi-detail-highlight-title,
+.pi-zone .pi-sample-type-label { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #686D6C; }
+.pi-zone .pi-detail-highlight-text,
+.pi-zone .pi-sample-type-value { font-size: 14px; font-weight: 600; color: #303536; }
+.pi-zone .pi-detail-highlight--bare .pi-detail-highlight-input { min-height: 64px; border-color: #E4DED7; }
+
+/* ── The payment, in the right column ──
+   The amount received, the bar with the advance tick and its label, one row
+   per part, and the controls last. */
+.pi-zone-rail .pi-detail-paystatus { gap: 12px; padding: 18px 20px 20px; }
+.pi-zone-rail .pi-detail-paystatus-title { font-size: 15px; }
+.pi-detail-paystatus-base { font-size: 12.5px; color: #686D6C; }
+.pi-zone-rail .pi-detail-paystatus-panel { gap: 14px; }
+.pi-zone-rail .pi-detail-paystatus-body { container-type: normal; gap: 10px; }
+.pi-zone-rail .pi-detail-paystatus-headline { gap: 2px 10px; }
+.pi-zone-rail .pi-detail-paystatus-percent { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; }
+.pi-zone-rail .pi-detail-paystatus-word { font-size: 13px; font-weight: 500; color: #686D6C; }
+.pi-detail-paystatus-bar { position: relative; margin-top: 2px; padding-bottom: 18px; }
+.pi-detail-paystatus-tick-label {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: #4C5352;
+  white-space: nowrap;
+}
+.pi-zone-rail .pi-detail-paystatus-metrics { display: flex; flex-direction: column; gap: 0; }
+.pi-zone-rail .pi-detail-paystatus-metric,
+.pi-zone-rail .pi-detail-paystatus-metric.is-empty {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 8px 30px 8px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.pi-zone-rail .pi-detail-paystatus-metric.is-empty { padding-right: 8px; }
+.pi-zone-rail button.pi-detail-paystatus-metric:hover { background: #F7F5F1; }
+.pi-zone-rail .pi-detail-paystatus-swatch { width: 9px; height: 9px; border-radius: 50%; }
+.pi-detail-paystatus-swatch--open { box-sizing: border-box; background: #FFFFFF; border: 2px solid #B9B2A9; }
+.pi-detail-paystatus-metric-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pi-zone-rail .pi-detail-paystatus-metric .pi-detail-paystatus-metric-label { font-size: 13px; font-weight: 600; color: #4C5352; }
+.pi-zone-rail .pi-detail-paystatus-metric-label > svg { display: none; }
+.pi-zone-rail .pi-detail-paystatus-metric-meta { font-size: 11.5px; }
+.pi-zone-rail .pi-detail-paystatus-metric-value { margin-left: auto; font-size: 14px; font-weight: 700; }
+.pi-zone-rail .pi-detail-paystatus-metric-shortfall .pi-detail-paystatus-metric-value { color: #303536; }
+.pi-zone-rail .pi-detail-paystatus-actions > .boe-btn { flex: 1 1 0; justify-content: center; }
+
+/* ── The Submit card ── */
+.pi-submit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px;
+  border: 1px solid #ECE7E0;
+  border-radius: 12px;
+  background: #FFFFFF;
+}
+.pi-submit-title { margin: 0; font-size: 15px; font-weight: 700; color: #303536; }
+.pi-submit-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.pi-submit-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.45; color: #4C5352; }
+.pi-submit-check-icon {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pi-submit-check--ok .pi-submit-check-icon { background: #E8F2EC; color: #276247; }
+.pi-submit-check--need .pi-submit-check-icon { background: #FAF0DA; color: #805B0D; }
+.pi-submit-check--optional .pi-submit-check-icon { background: #EEECE8; color: #595D5B; }
+.pi-submit-check-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.pi-submit-check-text strong { font-size: 13.5px; color: #303536; }
+.pi-submit-check-fix {
+  flex: 0 0 auto;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #B9472E;
+  cursor: pointer;
+}
+.pi-submit-check-fix:hover { text-decoration: underline; }
+.pi-submit-check-fix:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; border-radius: 4px; }
+.pi-submit-button { width: 100%; justify-content: center; min-height: 46px; font-size: 15px; }
+.pi-submit-card .pi-submit-reason { margin: -6px 0 0; text-align: center; }
+.pi-submit-change { align-self: center; }
+
+/* ── The management review, under the payment ──
+   The pending advance decision as a tinted box first, then Approve full width,
+   the sentence about it, and Return / Close as a pair under it. */
+.pi-detail-workflow > .pi-detail-workflow-actions { padding: 0 20px 18px 24px; }
+.pi-zone-rail .pi-detail-workflow > .pi-detail-workflow-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+.pi-zone-rail .pi-approve-btn { width: 100%; justify-content: center; min-height: 46px; font-size: 15px; }
+.pi-detail-workflow-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: #4C5352; }
+.pi-detail-workflow-secondary { display: flex; flex-wrap: wrap; gap: 10px; }
+.pi-detail-workflow-secondary > .boe-btn { flex: 1 1 0; justify-content: center; }
+.pi-zone-rail .pi-detail-workflow-band {
+  margin: 0 20px 16px 24px;
+  padding: 14px 16px;
+  border: 1px solid #EFE3C2;
+  border-radius: 10px;
+  background: #FFFBF0;
+}
+.pi-zone-rail .pi-detail-workflow-band .pi-detail-workflow-actions > .boe-btn { flex: 1 1 0; justify-content: center; }
 
 /* ── Commercial breakdown: the Order page's bordered grid ──
    Every row is a bordered label | amount pair, alternate rows carry a
@@ -13418,4 +13499,146 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .pi-detail-activity .pi-detail-timeline-item { grid-template-columns: 16px minmax(0, 1fr); row-gap: 4px; }
   .pi-detail-activity .pi-detail-timeline-by,
   .pi-detail-activity .pi-detail-timeline-when { grid-column: 2; }
+}
+
+/* ── Products, with the cost sheet merged in (owner, 2026-10-30) ──
+   Three figures over the table, Fabric and Packing columns under a "From the
+   cost sheet" heading, a totals row, and — as an invoice draws it — the
+   Commercial terms beside the breakdown at the foot of the same card. */
+.pi-cost-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  border-top: 1px solid #ECE7E0;
+  border-bottom: 1px solid #ECE7E0;
+  background: #FBFAF8;
+}
+.pi-cost-stat { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 12px 20px; border-left: 1px solid #ECE7E0; }
+.pi-cost-stat:first-child { border-left: 0; }
+.pi-cost-stat-label { font-size: 12px; font-weight: 600; color: #686D6C; }
+.pi-cost-stat-value { font-size: 19px; font-weight: 800; color: #303536; font-variant-numeric: tabular-nums; }
+.pi-cost-stat-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; color: #4C5352; }
+.pi-cost-strip-go { display: flex; align-items: center; padding: 0 20px; border-left: 1px solid #ECE7E0; }
+.pi-cost-strip--empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; }
+.pi-cost-strip-note { font-size: 12.5px; color: #686D6C; }
+@media (max-width: 900px) {
+  .pi-cost-strip { grid-template-columns: minmax(0, 1fr); }
+  .pi-cost-stat,
+  .pi-cost-strip-go { padding: 10px 16px; border-left: 0; border-top: 1px solid #ECE7E0; }
+  .pi-cost-stat:first-child { border-top: 0; }
+}
+
+.pi-products-table td { vertical-align: top; }
+.pi-products-group-row td,
+.pi-products-group-row th { padding: 8px 14px 0; border: 0; }
+.pi-products-costgroup {
+  border-radius: 8px 8px 0 0;
+  background: #F6F1E8;
+  color: #7A5A2A;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+th.pi-products-costcol { background: #F6F1E8; }
+td.pi-products-costcol { background: #FCF8F1; }
+.pi-product-meta { font-size: 12px; color: #686D6C; }
+.pi-cost-cell { padding: 12px 14px; text-align: right; white-space: nowrap; }
+.pi-cost-cell > span,
+.pi-cost-box-cell > span { display: block; }
+.pi-cost-cell > .pi-cost-choice,
+.pi-cost-box-cell > .pi-cost-choice { display: inline-block; }
+.pi-cost-amount { font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
+.pi-cost-sub { margin-top: 2px; font-size: 12px; color: #686D6C; }
+.pi-cost-absent { font-size: 12.5px; color: #686D6C; }
+.pi-cost-choice {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pi-cost-stat-sub .pi-cost-choice { margin-top: 0; }
+.pi-cost-choice--done { background: #E8F2EC; color: #276247; }
+.pi-cost-choice--pending { background: #FAF0DA; color: #805B0D; }
+.pi-products-total td {
+  padding: 12px 14px;
+  background: #FBFAF8;
+  font-weight: 700;
+  color: #303536;
+  font-variant-numeric: tabular-nums;
+}
+.pi-products-total td.pi-products-costcol { background: #F6F1E8; }
+
+/* The same two figures on a phone, as a box under the product. */
+.pi-cost-box {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid #EFE3C2;
+  border-radius: 10px;
+  background: #FCF8F1;
+}
+.pi-cost-box-cell { min-width: 0; padding: 9px 12px; }
+.pi-cost-box-cell + .pi-cost-box-cell { border-left: 1px solid #EFE3C2; }
+.pi-cost-box-label {
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7A5A2A;
+}
+
+/* The invoice foot: terms and the workbook note left, the figures right. */
+.pi-detail-breakdown--invoice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  gap: 24px 40px;
+  padding: 22px 24px 24px;
+  border-top: 1px solid #ECE7E0;
+}
+.pi-detail-breakdown-side { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-terms {
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px solid #EFE3C2;
+  border-radius: 10px;
+  background: #FFFBF0;
+}
+.pi-detail-breakdown--invoice .pi-detail-breakdown-terms-head { color: #7A5A2A; }
+.pi-workbook-note { display: flex; flex-direction: column; gap: 6px; }
+.pi-detail-breakdown-figures { min-width: 0; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #686D6C;
+}
+.pi-detail-breakdown--invoice .pi-detail-breakdown-rows {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+.pi-detail-breakdown--invoice .pi-detail-breakdown-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-top: 1px solid #ECE7E0;
+  background: transparent !important;
+}
+.pi-detail-breakdown--invoice .pi-detail-breakdown-row:first-child { border-top: 0; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-row dt { padding: 9px 0; border-right: 0; font-size: 14px; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-row dd { padding: 9px 0 9px 16px; font-size: 14px; text-align: right; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-subtotal { background: #FBFAF8 !important; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-grand { background: transparent !important; border-top: 2px solid #303536; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-grand dt { padding-top: 12px; font-size: 15px; font-weight: 700; }
+.pi-detail-breakdown--invoice .pi-detail-breakdown-grand dd { padding-top: 12px; font-size: 21px; font-weight: 800; }
+@media (max-width: 900px) {
+  .pi-detail-breakdown--invoice { grid-template-columns: minmax(0, 1fr); padding: 18px 16px; }
+  .pi-detail-breakdown-figures { order: -1; }
 }
