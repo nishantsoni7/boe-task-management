@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `52998fff` — Orders: Client PO and Design Files open on a submitted PI (#529)
-- Commits on this branch: 1094
+- Commit: `22f1d8b6` — Docs: Today tab release recorded, and the Machine ID correction (#530)
+- Commits on this branch: 1095
 - Pages (`page.tsx`): 159   API routes (`route.ts`): 177
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 - `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
 - `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
 - `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
@@ -38,7 +39,6 @@
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
 - `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
 - `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
-- `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 
 ## Pages by top-level area
 

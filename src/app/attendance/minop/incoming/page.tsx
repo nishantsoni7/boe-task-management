@@ -1,9 +1,9 @@
 'use client'
 
 // Incoming Minop data — a read-only register of everything the fingerprint
-// system has sent, one row per punch. Collection and inspection only: nothing
-// here links an employee, approves, processes or retries, and nothing received
-// from Minop is used for attendance (see src/lib/minop/collectionMode.ts).
+// system has sent, one row per punch: when it was punched, when it reached BOE,
+// how long that took, and who it was. Inspection only: nothing here links an
+// employee, approves, processes or retries. The downloads keep every field.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -12,9 +12,9 @@ import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { Badge, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
+import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import { Download, RefreshCw } from 'lucide-react'
-import { DUPLICATE_FLAG_LABEL, type IncomingRegisterRow } from '@/lib/minop/incomingRegister'
+import { formatDelay, type IncomingRegisterRow } from '@/lib/minop/incomingRegister'
 import styles from './incoming.module.css'
 
 type ListResponse = {
@@ -61,14 +61,19 @@ const SORT_OPTIONS = [
 ] as const
 type SortChoice = typeof SORT_OPTIONS[number]['value']
 
-function punchTime(row: IncomingRegisterRow): { main: string; note: string | null } {
-  if (row.punchTimeRaw === null) return { main: '—', note: null }
-  if (row.punchTimeHasZone) return { main: ist(row.punchTimeInstant), note: null }
-  return { main: row.punchTimeRaw, note: 'as sent, no time zone' }
+/** In the same form as the received time; a time that cannot be read stays as sent. */
+function punchTime(row: IncomingRegisterRow): string {
+  return row.punchAt ? ist(row.punchAt) : row.punchTimeRaw ?? '—'
 }
 
-const READ_TONE = { readable: 'good', partial: 'warn', no_punches: 'info', unreadable: 'bad' } as const
-const READ_LABEL = { readable: 'Read', partial: 'Partly read', no_punches: 'No punches', unreadable: 'Cannot read' } as const
+/** The linked employee, or a plain note when the row has no name to show. */
+function who(row: IncomingRegisterRow) {
+  if (row.employeeName) return row.employeeName
+  const note = row.minopUserId !== null ? `ID ${row.minopUserId} · not linked`
+    : row.entryNumber !== null ? 'No punch ID sent'
+    : 'No punch in this message'
+  return <span className={ui.muted} title={row.readReason ?? undefined}>{note}</span>
+}
 
 function PayloadDetails({ row, token }: { row: IncomingRegisterRow; token: string }) {
   const [open, setOpen] = useState(false)
@@ -226,24 +231,6 @@ export default function IncomingMinopDataPage() {
   const filtered = Boolean(q.trim() || from || to)
   const rows = result?.rows ?? []
 
-  const flags = (row: IncomingRegisterRow) => row.duplicateFlags.map(f => (
-    <Badge key={f} tone="warn">{DUPLICATE_FLAG_LABEL[f]}</Badge>
-  ))
-
-  const reading = (row: IncomingRegisterRow) => (
-    <div className={styles.reading}>
-      <Badge tone={READ_TONE[row.readStatus]}>{READ_LABEL[row.readStatus]}</Badge>
-      {row.readReason && <p className={styles.reason}>{row.readReason}</p>}
-      {flags(row)}
-    </div>
-  )
-
-  const ref = (row: IncomingRegisterRow) => (
-    <span className={styles.ref} title={row.deliveryId}>
-      {row.deliveryId.slice(0, 8)}{row.entryNumber !== null && row.entryCount > 1 ? ` · ${row.entryNumber}/${row.entryCount}` : ''}
-    </span>
-  )
-
   return (
     <AttendancePayrollLayout
       profile={profile}
@@ -271,11 +258,11 @@ export default function IncomingMinopDataPage() {
 
         <div className={styles.controls}>
           <label className={styles.search}>
-            <span className={ui.srOnly}>Search by punch ID, transaction ID, or device</span>
+            <span className={ui.srOnly}>Search by name, punch ID or transaction ID</span>
             <input
               type="search"
               className={ui.input}
-              placeholder="Search punch ID, transaction ID or device"
+              placeholder="Search name, punch ID or transaction ID"
               value={q}
               onChange={e => { setQ(e.target.value); setPage(1) }}
             />
@@ -338,72 +325,48 @@ export default function IncomingMinopDataPage() {
           <>
             <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }} aria-busy={fetching}>
               <div className={ui.tableWrap}>
-                <table className={`${ui.table} ${styles.table}`}>
+                <table className={ui.table}>
                   <thead>
                     <tr>
-                      <th scope="col">Received (IST)</th>
-                      <th scope="col">Punch ID (punchId)</th>
-                      <th scope="col">Transaction ID (txnId)</th>
                       <th scope="col">Punch time</th>
-                      <th scope="col">Mode (raw)</th>
-                      <th scope="col">Device ID (dvcId)</th>
-                      <th scope="col">Name in message</th>
-                      <th scope="col">Data reading</th>
+                      <th scope="col">Received</th>
+                      <th scope="col">Delay</th>
+                      <th scope="col">Name</th>
+                      <th scope="col">Transaction ID</th>
                       <th scope="col">Payload</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(row => {
-                      const pt = punchTime(row)
-                      return (
-                        <tr key={row.rowId}>
-                          <td className={ui.nowrap}>{ist(row.receivedAt)}<div className={ui.sub}>{ref(row)}</div></td>
-                          <td className={styles.mono}>{row.minopUserId ?? '—'}</td>
-                          <td className={styles.mono}>{row.eventId ?? '—'}</td>
-                          <td className={ui.nowrap}>{pt.main}{pt.note && <div className={ui.sub}>{pt.note}</div>}</td>
-                          <td>
-                            {row.punchTypeRaw ?? '—'}
-                            {row.punchTypeSource === 'Type' && <div className={ui.sub}>field: Type</div>}
-                          </td>
-                          <td className={styles.mono}>
-                            {row.deviceId ?? '—'}
-                            {row.deviceName && <div className={ui.sub}>{row.deviceName}</div>}
-                            {row.deviceIp && <div className={ui.sub}>IP {row.deviceIp}</div>}
-                          </td>
-                          <td>{row.nameSupplied ?? <span className={ui.muted}>—</span>}</td>
-                          <td>{reading(row)}</td>
-                          <td><PayloadDetails row={row} token={token} /></td>
-                        </tr>
-                      )
-                    })}
+                    {rows.map(row => (
+                      <tr key={row.rowId}>
+                        <td className={`${ui.nowrap} ${ui.strong}`}>{punchTime(row)}</td>
+                        <td className={`${ui.nowrap} ${ui.muted}`}>{ist(row.receivedAt)}</td>
+                        <td className={`${ui.nowrap} ${styles.mono}`}>{formatDelay(row.delayMs)}</td>
+                        <td>{who(row)}</td>
+                        <td className={`${styles.mono} ${ui.muted}`}>{row.eventId ?? '—'}</td>
+                        <td><PayloadDetails row={row} token={token} /></td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </div>
 
             <ul className={ui.cards} aria-label="Incoming Minop records">
-              {rows.map(row => {
-                const pt = punchTime(row)
-                return (
-                  <li key={row.rowId} className={`${ui.surface} ${ui.card}`}>
-                    <div className={ui.cardHead}>
-                      <div className={ui.strong}>Punch ID <span className={styles.mono}>{row.minopUserId ?? '—'}</span></div>
-                      <div className={`${ui.sub} ${ui.nowrap}`} style={{ marginTop: 0 }}>{ref(row)}</div>
-                    </div>
-                    <dl className={styles.cardFacts}>
-                      <dt>Received (IST)</dt><dd>{ist(row.receivedAt)}</dd>
-                      <dt>Transaction ID (txnId)</dt><dd className={styles.mono}>{row.eventId ?? '—'}</dd>
-                      <dt>Punch time</dt><dd>{pt.main}{pt.note ? ` (${pt.note})` : ''}</dd>
-                      <dt>Mode (raw)</dt><dd>{row.punchTypeRaw ?? '—'}{row.punchTypeSource === 'Type' ? ' (field: Type)' : ''}</dd>
-                      <dt>Device ID (dvcId)</dt>
-                      <dd className={styles.mono}>{[row.deviceId, row.deviceName, row.deviceIp && `IP ${row.deviceIp}`].filter(Boolean).join(' · ') || '—'}</dd>
-                      <dt>Name in message</dt><dd>{row.nameSupplied ?? '—'}</dd>
-                    </dl>
-                    {reading(row)}
-                    <PayloadDetails row={row} token={token} />
-                  </li>
-                )
-              })}
+              {rows.map(row => (
+                <li key={row.rowId} className={`${ui.surface} ${ui.card}`}>
+                  <div className={ui.cardHead}>
+                    <div className={ui.strong}>{who(row)}</div>
+                    <div className={`${ui.sub} ${ui.nowrap}`} style={{ marginTop: 0 }}>Txn {row.eventId ?? '—'}</div>
+                  </div>
+                  <div className={`${ui.strong} ${styles.cardPunch}`}>{punchTime(row)}</div>
+                  <dl className={styles.cardFacts}>
+                    <dt>Received</dt><dd>{ist(row.receivedAt)}</dd>
+                    <dt>Delay</dt><dd className={styles.mono}>{formatDelay(row.delayMs)}</dd>
+                  </dl>
+                  <PayloadDetails row={row} token={token} />
+                </li>
+              ))}
             </ul>
 
             <nav className={styles.pager} aria-label="Pages">

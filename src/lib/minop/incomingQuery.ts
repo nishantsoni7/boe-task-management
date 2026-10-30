@@ -1,5 +1,6 @@
-// Server-side read of every retained Minop delivery, for the incoming-data
-// register. Read-only: it selects and nothing else.
+// Server-side read of every retained Minop delivery and the names of the
+// employees linked to a Machine ID, for the incoming-data register. Read-only:
+// it selects and nothing else.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MinopDeliveryRow } from './incomingRegister'
@@ -29,4 +30,14 @@ export async function readAllMinopDeliveries(
     if (batch.length < BATCH) return { deliveries, truncated: false }
   }
   return { deliveries, truncated: true }
+}
+
+/** Machine ID → employee name. Includes people who have left, so old punches keep their name. */
+export async function readMinopNames(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  svc: SupabaseClient<any, any, any>,
+): Promise<Map<string, string>> {
+  const { data, error } = await svc.from('users').select('minop_user_id, full_name').not('minop_user_id', 'is', null)
+  if (error) throw new Error(error.message)
+  return new Map((data ?? []).map(u => [String(u.minop_user_id), String(u.full_name)]))
 }

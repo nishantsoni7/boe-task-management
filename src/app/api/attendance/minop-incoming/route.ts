@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
-import { readAllMinopDeliveries } from '@/lib/minop/incomingQuery'
+import { readAllMinopDeliveries, readMinopNames } from '@/lib/minop/incomingQuery'
 import { buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, isIstDate } from '@/lib/minop/incomingRegister'
 
 const PAGE_SIZE = 50
 
 /**
  * Admin-only, read-only register of everything Minop has sent: one row per
- * punch, plus a row for every message that could not be read. Never touches
- * attendance, employee mapping or payroll.
+ * punch, plus a row for every message that could not be read. Reads employee
+ * names to show who punched; never touches attendance, the Machine ID link or
+ * payroll.
  */
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req)
@@ -23,13 +24,15 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, Math.floor(Number(params.get('page') ?? '1')) || 1)
 
   let read
+  let names
   try {
     read = await readAllMinopDeliveries(auth.svc)
+    names = await readMinopNames(auth.svc)
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not read Minop data' }, { status: 500 })
   }
 
-  const all = buildIncomingRows(read.deliveries)
+  const all = buildIncomingRows(read.deliveries, names)
   const filtered = sortIncomingRows(
     filterIncomingRows(all, { q: params.get('q') ?? '', from: from ?? undefined, to: to ?? undefined }),
     parseIncomingSort(params.get('sort'), params.get('dir')),

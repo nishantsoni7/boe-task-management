@@ -12,7 +12,7 @@
 // The punch entry as received is included as JSON, so every original field
 // survives the export even when it has no column of its own.
 
-import { DUPLICATE_FLAG_LABEL, redactRawBody, type IncomingRegisterRow, type MinopDeliveryRow } from './incomingRegister'
+import { DUPLICATE_FLAG_LABEL, formatDelay, redactRawBody, type IncomingRegisterRow, type MinopDeliveryRow } from './incomingRegister'
 
 const SAFE_NUMERIC_TEXT = /^[0-9][0-9:.TZ+ -]*$/
 const FORMULA_START = /^[=+\-@\t\r]/
@@ -52,11 +52,13 @@ export const INCOMING_CSV_COLUMNS: Column[] = [
   { header: 'Received (UTC, as stored)', value: r => r.receivedAt, text: true },
   { header: 'Received (IST)', value: r => formatIst(r.receivedAt), text: true },
   { header: 'Message format', value: r => r.format === 'device_trans' ? 'device callback (trans)' : r.format === 'realtime_punchlog' ? 'real-time (RealTime.PunchLog)' : null },
+  { header: 'Employee name', value: r => r.employeeName },
   { header: 'Punch ID (punchId)', value: r => r.minopUserId, text: true },
   { header: 'Transaction ID (txnId)', value: r => r.eventId, text: true },
   { header: 'Punch time (as sent)', value: r => r.punchTimeRaw, text: true },
   { header: 'Punch time zone sent', value: r => (r.punchTimeRaw === null ? null : r.punchTimeHasZone ? 'yes' : 'no') },
   { header: 'Punch time (IST, only when a zone was sent)', value: r => formatIst(r.punchTimeInstant), text: true },
+  { header: 'Delay', value: r => (r.delayMs === null ? null : formatDelay(r.delayMs)) },
   { header: 'Mode (raw)', value: r => r.punchTypeRaw, text: true },
   { header: 'Mode field name', value: r => r.punchTypeSource },
   { header: 'Device ID (dvcId)', value: r => r.deviceId, text: true },

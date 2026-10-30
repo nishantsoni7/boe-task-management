@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
-import { readAllMinopDeliveries } from '@/lib/minop/incomingQuery'
+import { readAllMinopDeliveries, readMinopNames } from '@/lib/minop/incomingQuery'
 import { buildIncomingRows, filterIncomingRows, sortIncomingRows, parseIncomingSort, isIstDate } from '@/lib/minop/incomingRegister'
 import { buildIncomingCsv, buildRawPayloadExport } from '@/lib/minop/incomingCsv'
 
@@ -23,14 +23,16 @@ export async function GET(req: NextRequest) {
   const format = params.get('format') === 'raw' ? 'raw' : 'csv'
 
   let read
+  let names
   try {
     read = await readAllMinopDeliveries(auth.svc)
+    names = await readMinopNames(auth.svc)
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not read Minop data' }, { status: 500 })
   }
 
   const rows = sortIncomingRows(
-    filterIncomingRows(buildIncomingRows(read.deliveries), { q: params.get('q') ?? '', from: from ?? undefined, to: to ?? undefined }),
+    filterIncomingRows(buildIncomingRows(read.deliveries, names), { q: params.get('q') ?? '', from: from ?? undefined, to: to ?? undefined }),
     parseIncomingSort(params.get('sort'), params.get('dir')),
   )
   const stamp = new Date().toISOString().slice(0, 10)

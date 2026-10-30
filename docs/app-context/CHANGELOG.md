@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-30 — Incoming Minop data: table redesigned around punch time, delay and name (PR open) · no migration
+- **Owner request.** Punch time first and primary, then Received, then Delay. A name in place of Punch ID. Mode, Device ID, Name in message and Data reading removed. Mockup approved first.
+- **What.** Columns are Punch time, Received, Delay, Name, Transaction ID, Payload, with phone cards to match. Delay is received time minus punch time, the machine's clock read as IST. Names come from `users.minop_user_id`, read in `incomingQuery.ts` and handed to `buildIncomingRows`. An ID linked to nobody reads "ID 1000 · not linked"; a message with no punch says so. Search also finds a name. The small message reference left the row: View payload shows it in full.
+- **Unchanged.** Filters, sort, paging, View payload, admin-only access. The CSV and raw download keep every field; the CSV adds Employee name and Delay. Duplicate flags and read statuses now appear only in the CSV.
+- **Rollback.** Revert the PR.
+- **Proof.** `incomingRegister.test.ts`: exact-text name match, delay with and without a zone, an unreadable time, a clock running ahead, name search, the CSV columns, and both routes passing the names.
+
 ## 2026-10-30 — Orders: Client PO and Design Files open on a submitted PI (PR open) · no migration
 - **Owner request.** On a PI waiting for approval the Client PO and Design Files could not be opened, so there was nothing to approve it on.
 - **Why.** `PiSentColumns` drew the names as plain text. Storage already allowed the read: `can_read_pi_document_file` admits anyone who can open the PI.
