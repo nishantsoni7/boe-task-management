@@ -44,6 +44,7 @@ type EmployeeSummary = {
   present:       number
   half_day:      number
   absent:        number
+  leave:         number
   late:          number
   missing_punch: number
   total_records: number
@@ -51,8 +52,7 @@ type EmployeeSummary = {
 }
 
 function attendancePct(s: EmployeeSummary): number {
-  // Denominator = all recorded days (present + half_day + absent + missing_punch).
-  // Missing punch days are not absent but are not credited — they reduce attendance %.
+  // Denominator = the working days counted, which leaves out approved leave.
   if (s.total_records === 0) return 0
   return Math.round((s.present + s.half_day * 0.5) / s.total_records * 1000) / 10
 }
@@ -206,6 +206,7 @@ function AttendanceSummary({
     present:      sorted.reduce((a, s) => a + s.present, 0),
     halfDays:     sorted.reduce((a, s) => a + s.half_day, 0),
     absent:       sorted.reduce((a, s) => a + s.absent, 0),
+    leave:        sorted.reduce((a, s) => a + s.leave, 0),
     missingPunch: sorted.reduce((a, s) => a + s.missing_punch, 0),
     late:         sorted.reduce((a, s) => a + s.late, 0),
     hours:        sorted.reduce((a, s) => a + s.hours_worked, 0),
@@ -239,6 +240,7 @@ function AttendanceSummary({
         <strong style={{ color: '#303536' }}>{totals.present}</strong> present days ·{' '}
         <strong style={{ color: '#303536' }}>{totals.halfDays}</strong> half days ·{' '}
         <strong style={{ color: totals.absent > 0 ? '#B42332' : '#303536' }}>{totals.absent}</strong> absent ·{' '}
+        <strong style={{ color: '#303536' }}>{totals.leave}</strong> approved leave ·{' '}
         <strong style={{ color: totals.missingPunch > 0 ? '#805B0D' : '#303536' }}>{totals.missingPunch}</strong> missing punch ·{' '}
         <strong style={{ color: '#303536' }}>{totals.late}</strong> late marks ·{' '}
         <strong style={{ color: '#303536' }}>{fmtHours(totals.hours)}</strong> worked
@@ -254,6 +256,7 @@ function AttendanceSummary({
                 <th scope="col" className={ui.num}>Present</th>
                 <th scope="col" className={ui.num}>Half day</th>
                 <th scope="col" className={ui.num}>Absent</th>
+                <th scope="col" className={ui.num}>Leave</th>
                 <th scope="col" className={ui.num}>Missing punch</th>
                 <th scope="col" className={ui.num}>Late</th>
                 <th scope="col" className={ui.num}>Hours</th>
@@ -273,6 +276,7 @@ function AttendanceSummary({
                     <td className={ui.num}>{s.present}</td>
                     <td className={ui.num}>{s.half_day}</td>
                     <td className={ui.num} style={{ color: s.absent > 0 ? '#B42332' : undefined, fontWeight: s.absent > 0 ? 600 : 400 }}>{s.absent}</td>
+                    <td className={ui.num}>{s.leave}</td>
                     <td className={ui.num} style={{ color: s.missing_punch > 0 ? '#805B0D' : undefined, fontWeight: s.missing_punch > 0 ? 600 : 400 }}>{s.missing_punch}</td>
                     <td className={ui.num}>{s.late}</td>
                     <td className={ui.num}>{fmtHours(s.hours_worked)}</td>
@@ -304,7 +308,7 @@ function AttendanceSummary({
                 {s.total_records > 0 && <Badge tone={pctTone(pct)}>{pct}%</Badge>}
               </div>
               <div style={{ fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
-                {s.present} present · {s.half_day} half · <span style={{ color: s.absent > 0 ? '#B42332' : undefined }}>{s.absent} absent</span> ·{' '}
+                {s.present} present · {s.half_day} half · <span style={{ color: s.absent > 0 ? '#B42332' : undefined }}>{s.absent} absent</span> · {s.leave} leave ·{' '}
                 <span style={{ color: s.missing_punch > 0 ? '#805B0D' : undefined }}>{s.missing_punch} missing punch</span> · {s.late} late · {fmtHours(s.hours_worked)}
               </div>
               <Link href={detail(s.employee_id)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>Open days</Link>
@@ -314,10 +318,11 @@ function AttendanceSummary({
       </ul>
 
       <Notice kind="info">
-        <strong>Attendance</strong> = (Present + Half day × 0.5) ÷ recorded working days. Present includes
-        days with only one punch, which are also counted under Missing punch and carry a 2h penalty. Absent
-        days give no credit. Sorted highest to lowest. Use <strong>Salary decisions</strong> above to settle what
-        affects pay.
+        <strong>Attendance</strong> = (Present + Half day × 0.5) ÷ working days, leaving out approved leave. Each
+        day is read the way payroll reads it, so corrections and waivers apply. Late means in after 10:15. Present
+        includes days with only one punch, which are also counted under Missing punch and carry a 2h penalty.
+        Absent days give no credit. Sorted highest to lowest. Use <strong>Salary decisions</strong> above to settle
+        what affects pay.
       </Notice>
     </div>
   )

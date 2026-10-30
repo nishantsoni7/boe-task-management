@@ -37,6 +37,7 @@ const MANAGEMENT_ROUTES = [
   'src/app/api/attendance/correction-log/route.ts',
   'src/app/api/attendance/dashboard/route.ts',
   'src/app/api/attendance/monthly-summary/route.ts',
+  'src/app/api/attendance/overview/route.ts',
   'src/app/api/payroll/monthly-review/route.ts',
   'src/app/api/payroll/monthly-review/detail/route.ts',
   'src/app/api/payroll/periods/route.ts',

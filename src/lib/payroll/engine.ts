@@ -382,6 +382,22 @@ function classifyAttendanceDays(
   )
 }
 
+/**
+ * One working day as payroll reads it, with no money attached: the attendance
+ * screens ask this instead of restating the rules, so a day cannot read one way
+ * there and another on a payslip. The rates are zero because nothing here is a
+ * charge; only the classification and which deduction lines exist are meaningful.
+ */
+export function classifyDayForAttendance(
+  date: string,
+  record: EngineAttendanceRecord | undefined,
+  s: PayrollSettings,
+  correction?: AttendanceDayCorrection,
+  halfDayHolidaySession?: HolidayHalfSession,
+): DayResult {
+  return classifySingleDay(date, record, { per_day_rate: 0, per_hour_rate: 0 }, s, correction, halfDayHolidaySession)
+}
+
 function classifySingleDay(
   date: string,
   record: EngineAttendanceRecord | undefined,

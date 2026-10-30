@@ -2,18 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 import { attendanceCoverageThrough, isMachineMonth, machineLatestDate, withinCoverage } from '@/lib/attendance/monthAvailability'
+import {
+  SCORE_RECORD_COLUMNS, buildScoreIndex, fullDayHolidayDates, readScoreContext, scoreDay,
+  type ScoreContext, type ScoreRecord,
+} from '@/lib/attendance/attendanceScoreboard'
+import { emptyTally } from '@/lib/attendance/attendanceScore'
 import { onlyParticipating } from '@/lib/payroll/participation'
 import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
-
-/** One attendance row, as the monthly summary reads it. */
-type AttendanceRow = {
-  user_id: string
-  attendance_date: string
-  check_in_at: string | null
-  check_out_at: string | null
-  status: string | null
-}
-
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   if (!checkIn || !checkOut) return 0
@@ -53,7 +48,7 @@ export async function GET(req: NextRequest) {
   // screen. See src/lib/payroll/participation.ts.
   const { data: employees, error: empErr } = await onlyParticipating(
     svc.from('users')
-      .select('id, full_name, employee_code')
+      .select('id, full_name, employee_code, joining_date, exit_date')
       .eq('is_active', true),
   ).order('full_name')
 
@@ -71,37 +66,27 @@ export async function GET(req: NextRequest) {
   // part of one. For attendance that is the only acceptable behaviour: a summary
   // built from two thirds of a month is worse than no summary, because it looks
   // like an answer.
-  let records: AttendanceRow[]
+  let records: ScoreRecord[]
+  // Corrections, approved requests, holidays and the rules in force. Each day below
+  // is read by the payroll engine, not from the stored status, which can only ever
+  // say present or checked_in: see src/lib/attendance/attendanceScoreboard.ts.
+  let context: ScoreContext
   try {
-    records = unwrapPagedRows('attendance records', await fetchAllRows<AttendanceRow>(
+    records = unwrapPagedRows('attendance records', await fetchAllRows<ScoreRecord>(
       (pageFrom, pageTo) => svc
         .from('attendance_records')
-        .select('user_id, attendance_date, check_in_at, check_out_at, status')
+        .select(SCORE_RECORD_COLUMNS)
         .gte('attendance_date', from)
         .lte('attendance_date', to)
         // A unique tiebreak: range() maps to LIMIT/OFFSET, which promises
         // nothing about row order unless the ordering is deterministic.
         .order('id', { ascending: true })
         .range(pageFrom, pageTo)))
+    context = await readScoreContext(svc, from, to)
   } catch (err) {
     const detail = err instanceof PagedReadError ? err.detail : String(err)
     return NextResponse.json({ error: detail }, { status: 500 })
   }
-
-  // Fetch public holidays for the month. Only a FULL-DAY holiday excludes
-  // the date from this screen's calendar — a half-day holiday still owes a
-  // normal working half, and this raw-status screen has no way to evaluate
-  // just that half (see src/lib/payroll/halfDayHoliday.ts, which the real
-  // payroll engine uses instead), so the date is left as an ordinary working
-  // day here rather than wrongly dropped.
-  const { data: holidays, error: holErr } = await svc
-    .from('payroll_holidays')
-    .select('holiday_date')
-    .eq('holiday_type', 'full_day')
-    .gte('holiday_date', from)
-    .lte('holiday_date', to)
-
-  if (holErr) return NextResponse.json({ error: holErr.message }, { status: 500 })
 
   // The month's working days come from the CALENDAR, not from the records.
   //
@@ -126,19 +111,8 @@ export async function GET(req: NextRequest) {
   const latestImported = isMachineMonth(year, month) ? machineLatestDate(latestInMonth) : latestInMonth
   const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
 
-  const workingDates = withinCoverage(
-    workingDatesInMonth(year, month, {
-      holidays: (holidays ?? []).map(h => h.holiday_date),
-    }),
-    coverageThrough,
-  )
-
-  // Index each employee's records by date for O(1) lookup
-  const byEmployeeByDate = new Map<string, Map<string, typeof records[number]>>()
-  for (const rec of records ?? []) {
-    if (!byEmployeeByDate.has(rec.user_id)) byEmployeeByDate.set(rec.user_id, new Map())
-    byEmployeeByDate.get(rec.user_id)!.set(rec.attendance_date, rec)
-  }
+  const index = buildScoreIndex(records, context)
+  const holidays = fullDayHolidayDates(context.holidays)
 
   // Build per-employee summary
   type EmployeeSummary = {
@@ -148,6 +122,7 @@ export async function GET(req: NextRequest) {
     present:       number
     half_day:      number
     absent:        number
+    leave:         number
     late:          number
     missing_punch: number
     total_records: number
@@ -155,56 +130,37 @@ export async function GET(req: NextRequest) {
   }
 
   const summaries: EmployeeSummary[] = (employees ?? []).map(emp => {
-    const recByDate = byEmployeeByDate.get(emp.id) ?? new Map()
+    const workingDates = withinCoverage(
+      workingDatesInMonth(year, month, {
+        holidays,
+        joiningDate: emp.joining_date ?? null,
+        exitDate:    emp.exit_date ?? null,
+      }),
+      coverageThrough,
+    )
 
-    let present = 0, half_day = 0, late = 0, missing_punch = 0, absent = 0, hours = 0
+    const tally = emptyTally()
+    let hours = 0
 
     for (const date of workingDates) {
-      const r = recByDate.get(date)
-
-      // No record for this working day = absent
-      if (!r) {
-        absent++
-        continue
-      }
-
-      hours += hoursWorked(r.check_in_at, r.check_out_at)
-      const hasPunchIn  = !!r.check_in_at
-      const hasPunchOut = !!r.check_out_at
-
-      // One punch only = missing punch: counts as present AND flagged separately
-      if (hasPunchIn !== hasPunchOut || r.status === 'missing_punch') {
-        missing_punch++
-        present++
-        continue
-      }
-
-      const status = r.status ?? ''
-      if (status === 'half_day') {
-        half_day++
-      } else if (status === 'late') {
-        late++
-        present++ // late but present
-      } else if (status === 'present' || status === 'checked_in') {
-        present++
-      } else if (status === 'absent') {
-        absent++
-      } else if (hasPunchIn && hasPunchOut) {
-        // both punches, unknown status → treat as present
-        present++
-      }
+      const day = scoreDay(index, emp.id, date)
+      tally[day.kind]++
+      hours += hoursWorked(day.checkInAt, day.checkOutAt)
     }
 
     return {
       employee_id:   emp.id,
       employee_name: emp.full_name,
       employee_code: emp.employee_code,
-      present,
-      half_day,
-      absent,
-      late,
-      missing_punch,
-      total_records: workingDates.length, // denominator = total working days this month
+      // A late, left-early or one-punch day is still a day present.
+      present:       tally.ok + tally.late + tally.early + tally.miss,
+      half_day:      tally.half,
+      absent:        tally.absent,
+      leave:         tally.leave,
+      late:          tally.late,
+      missing_punch: tally.miss,
+      // Approved leave is left out, so it does not lower the attendance figure.
+      total_records: workingDates.length - tally.leave,
       hours_worked:  Math.round(hours * 100) / 100,
     }
   })

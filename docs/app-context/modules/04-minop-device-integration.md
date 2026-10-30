@@ -85,7 +85,7 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - The machine has stopped (`judgeMachineHealth`) on a working day from 2026-11-01, past 11:00 IST (`MACHINE_STOPPED_AFTER_MINUTES`), when no real punch has reached BOE since midnight. "Reached" is `first_seen_at`: a late punch from yesterday still proves it is connected. Minop's sample message does not count. Sundays and full-day holidays are days off; a half-day holiday is not.
 - Today lists active people with a Machine ID plus active payroll people with none, inside their joining and exit dates. Statuses: In office, Left, No punch yet, No punch, Can't tell yet, On leave, Day off, Morning punch missing, Evening punch missing, No Machine ID. Only approved requests count.
 - "Can't tell yet" replaces a no-punch row today while the machine has stopped, and on a past working day nobody at all punched, so a quiet machine never reads as absences.
-- "Late" on Today is the payroll rule: past `grace_end_minutes` (10:15), counted from `scheduled_in_minutes` (10:00). Information only. The month views' `is_late` has no grace period, so 10:05 is late there and not on Today. Hours are `computeWorkedDuration`, after lunch.
+- "Late" on Today is the payroll rule: past `grace_end_minutes` (10:15), counted from `scheduled_in_minutes` (10:00). Information only. The month views use the same rule since the Overview score (03 section 6). Hours are `computeWorkedDuration`, after lunch.
 - A punch time more than 30 days before BOE received it, or more than 1 hour after, is not a real punch (`isPlausiblePunchTime`): the unlinked-IDs list leaves it out and it stays visible in the register. The longest real delay seen is 6 days.
 
 ## 7. Key components & lib files

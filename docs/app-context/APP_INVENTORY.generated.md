@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `52998fff` — Orders: Client PO and Design Files open on a submitted PI (#529)
-- Commits on this branch: 1094
-- Pages (`page.tsx`): 159   API routes (`route.ts`): 177
+- Commit: `22f1d8b6` — Docs: Today tab release recorded, and the Machine ID correction (#530)
+- Commits on this branch: 1095
+- Pages (`page.tsx`): 159   API routes (`route.ts`): 178
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 687   Next.js 16.2.6, React 19.2.4
+- Test files: 689   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 - `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
 - `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
 - `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
@@ -38,7 +39,6 @@
 - `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
 - `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
 - `cf417c79` 2026-10-29 Confirmed Payments: space the columns evenly instead of giving Client all the spare room (#505)
-- `03217d81` 2026-10-29 Orders: old orders kept as BDPI, with the same Payment plan (#503)
 
 ## Pages by top-level area
 
@@ -87,7 +87,7 @@
 - **admin-members** (1): ` [GET]`
 - **admin-tasks** (1): ` [GET]`
 - **assets** (2): `/notify [POST]`, `/warranty-sweep [POST]`
-- **attendance** (20): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/machine-alert [GET]`, `/machine-day [GET]`, `/machine-status [GET]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/preview [POST]`, `/records [GET]`
+- **attendance** (21): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/machine-alert [GET]`, `/machine-day [GET]`, `/machine-status [GET]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/overview [GET]`, `/preview [POST]`, `/records [GET]`
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
@@ -132,7 +132,7 @@
 ## Library folders (src/lib)
 
 - `src/lib/assets` — 19 source, 17 test
-- `src/lib/attendance` — 17 source, 13 test
+- `src/lib/attendance` — 20 source, 14 test
 - `src/lib/auth` — 1 source, 1 test
 - `src/lib/boeCredits` — 6 source, 8 test
 - `src/lib/controlCenter` — 2 source, 1 test

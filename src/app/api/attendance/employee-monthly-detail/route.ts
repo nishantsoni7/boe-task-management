@@ -10,6 +10,11 @@ import {
   machineLatestDate,
   withinCoverage,
 } from '@/lib/attendance/monthAvailability'
+import {
+  SCORE_RECORD_COLUMNS, buildScoreIndex, fullDayHolidayDates, readScoreContext, scoreDay,
+  type ScoreContext, type ScoreRecord,
+} from '@/lib/attendance/attendanceScoreboard'
+import { istMinutesOfDay } from '@/lib/istDate'
 
 // Hours between two ISO timestamps, rounded to 2 decimal places. Returns null if either is missing.
 function hoursWorked(checkIn: string | null, checkOut: string | null): number | null {
@@ -17,38 +22,6 @@ function hoursWorked(checkIn: string | null, checkOut: string | null): number | 
   const diff = new Date(checkOut).getTime() - new Date(checkIn).getTime()
   if (diff <= 0) return null
   return Math.round((diff / 36e5) * 100) / 100
-}
-
-// Parse office_timing text (e.g. "9:00 AM", "09:30", "9 AM") → minutes from midnight, or null.
-// "General Shift" and "Sales Shift" start at 10:00 AM per BOE business rules.
-function parseShiftStartMinutes(officeTiming: string | null): number | null {
-  if (!officeTiming) return null
-  const normalized = officeTiming.trim()
-  if (/general\s*shift|sales\s*shift/i.test(normalized)) return 600 // 10:00 AM
-  const ampm = normalized.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i)
-  if (ampm) {
-    let h = parseInt(ampm[1], 10)
-    const m = parseInt(ampm[2] ?? '0', 10)
-    if (ampm[3].toUpperCase() === 'AM' && h === 12) h = 0
-    if (ampm[3].toUpperCase() === 'PM' && h !== 12) h += 12
-    return h * 60 + m
-  }
-  const h24 = normalized.match(/(\d{1,2}):(\d{2})/)
-  if (h24) return parseInt(h24[1], 10) * 60 + parseInt(h24[2], 10)
-  return null
-}
-
-// Minutes past midnight in IST from a UTC timestamp (fingerprint machine times stored as UTC+0 after IST-330 conversion).
-function checkInISTMinutes(utcIso: string): number {
-  const d = new Date(utcIso)
-  return ((d.getUTCHours() * 60 + d.getUTCMinutes()) + 330) % 1440
-}
-
-// Returns how many minutes late, or null if on-time / no data.
-function calcLateMinutes(checkIn: string | null, shiftStartMins: number | null): number | null {
-  if (!checkIn || shiftStartMins === null) return null
-  const diff = checkInISTMinutes(checkIn) - shiftStartMins
-  return diff > 0 ? diff : null
 }
 
 // Service-role route. `employee_id` was previously trusted as given, so any
@@ -150,24 +123,17 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const [empRes, recRes, holRes, corrRes] = await Promise.all([
+  const [empRes, recRes, corrRes] = await Promise.all([
     svc.from('users')
       .select('id, full_name, employee_code, office_timing, joining_date, exit_date')
       .eq('id', employeeId)
       .single(),
     svc.from('attendance_records')
-      .select('id, attendance_date, check_in_at, check_out_at, status')
+      .select(`${SCORE_RECORD_COLUMNS}, status`)
       .eq('user_id', employeeId)
       .gte('attendance_date', from)
       .lte('attendance_date', to)
       .order('attendance_date', { ascending: true }),
-    // Public holidays for the month. Only FULL-DAY holidays exclude a date
-    // here — see the matching note in monthly-summary/route.ts.
-    svc.from('payroll_holidays')
-      .select('holiday_date')
-      .eq('holiday_type', 'full_day')
-      .gte('holiday_date', from)
-      .lte('holiday_date', to),
     // Which of this employee's days an admin has corrected. Read-only, and
     // scoped to the same employeeId the token authorised — an employee is being
     // shown that their own record was edited, not who else's was.
@@ -180,10 +146,17 @@ export async function GET(req: NextRequest) {
 
   if (empRes.error)      return NextResponse.json({ error: empRes.error.message },      { status: 500 })
   if (recRes.error)      return NextResponse.json({ error: recRes.error.message },      { status: 500 })
-  if (holRes.error)      return NextResponse.json({ error: holRes.error.message },      { status: 500 })
   if (!empRes.data)      return NextResponse.json({ error: 'Employee not found' },      { status: 404 })
 
-  const shiftStartMins = parseShiftStartMinutes(empRes.data.office_timing)
+  // Corrections, approved requests, holidays and the rules in force, so each day
+  // below reads as payroll reads it. Scoped to the same employeeId as everything
+  // else here.
+  let context: ScoreContext
+  try {
+    context = await readScoreContext(svc, from, to, employeeId)
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
 
   // The month's working days come from the CALENDAR — every date except
   // Sundays, company holidays and dates outside this employee's employment.
@@ -201,7 +174,7 @@ export async function GET(req: NextRequest) {
   // response rather than present in it as absences.
   const workingDates = withinCoverage(
     workingDatesInMonth(year, month, {
-      holidays:    (holRes.data ?? []).map(h => h.holiday_date),
+      holidays:    fullDayHolidayDates(context.holidays),
       joiningDate: empRes.data.joining_date ?? null,
       exitDate:    empRes.data.exit_date ?? null,
     }),
@@ -211,12 +184,17 @@ export async function GET(req: NextRequest) {
   // Index this employee's records by date
   const correctedDates = new Set((corrRes.data ?? []).map(c => c.attendance_date))
 
-  const recByDate = new Map<string, typeof recRes.data[number]>()
-  for (const r of recRes.data ?? []) recByDate.set(r.attendance_date, r)
+  const rows = (recRes.data ?? []) as unknown as Array<ScoreRecord & { status: string }>
+  const recByDate = new Map(rows.map(r => [r.attendance_date, r]))
+  const index = buildScoreIndex(rows, context)
 
   // Build full day list: existing records + synthetic absent rows for missing working days
   const records = workingDates.map(date => {
     const r = recByDate.get(date)
+    // What payroll reads this day as. Late is the payroll rule: past the grace
+    // period, counted from the company start, and not on a day already waived,
+    // approved, or short enough to be a half day.
+    const day = scoreDay(index, employeeId, date)
 
     // No record for this working day → absent
     if (!r) {
@@ -233,6 +211,7 @@ export async function GET(req: NextRequest) {
         is_missing_punch: false,
         penalty:          null,
         is_corrected:     correctedDates.has(date),
+        day_kind:         day.kind,
       }
     }
 
@@ -242,7 +221,8 @@ export async function GET(req: NextRequest) {
       r.status === 'missing_punch' ||
       ((r.status === 'present' || r.status === 'checked_in' || r.status === 'half_day') &&
         (hasPunchIn !== hasPunchOut))
-    const late_minutes = is_missing_punch ? null : calcLateMinutes(r.check_in_at, shiftStartMins)
+    const is_late = day.kind === 'late' && day.checkInAt !== null
+    const late_minutes = is_late ? istMinutesOfDay(day.checkInAt!) - context.settings.scheduled_in_minutes : null
     return {
       id:               r.id,
       attendance_date:  r.attendance_date,
@@ -252,10 +232,11 @@ export async function GET(req: NextRequest) {
       effective_status: is_missing_punch ? 'missing_punch' : r.status,
       hours_worked:     hoursWorked(r.check_in_at, r.check_out_at),
       late_minutes,
-      is_late:          late_minutes !== null && late_minutes > 0,
+      is_late,
       is_missing_punch,
       penalty:          is_missing_punch ? '2h' : null,
       is_corrected:     correctedDates.has(r.attendance_date),
+      day_kind:         day.kind,
     }
   })
 

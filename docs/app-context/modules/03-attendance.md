@@ -31,7 +31,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 ## 3. Pages and API routes
 
 ### Pages (admin, behind `AttendanceGuard` in `src/app/attendance/layout.tsx`)
-`/attendance` (Overview), `/attendance/employees` + `/attendance/employees/[id]` (Employee Master), `/attendance/today` (04), `/attendance/upload`, `/attendance/records`, `/attendance/monthly-review` + `/[userId]` (supports `?view=decisions` = Salary decisions), `/attendance/requests` (request queue only), `/attendance/holidays`, `/attendance/correction-log`, `/attendance/notifications`, `/attendance/minop`, `/attendance/minop/incoming` (04).
+`/attendance` (Overview: the month's attendance score, Doing great, Needs attention, everyone's month as day blocks, a line about today, and links to every page; month in `?year=&month=`), `/attendance/employees` + `/attendance/employees/[id]` (Employee Master), `/attendance/today` (04), `/attendance/upload`, `/attendance/records`, `/attendance/monthly-review` + `/[userId]` (supports `?view=decisions` = Salary decisions), `/attendance/requests` (request queue only), `/attendance/holidays`, `/attendance/correction-log`, `/attendance/notifications`, `/attendance/minop`, `/attendance/minop/incoming` (04).
 - `next.config.ts` 307-redirects `/attendance/requests?tab=review` to `/attendance/monthly-review?view=decisions`.
 - Admin sidebar = six sections (`src/components/layout/attendancePayrollNav.tsx`): Overview, Employees, Attendance (tabs Today/Records/Upload/Monthly Review/Requests; the sidebar lands on Today), Payroll (tabs Monthly Preview/Payroll Runs/BOE Credits + help How Payroll Works), Issues (Attendance Sync/Incoming Minop data), Settings (Payroll Rules/Holidays).
 ### Pages (employee)
@@ -46,6 +46,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | `/api/attendance/employee-records` | GET | `requireSelfOrAdmin` (paged read of ALL rows) |
 | `/api/attendance/employee-monthly-detail` | GET | `requireSelfOrAdmin` (also returns the month's requests) |
 | `/api/attendance/monthly-summary`, `/dashboard`, `/correction-log` | GET | `requireAdmin` |
+| `/api/attendance/overview` | GET | `requireAdmin` (optional `year` + `month`; without them, the newest month with enough days to rank) |
 | `/api/attendance/holidays` | GET/POST/DELETE | own inline admin check (no edit verb) |
 | `/api/attendance/check-in`, `/check-out` | POST | none; static 410 |
 | `/api/attendance/minop-deliveries`, `/minop-incoming*` | GET | `requireAdmin` (04) |
@@ -119,6 +120,15 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 ### Month coverage (`src/lib/attendance/monthAvailability.ts`)
 - No per-date "processed" marker exists. Coverage = nothing imported -> null; future -> null; historical month -> month end; CURRENT month -> earlier of (latest imported `attendance_date`, today IST). Dates past the cut-off are dropped from responses, never returned as "unknown". In a month the machine supplies the latest date is capped at yesterday (`machineLatestDate`), so today is never classified; the employee route returns it as `today_so_far` instead.
 
+### Attendance score (`src/lib/attendance/attendanceScore.ts`, `attendanceScoreboard.ts`)
+- Information only: it changes no pay and nothing stores it, so an old month restates itself when a correction or an approval is made later, or when Payroll Rules change (it reads the active settings, not a period's snapshot). Admins only; employees never see it.
+- Every day goes through the payroll engine (`classifyDayForAttendance`, a zero-rate wrapper on `classifySingleDay`), so corrections, waivers, half-day holidays and the 10:15 grace apply as on a payslip. Monthly Review (`monthly-summary`) and the person page (`employee-monthly-detail`) read days the same way, so all three agree.
+- Points per day: on time 1; late, left early or one punch missing ¾; half day ½; absent 0. A day loses points once. Score = points ÷ days counted × 100, rounded. Bands: Great 95+, Okay 85-94, Needs attention under 85. All in `DAY_POINTS`, `GREAT_FROM`, `OKAY_FROM`. Owner approved these 2026-10-30.
+- Not counted: Sundays, full-day holidays, approved leave, an approved half day that was worked, days before joining or from exit, days past coverage (so today in a machine month). This is the score's rule only: approval still changes no pay (see below).
+- An approved late arrival or early departure, and anything waived, loses no points. An approved half day with no attendance at all is still absent; someone who works a full day on approved leave is scored on it.
+- Not ranked: under `MIN_COUNTED_DAYS` (5) counted days, and anyone with no Machine ID in a machine month, whose days show as unknown, never absent.
+- The page opens on the newest month with 5 counted company days and says so when that is not the current month. The company score is total points ÷ total counted days of ranked people.
+
 ### Holidays
 - Full-day holiday: date leaves the working-day calendar. Half-day holiday: date STAYS in the calendar; `classifySingleDay` recurses with half-window settings (`halfDayHoliday.ts`, thresholds halved, lunch boundary splits the day); raw punches are CLIPPED to the working half first (`clipAttendanceToWorkingHalf`); a no-show for the working half is capped at `half_day` (never full absence); `raw_check_*` are restored to true punches afterwards. A manual correction outranks the holiday branch. Create + delete only (no edit).
 
@@ -133,7 +143,8 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - Lock gate: see 05 section 6 (month-end rule, acknowledgement, fingerprint).
 
 ## 7. Key components & lib files
-- `src/lib/attendance/`: `classification.ts`, `scheduleRules.ts`, `punchParser.ts`, `punchDirection.ts`, `employeeMapping.ts`, `monthAvailability.ts`, `monthCalendar.ts`, `corrections.ts`, `workedDuration.ts`, `requests.ts`, `requestForm.ts`, `requestHandlers.ts`, `requestsServer.ts`, `requestReconciliation.ts`, `lockWarning.ts`, `testing/memorySupabase.ts`.
+- `src/lib/attendance/`: `classification.ts`, `scheduleRules.ts`, `punchParser.ts`, `punchDirection.ts`, `employeeMapping.ts`, `monthAvailability.ts`, `monthCalendar.ts`, `corrections.ts`, `workedDuration.ts`, `requests.ts`, `requestForm.ts`, `requestHandlers.ts`, `requestsServer.ts`, `requestReconciliation.ts`, `lockWarning.ts`, `attendanceScore.ts` (rules, client-safe), `attendanceScoreboard.ts` (server, runs the engine), `overviewToday.ts`, `testing/memorySupabase.ts`.
+- Overview: `src/app/attendance/page.tsx` (month, reads), `OverviewBoard.tsx` (presentation), `overview.module.css`.
 - `src/components/attendanceRequests/`: `AttendanceRequestFlow`, `AttendanceRequestModal` (phone-first sheet, 4 tiles -> 5 types), `MyAttendanceRequests`, `MonthRequests`, `RequestQueue`, `RequestReviewDrawer`, `RequestHistoryModal`, `PayrollAttendanceReview`.
 - `src/components/layout/attendancePayrollNav.tsx`, `AttendancePayrollLayout.tsx`, `QuickActions.tsx`; `src/components/attendancePayroll/ui.tsx`.
 - `src/lib/payroll/participation.ts`, `holidays.ts`, `halfDayHoliday.ts`, `attendanceCorrectionService.ts`, `correctionRules.ts`.
@@ -149,15 +160,19 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - Informed-on-time never rewritten after rejection (policy decision 9.1 in ATTENDANCE_REQUESTS.md).
 - Half-day holidays reuse the existing classifier through a derived settings object (no new classification value, no new deduction builder).
 - Check-in/out removed (Attendance V1.1): attendance comes only from machine import.
+- The score asks the payroll engine rather than restating its rules, so a day cannot read one way on the Overview and another on a payslip.
 
 ## 9. Known traps / gotchas / unfixed defects
+- `attendance_records.status` cannot answer "late" or "half day": its CHECK allows only present/checked_in/absent/half_day, and the import and machine write only present/checked_in. Before the Overview score, Late and Half day in Monthly Review were always 0. Read a day through `scoreDay`, never from `status`.
 - `attendance_records` is RAW and overwritten by re-import; never store a correction there.
 - Forced `day_treatment` does NOT mean zero deduction: only `'full_day'` is free; `'half_day'`/`'absent'` still raise the aggregate day charge unless paid leave or credits absorb it (`engine.ts`, `buildFinalDeductionLines`).
 - A correction must supersede the previous version BEFORE inserting the new one (partial unique index would give a misleading 23505).
 - `payroll_results` has no `payroll_month`/`payroll_year` (on `payroll_periods`); a 42703 turned into a "Forbidden" once.
 - `users.exit_date` is NOT read by the engine: a leaver is charged absent for working days after exit (open policy gap, ATTENDANCE_REQUESTS.md 9.5).
 - A payroll month cannot be generated/locked/corrected until it has ended in IST (otherwise future days are charged as absences).
-- `employee-monthly-detail` `office_timing` is parsed for display; the payroll engine uses company-wide settings (no per-employee shift).
+- `employee-monthly-detail` returns `office_timing` for display only; lateness uses company-wide settings, as the payroll engine does (no per-employee shift). `is_late` is true only on a day payroll reads as late, so 10:05 is not late on My Attendance, and `day_kind` carries what payroll read. `effective_status` still comes from the stored status, so My Attendance can say Present on a day payroll reads as a half day.
+- The Correction Log has no sidebar entry: the Overview's links block is the only way in.
+- Monthly Review counts someone with no Machine ID as absent in a machine month, as payroll does; the Overview leaves them unranked instead. That difference is deliberate: the first is what payroll would charge, the second is a fair comparison.
 - Unreviewed legacy: 10 partial-lunch-overlap rows exist company-wide (predicate `in_min<840 AND out_min>780 AND overlap<60`); only one employee's 24 June 2026 row is still uncorrected in payroll (from memory, 2026-08-10; re-run the predicate, do not trust the list). Regenerating May/June is NOT settings-neutral (no `settings_snapshot`; `pinSettingsToPeriod` would stamp today's).
 - `docs/testing/payroll-single-punch-historical-audit.sql` exists, read-only, never run (from memory).
 - Format A confirmed 19:00 arrival + missing punch-out still costs ~11 h (> 1 day); stated by the file, candidate for a per-day cap.
@@ -167,7 +182,8 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 
 ## 10. Tests that guard it
 Run: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"` (the `.ts`-only glob silently skips `.test.tsx`). Single file: `npx tsx --test <file>`. Live-DB suites SKIP (exit 0) without a configured test DB since #327 (`skipLiveDbSuite`); `REQUIRE_LIVE_DB_TESTS=1` makes that a failure. Never run two suites at once (shared fixtures; sandbox years are exclusive per file).
-- `src/lib/attendance/*.test.ts`: `punchParser`, `punchProvenance`, `partialLunchOverlap`, `employeeMapping`, `corrections`, `monthAvailability`, `monthCalendar`, `requests`, `requestForm`, `requestHandlers` (route-level, real engine, in-memory DB), `requestReconciliation`, `requestWorkflow`, `lockWarning`.
+- `src/lib/attendance/*.test.ts`: `punchParser`, `punchProvenance`, `partialLunchOverlap`, `employeeMapping`, `corrections`, `monthAvailability`, `monthCalendar`, `requests`, `requestForm`, `requestHandlers` (route-level, real engine, in-memory DB), `requestReconciliation`, `requestWorkflow`, `lockWarning`, `attendanceScoreboard` (the score, through the real engine).
+- `src/app/attendance/overviewBoard.render.test.tsx` (the Overview rendered, its stylesheet stubbed because the runner cannot load a CSS module; the today line; the links).
 - `src/app/api/attendance/attendanceReadBounds.test.ts` (paged reads), `src/components/attendanceRequests/{adminRequests.test.ts,attendanceRequests.render.test.tsx}`, `src/components/layout/attendancePayrollNav.test.tsx`, `src/lib/attendancePayrollNotifications.test.ts`.
 - Security (live DB): `src/lib/security/{attendancePayrollIsolation,attendancePayrollApiIsolation,attendancePayrollSelfService}.test.ts` (sandbox years 2021/2997).
 - `src/lib/payroll/{halfDayHoliday,halfDayHolidayEngine,periodCompletion}.test.ts`.
