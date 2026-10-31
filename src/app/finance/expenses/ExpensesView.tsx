@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Paperclip, Plus, Trash2 } from 'lucide-react'
+import { CircleCheck, Clock, Download, Eye, Paperclip, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -74,18 +74,24 @@ import { DeleteExpenseModal } from './DeleteExpenseModal'
 import { NeedsDetailsList } from './NeedsDetailsList'
 import { QuickCapture } from './QuickCapture'
 import {
+  PAID_FROM_VIEW_OPTIONS,
   REIMBURSEMENT_BATCH_MAX,
   REIMBURSEMENT_FILTER_OPTIONS,
+  REIMBURSEMENT_ICON_LABEL,
+  REIMBURSEMENT_PANEL_OPTIONS,
   REIMBURSEMENT_STATE_LABEL,
-  REIMBURSEMENT_STATE_SHORT,
   isReimbursable,
   mayAddBillAsPayer,
   maySelectWith,
   mayRecordForOthers,
   mayRecordReimbursement,
+  paidFromView,
+  reimbursementPanelValue,
   reimbursementState,
   selectionPayer,
   selectionTotal,
+  withPaidBy,
+  withPaidFromView,
   type ExpenseReimbursementReceipt,
   type ReimbursementFilter,
 } from '@/lib/finance/expenseReimbursements'
@@ -145,67 +151,47 @@ type ExpenseViewRow = ExpenseListRow & {
   bills?: { id: string }[]
 }
 
+/** The room Paid to needs before the table is worth drawing. */
+export const EXPENSE_PAID_TO_MIN_PX = 200
+
 /**
  * THE TABLE'S COLUMNS, AND THE WIDTHS THE THRESHOLD IS COMPUTED FROM.
  *
- * Six compact columns carry a measured pixel width; Paid to and Remark carry
- * none and share whatever is left, so the columns sit where the header says
- * they are whatever the rows contain.
+ * EVERY COLUMN CARRIES A WIDTH, and each width is that column's FLOOR: its
+ * longest ordinary value plus padding. With no auto column, `table-layout: fixed`
+ * shares the spare width across all eight in proportion, so a wide window spaces
+ * them evenly instead of pouring it all into Paid to (owner, 2026-10-31, the same
+ * recipe as CONFIRMED_PAYMENT_COLUMNS).
  *
- * ACTIONS GREW FROM 72 TO 106 to hold Delete beside Edit, AND THE FIXED TOTAL
- * DID NOT MOVE: Date, Category, Mode and Recorded by each gave up a few pixels
- * they were not using (100→96, 124→112, 100→92, 110→100), so the six still sum
- * to 618 and EXPENSE_TABLE_MIN_CONTAINER_PX is still 930 — the same width at
- * which Confirmed Payments switches. Adding a second action did not cost the
- * payee or the remark a single pixel, and did not move the breakpoint a phone
- * or a tablet depends on.
- *
- * The two flexible columns have no CSS floor — with `table-layout: fixed` they
- * simply divide the remainder — so the floor is enforced by the THRESHOLD
- * instead: below it there is not enough remainder to read a payee, and the list
- * draws cards. The same arrangement as CONFIRMED_PAYMENT_COLUMNS and
- * ALLOCATED_AGAINST_MIN_PX in paymentSurfaces.ts.
+ * Paid from holds one word and one icon, so the reimbursement state needs no
+ * column of its own. Actions holds three small icon buttons.
  */
 export const EXPENSE_TABLE_COLUMNS = [
   { key: 'date',        label: 'Date',        align: 'left',  width: '96px' },
-  { key: 'amount',      label: 'Amount',      align: 'right', width: '112px' },
-  { key: 'paid_to',     label: 'Paid to',     align: 'left' },
-  { key: 'category',    label: 'Category',    align: 'left',  width: '140px' },
-  { key: 'mode',        label: 'Mode',        align: 'left',  width: '100px' },
-  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '120px' },
-  { key: 'actions',     label: 'Actions',     align: 'right', width: '164px' },
+  { key: 'amount',      label: 'Amount',      align: 'right', width: '96px' },
+  { key: 'paid_to',     label: 'Paid to',     align: 'left',  width: `${EXPENSE_PAID_TO_MIN_PX}px` },
+  { key: 'paid_from',   label: 'Paid from',   align: 'left',  width: '100px' },
+  { key: 'category',    label: 'Category',    align: 'left',  width: '156px' },
+  { key: 'mode',        label: 'Mode',        align: 'left',  width: '106px' },
+  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '100px' },
+  { key: 'actions',     label: 'Actions',     align: 'right', width: '98px' },
 ] as const
 
-/** The room Paid to needs before the table is worth drawing. */
-export const EXPENSE_FLEX_COLUMN_MIN_PX = 160
-
 /**
- * The narrowest CONTAINER the seven-column table fits in.
+ * The narrowest CONTAINER the eight-column table fits in: the floors plus the
+ * card's 2px of border.
  *
- * THE REMARK COLUMN IS GONE (owner, 2026-10-22): it crowded the other details.
- * The remark is in the expense's details window, which every reader opens with
- * View. The width it used went to Category, Recorded by and the Actions column,
- * which now holds View beside Edit and Delete. The sum below is the CURRENT
- * columns; the paragraph after it describes the first version.
+ * ARITHMETIC, NOT A GUESS. An early version used the width a 1024px window
+ * leaves, which is what the LIST has, not what the TABLE needs, and the payee
+ * truncated to a character or two.
  *
- * ARITHMETIC, NOT A GUESS, and the first version of this number was wrong.
- * It was 720 — the container a 1024px window leaves — which is what the LIST
- * has, not what the TABLE needs. At 720 the six fixed columns took 618px and
- * the two flexible ones were left about 50px between them: the payee truncated
- * to a character or two and the headers collided. Found at 768px in the
- * responsive pass and corrected here.
- *
- * The sum: 96 + 112 + 112 + 92 + 100 + 106 = 618 fixed, plus 160 for Paid to
- * and 150 for Remark = 928, rounded to 930 — deliberately the same figure as
- * CONFIRMED_TABLE_MIN_CONTAINER_PX, so both Finance lists switch at one width.
- *
- * What that means in practice, with the fixed 260px sidebar and page padding:
- * a 1280px window leaves ~976px and gets the table; a 1024px window leaves
- * ~720px and gets cards; a tablet and a phone get cards. Nothing is ever
- * clipped and nothing ever scrolls sideways.
+ * What that means in practice, with 48px of page padding: the table needs a
+ * window of about 1,070px beside the 64px rail, or about 1,265px with the 260px
+ * sidebar pinned. Narrower windows, tablets and phones get cards. Nothing is
+ * ever clipped and nothing ever scrolls sideways.
  */
 export const EXPENSE_TABLE_MIN_CONTAINER_PX =
-  96 + 112 + 140 + 100 + 120 + 164 + EXPENSE_FLEX_COLUMN_MIN_PX + 2
+  EXPENSE_TABLE_COLUMNS.reduce((sum, column) => sum + parseInt(column.width, 10), 0) + 2
 
 /**
  * Table or cards, from the width the list ACTUALLY HAS.
@@ -381,6 +367,7 @@ export function ExpensesView() {
     // either source.
     switch (filters.reimbursement) {
       case 'company': query = query.eq('paid_from', 'company'); break
+      case 'personal': query = query.eq('paid_from', 'personal'); break
       case 'pending': query = query.eq('paid_from', 'personal').is('reimbursement_id', null); break
       case 'reimbursed': query = query.not('reimbursement_id', 'is', null); break
       case 'unknown': query = query.is('paid_from', null); break
@@ -521,12 +508,16 @@ export function ExpensesView() {
   }, [categories])
 
   const narrowed = expenseFiltersActive(filters)
-  // The panel's own filters, so its button can say how many are on. The search
-  // box and the dates sit outside the panel and are visible on their own.
+  // The panel's own filters, so its button can say how many are on. Search shows
+  // its own word and the Paid from switch is on the line, but everything in the
+  // panel is out of sight, so all of it is counted, the dates included.
   const panelFilterCount = [
-    filters.categoryId, filters.paymentMode, filters.reimbursement, filters.paidBy,
+    filters.dateFrom || filters.dateTo, filters.categoryId, filters.paymentMode,
+    reimbursementPanelValue(filters.reimbursement), filters.paidBy,
     filters.missingBill ? 'on' : '',
   ].filter(Boolean).length
+  const source = paidFromView(filters.reimbursement)
+  const filtered = panelFilterCount > 0 || filters.search.trim() !== ''
   const shownTotal = expenseTotal(rows)
   const capped = total > rows.length
   const pendingCount = pendingDraftCount(drafts)
@@ -663,85 +654,285 @@ export function ExpensesView() {
         </div>
       )}
     >
-      {/* ── THE TWO TABS ──
+      {/* ── ONE LINE OF CONTROLS (owner, 2026-10-31) ──
+          The tabs, the Paid from switch, the total of what is on screen, what is
+          owed, and three quiet tools. Everything used less often is inside
+          Filters and takes no room until it is asked for.
+
           Needs Details carries a count because it IS a queue — something is
           waiting for this person, which is exactly the fact a badge should
           report. The Expenses tab carries none: a log is not a queue, and a
           number beside it would count rows rather than report work. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: '8px 12px', marginBottom: '10px', flexWrap: 'wrap',
-      }}>
-      <div
-        role="tablist"
-        aria-label="Expenses and captures"
-        data-testid="expense-tabs"
-        style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}
-      >
-        <TabButton
-          id="expenses" label="Expenses" active={tab === 'expenses'}
-          onClick={() => setTab('expenses')}
-        />
-        <TabButton
-          id="drafts" label={NEEDS_DETAILS_LABEL} active={tab === 'drafts'}
-          badge={pendingCount}
-          onClick={() => setTab('drafts')}
-        />
-      </div>
-
-      {tab === 'expenses' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* ── The total of what is on screen ──
-              Stated as what it is. When the cap has bitten it says which rows it
-              describes rather than presenting a partial figure as the whole.
-              DELETED EXPENSES ARE NOT IN IT: the query excluded them and
-              expenseTotal excludes them again. */}
-          <div
-            aria-live="polite"
-            style={{
-              display: 'flex', alignItems: 'baseline', gap: '8px', padding: '6px 12px', minHeight: '36px',
-              borderRadius: '8px', border: `1px solid ${colors.border}`, background: colors.raised,
-            }}
-          >
-            <span style={{ fontSize: '12px', color: colors.tertiary }}>
-              {listLoading
-                ? 'Loading…'
-                : listError
-                  ? 'Total unavailable'
-                  : capped
-                    ? `Total of the ${rows.length} most recent shown, of ${total}`
-                    : `Total${narrowed ? ' (filtered)' : ''} · ${total} ${total === 1 ? 'expense' : 'expenses'}`}
-            </span>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-              {listLoading || listError ? '—' : formatMoney(shownTotal)}
-            </span>
-          </div>
-
-          {/* ── WHAT IS OWED ── Independent of the filters. One tap narrows the
-              list to exactly these, which is where they are selected. */}
-          {pendingSummary && pendingSummary.count > 0 && filters.reimbursement !== 'pending' && (
-            <button
-              type="button"
-              data-testid="pending-reimbursement-summary"
-              onClick={() => setFilters(prev => ({ ...prev, reimbursement: 'pending' }))}
-              className="boe-btn"
-              style={{
-                display: 'flex', alignItems: 'baseline', gap: '8px', padding: '6px 12px', minHeight: '36px',
-                borderRadius: '8px', textAlign: 'left',
-                border: `1px solid ${STATE_TONE.pending.border}`, background: STATE_TONE.pending.bg,
-              }}
-            >
-              <span style={{ fontSize: '12px', color: STATE_TONE.pending.fg, fontWeight: 600 }}>
-                Pending reimbursement · {pendingSummary.count} {pendingSummary.count === 1 ? 'expense' : 'expenses'}
-                {pendingSummary.capped ? ' (total of the first 2000)' : ''}
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: STATE_TONE.pending.fg, fontVariantNumeric: 'tabular-nums' }}>
-                {formatMoney(pendingSummary.total)} <span aria-hidden="true">›</span>
-              </span>
-            </button>
-          )}
+      <div className="expense-controls">
+        <div
+          role="tablist"
+          aria-label="Expenses and captures"
+          data-testid="expense-tabs"
+          className="expense-tabs"
+        >
+          <TabButton
+            id="expenses" label="Expenses" active={tab === 'expenses'}
+            onClick={() => setTab('expenses')}
+          />
+          <TabButton
+            id="drafts" label={NEEDS_DETAILS_LABEL} active={tab === 'drafts'}
+            badge={pendingCount}
+            onClick={() => setTab('drafts')}
+          />
         </div>
-      )}
+
+        {tab === 'expenses' && (
+          <>
+            {/* ── PAID FROM ── A way of reading the same list, so it stays on the
+                line. Each word carries the colour it has in the table. */}
+            <div role="group" aria-label="Paid from" data-testid="expense-source-switch" className="expense-source-switch">
+              {PAID_FROM_VIEW_OPTIONS.map(option => (
+                <button
+                  key={option.label}
+                  type="button"
+                  aria-pressed={source === option.value}
+                  data-source={option.value || 'all'}
+                  className="expense-source-option"
+                  onClick={() => setFilters(prev => withPaidFromView(prev, option.value))}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="expense-figures">
+              {/* ── The total of what is on screen ──
+                  Stated as what it is. When the cap has bitten it says which rows
+                  it describes rather than presenting a partial figure as the
+                  whole. DELETED EXPENSES ARE NOT IN IT: the query excluded them
+                  and expenseTotal excludes them again. */}
+              <div aria-live="polite" className="expense-total">
+                <span>
+                  {listLoading
+                    ? 'Loading…'
+                    : listError
+                      ? 'Total unavailable'
+                      : capped
+                        ? `Total of the ${rows.length} most recent shown, of ${total}`
+                        : `${total} ${total === 1 ? 'expense' : 'expenses'}${filtered ? ' · filtered' : ''}`}
+                </span>
+                <strong>{listLoading || listError ? '—' : formatMoney(shownTotal)}</strong>
+              </div>
+
+              {/* ── WHAT IS OWED ── Independent of the filters. One tap narrows the
+                  list to exactly these, which is where they are selected. A second
+                  tap comes back. */}
+              {pendingSummary && pendingSummary.count > 0 && (
+                <>
+                  <span className="expense-divider" aria-hidden="true" />
+                  <button
+                    type="button"
+                    data-testid="pending-reimbursement-summary"
+                    aria-pressed={filters.reimbursement === 'pending'}
+                    title={`${pendingSummary.count} ${pendingSummary.count === 1 ? 'expense' : 'expenses'} not reimbursed yet`}
+                    onClick={() => setFilters(prev => ({ ...prev, reimbursement: prev.reimbursement === 'pending' ? '' : 'pending' }))}
+                    className="expense-owed"
+                  >
+                    <Clock size={15} strokeWidth={2} aria-hidden="true" />
+                    <span>
+                      {REIMBURSEMENT_ICON_LABEL.pending}
+                      {pendingSummary.capped ? ' (total of the first 2000)' : ''}
+                    </span>
+                    <strong>{formatMoney(pendingSummary.total)}</strong>
+                  </button>
+                </>
+              )}
+            </div>
+
+            <span className="expense-divider" aria-hidden="true" />
+
+            {/* ── SEARCH, FILTERS, EXCEL ── Search is a magnifier until it is used,
+                and stays open while it holds a word, so a narrowed list always
+                shows why. It is always in the tab order. */}
+            <div className="expense-tools" role="search" aria-label="Filter expenses">
+              <label className={`boe-list-search expense-search${searchTerm ? ' is-filled' : ''}`} title="Search">
+                <Search size={16} strokeWidth={1.8} aria-hidden="true" style={{ flexShrink: 0 }} />
+                <input
+                  type="search"
+                  aria-label="Search by paid-to name or remark"
+                  placeholder="Search paid to or remark"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                  <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+                )}
+              </label>
+
+              {/* ONE BUTTON for everything else. Absent filters cost no space. */}
+              <button
+                type="button"
+                className="expense-tool"
+                data-testid="expense-filters-button"
+                aria-label={panelFilterCount > 0 ? `Filters, ${panelFilterCount} on` : 'Filters'}
+                aria-haspopup="dialog"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen(open => !open)}
+              >
+                <SlidersHorizontal size={15} strokeWidth={1.8} aria-hidden="true" />
+                <span className="expense-tool-word">Filters</span>
+                {panelFilterCount > 0 && (
+                  <span style={{
+                    minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: '9px', fontSize: '11px', fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: colors.brand, color: '#FFFFFF',
+                  }}>{panelFilterCount}</span>
+                )}
+              </button>
+              {filtersOpen && (
+                <>
+                  <div aria-hidden="true" onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div
+                    role="dialog"
+                    aria-label="More filters"
+                    onKeyDown={e => { if (e.key === 'Escape') setFiltersOpen(false) }}
+                    style={{
+                      position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41,
+                      width: 'min(384px, calc(100vw - 32px))', padding: '12px',
+                      display: 'flex', flexDirection: 'column', gap: '8px',
+                      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(48,53,54,0.14)',
+                    }}
+                  >
+                    {/* ONE ROW for the date range: from – to. */}
+                    <div role="group" aria-label="Expense date" className="expense-filter-row">
+                      <span>Dates</span>
+                      <span className="expense-filter-dates">
+                        <input
+                          type="date" aria-label="Expenses on or after"
+                          value={filters.dateFrom}
+                          onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                        />
+                        <span aria-hidden="true">–</span>
+                        <input
+                          type="date" aria-label="Expenses on or before"
+                          value={filters.dateTo}
+                          onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                        />
+                      </span>
+                    </div>
+
+                    <label className="expense-filter-row">
+                      <span>Category</span>
+                      <select
+                        className="boe-input expense-filter-select"
+                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
+                        aria-label="Filter by category"
+                        value={filters.categoryId}
+                        onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
+                      >
+                        <option value="">All categories</option>
+                        {selectableCategories(categories, filters.categoryId || null).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="expense-filter-row">
+                      <span>Mode</span>
+                      <select
+                        className="boe-input expense-filter-select"
+                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
+                        aria-label="Filter by payment mode"
+                        value={filters.paymentMode}
+                        onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
+                      >
+                        <option value="">All modes</option>
+                        {EXPENSE_PAYMENT_MODES.map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="expense-filter-row">
+                      <span>Reimbursement</span>
+                      <select
+                        className="boe-input expense-filter-select"
+                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
+                        aria-label="Filter by reimbursement"
+                        data-testid="expense-reimbursement-filter"
+                        value={reimbursementPanelValue(filters.reimbursement)}
+                        onChange={e => setFilters(prev => ({ ...prev, reimbursement: e.target.value as ReimbursementFilter }))}
+                      >
+                        {REIMBURSEMENT_PANEL_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {/* Only for company-wide Finance sight: anybody else sees their own
+                        expenses only, and a list of every colleague would be clutter. */}
+                    {caps.canViewAllFinance && (
+                      <label className="expense-filter-row">
+                        <span>Who paid</span>
+                        <select
+                          className="boe-input expense-filter-select"
+                          style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
+                          aria-label="Filter by who paid"
+                          value={filters.paidBy ?? ''}
+                          onChange={e => setFilters(prev => withPaidBy(prev, e.target.value))}
+                        >
+                          <option value="">Anyone</option>
+                          {payers.map(p => (
+                            <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    <label className="expense-filter-check">
+                      <input
+                        type="checkbox"
+                        checked={!!filters.missingBill}
+                        onChange={e => setFilters(prev => ({ ...prev, missingBill: e.target.checked }))}
+                      />
+                      Missing bill
+                    </label>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                      <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost" disabled={!narrowed}
+                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
+                        Clear filters
+                      </button>
+                      <button type="button" onClick={() => setFiltersOpen(false)} className="boe-btn boe-btn-primary"
+                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Filters hide what they do, so the way out of them stays in sight. */}
+              {panelFilterCount > 0 && !filtersOpen && (
+                <button type="button" onClick={clearFilters} className="expense-tool">
+                  Clear
+                </button>
+              )}
+
+              {/* The list as filtered, in Excel. For people who reimburse only. */}
+              {mayRecord && (
+                <button
+                  type="button"
+                  className="expense-tool"
+                  data-testid="download-expense-list"
+                  aria-label={downloading === 'list' ? 'Preparing the Excel file' : 'Download Excel'}
+                  title={downloading === 'list' ? 'Preparing…' : 'Download Excel'}
+                  aria-busy={downloading === 'list'}
+                  disabled={downloading !== null || listLoading || !!listError || rows.length === 0}
+                  onClick={() => void downloadList()}
+                >
+                  <Download size={16} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {tab === 'drafts' ? (
@@ -793,190 +984,6 @@ export function ExpensesView() {
               </span>
             </div>
           )}
-
-          {/* ── Everything that narrows the list, on ONE line ──
-              Search, the date range as one box, a single Filters button that
-              opens the rest, and (for people who reimburse) Download Excel. The
-              tab row above holds the total and the pending figure, so the whole
-              top of the page is two lines. */}
-          <div className="boe-list-toolbar" role="search" aria-label="Filter expenses" style={{ marginBottom: '10px' }}>
-            <label className="boe-list-search">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                aria-label="Search by paid-to name or remark"
-                placeholder="Search paid to or remark"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
-              )}
-            </label>
-
-            {/* ONE BOX for the date range: from – to. */}
-            <div
-              role="group"
-              aria-label="Expense date"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '2px', height: '36px', padding: '0 6px',
-                background: '#FFFFFF', border: '1px solid var(--boe-border-input)', borderRadius: '8px',
-              }}
-            >
-              <input
-                type="date" aria-label="Expenses on or after"
-                value={filters.dateFrom}
-                onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                style={{ border: 'none', background: 'transparent', font: 'inherit', fontSize: '12.5px', color: colors.primary, width: '128px', padding: '0 2px' }}
-              />
-              <span aria-hidden="true" style={{ color: colors.muted }}>–</span>
-              <input
-                type="date" aria-label="Expenses on or before"
-                value={filters.dateTo}
-                onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-                style={{ border: 'none', background: 'transparent', font: 'inherit', fontSize: '12.5px', color: colors.primary, width: '128px', padding: '0 2px' }}
-              />
-            </div>
-
-            {/* ONE BUTTON for everything else. Absent filters cost no space. */}
-            <div style={{ position: 'relative' }}>
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost"
-                data-testid="expense-filters-button"
-                aria-haspopup="dialog"
-                aria-expanded={filtersOpen}
-                onClick={() => setFiltersOpen(open => !open)}
-                style={{ height: '36px', minHeight: '36px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                Filters
-                {panelFilterCount > 0 && (
-                  <span style={{
-                    minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: '9px', fontSize: '11px', fontWeight: 700,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: colors.brand, color: '#FFFFFF',
-                  }}>{panelFilterCount}</span>
-                )}
-              </button>
-              {filtersOpen && (
-                <>
-                  <div aria-hidden="true" onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                  <div
-                    role="dialog"
-                    aria-label="More filters"
-                    onKeyDown={e => { if (e.key === 'Escape') setFiltersOpen(false) }}
-                    style={{
-                      position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 41,
-                      width: 'min(280px, calc(100vw - 32px))', padding: '10px',
-                      display: 'flex', flexDirection: 'column', gap: '8px',
-                      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
-                      boxShadow: '0 8px 24px rgba(48,53,54,0.14)',
-                    }}
-                  >
-                    <select
-                      className="boe-input expense-filter-select"
-                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
-                      aria-label="Filter by category"
-                      value={filters.categoryId}
-                      onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
-                    >
-                      <option value="">All categories</option>
-                      {selectableCategories(categories, filters.categoryId || null).map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-
-                    <select
-                      className="boe-input expense-filter-select"
-                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
-                      aria-label="Filter by payment mode"
-                      value={filters.paymentMode}
-                      onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
-                    >
-                      <option value="">All modes</option>
-                      {EXPENSE_PAYMENT_MODES.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-
-                    <select
-                      className="boe-input expense-filter-select"
-                      style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
-                      aria-label="Filter by payment source and reimbursement"
-                      data-testid="expense-reimbursement-filter"
-                      value={filters.reimbursement ?? ''}
-                      onChange={e => setFilters(prev => ({ ...prev, reimbursement: e.target.value as ReimbursementFilter }))}
-                    >
-                      {REIMBURSEMENT_FILTER_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-
-                    {/* Only for company-wide Finance sight: anybody else sees their own
-                        expenses only, and a list of every colleague would be clutter. */}
-                    {caps.canViewAllFinance && (
-                      <select
-                        className="boe-input expense-filter-select"
-                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
-                        aria-label="Filter by who paid"
-                        value={filters.paidBy ?? ''}
-                        onChange={e => setFilters(prev => ({ ...prev, paidBy: e.target.value }))}
-                      >
-                        <option value="">Anyone paid</option>
-                        {payers.map(p => (
-                          <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    <label className="expense-filter-check">
-                      <input
-                        type="checkbox"
-                        checked={!!filters.missingBill}
-                        onChange={e => setFilters(prev => ({ ...prev, missingBill: e.target.checked }))}
-                      />
-                      Missing bill
-                    </label>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                      <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost" disabled={!narrowed}
-                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
-                        Clear filters
-                      </button>
-                      <button type="button" onClick={() => setFiltersOpen(false)} className="boe-btn boe-btn-primary"
-                        style={{ minHeight: '36px', fontSize: '12.5px' }}>
-                        Done
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* The list as filtered, in Excel. For people who reimburse only. */}
-            {mayRecord && (
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost"
-                data-testid="download-expense-list"
-                disabled={downloading !== null || listLoading || !!listError || rows.length === 0}
-                onClick={() => void downloadList()}
-                style={{ height: '36px', minHeight: '36px', fontSize: '12.5px' }}
-              >
-                {downloading === 'list' ? 'Preparing…' : 'Download Excel'}
-              </button>
-            )}
-
-            {/* Anything narrowing the list shows how to undo it without opening the panel. */}
-            {narrowed && !filtersOpen && (
-              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear"
-                style={{ height: '36px', minHeight: '36px' }}>
-                Clear
-              </button>
-            )}
-          </div>
 
           {capped && !listLoading && !listError && (
             <div role="status" style={{
@@ -1033,7 +1040,7 @@ export function ExpensesView() {
                     </button>
                   ) : (
                     <span style={{ fontSize: '12px', color: colors.muted, alignSelf: 'center' }}>
-                      Choose a payer in “Anyone paid” to select all
+                      Choose a person under Who paid in Filters to select all
                     </span>
                   )
                 ) : (
@@ -1255,15 +1262,7 @@ function TabButton({ id, label, active, badge, onClick }: {
       id={`expense-tab-${id}`}
       aria-selected={active}
       onClick={onClick}
-      className="boe-btn"
-      style={{
-        display: 'flex', alignItems: 'center', gap: '7px',
-        minHeight: '42px', padding: '8px 15px', fontSize: '13px',
-        fontWeight: active ? 700 : 600,
-        background: active ? colors.base : 'transparent',
-        color: active ? colors.primary : colors.tertiary,
-        border: `1px solid ${active ? colors.borderSoft : 'transparent'}`,
-      }}
+      className="expense-tab"
     >
       {label}
       {/* Hidden at a real zero: a badge showing 0 is a thing to read and
@@ -1312,35 +1311,55 @@ type ListProps = {
 }
 
 /**
- * THE COMPACT INDICATOR: one short word and a paperclip when a bill is attached.
- * Nothing at all for an older expense whose source was never recorded — the
- * details say so in full, and the list stays quiet.
+ * THE PAID FROM CELL (owner, 2026-10-31): one word in its own colour, and for a
+ * personal expense one icon. The two icons differ in shape as well as colour.
+ * Pointing at it names who paid and the state; `words` prints the state beside
+ * the icon where there is no pointer, on the phone cards.
+ *
+ * AN OLDER EXPENSE SHOWS A DASH. It never said where the money came from, so it
+ * is not drawn as Company or as Personal.
  */
-function ReimbursementChip({ row }: { row: ExpenseListRow & { bills?: { id: string }[] } }) {
+function PaidFromMark({ row, payer, words }: { row: ExpenseListRow; payer: string; words?: boolean }) {
   const state = reimbursementState(row)
-  const short = REIMBURSEMENT_STATE_SHORT[state]
-  const hasBill = (row.bills?.length ?? 0) > 0
-  if (!short && !hasBill) return null
-  const tone = STATE_TONE[state]
+  if (state === 'unknown') {
+    return (
+      <span
+        data-reimbursement-state={state}
+        role="img"
+        aria-label={REIMBURSEMENT_STATE_LABEL.unknown}
+        title={REIMBURSEMENT_STATE_LABEL.unknown}
+        style={{ color: colors.muted }}
+      >
+        —
+      </span>
+    )
+  }
+  if (state === 'company') {
+    return <span data-reimbursement-state={state} style={{ fontWeight: 600, color: colors.blue }}>Company</span>
+  }
+  const status = REIMBURSEMENT_ICON_LABEL[state]
+  const iconName = words
+    ? { 'aria-hidden': true }
+    : { role: 'img', 'aria-label': `${status}, paid by ${payer}` }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-      {short && (
-        <span
-          data-reimbursement-state={state}
-          title={REIMBURSEMENT_STATE_LABEL[state]}
-          style={{
-            fontSize: '12px', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-            color: tone.fg, background: tone.bg, border: `1px solid ${tone.border}`, lineHeight: 1.5,
-          }}
-        >
-          {short}
-        </span>
-      )}
-      {hasBill && (
-        <Paperclip size={12} strokeWidth={2} color={colors.muted} aria-label="Bill attached" role="img" />
-      )}
+    <span
+      data-reimbursement-state={state}
+      title={`Paid by ${payer} · ${status}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+    >
+      <span style={{ fontWeight: 600, color: colors.brandInk }}>Personal</span>
+      {state === 'reimbursed'
+        ? <CircleCheck size={15} strokeWidth={2} fill={colors.green} color={colors.base} style={{ flexShrink: 0 }} {...iconName} />
+        : <Clock size={15} strokeWidth={2} color={colors.amber} style={{ flexShrink: 0 }} {...iconName} />}
+      {words && <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>{status}</span>}
     </span>
   )
+}
+
+/** A paperclip when a bill is attached, and nothing when it is not. */
+function BillMark({ row }: { row: ExpenseListRow & { bills?: { id: string }[] } }) {
+  if ((row.bills?.length ?? 0) === 0) return null
+  return <Paperclip size={12} strokeWidth={2} color={colors.muted} aria-label="Bill attached" role="img" style={{ flexShrink: 0 }} />
 }
 
 export function ExpenseList(props: ListProps) {
@@ -1404,15 +1423,18 @@ function EmptyState({ title, body, action, tone }: {
 }
 
 const TH: React.CSSProperties = {
-  padding: '8px 12px', textAlign: 'left',
+  height: '30px', padding: '0 12px', textAlign: 'left',
   fontSize: '12px', fontWeight: 500, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
   borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
+// 36px ROWS. Text that needs a second line still gets one and the row grows.
 const TD: React.CSSProperties = {
-  padding: '9px 12px', borderBottom: `1px solid ${colors.border}`,
+  height: '36px', padding: '3px 12px', borderBottom: `1px solid ${colors.border}`,
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
+// The right-aligned Amount would otherwise touch the left-aligned payee.
+const AFTER_AMOUNT: React.CSSProperties = { paddingLeft: '20px' }
 // TEXT CELLS (payee, category, mode, recorder) WRAP ONTO A SECOND LINE rather
 // than being cut with an ellipsis: the owner could not read "Physical Mar…".
 // Date, amount and actions stay on one line; their columns are sized for them.
@@ -1446,7 +1468,7 @@ export function ExpenseTable({
 }: ListProps) {
   return (
     // FIXED LAYOUT, so the columns sit where the header says they are whatever
-    // the rows contain, and a long payee truncates instead of widening the table
+    // the rows contain, and a long payee wraps instead of widening the table
     // past its container.
     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
       <thead>
@@ -1458,7 +1480,8 @@ export function ExpenseTable({
               style={{
                 ...TH,
                 textAlign: column.align,
-                ...('width' in column ? { width: column.width } : {}),
+                ...(column.key === 'paid_to' ? AFTER_AMOUNT : {}),
+                width: column.width,
               }}
             >
               {column.label}
@@ -1468,9 +1491,9 @@ export function ExpenseTable({
       </thead>
       <tbody>
         {rows.map(row => (
-          <tr key={row.id}>
+          <tr key={row.id} className="expense-row">
             {selectable && (
-              <td style={{ ...TD, textAlign: 'center', padding: '9px 8px' }}>
+              <td style={{ ...TD, textAlign: 'center', padding: '3px 8px' }}>
                 <SelectBox row={row} selected={!!selected?.has(row.id)} onToggle={onToggleSelected} maySelect={maySelect} />
               </td>
             )}
@@ -1482,7 +1505,7 @@ export function ExpenseTable({
               {formatMoney(row.amount)}
             </td>
             <td
-              style={{ ...TD_TEXT, fontSize: '13px', color: colors.primary }}
+              style={{ ...TD_TEXT, ...AFTER_AMOUNT, fontSize: '13px', color: colors.primary }}
               title={row.paid_from === 'personal' ? `${row.paid_to} · paid by ${(payerName ?? personName)(row.paid_by ?? '')}` : row.paid_to}
             >
               <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 6px', minWidth: 0 }}>
@@ -1498,21 +1521,27 @@ export function ExpenseTable({
                 ) : (
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.paid_to}</span>
                 )}
-                <ReimbursementChip row={row} />
+                <BillMark row={row} />
               </span>
             </td>
-            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.secondary }} title={categoryName(row.category_id)}>
+            <td style={{ ...TD, fontSize: '12.5px' }}>
+              <PaidFromMark row={row} payer={(payerName ?? personName)(row.paid_by ?? '')} />
+            </td>
+            <td style={{ ...TD_TEXT, fontSize: '12.5px', color: colors.secondary }} title={categoryName(row.category_id)}>
               {categoryName(row.category_id)}
             </td>
-            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.secondary }}>
+            <td style={{ ...TD_TEXT, fontSize: '12.5px', color: colors.secondary }}>
               {expensePaymentModeLabel(row.payment_mode)}
             </td>
-            <td style={{ ...TD_TEXT, fontSize: '12px', color: colors.tertiary }} title={personName(row.created_by)}>
+            <td style={{ ...TD_TEXT, fontSize: '12.5px', color: colors.tertiary }} title={personName(row.created_by)}>
               {personName(row.created_by)}
             </td>
-            <td style={{ ...TD, textAlign: 'right' }}>
+            <td style={{ ...TD, textAlign: 'right', padding: '0 4px 0 0' }}>
               {onOpen || mayEdit(row) || mayDelete(row) ? (
-                <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '2px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  {/* THREE ICONS, AND EACH IS NAMED: the words are in `title` for
+                      a pointer and in aria-label for a screen reader. The tall
+                      word buttons were what held every row at 57px. */}
                   {/* VIEW IS FOR EVERYBODY WHO CAN SEE THE ROW: it opens the
                       details window (remark, bills, reimbursement) and changes
                       nothing. */}
@@ -1520,40 +1549,38 @@ export function ExpenseTable({
                     <button
                       type="button"
                       onClick={() => onOpen(row)}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '4px 9px', fontSize: '12px' }}
+                      className="expense-row-icon"
                       aria-label={`View the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                      title="View"
                       data-testid="expense-view"
                     >
-                      View
+                      <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
                     </button>
                   )}
                   {mayEdit(row) && (
                     <button
+                      type="button"
                       onClick={() => onEdit(row)}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '4px 9px', fontSize: '12px' }}
+                      className="expense-row-icon"
                       aria-label={`Correct the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                      title="Edit"
                     >
-                      Edit
+                      <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
                     </button>
                   )}
-                  {/* ICON-ONLY, AND NAMED FOR EVERYBODY WHO CANNOT SEE IT. The
-                      column has room for one word and one icon; the word goes
-                      to the action somebody performs often. */}
                   {mayDelete(row) && (
                     <button
+                      type="button"
                       onClick={() => onDelete(row)}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '4px 7px', fontSize: '12px', color: '#B42332', lineHeight: 1 }}
+                      className="expense-row-icon expense-row-icon-danger"
                       aria-label={`Delete the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
                       title="Delete"
                     >
-                      <Trash2 size={14} strokeWidth={1.9} />
+                      <Trash2 size={15} strokeWidth={1.9} aria-hidden="true" />
                     </button>
                   )}
                 </div>
-              ) : <span style={{ fontSize: '12px', color: colors.muted }}>—</span>}
+              ) : <span style={{ fontSize: '12px', color: colors.muted, paddingRight: '8px' }}>—</span>}
             </td>
           </tr>
         ))}
@@ -1621,10 +1648,13 @@ export function ExpenseCards({
           </div>
 
           {(reimbursementState(row) !== 'unknown' || ((row as ExpenseViewRow).bills?.length ?? 0) > 0) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: colors.muted, minWidth: 0 }}>
-              <ReimbursementChip row={row} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, minWidth: 0 }}>
+              {reimbursementState(row) !== 'unknown' && (
+                <PaidFromMark row={row} payer={(payerName ?? personName)(row.paid_by ?? '')} words />
+              )}
+              <BillMark row={row} />
               {row.paid_from === 'personal' && (
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   paid by {(payerName ?? personName)(row.paid_by ?? '')}
                 </span>
               )}

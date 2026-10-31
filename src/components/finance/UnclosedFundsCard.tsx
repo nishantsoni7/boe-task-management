@@ -33,7 +33,7 @@ export function UnclosedFundsCard() {
   // One quiet line, not a block: the page the link opens has the detail.
   const card: React.CSSProperties = {
     border: '1px solid #E4DED7', borderLeft: '3px solid #D2691E', background: '#FFFFFF', borderRadius: 8,
-    padding: '8px 12px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#4C5352',
+    minHeight: 34, padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#4C5352',
   }
 
   if (data.scope === 'all') {

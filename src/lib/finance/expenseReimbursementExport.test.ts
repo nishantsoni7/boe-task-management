@@ -226,30 +226,54 @@ describe('the screens', () => {
   })
 })
 
-describe('the Expenses page top: two lines, and View for everybody', () => {
+describe('the Expenses page top: one line, and View for everybody', () => {
   const EXPENSES = read('src/app/finance/expenses/ExpensesView.tsx')
 
-  test('the secondary filters live behind ONE Filters button, not on the page', () => {
+  test('everything rarely used lives behind ONE Filters button, not on the page', () => {
     const toolbar = EXPENSES.slice(EXPENSES.indexOf('aria-label="Filter expenses"'))
     const button = toolbar.indexOf('data-testid="expense-filters-button"')
     assert.ok(button > 0)
-    for (const label of ['aria-label="Filter by category"', 'aria-label="Filter by payment mode"', 'aria-label="Filter by who paid"']) {
+    for (const label of [
+      'aria-label="Expenses on or after"', 'aria-label="Expenses on or before"',
+      'aria-label="Filter by category"', 'aria-label="Filter by payment mode"',
+      'aria-label="Filter by reimbursement"', 'aria-label="Filter by who paid"',
+    ]) {
       assert.ok(toolbar.indexOf(label) > button, label + ' is inside the panel, after the button')
     }
     assert.ok(EXPENSES.includes('role="dialog"') && EXPENSES.includes("e.key === 'Escape'"))
   })
 
-  test('the date range is one box with two inputs', () => {
+  test('the date range is one row with two inputs', () => {
     assert.equal((EXPENSES.match(/aria-label="Expenses on or after"/g) ?? []).length, 1)
     assert.ok(/role="group"\s*aria-label="Expense date"/.test(EXPENSES))
   })
 
-  test('the total and the pending figure sit on the tab row, not on lines of their own', () => {
+  test('A DATE RANGE IN THE PANEL IS STILL COUNTED, so nothing narrows the list invisibly', () => {
+    assert.ok(/const panelFilterCount = \[\s*filters\.dateFrom \|\| filters\.dateTo,/.test(EXPENSES))
+    assert.ok(/\{panelFilterCount > 0 && !filtersOpen && \(/.test(EXPENSES), 'the way out stays in sight')
+  })
+
+  test('tabs, switch, total and what is owed share the line, ahead of the tools', () => {
+    const line = EXPENSES.indexOf('className="expense-controls"')
     const tabs = EXPENSES.indexOf('data-testid="expense-tabs"')
-    const total = EXPENSES.indexOf("Total${narrowed ? ' (filtered)'")
+    const source = EXPENSES.indexOf('data-testid="expense-source-switch"')
+    const total = EXPENSES.indexOf("`${total} ${total === 1 ? 'expense' : 'expenses'}")
     const pending = EXPENSES.indexOf('data-testid="pending-reimbursement-summary"')
     const toolbar = EXPENSES.indexOf('aria-label="Filter expenses"')
-    assert.ok(tabs < total && total < toolbar && pending < toolbar)
+    assert.ok(line > 0 && line < tabs && tabs < source && source < total && total < pending && pending < toolbar)
+  })
+
+  test('the switch reads and writes the one filter, and says which position is on', () => {
+    assert.ok(EXPENSES.includes('aria-pressed={source === option.value}'))
+    assert.ok(EXPENSES.includes('const source = paidFromView(filters.reimbursement)'))
+    assert.ok(EXPENSES.includes('setFilters(prev => withPaidFromView(prev, option.value))'))
+  })
+
+  test('search is a magnifier until used, and stays open while it holds a word', () => {
+    const css = read('src/app/globals.css')
+    assert.ok(EXPENSES.includes("className={`boe-list-search expense-search${searchTerm ? ' is-filled' : ''}`}"))
+    assert.ok(/\.boe-list-search\.expense-search \{[^}]*width: 36px;/.test(css))
+    assert.ok(/\.boe-list-search\.expense-search:focus-within,\n\.boe-list-search\.expense-search\.is-filled \{ width: 250px;/.test(css))
   })
 
   test('there is no Remark column, and every row offers View', () => {

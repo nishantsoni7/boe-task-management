@@ -28,9 +28,17 @@ import {
   selectionTotal,
   validateReimbursementForm,
   EXPENSE_BILL_MAX_BYTES,
+  PAID_FROM_VIEW_OPTIONS,
   REIMBURSEMENT_FILTER_OPTIONS,
+  REIMBURSEMENT_ICON_LABEL,
+  REIMBURSEMENT_PANEL_OPTIONS,
+  paidFromView,
+  reimbursementPanelValue,
+  withPaidBy,
+  withPaidFromView,
 } from './expenseReimbursements'
 import {
+  type ExpenseFilters,
   EMPTY_EXPENSE_FILTERS,
   emptyExpenseFormWithSource,
   expenseFiltersActive,
@@ -76,8 +84,70 @@ describe('the four states of an expense', () => {
     assert.equal(isReimbursable(row()), true)
   })
 
-  test('the filter offers all four, plus "all"', () => {
-    assert.deepEqual(REIMBURSEMENT_FILTER_OPTIONS.map(o => o.value), ['', 'company', 'pending', 'reimbursed', 'unknown'])
+  test('every value has a name, for the Excel file', () => {
+    assert.deepEqual(REIMBURSEMENT_FILTER_OPTIONS.map(o => o.value), ['', 'company', 'personal', 'pending', 'reimbursed', 'unknown'])
+  })
+})
+
+describe('one filter, two controls: the Paid from switch and the Filters panel', () => {
+  const filters = (over: Partial<ExpenseFilters> = {}): ExpenseFilters => ({ ...EMPTY_EXPENSE_FILTERS, ...over })
+
+  test('the switch offers All, Company and Personal', () => {
+    assert.deepEqual(PAID_FROM_VIEW_OPTIONS.map(o => o.label), ['All', 'Company', 'Personal'])
+    assert.deepEqual(PAID_FROM_VIEW_OPTIONS.map(o => o.value), ['', 'company', 'personal'])
+  })
+
+  test('the states inside Personal keep Personal lit', () => {
+    assert.equal(paidFromView(''), '')
+    assert.equal(paidFromView(undefined), '')
+    assert.equal(paidFromView('company'), 'company')
+    assert.equal(paidFromView('personal'), 'personal')
+    assert.equal(paidFromView('pending'), 'personal')
+    assert.equal(paidFromView('reimbursed'), 'personal')
+  })
+
+  test('AN OLDER EXPENSE IS NEITHER: the switch lights nothing for "not recorded"', () => {
+    assert.equal(paidFromView('unknown'), null)
+  })
+
+  test('the panel only ever shows its own values, so the switch cannot blank it', () => {
+    assert.deepEqual(REIMBURSEMENT_PANEL_OPTIONS.map(o => o.value), ['', 'pending', 'reimbursed', 'unknown'])
+    assert.deepEqual(REIMBURSEMENT_PANEL_OPTIONS.map(o => o.label), ['Any', 'Not reimbursed', 'Reimbursed', 'Source not recorded'])
+    assert.equal(reimbursementPanelValue('company'), '')
+    assert.equal(reimbursementPanelValue('personal'), '')
+    assert.equal(reimbursementPanelValue(undefined), '')
+    assert.equal(reimbursementPanelValue('pending'), 'pending')
+    assert.equal(reimbursementPanelValue('reimbursed'), 'reimbursed')
+    assert.equal(reimbursementPanelValue('unknown'), 'unknown')
+  })
+
+  test('Company clears a chosen payer: a company expense has none, so it would show nothing', () => {
+    const next = withPaidFromView(filters({ paidBy: 'u1', reimbursement: 'personal' }), 'company')
+    assert.equal(next.reimbursement, 'company')
+    assert.equal(next.paidBy, '')
+  })
+
+  test('Personal and All keep the chosen payer, and nothing else moves', () => {
+    const start = filters({ paidBy: 'u1', categoryId: 'fuel', dateFrom: '2026-10-01' })
+    assert.deepEqual(withPaidFromView(start, 'personal'), { ...start, reimbursement: 'personal' })
+    assert.deepEqual(withPaidFromView(start, ''), { ...start, reimbursement: '' })
+  })
+
+  test('choosing a payer is choosing Personal', () => {
+    assert.equal(withPaidBy(filters(), 'u1').reimbursement, 'personal')
+    assert.equal(withPaidBy(filters({ reimbursement: 'company' }), 'u1').reimbursement, 'personal')
+  })
+
+  test('a narrower state survives choosing a payer, and clearing one changes nothing else', () => {
+    assert.equal(withPaidBy(filters({ reimbursement: 'pending' }), 'u1').reimbursement, 'pending')
+    assert.equal(withPaidBy(filters({ reimbursement: 'unknown' }), 'u1').reimbursement, 'unknown')
+    const cleared = withPaidBy(filters({ reimbursement: 'personal', paidBy: 'u1' }), '')
+    assert.equal(cleared.paidBy, '')
+    assert.equal(cleared.reimbursement, 'personal')
+  })
+
+  test('the two icons have one name each, used by the list and the panel alike', () => {
+    assert.deepEqual(REIMBURSEMENT_ICON_LABEL, { pending: 'Not reimbursed', reimbursed: 'Reimbursed' })
   })
 })
 
@@ -264,6 +334,8 @@ describe('the list and the reimbursement surfaces', () => {
   test('pending is personal AND unlinked; company-paid can never be pending', () => {
     assert.ok(VIEW.includes(".eq('paid_from', 'personal').is('reimbursement_id', null)"))
     assert.ok(VIEW.includes("case 'unknown': query = query.is('paid_from', null)"))
+    assert.ok(VIEW.includes("case 'personal': query = query.eq('paid_from', 'personal'); break"),
+      'Personal is every personal expense, reimbursed or not')
   })
 
   test('deleted expenses still stay out of every figure, including the pending total', () => {
