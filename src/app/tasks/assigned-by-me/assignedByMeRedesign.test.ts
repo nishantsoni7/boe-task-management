@@ -99,6 +99,22 @@ describe('leaving Task Detail', () => {
 })
 
 describe('names', () => {
+  for (const rel of [
+    'src/app/tasks/assigned-by-me/cancelled/page.tsx',
+    'src/app/tasks/cancelled/page.tsx',
+    'src/app/tasks/all/page.tsx',
+  ]) {
+    test(`${rel} names a deactivated person through the shared lookup`, () => {
+      const code = codeOf(read(rel))
+      assert.ok(code.includes('useAllUserNames()'))
+      assert.equal(code.includes("from('users').select('id, full_name')"), false)
+    })
+  }
+
+  test('the Completed pages share that lookup', () => {
+    assert.ok(read('src/hooks/queries/useCompletedTasks.ts').includes('useQuery<Record<string, string>>(allUserNamesQueryOptions())'))
+  })
+
   test('Task Detail can name a deactivated assignee and actor', () => {
     assert.ok(DETAIL.includes("userNames[task.assigned_to ?? ''] ?? 'Unknown'"))
     assert.ok(DETAIL.includes("actorNameOf(entry) ?? 'Someone'"))

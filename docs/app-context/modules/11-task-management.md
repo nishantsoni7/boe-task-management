@@ -191,7 +191,7 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 13. Chrome/browser verification trap: a hidden Chrome tab reports `visibilityState hidden`, pausing rAF, so the drawer stays off-screen and clicks hit the backdrop (memory).
 14. Notification enrichment reads `task_attachments` with only `activity_log_id, file_name, file_type` (never `url`/`storage_path`) - keep it that way (`pageEnrichment.ts`).
 
-15. `users` RLS is `is_active = true`, so any browser read or embedded join returns nothing for a deactivated person. `is_active` is NOT a sign-in gate, so such a person can still work. The Completed and Cancelled archives and `/tasks/all` still read `users` directly and still show "member" for them.
+15. `users` RLS is `is_active = true`, so any browser read or embedded join returns nothing for a deactivated person. `is_active` is NOT a sign-in gate, so such a person can still work. Every task screen names people through `allUserNamesQueryOptions` for this reason; do not add another direct read.
 16. Task Detail's `supabase.rpc('transition_task_review'` and `handleCancelTask` are pinned in place by `taskDetailLoad.test.ts`, so the list has its own calls in `taskListActions.ts`, built from the same rules.
 
 ## 10. Tests that guard it

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `90a5b0b6` — Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
-- Commits on this branch: 1099
+- Commit: `c2801b5b` — Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row
+- Commits on this branch: 1100
 - Pages (`page.tsx`): 159   API routes (`route.ts`): 179
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `c2801b5b` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row
 - `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
 - `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
 - `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
@@ -38,7 +39,6 @@
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
 - `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
-- `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
 
 ## Pages by top-level area
 

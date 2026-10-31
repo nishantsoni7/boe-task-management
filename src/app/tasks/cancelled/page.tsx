@@ -1,5 +1,6 @@
 'use client'
 
+import { useAllUserNames } from '@/hooks/queries/useMyTasks'
 import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -64,7 +65,7 @@ function MyCancelledTasksContent() {
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
   const [loadError,    setLoadError]    = useState<string | null>(null)
   const [userId,       setUserId]       = useState<string>('')
-  const [userMap,      setUserMap]      = useState<Record<string, string>>({})
+  const { data: userMap = {} } = useAllUserNames()
   const [loading,      setLoading]      = useState(true)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
@@ -113,7 +114,7 @@ function MyCancelledTasksContent() {
       // LIMIT/OFFSET, which promises nothing about row order unless the ordering
       // is unique, so two rows sharing a timestamp could swap between pages —
       // showing one twice and losing the other.
-      const [{ data: profileData }, taskResult, { data: userData }] = await Promise.all([
+      const [{ data: profileData }, taskResult] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
         fetchAllRows<Task>((from, to) => supabase.from('tasks').select(TASK_COLUMNS)
           .eq('status', 'cancelled')
@@ -121,18 +122,12 @@ function MyCancelledTasksContent() {
           .order('cancelled_at', { ascending: false, nullsFirst: false })
           .order('id', { ascending: false })
           .range(from, to)),
-        supabase.from('users').select('id, full_name'),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
       // A FAILED OR TRUNCATED READ IS NOT AN EMPTY ARCHIVE.
       setLoadError(taskResult.ok && !taskResult.truncated ? null : ARCHIVE_LOAD_ERROR)
       setAllTasks(taskResult.ok ? (taskResult.rows as unknown as Task[]) : [])
-      if (userData) {
-        const map: Record<string, string> = {}
-        for (const u of userData) map[u.id] = u.full_name
-        setUserMap(map)
-      }
       setLoading(false)
     }
     init()
