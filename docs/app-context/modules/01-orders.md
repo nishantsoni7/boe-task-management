@@ -530,3 +530,6 @@ Read first, in this order:
 
 ## Client PO and Design Files on a submitted PI (2026-10-30, no SQL)
 - Every viewer of a PI with management can open its files: `PiSentColumns` draws each name as the `.pi-attach-name` button and `openPiDocument` asks for a 60-second signed link. Nothing is offered to add or remove. Storage already allowed this; only the screen did not.
+
+## Leftover class names removed (2026-10-31, no SQL)
+- `order-docs-rows`, `order-sum-rows--dates`, `pi-attach-add` and `pi-order-details` lost their rules in deliberate redesigns and had no effect, so they are gone from the screens. Render tests that used `order-docs-rows` as a landmark now use `order-docs-main`. `.od-pair` was different: #261 took its main rule while the Orders dashboard loading placeholder still used it, so it is restored and pinned in `orderDashboardSummary.test.ts`. See `src/app/stylesDefined.test.ts`.

@@ -461,6 +461,9 @@ describe('the Orders loading state matches the new layout — and Finance keeps 
 
   test('the Orders dashboard has its own shape, with the two side-by-side lists', () => {
     assert.match(html('orders-dashboard'), /od-pair/)
+    // #261 took this rule and left only the phone override, which keeps the name
+    // defined, so stylesDefined.test.ts cannot see it go.
+    assert.match(read('src/app/globals.css'), /^\.od-pair \{ display: grid;/m)
   })
   test('the existing skeletons are byte-for-byte what they were: no od- class, same grid', () => {
     assert.doesNotMatch(html('dashboard'), /od-pair/)

@@ -94,7 +94,7 @@ export function RecentList({ entries }: { entries: readonly OutboxEntry[] }) {
   const list = byEntryOrder(entries).reverse().slice(0, 6)
   if (list.length === 0) return null
   return (
-    <section className={`${a.recent} ${a.recentCard}`} aria-label="Added this session">
+    <section className={a.recentCard} aria-label="Added this session">
       <div className={a.recentTitle}>Added this session <span>{entries.length}</span></div>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {list.map(e => (

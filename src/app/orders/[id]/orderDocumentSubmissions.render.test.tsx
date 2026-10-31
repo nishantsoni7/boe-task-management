@@ -77,11 +77,11 @@ const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence
     />,
   )
 /** Only the rows of CURRENT documents, below the changes panel. */
-const rowsOf = (html: string) => text(html.slice(html.indexOf('class="order-docs-rows"')))
+const rowsOf = (html: string) => text(html.slice(html.indexOf('class="order-docs-main"')))
 /** Only the changes panel. */
 const changesOf = (html: string) => {
   const at = html.indexOf('class="order-doc-changes')
-  return at < 0 ? '' : text(html.slice(at, html.indexOf('class="order-docs-rows"')))
+  return at < 0 ? '' : text(html.slice(at, html.indexOf('class="order-docs-main"')))
 }
 
 describe('the Documents card', () => {
@@ -118,7 +118,7 @@ describe('the Documents card', () => {
     // A property row under the downloads (owner, 2026-10-26): label, then the version and the link.
     assert.ok(main.includes('PI history') && main.includes('V1 · View history'))
     assert.equal(/Edit PI/.test(text(html)), false, 'no Edit PI anywhere in the Documents card')
-    const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
+    const head = text(html.slice(0, html.indexOf('class="order-docs-main"')))
     assert.ok(!head.includes('Document history') && !head.includes('PI history'),
       'the card header is the title alone: no Document history link (owner, 2026-10-27)')
 

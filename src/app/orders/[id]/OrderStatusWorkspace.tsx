@@ -551,7 +551,7 @@ export function OrderDocumentsPanel({
           The Main PI across the full width — what it is on the left, how to
           open it on the right, its product pictures underneath. Then Design
           Files beside Client PO once the card is wide enough; stacked below. */}
-      <div className="order-docs-rows">
+      <div>
         <div className="order-docs-main">
         {mainPi.kind !== 'ready' ? (
           <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink}>
