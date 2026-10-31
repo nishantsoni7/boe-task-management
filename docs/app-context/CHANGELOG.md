@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-31 — Founders' payouts redesigned, and its missing styles restored (PR open) · no SQL · not yet merged or backed up
+## 2026-10-31 — Founders' payouts redesigned, and its missing styles restored (#547, d454773c) · no SQL · deployed (deployment 7459922900), live bundle checked · backup bundle 20261031T143402Z, database 20261031T143418Z (203 tables, 100,935 rows), verified
 - **Owner request.** A screenshot of `/finance/founders` with the words "really not designed": redesign every page from its fields, with the UI/UX Pro Max skill. Preview agreed first ("Yes, build it"). Real names, so the preview stayed on this computer.
 - **What was really wrong.** The page was designed, and lost all its styling on 2026-10-30: `.fp-*` sat in `globals.css` between `.ff-*` and `.pi-cost-*`, which #522 meant to remove, and all 118 rules went with them. Every class removed by #522 was checked against the code: no other page is affected.
 - **Overview.** Four figures, or a prompt to add the other partner's accounts while there is one side. One table of every account grouped by side, a column for each kind paid that year, subtotals, a total, the tax-free meter in words. Month by month is a table of exact amounts with a one-hue tint: payouts are irregular, and bars of a sparse year are mostly empty.
