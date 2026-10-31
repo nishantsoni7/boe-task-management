@@ -378,19 +378,19 @@ export function OrderPiSummaryCard({
 
 /**
  * WHAT THE FACTORY MUST DO DIFFERENTLY on this line, in dark readable text on
- * a pale ground with a red left rule and a small CUSTOM mark.
+ * a pale ground with a red left rule.
  *
  * The PI screens print the instruction itself in dark red, which is right
  * where a reviewer is hunting for the lines that carry one. On the Order the
  * table is read all day beside the product, the quantity and the dimensions,
- * and a paragraph of red outshouts all three; red here is kept for the mark
- * and the rule, so the line is still found at a glance and the words are
- * still the words. Pictures keep the shared thumbnail's red accent, unchanged.
+ * and a paragraph of red outshouts all three; red here is kept for the rule,
+ * so the line is still found at a glance and the words are still the words.
+ * The column's own head says what the cell is, so the cell repeats no word of
+ * its own (owner, 2026-10-31). Pictures keep the shared thumbnail's red accent,
+ * unchanged.
  *
  * Page-owned because piPreview.tsx is shared with both PI screens and pinned.
  */
-export const CUSTOMIZATION_MARK = 'Custom'
-
 export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
   text: string | null
   thumbnails: readonly { key: string; props: PiThumbnailProps }[]
@@ -415,10 +415,7 @@ export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
 
   return (
     <div className="order-custom" style={{ minWidth: 0 }}>
-      <div className="order-custom-head">
-        {label && <span className="order-custom-label">{label}</span>}
-        <span className="order-custom-mark">{CUSTOMIZATION_MARK}</span>
-      </div>
+      {label && <div className="order-custom-label order-custom-head">{label}</div>}
       {hasText && (
         <MultilineText style={{ fontSize: '12px', margin: 0, color: colors.primary, fontWeight: 500, lineHeight: 1.45 }}>
           {text}

@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-31 — Confirmed Order: the Custom word removed from the Customization column (branch `fix/order-remove-custom-word`, not merged) · no SQL
+- **Owner request.** A screenshot of Order 542's product table: the word is not required on every line.
+- **Changed.** The small CUSTOM mark is gone from `OrderCustomizationCell`, on wide screens and phone cards. The pale red ground and red rule stay. `.order-custom-mark` went with it, and `.order-custom-head` keeps only the gap under a phone card's label.
+
 ## 2026-10-31 — A class a screen asks for must exist: repo-wide guard, three small styling faults fixed (PR open) · no SQL
 - **Why.** #522 deleted 64 classes still in use and nothing failed, because a class name is only a string. An audit of every class and rule against all 205 commits that touched CSS found no other page hurt that way: #522 is the only accident of its kind.
 - **Guard.** `src/app/stylesDefined.test.ts` reads every screen with the TypeScript parser and fails when a className names a class with no rule in `globals.css` or an inline `<style>`, or a `styles.x` its module does not define. `NO_RULE_NEEDED` lists the 25 deliberate exceptions, each with its reason, and the test fails if one goes stale. Replayed on the code before #547 it flags all 64 Founders' classes plus `is-ok` and `is-off`. About 10 seconds on the owner's PC. It cannot see names built at run time, or a rule deleted while its name survives in another rule.

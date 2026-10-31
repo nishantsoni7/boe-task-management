@@ -4444,34 +4444,20 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 
 /* ── The customization cell ──
    Dark words on a pale ground with a red rule: found at a glance, read like
-   text. The strong red is kept for the CUSTOM mark alone. */
+   text. */
 .order-custom {
   padding: 5px 8px 6px 9px;
   border-left: 2px solid rgba(180,35,50,0.55);
   background: rgba(180,35,50,0.05);
   border-radius: 0 6px 6px 0;
 }
-.order-custom-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 3px;
-}
+.order-custom-head { margin-bottom: 3px; }
 .order-custom-label {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: #686D6C;
-}
-.order-custom-mark {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #B42332;
-  line-height: 1;
 }
 
 /* ── The payment section ──
