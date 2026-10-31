@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b41fa3b9` — Docs: inventory after merging main
-- Commits on this branch: 1118
+- Commit: `445a066f` — Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
+- Commits on this branch: 1120
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `445a066f` 2026-10-31 Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
+- `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
 - `b41fa3b9` 2026-10-31 Docs: inventory after merging main
 - `7109a477` 2026-10-31 Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
 - `fb064232` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed
@@ -37,8 +39,6 @@
 - `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
 - `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
 - `03346ec0` 2026-10-30 Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (#532)
-- `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
-- `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
 
 ## Pages by top-level area
 
