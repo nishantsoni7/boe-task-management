@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `2ac32dbd` — Docs: class guard merged as PR #553 (2f9d5795)
-- Commits on this branch: 1119
+- Commit: `b0980fa0` — Merge remote-tracking branch 'origin/main' into docs/styles-guard-merged
+- Commits on this branch: 1122
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `b0980fa0` 2026-10-31 Merge remote-tracking branch 'origin/main' into docs/styles-guard-merged
+- `534c9007` 2026-10-31 Confirmed Order: remove the Custom word from the Customization column (#554)
+- `9add9946` 2026-10-31 Docs: Confirmed Orders table merged as PR #552 (ebfe69a5) (#556)
 - `2ac32dbd` 2026-10-31 Docs: class guard merged as PR #553 (2f9d5795)
 - `ebfe69a5` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone (#552)
 - `2f9d5795` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed (#553)
@@ -36,9 +39,6 @@
 - `a4cde4af` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row (#535)
 - `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
 - `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
-- `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
-- `03346ec0` 2026-10-30 Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (#532)
-- `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 
 ## Pages by top-level area
 
