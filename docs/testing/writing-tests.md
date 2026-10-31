@@ -38,6 +38,13 @@ with those commands, not bare `tsx --test` (`screenSplits.test.ts` says so if yo
 reads a screen through `readScreenSource(path)` gets the same expansion without the preload. After a split,
 run `npx eslint <files>` and drop the imports the screen no longer needs.
 
+## Class names
+
+A class name is only a string, so types and render tests cannot see a deleted rule. `src/app/stylesDefined.test.ts`
+fails when a screen names a class with no rule. If yours fails, a rule went missing or a name is mistyped. A class that
+truly needs no rule goes on `NO_RULE_NEEDED` with its reason. Delete a block from `globals.css` only by its own names:
+#522 removed a third block that sat between the two it meant to.
+
 ## Migration-order tests
 
 Never `deepEqual` the whole tail of `supabase/migrations`. Use `assertNamedSuccessors`

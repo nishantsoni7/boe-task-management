@@ -200,8 +200,8 @@ describe('the Main PI card', () => {
       row({ id: 'v2', version_number: 2, status: 'pending',
             revision_reason: 'Client added 6 chairs', decided_by: null, decided_at: null }),
     ] })
-    const rows = text(html.slice(html.indexOf('class="order-docs-rows"')))
-    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
+    const rows = text(html.slice(html.indexOf('class="order-docs-main"')))
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-main"')))
     assert.ok(rows.includes('Main PI · V1'), 'the approved version is still the current row')
     assert.equal(rows.includes('V2'), false)
     // SINCE 20270113000000 the proposal is NAMED — but only in the changes

@@ -337,6 +337,8 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 
 ## 10. Tests that guard it
 
+- **Styles, every screen (2026-10-31):** `src/app/stylesDefined.test.ts` fails when a className names a class with no rule, or a `styles.x` its module does not define; `NO_RULE_NEEDED` holds the reasoned exceptions and fails when one goes stale. `ui` and `cc` hand stylesheets on under other names: a new one like them goes in `HANDED_ON`. It cannot see a run-time name, or a rule gone while the name survives in another rule, as `.od-pair` did (pinned in `orderDashboardSummary.test.ts`). `.boe-spin` in `globals.css` is the busy icon.
+
 Run one file: `npx tsx --test <file>`; whole suite: `npm test` (`tsx --test "src/**/*.test.ts" "src/**/*.test.tsx" "scripts/**/*.test.mjs"`).
 At #327 a clean `main` has 0 failures without a database (live-DB suites SKIP; `REQUIRE_LIVE_DB_TESTS=1` turns the skip
 into a failure). Never run two suites at once against the same linked project (shared fixtures).
