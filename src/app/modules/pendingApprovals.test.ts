@@ -70,7 +70,8 @@ describe('who sees it, and what it may do', () => {
     assert.match(PAGE, /showAttendance: showPendingApprovals,/)
     // The queue is not even asked for unless that gate passed.
     assert.match(CARD, /enabled: enabled && !!userId,/)
-    assert.match(PANEL, /usePendingApprovalQueue\(userId, showAttendance\)/)
+    assert.match(PANEL, /const leaveOn = showAttendance && on\('leave_late'\)/)
+    assert.match(PANEL, /usePendingApprovalQueue\(userId, leaveOn\)/)
   })
 
   test('it uses the existing queue and decision routes, which keep every rule', () => {

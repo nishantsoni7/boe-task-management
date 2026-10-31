@@ -18,8 +18,8 @@ const shell = read('src/components/layout/ControlCenterLayout.tsx')
 const model = read('src/lib/controlCenter/navModel.ts')
 
 describe('Control Center navigation', () => {
-  test('the sidebar offers six hubs, not one entry per screen', () => {
-    for (const hub of ['Home', 'People', 'Access', 'Order Setup', 'Announcements', 'Records & Data']) {
+  test('the sidebar offers seven hubs, not one entry per screen', () => {
+    for (const hub of ['Home', 'People', 'Access', 'Order Setup', 'Announcements', 'For you', 'Records & Data']) {
       assert.ok(model.includes(`label: '${hub}',`), `${hub} must be a hub`)
     }
     // Hubs are drawn from the registry; the shell lists no screen of its own.

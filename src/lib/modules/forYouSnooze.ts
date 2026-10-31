@@ -61,4 +61,6 @@ export const itemKeys = {
   returnedPi: (id: string, since: string | null) => `returned-pi:${id}:${since ?? ''}`,
   /** The attendance machine has stopped; still stopped tomorrow is a new item. */
   machineStopped: (date: string) => `machine-stopped:${date}`,
+  /** A record waiting on the viewer; changed since (resubmitted) is a new item. */
+  work: (item: string, id: string, version: string | null) => `${item}:${id}:${version ?? ''}`,
 }

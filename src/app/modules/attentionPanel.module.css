@@ -66,6 +66,27 @@
   color: #4C5352;
 }
 
+.attentionActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.customize {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #686D6C;
+}
+
+.customize:hover {
+  background: #F4F1EC;
+  color: #303536;
+}
+
 /* Quiet on purpose: it hides things, so it must not invite a stray click. */
 .clearAll {
   height: 30px;
@@ -194,6 +215,7 @@
 .button:focus-visible,
 .buttonPrimary:focus-visible,
 .clearAll:focus-visible,
+.customize:focus-visible,
 .moreLink:focus-visible,
 .attentionStrip:focus-visible {
   outline: 2px solid #303536;

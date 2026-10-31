@@ -30,15 +30,16 @@ Pages (`src/app/admin/control-center/**`, all under one layout that is the admin
 - `/admin/control-center/permissions`, `/permissions/modules` (module 09)
 - `/admin/control-center/action-queue` (outside the nav map; `activeHub()` returns null)
 - `/admin/control-center/announcements` (+ `AnnouncementForm.tsx`)
+- `/admin/control-center/for-you` (`ForYouSettings.tsx`): each item of the Modules For you column set Off, Optional or Always on, for everyone (module 08 section 6, 20270513000000). An item moves between "In the column" and "Ready to add" as it is switched
 - `/admin/control-center/test-data-cleanup`, `/data-management` (Records & Data hub, shown in the danger colour)
 - Legacy: `/admin/members` (redirects to `/people`, keeps its layout ModuleGuard for `employee_records`), `/settings`, `/settings/roles`,
   `/settings/positions` (no longer in any nav, still routable), `/super-admin` (= hub item "Task Records": member-wise task report + permanent task
   deletion), `/super-admin/view-user/[userId]`.
 - Employee-facing: `/announcements`, `/announcements/[id]`.
 
-Six hubs (`src/lib/controlCenter/navModel.ts`, one registry read by the sidebar, the section tabs and Find-anything): Home - People
+Seven hubs (`src/lib/controlCenter/navModel.ts`, one registry read by the sidebar, the section tabs and Find-anything): Home - People
 (Employees, Departments, Designations) - Access (People, Modules, Authorities) - Order Setup (Numbering, Notifications, Operations Handoff,
-Order Visibility) - Announcements - Records & Data (Test Data Cleanup, Data Management, Task Records). `FindAnything.tsx` searches labels +
+Order Visibility) - Announcements - For you - Records & Data (Test Data Cleanup, Data Management, Task Records). `FindAnything.tsx` searches labels +
 keywords; every query word must match (`score`).
 
 API routes (every one re-checks admin from the bearer token; many also require `is_active` and `is_deleted !== true`):

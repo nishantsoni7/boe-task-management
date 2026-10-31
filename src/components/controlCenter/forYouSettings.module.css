@@ -1,0 +1,143 @@
+/* Control Center › For you. One row per item: what it is, who gets it, and its
+   three-way setting. The row stacks on a narrow screen. */
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.legendItem {
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 10px;
+}
+
+.legendName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #303536;
+}
+
+.legendMeaning {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #5C6261;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px 270px;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+}
+
+.row + .row {
+  border-top: 1px solid #EFEBE5;
+}
+
+.what {
+  min-width: 0;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #303536;
+}
+
+.meaning,
+.audience {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #5C6261;
+}
+
+.seg {
+  display: flex;
+  border: 1px solid #DDD6CC;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.segBtn {
+  flex: 1 1 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #4C5352;
+  cursor: pointer;
+}
+
+.segBtn + .segBtn {
+  border-left: 1px solid #DDD6CC;
+}
+
+.segBtn:hover:not(:disabled):not(.segChosen) {
+  background: #F4F1EC;
+}
+
+.segBtn:focus-visible {
+  outline: 2px solid #303536;
+  outline-offset: -2px;
+}
+
+.segBtn:disabled {
+  cursor: default;
+}
+
+.segChosen {
+  background: #303536;
+  color: #fff;
+}
+
+.note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #5C6261;
+}
+
+.error {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid #F1DEDB;
+  border-radius: 10px;
+  background: #FBF3F2;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #A32D2D;
+}
+
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .segBtn {
+    height: 44px;
+  }
+}
