@@ -9,7 +9,58 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ORDER_LIST_SOURCE_PI_EMBED, factoryStatus, orderListFlags, orderListSubtotal } from './orderListValue'
+import {
+  ORDER_LIST_SOURCE_PI_EMBED,
+  cancelledOrderGapText,
+  compareOrderNumber,
+  factoryStatus,
+  orderListFlags,
+  orderListSubtotal,
+} from './orderListValue'
+
+describe('project code order and the cancelled gap (owner, 2026-10-31)', () => {
+  const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
+
+  test('the highest project code is on top, whenever each PI was uploaded', () => {
+    const asUploaded = ['0542', '0541', '0540', '0528', '0538', '0537', '0536', '0534', '0527']
+    assert.deepEqual([...asUploaded].sort((a, b) => compareOrderNumber(b, a)),
+      ['0542', '0541', '0540', '0538', '0537', '0536', '0534', '0528', '0527'])
+  })
+
+  test('the list opens that way, and a stale ?sort=newest link falls back to it', () => {
+    assert.ok(page.includes("sort:     enumParam<SortKey>(['number_desc', 'number_asc', 'value_desc', 'value_asc'], 'number_desc'),"))
+    assert.ok(page.includes('default:            return compareOrderNumber(b.display_number, a.display_number)'))
+    assert.ok(page.includes("isSet={sortKey !== 'number_desc'}"))
+  })
+
+  test('the upload date is no longer a sort', () => {
+    assert.equal(/'newest'|'oldest'|Newest first|Oldest first/.test(page), false)
+  })
+
+  test('a gap says it is cancelled and who it was, and nothing more', () => {
+    assert.equal(cancelledOrderGapText('Vikrant Ji'), 'Cancelled order · Vikrant Ji')
+    assert.equal(cancelledOrderGapText('  Vikrant Ji '), 'Cancelled order · Vikrant Ji')
+    assert.equal(cancelledOrderGapText('  '), 'Cancelled order')
+    assert.equal(cancelledOrderGapText(null), 'Cancelled order')
+  })
+
+  test('the table and the phone card both draw it, and the row still spans all eight columns', () => {
+    assert.equal((page.match(/\{cancelledOrderGapText\(o\.client_name\)\}/g) ?? []).length, 2, 'table and phone card')
+    assert.equal((page.match(/<th>/g) ?? []).length, 8)
+    assert.ok(page.includes('<td colSpan={7} title={o.client_name}>'), 'beside the Project code cell')
+    assert.ok(page.includes("cancelled && 'orders-gap-row'"))
+    assert.ok(page.includes('className="orders-list-card orders-gap-card"'))
+    assert.ok(page.includes('{!cancelled && <ProjectFlags sample={o.sample} commission={o.commission} />}'))
+  })
+
+  test('the stripes hold on the table cells, which set their own background', () => {
+    const css = readFileSync('src/app/globals.css', 'utf8')
+    assert.ok(css.includes('.fin-table tbody tr.orders-gap-row td {'))
+    assert.ok(css.includes('.fin-table tbody tr.orders-gap-row:hover td {'))
+    assert.ok(css.indexOf('.fin-table tbody tr.orders-gap-row td {') > css.indexOf('.fin-table tbody tr.has-update td {'),
+      'after the update tint, which has the same weight')
+  })
+})
 
 describe('the Value column is the Subtotal', () => {
   test('Order 0524: the PI subtotal, not the Grand Total', () => {

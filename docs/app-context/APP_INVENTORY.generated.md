@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `4fbb0780` — Docs: For you merged as PR #540 (66d63333) (#542)
-- Commits on this branch: 1107
+- Commit: `2f44ab0b` — Bank Statements: Synced is checked, a person decides every possible duplicate
+- Commits on this branch: 1108
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
-- Test files: 698   Next.js 16.2.6, React 19.2.4
+- Test files: 699   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `2f44ab0b` 2026-10-31 Bank Statements: Synced is checked, a person decides every possible duplicate
 - `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
 - `911d809a` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f) (#541)
 - `66d63333` 2026-10-31 For you: payment request cards, Control Center settings, each person's own choices (#540)
@@ -38,7 +39,6 @@
 - `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
 - `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
 - `d26778f4` 2026-10-30 Docs: PI Draft layout pass 2 merged as PR #515 (4e817da6) (#520)
-- `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 4 source, 5 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 100 source, 150 test
+- `src/lib/orders` — 101 source, 151 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

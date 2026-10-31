@@ -9,6 +9,7 @@ import {
   describeOrderDeletionFailure,
   type OrderDeletionCode,
 } from '@/lib/orders/orderDeletion'
+import { readCancelledOrderLock } from '@/lib/orders/cancelledOrderLock'
 import {
   SUBMISSION_ID_RE,
   removeAllObjectsForOrder,
@@ -33,6 +34,10 @@ import {
 // allocation, intent or payment request names the Order or its PI. This route
 // never reads or writes Finance and never receives a key, a path or a prefix
 // from the browser: the prefixes are built here from uuids the database returned.
+//
+// A CANCELLED ORDER IS NOT DELETED (owner, 2026-10-31). Deleting it would free
+// its number for another Order, and the RPC has no status check, so this route
+// refuses it before asking.
 
 export const runtime = 'nodejs'
 
@@ -66,6 +71,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null) as { confirm?: unknown } | null
   const confirm = typeof body?.confirm === 'string' ? body.confirm : ''
   if (confirm.trim() === '') return fail('CONFIRMATION')
+
+  const lock = await readCancelledOrderLock(authClient, orderId)
+  if (lock === 'cancelled') return fail('CANCELLED')
+  if (lock === 'unknown') return fail('FAILED')
 
   // Proven BEFORE the Order is touched: without the service role the sweep that
   // follows could not run, and a deletion that cannot be finished is not started.

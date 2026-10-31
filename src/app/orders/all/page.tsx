@@ -31,6 +31,8 @@ import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordR
 import { PackageSearch, Percent } from 'lucide-react'
 import {
   COMMISSION_ICON_LABEL,
+  cancelledOrderGapText,
+  compareOrderNumber,
   factoryStatus,
   orderListFlags,
   orderListSubtotal,
@@ -73,7 +75,7 @@ type StatusFilter = 'all' | 'running' | 'on_hold' | 'ready_for_dispatch' | 'disp
 
 type DateFilter = 'all' | '7d' | '30d' | 'this_month' | '3m' | 'this_year'
 
-type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc' | 'value_asc'
+type SortKey = 'number_desc' | 'number_asc' | 'value_desc' | 'value_asc'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -115,9 +117,9 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'this_year',  label: 'This year' },
 ]
 
+// THE LIST ALWAYS OPENS WITH THE HIGHEST PROJECT CODE ON TOP (owner, 2026-10-31).
+// The upload date is not an option: it is why 528 once sat between 540 and 538.
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'newest',      label: 'Newest first' },
-  { key: 'oldest',      label: 'Oldest first' },
   { key: 'number_desc', label: 'Order no. high–low' },
   { key: 'number_asc',  label: 'Order no. low–high' },
   { key: 'value_desc',  label: 'Value high–low' },
@@ -141,7 +143,7 @@ const ORDERS_LIST_PARAMS = {
   assignee: idParam(),
   source:   optionParam(Object.keys(LEAD_SOURCE_LABEL)),
   date:     enumParam<DateFilter>(['all', '7d', '30d', 'this_month', '3m', 'this_year'], 'all'),
-  sort:     enumParam<SortKey>(['newest', 'oldest', 'number_desc', 'number_asc', 'value_desc', 'value_asc'], 'newest'),
+  sort:     enumParam<SortKey>(['number_desc', 'number_asc', 'value_desc', 'value_asc'], 'number_desc'),
   // The operations queue (20261229000000): only the Orders whose PI version in
   // force is awaiting operations review — assigned to this reader, or to
   // nobody. Reached from the dashboard card and from nowhere else on this
@@ -182,14 +184,6 @@ function dateFilterStart(key: DateFilter): Date | null {
     case 'this_year':  return new Date(now.getFullYear(), 0, 1)
     default:           return null
   }
-}
-
-// display_number is four numeric digits (20260704), but sort defensively so a
-// legacy or unexpected value orders predictably instead of collapsing to NaN.
-function compareNumber(a: string, b: string): number {
-  const na = Number(a), nb = Number(b)
-  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
-  return a.localeCompare(b)
 }
 
 // Orders with no value recorded sort last in both directions rather than
@@ -527,12 +521,10 @@ export default function AllOrdersPage() {
     // Copy before sorting: `baseFiltered` may have been returned by reference.
     return [...list].sort((a, b) => {
       switch (sortKey) {
-        case 'oldest':      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case 'number_desc': return compareNumber(b.display_number, a.display_number)
-        case 'number_asc':  return compareNumber(a.display_number, b.display_number)
+        case 'number_asc':  return compareOrderNumber(a.display_number, b.display_number)
         case 'value_desc':  return compareValue(a.subtotal, b.subtotal, -1)
         case 'value_asc':   return compareValue(a.subtotal, b.subtotal, 1)
-        default:            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        default:            return compareOrderNumber(b.display_number, a.display_number)
       }
     })
   }, [baseFiltered, statusTab, sortKey])
@@ -675,7 +667,7 @@ export default function AllOrdersPage() {
             <FilterChip
               icon="sort"
               label={SORT_OPTIONS.find(s => s.key === sortKey)?.label ?? 'Sort'}
-              isSet={sortKey !== 'newest'}
+              isSet={sortKey !== 'number_desc'}
             >
               <select
                 className="boe-input"
@@ -748,6 +740,24 @@ export default function AllOrdersPage() {
               const updateLabel = unreadUpdateLabel(unread.get(o.id) ?? 0)
               // The stored four-digit number (0526), as every Orders screen shows it.
               const number = displayOrderNumber(o.display_number)
+              if (o.status === 'cancelled') {
+                return (
+                  <li key={o.id} className="orders-list-card orders-gap-card">
+                    <div className="orders-list-card-top">
+                      <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
+                        {number}
+                      </Link>
+                      {updateLabel && (
+                        <span className="order-update-badge">
+                          <span className="order-update-dot" aria-hidden="true" />
+                          {updateLabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="orders-gap-text">{cancelledOrderGapText(o.client_name)}</div>
+                  </li>
+                )
+              }
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
                   <div className="orders-list-card-top">
@@ -823,6 +833,7 @@ export default function AllOrdersPage() {
                   // leaves this badge exactly where it is.
                   const updates = unread.get(o.id) ?? 0
                   const updateLabel = unreadUpdateLabel(updates)
+                  const cancelled = o.status === 'cancelled'
                   return (
                     <tr
                       key={o.id}
@@ -832,7 +843,7 @@ export default function AllOrdersPage() {
                          irritating in a list somebody reads all day, so the
                          animation is on the small dot in the badge and nowhere
                          else. */
-                      className={updateLabel ? 'has-update' : undefined}
+                      className={[updateLabel && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
                          about to be opened, and prefetching the Order detail
                          route on it means the code for that screen is already
@@ -865,29 +876,37 @@ export default function AllOrdersPage() {
                             {updateLabel}
                           </span>
                         )}
-                        <ProjectFlags sample={o.sample} commission={o.commission} />
+                        {!cancelled && <ProjectFlags sample={o.sample} commission={o.commission} />}
                       </td>
-                      <td title={o.client_name}>
-                        <span className="fin-primary-text">{o.client_name}</span>
-                        {o.lead_source && (
-                          <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
-                      </td>
-                      <td>
-                        <FactoryBadge alignment={o.production_alignment} />
-                      </td>
-                      <td>
-                        <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
-                      </td>
-                      <td><FinancePerson name={o.assigned_to_name} /></td>
-                      <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
-                      <td>
-                        {fmtDate(o.due_date)}
-                        {overdue && <span className="fin-sub fin-sub--alert">Overdue</span>}
-                      </td>
+                      {cancelled ? (
+                        <td colSpan={7} title={o.client_name}>
+                          <span className="orders-gap-text">{cancelledOrderGapText(o.client_name)}</span>
+                        </td>
+                      ) : (
+                        <>
+                          <td title={o.client_name}>
+                            <span className="fin-primary-text">{o.client_name}</span>
+                            {o.lead_source && (
+                              <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
+                          </td>
+                          <td>
+                            <FactoryBadge alignment={o.production_alignment} />
+                          </td>
+                          <td>
+                            <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
+                          </td>
+                          <td><FinancePerson name={o.assigned_to_name} /></td>
+                          <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
+                          <td>
+                            {fmtDate(o.due_date)}
+                            {overdue && <span className="fin-sub fin-sub--alert">Overdue</span>}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   )
                 })}

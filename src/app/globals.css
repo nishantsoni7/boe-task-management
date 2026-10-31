@@ -11500,6 +11500,19 @@ textarea.pi-form-input { height: auto; }
 .orders-code-cell { white-space: nowrap; }
 .orders-code-cell .orders-list-flags { float: right; }
 
+/* A cancelled Order is a gap in the sequence (owner, 2026-10-31): a thin striped
+   row at its project code, the code struck through. Its number is never reused. */
+.fin-table tbody tr.orders-gap-row td {
+  height: 32px; padding-top: 4px; padding-bottom: 4px;
+  background: repeating-linear-gradient(135deg, #F7F5F1 0 6px, #FFFFFF 6px 12px);
+}
+.fin-table tbody tr.orders-gap-row:hover td { background: #FAF8F5; }
+.fin-table tbody tr.orders-gap-row td + td { border-left: 0; }
+.orders-gap-row .orders-row-link,
+.orders-gap-card .orders-list-card-link { font-weight: 500; color: #686D6C; text-decoration: line-through; }
+.orders-gap-text { font-size: 12px; color: #686D6C; }
+.orders-gap-card { background: repeating-linear-gradient(135deg, #F7F5F1 0 6px, #FFFFFF 6px 12px); }
+
 /* ── The sample choice (20270320000000): PI draft and Order ── */
 .pi-sample-type { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ECE7E0; min-width: 0; }
 .pi-sample-type-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #303536; }
