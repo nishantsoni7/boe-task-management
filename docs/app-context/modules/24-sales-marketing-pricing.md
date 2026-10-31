@@ -1,6 +1,6 @@
 # 24. Sales, Marketing, Pricing (Coming soon)
 
-Written 2026-10-31 from the build, on branch `feat/coming-soon-modules` (PR #557). Migration `20270515000000` is **NOT yet applied**; see the changelog for its state.
+Written 2026-10-31 from the build, on branch `feat/coming-soon-modules` (PR #557). Migration `20270515000000` was **APPLIED to production on 2026-11-01** by the owner, before the merge.
 
 ## 1. Purpose & users
 
@@ -10,7 +10,7 @@ Written 2026-10-31 from the build, on branch `feat/coming-soon-modules` (PR #557
 ## 2. Status
 
 - Each module opens a Coming soon page and nothing else. There is no data, no API route, no notification and no write.
-- Checked by `tsc`, lint, the test suite and an executed in-memory rehearsal of the migration. **Not seen in a browser or signed in**, and the production dry-run is the owner's step.
+- Checked by `tsc`, lint, the test suite and an executed in-memory rehearsal of the migration. **Not seen in a browser or signed in.**
 
 ## 3. The model
 
