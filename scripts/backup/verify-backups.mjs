@@ -16,7 +16,10 @@ if (!fs.existsSync(mirror)) add('code mirror', false, 'missing - run backup-code
 else {
   const ghMain = gitTry(MAIN_REPO, 'ls-remote', url, 'refs/heads/main').out.split(/\s/)[0]
   const has = ghMain && gitTry(mirror, 'cat-file', '-e', ghMain + '^{commit}').ok
-  add('GitHub main is inside the local mirror', !!has, has ? `main ${ghMain.slice(0, 8)} present` : `GitHub main ${String(ghMain).slice(0, 8)} NOT in mirror - run backup-all`)
+  // A merge waits for the nightly backup, so main ahead of the mirror is normal while that backup keeps finishing on time.
+  const last = readStatus('covered')
+  const waiting = !has && !!ghMain && !!last && age(last.at) <= maxH
+  add('GitHub main is inside the local mirror', !!has || waiting, has ? `main ${ghMain.slice(0, 8)} present` : waiting ? `main ${ghMain.slice(0, 8)} waits for the nightly backup (see pending-backups)` : `GitHub main ${String(ghMain).slice(0, 8)} NOT in mirror - run backup-all`)
   const localHeads = git(MAIN_REPO, 'for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads').split('\n').filter(Boolean)
   const missing = localHeads.filter((l) => !gitTry(mirror, 'cat-file', '-e', l.split(' ')[0] + '^{commit}').ok)
   add('every local branch tip is in the mirror', missing.length === 0, missing.length ? `${missing.length} tip(s) missing, e.g. ${missing[0]}` : `${localHeads.length} branches covered`)

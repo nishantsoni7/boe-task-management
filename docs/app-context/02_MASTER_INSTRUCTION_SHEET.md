@@ -124,14 +124,9 @@ Follow in order; stop at any failure:
 2. **Migrations first:** if the PR has a migration, prove it can apply (§6), then ask the owner to apply it (`supabase db push --dry-run` first; only the intended file may be pending). Confirm with `supabase migration list --linked` that `remote` is populated.
 3. Ask the owner for the go-ahead to merge. Merge = production deploy.
 4. After merge: confirm the Production deployment succeeded (GitHub deployments API, or the bundle grep recipe in memory `reference_production_deploy_verification`).
-5. **Backup immediately:**
-   ```bash
-   node "$HOME/BOE-Development/backups/tools/backup-all.mjs"      # code + database + storage + memory + env
-   node "$HOME/BOE-Development/backups/tools/verify-backups.mjs"  # must end "All required layers are fresh."
-   ```
-   The GitHub Action "Backup on merge" produces the off-machine bundle automatically; check it is green on the merge commit.
+5. **No backup step.** Do not run `backup-all.mjs` after a merge (owner's decision, 2026-11-01): the 9:30 pm task covers everything merged that day, so tell the owner the backup goes with tonight's run. The code is already off this laptop: the GitHub Action "Backup on merge" mirrors every push to `main` to the private repo; check it is green on the merge commit.
 6. Update `main` in the primary checkout, remove the finished worktree (clean it first; delete the `node_modules` junction before `git worktree remove`).
-7. Update memory + `CHANGELOG.md` with the merge SHA and the backup timestamp.
+7. Update memory + `CHANGELOG.md` with the merge SHA.
 
 ## 9. Backup duties (details in `03_BACKUP_AND_RECOVERY.md`)
 
@@ -139,12 +134,12 @@ Follow in order; stop at any failure:
 |---|---|
 | Every commit / merge / rebase / push (automatic) | git hooks refresh the local mirror (`post-commit`, `post-merge`, `post-rewrite`, `pre-push`) |
 | Every merge to `main` (automatic) | GitHub Action mirrors to the private repo; a verified bundle artifact is stored daily (kept 7 days), not per merge |
-| After every merge, and before any risky operation (manual) | `backup-all.mjs` then `verify-backups.mjs` |
-| Daily (scheduled, once installed) | `backup-all.mjs` |
+| Every night, 9:30 pm (scheduled) | `backup-all.mjs` then `verify-backups.mjs`: everything merged that day, plus the database, uploaded files, memory and env |
+| Merged but not yet backed up | `pending-backups.mjs` lists it, live from GitHub. Nobody keeps this record by hand |
 | Before any migration is applied to production | `backup-all.mjs` — the database export is your rollback data |
-| Start of every session | `verify-backups.mjs` — refresh anything stale |
+| Start of every session | `owner-reminders.mjs --due`. If it says no complete backup has finished for 2 days, offer to run `backup-all.mjs` once, then `verify-backups.mjs` |
 
-A session that merged something and did not run the backup has not finished the task.
+A session that merged something has finished without running a backup. Do not run one to be safe: only the newest 14 database snapshots and 30 code bundles are kept, so every extra run pushes older history out. On 2026-10-31 one day's runs had filled all of them.
 
 ## 10. Reporting back to the owner
 

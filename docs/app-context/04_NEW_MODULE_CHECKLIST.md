@@ -38,7 +38,7 @@ Use together with `02_MASTER_INSTRUCTION_SHEET.md`. Copy this list into the PR d
 - [ ] Rollout order written (migration → code …) and rollback written.
 - [ ] Owner applied the migration and confirmed `supabase migration list --linked` shows it remote.
 - [ ] Merged only with the owner's yes; Production deployment verified.
-- [ ] `backup-all.mjs` + `verify-backups.mjs` green after the merge; GitHub "Backup on merge" run green.
+- [ ] GitHub "Backup on merge" run green after the merge (the local backup happens at 9:30 pm; no hand run).
 
 ## F. Knowledge
 - [ ] New dossier `docs/app-context/modules/NN-<slug>.md` (template: any existing dossier — the 12 sections).
