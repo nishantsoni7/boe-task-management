@@ -1,6 +1,6 @@
 # 24. Sales, Marketing, Pricing (Coming soon)
 
-Written 2026-10-31 from the build, on branch `feat/coming-soon-modules` (PR #557). Migration `20270515000000` was **APPLIED to production on 2026-11-01** by the owner, before the merge.
+Written 2026-10-31 from the build; merged 2026-11-01 as #557 (`3ac61f79`). Migration `20270515000000` was **APPLIED to production on 2026-11-01** by the owner, before the merge.
 
 ## 1. Purpose & users
 
