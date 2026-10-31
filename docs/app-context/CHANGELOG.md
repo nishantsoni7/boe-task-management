@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-31 — Confirmed Order tidy: five changes from the owner's screenshots of Order 542 (#549) · no SQL
+## 2026-10-31 — Confirmed Order tidy: changes from the owner's screenshots of Order 542 (#549, 25df502b, merged by the owner 15:59 UTC) · no SQL · deployed (deployment 7460918087), live stylesheet checked · backup bundle 20261031T160013Z, database 20261031T160056Z (203 tables, 100,982 rows), verified
 - **Open cost sheet removed.** The F&P Cost tab on the Products card is the way to the sheet.
 - **Payment card shorter.** Last verified payment and Verified by mode are gone; the Verified box still opens the list.
 - **Products card.** The first column reads Product Code on all three tabs and pictures are 108px, up from 84. Customization gives up the room. The PI Draft, the import preview and phones are unchanged.
