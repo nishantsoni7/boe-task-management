@@ -53,6 +53,11 @@ describe('the notifications: one banner per item, tinted by kind', () => {
     assert.match(css, /\.order-notice--amber \{[^}]*background: #FFF7E6;[^}]*border-left-color: #E08A00/)
     assert.match(css, /\.order-notice--blue \{[^}]*background: #EEF4FF;[^}]*border-left-color: #2F6BFF/)
     assert.match(css, /\.order-notice--red \{[^}]*background: #FFF0EE;[^}]*border-left-color: #D92D20/)
+    // Side by side, sharing the row, rather than one full-width line each
+    // (owner, 2026-10-31); a phone keeps one under the other.
+    assert.match(css, /\.order-notices \{ display: flex; flex-wrap: wrap; gap: 8px; \}/)
+    assert.match(css, /\.order-notice \{ flex: 1 1 360px;/)
+    assert.match(css, /@media \(max-width: 640px\) \{ \.order-notice \{ flex-basis: 100%; \}/)
     const revision = orderAttentionItems({ ...open, pendingPiRevision: true })
     assert.equal(revision[0].tone, 'blue')
     assert.match(renderToStaticMarkup(<OrderAttentionBar items={revision} />), /order-notice--blue/)

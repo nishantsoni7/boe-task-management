@@ -398,7 +398,7 @@ export function ProductViewBody({ view, rows, data, isMobile, variant, submissio
         </colgroup>
         <thead>
           <tr>
-            <th scope="col">Code</th><th scope="col">Image</th><th scope="col">Product</th>
+            <th scope="col">{variant === 'order' ? 'Product Code' : 'Code'}</th><th scope="col">Image</th><th scope="col">Product</th>
             <th scope="col" className="pv-num">Qty</th>
             {view === 'cost' && COST_COLUMNS.map(c => (
               <th key={c.label} scope="col" className={`pv-swap${c.left ? '' : ' pv-num'}`}>{c.label}</th>

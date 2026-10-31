@@ -3124,12 +3124,6 @@ export default function OrderDetailPage() {
       orderId: order.id,
       canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
     }}
-    costSheet={costSubmissionId && piHandoff.kind === 'ready' ? {
-      onOpen: () => {
-        switchProductView('cost')
-        document.getElementById('order-products')?.scrollIntoView({ behavior: 'smooth' })
-      },
-    } : undefined}
   />
   )
 
@@ -3219,11 +3213,9 @@ export default function OrderDetailPage() {
                   loaded={recordsReady}
                   onOpenList={setPaymentList}
                   facts={orderPaymentFacts({
-                    rows: payments,
                     orderValue: finance.orderValue,
                     advance,
                     formatMoney,
-                    formatDate: fmtDate,
                   })}
                 />
                 {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,

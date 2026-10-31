@@ -140,6 +140,12 @@ describe('the Approvals tab', () => {
 })
 
 describe('who may type, and the states around it', () => {
+  test('the Order calls its first column Product Code on every tab; the PI Draft is unchanged', () => {
+    const headed = (variant: 'pi' | 'order') => /<th scope="col">([^<]*)<\/th>/.exec(body('cost', { variant }))?.[1]
+    assert.equal(headed('order'), 'Product Code')
+    assert.equal(headed('pi'), 'Code')
+  })
+
   test('Edit is offered per product only when the read says so', () => {
     assert.equal((body('cost').match(/pv-edit"/g) ?? []).length, 3)
     assert.ok(!body('cost', { data: data({ canEdit: false }) }).includes('pv-edit'))

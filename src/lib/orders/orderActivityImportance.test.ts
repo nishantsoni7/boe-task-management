@@ -35,6 +35,42 @@ describe('the middleman answer split for the Order page', () => {
     }).name, 'Asha')
   })
 
+  // Order 542's own figures: agreed as ₹1,66,400 on a Total before GST of ₹13,50,590.
+  const figures = { gross_product_amount: '1366400', subtotal_after_discount: '1266400', total_before_gst: '1350590', grand_total: '1593696.20' }
+  const agreedAmount = {
+    middleman_commission: 'yes', middleman_recipient: 'Mr.Ashwin', middleman_commission_basis: 'amount',
+    middleman_commission_amount: '166400', commission_restricted: false,
+  }
+  const agreedPercent = (of: string) => ({
+    middleman_commission: 'yes', middleman_recipient: 'Asha', middleman_commission_basis: 'percent',
+    middleman_commission_percent: '2.5', middleman_commission_percent_of: of, commission_restricted: false,
+  })
+
+  test('an agreed amount also reads as a share of Total before GST, the figure the page itself shows', () => {
+    assert.deepEqual(describeMiddlemanParts({ ...agreedAmount, ...figures }),
+      { commission: '₹1,66,400.00 · 12.32% of Total before GST', name: 'Mr.Ashwin' })
+  })
+
+  test('an agreed percentage also reads in rupees of the figure it was agreed on, each base its own', () => {
+    assert.equal(describeMiddlemanParts({ ...agreedPercent('total_before_gst'), ...figures }).commission, '₹33,764.75 · 2.5% of Total before GST')
+    assert.equal(describeMiddlemanParts({ ...agreedPercent('grand_total'), ...figures }).commission, '₹39,842.41 · 2.5% of Grand total (incl. GST)')
+    assert.equal(describeMiddlemanParts({ ...agreedPercent('subtotal_after_discount'), ...figures }).commission, '₹31,660.00 · 2.5% of Subtotal (after the deduction)')
+    assert.equal(describeMiddlemanParts({ ...agreedPercent('gross_product_amount'), ...figures }).commission, '₹34,160.00 · 2.5% of Gross product amount')
+  })
+
+  test('with no figure to work from, only what was agreed is shown: never a guessed share', () => {
+    assert.equal(describeMiddlemanParts(agreedAmount).commission, '₹1,66,400.00')
+    assert.equal(describeMiddlemanParts({ ...agreedAmount, total_before_gst: null }).commission, '₹1,66,400.00')
+    assert.equal(describeMiddlemanParts({ ...agreedAmount, total_before_gst: '0' }).commission, '₹1,66,400.00')
+    assert.equal(describeMiddlemanParts({ ...agreedAmount, total_before_gst: '' }).commission, '₹1,66,400.00')
+    assert.equal(describeMiddlemanParts(agreedPercent('grand_total')).commission, '2.5% of Grand total (incl. GST)')
+    assert.equal(describeMiddlemanParts({ ...agreedPercent('nonsense'), ...figures }).commission, '2.5% of an unnamed figure')
+  })
+
+  test('a reader who may not see the commission gets no share of it either', () => {
+    assert.deepEqual(describeMiddlemanParts({ ...agreedAmount, ...figures, commission_restricted: true }), { commission: 'Restricted', name: 'Restricted' })
+  })
+
   test('no middleman says No and Not applicable; an unanswered one says so; a restricted reader never sees a value or a false No', () => {
     assert.deepEqual(describeMiddlemanParts({ middleman_commission: 'no', commission_restricted: false }), { commission: 'No', name: 'Not applicable' })
     assert.deepEqual(describeMiddlemanParts({ commission_restricted: false }), { commission: 'Not answered', name: 'Not answered' })
