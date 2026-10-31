@@ -12,6 +12,7 @@ import {
   analyseLine,
   compareMatch,
   lookAlikeCredit,
+  matchDoubts,
   paymentHref,
   rowAction,
   syncReason,
@@ -204,6 +205,37 @@ describe('the comparison', () => {
     assert.equal(row(line(), elsewhere({ amount: 20000 }), 'Amount').verdict, 'Differs by ₹1,000.00')
     const reference = row(line(), elsewhere(), 'Reference')
     assert.equal(reference.verdict, ''); assert.equal(reference.tone, 'plain')
+  })
+})
+
+describe('what should stop a person before linking', () => {
+  test('nothing, when the name fits and the dates are within 3 days', () => {
+    assert.deepEqual(matchDoubts(line(), match()), [])
+    assert.deepEqual(matchDoubts(line(), match({ paymentDate: '2026-10-25' })), [])
+    assert.deepEqual(matchDoubts(line(), match({ paymentDate: '2026-10-31' })), [], 'a date after the credit counts the same')
+    assert.deepEqual(matchDoubts(line(), match({ clientName: 'Sample Exports' })), [], 'part of the name is enough')
+  })
+
+  test('a name that does not fit, or no name at all', () => {
+    assert.deepEqual(matchDoubts(line(), match({ clientName: 'Unrelated Hotel' })), ['the name does not match'])
+    assert.deepEqual(matchDoubts(line(), match({ clientName: null })), ['the payment has no client name'])
+  })
+
+  test('a fourth day apart, and both together', () => {
+    assert.deepEqual(matchDoubts(line(), match({ paymentDate: '2026-10-24' })), ['the dates are 4 days apart'])
+    assert.deepEqual(matchDoubts(line(), elsewhere({ clientName: 'Unrelated Hotel', paymentDate: '2026-10-18' })), ['the name does not match', 'the dates are 10 days apart'])
+  })
+
+  test('the bank\'s own reference outweighs both', () => {
+    const far = { clientName: 'Unrelated Hotel', paymentDate: '2026-10-18' }
+    assert.deepEqual(matchDoubts(line(), match({ kind: 'reference', ...far })), [])
+    assert.deepEqual(matchDoubts(line(), match({ kind: 'reference_used', ...far })), [])
+  })
+
+  test('the words on the card and the colours in the comparison agree', () => {
+    const tones = (m: BankMatch) => compareMatch(line(), m).filter(r => r.label === 'Date' || r.label === 'Name').map(r => r.tone)
+    assert.deepEqual(tones(match({ paymentDate: '2026-10-25' })), ['same', 'same'])
+    assert.deepEqual(tones(match({ paymentDate: '2026-10-24', clientName: 'Unrelated Hotel' })), ['differs', 'plain'])
   })
 })
 

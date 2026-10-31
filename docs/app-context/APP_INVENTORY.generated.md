@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `25df502b` — Confirmed Order: shorter Payment card, Product Code column, banners side by side, commission in both forms (#549)
+- Commit: `d75198f7` — Bank Statements: Move a wrongly held payment, a doubtful match asks first
 - Commits on this branch: 1114
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `25df502b` 2026-10-31 Confirmed Order: shorter Payment card, Product Code column, banners side by side, commission in both forms (#549)
+- `d75198f7` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first
 - `6aa8129e` 2026-10-31 Docs: Founders' payouts redesign merged as PR #547 (d454773c) (#548)
 - `d454773c` 2026-10-31 Finance: Founders' payouts redesigned, and its missing styles restored (#547)
 - `3e7adf1c` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
