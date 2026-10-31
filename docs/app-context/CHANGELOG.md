@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-31 — Confirmed Payments and Payments to Verify listed by payment date, latest first (PR open) · no migration · not yet merged or backed up
+- **Owner request.** Always show the list in the order of the date of payment, with the latest payment on top. A payment dated 31 Oct sat under one dated 27 Oct because the list followed when each payment was entered. The owner chose both lists.
+- **What.** `ReceivedPaymentsView` orders by `payment_date`, then `created_at`, then `id`, all newest first. The last two settle same-day payments and keep paging stable. `/finance/payments-to-verify` uses the same query, so it follows.
+- **Unchanged.** Search, filters, paging, counts, summary cards, permissions and the database. `payment_date` already has an index. Editing a payment's date moves it on save, because the list reloads.
+- **Rollback.** Revert the PR.
+- **Proof.** `paymentsPaging.test.ts` pins the three keys and their order, and `paymentRouting.test.ts` pins the first. Removing `payment_date` fails both, and putting `created_at` ahead of it fails the first. Not seen signed in.
+
 ## 2026-10-31 — Expenses page redesigned: one line of controls, Paid from column, twice the rows on screen (PR open) · no migration · not yet merged or backed up
 - **Owner request.** Use the space better, add a column saying whether a payment came from Nishant's personal or the Company account and view the list by it, and make the filters and search super clean. Two previews approved first; the owner chose the strip layout, then asked for rarely used controls to be hidden, Company or Personal in different font colours, and an icon for reimbursed and not reimbursed.
 - **What.** One line of controls replaces two: text tabs, an All / Company / Personal switch, one total that follows the list, Not reimbursed with what is owed, a magnifier that opens when clicked, Filters and a download icon. Dates moved inside Filters with category, mode, reimbursement, who paid and missing bill. New Paid from column: Company in blue, Personal in terracotta, a clock for not reimbursed, a filled green tick for reimbursed, a dash for an old expense with no source. Rows are 36px instead of 57px, because View, Edit and Delete are small icons. Spare width is shared across all eight columns instead of all going to Paid to.

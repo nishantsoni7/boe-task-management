@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7e60d9ed` — Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
-- Commits on this branch: 1101
+- Commit: `cf4b9d27` — Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
+- Commits on this branch: 1102
 - Pages (`page.tsx`): 159   API routes (`route.ts`): 179
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
 - `7e60d9ed` 2026-10-31 Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
 - `a4cde4af` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row (#535)
 - `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
@@ -38,7 +39,6 @@
 - `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 - `552aeb3b` 2026-10-30 Docs: Payment plan layout B merged as PR #514 (9930c575) (#517)
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
-- `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 
 ## Pages by top-level area
 
