@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3e7adf1c` — Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
-- Commits on this branch: 1111
+- Commit: `d454773c` — Finance: Founders' payouts redesigned, and its missing styles restored (#547)
+- Commits on this branch: 1112
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `d454773c` 2026-10-31 Finance: Founders' payouts redesigned, and its missing styles restored (#547)
 - `3e7adf1c` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
 - `0e639f09` 2026-10-31 Docs: Confirmed Orders gap merged as PR #543 (4c0629be) (#545)
 - `99bf7fbc` 2026-10-31 Bank Statements: Synced is checked, a person decides every possible duplicate (#544)
@@ -38,7 +39,6 @@
 - `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
-- `3807938b` 2026-10-30 Orders: Product details, F&P Cost and Approvals tabs on the product list (#522)
 
 ## Pages by top-level area
 
