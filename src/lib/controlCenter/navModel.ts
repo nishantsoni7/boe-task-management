@@ -3,7 +3,7 @@
 // ONE REGISTRY, THREE READERS. The sidebar, the section tabs above each page
 // and the Find-anything search all read this list, so a destination is added
 // once and appears in all three — and cannot be findable in one and missing
-// from another. The sidebar offers the HUBS (six entries); a hub with more than
+// from another. The sidebar offers the HUBS (seven entries); a hub with more than
 // one section shows those sections as tabs above its page.
 //
 // WHY HUBS. The sidebar used to list every screen: fourteen entries, eight of
@@ -28,7 +28,7 @@ export function resolveControlCenterTab(tabParam: string | null): ControlCenterT
   return TABS.find(t => t === tabParam) ?? 'overview'
 }
 
-export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'records'
+export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'records'
 
 export type NavSection = {
   id: string
@@ -143,6 +143,16 @@ export const NAV_HUBS: readonly NavHub[] = [
       id: 'announcements', label: 'Announcements', href: `${MAIN_PATH}/announcements`,
       description: 'Publish a notice to chosen employees and see who has read it.',
       keywords: ['notice', 'broadcast', 'message', 'publish', 'news', 'read receipts'],
+    }],
+  },
+  {
+    id: 'for-you',
+    label: 'For you',
+    sections: [{
+      id: 'for-you', label: 'For you', href: `${MAIN_PATH}/for-you`,
+      description: 'What can appear in the right-hand column on Modules, for everyone.',
+      keywords: ['right column', 'right side', 'side panel', 'modules panel', 'cards', 'urgent', 'immediate',
+        'payment request', 'always on', 'customize'],
     }],
   },
   {

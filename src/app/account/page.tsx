@@ -17,6 +17,7 @@ import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designationLevels'
 import { safeReturnPath } from '@/lib/safeReturnPath'
 import { PhoneAlertsCard } from '@/components/push/PhoneAlertsCard'
+import { ForYouChoicesCard } from '@/components/modules/ForYouChoicesCard'
 
 // Account Settings sits inside the same BoeOsLayout shell as the Modules
 // launcher, so the sidebar — Home, the viewer's quick actions, View As and the
@@ -237,6 +238,8 @@ function AccountPageInner() {
             </div>
           </form>
         </section>
+
+        <ForYouChoicesCard />
 
         <PhoneAlertsCard />
 

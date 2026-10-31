@@ -26,12 +26,21 @@
 //        - WAITING FOR <recipient>: the giver's side. Remind (the server allows
 //          one every 4 hours).
 //        - YOU HOLD: accepted or recorded cash not handed on yet. Hand over.
+//   2b. RECORDS WAITING ON THE VIEWER (owner, 2026-10-31) — a new payment request
+//      for whoever decides them, and four more an administrator can add: a
+//      payment sent back, a PI waiting for approval, a change request and a PI
+//      waiting for Operations (src/lib/modules/forYouWork.ts). Each opens its
+//      record's own page; five show, then "N more".
 //   3. CASH NOT WITH THE COMPANY — everybody else's, from Finance's own "money
 //      not yet with the company" list (finance_unclosed_funds: everyone's for an
 //      admin, the custodian or a view_all holder), one card per person holding
 //      money. Review opens Cash journeys, for Finance users. The viewer's own
 //      cash is item 2, not repeated here.
 //   4. LEAVE AND LATE ARRIVAL — for the signed-in admin (PendingApprovals.tsx).
+//
+// WHICH OF THESE SHOW (owner, 2026-10-31): an administrator sets each item in
+// Control Center, and each person turns Optional ones off in Account Settings
+// (src/lib/modules/forYouCatalogue.ts). Those settings only ever hide a card.
 //
 // CLEAR ALL hides every card showing for 24 hours, on this device; anything
 // still not dealt with then comes back, and anything new shows at once (see
@@ -40,7 +49,7 @@
 // WITH NOTHING TO SHOW THE PANEL IS NOT DRAWN AT ALL, and the tiles take the
 // whole width again.
 //
-// A PLACEMENT AND NOTHING ELSE. Every card reads an existing query and every
+// A PLACEMENT AND NOTHING ELSE. Every card reads existing records and every
 // write goes through an existing door (accept_cash_handover,
 // remind_cash_handover, create_cash_handover via HandoverModal, the attendance
 // decision route; a returned PI opens the existing PI page). Accepting custody never approves a payment: Finance still
@@ -48,10 +57,15 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, Banknote, Clock, Fingerprint, HandCoins, Megaphone, Undo2, Wallet } from 'lucide-react'
+import {
+  ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone,
+  MessageCircleQuestion, SlidersHorizontal, Undo2, Wallet,
+} from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
+import { useForYouVisibility } from '@/hooks/queries/useForYouSettings'
+import { useForYouWork } from '@/hooks/queries/useForYouWork'
 import { useMachineHealth } from '@/hooks/queries/useMachineHealth'
 import { useMyReturnedPis } from '@/hooks/queries/useMyReturnedPis'
 import { formatPunchMoment, type MachineHealth } from '@/lib/minop/machineHealth'
@@ -67,6 +81,8 @@ import { sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/
 import {
   EMPTY_SNOOZE, isHidden, itemKeys, readSnooze, snoozeAll, snoozeStorageKey, type SnoozeState,
 } from '@/lib/modules/forYouSnooze'
+import { FOR_YOU_SETTINGS_HREF } from '@/lib/modules/forYouCatalogue'
+import { FOR_YOU_CARDS_SHOWN, type WorkCard, type WorkItemKey } from '@/lib/modules/forYouWork'
 import { PendingApprovals, usePendingApprovalQueue } from './PendingApprovals'
 import styles from './attentionPanel.module.css'
 
@@ -163,34 +179,44 @@ function useSnooze(userId: string | null) {
  * deduped by its key, so calling this twice costs nothing).
  */
 export function useAttentionSummary({ userId, ordersAllowed, showAttendance, latestAnnouncement }: AttentionSources) {
+  const { on, access } = useForYouVisibility()
   const { viewerId, mine, isError: handoversError } = useOpenHandovers()
   const unclosed = useUnclosedFunds()
-  const returnedPis = useMyReturnedPis(ordersAllowed)
-  const approvals = usePendingApprovalQueue(userId, showAttendance)
-  const machineHealth = useMachineHealth(showAttendance)
+  const returnedOn = ordersAllowed && on('pi_returned')
+  const leaveOn = showAttendance && on('leave_late')
+  const machineOn = showAttendance && on('machine_stopped')
+  const returnedPis = useMyReturnedPis(returnedOn)
+  const approvals = usePendingApprovalQueue(userId, leaveOn)
+  const machineHealth = useMachineHealth(machineOn)
+  const workGroups = useForYouWork(on, access)
   const snooze = useSnooze(userId)
   // The state is only ever unexpired (readSnooze on load, the timer after), so
   // the check needs no clock here.
   const shown = (key: string) => !isHidden(snooze.state, key)
 
-  const announcement = latestAnnouncement && !latestAnnouncement.read_at
+  const announcement = on('announcement') && latestAnnouncement && !latestAnnouncement.read_at
     && shown(itemKeys.announcement(latestAnnouncement.id)) ? latestAnnouncement : null
 
   // PIs returned to the viewer: each is waiting on them until they submit it again.
-  const returned = (returnedPis.data ?? []).filter(r => shown(itemKeys.returnedPi(r.submissionId, r.since)))
+  const returned = (returnedOn ? returnedPis.data ?? [] : [])
+    .filter(r => shown(itemKeys.returnedPi(r.submissionId, r.since)))
 
-  const machine = machineHealth.data?.state === 'stopped' && shown(itemKeys.machineStopped(machineHealth.data.today))
+  const machine = machineOn && machineHealth.data?.state === 'stopped' && shown(itemKeys.machineStopped(machineHealth.data.today))
     ? machineHealth.data
     : null
 
-  const toAccept = mine
+  const toAccept = (on('cash_handed_to_you') ? mine : [])
     .filter(h => handoverRole(h, viewerId) === 'recipient' && h.canAccept)
     .filter(h => shown(itemKeys.handover(h.id)))
 
   // The giver's side of the same handovers: shown until the recipient accepts.
-  const handedOut = mine
+  const handedOut = (on('handover_waiting') ? mine : [])
     .filter(h => handoverRole(h, viewerId) === 'giver')
     .filter(h => shown(itemKeys.handover(h.id)))
+
+  // Records waiting on the viewer: Clear all filters the cards, as everywhere here.
+  const work = workGroups.map(group => ({ ...group, cards: group.cards.filter(c => shown(c.key)) }))
+  const workCount = work.reduce((sum, group) => sum + group.cards.length + group.unread, 0)
 
   const allPayments = unclosed.data?.payments ?? []
   // What the viewer holds and has not handed on. (Held cash already in an open
@@ -199,7 +225,7 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
   const ownLoose = allPayments.filter(p => p.holderId === viewerId && !p.openHandover)
   const ownTotal = sumAmounts(ownLoose)
   const heldKey = viewerId ? itemKeys.holder(viewerId, ownTotal, 'held') : ''
-  const held: HeldCard | null = viewerId && ownLoose.length > 0 && shown(heldKey)
+  const held: HeldCard | null = viewerId && ownLoose.length > 0 && on('cash_you_hold') && shown(heldKey)
     ? {
         key: heldKey,
         amount: ownTotal,
@@ -214,7 +240,8 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
   const payments = allPayments
     .filter(p => p.holderId !== viewerId)
     .filter(p => !(p.openHandover && p.openHandover.recipientId === viewerId))
-  const holders: HolderCard[] = totalsByHolder(payments)
+  const cashOn = on('cash_not_with_company')
+  const holders: HolderCard[] = (cashOn ? totalsByHolder(payments) : [])
     .sort((a, b) => b.oldestAgeHours - a.oldestAgeHours)
     .map(t => {
       const own = payments.filter(p => (p.holderId ?? 'unknown') === t.holderId)
@@ -229,15 +256,15 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
     })
     .filter(h => shown(h.key))
 
-  const requests = showAttendance
+  const requests = leaveOn
     ? approvals.rows.filter(r => shown(itemKeys.request(r.id)))
     : []
 
   // Waiting on the viewer: accepting, handing on, deciding. Not their own
   // "Waiting for" cards: that is somebody else's move.
-  const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length + (machine ? 1 : 0)
+  const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length + workCount + (machine ? 1 : 0)
   const itemCount = (announcement ? 1 : 0) + (machine ? 1 : 0) + returned.length + toAccept.length + handedOut.length
-    + (held ? 1 : 0) + holders.length + requests.length
+    + (held ? 1 : 0) + workCount + holders.length + requests.length
   const visibleKeys = [
     ...(announcement ? [itemKeys.announcement(announcement.id)] : []),
     ...(machine ? [itemKeys.machineStopped(machine.today)] : []),
@@ -245,16 +272,19 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
     ...toAccept.map(h => itemKeys.handover(h.id)),
     ...handedOut.map(h => itemKeys.handover(h.id)),
     ...(held ? [held.key] : []),
+    ...work.flatMap(group => group.cards.map(c => c.key)),
     ...holders.map(h => h.key),
     ...requests.map(r => itemKeys.request(r.id)),
   ]
 
   return {
-    announcement, machine, returned, toAccept, handedOut, held, holders, requests,
+    announcement, machine, returned, toAccept, handedOut, held, work, holders, requests,
     viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
-    machineError: showAttendance && machineHealth.isError,
-    returnedError: ordersAllowed && returnedPis.isError,
-    handoversError, cashError: unclosed.isError, approvalsError: showAttendance && approvals.isError,
+    machineError: machineOn && machineHealth.isError,
+    returnedError: returnedOn && returnedPis.isError,
+    handoversError: handoversError && (on('cash_handed_to_you') || on('handover_waiting')),
+    cashError: unclosed.isError && (cashOn || on('cash_you_hold')),
+    approvalsError: leaveOn && approvals.isError,
     actCount, itemCount, visibleKeys, shown, clearAll: () => snooze.clear(visibleKeys),
   }
 }
@@ -263,6 +293,7 @@ export function AttentionPanel(props: AttentionSources) {
   const { userId, financeAllowed } = props
   const s = useAttentionSummary(props)
   const errors = s.machineError || s.returnedError || s.handoversError || s.cashError || s.approvalsError
+    || s.work.some(group => group.failed)
   // "Hand over cash", opened from a card. Kept here, not in the card: the card
   // it was opened from leaves the list the moment its handover is accepted.
   // `paymentIds` = the payments to tick first (null = none).
@@ -286,16 +317,28 @@ export function AttentionPanel(props: AttentionSources) {
         <h2 id="for-you-heading" className={styles.attentionHeading}>
           For you <span className={styles.attentionCount}>{s.itemCount}</span>
         </h2>
-        {s.itemCount > 0 && (
-          <button
-            type="button"
-            className={styles.clearAll}
-            onClick={s.clearAll}
-            title="Hide these for 24 hours. Anything not dealt with by then comes back."
+        <div className={styles.attentionActions}>
+          {/* Account Settings, not a popup here: with nothing to show the panel
+              is not drawn, and the choices must still be reachable. */}
+          <Link
+            href={FOR_YOU_SETTINGS_HREF}
+            className={styles.customize}
+            aria-label="Choose what shows here"
+            title="Choose what shows here"
           >
-            Clear all
-          </button>
-        )}
+            <SlidersHorizontal size={15} strokeWidth={2} aria-hidden="true" />
+          </Link>
+          {s.itemCount > 0 && (
+            <button
+              type="button"
+              className={styles.clearAll}
+              onClick={s.clearAll}
+              title="Hide these for 24 hours. Anything not dealt with by then comes back."
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </header>
 
       <ul className={styles.cards}>
@@ -352,6 +395,19 @@ export function AttentionPanel(props: AttentionSources) {
             )}
           </li>
         )}
+
+        {s.work.map(group => (
+          <WorkCards
+            key={group.item}
+            item={group.item}
+            cards={group.cards}
+            unread={group.unread}
+            moreHref={group.moreHref}
+            moreLabel={group.moreLabel}
+            failed={group.failed}
+            failedLabel={group.failedLabel}
+          />
+        ))}
 
         {s.cashError && (
           <ErrorCard icon={<Banknote size={13} strokeWidth={2} />} label="Cash not with the company">
@@ -473,6 +529,62 @@ function ReturnedPiCard({ r }: { r: ReturnedPi }) {
         <span className={styles.cardDetail}>Opens only for whoever filed it</span>
       )}
     </li>
+  )
+}
+
+// ── Records waiting on the viewer ────────────────────────────────────────────
+//
+// One kind at a time: five cards, then "N more". Each button opens the record's
+// own page, which decides who may do what. A failed read says so: a silent gap
+// could hide something somebody is waiting on.
+const WORK_ICON: Record<WorkItemKey, typeof Banknote> = {
+  payment_request: Banknote,
+  payment_sent_back: MessageCircleQuestion,
+  pi_waiting_approval: FileCheck,
+  order_change_request: FilePen,
+  pi_waiting_operations: ClipboardCheck,
+}
+
+function WorkCards({ item, cards, unread, moreHref, moreLabel, failed, failedLabel }: {
+  item: WorkItemKey
+  cards: WorkCard[]
+  unread: number
+  moreHref: string
+  moreLabel: (n: number) => string
+  failed: boolean
+  failedLabel: string
+}) {
+  const Icon = WORK_ICON[item]
+  if (failed) {
+    return (
+      <ErrorCard icon={<Icon size={13} strokeWidth={2} />} label={failedLabel}>
+        Could not be loaded, so one waiting for you may be missing.
+      </ErrorCard>
+    )
+  }
+  const listed = cards.slice(0, FOR_YOU_CARDS_SHOWN)
+  const more = cards.length - listed.length + unread
+  return (
+    <>
+      {listed.map(card => (
+        <li key={card.key} className={styles.card}>
+          <span className={styles.cardLabel}>
+            <Icon size={13} strokeWidth={2} aria-hidden="true" />
+            {card.label}
+          </span>
+          <span className={styles.cardBrief}>{card.brief}</span>
+          {card.detail && <span className={styles.cardDetail}>{card.detail}</span>}
+          <Link href={card.href} className={styles.button} aria-label={`${card.action}: ${card.brief}`}>
+            {card.action}
+          </Link>
+        </li>
+      ))}
+      {more > 0 && (
+        <li>
+          <Link href={moreHref} className={styles.moreLink}>{moreLabel(more)}</Link>
+        </li>
+      )}
+    </>
   )
 }
 

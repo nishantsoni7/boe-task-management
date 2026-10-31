@@ -24,7 +24,7 @@ describe('navigation model', () => {
   })
 
   test('the sidebar is short', () => {
-    assert.equal(NAV_HUBS.length, 6)
+    assert.equal(NAV_HUBS.length, 7)
   })
 
   test('a tab section is active only on the main page with that tab', () => {
