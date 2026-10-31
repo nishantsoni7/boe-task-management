@@ -4,6 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+<<<<<<< HEAD
 ## 2026-10-31 — Confirmed Payments and Payments to Verify listed by payment date, latest first (PR open) · no migration · not yet merged or backed up
 - **Owner request.** Always show the list in the order of the date of payment, with the latest payment on top. A payment dated 31 Oct sat under one dated 27 Oct because the list followed when each payment was entered. The owner chose both lists.
 - **What.** `ReceivedPaymentsView` orders by `payment_date`, then `created_at`, then `id`, all newest first. The last two settle same-day payments and keep paging stable. `/finance/payments-to-verify` uses the same query, so it follows.
@@ -12,12 +13,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Proof.** `paymentsPaging.test.ts` pins the three keys and their order, and `paymentRouting.test.ts` pins the first. Removing `payment_date` fails both, and putting `created_at` ahead of it fails the first. Not seen signed in.
 
 ## 2026-10-31 — Expenses page redesigned: one line of controls, Paid from column, twice the rows on screen (PR open) · no migration · not yet merged or backed up
+=======
+## 2026-10-31 — Expenses page redesigned: one line of controls, Paid from column, twice the rows on screen (PR #537, squash-merged as cf4b9d27, 10:06 UTC, on the owner's yes) · no migration · Production deployment 7457207267 success 10:08 UTC · backup bundle 20261031T101835Z, database 20261031T101850Z (201 tables, 100,700 rows; 3 restricted tables not covered), verified
+>>>>>>> origin/main
 - **Owner request.** Use the space better, add a column saying whether a payment came from Nishant's personal or the Company account and view the list by it, and make the filters and search super clean. Two previews approved first; the owner chose the strip layout, then asked for rarely used controls to be hidden, Company or Personal in different font colours, and an icon for reimbursed and not reimbursed.
 - **What.** One line of controls replaces two: text tabs, an All / Company / Personal switch, one total that follows the list, Not reimbursed with what is owed, a magnifier that opens when clicked, Filters and a download icon. Dates moved inside Filters with category, mode, reimbursement, who paid and missing bill. New Paid from column: Company in blue, Personal in terracotta, a clock for not reimbursed, a filled green tick for reimbursed, a dash for an old expense with no source. Rows are 36px instead of 57px, because View, Edit and Delete are small icons. Spare width is shared across all eight columns instead of all going to Paid to.
 - **All Finance pages.** The closed "Other open handovers" and the money-not-with-the-company line now share one line. Handovers of the viewer's own, and the list once opened, still take full lines.
 - **Unchanged.** Permissions, what each person can see, the database, Add Expense, Quick Capture, Needs Details, ticking expenses and recording a reimbursement, the details window, and both Excel files. Those still say Pending reimbursement.
 - **Rollback.** Revert the PR.
-- **Proof.** `expenseForm.render.test.tsx` renders each Paid from state and the phone card, `expenseReimbursements.test.ts` covers the switch and panel rules, and 15 deliberate breakages of the new rules were each caught. Not seen signed in. The preview's 16 rows at the owner's window size were measured in a mock, not the live page.
+- **Proof.** `expenseForm.render.test.tsx` renders each Paid from state and the phone card, `expenseReimbursements.test.ts` covers the switch and panel rules, and 15 deliberate breakages of the new rules were each caught. The merged tree is identical to the tested commit, and boeone.vercel.app's chunks carry the new strings and not the old ones. Not seen signed in. The preview's 16 rows at the owner's window size were measured in a mock, not the live page. The first backup after the merge failed on a dropped storage connection (`terminated`); a plain re-run passed.
 
 ## 2026-10-31 — Assigned By Me redesigned: one-line list, Team response bar, Approve and Cancel on the row; Task Details returns to the list (PR #535, squash-merged as a4cde4af, 07:55 UTC, on the owner's yes) · no migration · Production deployment 7456015835 success 07:59 UTC · backup bundle 20261031T075941Z, database 20261031T080000Z verified, 3 restricted tables not covered (Docker off)
 - **Owner request.** A neater list with no description, a view on the right of who responds and who is least active to use when talking to the person, Approve and Cancel task on the list, and after Approve or Cancel on Task Details a notice and a return to Assigned By Me (not the Cancelled page). Mockup approved first.
