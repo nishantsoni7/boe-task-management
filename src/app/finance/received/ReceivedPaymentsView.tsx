@@ -458,12 +458,17 @@ function ReceivedPaymentsViewInner(
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
     if (filters.dateTo)   scoped = scoped.lte('payment_date', filters.dateTo)
 
-    // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET, which
-    // makes no promise about row order unless the ordering is deterministic —
-    // two payments recorded in the same instant could otherwise swap between
-    // pages, showing one twice and hiding the other.
+    // ORDERED BY payment_date, THEN created_at, THEN id. The latest payment leads
+    // (owner 2026-10-31): payment_date is the date the row prints, created_at is
+    // only when somebody typed it in, so money entered late used to sit above
+    // newer money. payment_date is a plain date, so same-day payments fall back
+    // on the latest entered. range() maps to LIMIT/OFFSET, which makes no promise
+    // about row order unless the ordering is deterministic — two payments
+    // recorded in the same instant could otherwise swap between pages, showing
+    // one twice and hiding the other.
     const range = pageRange(page)
     const { data, count, error } = await scoped
+      .order('payment_date', { ascending: false })
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .range(range.from, range.to)

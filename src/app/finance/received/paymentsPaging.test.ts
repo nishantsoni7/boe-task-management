@@ -170,16 +170,23 @@ describe('every narrowing is the database\'s', () => {
 // ══ 3. Deterministic ordering ═════════════════════════════════════════════════
 
 describe('deterministic ordering', () => {
-  test('the list orders by created_at AND THEN by id', () => {
+  test('the list orders by payment_date, THEN created_at, THEN id', () => {
+    // The latest payment leads by the date the row prints, not by when somebody
+    // typed it in (owner 2026-10-31).
+    //
     // range() maps to LIMIT/OFFSET, which makes no promise about row order
     // unless the ordering is total. Two payments recorded in the same instant
     // could otherwise swap between pages — showing one twice and hiding the
     // other, which is the paging bug that looks like data loss.
+    assert.ok(loader.includes(".order('payment_date', { ascending: false })"))
     assert.ok(loader.includes(".order('created_at', { ascending: false })"))
     assert.ok(loader.includes(".order('id', { ascending: false })"))
+    const paymentDate = loader.indexOf(".order('payment_date'")
     const createdAt = loader.indexOf(".order('created_at'")
     const id = loader.indexOf(".order('id'")
-    assert.ok(createdAt < id, 'created_at is the primary key of the ordering, id breaks its ties')
+    assert.ok(paymentDate < createdAt,
+      'payment_date is the primary key of the ordering, created_at breaks same-day ties')
+    assert.ok(createdAt < id, 'and id breaks any tie left, so the ordering is total')
   })
 })
 
