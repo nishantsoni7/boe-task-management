@@ -123,3 +123,12 @@ export function canApproveTask(task: TaskAccessSubject, userId: string): boolean
 export function canReturnTask(task: TaskAccessSubject, userId: string): boolean {
   return canApproveTask(task, userId)
 }
+
+/**
+ * The creator cancelling their own task from the Assigned By Me list. Task Detail
+ * offers Cancel the same way, and also to admins; /api/cancel-task is what enforces
+ * it. Never on a quotation, whose cancel is not offered on either screen.
+ */
+export function canCancelFromList(task: TaskAccessSubject, userId: string): boolean {
+  return task.created_by === userId && !isFinished(task) && !isQuotation(task)
+}

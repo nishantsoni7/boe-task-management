@@ -5,16 +5,20 @@
 
 ## Snapshot
 
-- Commit: `f2ab75fc` — Incoming Minop data: table redesigned around punch time, delay and name
-- Commits on this branch: 1096
-- Pages (`page.tsx`): 159   API routes (`route.ts`): 178
+- Commit: `c2801b5b` — Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row
+- Commits on this branch: 1100
+- Pages (`page.tsx`): 159   API routes (`route.ts`): 179
 - Migrations: 391 (first `20260530_create_positions.sql`, latest `20270511000000_attendance_machine_stopped_notification_type.sql`)
 - Tables ever created: 192 (dropped at some point: 7)   SQL functions: 852   Enums: 0
-- Test files: 689   Next.js 16.2.6, React 19.2.4
+- Test files: 693   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `f2ab75fc` 2026-10-30 Incoming Minop data: table redesigned around punch time, delay and name
+- `c2801b5b` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row
+- `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
+- `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
+- `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
+- `03346ec0` 2026-10-30 Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (#532)
 - `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 - `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
 - `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
@@ -35,10 +39,6 @@
 - `86af9b34` 2026-10-30 Orders: Approve popup is one sentence and two buttons; never asks for the salesperson (#511)
 - `9930c575` 2026-10-30 Orders: Payment plan screen, layout B - the balance first, help that stays, Save at the bottom (#514)
 - `33e4472e` 2026-10-30 Orders: approving a PI opens the Order it created (#510)
-- `53ee3f89` 2026-10-29 Docs: PI payments popup Payment ID merged as PR #506 (1b50f285) (#509)
-- `1b50f285` 2026-10-29 Orders: PI payments popup shows the Payment ID, not the request number (#506)
-- `4f754678` 2026-10-29 Payments counted once, Step 1: a closed PI gives its money back; Add payment offers money already received (#508)
-- `35ff758d` 2026-10-29 Docs: Confirmed Payments column widths merged as PR #505 (cf417c79) (#507)
 
 ## Pages by top-level area
 
@@ -122,7 +122,7 @@
 - **samples** (4): `/notifications [DELETE,GET,PATCH]`, `/notifications/[id] [DELETE,PATCH]`, `/notifications/delete-selected [POST]`, `/notify [POST]`
 - **showroom** (13): `/admin/categories [GET,POST]`, `/admin/categories/[id] [DELETE,PATCH]`, `/admin/products [GET,POST]`, `/admin/products/[product_code] [DELETE,GET,PATCH]`, `/inquiry [GET,POST]`, `/inquiry-items [POST]`, `/inquiry-items/[itemId] [DELETE,PATCH]`, `/inquiry/[id] [GET,PATCH]`, `/products [GET]`, `/products/by-code/[product_code] [GET]`, `/quotation/[id] [GET,POST]`, `/salesperson/[user_id] [GET]`, `/share/[token] [GET]`
 - **task-detail** (1): ` [GET]`
-- **tasks** (2): `/[id]/copy [POST]`, `/[id]/notify-assignment [POST]`
+- **tasks** (3): `/[id]/copy [POST]`, `/[id]/notify-assignment [POST]`, `/people [GET]`
 - **toggle-active** (1): ` [POST]`
 - **update-employee** (1): ` [PATCH]`
 - **update-member** (1): ` [POST]`
@@ -156,7 +156,7 @@
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 20 source, 35 test
+- `src/lib/tasks` — 23 source, 37 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
@@ -187,14 +187,14 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (11 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (141 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (12 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (142 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (141 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (142 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 

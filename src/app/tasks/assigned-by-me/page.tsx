@@ -15,8 +15,14 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useActiveUsers, useAllUserNames } from '@/hooks/queries/useMyTasks'
 import { useAssignedByMe, assignedByMeKey } from '@/hooks/queries/useAssignedByMe'
+import { useTeamResponse, TEAM_RESPONSE_KEY } from '@/hooks/queries/useTeamResponse'
+import { ApproveTaskDialog } from '@/components/tasks/ApproveTaskDialog'
+import { CancelTaskModal } from '@/components/tasks/CancelTaskModal'
+import { TaskRowMenu, type TaskRowMenuItem } from '@/components/tasks/TaskRowMenu'
+import { TeamResponseBar } from '@/components/tasks/TeamResponseBar'
+import { Toast, takeFlashToast, useToast } from '@/components/ui/toast'
 import {
-  CheckCircle2, ClipboardCheck, ExternalLink, Star, AlertCircle,
+  Ban, Check, CheckCircle2, ClipboardCheck, ExternalLink, Star,
   Search, Pencil, Trash2, Paperclip, X,
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
@@ -28,6 +34,9 @@ import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
+import { canApproveTask, canCancelFromList } from '@/lib/tasks/taskDetailAccess'
+import { approveTaskFromList, cancelTaskFromList, type ListActionResult } from '@/lib/tasks/taskListActions'
+import styles from './assignedByMe.module.css'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 // The column list moved to useAssignedByMe, beside the query that uses it.
@@ -49,9 +58,21 @@ function needsUpdate(task: Task) {
 function isUnacknowledged(task: Task) {
   return !task.acknowledged_at && task.status !== 'completed' && task.status !== 'cancelled' && task.created_by !== task.assigned_to
 }
-function formatDate(d: string | null): string | null {
+/** The year appears only when it is not this one. */
+function formatDueDate(d: string | null): string | null {
   if (!d) return null
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
+  const sameYear = d.slice(0, 4) === TODAY_STR.slice(0, 4)
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: '2-digit' }) })
+}
+function daysLate(dueDate: string): number {
+  return Math.round((Date.parse(TODAY_STR) - Date.parse(dueDate.slice(0, 10))) / 86_400_000)
+}
+function formatLastUpdate(iso: string): string {
+  const hours = Math.floor((NOW_MS - new Date(iso).getTime()) / 3_600_000)
+  if (hours < 1) return 'Just now'
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hr' : 'hrs'} ago`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? 'Yesterday' : `${days} days ago`
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -78,30 +99,6 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low:    { label: 'Low',  color: colors.muted },
 }
 
-// ─── Desktop column widths ────────────────────────────────────────────────────
-// One definition, read by both the header and the row, so a header can never
-// drift out of alignment with the cells beneath it.
-//
-// These were fixed pixels (130/56/90/100/100/84 plus a 28px star gutter) with
-// Task on `flex: 1`. That meant Task swallowed every pixel a wider screen
-// added: 48% of the row at 1440px, 64% at 1920px, while Status stayed at 90px.
-// Proportional widths hold Task near 42-43% at any width and give the largest
-// share of what it gives back to Status.
-//
-// Each carries a px floor. Below roughly 1000px the floors add up to more than
-// their percentages, and the surplus is taken from Task — which is the
-// intended order: the description truncates a word earlier rather than Status
-// or the action icons being squeezed.
-const STAR_GUTTER = '28px'
-const COL = {
-  assignee: { width: '10.5%', min: '96px'  },
-  priority: { width: '7%',    min: '52px'  },
-  status:   { width: '13.5%', min: '104px' },
-  created:  { width: '8.5%',  min: '82px'  },
-  due:      { width: '8.5%',  min: '88px'  },
-  actions:  { width: '7.5%',  min: '84px'  },
-} as const
-
 // ─── URL-backed list state ────────────────────────────────────────────────────
 // Tab, assignee, priority and search live in the query string, so Back from a
 // task detail lands on exactly the list the user left and a filtered view can be
@@ -117,110 +114,75 @@ const LIST_PARAMS = {
   q:        textParam(),
 }
 
-// ─── Task card ────────────────────────────────────────────────────────────────
+// ─── Task row ─────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userMap, onClick, onView, onEdit, onDelete, isMobile,
+  task, userMap, assigneeInactive, onClick, onView, onEdit, onDelete, onApprove, onCancel, isMobile,
 }: {
   task: Task
-  accentColor: string
   userMap: Record<string, string>
+  assigneeInactive: boolean
   onClick: () => void
   onView: () => void
   onEdit?: () => void
   onDelete?: () => void
+  /** Present only when this reader may approve this task now. */
+  onApprove?: () => void
+  /** Present only when this reader may cancel this task. */
+  onCancel?: () => void
   isMobile?: boolean
 }) {
-  const [hovered,     setHovered]     = useState(false)
-  const [hoveredEdit, setHoveredEdit] = useState(false)
-  const [hoveredDel,  setHoveredDel]  = useState(false)
-  const [hoveredView, setHoveredView] = useState(false)
-
-  const overdue   = isOverdue(task)
-  const priority  = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
-  const dateStr   = formatDate(task.due_date)
-  const assigneeName = userMap[task.assigned_to ?? ''] ?? 'member'
-
-  const isImportant = task.is_urgent
+  const overdue      = isOverdue(task)
+  const dueToday     = task.due_date === TODAY_STR && accruesAssigneeOverdue(task.status)
+  const priority     = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
+  const dateStr      = formatDueDate(task.due_date)
+  const late         = overdue ? daysLate(task.due_date as string) : 0
+  const assigneeName = userMap[task.assigned_to ?? ''] ?? 'Unknown'
 
   // The one status on this list that is waiting on the reader. Read from the
   // stored value; nothing here writes or reinterprets it.
   const isForApproval = task.status === 'pending_approval'
 
-  // Two signals, two hues, so neither can be mistaken for the other:
-  //   Important  = warm GOLD fill + gold border (+ the star)
-  //   For Approval = cool BLUE fill + blue stripe (+ the blue badge)
-  // A row that is both keeps the blue fill (it is waiting on the reader) and
-  // the gold border and star (it was marked important).
-  const cardBackground = isImportant
-    ? (hovered ? 'rgba(183,137,42,0.16)' : 'rgba(183,137,42,0.10)')
-    : (hovered ? colors.raised : colors.base)
-
-  const cardBorder = isImportant
-    ? `1.5px solid rgba(183,137,42,${hovered ? '0.65' : '0.45'})`
-    : `1.5px solid ${colors.border}`
-
-  // ── Desktop row only ──
-  const desktopBackground = isForApproval
-    ? (hovered ? 'rgba(51,90,134,0.12)' : 'rgba(51,90,134,0.07)')
-    : cardBackground
-
-  const elevation = hovered
-    ? '0 2px 8px rgba(0,0,0,0.09)'
-    : isImportant
-      ? '0 1px 4px rgba(183,137,42,0.08)'
-      : '0 1px 3px rgba(0,0,0,0.04)'
-
-  // The 3px accent is an INSET shadow, not a thicker left border: it paints
-  // inside the existing 1.5px border box, so an approval row's content starts
-  // at exactly the same x as every other row's. Elevation is preserved, so
-  // hover still lifts the card.
-  const desktopShadow = isForApproval
-    ? `inset 3px 0 0 ${colors.blue}, ${elevation}`
-    : elevation
-
-  // Same accent for the mobile card, by the same means and for the same reason.
-  // The mobile card carries no elevation shadow of its own, so this is the only
-  // entry — and `undefined` leaves a non-approval card exactly as it was.
-  // No background tint here: the card is the full width of a phone screen, so
-  // the stripe alone is already unmissable and a tint would only muddy it.
-  const mobileShadow = isForApproval ? `inset 3px 0 0 ${colors.blue}` : undefined
+  const menuItems: TaskRowMenuItem[] = [
+    { key: 'open', text: 'Open full page', Icon: ExternalLink, run: onView },
+    ...(onEdit ? [{ key: 'edit', text: 'Edit', Icon: Pencil, run: onEdit }] : []),
+    ...(onCancel ? [{ key: 'cancel', text: 'Cancel task', Icon: Ban, run: onCancel }] : []),
+    // Delete removes the task for good; Cancel keeps it and can be restored.
+    ...(onDelete ? [{ key: 'delete', text: 'Delete', Icon: Trash2, run: onDelete, danger: true }] : []),
+  ]
+  const menuLabel = `More actions for ${task.title}`
 
   if (isMobile) {
+    // No tint on an approval card: it is the full width of a phone screen, so the
+    // stripe alone is already unmissable and a tint would only muddy it.
     return (
       <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         onClick={onClick}
-        style={{ background: cardBackground, border: cardBorder, borderRadius: '8px', boxShadow: mobileShadow, cursor: 'pointer', padding: '10px 12px' }}
+        style={{
+          background: task.is_urgent ? 'rgba(183,137,42,0.10)' : colors.base,
+          border: `1px solid ${task.is_urgent ? 'rgba(183,137,42,0.45)' : colors.border}`,
+          borderRadius: '12px',
+          boxShadow: isForApproval ? `inset 3px 0 0 ${colors.blue}` : undefined,
+          cursor: 'pointer',
+          padding: '8px 2px 10px 12px',
+        }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
-          <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {task.is_urgent && <Star size={12} fill="#B7892A" color="#B7892A" style={{ flexShrink: 0 }} />}
+          <div style={{ flex: 1, minWidth: 0, fontSize: '15px', fontWeight: task.is_urgent ? 600 : 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.title}
           </div>
-          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-            <button onClick={e => { e.stopPropagation(); onEdit?.() }}
-              onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#963B27' : colors.muted }}>
-              <Pencil size={13} />
-            </button>
-            <button onClick={e => { e.stopPropagation(); onDelete?.() }}
-              onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
-              title="Delete" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
-              <Trash2 size={13} />
-            </button>
-            <button onClick={e => { e.stopPropagation(); onView() }}
-              onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              title="View" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
-              <ExternalLink size={13} />
-            </button>
-          </div>
+          <TaskRowMenu label={menuLabel} items={menuItems} size={44} />
         </div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(39,98,71,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
-          {/* The mobile card names no status — with one exception, because
-              "this one is waiting on you" is the only status on this screen
-              that asks the reader for something. */}
+        <div style={{ display: 'flex', gap: '4px 10px', flexWrap: 'wrap', alignItems: 'center', paddingRight: '10px', fontSize: '13px', color: colors.secondary }}>
+          <span>{assigneeName}</span>
+          <span style={{ fontWeight: 600, color: priority.color }}>{priority.label}</span>
+          {dateStr && (
+            <span style={{ fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+              {overdue ? `${late} ${late === 1 ? 'day' : 'days'} late` : dateStr}
+            </span>
+          )}
+          {/* The phone card names no status, with one exception: "this one is
+              waiting on you" is the only status here that asks for something. */}
           {isForApproval && (
             <span
               className={`${statusBadgeClass(task.status)} boe-badge-approval-review`}
@@ -230,108 +192,53 @@ function TaskCard({
               {taskStatusLabel(task.status, 'creator')}
             </span>
           )}
-          <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
-          {dateStr && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '12px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
-              {overdue && <AlertCircle size={9} />}{dateStr}
-            </span>
-          )}
         </div>
+        {onApprove && (
+          <div className={styles.cardActions} onClick={e => e.stopPropagation()}>
+            <button type="button" className="boe-btn boe-btn-primary" onClick={onApprove}>
+              <Check size={14} strokeWidth={2.6} aria-hidden="true" />
+              Approve
+            </button>
+            {onCancel && (
+              <button type="button" className="boe-btn boe-btn-secondary" onClick={onCancel}>Cancel task</button>
+            )}
+          </div>
+        )}
       </div>
     )
   }
 
+  // Never `boe-badge-approval-review` for anything but the approval status: it
+  // is what makes that one badge stand out from the rest of the column.
+  const aging = getTaskAging(task)
+  const updateClass = aging?.severity === 'danger'
+    ? styles.updateDanger
+    : aging ? styles.updateWarning : ''
+
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center',
-        background: desktopBackground,
-        border: cardBorder,
-        borderRadius: '8px',
-        boxShadow: desktopShadow,
-        transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
-        minHeight: '48px',
-        cursor: 'pointer',
-      }}
+      className={[
+        styles.row,
+        isForApproval ? styles.approval : task.is_urgent ? styles.important : '',
+      ].join(' ')}
     >
-      {/* Star indicator — also the gutter the 3px approval accent paints into */}
-      <div style={{ width: STAR_GUTTER, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {task.is_urgent
-          ? <Star size={11} fill="#B7892A" color="#B7892A" />
-          : <div style={{ width: '11px' }} />
-        }
+      <div className={styles.star}>
+        {task.is_urgent && <Star size={12} fill="#B7892A" color="#B7892A" aria-label="Important" />}
       </div>
 
-      {/* Title + note */}
-      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-          <span style={{
-            fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
-            color: colors.primary,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            letterSpacing: '-0.01em',
-          }}>
-            {task.title}
-          </span>
-        </div>
-        {task.note && (
-          <div style={{
-            fontSize: '12px', color: colors.muted,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px',
-          }}>
-            {task.note}
-          </div>
-        )}
-        {(() => {
-          const aging = getTaskAging(task)
-          if (!aging) return null
-          const color = aging.severity === 'danger' ? '#B42332' : '#805B0D'
-          return (
-            <span style={{
-              display: 'inline-block', marginTop: '3px',
-              fontSize: '12px', fontWeight: 700,
-              color, background: `${color}12`,
-              border: `1px solid ${color}30`,
-              padding: '1px 6px', borderRadius: '6px',
-            }}>
-              {aging.label}
-            </span>
-          )
-        })()}
+      <div className={styles.title} title={task.title}>{task.title}</div>
+
+      <div className={styles.who} title={`Assigned to ${assigneeName}`}>
+        <span className={styles.whoName}>{assigneeName}</span>
+        {assigneeInactive && <span className={styles.inactive}>Inactive</span>}
       </div>
 
-      {/* Assigned To — 10.5% (min 96px) */}
-      <div style={{
-        flexShrink: 0, width: COL.assignee.width, minWidth: COL.assignee.min,
-        display: 'flex', alignItems: 'center',
-        paddingLeft: '8px', paddingRight: '6px', overflow: 'hidden',
-      }}>
-        <span
-          title={`Assigned to ${assigneeName}`}
-          style={{
-            display: 'inline-block', maxWidth: '100%',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
-            color: '#276247', background: 'rgba(39,98,71,0.10)',
-          }}
-        >
-          {assigneeName}
-        </span>
+      <div className={`${styles.priority} ${styles.colPriority}`} style={{ color: priority.color }}>
+        {priority.label}
       </div>
 
-      {/* Priority — 7% (min 52px) */}
-      <div style={{ flexShrink: 0, width: COL.priority.width, minWidth: COL.priority.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
-          {priority.label}
-        </span>
-      </div>
-
-      {/* Status — 13.5% (min 104px). The widest of the recovered space goes
-          here: "For Approval" plus its icon needs room to sit uncramped. */}
-      <div style={{ flexShrink: 0, width: COL.status.width, minWidth: COL.status.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div>
         <span
           className={`${statusBadgeClass(task.status)}${isForApproval ? ' boe-badge-approval-review' : ''}`}
           style={{ fontSize: '12px', textTransform: 'capitalize' }}
@@ -341,70 +248,29 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Created On — 8.5% (min 82px) */}
-      <div style={{ flexShrink: 0, width: COL.created.width, minWidth: COL.created.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-          {formatDate(task.created_at) ?? '—'}
-        </span>
+      <div className={styles.due}>
+        <span className={overdue ? styles.dueLate : undefined}>{dateStr ?? 'No due date'}</span>
+        {overdue && <span className={`${styles.dueLate} ${styles.dueNote}`}> · {late} {late === 1 ? 'day' : 'days'} late</span>}
+        {dueToday && <span className={`${styles.dueToday} ${styles.dueNote}`}> · Today</span>}
       </div>
 
-      {/* Due Date — 8.5% (min 88px) */}
-      <div style={{ flexShrink: 0, width: COL.due.width, minWidth: COL.due.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-          {formatDate(task.due_date) ?? 'No due date'}
-        </span>
+      <div className={`${styles.update} ${styles.colUpdate} ${updateClass}`} title={aging?.message}>
+        {formatLastUpdate(task.last_update_at ?? task.created_at)}
       </div>
 
-      {/* Actions — 7.5%, floored at 84px so the three 26px buttons are never clipped */}
-      <div style={{ flexShrink: 0, width: COL.actions.width, minWidth: COL.actions.min, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-        <button
-          onClick={e => { e.stopPropagation(); onEdit?.() }}
-          onMouseEnter={() => setHoveredEdit(true)}
-          onMouseLeave={() => setHoveredEdit(false)}
-          title="Edit task"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
-            border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
-            cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredEdit ? '#963B27' : colors.muted,
-          }}
-        >
-          <Pencil size={11} />
-        </button>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete?.() }}
-          onMouseEnter={() => setHoveredDel(true)}
-          onMouseLeave={() => setHoveredDel(false)}
-          title="Delete task"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredDel ? `${colors.red}10` : 'transparent',
-            border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`,
-            cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredDel ? colors.red : colors.muted,
-          }}
-        >
-          <Trash2 size={11} />
-        </button>
-        <button
-          onClick={e => { e.stopPropagation(); onView() }}
-          onMouseEnter={() => setHoveredView(true)}
-          onMouseLeave={() => setHoveredView(false)}
-          title="Open full page"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredView ? `${accentColor}14` : 'transparent',
-            border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`,
-            cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? accentColor : colors.muted,
-          }}
-        >
-          <ExternalLink size={12} />
-        </button>
+      <div className={styles.actions} onClick={e => e.stopPropagation()}>
+        {onApprove && (
+          <button type="button" className={`boe-btn boe-btn-primary ${styles.rowButton}`} onClick={onApprove}>
+            <Check size={14} strokeWidth={2.6} aria-hidden="true" />
+            Approve
+          </button>
+        )}
+        {onApprove && onCancel && (
+          <button type="button" className={`boe-btn boe-btn-secondary ${styles.rowButton} ${styles.cancelInline}`} onClick={onCancel}>
+            Cancel task
+          </button>
+        )}
+        <TaskRowMenu label={menuLabel} items={menuItems} size={32} />
       </div>
     </div>
   )
@@ -980,7 +846,9 @@ function EmptyState({ label }: { label: string }) {
 function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: number }) {
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+      style={isMobile
+        ? { display: 'flex', flexDirection: 'column', gap: '8px' }
+        : { background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '12px', overflow: 'hidden' }}
       role="status"
       aria-busy="true"
       aria-label="Loading tasks"
@@ -990,10 +858,11 @@ function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: n
           key={i}
           aria-hidden="true"
           style={{
-            border: `1.5px solid ${colors.border}`,
-            borderRadius: '8px',
+            ...(isMobile
+              ? { border: `1px solid ${colors.border}`, borderRadius: '12px' }
+              : { borderBottom: i === rows - 1 ? 'none' : `1px solid ${colors.border}` }),
             background: colors.base,
-            minHeight: isMobile ? '62px' : '48px',
+            minHeight: isMobile ? '62px' : '50px',
             display: 'flex', alignItems: 'center', gap: '14px',
             padding: isMobile ? '10px 12px' : '0 14px',
           }}
@@ -1024,6 +893,12 @@ function AssignedByMeContent() {
   const [showDelegateModal, setShowDelegateModal] = useState(false)
   const [delegateError,     setDelegateError]     = useState<string | null>(null)
   const [isMobile,          setIsMobile]          = useState(false)
+  // Approve and Cancel from a row. One flag for both: only one dialog is ever open.
+  const [approvingTask,     setApprovingTask]     = useState<Task | null>(null)
+  const [cancellingTask,    setCancellingTask]    = useState<Task | null>(null)
+  const [rowActionBusy,     setRowActionBusy]     = useState(false)
+  const rowActionBusyRef = useRef(false)
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
   // Tab + filters read from and write to the URL; the search box keeps a local
   // value so typing is not one navigation per keystroke.
@@ -1082,6 +957,21 @@ function AssignedByMeContent() {
   // it, and any of them may since have been deactivated — but read through a
   // cache instead of re-issued on every arrival. See useAllUserNames.
   const { data: userMap = {} } = useAllUserNames()
+
+  // View As reads under the signed-in admin's RLS, so the bar would describe the
+  // admin's rows rather than the viewed person's. It simply does not run.
+  const { data: team, isError: teamFailed } = useTeamResponse(viewAsUserId ? null : loggedInId)
+  const inactiveIds = useMemo(() => new Set(team?.inactive.map(p => p.userId)), [team])
+
+  // The person who may act on a row. View As is read-only, so nobody there.
+  const actorId = viewAsUserId ? null : (loggedInId ?? null)
+
+  // A notice from Task Detail, which has just approved or cancelled and sent the
+  // person here: its own toast would have disappeared with it.
+  useEffect(() => {
+    const flash = takeFlashToast()
+    if (flash) showToast(flash.message, flash.variant)
+  }, [showToast])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1171,8 +1061,58 @@ function AssignedByMeContent() {
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
+  // Every list that shows this task, after a row has closed it or may have.
+  const refreshAfterRowAction = (task: Task) => {
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: assignedByMeKey(userId) })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+    queryClient.invalidateQueries({ queryKey: TEAM_RESPONSE_KEY })
+  }
+
+  const runRowAction = async (
+    task: Task,
+    send: (actor: string) => Promise<ListActionResult>,
+    doneMessage: string,
+  ) => {
+    if (!actorId || rowActionBusyRef.current) return
+    rowActionBusyRef.current = true
+    setRowActionBusy(true)
+    try {
+      const result = await send(actorId)
+      setApprovingTask(null)
+      setCancellingTask(null)
+      if (result.kind === 'done') {
+        setTaskOverrides(prev => (prev ?? allTasksRaw).filter(t => t.id !== task.id))
+        if (selectedTask?.id === task.id) setSelectedTask(null)
+        refreshAfterRowAction(task)
+        showToast(doneMessage)
+        return
+      }
+      if (result.refresh) refreshAfterRowAction(task)
+      window.alert(result.message)
+    } finally {
+      rowActionBusyRef.current = false
+      setRowActionBusy(false)
+    }
+  }
+
+  const confirmApprove = () => {
+    if (!approvingTask) return
+    const task = approvingTask
+    void runRowAction(task, actor => approveTaskFromList(supabase, task, actor), 'Task approved and completed.')
+  }
+
+  const confirmCancel = (reason: string) => {
+    if (!cancellingTask) return
+    const task = cancellingTask
+    void runRowAction(task, actor => cancelTaskFromList(supabase, task, actor, reason, profile?.full_name), 'Task cancelled.')
+  }
+
   const buckets = useMemo(() => {
-    const sort = (arr: Task[]) => [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
+    // Work waiting on the reader first, then what they marked important.
+    const rank = (t: Task) => (t.status === 'pending_approval' ? 0 : t.is_urgent ? 1 : 2)
+    const sort = (arr: Task[]) => [...arr].sort((a, b) => rank(a) - rank(b))
     return {
       all:            sort(allTasks),
       // Work handed back for this person to accept. `overdue` will not also
@@ -1227,7 +1167,21 @@ function AssignedByMeContent() {
     setState({ tab: key, priority: '', q: '' })
   }
 
-  const activeTabColor = TABS.find(t => t.key === activeTab)?.color ?? colors.secondary
+  const renderTask = (task: Task) => (
+    <TaskCard
+      key={task.id}
+      task={task}
+      userMap={userMap}
+      assigneeInactive={inactiveIds.has(task.assigned_to ?? '')}
+      onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+      onView={() => router.push(taskDetailHref(task.id, returnTo))}
+      onEdit={() => setEditingTask(task)}
+      onDelete={() => handleDelete(task)}
+      onApprove={actorId && canApproveTask(task, actorId) ? () => setApprovingTask(task) : undefined}
+      onCancel={actorId && canCancelFromList(task, actorId) ? () => setCancellingTask(task) : undefined}
+      isMobile={isMobile}
+    />
+  )
 
   // NOTE: no early `return <LoadingScreen />`. Blanking the page hid the tabs,
   // the filters and the whole module shell behind it until the first read came
@@ -1298,11 +1252,7 @@ function AssignedByMeContent() {
             </div>
 
             {/* Search + filter toolbar */}
-            <div style={{
-              background: colors.raised, border: `1.5px solid ${colors.border}`,
-              borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
-              display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
-            }}>
+            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
               {/* Search */}
               <div style={{
                 flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
@@ -1345,50 +1295,44 @@ function AssignedByMeContent() {
               </select>
             </div>
 
-            {/* Table header — desktop only */}
-            {!isMobile && (
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                padding: '5px 0 5px 0', marginBottom: '4px',
-                fontSize: '12px', fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: '0.07em',
-                color: colors.muted,
-              }}>
-                <div style={{ width: STAR_GUTTER, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
-                <div style={{ flexShrink: 0, width: COL.assignee.width, minWidth: COL.assignee.min, paddingLeft: '8px' }}>Assigned To</div>
-                <div style={{ flexShrink: 0, width: COL.priority.width, minWidth: COL.priority.min, textAlign: 'center' }}>Priority</div>
-                <div style={{ flexShrink: 0, width: COL.status.width,   minWidth: COL.status.min,   textAlign: 'center' }}>Status</div>
-                <div style={{ flexShrink: 0, width: COL.created.width,  minWidth: COL.created.min,  textAlign: 'center' }}>Created On</div>
-                <div style={{ flexShrink: 0, width: COL.due.width,      minWidth: COL.due.min,      textAlign: 'center' }}>Due Date</div>
-                <div style={{ flexShrink: 0, width: COL.actions.width,  minWidth: COL.actions.min,  textAlign: 'center' }}>Action</div>
-              </div>
+            {/* Docked to the window's edge from 1132px; narrower, one line above the list. */}
+            {!viewAsUserId && (
+              <TeamResponseBar
+                team={team}
+                failed={teamFailed}
+                selectedId={filterAssignee}
+                onSelect={id => setState({ assignee: id })}
+              />
             )}
 
-            {/* Task cards */}
+            {/* Task rows */}
             {!tasksResolved ? (
               <TaskListSkeleton isMobile={isMobile} />
             ) : visibleTasks.length === 0 ? (
               <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {visibleTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    accentColor={activeTabColor}
-                    userMap={userMap}
-                    onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    onView={() => router.push(taskDetailHref(task.id, returnTo))}
-                    onEdit={() => setEditingTask(task)}
-                    onDelete={() => handleDelete(task)}
-                    isMobile={isMobile}
-                  />
-                ))}
-                <div style={{ padding: '4px 4px', fontSize: '12px', color: colors.muted }}>
+              <>
+                {isMobile ? (
+                  <div className={styles.cards}>{visibleTasks.map(renderTask)}</div>
+                ) : (
+                  <div className={styles.list}>
+                    <div className={styles.headRow}>
+                      <div />
+                      <div>Task</div>
+                      <div>Assigned to</div>
+                      <div className={styles.colPriority}>Priority</div>
+                      <div>Status</div>
+                      <div>Due</div>
+                      <div className={styles.colUpdate}>Last update</div>
+                      <div />
+                    </div>
+                    {visibleTasks.map(renderTask)}
+                  </div>
+                )}
+                <div className={styles.count}>
                   {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
                 </div>
-              </div>
+              </>
             )}
 
         </div>
@@ -1412,6 +1356,26 @@ function AssignedByMeContent() {
           onSaved={handleEditSaved}
         />
       )}
+
+      {approvingTask && (
+        <ApproveTaskDialog
+          title={approvingTask.title}
+          assigneeName={userMap[approvingTask.assigned_to ?? ''] ?? 'the assignee'}
+          busy={rowActionBusy}
+          onClose={() => setApprovingTask(null)}
+          onConfirm={confirmApprove}
+        />
+      )}
+
+      {cancellingTask && (
+        <CancelTaskModal
+          busy={rowActionBusy}
+          onClose={() => { if (!rowActionBusy) setCancellingTask(null) }}
+          onConfirm={confirmCancel}
+        />
+      )}
+
+      <Toast toast={toast} onDismiss={dismissToast} />
 
       {delegateError && (
         <div style={{

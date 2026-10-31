@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { isValidUUID } from '@/lib/ui'
+import { allUserNamesQueryOptions } from '@/hooks/queries/useMyTasks'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import type { Task } from '@/lib/types'
 import {
@@ -89,18 +90,7 @@ export function useCompletedCounterparts(scope: CompletedScope, userId: string) 
   })
 }
 
-/** Every user's display name, for assigner/assignee labels — the read these pages always made. */
+/** Every user's display name, deactivated people included. See allUserNamesQueryOptions. */
 export function useUserNames() {
-  return useQuery<Record<string, string>>({
-    queryKey: ['users', 'id-full-name'],
-    queryFn: async () => {
-      const { data, error } = await createClient().from('users').select('id, full_name')
-      if (error) throw error
-      const names: Record<string, string> = {}
-      for (const u of (data ?? []) as { id: string; full_name: string }[]) names[u.id] = u.full_name
-      return names
-    },
-    staleTime: 5 * 60_000,
-    gcTime: 10 * 60_000,
-  })
+  return useQuery<Record<string, string>>(allUserNamesQueryOptions())
 }

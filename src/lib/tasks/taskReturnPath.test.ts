@@ -21,7 +21,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  MAX_RETURN_PATH_LENGTH, defaultTaskListPath, pathWithSearch, returnPathFromSearch, taskBackTarget,
+  MAX_RETURN_PATH_LENGTH, assignedByMeReturnPath, defaultTaskListPath, pathWithSearch, returnPathFromSearch, taskBackTarget,
   safeReturnPath, taskDetailHref, withTaskReturnTo,
 } from './taskReturnPath'
 
@@ -221,10 +221,21 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
     assert.equal(/await loadLog\(/.test(run), false, 'the history read is never awaited on the write path')
   })
 
-  test('Approve and Return still navigate nowhere', () => {
+  test('Return still navigates nowhere; Approve goes to Assigned By Me (owner, Oct 2026)', () => {
     const approve = detail.slice(detail.indexOf('const approveTask = async'), detail.indexOf('const returnTask = async'))
     const ret = detail.slice(detail.indexOf('const returnTask = async'), detail.indexOf('const handleReopen = async'))
-    for (const body of [approve, ret]) assert.equal(/router\.(replace|push|back)\(/.test(body), false)
+    assert.equal(/router\.(replace|push|back)\(/.test(ret), false)
+    assert.ok(approve.includes('router.replace(assignedByMeReturnPath(window.location.search))'))
+    assert.ok(approve.indexOf('noteListReturn()') < approve.indexOf('router.replace('))
+  })
+
+  test('Approve and Cancel land on Assigned By Me, keeping its view only if they came from it', () => {
+    assert.equal(assignedByMeReturnPath(''), '/tasks/assigned-by-me')
+    assert.equal(assignedByMeReturnPath('?returnTo=%2Fdashboard'), '/tasks/assigned-by-me')
+    assert.equal(assignedByMeReturnPath('?returnTo=%2Ftasks%2Fmy%3Ftab%3Dall'), '/tasks/assigned-by-me')
+    assert.equal(assignedByMeReturnPath('?returnTo=%2Ftasks%2Fassigned-by-me%2Fcancelled'), '/tasks/assigned-by-me')
+    assert.equal(assignedByMeReturnPath('?returnTo=https%3A%2F%2Fevil.example'), '/tasks/assigned-by-me')
+    assert.equal(assignedByMeReturnPath('?returnTo=%2Ftasks%2Fassigned-by-me%3Ftab%3Dfor_approval'), '/tasks/assigned-by-me?tab=for_approval')
   })
 
   test('Mark Complete returns to the view it was opened from, not to one fixed list', () => {

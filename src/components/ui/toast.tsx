@@ -6,6 +6,22 @@ export type ToastVariant = 'success' | 'error' | 'info'
 
 type ToastState = { id: number; message: string; variant: ToastVariant } | null
 
+// A toast belongs to its page, so one shown just before a navigation disappears
+// with the page it was shown on. These two carry a message across a client-side
+// navigation instead: the page being left calls flashToast, and the page being
+// arrived at takes it, once, and shows it with its own useToast.
+let pendingFlash: { message: string; variant: ToastVariant } | null = null
+
+export function flashToast(message: string, variant: ToastVariant = 'success') {
+  pendingFlash = { message, variant }
+}
+
+export function takeFlashToast() {
+  const flash = pendingFlash
+  pendingFlash = null
+  return flash
+}
+
 export function useToast() {
   const [toast, setToast] = useState<ToastState>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

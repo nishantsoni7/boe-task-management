@@ -1,5 +1,6 @@
 'use client'
 
+import { useAllUserNames } from '@/hooks/queries/useMyTasks'
 import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -24,6 +25,8 @@ const TASK_COLUMNS = [
 
 const TODAY_STR = new Date().toISOString().slice(0, 10)
 const PAGE_SIZE  = 50
+// Stable while the names load: the header effect below depends on this object.
+const NO_NAMES: Record<string, string> = {}
 
 // ─── URL-backed list state ────────────────────────────────────────────────────
 // The two filters already arrived by deep link; the page number joins them, so
@@ -68,7 +71,7 @@ function ViewAllTasksContent() {
   const [tasks,    setTasks]    = useState<Task[]>([])
   const [total,    setTotal]    = useState(0)
   const [unfilteredTotal, setUnfilteredTotal] = useState(0)
-  const [userMap,  setUserMap]  = useState<Record<string, string>>({})
+  const { data: userMap = NO_NAMES } = useAllUserNames()
   const [loading,  setLoading]  = useState(true)
   const [fetching, setFetching] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -110,12 +113,6 @@ function ViewAllTasksContent() {
         return
       }
 
-      const { data: userData } = await supabase.from('users').select('id, full_name')
-      if (userData) {
-        const map: Record<string, string> = {}
-        for (const u of userData) map[u.id] = u.full_name
-        setUserMap(map)
-      }
       setProfile(p)
     }
     init()

@@ -146,9 +146,9 @@ describe('mutations mark every list that holds the row', () => {
     assert.ok(CREATE.includes('queryClient.invalidateQueries({ queryKey: assignedByMeKey(actorId) })'))
   })
 
-  test('delegate, edit and delete from the list mark it too', () => {
+  test('delegate, edit, delete and the row actions mark it too', () => {
     const count = ABM.split('queryKey: assignedByMeKey(userId)').length - 1
-    assert.equal(count, 3, 'handleTaskDelegated, handleEditSaved and handleDelete')
+    assert.equal(count, 4, 'handleTaskDelegated, handleEditSaved, handleDelete and refreshAfterRowAction')
   })
 
   test('a self task still marks the assignee’s My Tasks', () => {
