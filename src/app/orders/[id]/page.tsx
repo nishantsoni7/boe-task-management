@@ -2952,7 +2952,6 @@ export default function OrderDetailPage() {
     awaitingVerificationCount: recordsReady ? finance.counts.awaiting : 0,
     pendingChangeRequests: pendingRequests.length,
     pendingPiRevision: piHistory.pending !== null,
-    confirmUploadGapDays: datesTimeline.uploadGapDays,
     // The operations handoff for the version in force, while it is undecided
     // or flagged — and the one warning a quiet "Not aligned" cannot carry:
     // production aligned against an EARLIER version than the one now in force.

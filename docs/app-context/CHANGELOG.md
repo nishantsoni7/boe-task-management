@@ -8,7 +8,8 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Open cost sheet removed.** The F&P Cost tab on the Products card is the way to the sheet.
 - **Payment card shorter.** Last verified payment and Verified by mode are gone; the Verified box still opens the list.
 - **Products card.** The first column reads Product Code on all three tabs and pictures are 108px, up from 84. Customization gives up the room. The PI Draft, the import preview and phones are unchanged.
-- **Notification banners side by side.** One fills the row, two take half each, a phone stacks them.
+- **Notification banners side by side.** One fills the row, two take half each, a phone stacks them. The confirm date delay banner is gone; the Important dates card already flags it.
+- **Pendency approval form.** It now drops under the row; it used to squeeze the pendency's words into a one-letter column.
 - **Middleman commission in both forms.** It was not a display fault: the PI form takes an amount or a percentage and the database refuses both, so Order 542 had no percentage. The owner chose a worked-out figure over making Sales type one, so `₹1,66,400.00 · 12.32% of Total before GST` shows on read, from the PI's own figures, and nothing is stored. The PI form, the database rule and the PI page are unchanged.
 
 ## 2026-10-31 — Founders' payouts redesigned, and its missing styles restored (#547, d454773c) · no SQL · deployed (deployment 7459922900), live bundle checked · backup bundle 20261031T143402Z, database 20261031T143418Z (203 tables, 100,935 rows), verified

@@ -11626,6 +11626,7 @@ textarea.pi-form-input { height: auto; }
 .order-ff-pend-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .order-ff-pend-item {
   display: flex;
+  flex-wrap: wrap; /* the approval form takes its own line under the row */
   align-items: baseline;
   gap: 8px;
   font-size: 13px;

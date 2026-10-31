@@ -87,13 +87,16 @@ describe('the notifications: one banner per item, tinted by kind', () => {
     assert.match(text(html), /2 payments awaiting Finance verification/)
   })
 
-  test('a confirm-to-upload gap over a week is raised in red, in words, with the number of days', () => {
-    const items = orderAttentionItems({ ...open, confirmUploadGapDays: 30 })
-    assert.deepEqual(items.map(i => i.key), ['upload_gap'])
-    assert.equal(items[0].tone, 'red')
-    assert.match(text(renderToStaticMarkup(<OrderAttentionBar items={items} />)), /Confirm date and PI upload are 30 days apart/)
-    assert.deepEqual(orderAttentionItems({ ...open, confirmUploadGapDays: 7 }), [])
-    assert.deepEqual(orderAttentionItems({ ...open, confirmUploadGapDays: null }), [])
+  test('a confirm-to-upload gap is no banner: the Important dates card flags it (owner, 2026-10-31)', () => {
+    const workspace = readFileSync('src/lib/orders/orderWorkspace.ts', 'utf8')
+    assert.ok(!workspace.includes('upload_gap'))
+    assert.ok(!workspace.includes('days apart'))
+    const redesign = readFileSync('src/app/orders/[id]/OrderRedesign.tsx', 'utf8')
+    assert.ok(redesign.includes('uploadGapLabel(timeline.uploadGapDays)'), 'the dates card keeps its flag')
+  })
+
+  test('the pendency approval form drops under the row instead of squeezing its words', () => {
+    assert.match(css, /\.order-ff-pend-item \{\s*display: flex;\s*flex-wrap: wrap;/)
   })
 
   test('an item with no separate reason uses its label as the title — every existing condition still draws', () => {
