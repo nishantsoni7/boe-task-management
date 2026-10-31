@@ -55,6 +55,8 @@ export function mount(element: ReactElement) {
 
   const api = {
     container,
+    /** Hand the mounted element new props, as a parent does after a reload. Its state is kept. */
+    render: (next: ReactElement) => { act(() => { root.render(next) }) },
     /** Everything on screen, portals included (the forms render into body). */
     text: () => win.document.body.textContent ?? '',
     all: <T extends Element = Element>(selector: string) => [...win.document.body.querySelectorAll<T>(selector)],

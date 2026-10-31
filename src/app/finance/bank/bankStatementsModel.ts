@@ -372,6 +372,10 @@ export function syncableLineIds(items: LineWithSuggestions[]): string[] {
 
 export type CompareRow = { label: string; credit: string; payment: string; verdict: string; tone: 'same' | 'differs' | 'plain' }
 
+/** A date this close, and a name overlapping this much, count as fitting. */
+const NEAR_DAYS = 3
+const NAME_FITS = 0.5
+
 /** The credit and a recorded payment side by side, so a person can decide. */
 export function compareMatch(line: BankLine, m: BankMatch): CompareRow[] {
   const left = (toPaise(line.deposit) - toPaise(linkedTotal(line))) / 100
@@ -398,7 +402,7 @@ export function compareMatch(line: BankLine, m: BankMatch): CompareRow[] {
       credit: formatBankDate(line.line_date),
       payment: formatBankDate(m.paymentDate),
       verdict: days === 0 ? 'Same day' : `${days} day${days === 1 ? '' : 's'} apart`,
-      tone: days <= 3 ? 'same' : 'differs',
+      tone: days <= NEAR_DAYS ? 'same' : 'differs',
     },
     {
       label: 'Account',
@@ -411,8 +415,8 @@ export function compareMatch(line: BankLine, m: BankMatch): CompareRow[] {
       label: 'Name',
       credit: payer ?? '—',
       payment: m.clientName ?? 'Not identified',
-      verdict: !m.clientName ? '' : overlap >= 0.99 ? 'Same' : overlap >= 0.5 ? 'Partly the same' : 'No match',
-      tone: overlap >= 0.5 ? 'same' : 'plain',
+      verdict: !m.clientName ? '' : overlap >= 0.99 ? 'Same' : overlap >= NAME_FITS ? 'Partly the same' : 'No match',
+      tone: overlap >= NAME_FITS ? 'same' : 'plain',
     },
     {
       label: 'Reference',
@@ -429,6 +433,21 @@ export function compareMatch(line: BankLine, m: BankMatch): CompareRow[] {
       tone: verified ? 'same' : 'differs',
     },
   ]
+}
+
+/**
+ * What should stop a person before linking this payment to this credit. The same
+ * amount is not proof, round sums repeat, so a name that does not fit or a date
+ * more than a few days off is said aloud and must be confirmed. Empty when nothing
+ * stands out. The bank's own reference outweighs both.
+ */
+export function matchDoubts(line: BankLine, m: BankMatch): string[] {
+  if (m.kind === 'reference' || m.kind === 'reference_used') return []
+  const days = Math.abs(daysBetween(line.line_date, m.paymentDate))
+  const doubts: string[] = []
+  if (nameOverlap(m.clientName, line.narration) < NAME_FITS) doubts.push(m.clientName ? 'the name does not match' : 'the payment has no client name')
+  if (days > NEAR_DAYS) doubts.push(`the dates are ${days} days apart`)
+  return doubts
 }
 
 /** Where a payment opens: Confirmed Payments once verified, Payment Requests before that. */
