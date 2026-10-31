@@ -39,6 +39,19 @@ export function defaultTaskListPath(taskType: string | null | undefined): string
   return taskType === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
 }
 
+const ASSIGNED_BY_ME_PATH = '/tasks/assigned-by-me'
+
+/**
+ * Where Approve and Cancel on Task Detail land: always Assigned By Me, the creator's
+ * own queue, wherever the task was opened from (the owner's rule, Oct 2026). A
+ * `returnTo` is kept only when it IS that list, so a person who came from there
+ * keeps their tab and filters.
+ */
+export function assignedByMeReturnPath(search: string): string {
+  const source = returnPathFromSearch(search)
+  return source?.split('?')[0] === ASSIGNED_BY_ME_PATH ? source : ASSIGNED_BY_ME_PATH
+}
+
 /** A link with the source attached — only Task Detail links are rewritten; every other href passes through. */
 export function withTaskReturnTo(href: string | null, returnTo: string | null | undefined): string | null {
   if (!href) return href

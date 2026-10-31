@@ -108,6 +108,8 @@ Statuses and transitions:
 - Waiting needs `team_member` (user must exist) or `external` (text). Blocker/waiting fields clear when the state that explained them ends.
 - Tabs on My Tasks (`myTaskTabs.ts`): Today/Overdue/Future Actionable, Waiting/Blocked, Awaiting Approval, Action Required, All, Important, Unacknowledged, In Progress,
   Overdue, Needs Update, Non-Completion, Completed. "Actionable workload" excludes closed (completed/cancelled) AND `pending_approval`.
+- **Assigned By Me redesign (Oct 2026).** One panel, one line per task, no description. Columns: Task, Assigned to, Priority, Status, Due, Last update, actions. Column layout is a container query in `assignedByMe.module.css`: Last update goes first, then Priority, and Cancel task leaves the row but stays in the ⋯ menu. For Approval rows show Approve and Cancel task; every other open task has Cancel task in the ⋯ menu (Open full page, Edit, Cancel task, Delete). Tasks waiting for approval sort first. Neither action shows under View As or for quotations (Approve by `canApproveTask`, Cancel by `canCancelFromList`).
+- **Team response bar (Oct 2026).** `teamResponse.ts` (pure), `useTeamResponse`, `TeamResponseBar`. Scope: tasks the viewer assigned, read under their own RLS, so nothing new is exposed. Strip: last 12 working days (Sundays out, holidays and leave NOT out); a day with an update is Updated; a day holding an open task with none is Silent; not counted are today until updated, days with no open task, and days the only tasks sat with the creator for approval. Reply time: median wait from the creator's message (`created`, `note_added`, `comment_added`, a return) to the assignee's next meaningful action, last 30 days; messages before a reply collapse into one; an unanswered one counts at its age once 24 h old; one on a task closed unanswered is dropped. Labels, least active first: Active (at least 70% of days and reply within 24 h), Least active (under 40% or over 72 h), Inconsistent (between), Too early (under 5 counted days or under 3 messages). Cut-offs are proposals agreed on a mockup, untested on real data. Inactive accounts are listed apart and never scored. Does not run under View As. Measures actions only: nothing records who OPENED a task.
 - Assigned By Me row colours (PR #445): Important = gold fill + gold border + star; For Approval = blue fill + blue stripe + blue badge; both = blue fill with gold border and star. Phone card: stripe and badge only.
 - Overdue: `accruesAssigneeOverdue(status)` is false for completed, cancelled, pending_approval (`reviewTransitions.ts`); single source for My Tasks, dashboard, manager
   views, Team Performance and the per-day score reconstruction. **`isOverdue(dueDate)` in `src/lib/ui.ts` compares to the UTC date (`toISOString().slice(0,10)`), not IST** -
@@ -162,6 +164,7 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 - Delegated work is completed by its CREATOR, not the assignee (assignee word is not enough; credit for Performance awarded on approval).
 - Three-migration rollout with deploy in the middle (833 RPC -> frontend -> 834 enforcement) so both old and new frontends work in the overlap.
 - No new notification enum values for review events: they reuse `task_acknowledged`; presentation is in the title/activity link.
+- Inactive names come through `/api/tasks/people`, not a wider `users` policy: that policy was tightened on purpose (20260812000000) and code selecting from `users` relies on it to keep leavers out of dropdowns. The direct read stays as the fallback.
 - Approval is silent; submit still notifies the creator, return/reopen still notifies the assignee; a new task is silent (acknowledgement section already shows it); quotation
   requests are silent except that completion (and an admin's cancellation) tells their creator (Sept 2026 owner rules, amended Oct 2026; `taskNotificationPolicy.ts`).
 - Task Management holds task work only; Performance, Settings, Super Admin moved out of its sidebar.
@@ -187,6 +190,9 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 12. `copy` route copies attachments with the service role and rolls back the new task on failure; do not weaken that.
 13. Chrome/browser verification trap: a hidden Chrome tab reports `visibilityState hidden`, pausing rAF, so the drawer stays off-screen and clicks hit the backdrop (memory).
 14. Notification enrichment reads `task_attachments` with only `activity_log_id, file_name, file_type` (never `url`/`storage_path`) - keep it that way (`pageEnrichment.ts`).
+
+15. `users` RLS is `is_active = true`, so any browser read or embedded join returns nothing for a deactivated person. `is_active` is NOT a sign-in gate, so such a person can still work. The Completed and Cancelled archives and `/tasks/all` still read `users` directly and still show "member" for them.
+16. Task Detail's `supabase.rpc('transition_task_review'` and `handleCancelTask` are pinned in place by `taskDetailLoad.test.ts`, so the list has its own calls in `taskListActions.ts`, built from the same rules.
 
 ## 10. Tests that guard it
 

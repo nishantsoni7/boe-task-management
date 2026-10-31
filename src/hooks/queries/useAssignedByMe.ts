@@ -9,7 +9,7 @@ import type { Task } from '@/lib/types'
  * with the page so the two cannot drift.
  */
 const ASSIGNED_BY_ME_COLUMNS = [
-  'id', 'title', 'note', 'status', 'priority', 'type',
+  'id', 'title', 'note', 'status', 'priority', 'type', 'task_type',
   'is_urgent', 'due_date', 'acknowledged_at',
   'created_at', 'last_update_at', 'blocker_reason',
   'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',

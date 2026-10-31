@@ -1044,6 +1044,10 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
    shared class above rather than replacing it (equal specificity, later in the
    file), so `tasks/my`, `tasks/all` and components/ui/TaskCard.tsx keep the
    gold badge they render today. */
+.boe-task-row-menu-trigger:hover,
+.boe-task-row-menu-trigger[aria-expanded="true"] { background: rgba(48,53,54,0.06) !important; color: var(--boe-text) !important; }
+.boe-task-row-menu-item:hover { background: #F4F1EC !important; }
+
 .boe-badge-approval-review {
   background: rgba(51,90,134,0.12);
   border: 1px solid rgba(51,90,134,0.45);

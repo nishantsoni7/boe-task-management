@@ -2,6 +2,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { isValidUUID } from '@/lib/ui'
 import { perfStart } from '@/lib/perf'
+import { fetchTaskPeople } from '@/lib/tasks/taskPeople'
 import type { Task } from '@/lib/types'
 
 const TASK_COLUMNS = [
@@ -91,10 +92,13 @@ export function useUserNames(userIds: string[]) {
  * currently listed would answer "Team member" or "Someone" for the rest, and
  * the active-user directory would lose the leavers.
  *
- * So this is the same unfiltered read Assigned By Me used to issue on every
- * single arrival, kept exactly as it was and simply cached: ten minutes,
- * because names change very rarely, which is the same window `useUserNames`
- * already uses for the identical reason.
+ * THE LEAVERS COME FROM THE SERVER. The `users` row policy hides a deactivated
+ * person from the browser, so a direct read can never name them; see
+ * src/lib/tasks/taskPeople.ts. The direct read stays as the fallback, so a route
+ * that cannot answer costs the leavers' names and nothing else.
+ *
+ * Cached for ten minutes, because names change very rarely, which is the same
+ * window `useUserNames` already uses for the identical reason.
  */
 export function useAllUserNames() {
   return useQuery<Record<string, string>>(allUserNamesQueryOptions())
@@ -104,11 +108,16 @@ export function allUserNamesQueryOptions() {
   return {
     queryKey: ['user-names', 'all'] as const,
     queryFn: async (): Promise<Record<string, string>> => {
+      const map: Record<string, string> = {}
+      const people = await fetchTaskPeople()
+      if (people) {
+        for (const p of people) map[p.id] = p.full_name
+        return map
+      }
       const supabase = createClient()
       const { data } = await supabase
         .from('users')
         .select('id, full_name')
-      const map: Record<string, string> = {}
       for (const u of data ?? []) map[u.id] = u.full_name
       return map
     },

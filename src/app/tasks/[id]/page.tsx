@@ -23,7 +23,9 @@ import { TaskAttachmentGallery } from '@/components/tasks/TaskAttachmentGallery'
 import { AddToMeetingButton, AddToMeetingModal } from '@/components/tasks/AddToMeetingModal'
 import { canOfferAddToMeeting } from '@/lib/tasks/addToMeetingAccess'
 import { hasPermission } from '@/lib/permissions/resolver'
-import { useToast, Toast } from '@/components/ui/toast'
+import { flashToast, useToast, Toast } from '@/components/ui/toast'
+import { ApproveTaskDialog } from '@/components/tasks/ApproveTaskDialog'
+import { CancelTaskModal } from '@/components/tasks/CancelTaskModal'
 import { getFileTypeLabel, compressImageFile, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import {
   type PendingAttachment,
@@ -41,10 +43,10 @@ import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
-import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { useActiveUsers, useAllUserNames } from '@/hooks/queries/useMyTasks'
 import { ASSIGNED_BY_ME_KEY } from '@/hooks/queries/useAssignedByMe'
 import { hasInAppHistory } from '@/lib/navigation/appHistory'
-import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
+import { assignedByMeReturnPath, defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef, SIGNED_URL_TTL_SECONDS } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
@@ -87,15 +89,6 @@ const STATUS_TINTS: Record<string, string> = {
   completed:        colors.greenTint,
   cancelled:        '#F1EEE9',
 }
-
-const CANCEL_REASONS = [
-  'No longer required',
-  'Duplicate task',
-  'Created by mistake',
-  'Requirement changed',
-  'Completed outside system',
-  'Other',
-]
 
 const PRIORITY_COLORS: Record<string, { fg: string; bg: string }> = {
   high:   { fg: colors.red,   bg: colors.redTint   },
@@ -194,8 +187,7 @@ export default function TaskDetailPage() {
   const [statusUpdating,   setStatusUpdating]  = useState(false)
   const statusUpdatingRef = useRef(false)
   const [cancelModalOpen,  setCancelModalOpen] = useState(false)
-  const [cancelReason,     setCancelReason]    = useState('')
-  const [cancelOtherText,  setCancelOtherText] = useState('')
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false)
   const [cancelling,       setCancelling]      = useState(false)
   const [modalOpen,        setModalOpen]       = useState(false)
   const [modalStatus,      setModalStatus]     = useState<string>('')
@@ -208,6 +200,10 @@ export default function TaskDetailPage() {
   // minute window costs nothing at all.
   const { data: activeUsers = [] } = useActiveUsers()
   const teamMembers = activeUsers
+  // The active list above cannot name someone since deactivated, and neither can
+  // the history's join on `users`. This can. See src/lib/tasks/taskPeople.ts.
+  const { data: userNames = {} } = useAllUserNames()
+  const actorNameOf = (entry: LogEntry) => entry.actor_name ?? userNames[entry.actor_id ?? ''] ?? null
 
   // Creator-approval workflow. One in-flight flag covers all three actions —
   // they are mutually exclusive on one task — with the usual ref/state pair, so
@@ -804,13 +800,16 @@ export default function TaskDetailPage() {
     router.replace(target)
   }
 
+  // AFTER APPROVING, BACK TO ASSIGNED BY ME, the owner's own queue, the moment the
+  // database answers. The notice is carried across, because a toast shown here
+  // would disappear with this page. A failure returns first, so the person stays.
   const approveTask = async () => {
-    const confirmed = window.confirm(
-      'Approve this task and mark it complete? This records the completion against the assignee.'
-    )
-    if (!confirmed) return
-    const ok = await runReviewAction('approve')
-    if (ok) showToast('Task approved and completed.')
+    setApproveDialogOpen(false)
+    const ok = await runReviewAction('approve', undefined, { refreshHistory: false })
+    if (!ok || !mountedRef.current) return
+    flashToast('Task approved and completed.')
+    noteListReturn()
+    router.replace(assignedByMeReturnPath(window.location.search))
   }
 
   const returnTask = async () => {
@@ -888,10 +887,8 @@ export default function TaskDetailPage() {
     if (cancelNavTimer.current) clearTimeout(cancelNavTimer.current)
   }, [])
 
-  const handleCancelTask = async () => {
+  const handleCancelTask = async (finalReason: string) => {
     if (!task || cancelling) return
-    const finalReason = cancelReason === 'Other' ? cancelOtherText.trim() : cancelReason
-    if (!finalReason) return
     setCancelling(true)
     const startedOn = task
     try {
@@ -933,13 +930,15 @@ export default function TaskDetailPage() {
       })
       setSelectedStatus('cancelled')
       setCancelModalOpen(false)
-      setCancelReason('')
-      setCancelOtherText('')
       invalidateTaskCache(startedOn.assigned_to)
       queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
       void loadLog(startedOn.id)
       // Only if the person is still here when it fires — leaving clears it.
-      cancelNavTimer.current = setTimeout(() => router.push('/tasks/cancelled'), 600)
+      cancelNavTimer.current = setTimeout(() => {
+        flashToast('Task cancelled.')
+        noteListReturn()
+        router.replace(assignedByMeReturnPath(window.location.search))
+      }, 600)
     } finally {
       if (mountedRef.current) setCancelling(false)
     }
@@ -1376,7 +1375,7 @@ export default function TaskDetailPage() {
   const riskOverdue  = isOverdue(task.due_date ?? null, task.status)
   const assigneeName = isAssignee
     ? (profile?.full_name ?? 'You')
-    : (teamMembers.find(m => m.id === task.assigned_to)?.full_name ?? task.assignee_name ?? 'Unknown')
+    : (teamMembers.find(m => m.id === task.assigned_to)?.full_name ?? task.assignee_name ?? userNames[task.assigned_to ?? ''] ?? 'Unknown')
 
   const isAdmin          = profile?.role === 'admin'
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
@@ -1715,7 +1714,7 @@ export default function TaskDetailPage() {
                                 </>
                               ) : (
                                 <>
-                                  <span style={{ fontWeight: 500, color: '#303536' }}>{entry.actor_name ?? 'Someone'}</span>
+                                  <span style={{ fontWeight: 500, color: '#303536' }}>{actorNameOf(entry) ?? 'Someone'}</span>
                                   <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
                                 </>
                               )}
@@ -2421,7 +2420,7 @@ export default function TaskDetailPage() {
                   {mayApprove && (
                     <button
                       className="boe-task-action-primary"
-                      onClick={approveTask}
+                      onClick={() => setApproveDialogOpen(true)}
                       disabled={reviewBusyAny}
                       // Visible label "Approve" on a narrow row; the full action
                       // name is the accessible name and the tooltip.
@@ -2493,7 +2492,7 @@ export default function TaskDetailPage() {
                   {showCancelButton && !isQuotation && !isUnacknowledged && (
                     <button
                       className="boe-task-action-secondary"
-                      onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
+                      onClick={() => setCancelModalOpen(true)}
                       aria-label="Cancel task"
                       title="Cancel task"
                       style={{
@@ -2720,7 +2719,7 @@ export default function TaskDetailPage() {
 
               {!isQuotation && latestNoteEntry && (
                 <p style={{ fontSize: '12px', color: statusColor, margin: '2px 0 0', fontWeight: 500 }}>
-                  Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
+                  Updated by{actorNameOf(latestNoteEntry) && <strong> {actorNameOf(latestNoteEntry)}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                 </p>
               )}
             </div>
@@ -2787,7 +2786,7 @@ export default function TaskDetailPage() {
 
                   {latestNoteEntry && (
                     <p style={{ fontSize: '12px', color: APPROVAL_GOLD, margin: '6px 0 0', fontWeight: 500 }}>
-                      Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
+                      Updated by{actorNameOf(latestNoteEntry) && <strong> {actorNameOf(latestNoteEntry)}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                     </p>
                   )}
                 </div>
@@ -3298,112 +3297,21 @@ export default function TaskDetailPage() {
 
       {/* ── Cancel Task Modal ───────────────────────────────────────────── */}
       {cancelModalOpen && (
-        <div
-          onClick={() => setCancelModalOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '16px',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#ffffff', borderRadius: '12px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-              width: '100%', maxWidth: '420px',
-              padding: '24px',
-              display: 'flex', flexDirection: 'column', gap: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Cancel Task</span>
-              <button
-                onClick={() => setCancelModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: colors.muted, lineHeight: 1, padding: '2px 6px', borderRadius: '6px', fontFamily: font.body }}
-              >
-                ×
-              </button>
-            </div>
+        <CancelTaskModal
+          busy={cancelling}
+          onClose={() => setCancelModalOpen(false)}
+          onConfirm={handleCancelTask}
+        />
+      )}
 
-            <p style={{ fontSize: '12.5px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
-              Cancelling this task is permanent until restored. The assignee will be notified. Select a reason below.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <p style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
-                Reason <span style={{ color: colors.red }}>*</span>
-              </p>
-              {CANCEL_REASONS.map(r => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => { setCancelReason(r); if (r !== 'Other') setCancelOtherText('') }}
-                  style={{
-                    padding: '9px 12px', borderRadius: '8px', textAlign: 'left',
-                    border: `1.5px solid ${cancelReason === r ? '#686D6C' : colors.border}`,
-                    background: cancelReason === r ? '#F1EEE9' : colors.float,
-                    color: cancelReason === r ? '#303536' : colors.secondary,
-                    fontSize: '13px', fontWeight: cancelReason === r ? 600 : 400,
-                    cursor: 'pointer', transition: 'all 0.12s', fontFamily: font.body,
-                  }}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-
-            {cancelReason === 'Other' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <p style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
-                  Specify reason <span style={{ color: colors.red }}>*</span>
-                </p>
-                <input
-                  type="text"
-                  value={cancelOtherText}
-                  onChange={e => setCancelOtherText(e.target.value)}
-                  placeholder="Enter reason…"
-                  className="boe-input"
-                  style={{ width: '100%', boxSizing: 'border-box' }}
-                  autoFocus
-                />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button
-                onClick={() => setCancelModalOpen(false)}
-                disabled={cancelling}
-                style={{
-                  padding: '7px 16px', borderRadius: '8px',
-                  border: `1.5px solid ${colors.border}`,
-                  background: 'transparent', color: colors.tertiary,
-                  fontSize: '12px', fontWeight: 500,
-                  cursor: 'pointer', fontFamily: font.body,
-                }}
-              >
-                Back
-              </button>
-              <button
-                onClick={handleCancelTask}
-                disabled={cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())}
-                style={{
-                  padding: '7px 18px', borderRadius: '8px',
-                  border: '1.5px solid #686D6C',
-                  background: '#686D6C', color: '#ffffff',
-                  fontSize: '12px', fontWeight: 600,
-                  cursor: (cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())) ? 'not-allowed' : 'pointer',
-                  fontFamily: font.body,
-                  opacity: (cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())) ? 0.5 : 1,
-                  transition: 'all 0.15s',
-                }}
-              >
-                {cancelling ? 'Cancelling…' : 'Confirm Cancellation'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {approveDialogOpen && (
+        <ApproveTaskDialog
+          title={task.title}
+          assigneeName={assigneeName}
+          busy={false}
+          onClose={() => setApproveDialogOpen(false)}
+          onConfirm={approveTask}
+        />
       )}
 
       {addToMeetingOpen && currentUserId && (

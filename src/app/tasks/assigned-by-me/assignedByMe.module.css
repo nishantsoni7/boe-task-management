@@ -1,0 +1,219 @@
+/* ── The Assigned By Me list ────────────────────────────────────────────────
+   One panel with hairlines, every task one line. It is a container query and
+   not a media query because the list's width depends on more than the window:
+   the rail and the Team response bar both take from it.
+
+   A column goes before the Task column is squeezed. The first to go is Last
+   update, because the Pending Update tab still answers that question. Then
+   Priority, because the filter still does. When Cancel task leaves the row it
+   is still in the ⋯ menu, where it is on every other row. */
+.list {
+  container-type: inline-size;
+  background: var(--boe-surface);
+  border: 1px solid var(--boe-border);
+  border-radius: 12px;
+}
+
+.headRow,
+.row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 104px 56px 112px 132px 84px 216px;
+  align-items: center;
+}
+
+.headRow {
+  min-height: 38px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--boe-text-muted);
+  background: #FBFAF8;
+  border-bottom: 1px solid var(--boe-border);
+  border-radius: 12px 12px 0 0;
+}
+
+.row {
+  min-height: 50px;
+  border-bottom: 1px solid #EEE9E3;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.row:last-child {
+  border-bottom: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.row:hover {
+  background: #FBFAF8;
+}
+
+/* Two signals, two hues (PR #445). A row that is both keeps the blue fill, the
+   one waiting on the reader, and its star. The stripe is an inset shadow, so an
+   approval row's content starts at the same x as every other row's. */
+.important {
+  background: rgba(183, 137, 42, 0.09);
+}
+
+.important:hover {
+  background: rgba(183, 137, 42, 0.15);
+}
+
+.approval {
+  background: rgba(51, 90, 134, 0.07);
+  box-shadow: inset 3px 0 0 var(--boe-working-fg);
+}
+
+.approval:hover {
+  background: rgba(51, 90, 134, 0.12);
+}
+
+.star {
+  display: flex;
+  justify-content: center;
+}
+
+.title {
+  min-width: 0;
+  padding-right: 12px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--boe-text);
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.important .title {
+  font-weight: 600;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 6px;
+  font-size: 13.5px;
+  color: var(--boe-text-strong);
+}
+
+.whoName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inactive {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--boe-pending-fg);
+  background: var(--boe-pending-bg);
+}
+
+.priority {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.due {
+  font-size: 13px;
+  color: var(--boe-text-strong);
+  white-space: nowrap;
+}
+
+.dueLate {
+  font-weight: 600;
+  color: var(--boe-blocked-fg);
+}
+
+.dueToday {
+  font-weight: 600;
+  color: var(--boe-waiting-fg);
+}
+
+.update {
+  font-size: 13px;
+  color: var(--boe-text-strong);
+  white-space: nowrap;
+}
+
+.updateWarning {
+  font-weight: 600;
+  color: var(--boe-waiting-fg);
+}
+
+.updateDanger {
+  font-weight: 600;
+  color: var(--boe-blocked-fg);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 10px;
+}
+
+.rowButton {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.count {
+  padding: 8px 4px 0;
+  font-size: 12.5px;
+  color: var(--boe-text-muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Phone card ── */
+.cardActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 9px 6px 2px 0;
+}
+
+.cardActions button {
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ── Narrower lists ── */
+@container (max-width: 999px) {
+  .headRow,
+  .row {
+    grid-template-columns: 28px minmax(0, 1fr) 104px 56px 112px 96px 216px;
+  }
+
+  .colUpdate,
+  .dueNote {
+    display: none;
+  }
+}
+
+@container (max-width: 859px) {
+  .headRow,
+  .row {
+    grid-template-columns: 28px minmax(0, 1fr) 104px 112px 96px 130px;
+  }
+
+  .colPriority,
+  .cancelInline {
+    display: none;
+  }
+}
