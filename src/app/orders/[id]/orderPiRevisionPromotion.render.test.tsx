@@ -46,8 +46,8 @@ const panel = (onReview?: () => void, admin?: { onApprove: () => void; onReject:
 describe('V1 stays the current PI; V2 is a change, shown apart', () => {
   test('V1 is the current row; V2 is in the changes panel with its stage and owner', () => {
     const html = panel()
-    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
-    const rows = text(html.slice(html.indexOf('class="order-docs-rows"')))
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-main"')))
+    const rows = text(html.slice(html.indexOf('class="order-docs-main"')))
     assert.ok(rows.includes('Main PI · V1 Current'))
     assert.equal(rows.includes('V2'), false, 'a proposed PI never looks like the current one')
     assert.ok(changes.includes('New PI · V2 Waiting for Operations'))
@@ -178,7 +178,7 @@ describe('a PENDING revision says it is in force at the Admin approval (20270116
         onReviewRevision={undefined} onOpenProposal={noop}
       />,
     )
-    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-main"')))
     assert.ok(changes.includes('V1 stays current until an Admin approves V2. Once approved, V2 is in force at once; Operations then reviews it for production.'), changes)
     assert.equal(changes.includes('until Operations accepts'), false)
   })

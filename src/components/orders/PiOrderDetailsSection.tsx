@@ -290,7 +290,7 @@ export function PiOrderDetailsSection({
       id={ORDER_DETAILS_ANCHOR}
       ref={sectionRef}
       aria-label={ORDER_DETAILS_TITLE}
-      className="pi-form-card pi-order-details"
+      className="pi-form-card"
     >
       <div className="pi-form-card-head">
         <h2 className="pi-form-card-title">{ORDER_DETAILS_TITLE}</h2>

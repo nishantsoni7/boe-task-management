@@ -1766,6 +1766,9 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
   to { transform: rotate(360deg); }
 }
 
+/* A small icon turning while its button is busy. */
+.boe-spin { animation: boe-spin 0.8s linear infinite; }
+
 .boe-loading {
   min-height: 100vh;
   background: #F7F5F1;
@@ -9564,6 +9567,7 @@ a.od-strip-item:hover { border-color: #CFC8BF; color: #303536; }
 .od-show-all { margin: 0 0 8px; }
 .od-unrecorded { margin-top: 12px; border-top: 1px solid #E4DED7; padding: 10px 0 4px; }
 .od-unrecorded > summary { cursor: pointer; font-size: 13px; font-weight: 500; color: #4C5352; }
+.od-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
 
 /* Other queues: quiet pill links. */
 .od-queues { display: flex; flex-wrap: wrap; gap: 8px; }

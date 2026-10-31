@@ -163,6 +163,7 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - The score asks the payroll engine rather than restating its rules, so a day cannot read one way on the Overview and another on a payslip.
 
 ## 9. Known traps / gotchas / unfixed defects
+- `/attendance/requests`: the toolbar is `ui.toolbar` from `ui.module.css`. Until 2026-10-31 it read `styles.toolbar`, which `attendanceRequests.module.css` never had, so the status filter and the Scheduled shift label had no row.
 - `attendance_records.status` cannot answer "late" or "half day": its CHECK allows only present/checked_in/absent/half_day, and the import and machine write only present/checked_in. Before the Overview score, Late and Half day in Monthly Review were always 0. Read a day through `scoreDay`, never from `status`.
 - `attendance_records` is RAW and overwritten by re-import; never store a correction there.
 - Forced `day_treatment` does NOT mean zero deduction: only `'full_day'` is free; `'half_day'`/`'absent'` still raise the aggregate day charge unless paid leave or credits absorb it (`engine.ts`, `buildFinalDeductionLines`).

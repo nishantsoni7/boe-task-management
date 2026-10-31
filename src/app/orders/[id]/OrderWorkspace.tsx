@@ -317,7 +317,7 @@ export function OrderSummaryPanel({ view, client = null, datesSlot = null, pende
         {datesSlot ?? (
           <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.dates}>
             <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.dates}</h3>
-            <dl className="order-sum-rows order-sum-rows--dates">
+            <dl className="order-sum-rows">
               {view.dates.map(row => <SummaryRow key={row.key} row={row} />)}
             </dl>
           </section>

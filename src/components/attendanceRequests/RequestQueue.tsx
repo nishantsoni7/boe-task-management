@@ -25,7 +25,7 @@ import {
 import { formatMinutesOfDay } from '@/lib/istDate'
 import { RequestReviewDrawer, actualPunchText, type Punch, type QueueRow, type Shift } from './RequestReviewDrawer'
 import { formatIstDateTime, statusTone } from './format'
-import { StatusFilter, StateBlock, Notice } from '@/components/attendancePayroll/ui'
+import { StatusFilter, StateBlock, Notice, ui } from '@/components/attendancePayroll/ui'
 import styles from './attendanceRequests.module.css'
 
 const FILTERS = [
@@ -122,7 +122,7 @@ export function RequestQueue({ getToken, focusId = null }: {
 
   return (
     <div>
-      <div className={styles.toolbar}>
+      <div className={ui.toolbar}>
         <StatusFilter
           label="Filter requests by status"
           value={filter}
