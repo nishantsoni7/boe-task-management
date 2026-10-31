@@ -717,11 +717,11 @@ describe('the projection both pages read', () => {
     assert.ok(!perRow.test(view), 'no allocation read may sit inside a row loop')
   })
 
-  test('the list still orders by created_at, newest first', () => {
+  test('the list orders by payment_date, newest first', () => {
     const view = readFileSync(
       join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
-    assert.ok(view.includes(`.order('created_at', { ascending: false })`),
-      'ordering must be unchanged by the data-source swap')
+    assert.ok(view.includes(`.order('payment_date', { ascending: false })`),
+      'the latest payment leads, whatever the data source')
   })
 
   test('every mutation still writes to the base table by the payment id', () => {

@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `7b1577fd` — For you: payment request cards, Control Center settings, each person's choices
+- Commit: `457114e2` — For you: payment request cards, Control Center settings, each person's choices
 - Commits on this branch: 1104
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 392 (first `20260530_create_positions.sql`, latest `20270513000000_for_you_settings.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `7b1577fd` 2026-10-31 For you: payment request cards, Control Center settings, each person's choices
+- `457114e2` 2026-10-31 For you: payment request cards, Control Center settings, each person's choices
 - `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
 - `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
 - `7e60d9ed` 2026-10-31 Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
