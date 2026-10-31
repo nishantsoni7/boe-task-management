@@ -24,6 +24,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ORDER_PI_PRODUCTS_TITLE,
   ORDER_PI_SECTION_TITLE,
+  ORDER_PRODUCT_THUMBNAIL,
   OrderPiNoSource,
   OrderPiProducts,
   OrderPiSummaryCard,
@@ -37,7 +38,7 @@ import {
   type OrderCommercialFacts,
   type OrderPiRow,
 } from '@/lib/orders/orderPiHandoff'
-import { PiCommercialSummary } from '@/components/orders/piPreview'
+import { PiCommercialSummary, PI_THUMBNAIL_SIZE } from '@/components/orders/piPreview'
 import { orderCommercialLines } from '@/lib/orders/orderCommercial'
 import { persistedProducts, type PersistedItem, type PersistedProduct } from '@/lib/orders/draftsView'
 import { BILLING_UNDECLARED } from '@/lib/orders/billingPercentage'
@@ -337,6 +338,20 @@ describe('the product lines', () => {
     assert.ok(html.includes('https://signed.example/one.png?token=abc'))
     assert.ok(html.includes('https://signed.example/two.png?token=def'))
     assert.match(html, /<img/)
+  })
+
+  test('the first column is headed Product Code and the rest of the head is unchanged (owner, 2026-10-31)', () => {
+    const heads = [...productsMarkup().matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1])
+    assert.deepEqual(heads, ['Product Code', 'Image', 'Product', 'Qty', 'Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'])
+  })
+
+  test('the desktop photograph is 108px, at least a quarter bigger than the PI screens’ 84px', () => {
+    const html = productsMarkup()
+    assert.equal(ORDER_PRODUCT_THUMBNAIL, 108)
+    assert.ok(ORDER_PRODUCT_THUMBNAIL >= PI_THUMBNAIL_SIZE.representative * 1.25)
+    assert.match(html, /width:108px;height:108px/)
+    assert.ok(!html.includes('width:84px'))
+    assert.match(productsMarkup({ isMobile: true }), /width:72px;height:72px/, 'the phone card keeps its own size')
   })
 
   test('a picture that could not be signed shows the honest empty box, not a broken image', () => {
