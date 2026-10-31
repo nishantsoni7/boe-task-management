@@ -27,7 +27,6 @@
 // only rounding is the workbook's own, on the two totals.
 
 export const FABRIC_FINISH_TITLE = 'Fabric & Finish cost'
-export const FABRIC_FINISH_OPEN_LABEL = 'Open cost sheet'
 export const AS_APPLICABLE_TEXT = 'As applicable'
 export const NO_FINISH_TEXT = 'No Fabric and Finish approval done'
 export const TYPED_SOURCE_LABEL = 'Typed'
