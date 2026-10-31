@@ -820,6 +820,30 @@ describe('the business rules this pass must not touch', () => {
     assert.ok(page.includes('className="order-products"'), 'and it is full width, above everything else')
   })
 
+  test('the code and image columns are the same width in all three tabs, so nothing jumps on a tab change', () => {
+    const css = read(CSS)
+    const width = (selector: string, from = 0) => {
+      const at = css.indexOf(selector, from)
+      assert.notEqual(at, -1, selector)
+      return /width: (\d+px)/.exec(css.slice(at, at + selector.length + 24))?.[1]
+    }
+    const narrow = css.indexOf('.order-products-table td { padding: 7px 8px; }')
+    const tabsNarrow = css.indexOf('.pv-table--order td { padding: 7px 8px; }')
+    assert.equal(width('.order-products-table col:nth-child(1)'), width('.pv-table--order col.pv-col-code'))
+    assert.equal(width('.order-products-table col:nth-child(2)'), width('.pv-table--order col.pv-col-image'))
+    assert.equal(width('.order-products-table col:nth-child(1)', narrow), width('.pv-table--order col.pv-col-code', tabsNarrow))
+    assert.equal(width('.order-products-table col:nth-child(2)', narrow), width('.pv-table--order col.pv-col-image', tabsNarrow))
+    // The column holds the 108px photograph and the cell's padding at both widths.
+    assert.equal(width('.order-products-table col:nth-child(2)'), '132px')
+    assert.equal(width('.order-products-table col:nth-child(2)', narrow), '124px')
+  })
+
+  test('Open cost sheet is gone: the F&P Cost tab is the one way to the sheet (owner, 2026-10-31)', () => {
+    assert.ok(!page.includes('costSheet={'), 'the Pendencies card is handed no cost sheet')
+    assert.ok(!read(STATUS).includes('Open cost sheet'))
+    assert.ok(page.includes('switchProductView'), 'the tabs still switch')
+  })
+
   test('the shell-first loading architecture is intact', () => {
     assert.ok(page.includes('Promise.race([shell, loadOrder().catch(() => {})])'))
     assert.ok(page.includes('const releaseShell'))

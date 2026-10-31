@@ -85,6 +85,11 @@ export type PiInternalDetailsRow = {
   commission_restricted?: boolean
   /** The PI's status. "Needed before review" is only true while it is being prepared. */
   status?: string | null
+  /** The PI's own figures, when the row carries them: what a commission is a share of. */
+  gross_product_amount?: number | string | null
+  subtotal_after_discount?: number | string | null
+  total_before_gst?: number | string | null
+  grand_total?: number | string | null
 }
 
 /** Draft or returned: the only stages at which the internal details can still be entered. */
@@ -319,11 +324,23 @@ export function describeMiddleman(row: PiInternalDetailsRow): string {
   return `Yes — ${who}, amount not given`
 }
 
+/** A PI figure in paise, or null when there is none to take a share of. */
+const figurePaise = (value: unknown): number | null => {
+  const n = text(value) === '' ? NaN : Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null
+}
+
 /**
  * THE MIDDLEMAN ANSWER SPLIT FOR THE ORDER PAGE: the commission on one line and
  * the name on its own. Same data and the same reader rule as describeMiddleman
  * — a reader who may not see the commission gets "Restricted" in both, never a
  * value and never a false "No".
+ *
+ * EVERY COMMISSION READS IN BOTH FORMS (owner, 2026-10-31). The PI stores an
+ * amount or a percentage, never both, so the other one is worked out here from
+ * the PI's own figures: an amount as a share of Total before GST, the advance's
+ * base, and a percentage in rupees of the figure it was agreed on. Nothing is
+ * stored. A PI that does not state the figure shows only what was agreed.
  */
 export function describeMiddlemanParts(row: PiInternalDetailsRow): { commission: string; name: string } {
   if (row.commission_restricted) return { commission: 'Restricted', name: 'Restricted' }
@@ -333,12 +350,20 @@ export function describeMiddlemanParts(row: PiInternalDetailsRow): { commission:
   const name = text(row.middleman_recipient).trim() || 'Not named'
   const basis = text(row.middleman_commission_basis)
   if (basis === 'amount' && text(row.middleman_commission_amount)) {
-    return { commission: INR.format(Number(row.middleman_commission_amount)), name }
+    const amount = Number(row.middleman_commission_amount)
+    const base = figurePaise(row.total_before_gst)
+    if (base === null) return { commission: INR.format(amount), name }
+    const share = Math.round(Math.round(amount * 100) * 10000 / base) / 100
+    return { commission: `${INR.format(amount)} · ${share}% of ${COMMISSION_PERCENT_OF_LABEL.total_before_gst}`, name }
   }
   if (basis === 'percent' && text(row.middleman_commission_percent)) {
     const of = text(row.middleman_commission_percent_of) as CommissionPercentOf
-    const base = COMMISSION_PERCENT_OF_LABEL[of] ?? 'an unnamed figure'
-    return { commission: `${Number(row.middleman_commission_percent)}% of ${base}`, name }
+    const label = COMMISSION_PERCENT_OF_LABEL[of] ?? 'an unnamed figure'
+    const percent = Number(row.middleman_commission_percent)
+    const stated = `${percent}% of ${label}`
+    const base = figurePaise(row[of])
+    if (base === null) return { commission: stated, name }
+    return { commission: `${INR.format(Math.round(base * percent / 100) / 100)} · ${stated}`, name }
   }
   return { commission: 'Amount not given', name }
 }

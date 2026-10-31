@@ -4385,14 +4385,14 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 .order-products-table {
   table-layout: fixed;
 }
-.order-products-table col:nth-child(1) { width: 108px; }  /* 524-BE0001 */
-.order-products-table col:nth-child(2) { width: 108px; }  /* the 84px photograph */
+.order-products-table col:nth-child(1) { width: 108px; }  /* 524-BE0001, under "Product Code" */
+.order-products-table col:nth-child(2) { width: 132px; }  /* the 108px photograph */
 .order-products-table col:nth-child(3) { width: 15%; }    /* product */
 .order-products-table col:nth-child(4) { width: 52px; }   /* qty */
 .order-products-table col:nth-child(5) { width: 12%; }    /* dimensions */
 .order-products-table col:nth-child(6) { width: 10%; }    /* material */
 .order-products-table col:nth-child(7) { width: auto; }   /* customization */
-/* Wide enough for the SHARED head’s own labels, which carry their own
+/* Wide enough for the head’s own labels, which carry their own
    14px padding and never wrap: "Cost / piece" and "Line total". */
 .order-products-table col:nth-child(8) { width: 104px; }  /* cost / piece */
 .order-products-table col:nth-child(9) { width: 100px; }  /* line total */
@@ -4430,8 +4430,8 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 
 @media (max-width: 1440px) {
   .order-products-table td { padding: 7px 8px; }
-  .order-products-table col:nth-child(1) { width: 80px; }
-  .order-products-table col:nth-child(2) { width: 100px; }
+  .order-products-table col:nth-child(1) { width: 104px; }
+  .order-products-table col:nth-child(2) { width: 124px; }
 }
 
 /* BELOW THE WIDTH NINE COLUMNS CAN HOLD, the table keeps a floor and scrolls
@@ -4439,7 +4439,7 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
    page itself still never scrolls sideways — the floor is under the width the
    record column has at 1366, so no ordinary desktop ever reaches it. */
 @media (max-width: 1200px) {
-  .order-products-table { min-width: 920px; }
+  .order-products-table { min-width: 1000px; }
 }
 
 /* ── The customization cell ──
@@ -11630,6 +11630,7 @@ textarea.pi-form-input { height: auto; }
 .order-ff-pend-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .order-ff-pend-item {
   display: flex;
+  flex-wrap: wrap; /* the approval form takes its own line under the row */
   align-items: baseline;
   gap: 8px;
   font-size: 13px;
@@ -12269,18 +12270,21 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-info-empty { margin: 0; font-size: 13px; color: #6B7573; }
 .order-breakdown-line:not(.order-breakdown-line--final) .order-breakdown-note { background: transparent; border-radius: 0; padding: 0; color: #C26A62; font-size: 11px; font-style: normal; font-weight: 500; }
 
-/* ── Notification banners: one per item, tinted by kind ── */
-.order-notices { display: flex; flex-direction: column; gap: 8px; }
-.order-notice { display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 12px 16px; border: 1px solid; border-left-width: 5px; font-weight: 500; min-width: 0; }
+/* ── Notification banners: one per item, tinted by kind ──
+   Side by side, sharing the row equally (owner, 2026-10-31): one fills it, two
+   take half each, and a narrower window drops them onto the next line. Inside
+   a banner the actions wrap below the words when the width runs out. */
+.order-notices { display: flex; flex-wrap: wrap; gap: 8px; }
+.order-notice { flex: 1 1 360px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-radius: 12px; padding: 12px 16px; border: 1px solid; border-left-width: 5px; font-weight: 500; min-width: 0; }
 .order-notice-icon { display: inline-flex; flex: 0 0 auto; }
-.order-notice-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.order-notice-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 220px; }
 .order-notice-title { font-size: 15px; font-weight: 600; }
 .order-notice-detail { font-size: 13px; font-weight: 400; opacity: .85; }
 .order-notice-actions { margin-left: auto; flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .order-notice--amber { background: #FFF7E6; border-color: #F6D9A0; border-left-color: #E08A00; color: #7A3E05; }
 .order-notice--blue { background: #EEF4FF; border-color: #C9DBFF; border-left-color: #2F6BFF; color: #173B9C; }
 .order-notice--red { background: #FFF0EE; border-color: #F7C5BE; border-left-color: #D92D20; color: #8A1A11; }
-@media (max-width: 640px) { .order-notice { flex-wrap: wrap; } .order-notice-actions { margin-left: 0; width: 100%; justify-content: stretch; } }
+@media (max-width: 640px) { .order-notice { flex-basis: 100%; } .order-notice-actions { margin-left: 0; width: 100%; justify-content: stretch; } }
 
 /* ── Top band: three separate cards (client + sale | dates | payment), equal height ── */
 .order-facts { background: transparent; border: 0; border-radius: 0; overflow: visible; }
@@ -13401,7 +13405,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pv-table col.pv-col-cost { width: 120px; }
 .pv-table col.pv-col-total { width: 130px; }
 .pv-table--order col.pv-col-code { width: 108px; }
-.pv-table--order col.pv-col-image { width: 108px; }
+.pv-table--order col.pv-col-image { width: 132px; }
 .pv-table--order col.pv-col-product { width: 15%; }
 .pv-table--order col.pv-col-qty { width: 52px; }
 .pv-table thead tr,
@@ -13453,8 +13457,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 }
 @media (max-width: 1440px) {
   .pv-table--order td { padding: 7px 8px; }
-  .pv-table--order col.pv-col-code { width: 80px; }
-  .pv-table--order col.pv-col-image { width: 100px; }
+  .pv-table--order col.pv-col-code { width: 104px; }
+  .pv-table--order col.pv-col-image { width: 124px; }
 }
 .pv-card-total { background: #FBFAF8; }
 /* A narrow window scrolls inside the card rather than crushing the columns. */

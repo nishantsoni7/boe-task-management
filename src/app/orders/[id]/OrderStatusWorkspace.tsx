@@ -66,7 +66,6 @@ import {
   type DesignFilesDocument,
 } from '@/lib/orders/orderDocumentsPanel'
 import OrderPendencies from './OrderPendencies'
-import { FABRIC_FINISH_OPEN_LABEL } from '@/lib/orders/fabricFinishCost'
 import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
@@ -787,13 +786,11 @@ function ProductPicturesBlock({ state, onView, message }: ProductPicturesBlockPr
  * assigned salesperson, an admin or a manager, and never under View As — and
  * record_order_approval_event() re-derives every bit of that under a row lock.
  */
-export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence, pendencies, costSheet }: {
+export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence, pendencies }: {
   standing: ApprovalStanding
   canUpdate: boolean
   /** The Order's "Pending from client" list; omitted = not drawn. */
   pendencies?: { orderId: string; canManage: boolean }
-  /** The Fabric & Finish cost sheet (20270431000000): opens the slide-in panel; omitted = no button. */
-  costSheet?: { onOpen: () => void }
   onUpdate: () => void
   onViewEvidence: (path: string) => void
   /** Which proof is being signed, if any. */
@@ -859,15 +856,6 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
       </dl>
       {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} />}
       <div className="order-ff-end">
-        {/* THE COST SHEET: fabric metres and price, packing, finish choices and
-            reference pictures per product, in a panel that slides in from the
-            right (owner, 2026-10-29). A button, not a link: the Order's own
-            body builds no way off the page. */}
-        {costSheet && (
-          <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={costSheet.onOpen}>
-            {FABRIC_FINISH_OPEN_LABEL} →
-          </button>
-        )}
         {canUpdate ? (
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>
             {FABRIC_FINISH_UPDATE_LABEL}

@@ -20,8 +20,6 @@
 // the capabilities the database resolved; this only decides which of the
 // controls it was told about is the primary one and where the rest sit.
 
-import { CONFIRM_TO_UPLOAD_FLAG_DAYS } from './orderDatesTimeline'
-
 export type WorkspaceTone = 'neutral' | 'blue' | 'green' | 'amber' | 'red'
 
 /** The statuses under which an Order is no longer being worked. The overdue
@@ -51,7 +49,6 @@ export type OrderAttentionItem = {
     | 'alignment_predates_version'
     | 'advance_below'
     | 'advance_realign'
-    | 'upload_gap'
   label: string
   /**
    * The strip's two parts, for the items that have a reason worth saying: a
@@ -82,11 +79,6 @@ export type OrderAttentionInput = {
   pendingChangeRequests: number
   /** A revised PI is uploaded and awaiting a decision. */
   pendingPiRevision: boolean
-  /**
-   * Days from the confirm date to the day the PI was uploaded (see
-   * orderDatesTimeline); a gap over CONFIRM_TO_UPLOAD_FLAG_DAYS is raised.
-   */
-  confirmUploadGapDays?: number | null
   /** The document register's own states, from buildOrderDocumentsView. */
   documentsFailed: boolean
   documentsOutdated: boolean
@@ -147,17 +139,6 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
 
   if (open && input.isOverdue) {
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
-  }
-  // THE CONFIRM DATE AND THE PI UPLOAD ARE FAR APART: usually a mistyped confirm
-  // date, or a PI sent late. Said once, in words, with the number of days.
-  if (input.confirmUploadGapDays != null && input.confirmUploadGapDays > CONFIRM_TO_UPLOAD_FLAG_DAYS) {
-    items.push({
-      key: 'upload_gap',
-      label: `Confirm date and PI upload are ${input.confirmUploadGapDays} days apart`,
-      tone: 'red',
-      title: `Confirm date and PI upload are ${input.confirmUploadGapDays} days apart`,
-      detail: 'The PI was uploaded long after the order was confirmed; check the confirm date.',
-    })
   }
   // A SHORT ADVANCE BLOCKS PRODUCTION, and the database refuses the alignment
   // until it is met or excepted. It is a standing condition with a clear action

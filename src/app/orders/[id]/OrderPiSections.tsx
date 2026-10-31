@@ -47,8 +47,10 @@ import {
   PiCard,
   PiCardHeader,
   PiFieldRow,
-  PiProductTableHead,
   PiProductThumbnail,
+  PI_CUSTOMIZATION_HEADER_RED,
+  PI_CUSTOMIZATION_TINT,
+  PI_PRODUCT_COLUMNS,
   PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
@@ -557,6 +559,46 @@ export function OrderCommercialBreakdown({ lines, embedded = false }: {
  * MOBILE IS A STACK OF CARDS, not a table in a horizontal scroller: the
  * approved treatment, unchanged.
  */
+/**
+ * THE ORDER'S PRODUCT PHOTOGRAPH, a quarter bigger than the PI screens' 84px so
+ * a product can be told apart in the list (owner, 2026-10-31). Page-owned
+ * because piPreview.tsx is pinned; the image columns in globals.css hold it.
+ */
+export const ORDER_PRODUCT_THUMBNAIL = 108
+
+/**
+ * THE ORDER'S OWN TABLE HEAD: the shared nine columns, with the first named for
+ * what it holds here (owner, 2026-10-31). Page-owned for the same reason, and
+ * because the import preview's rows carry no Order Product Code yet.
+ */
+function OrderProductTableHead() {
+  return (
+    <thead>
+      <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+        {PI_PRODUCT_COLUMNS.map(column => {
+          const marked = column.accent === 'customization'
+          return (
+            <th
+              key={column.key}
+              scope="col"
+              style={{
+                padding: '8px 14px',
+                textAlign: column.align,
+                fontSize: '12px', fontWeight: marked ? 700 : 600,
+                background: marked ? PI_CUSTOMIZATION_TINT : 'transparent',
+                color: marked ? PI_CUSTOMIZATION_HEADER_RED : colors.muted,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {column.key === 'sequence' ? 'Product Code' : column.label}
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
+  )
+}
+
 export function OrderPiProducts({
   products, isMobile, representativeThumbnail, customizationThumbnails, unresolvedImages, views,
 }: {
@@ -587,7 +629,7 @@ export function OrderPiProducts({
     code: <span className="order-product-code">{orDash(p.orderProductCode ?? p.itemSequence)}</span>,
     image: compact => (compact
       ? <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
-      : <PiProductThumbnail {...representativeThumbnail(p.row)} />),
+      : <PiProductThumbnail {...representativeThumbnail(p.row)} size={ORDER_PRODUCT_THUMBNAIL} />),
     product: (
       <MultilineText className="order-product-name" style={{ margin: 0, overflowWrap: 'anywhere' }}>
         {orDash(p.productName)}
@@ -704,9 +746,9 @@ export function OrderPiProducts({
         <div className={`pv-scroll${views?.animate ? ' pv-animate' : ''}`}>
           {/* FIXED LAYOUT, so nine columns always fit the card and the prose
               columns wrap rather than widening the table. The narrow columns
-              are sized in pixels for what they hold — an item code, an 84px
-              photograph, a quantity, two money figures under the shared
-              head's own labels — and the three descriptive columns take a
+              are sized in pixels for what they hold — an item code, a 108px
+              photograph, a quantity, two money figures under the head's own
+              labels — and the three descriptive columns take a
               share of the rest, with Customization taking everything left
               over so an instruction has the most room to wrap. */}
           <table className="order-products-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -715,8 +757,7 @@ export function OrderPiProducts({
             <colgroup>
               <col /><col /><col /><col /><col /><col /><col /><col /><col />
             </colgroup>
-            {/* The identical head both PI screens render. */}
-            <PiProductTableHead />
+            <OrderProductTableHead />
             <tbody>
               {products.map(p => (
                 <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -729,7 +770,7 @@ export function OrderPiProducts({
                     </span>
                   </td>
                   <td>
-                    <PiProductThumbnail {...representativeThumbnail(p.row)} />
+                    <PiProductThumbnail {...representativeThumbnail(p.row)} size={ORDER_PRODUCT_THUMBNAIL} />
                   </td>
                   <td>
                     {/* SECONDARY, NOT HIDDEN: every word of the name is still
