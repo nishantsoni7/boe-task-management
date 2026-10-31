@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `e395e186` — Docs: Bank credit review merged as PR #544 (99bf7fbc)
+- Commit: `3e7adf1c` — Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
 - Commits on this branch: 1111
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
-- Test files: 699   Next.js 16.2.6, React 19.2.4
+- Test files: 701   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `e395e186` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc)
+- `3e7adf1c` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
 - `0e639f09` 2026-10-31 Docs: Confirmed Orders gap merged as PR #543 (4c0629be) (#545)
 - `99bf7fbc` 2026-10-31 Bank Statements: Synced is checked, a person decides every possible duplicate (#544)
 - `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)

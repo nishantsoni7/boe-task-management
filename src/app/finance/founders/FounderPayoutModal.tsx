@@ -15,6 +15,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { Check } from 'lucide-react'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import {
   FOUNDER_PAID_FROM,
@@ -33,6 +34,7 @@ import {
 } from '@/lib/finance/founderPayouts'
 import { roomLeft, rulesFor, taxIfPaid } from '@/lib/finance/founderPayoutTax'
 import { saveFounderPayout } from './founderPayoutsData'
+import styles from './founders.module.css'
 
 type Line = { key: string; accountId: string; kind: FounderPayoutKind; amount: string }
 
@@ -171,37 +173,36 @@ export function FounderPayoutModal({
   ]
 
   return (
-    <FinanceModal title={editing ? 'Change payout' : 'New payout'} onClose={onClose} width="620px" closeOnBackdropClick={false}>
-      <div className="fp-form" data-testid="founder-payout-form">
-        <div className="fp-form-row">
-          <label className="fp-field">
+    <FinanceModal title={editing ? 'Change payout' : 'New payout'} onClose={onClose} width="640px" closeOnBackdropClick={false}>
+      <div className={styles.form} data-testid="founder-payout-form">
+        <div className={`${styles.formRow} ${styles.formRowThree}`}>
+          <label className={styles.field}>
             <span>Paid on</span>
             <input type="date" className="boe-input" value={paidOn} max={todayIso} onChange={e => setPaidOn(e.target.value)} />
           </label>
-          <label className="fp-field">
+          <label className={styles.field}>
             <span>Paid from</span>
             <select className="boe-input" value={paidFrom} onChange={e => setPaidFrom(e.target.value)}>
               {FOUNDER_PAID_FROM.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </label>
+          <label className={styles.field}>
+            <span>Total amount</span>
+            <input
+              className={`boe-input ${styles.amountBig}`}
+              inputMode="decimal"
+              placeholder="₹ 1,50,000"
+              value={total}
+              onChange={e => setTotal(e.target.value)}
+              aria-label="Total amount in rupees"
+            />
+          </label>
         </div>
 
-        <label className="fp-field">
-          <span>Total amount</span>
-          <input
-            className="boe-input fp-amount-big"
-            inputMode="decimal"
-            placeholder="₹ 1,50,000"
-            value={total}
-            onChange={e => setTotal(e.target.value)}
-            aria-label="Total amount in rupees"
-          />
-        </label>
-
         {sides.length > 1 && (
-          <div className="fp-field">
+          <div className={styles.field}>
             <span>Whose share?</span>
-            <div className="fp-seg" role="group" aria-label="Whose share">
+            <div className={styles.sideSwitch} role="group" aria-label="Whose share">
               {sides.map(s => (
                 <button key={s} type="button" aria-pressed={side === s} onClick={() => setSide(s)}>{s}&rsquo;s side</button>
               ))}
@@ -209,94 +210,101 @@ export function FounderPayoutModal({
           </div>
         )}
 
-        <div className="fp-field">
-          <span>Into which accounts?</span>
+        <div className={styles.field}>
+          <div className={styles.fieldHead}>
+            <span className={styles.fieldLabel}>Into which accounts?</span>
+            <span className={styles.fieldActions}>
+              {!editing && sides.length > 0 && <button type="button" className={styles.link} onClick={sameAsLastTime}>Same as last time</button>}
+              <button type="button" className={styles.link} disabled={lines.length === 0} onClick={() => setEqual(true)}>Split equally</button>
+            </span>
+          </div>
           {accounts.length === 0 ? (
-            <p className="fin-muted" style={{ margin: 0, fontSize: 13 }}>Add the accounts first, on the Accounts tab.</p>
+            <p className={`${styles.muted} ${styles.deleteText}`}>Add the accounts first, on the Accounts tab.</p>
           ) : (
-            <div className="fp-pick">
+            <div className={styles.pick}>
               {orderedAccounts.map((a, i) => (
                 <span key={a.id} style={{ display: 'contents' }}>
-                  {i > 0 && orderedAccounts[i - 1].side !== a.side && <span className="fp-pick-group">{a.side}&rsquo;s side</span>}
+                  {i > 0 && orderedAccounts[i - 1].side !== a.side && <span className={styles.pickGroup}>{a.side}&rsquo;s side</span>}
                   <button type="button" aria-pressed={pickedIds.includes(a.id)} onClick={() => toggle(a.id)}>{a.displayName}</button>
                 </span>
               ))}
             </div>
           )}
-          <div className="fp-inline-actions">
-            {!editing && sides.length > 0 && <button type="button" className="boe-btn boe-btn-ghost" onClick={sameAsLastTime}>Same as last time</button>}
-            <button type="button" className="boe-btn boe-btn-ghost" disabled={lines.length === 0} onClick={() => setEqual(true)}>Split equally</button>
-          </div>
         </div>
 
-        {shownLines.map(l => {
-          const account = byId.get(l.accountId)
-          if (!account) return null
-          const kinds = kindsForRole(account.taxRole)
-          const allKinds = kinds.includes(l.kind) ? kinds : [l.kind, ...kinds]
-          const paise = parseAmountToPaise(l.amount)
-          const already = before.get(account.id)
-          const draftIncome = draftLines.filter(d => d.accountId === account.id && d.kind !== 'drawings').reduce((s, d) => s + d.paise, 0)
-          let hint: ReactNode = null
-          if (account.taxRole === 'unset') hint = <><span className="fin-pill fin-pill--zero">Role not set</span> <span className="fin-muted">Choose {account.displayName}&rsquo;s role on the Accounts tab to see the tax-free room.</span></>
-          else if (account.taxRole === 'family') hint = <span className="fin-muted">Not {account.displayName}&rsquo;s income: it counts as {account.side}&rsquo;s drawing.</span>
-          else if (l.kind === 'drawings') hint = <span className="fin-muted">A drawing (profit share or capital): not taxed again for {account.displayName}.</span>
-          else if (rules && already) {
-            const room = roomLeft(account.taxRole, (already.incomePaise + draftIncome) / 100, already.otherIncomePaise / 100, rules)
-            if (room !== null && room >= 0) hint = <><span className="fin-pill fin-pill--full">Still tax-free</span> <span className="fin-muted">{formatLakh(room * 100)} room left in {taxYearLabel(taxYear)} after this</span></>
-            else if (room !== null) {
-              const tax = taxIfPaid(account.taxRole, already.incomePaise / 100, already.otherIncomePaise / 100, draftIncome / 100, rules) ?? 0
-              hint = <><span className="fin-pill fin-pill--over">Over the tax-free line by {formatRupees(-room * 100)}</span> <span className="fin-muted">tax for the year about {formatRupees(tax * 100)}</span></>
-            }
-          }
-          const canAddKind = kinds.some(k => !lines.some(x => x.accountId === account.id && x.kind === k))
-          return (
-            <div key={l.key} className="fp-line">
-              <div className="fp-line-row">
-                <span className="fp-line-name">{account.displayName}</span>
-                <select className="boe-input" aria-label={`Kind of payment to ${account.displayName}`} value={l.kind}
-                  onChange={e => setLines(prev => prev.map(x => (x.key === l.key ? { ...x, kind: e.target.value as FounderPayoutKind } : x)))}>
-                  {allKinds.map(k => <option key={k} value={k}>{kindLabel(k)}</option>)}
-                </select>
-                <input className="boe-input fp-line-amount" inputMode="decimal" aria-label={`Amount to ${account.displayName}`}
-                  value={l.amount}
-                  onChange={e => {
-                    const value = e.target.value
-                    setLines(shownLines.map(x => (x.key === l.key ? { ...x, amount: value } : x)))
-                    setEqual(false)
-                  }} />
+        {shownLines.length > 0 && (
+          <div className={styles.lines}>
+            {shownLines.map(l => {
+              const account = byId.get(l.accountId)
+              if (!account) return null
+              const kinds = kindsForRole(account.taxRole)
+              const allKinds = kinds.includes(l.kind) ? kinds : [l.kind, ...kinds]
+              const paise = parseAmountToPaise(l.amount)
+              const already = before.get(account.id)
+              const draftIncome = draftLines.filter(d => d.accountId === account.id && d.kind !== 'drawings').reduce((s, d) => s + d.paise, 0)
+              let hint: ReactNode = null
+              if (account.taxRole === 'unset') hint = <><span className="fin-pill fin-pill--zero">Role not set</span> <span>Choose {account.displayName}&rsquo;s role on the Accounts tab to see the tax-free room.</span></>
+              else if (account.taxRole === 'family') hint = <span>Not {account.displayName}&rsquo;s income: it counts as {account.side}&rsquo;s drawing.</span>
+              else if (l.kind === 'drawings') hint = <span>A drawing (profit share or capital): not taxed again for {account.displayName}.</span>
+              else if (rules && already) {
+                const room = roomLeft(account.taxRole, (already.incomePaise + draftIncome) / 100, already.otherIncomePaise / 100, rules)
+                if (room !== null && room >= 0) hint = <><span className="fin-pill fin-pill--full">Still tax-free</span> <span>{formatLakh(room * 100)} room left in {taxYearLabel(taxYear)} after this</span></>
+                else if (room !== null) {
+                  const tax = taxIfPaid(account.taxRole, already.incomePaise / 100, already.otherIncomePaise / 100, draftIncome / 100, rules) ?? 0
+                  hint = <><span className="fin-pill fin-pill--over">Over the tax-free line by {formatRupees(-room * 100)}</span> <span>tax for the year about {formatRupees(tax * 100)}</span></>
+                }
+              }
+              const canAddKind = kinds.some(k => !lines.some(x => x.accountId === account.id && x.kind === k))
+              return (
+                <div key={l.key} className={styles.line}>
+                  <div className={styles.lineRow}>
+                    <span className={styles.lineName}>{account.displayName}</span>
+                    <select className="boe-input" aria-label={`Kind of payment to ${account.displayName}`} value={l.kind}
+                      onChange={e => setLines(prev => prev.map(x => (x.key === l.key ? { ...x, kind: e.target.value as FounderPayoutKind } : x)))}>
+                      {allKinds.map(k => <option key={k} value={k}>{kindLabel(k)}</option>)}
+                    </select>
+                    <input className={`boe-input ${styles.lineAmount}`} inputMode="decimal" aria-label={`Amount to ${account.displayName}`}
+                      value={l.amount}
+                      onChange={e => {
+                        const value = e.target.value
+                        setLines(shownLines.map(x => (x.key === l.key ? { ...x, amount: value } : x)))
+                        setEqual(false)
+                      }} />
+                  </div>
+                  <div className={styles.lineHint}>
+                    {hint}
+                    {paise === 0 && <span>No amount yet</span>}
+                    {canAddKind && <button type="button" className={styles.link} onClick={() => addKind(account.id)}>+ kind</button>}
+                  </div>
+                </div>
+              )
+            })}
+            {totalPaise > 0 && (
+              <div className={`${styles.sum} ${sum === totalPaise ? styles.sumOk : styles.sumOff}`} role="status">
+                {sum === totalPaise
+                  ? <><Check size={15} strokeWidth={2.4} aria-hidden="true" /> Adds up: {formatRupees(sum)} into {pickedIds.length} account{pickedIds.length === 1 ? '' : 's'}.</>
+                  : <>The accounts add up to {formatRupees(sum)}: {formatRupees(Math.abs(totalPaise - sum))} {sum < totalPaise ? 'short of' : 'more than'} the total.{' '}
+                      <button type="button" className={styles.link} onClick={() => setEqual(true)}>Split equally</button></>}
               </div>
-              <div className="fp-line-hint">
-                {hint}
-                {canAddKind && <button type="button" className="fp-link" onClick={() => addKind(account.id)}>+ kind</button>}
-                {paise === 0 && <span className="fin-muted">No amount yet</span>}
-              </div>
-            </div>
-          )
-        })}
-
-        {lines.length > 0 && totalPaise > 0 && (
-          <div className={`fp-sum ${sum === totalPaise ? 'is-ok' : 'is-off'}`} role="status">
-            {sum === totalPaise
-              ? `Adds up: ${formatRupees(sum)} into ${pickedIds.length} account${pickedIds.length === 1 ? '' : 's'}.`
-              : <>The accounts add up to {formatRupees(sum)}: {formatRupees(Math.abs(totalPaise - sum))} {sum < totalPaise ? 'short of' : 'more than'} the total.{' '}
-                  <button type="button" className="fp-link" onClick={() => setEqual(true)}>Split equally</button></>}
+            )}
           </div>
         )}
 
-        <label className="fp-field">
-          <span>Note (optional)</span>
-          <input className="boe-input" maxLength={300} value={note} placeholder="e.g. Nitish needed ₹1.5 lakh; matched for our side" onChange={e => setNote(e.target.value)} />
-        </label>
-        <label className="fp-field">
-          <span>Bank reference / UTR (optional)</span>
-          <input className="boe-input" maxLength={80} value={reference} onChange={e => setReference(e.target.value)} />
-        </label>
+        <div className={`${styles.formRow} ${styles.formRowNote}`}>
+          <label className={styles.field}>
+            <span>Note (optional)</span>
+            <input className="boe-input" maxLength={300} value={note} placeholder="e.g. Nitish needed ₹1.5 lakh; matched for our side" onChange={e => setNote(e.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>Bank reference / UTR (optional)</span>
+            <input className="boe-input" maxLength={80} value={reference} onChange={e => setReference(e.target.value)} />
+          </label>
+        </div>
 
-        {error && <p className="fp-error" role="alert">{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
 
-        <div className="fp-modal-foot">
-          <span className="fin-muted">{problems.length > 0 && lines.length > 0 ? problems[0] : ''}</span>
+        <div className={styles.modalFoot}>
+          <span>{problems.length > 0 && lines.length > 0 ? problems[0] : ''}</span>
           <button type="button" className="boe-btn boe-btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="boe-btn boe-btn-primary" disabled={saving || problems.length > 0} onClick={() => void save()}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Save payout'}
