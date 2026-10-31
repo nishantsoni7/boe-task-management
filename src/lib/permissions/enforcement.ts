@@ -147,6 +147,21 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View is enforced in the screen and in the database (products and own requests). Create, Edit and Delete are enforced in the save/delete functions; Approve is enforced in the decision/reversal functions and in the RLS that exposes every request. The overbooking guard is a CHECK on the product row.',
   },
 
+  // Coming soon modules: no table, function or API route yet, so `view` has only one thing to decide, and the
+  // launcher card and ModuleGuard decide it. Entry: src/app/<module>/layout.tsx.
+  sales: {
+    state: 'enforced',
+    detail: 'View opens the module, which shows a Coming soon page for now.',
+  },
+  marketing: {
+    state: 'enforced',
+    detail: 'View opens the module, which shows a Coming soon page for now.',
+  },
+  pricing: {
+    state: 'enforced',
+    detail: 'View opens the module, which shows a Coming soon page for now.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //

@@ -478,3 +478,26 @@ registerModule({
     { actionKey: 'approve', displayName: 'Approve' },
   ],
 })
+
+// Sales, Marketing and Pricing open a Coming soon page and nothing else until the owner sets out what each one
+// does. view: open the module. Registered by 20270515000000; off for everybody until an administrator grants it.
+registerModule({
+  moduleKey: 'sales',
+  displayName: 'Sales',
+  description: 'Sales module. Coming soon.',
+  actions: [{ actionKey: 'view', displayName: 'View' }],
+})
+
+registerModule({
+  moduleKey: 'marketing',
+  displayName: 'Marketing',
+  description: 'Marketing module. Coming soon.',
+  actions: [{ actionKey: 'view', displayName: 'View' }],
+})
+
+registerModule({
+  moduleKey: 'pricing',
+  displayName: 'Pricing',
+  description: 'Pricing module. Coming soon.',
+  actions: [{ actionKey: 'view', displayName: 'View' }],
+})
