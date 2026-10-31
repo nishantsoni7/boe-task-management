@@ -40,7 +40,6 @@ import {
   paymentDetailFields,
 } from '@/lib/orders/orderPaymentLists'
 import {
-  CUSTOMIZATION_MARK,
   OrderCommercialBreakdown,
   OrderCustomizationCell,
 } from './OrderPiSections'
@@ -1174,19 +1173,25 @@ describe('the commercial breakdown', () => {
 // ── The customization cell ────────────────────────────────────────────────────
 
 describe('the customization cell on the Order', () => {
-  test('keeps the instruction fully readable in dark text, marked CUSTOM', () => {
+  test('keeps the instruction fully readable in dark text, with no word of its own', () => {
     const html = renderToStaticMarkup(
       <OrderCustomizationCell text="Charcoal weave, brass caps" thumbnails={[]} compact={false} />,
     )
-    assert.ok(text(html).includes('Charcoal weave, brass caps'))
-    assert.ok(text(html).includes(CUSTOMIZATION_MARK))
+    // The owner removed the CUSTOM mark: the column's head already says it.
+    assert.equal(text(html).trim(), 'Charcoal weave, brass caps')
     assert.ok(html.includes('order-custom'))
     assert.ok(!/color:#9B1C25|color:#B42332;font-weight:600/.test(html), 'the words are not printed in red')
   })
 
-  test('a line with nothing custom is quiet: no mark, no ground', () => {
+  test('a phone card shows its one label above the instruction', () => {
+    const html = renderToStaticMarkup(
+      <OrderCustomizationCell label="Customization" text="Charcoal weave" thumbnails={[]} compact />,
+    )
+    assert.equal(text(html).trim(), 'Customization Charcoal weave')
+  })
+
+  test('a line with nothing custom is quiet: no ground', () => {
     const html = renderToStaticMarkup(<OrderCustomizationCell text={null} thumbnails={[]} compact={false} />)
-    assert.ok(!text(html).includes(CUSTOMIZATION_MARK))
     assert.ok(!html.includes('class="order-custom"'))
   })
 })
