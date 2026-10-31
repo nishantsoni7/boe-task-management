@@ -114,8 +114,8 @@ Registered modules and actions (`src/lib/permissions/modules.ts`, verified):
 
 Module entry:
 - `ENGINE_GATED_MODULE_KEYS` (`moduleVisibility.ts`): task_management, sample_tracking, assets_access, showroom_qr,
-  employee_records, performance, finance, orders, meetings, image_editor, exhibition_leads, inventory (12; the file's comment
-  still says "nine"). Entry = effective `view` via `canAccessManagementModule`: inactive module -> false; no role -> false; admin
+  employee_records, performance, finance, orders, meetings, image_editor, exhibition_leads, inventory, vendors, sales, marketing,
+  pricing (16; the file's comment still says "nine"). Entry = effective `view` via `canAccessManagementModule`: inactive module -> false; no role -> false; admin
   -> true; Attendance/Payroll -> false for non-admins; else `permissions.some(view && allowed)`. Customer Review's entry is
   `use` (`MODULE_ENTRY_ACTIONS = ['view','use']`, `entryActionForModule`).
 - **Attendance and Payroll are `role_only`:** management surfaces are admin-only whatever any visibility mode or permission

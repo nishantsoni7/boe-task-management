@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
+- **Owner request.** Create the three modules now with a Coming soon option; what goes in them comes later.
+- **Added.** Each has a launcher tile, a route (`/sales`, `/marketing`, `/pricing`) behind `ModuleGuard`, the standard module shell and a Coming soon notice, and a row in Control Center → Access (group Sales, Off / On). Dossier `modules/24-sales-marketing-pricing.md`.
+- **Owner decisions, agreed from a mockup.** Admin only until granted per person. The tile stays an ordinary tile; Coming soon shows on the page that opens. A person refused goes back to Modules, not to `/coming-soon`, which is hard-coded to Attendance.
+- **Migration.** Registration only: no table, function, policy or notification. Executed in an in-memory Postgres built from the real permission and Control Center migrations: three of each row, a second apply changes nothing, the assertion fires on a missing row, the rollback leaves nothing. The rolled-back rehearsal on the linked database was refused by the permission classifier as a production read. The owner's dry-run listed only this file and the owner applied it on 2026-11-01; `supabase migration list --linked` shows it remote, with no gaps either way. Rollback is in the file's header.
+- **Not checked.** Not seen in a browser or signed in.
+
 ## 2026-10-31 — Confirmed Order: the Custom word removed from the Customization column (PR #554 open) · no SQL
 - **Owner request.** A screenshot of Order 542's product table: the word is not required on every line.
 - **Changed.** The small CUSTOM mark is gone from `OrderCustomizationCell`, on wide screens and phone cards. The pale red ground and red rule stay. `.order-custom-mark` went with it, and `.order-custom-head` keeps only the gap under a phone card's label.

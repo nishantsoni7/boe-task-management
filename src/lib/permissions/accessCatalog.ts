@@ -197,6 +197,24 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
       view_all: { label: 'See every lead', meaning: 'Read-only sight of everyone’s leads and sheets; the holder is left out of the ranking.' },
     },
   },
+  sales: {
+    group: 'Sales',
+    blurb: 'Coming soon.',
+    levels: { on: 'Open Sales, which shows a Coming soon page for now.' },
+    authorities: {},
+  },
+  marketing: {
+    group: 'Sales',
+    blurb: 'Coming soon.',
+    levels: { on: 'Open Marketing, which shows a Coming soon page for now.' },
+    authorities: {},
+  },
+  pricing: {
+    group: 'Sales',
+    blurb: 'Coming soon.',
+    levels: { on: 'Open Pricing, which shows a Coming soon page for now.' },
+    authorities: {},
+  },
   assets_access: {
     group: 'People & assets',
     blurb: 'Assigned devices and the access register.',

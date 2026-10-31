@@ -1180,6 +1180,8 @@ describe('the applied migrations are frozen', () => {
       '20270513000000_for_you_settings.sql',
       // Bank Statements: Synced is checked; a person reviews every possible duplicate.
       '20270514000000_finance_bank_line_review.sql',
+      // Sales, Marketing and Pricing registered; each opens a Coming soon page.
+      '20270515000000_register_sales_marketing_pricing_modules.sql',
     ])
   })
 
@@ -1611,6 +1613,8 @@ describe('the applied migrations are frozen', () => {
       '20270513000000_for_you_settings.sql',
       // Bank Statements: Synced is checked; a person reviews every possible duplicate.
       '20270514000000_finance_bank_line_review.sql',
+      // Sales, Marketing and Pricing registered; each opens a Coming soon page.
+      '20270515000000_register_sales_marketing_pricing_modules.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

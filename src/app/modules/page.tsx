@@ -23,7 +23,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Tag, TrendingUp } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, PerformanceIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
@@ -623,6 +623,35 @@ export default function BoeOsHomePage() {
       description: 'Furniture stock for sale: stage, condition, availability and booking requests.',
       href: '/inventory',
       icon: <Armchair size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    // Sales, Marketing and Pricing open a Coming soon page for now. The tile is an ordinary tile: it says so
+    // when opened, not with a status pill here (see the note above ModuleDef).
+    ...(canOpenModule('sales') ? [{
+      key: 'sales',
+      title: 'Sales',
+      // The registered module description, verbatim.
+      description: 'Sales module. Coming soon.',
+      href: '/sales',
+      icon: <TrendingUp size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('marketing') ? [{
+      key: 'marketing',
+      title: 'Marketing',
+      // The registered module description, verbatim.
+      description: 'Marketing module. Coming soon.',
+      href: '/marketing',
+      icon: <Megaphone size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('pricing') ? [{
+      key: 'pricing',
+      title: 'Pricing',
+      // The registered module description, verbatim.
+      description: 'Pricing module. Coming soon.',
+      href: '/pricing',
+      icon: <Tag size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{

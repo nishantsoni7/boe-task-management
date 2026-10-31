@@ -5,19 +5,18 @@
 
 ## Snapshot
 
-- Commit: `b0980fa0` — Merge remote-tracking branch 'origin/main' into docs/styles-guard-merged
-- Commits on this branch: 1122
-- Pages (`page.tsx`): 160   API routes (`route.ts`): 179
-- Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
+- Commit: `3fa2b704` — Docs: class guard merged as PR #553 (2f9d5795) (#555)
+- Commits on this branch: 1121
+- Pages (`page.tsx`): 163   API routes (`route.ts`): 179
+- Migrations: 394 (first `20260530_create_positions.sql`, latest `20270515000000_register_sales_marketing_pricing_modules.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
-- Test files: 703   Next.js 16.2.6, React 19.2.4
+- Test files: 704   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b0980fa0` 2026-10-31 Merge remote-tracking branch 'origin/main' into docs/styles-guard-merged
+- `3fa2b704` 2026-10-31 Docs: class guard merged as PR #553 (2f9d5795) (#555)
 - `534c9007` 2026-10-31 Confirmed Order: remove the Custom word from the Customization column (#554)
 - `9add9946` 2026-10-31 Docs: Confirmed Orders table merged as PR #552 (ebfe69a5) (#556)
-- `2ac32dbd` 2026-10-31 Docs: class guard merged as PR #553 (2f9d5795)
 - `ebfe69a5` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone (#552)
 - `2f9d5795` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed (#553)
 - `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
@@ -39,6 +38,7 @@
 - `a4cde4af` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row (#535)
 - `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
 - `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
+- `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
 
 ## Pages by top-level area
 
@@ -59,6 +59,7 @@
 - **inventory** (6): `/inventory`, `/inventory/[id]`, `/inventory/[id]/edit`, `/inventory/new`, `/inventory/notifications`, `/inventory/requests`
 - **login** (1): `/login`
 - **manager** (1): `/manager`
+- **marketing** (1): `/marketing`
 - **meetings** (6): `/meetings`, `/meetings/[id]`, `/meetings/completed`, `/meetings/follow-ups`, `/meetings/guide`, `/meetings/inbox`
 - **modules** (1): `/modules`
 - **my-attendance** (1): `/my-attendance`
@@ -69,8 +70,10 @@
 - **orders** (15): `/orders`, `/orders/[id]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
 - **payroll** (10): `/payroll`, `/payroll/credits`, `/payroll/how-it-works`, `/payroll/monthly-review`, `/payroll/monthly-review/[userId]`, `/payroll/notifications`, `/payroll/results/[periodId]`, `/payroll/results/[periodId]/[employeeId]`, `/payroll/results/[periodId]/salary-report`, `/payroll/settings`
 - **performance** (2): `/performance`, `/performance/team`
+- **pricing** (1): `/pricing`
 - **quick-start-guide** (1): `/quick-start-guide`
 - **reset-password** (1): `/reset-password`
+- **sales** (1): `/sales`
 - **samples** (3): `/samples`, `/samples/dispatch/[id]`, `/samples/notifications`
 - **settings** (3): `/settings`, `/settings/positions`, `/settings/roles`
 - **showroom** (6): `/showroom/done`, `/showroom/join`, `/showroom/product/[product_code]`, `/showroom/project-list`, `/showroom/scan`, `/showroom/share/[token]`
@@ -401,7 +404,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270416000000_finance_accept_handover_confirms_payment.sql`
 - `20270417000000_finance_accept_handover_no_auto_approval.sql`
 - `20270418000000_finance_handover_not_received_final.sql`
 - `20270419000000_finance_bank_add_confirmed_payment.sql`
@@ -431,6 +433,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270511000000_attendance_machine_stopped_notification_type.sql`
 - `20270513000000_for_you_settings.sql`
 - `20270514000000_finance_bank_line_review.sql`
+- `20270515000000_register_sales_marketing_pricing_modules.sql`
 
 ## All SQL function names
 
