@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `457114e2` — For you: payment request cards, Control Center settings, each person's choices
-- Commits on this branch: 1104
+- Commit: `a6ffb923` — Docs: payment-date order merged as PR #539 (2421612f)
+- Commits on this branch: 1105
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 392 (first `20260530_create_positions.sql`, latest `20270513000000_for_you_settings.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 853   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `457114e2` 2026-10-31 For you: payment request cards, Control Center settings, each person's choices
+- `a6ffb923` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f)
+- `2421612f` 2026-10-31 Payments lists: order by payment date, latest first (#539)
 - `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
 - `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
 - `7e60d9ed` 2026-10-31 Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
@@ -38,7 +39,6 @@
 - `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
 - `cc3a60a8` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c) (#518)
 - `bebbb962` 2026-10-30 Docs: approving a PI opens the Order, merged as PR #510 (33e4472e) (#512)
-- `f3058f0c` 2026-10-30 Orders: PI payments popup as a table, with who verified each payment and a Details row (#513)
 
 ## Pages by top-level area
 
