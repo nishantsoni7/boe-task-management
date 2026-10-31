@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-01 — Backups run once a day, not after every merge (PR open) · no SQL
+## 2026-11-01 — Backups run once a day, not after every merge (PR #559 open) · no SQL
 - **Owner request.** A backup after every merge wastes time and resources. Do it once in 24 hours for everything merged, and keep a record of what was merged but not yet backed up.
 - **Why this is also safer.** Retention counts runs, not days. At 19 to 24 merges a day, all 14 kept database snapshots and all 30 kept bundles came from 2026-10-31 alone, so a mistake noticed the next morning had almost no history to go back to. One run a day keeps 14 days of snapshots.
 - **Changed.** Sessions no longer run `backup-all.mjs` after a merge (`AGENTS.md`, Sheet §8–9, `03`, `04`, `05`, `00`). The 9:30 pm task is the backup. Hand runs remain only before a production migration, and once when the reminder says the backup is overdue.
