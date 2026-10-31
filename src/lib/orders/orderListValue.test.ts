@@ -17,6 +17,7 @@ import {
   orderListFlags,
   orderListSubtotal,
 } from './orderListValue'
+import { PRODUCTION_ALIGNMENT_LABEL } from './productionAlignment'
 
 describe('project code order and the cancelled gap (owner, 2026-10-31)', () => {
   const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
@@ -46,7 +47,7 @@ describe('project code order and the cancelled gap (owner, 2026-10-31)', () => {
 
   test('the table and the phone card both draw it, and the row still spans all eight columns', () => {
     assert.equal((page.match(/\{cancelledOrderGapText\(o\.client_name\)\}/g) ?? []).length, 2, 'table and phone card')
-    assert.equal((page.match(/<th>/g) ?? []).length, 8)
+    assert.equal((page.match(/<col /g) ?? []).length, 8)
     assert.ok(page.includes('<td colSpan={7} title={o.client_name}>'), 'beside the Project code cell')
     assert.ok(page.includes("cancelled && 'orders-gap-row'"))
     assert.ok(page.includes('className="orders-list-card orders-gap-card"'))
@@ -118,27 +119,101 @@ describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
     assert.deepEqual(orderListFlags({ source_pi: [{ subtotal_after_discount: 1, grand_total: 1, commission: [{ middleman_commission: 'Yes' }] }] }), { sample: null, commission: true })
   })
 
-  test('Factory Status: Aligned for Production once Operations accepted, else Not Aligned', () => {
-    assert.deepEqual(factoryStatus('aligned'), { aligned: true, label: 'Aligned for Production' })
-    assert.deepEqual(factoryStatus('not_aligned'), { aligned: false, label: 'Not Aligned' })
+  test('Factory Status: Aligned once Operations accepted, else Not Aligned, the Order page\'s own words', () => {
+    assert.deepEqual(factoryStatus('aligned'), { aligned: true, label: PRODUCTION_ALIGNMENT_LABEL.aligned })
+    assert.deepEqual(factoryStatus('aligned'), { aligned: true, label: 'Aligned' })
+    assert.deepEqual(factoryStatus('not_aligned'), { aligned: false, label: PRODUCTION_ALIGNMENT_LABEL.not_aligned })
     assert.deepEqual(factoryStatus(null), { aligned: false, label: 'Not Aligned' })
   })
 
-  test('the table: Project code, Client, Product Value, Factory Status, Pendencies, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
+  test('the table: Project Code, Client, Product Value, Factory Status, Pendencies, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
     const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
     const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'))
-    const cols = [...head.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
-    assert.deepEqual(cols, ['Project code', 'Client', 'Product Value', 'Factory Status', 'Pendencies', 'Sales Person', 'Confirmed', 'Due'])
+    const cols = [...head.matchAll(/<SortHeader label="([^"]+)"|<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1] ?? m[2])
+    assert.deepEqual(cols, ['Project Code', 'Client', 'Product Value', 'Factory Status', 'Pendencies', 'Sales Person', 'Confirmed', 'Due'])
     assert.equal(page.includes('requested_by_name} />'), false, 'no Requested by cell')
     assert.ok(page.includes('production_alignment'))
     // Symbols only, named by tooltip and accessible label.
     assert.ok(page.includes('title={SAMPLE_TYPE_LABEL[sample]} aria-label={SAMPLE_TYPE_LABEL[sample]} role="img"'))
     assert.equal(page.includes('<StatusBadge'), false, 'no Status pill in the table or the cards')
-    // Every column left-aligned; the markers at the right edge of the code cell.
-    assert.equal(/<th className="fin-num">/.test(page), false)
+    // The markers at the right edge of the code cell.
     assert.ok(page.includes('className="fin-ordno orders-code-cell"'))
     assert.ok(page.includes('sample_type, sample_type_set_at'), "the Order's own sample choice is read")
     assert.ok(page.includes('title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img"'))
+  })
+})
+
+describe('the table redesign (owner, 2026-10-31)', () => {
+  const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
+  const css = readFileSync('src/app/globals.css', 'utf8')
+  const rule = (selector: string) => {
+    const at = css.indexOf(`\n${selector} {`)
+    assert.notEqual(at, -1, selector)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  test('Project Code and Factory Status are narrow, and the widths fit the table floor', () => {
+    const widths = [...page.matchAll(/<col(?: style=\{\{ width: '([\d.]+)(px|%)' \}\})? \/>/g)]
+    assert.equal(widths.length, 8)
+    assert.deepEqual(widths.map(m => m[1] ? `${m[1]}${m[2]}` : 'auto'),
+      ['116px', 'auto', '12%', '136px', '116px', '13.5%', '10.5%', '10.5%'])
+
+    const floor = Number(/\.fin-table--orders \{ min-width: (\d+)px; \}/.exec(css)?.[1])
+    assert.equal(floor, 1020)
+    const taken = widths.reduce((sum, m) => sum + (m[2] === 'px' ? Number(m[1]) : m[2] === '%' ? floor * Number(m[1]) / 100 : 0), 0)
+    // The longest client still has a column at the floor.
+    assert.ok(floor - taken >= 170, `Client is left ${floor - taken}px`)
+  })
+
+  test('money sits on the right with air after it; only that column does', () => {
+    assert.ok(page.includes('<SortHeader label="Product Value" className="fin-num"'))
+    assert.equal((page.match(/<td className="fin-num">/g) ?? []).length, 1)
+    assert.equal((page.match(/orders-after-value/g) ?? []).length, 2, 'heading and cell')
+    assert.ok(css.includes('.fin-table--orders .orders-after-value { padding-left: 24px; }'))
+  })
+
+  test('a good state is a dot and a word, a problem is a pill', () => {
+    assert.ok(page.includes("className={f.aligned ? 'orders-status-ok' : 'fin-pill fin-pill--zero'}"))
+    assert.equal(page.includes('fin-pill--full'), false)
+    assert.ok(rule('.orders-status-ok::before').includes('background: #3F9B6E'))
+  })
+
+  test('the update moves under the code as a line, and the phone card keeps its badge', () => {
+    const table = page.slice(page.indexOf('<tbody>'), page.indexOf('</tbody>'))
+    assert.ok(table.includes('{updateNote}'))
+    assert.equal(table.includes('order-update-badge'), false)
+    assert.ok(table.indexOf('orders-code-line') < table.indexOf('orders-update-note'), 'code and markers first, the note under them')
+    assert.ok(rule('.orders-code-line').includes('display: flex'))
+    assert.equal(css.includes('.orders-code-cell .orders-list-flags { float: right; }'), false, 'a float would drop below the note')
+    const cards = page.slice(page.indexOf('<ul className="orders-list-cards"'), page.indexOf('</ul>'))
+    assert.equal((cards.match(/order-update-badge/g) ?? []).length, 2)
+  })
+
+  test('the Confirmed date really is muted: the shared cell colour outweighs .fin-muted', () => {
+    assert.ok(page.includes('<td className="fin-muted">{fmtDate(o.confirm_date)}</td>'))
+    assert.ok(css.includes('.fin-table--orders td.fin-muted { color: #686D6C; }'))
+  })
+
+  test('the Sales Person is the name alone, and an Order with nobody shows a dash', () => {
+    assert.equal(page.includes('FinancePerson'), false)
+    assert.ok(page.includes('<td title={o.assigned_to_name}>{o.assigned_to_name || <span className="fin-muted">—</span>}</td>'))
+  })
+
+  test('one name for one thing: Project code, never Order no.; Sales Person, never Assignee', () => {
+    assert.equal(/Order no\.|order number|'Assignee'|by assignee|All assignees/.test(page), false)
+    assert.ok(page.includes('placeholder="Project code, client or person…"'))
+    assert.ok(page.includes("?? 'Sales Person'"))
+    // The URL parameter keeps its name, so a saved link still opens the same view.
+    assert.ok(page.includes('assignee: idParam(),'))
+  })
+
+  test('it stays this table\'s: nothing here changes a Finance list', () => {
+    const block = css.slice(css.indexOf('/* ── The Confirmed Orders table (owner, 2026-10-31) ──'), css.indexOf('/* A good state is a dot and a word'))
+    const selectors = [...block.matchAll(/^([.][^{\n]+)\{/gm)].flatMap(m => m[1].split(',')).map(s => s.trim())
+    assert.ok(selectors.length >= 5)
+    for (const s of selectors) assert.ok(s.startsWith('.fin-table--orders'), s)
+    assert.ok(css.indexOf('.fin-table--orders td { height: 48px;') > css.indexOf('\n.fin-table td {'), 'after the shared rule of the same weight')
+    assert.ok(css.indexOf('.fin-table--orders td { height: 48px;') > css.indexOf('.fin-table tbody tr.orders-gap-row td {'), 'and the gap row keeps its own height by weight, not by order')
   })
 })
 

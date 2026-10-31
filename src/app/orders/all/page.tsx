@@ -13,7 +13,6 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   FilterChip,
   FinanceEmpty,
-  FinancePerson,
   FinanceStatusCards,
   type FinanceTabTone,
 } from '@/app/finance/components/FinanceListParts'
@@ -21,6 +20,7 @@ import {
   ORDER_UNREAD_TYPES,
   unreadUpdateCounts,
   unreadUpdateLabel,
+  unreadUpdateNote,
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
@@ -43,6 +43,7 @@ import {
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
+import { SortHeader } from './SortHeader'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,8 +121,8 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
 // THE LIST ALWAYS OPENS WITH THE HIGHEST PROJECT CODE ON TOP (owner, 2026-10-31).
 // The upload date is not an option: it is why 528 once sat between 540 and 538.
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'number_desc', label: 'Order no. high–low' },
-  { key: 'number_asc',  label: 'Order no. low–high' },
+  { key: 'number_desc', label: 'Project code high–low' },
+  { key: 'number_asc',  label: 'Project code low–high' },
   { key: 'value_desc',  label: 'Value high–low' },
   { key: 'value_asc',   label: 'Value low–high' },
 ]
@@ -195,10 +196,14 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
   return (a - b) * dir
 }
 
-/** Factory Status: aligned for production by Operations (green), or not yet (amber). */
+/**
+ * Factory Status: aligned for production by Operations (a green dot and the
+ * word), or not yet (an amber pill). Only what still needs someone is loud
+ * (owner, 2026-10-31).
+ */
 function FactoryBadge({ alignment }: { alignment: string | null }) {
   const f = factoryStatus(alignment)
-  return <span className={`fin-pill fin-pill--${f.aligned ? 'full' : 'zero'}`}>{f.label}</span>
+  return <span className={f.aligned ? 'orders-status-ok' : 'fin-pill fin-pill--zero'}>{f.label}</span>
 }
 
 /**
@@ -610,7 +615,7 @@ export default function AllOrdersPage() {
               <input
                 type="search"
                 aria-label="Search Confirmed Orders"
-                placeholder="Order no., client or person…"
+                placeholder="Project code, client or person…"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 onBlur={flushSearch}
@@ -621,16 +626,16 @@ export default function AllOrdersPage() {
             </label>
             <FilterChip
               icon="person"
-              label={assigneeOptions.find(a => a.id === assignee)?.name ?? 'Assignee'}
+              label={assigneeOptions.find(a => a.id === assignee)?.name ?? 'Sales Person'}
               isSet={assignee !== 'all'}
             >
               <select
                 className="boe-input"
-                aria-label="Filter by assignee"
+                aria-label="Filter by sales person"
                 value={assignee}
                 onChange={e => setAssignee(e.target.value)}
               >
-                <option value="all">All assignees</option>
+                <option value="all">All sales people</option>
                 {assigneeOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </FilterChip>
@@ -714,7 +719,7 @@ export default function AllOrdersPage() {
             <FinanceEmpty
               icon="search"
               title={search.trim() ? `No results for “${search.trim()}”.` : 'No orders match these filters.'}
-              body="Try an order number, a client or a person, or clear the filters."
+              body="Try a project code, a client or a person, or clear the filters."
               action={
                 <button type="button" onClick={clearFilters} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
                   Clear filters
@@ -802,23 +807,30 @@ export default function AllOrdersPage() {
                     Product Value, Factory Status — then Sales person and the
                     two dates. "Requested by" and "Status" are gone (every
                     Order here reads Running; the status cards still filter).
-                    Every column is LEFT-aligned; only the markers sit at the
-                    right edge of the Project code cell. */}
-                <col style={{ width: '14%' }} />{/* Project code + update badge | markers */}
-                <col style={{ width: '19%' }} />{/* Client, lead source under it */}
+                    Money sits on the right so its digits line up (owner,
+                    2026-10-31); every other column is left-aligned, and the
+                    markers sit at the right edge of the Project code cell.
+
+                    WIDTHS (owner, 2026-10-31): pixels for the columns whose
+                    content has a known size, percentages for the rest so a
+                    wide window spreads out evenly, and Client takes what is
+                    left. They fit .fin-table--orders' min-width with nothing
+                    cut; change one and measure at that width. */}
+                <col style={{ width: '116px' }} />{/* Project code + markers, update note under it */}
+                <col />{/* Client, lead source under it */}
                 <col style={{ width: '12%' }} />{/* Product Value (the Subtotal) */}
-                <col style={{ width: '14%' }} />{/* Factory Status */}
-                <col style={{ width: '12%' }} />{/* Pendencies (owner, 2026-10-27) */}
-                <col style={{ width: '11%' }} />{/* Sales person */}
-                <col style={{ width: '9%' }} />{/* Confirmed */}
-                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '136px' }} />{/* Factory Status, 24px of it after the money */}
+                <col style={{ width: '116px' }} />{/* Pendencies (owner, 2026-10-27) */}
+                <col style={{ width: '13.5%' }} />{/* Sales person */}
+                <col style={{ width: '10.5%' }} />{/* Confirmed */}
+                <col style={{ width: '10.5%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
-                  <th>Project code</th>
+                  <SortHeader label="Project Code" current={sortKey} high="number_desc" low="number_asc" onSort={setSortKey} />
                   <th>Client</th>
-                  <th>Product Value</th>
-                  <th>Factory Status</th>
+                  <SortHeader label="Product Value" className="fin-num" current={sortKey} high="value_desc" low="value_asc" onSort={setSortKey} />
+                  <th className="orders-after-value">Factory Status</th>
                   <th>Pendencies</th>
                   <th>Sales Person</th>
                   <th>Confirmed</th>
@@ -832,7 +844,7 @@ export default function AllOrdersPage() {
                   // notification rows, so another recipient opening the Order
                   // leaves this badge exactly where it is.
                   const updates = unread.get(o.id) ?? 0
-                  const updateLabel = unreadUpdateLabel(updates)
+                  const updateNote = unreadUpdateNote(updates)
                   const cancelled = o.status === 'cancelled'
                   return (
                     <tr
@@ -841,9 +853,9 @@ export default function AllOrdersPage() {
                       /* A TINT AND A LEFT EDGE, NOT A FLASH. The row has to be
                          hard to miss in a list of forty and impossible to find
                          irritating in a list somebody reads all day, so the
-                         animation is on the small dot in the badge and nowhere
+                         animation is on the small dot in the note and nowhere
                          else. */
-                      className={[updateLabel && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
+                      className={[updateNote && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
                          about to be opened, and prefetching the Order detail
                          route on it means the code for that screen is already
@@ -855,28 +867,30 @@ export default function AllOrdersPage() {
                          moving down a list of forty costs forty cache hits. */
                       onMouseEnter={() => router.prefetch(`/orders/${o.id}`)}
                     >
-                      <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateLabel ? 800 : undefined }}>
-                        {/* The row is clickable for a pointer; THIS is the
-                            real link — reachable by Tab, opens in a new tab,
-                            shows its address. prefetch={false}: the row's
-                            hover already prefetches the route, and forty
-                            visible links must not mean forty prefetches. */}
-                        <Link
-                          href={orderHref(o.id)}
-                          prefetch={false}
-                          className="orders-row-link"
-                          onClick={e => e.stopPropagation()}
-                          onFocus={() => router.prefetch(`/orders/${o.id}`)}
-                        >
-                          {displayOrderNumber(o.display_number)}
-                        </Link>
-                        {updateLabel && (
-                          <span className="order-update-badge" title={updateLabel}>
+                      <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateNote ? 800 : undefined }}>
+                        <span className="orders-code-line">
+                          {/* The row is clickable for a pointer; THIS is the
+                              real link — reachable by Tab, opens in a new tab,
+                              shows its address. prefetch={false}: the row's
+                              hover already prefetches the route, and forty
+                              visible links must not mean forty prefetches. */}
+                          <Link
+                            href={orderHref(o.id)}
+                            prefetch={false}
+                            className="orders-row-link"
+                            onClick={e => e.stopPropagation()}
+                            onFocus={() => router.prefetch(`/orders/${o.id}`)}
+                          >
+                            {displayOrderNumber(o.display_number)}
+                          </Link>
+                          {!cancelled && <ProjectFlags sample={o.sample} commission={o.commission} />}
+                        </span>
+                        {updateNote && (
+                          <span className="orders-update-note">
                             <span className="order-update-dot" aria-hidden="true" />
-                            {updateLabel}
+                            {updateNote}
                           </span>
                         )}
-                        {!cancelled && <ProjectFlags sample={o.sample} commission={o.commission} />}
                       </td>
                       {cancelled ? (
                         <td colSpan={7} title={o.client_name}>
@@ -890,16 +904,16 @@ export default function AllOrdersPage() {
                               <span className="fin-sub">{LEAD_SOURCE_LABEL[o.lead_source] ?? o.lead_source}</span>
                             )}
                           </td>
-                          <td>
+                          <td className="fin-num">
                             <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
                           </td>
-                          <td>
+                          <td className="orders-after-value">
                             <FactoryBadge alignment={o.production_alignment} />
                           </td>
                           <td>
                             <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
                           </td>
-                          <td><FinancePerson name={o.assigned_to_name} /></td>
+                          <td title={o.assigned_to_name}>{o.assigned_to_name || <span className="fin-muted">—</span>}</td>
                           <td className="fin-muted">{fmtDate(o.confirm_date)}</td>
                           <td>
                             {fmtDate(o.due_date)}

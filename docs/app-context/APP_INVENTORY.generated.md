@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `d75198f7` — Bank Statements: Move a wrongly held payment, a doubtful match asks first
-- Commits on this branch: 1114
+- Commit: `14698334` — Confirmed Orders: table redesigned, quiet until it needs someone
+- Commits on this branch: 1115
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
-- Test files: 701   Next.js 16.2.6, React 19.2.4
+- Test files: 702   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `d75198f7` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first
+- `14698334` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone
+- `25df502b` 2026-10-31 Confirmed Order: shorter Payment card, Product Code column, banners side by side, commission in both forms (#549)
 - `6aa8129e` 2026-10-31 Docs: Founders' payouts redesign merged as PR #547 (d454773c) (#548)
 - `d454773c` 2026-10-31 Finance: Founders' payouts redesigned, and its missing styles restored (#547)
 - `3e7adf1c` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
@@ -38,7 +39,6 @@
 - `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
 - `00e79b56` 2026-10-30 Attendance machine: punches become attendance from 1 November (#526)
 - `03229e8c` 2026-10-30 Docs: Approve popup simplified merged as PR #511 (86af9b34) (#527)
-- `1d4a8492` 2026-10-30 Tasks: redesign both Cancelled pages, grouped by month (#525)
 
 ## Pages by top-level area
 
