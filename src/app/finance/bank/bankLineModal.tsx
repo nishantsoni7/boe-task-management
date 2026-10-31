@@ -6,11 +6,11 @@
 // payments it could be, side by side, and the marks that say it is not customer
 // money. A person links the same money, or sends it to be added as a different
 // payment. Which payments to compare comes from the database, the same rule that
-// refuses a second payment. A payment linked to the wrong credit is unlinked here
-// with a reason, and the same card then offers the link. Nothing in this file
-// verifies, rejects or edits a payment, and it never sends an amount.
+// refuses a second payment. A payment linked to the wrong credit is moved here with
+// a reason. A match with a doubt is never the obvious button and asks first. Nothing
+// in this file verifies, rejects or edits a payment, and it never sends an amount.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
@@ -26,6 +26,7 @@ import {
   compareMatch,
   formatBankDate,
   linkedTotal,
+  matchDoubts,
   paymentHref,
   rpcMessage,
   statusLabelFor,
@@ -57,15 +58,24 @@ type Props = {
 const REASON_MIN = 3
 const REASON_MAX = 200
 
-function MatchCard({ line, match, busy, onLink, onUnlink }: {
+/** Red is for a match nothing speaks against; a doubt never gets the obvious button. */
+const pressFor = (line: BankLine, match: BankMatch) =>
+  `boe-btn ${matchDoubts(line, match).length === 0 ? 'boe-btn-primary' : 'boe-btn-ghost'}`
+
+function MatchCard({ line, match, busy, asking, onAsk, onLink, children }: {
   line: BankLine
   match: BankMatch
   busy: boolean
+  /** Its question is open under the card, in place of the button. */
+  asking: boolean
+  /** Open the question: why to move it, or whether to link it despite a doubt. */
+  onAsk: () => void
   onLink: () => void
-  /** Undo the link this payment holds on another credit. */
-  onUnlink: () => void
+  children: ReactNode
 }) {
   const heldBy = match.linkedNarration ? payerFromNarration(match.linkedNarration) : null
+  const doubts = matchDoubts(line, match)
+  const sure = doubts.length === 0
   return (
     <div className="bank-compare">
       <div className="bank-compare-head">
@@ -89,16 +99,18 @@ function MatchCard({ line, match, busy, onLink, onUnlink }: {
         <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>This payment is already linked to another bank line, so it cannot take this credit too.</p>
       )}
       {match.kind === 'linked_elsewhere' && (
-        <>
-          <p className="bank-warn" style={{ fontSize: 12, margin: 0 }}>
-            This payment is linked to the credit of {match.linkedLineDate ? formatBankDate(match.linkedLineDate) : 'another date'}{heldBy ? ` from ${heldBy}` : ''}. If it belongs here, unlink it from that credit, then link it here.
-          </p>
-          <div><button className="boe-btn boe-btn-ghost" disabled={busy || !match.linkedLinkId} onClick={onUnlink}>Unlink it from that credit</button></div>
-        </>
+        <p className="bank-warn" style={{ fontSize: 12, margin: 0 }}>
+          This payment is linked to the credit of {match.linkedLineDate ? formatBankDate(match.linkedLineDate) : 'another date'}{heldBy ? ` from ${heldBy}` : ''}. If it belongs here, move it to this credit.
+        </p>
       )}
-      {(match.kind === 'reference' || match.kind === 'amount') && (
-        <div><button className="boe-btn boe-btn-primary" disabled={busy} onClick={onLink}>Same payment, link them</button></div>
+      {!sure && <p className="bank-warn" style={{ fontSize: 12, margin: 0 }}>Check first: {doubts.join(' and ')}.</p>}
+      {match.kind === 'linked_elsewhere' && !asking && (
+        <div><button className={pressFor(line, match)} disabled={busy || !match.linkedLinkId} onClick={onAsk}>{sure ? 'Move this payment here' : 'Move anyway'}</button></div>
       )}
+      {(match.kind === 'reference' || match.kind === 'amount') && !asking && (
+        <div><button className={pressFor(line, match)} disabled={busy} onClick={sure ? onLink : onAsk}>{sure ? 'Same payment, link them' : 'Link anyway'}</button></div>
+      )}
+      {asking && children}
     </div>
   )
 }
@@ -114,6 +126,8 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
   const [note, setNote] = useState('')
   const [unlinking, setUnlinking] = useState<string | null>(null)
   const [unlinkReason, setUnlinkReason] = useState('')
+  // The payment whose card has its question open.
+  const [asking, setAsking] = useState<string | null>(null)
 
   const paymentById = useMemo(() => new Map(payments.map(p => [p.id, p])), [payments])
   const links = activeLinks(line)
@@ -124,6 +138,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
   const state = isCredit ? syncState(item) : 'not_needed'
   const reason = isCredit ? syncReason(item) : null
   const mustLink = review.matches.some(m => m.kind === 'reference')
+  const askingHere = open && review.matches.some(m => m.paymentId === asking)
   const marked = status === 'old_order' || status === 'not_customer'
   const pill = isCredit && !marked ? SYNC_PILL[state] : { tone: STATUS_TONE[status], label: statusLabelFor(line, status) }
 
@@ -152,18 +167,71 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
   const clear = () =>
     run('clear', 'Mark removed', false, () => supabase.rpc('clear_bank_line_classification', { p_line_id: line.id }))
 
+  const sendLink = (m: BankMatch) => supabase.rpc('link_bank_line_to_payment', { p_line_id: line.id, p_payment_id: m.paymentId })
+  const sendUnlink = (linkId: string) => supabase.rpc('unlink_bank_line_payment', { p_link_id: linkId, p_reason: unlinkReason.trim() })
+
   const link = (m: BankMatch) =>
-    run(`link:${m.paymentId}`, `Linked to ${m.humanPaymentId ?? 'the payment'}`, true, () =>
-      supabase.rpc('link_bank_line_to_payment', { p_line_id: line.id, p_payment_id: m.paymentId }))
+    run(`link:${m.paymentId}`, `Linked to ${m.humanPaymentId ?? 'the payment'}`, true, () => sendLink(m))
 
   const unlink = async (linkId: string) => {
-    const done = await run('unlink', 'Unlinked. The payment stays recorded.', false, () =>
-      supabase.rpc('unlink_bank_line_payment', { p_link_id: linkId, p_reason: unlinkReason.trim() }))
+    const done = await run('unlink', 'Unlinked. The payment stays recorded.', false, () => sendUnlink(linkId))
     if (done) setUnlinking(null)
   }
 
-  const startUnlink = (linkId: string) => { setUnlinking(linkId); setUnlinkReason('') }
-  const unlinkingHere = links.some(l => l.id === unlinking)
+  // The same two doors a person would use, one after the other, so each keeps its
+  // checks. If the second refuses, nothing is lost: the payment is free, the page
+  // reloads, and this card's question becomes the link again, with what happened.
+  const move = async (m: BankMatch) => {
+    if (!m.linkedLinkId) return
+    const name = m.humanPaymentId ?? 'The payment'
+    setBusy('move')
+    setError(null)
+    const { error: unlinkError } = await sendUnlink(m.linkedLinkId)
+    if (unlinkError) { setBusy(null); setError(rpcMessage(unlinkError, 'That did not save. Try again.')); return }
+    const { error: linkError } = await sendLink(m)
+    setBusy(null)
+    if (linkError) {
+      setError(`${name} came off the other credit but did not link here: ${rpcMessage(linkError, 'try again')}`)
+      onChanged('Unlinked. The payment stays recorded.', false)
+      return
+    }
+    onChanged(`Moved ${name} to this credit`, true)
+  }
+
+  const askAbout = (m: BankMatch) => { setAsking(m.paymentId); setUnlinking(null); setUnlinkReason(''); setError(null) }
+  const startUnlink = (linkId: string) => { setUnlinking(linkId); setAsking(null); setUnlinkReason('') }
+
+  const moveForm = (m: BankMatch) => (
+    <div className="bank-form">
+      {error && <div role="alert" className="bank-error">{error}</div>}
+      <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
+        {m.humanPaymentId ?? 'The payment'} moves to this credit, and the other credit goes back to Not Synced. The payment itself does not change. Your name and this reason are kept.
+      </p>
+      <label className="bank-field"><span>Why is that link wrong? *</span>
+        <input className="boe-input" value={unlinkReason} onChange={e => setUnlinkReason(e.target.value)} maxLength={REASON_MAX} autoFocus />
+      </label>
+      <div className="bank-actions">
+        <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={() => setAsking(null)}>Keep the link</button>
+        <button className={pressFor(line, m)} disabled={busy !== null || unlinkReason.trim().length < REASON_MIN} onClick={() => move(m)}>
+          {busy === 'move' ? 'Moving…' : 'Move it here'}
+        </button>
+      </div>
+    </div>
+  )
+
+  const linkForm = (m: BankMatch) => (
+    <div className="bank-form">
+      {error && <div role="alert" className="bank-error">{error}</div>}
+      <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>Link {m.humanPaymentId ?? 'this payment'} to this credit?</p>
+      <div className="bank-actions">
+        <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={() => setAsking(null)}>Keep it unlinked</button>
+        <button className={pressFor(line, m)} disabled={busy !== null} onClick={() => link(m)}>
+          {busy === `link:${m.paymentId}` ? 'Linking…' : 'Yes, link them'}
+        </button>
+      </div>
+    </div>
+  )
+
   const unlinkForm = unlinking && (
     <div className="bank-form">
       <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
@@ -199,7 +267,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
         {line.bank_ref && <div className="fin-muted" style={{ marginTop: 4 }}>Ref {line.bank_ref}</div>}
       </div>
 
-      {error && <div role="alert" className="bank-error">{error}</div>}
+      {error && !askingHere && <div role="alert" className="bank-error">{error}</div>}
 
       {!isCredit && <BankDebitPanel supabase={supabase} item={item} expenses={expenses} onChanged={onChanged} />}
 
@@ -232,7 +300,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
               {formatMoney(remaining)} of this credit is not linked to any payment yet. Record a payment for it and it will appear here to link.
             </p>
           )}
-          {unlinkingHere && unlinkForm}
+          {unlinkForm}
         </section>
       )}
 
@@ -262,10 +330,11 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
             {review.matches.length === 1 ? '1 recorded payment could be this money.' : `${review.matches.length} recorded payments could be this money.`} Compare, then choose.
           </p>
           {review.matches.map(m => (
-            <MatchCard key={m.paymentId} line={line} match={m} busy={busy !== null} onLink={() => link(m)}
-              onUnlink={() => { if (m.linkedLinkId) startUnlink(m.linkedLinkId) }} />
+            <MatchCard key={m.paymentId} line={line} match={m} busy={busy !== null} asking={asking === m.paymentId}
+              onAsk={() => askAbout(m)} onLink={() => link(m)}>
+              {m.kind === 'linked_elsewhere' ? moveForm(m) : linkForm(m)}
+            </MatchCard>
           ))}
-          {!unlinkingHere && unlinkForm}
           {mustLink && (
             <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
               The bank&apos;s own reference is on a payment above, so this credit cannot be a different payment.

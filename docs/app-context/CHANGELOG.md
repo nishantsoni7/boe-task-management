@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-31 — Bank credit window: Move a wrongly held payment, and a doubtful match asks first (branch `fix/bank-move-payment`, not merged) · no SQL
+- **Owner request.** A credit and its recorded payment were plainly the same money, and the window seemed to give no way to link them, because the payment was held by a wrong link on another credit. "Yes, build it" to the fix proposed from the diagnosis.
+- **What was really wrong.** Nothing refused the fix. The right action was a quiet Unlink, then a Link in a second step, with the reason box below the next card. The only red button sat on another customer's payment 10 days away, and pressing it was accepted, read Synced, and stranded a third credit.
+- **Move.** A card whose payment is held by a further credit offers Move this payment here. The reason box opens under that card, and one press sends the unlink and then the link through their own doors. A refusal at either step shows on the card, and a refused link leaves the payment free with the link offered.
+- **Doubts.** `matchDoubts`: the name does not fit, the payment has no client, or the dates are more than 3 days apart. A bank reference outweighs both. The doubt is said on the card, the button is never red and reads Link anyway or Move anyway, and it asks first. Nothing else changes for a match with no doubt: one red press, as before.
+- **Unchanged.** No SQL. The doors, the matches, what counts as Synced, and the verifier's bank panel, which keeps its own Link.
+- **Proof.** The window driven in a DOM for every press and refusal, and ten deliberate breaks of the new code, all caught. An earlier replay of the real rows on PGlite with the merged functions proved the two doors in this order. Not seen signed in, and no live row pressed.
+
 ## 2026-10-31 — Confirmed Order tidy: five changes from the owner's screenshots of Order 542 (#549) · no SQL
 - **Open cost sheet removed.** The F&P Cost tab on the Products card is the way to the sheet.
 - **Payment card shorter.** Last verified payment and Verified by mode are gone; the Verified box still opens the list.
