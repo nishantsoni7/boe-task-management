@@ -94,6 +94,9 @@ export function readStatus(name) {
   try { return JSON.parse(fs.readFileSync(path.join(BACKUP_ROOT, 'status', `${name}.json`), 'utf8')) } catch { return null }
 }
 
+// Pull requests a complete backup has not reached: merged at or after the moment it began, oldest first.
+export const mergedSince = (prs, through) => prs.filter((p) => Date.parse(p.mergedAt) >= Date.parse(through)).sort((a, b) => Date.parse(a.mergedAt) - Date.parse(b.mergedAt))
+
 // Rows that a pg_dump holds for one table: the lines between its "COPY public.<table> (...) FROM stdin;" line and the
 // terminating "\\." line. Line-based on purpose: an empty table's block is only those two lines, and a pattern that
 // searches for the terminator can run on into the NEXT table's data and report rows that are not there.

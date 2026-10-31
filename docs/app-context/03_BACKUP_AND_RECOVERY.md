@@ -50,6 +50,9 @@ node "$HOME/BOE-Development/backups/tools/backup-all.mjs"
 # Freshness report (exit 1 if a required layer is stale)
 node "$HOME/BOE-Development/backups/tools/verify-backups.mjs"
 
+# What has been merged since the last complete backup (read live from GitHub)
+node "$HOME/BOE-Development/backups/tools/pending-backups.mjs"
+
 # Decrypt one file during a restore
 node "$HOME/BOE-Development/backups/tools/decrypt-file.mjs" <file>.enc <output>
 ```
@@ -66,7 +69,10 @@ What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUP
 
 - **Automatic, offline, instant:** git hooks installed by `install-backup-system.mjs` → `backup-code.mjs --quick`. Hooks never block or fail a git command.
 - **Automatic on GitHub:** `.github/workflows/backup-on-merge.yml`: private mirror (L9) on every push to `main` and daily; bundle artifact (L8) daily only.
-- **Mandatory manual step after every merge:** `backup-all.mjs` then `verify-backups.mjs` (Master Instruction Sheet §8).
+- **No backup after a merge (owner's decision, 2026-11-01).** At 20+ merges a day and about 9 minutes a run, a backup per merge cost hours. It also destroyed history, because retention counts runs, not days: on 2026-10-31 all 14 kept database snapshots and all 30 kept bundles came from that one day. Merges now wait for the daily schedule below; one run a day keeps 14 days of snapshots.
+- **The record of what is waiting.** A plain `backup-all.mjs` run that fully succeeds writes `status/covered.json` (`at` = when it finished, `through` = when it began). `pending-backups.mjs` compares that with GitHub, so what is waiting is always known and no session notes anything down. A failed or partial run writes nothing, so its merges stay listed, and anything merged after a run began waits for the next one. The daily task prints the list before and after its run, so `daily-backup.log` shows what each night covered.
+- **If the nightly run does not finish:** after 2 days without a complete backup `owner-reminders.mjs` says so, in every session and in the pop-up, and one `backup-all.mjs` run clears everything waiting.
+- **The one other manual run:** before a migration is applied to production (Master Instruction Sheet §9).
 - **Daily schedule (INSTALLED 2026-10-18):** Windows Task Scheduler task `BOE Backup`, every day 21:30, runs `backups	oolsoe-backup-daily.cmd` (backup-all + verify, log in `backupsdaily-backup.log`; also copies to `D:BOE-Backups` when that drive is plugged in; runs on next start if the laptop was off). Disable/inspect with `Get-ScheduledTask 'BOE Backup'`. Original command form, for reference:
   ```powershell
   schtasks /Create /SC DAILY /ST 21:30 /TN "BOE Backup" /TR "node %USERPROFILE%\BOE-Development\backups\tools\backup-all.mjs" /F
@@ -133,6 +139,6 @@ Any one of: the L10 second copy, a GitHub artifact + password manager, or the pr
 |---|---|---|
 | Laptop dies | last push to GitHub + last hook mirror copy only if disk survives; else GitHub + L10 | GitHub or L10 |
 | Bad merge / force-push | any prior commit, via mirror/bundle/artifacts | any code layer |
-| Deleted/corrupted data | Supabase PITR if enabled, else last `backup-database.mjs` snapshot (≤ 24 h with the schedule; exact moment of the last merge if the ritual was followed) | L6/L7/L11 |
+| Deleted/corrupted data | Supabase PITR if enabled, else last `backup-database.mjs` snapshot (≤ 24 h with the schedule, ≤ 48 h if a night is missed) | L6/L7/L11 |
 | Vercel account lost | immediate (redeploy from git + env values) | secrets in password manager |
 | All of GitHub lost | last push to `main` (mirror); last daily bundle (artifact) | L1/L2/L8/L9/L10 |

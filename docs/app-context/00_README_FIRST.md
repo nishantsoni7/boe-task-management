@@ -21,7 +21,7 @@ Older, deeper material stays valid but is secondary: `docs/BOE Master Context/*`
 
 1. **The code is the truth; documents are claims about the code.** Verify before relying (Sheet §2).
 2. **Docs ship with code.** A pull request that changes behavior, schema or process updates its dossier, the module table, the inventory, the changelog and the memory in the same PR (Sheet §7).
-3. **Nothing is done until it is backed up.** After every merge: `backup-all.mjs`, then `verify-backups.mjs` (Sheet §8–9).
+3. **Everything merged is backed up within a day.** Nobody runs a backup after a merge: the 9:30 pm task covers the whole day, and `pending-backups.mjs` lists what is still waiting (Sheet §8–9).
 
 ## Where the other kinds of memory live
 

@@ -1,4 +1,4 @@
-// One command for a complete backup. Run it after EVERY merge to main (see docs/app-context/02_MASTER_INSTRUCTION_SHEET.md).
+// One command for a complete backup. The 9:30 pm task runs it and that covers every merge of the day: do NOT run it after a merge (see docs/app-context/02_MASTER_INSTRUCTION_SHEET.md, section 8).
 //   node scripts/backup/backup-all.mjs               code (full) + database + storage
 //   node scripts/backup/backup-all.mjs --skip-db     code only
 //   node scripts/backup/backup-all.mjs --no-storage  skip the storage mirror
@@ -7,13 +7,19 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BACKUP_ROOT, assertNotDesktop, ensureDir, log, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, assertNotDesktop, ensureDir, log, readStatus, writeStatus } from './lib.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
+const startedAt = new Date().toISOString()
 const run = (script, extra = []) => spawnSync(process.execPath, [path.join(here, script), ...extra], { stdio: 'inherit' }).status === 0
 const res = { code: run('backup-code.mjs', args.includes('--no-github') ? ['--no-github'] : []) }
 if (!args.includes('--skip-db')) res.database = run('backup-database.mjs', args.includes('--no-storage') ? ['--no-storage'] : [])
+
+// Only a plain run that fully succeeded counts: a partial one leaves its merges on the waiting list (pending-backups.mjs),
+// and so does anything merged after this run began. Recorded before the second copy, because a failing external drive
+// does not undo the backup itself.
+if (!args.length && res.code && res.database && readStatus('code-full')?.steps?.mirrorGithub === 'ok') writeStatus('covered', { through: startedAt })
 
 // Copy a tree, skipping files already present with the same size (git objects are read-only and immutable).
 const copyMissing = (src, dst) => fs.cpSync(src, dst, { recursive: true, filter: (s, d) => !(fs.existsSync(d) && fs.statSync(s).isFile() && fs.statSync(d).size === fs.statSync(s).size) })

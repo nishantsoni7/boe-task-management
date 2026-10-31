@@ -2,7 +2,16 @@
 
 Newest first. One entry per merged change that alters behavior, schema, process or backups. Keep entries short; the detail lives in the module dossier and the PR.
 
-Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
+Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
+
+## 2026-11-01 — Backups run once a day, not after every merge (PR open) · no SQL
+- **Owner request.** A backup after every merge wastes time and resources. Do it once in 24 hours for everything merged, and keep a record of what was merged but not yet backed up.
+- **Why this is also safer.** Retention counts runs, not days. At 19 to 24 merges a day, all 14 kept database snapshots and all 30 kept bundles came from 2026-10-31 alone, so a mistake noticed the next morning had almost no history to go back to. One run a day keeps 14 days of snapshots.
+- **Changed.** Sessions no longer run `backup-all.mjs` after a merge (`AGENTS.md`, Sheet §8–9, `03`, `04`, `05`, `00`). The 9:30 pm task is the backup. Hand runs remain only before a production migration, and once when the reminder says the backup is overdue.
+- **The record.** A plain `backup-all.mjs` run that fully succeeds writes `status/covered.json`. New `pending-backups.mjs` compares it with GitHub and lists what is waiting, and the daily task prints that list before and after its run. A failed or partial run writes nothing, so its merges stay listed.
+- **Two tools follow it.** `verify-backups` no longer fails just because main is ahead of the local mirror while the nightly backup is on time; `daily-backup-health` now reads the same record.
+- **Code during the day.** The private mirror still receives every push to `main` (last 100 runs green, mirror equal to main on 2026-11-01). Only the local bundle, the database and the uploaded files wait for the night.
+- **Known weakness.** Between 18 and 31 October the nightly task finished cleanly on 9 of 14 nights; post-merge runs were hiding that. A missed night is flagged after 2 days.
 
 ## 2026-11-01 — Sales, Marketing and Pricing: three modules, Coming soon (#557, 3ac61f79) · 20270515000000 → APPLIED 2026-11-01 · deployed (deployment 7462942259), live routes and bundle checked · backup bundle 20261031T185412Z, database 20261031T185429Z (203 tables, 100,993 rows), verified
 - **Owner request.** Create the three modules now with a Coming soon option; what goes in them comes later.

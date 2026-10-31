@@ -13,4 +13,4 @@ Before planning or changing anything, follow `docs/app-context/00_README_FIRST.m
 2. Read the dossier in `docs/app-context/modules/` for every module the request touches or neighbours, then **re-verify it against the code and migrations** — documents age, the code is the truth.
 3. Present a plan and get agreement before writing code.
 4. In the same pull request, update the dossier, `01_APP_CONTEXT.md`, `CHANGELOG.md`, regenerate `APP_INVENTORY.generated.md`, and the project memory.
-5. After every merge run `node "$HOME/BOE-Development/backups/tools/backup-all.mjs"` and `verify-backups.mjs` (see `03_BACKUP_AND_RECOVERY.md`).
+5. **Do not run a backup after a merge** (owner's decision, 2026-11-01). The 9:30 pm task backs up everything merged that day, and `node "$HOME/BOE-Development/backups/tools/pending-backups.mjs"` lists what is still waiting, so there is nothing to note down. Run `backup-all.mjs` by hand only before a production migration, or once when the step 0 check says the backup is overdue (see `03_BACKUP_AND_RECOVERY.md`).
