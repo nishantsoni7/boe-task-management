@@ -79,6 +79,12 @@ export function nameOverlap(clientName: string | null, narration: string): numbe
 const dayNumber = (iso: string) => Math.floor(Date.parse(iso + 'T00:00:00Z') / 86400000)
 export const daysBetween = (a: string, b: string) => dayNumber(a) - dayNumber(b)
 
+/** Equal, or within ₹500 and 1%: what bank charges or a rounded transfer leave. */
+export function amountsClose(a: number, b: number): boolean {
+  const diff = Math.abs(toPaise(a) - toPaise(b))
+  return diff === 0 || (diff <= 100 * 500 && diff <= Math.max(toPaise(a), toPaise(b)) * 0.01)
+}
+
 /** Reference-like tokens of a narration: 10+ characters mixing digits (UTRs, NEFT/RTGS/IMPS numbers). */
 export function referenceTokens(line: Pick<MatchLine, 'narration' | 'bank_ref'>): string[] {
   const out = new Set<string>()

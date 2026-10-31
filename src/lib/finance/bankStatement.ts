@@ -196,17 +196,18 @@ export const NON_CUSTOMER_KIND_LABEL: Record<NonCustomerKind, string> = {
 }
 
 /**
- * A suggestion that a credit is NOT customer money. A suggestion only: the page
- * shows it and the owner confirms it with one click; nothing is classified here.
+ * A suggestion that a credit is NOT customer money. A suggestion only: the credit
+ * stays Not Synced until a person confirms it with one click, or says it is a
+ * customer's and adds it. It only keeps the credit out of the automatic sync.
  */
 export function suggestNonCustomerKind(narration: string): { kind: NonCustomerKind; reason: string } | null {
   const n = narration.toUpperCase()
   if (/ACCOUNTVALIDATION/.test(n)) return { kind: 'bank_test', reason: 'Bank account-validation credit' }
   if (/AUTO[_ ]?REDEMPTION/.test(n)) return { kind: 'fd_redemption', reason: 'Fixed deposit auto-redemption' }
   if (/^IB FUNDS TRANSFER CR/.test(n)) return { kind: 'own_transfer', reason: 'Transfer from another HDFC account of the company' }
-  if (/^(NEFT|RTGS) CR-[A-Z0-9]+-BEST OF EXPORTS?\b/.test(n)) return { kind: 'own_transfer', reason: 'Paid by BEST OF EXPORTS itself' }
+  if (/^(NEFT|RTGS) CR-[A-Z0-9]+-BEST ?OF ?EXPORTS?\b/.test(n)) return { kind: 'own_transfer', reason: 'Paid by BEST OF EXPORTS itself' }
   if (/^REF-|REFUND|^CRV POS|REVERSAL/.test(n)) return { kind: 'refund', reason: 'Refund or reversal' }
-  if (/INTEREST (PAID|CREDIT)|INT\.? ?PD|CREDIT INTEREST/.test(n)) return { kind: 'interest', reason: 'Interest credit' }
+  if (/INTEREST (PAID|CREDIT)|\bINT\.? ?PD\b|CREDIT INTEREST/.test(n)) return { kind: 'interest', reason: 'Interest credit' }
   return null
 }
 // ── What a debit is, from its narration ─────────────────────────────────────

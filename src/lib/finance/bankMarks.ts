@@ -9,7 +9,7 @@
 // page does not call the loader for them at all.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { suggestLinesForPayment, type MatchLine, type MatchPayment, type MatchConfidence } from './bankMatching'
+import { amountsClose, daysBetween, suggestLinesForPayment, type MatchLine, type MatchPayment, type MatchConfidence } from './bankMatching'
 import { toPaise } from './bankMoney'
 import type { BankAccountKey } from './bankStatement'
 
@@ -29,6 +29,8 @@ export type BankCandidate = {
 export type BankMark =
   | { kind: 'linked'; complete: boolean; links: { lineId: string; lineDate: string; amount: number; narration: string }[] }
   | { kind: 'suggested'; candidates: BankCandidate[] }
+  /** No free credit, but one of the same money already has another payment: this may be a second record of it. */
+  | { kind: 'lookalike'; lineDate: string; deposit: number; narration: string }
   | { kind: 'none' }
   | { kind: 'uncovered' }
 
@@ -93,6 +95,13 @@ export function deriveBankMarks(
           }
         }),
       })
+      continue
+    }
+    const twin = matchLines
+      .filter(l => l.remaining <= 0 && amountsClose(l.raw.deposit, p.amount) && Math.abs(daysBetween(l.line_date, p.payment_date)) <= 21)
+      .sort((a, b) => Math.abs(daysBetween(a.line_date, p.payment_date)) - Math.abs(daysBetween(b.line_date, p.payment_date)))[0]
+    if (twin) {
+      marks.set(p.id, { kind: 'lookalike', lineDate: twin.line_date, deposit: twin.raw.deposit, narration: twin.narration })
       continue
     }
     const cov = coverage[p.payment_mode as BankAccountKey]

@@ -30,6 +30,8 @@ export function bankMarkText(mark: BankMark): { text: string; tone: 'ok' | 'matc
         title: `${formatMoney(best.deposit)} credited on ${formatBankDate(best.lineDate)} looks like this payment. Open the payment to link it.`,
       }
     }
+    case 'lookalike':
+      return { text: 'May be a duplicate', tone: 'warn', title: `The bank credit of ${formatBankDate(mark.lineDate)} is already linked to another payment` }
     case 'none':
       return { text: 'Not found in the bank', tone: 'warn', title: 'The statement covers this date, but no credit matches this payment' }
     case 'uncovered':
@@ -99,6 +101,12 @@ export function BankMatchPanel({ supabase, paymentId, mark, onChanged }: {
         </>
       )}
 
+      {mark.kind === 'lookalike' && (
+        <div className="bank-panel-line">
+          <strong>May be a duplicate.</strong> {formatMoney(mark.deposit)} credited on {formatBankDate(mark.lineDate)} is already linked to another payment. Check this is different money before verifying it.
+          <div className="fin-sub">{mark.narration}</div>
+        </div>
+      )}
       {mark.kind === 'none' && <p className="fin-muted bank-panel-note">The bank statement covers this date, but no credit matches this payment. It may not have arrived yet, or was recorded with a different amount or date.</p>}
       {mark.kind === 'uncovered' && <p className="fin-muted bank-panel-note">No bank statement is stored for this date yet. Upload it on the Bank Statements page.</p>}
 

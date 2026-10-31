@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 const DIR = __dirname
 const read = (rel: string) => readFileSync(join(DIR, rel), 'utf8')
-const bankFiles = readdirSync(DIR).filter(f => /\.(tsx?)$/.test(f) && !f.endsWith('.test.ts'))
+const bankFiles = readdirSync(DIR).filter(f => /\.(tsx?)$/.test(f) && !/\.test\.tsx?$/.test(f))
 const MIGRATION = readFileSync(
   join(DIR, '..', '..', '..', '..', 'supabase', 'migrations', '20270329000000_finance_bank_statements.sql'),
   'utf8',
@@ -32,10 +32,14 @@ describe('Bank Statements never decides a payment', () => {
       'import_bank_statement',
       'classify_bank_line', 'clear_bank_line_classification',
       'link_bank_debit_to_expense', 'unlink_bank_debit_expense', 'classify_bank_debits',
-      // 20270419000000: records the credit as a payment and links it in one transaction (duplicates refused in the database).
-      'create_payment_from_bank_line',
+      // 20270514000000: the one door that adds a credit (the comparison and the reason are checked in the database).
+      'add_bank_line_to_confirmed',
       // 20270423000000: adds the named credits to Confirmed Payments (or links one to the payment already carrying its reference).
       'sync_bank_credits',
+      // A person's decision on a credit, in the popup only (see below).
+      'link_bank_line_to_payment', 'unlink_bank_line_payment',
+      // Reads: the database's own answer on each credit, and on both accounts.
+      'bank_lines_sync_state', 'bank_lines_recorded_matches', 'bank_sync_overview',
       // A read: where the payments linked to earlier credits are allocated (for the order suggestion).
       'received_payment_allocation_targets',
     ])
@@ -46,12 +50,31 @@ describe('Bank Statements never decides a payment', () => {
     }
   })
 
-  test('linking an existing payment to a credit is not done on this page: it is done in Confirmed Payments', () => {
+  test('linking and unlinking are a person\'s decision in the popup, and nowhere else on this page', () => {
     for (const f of bankFiles) {
+      if (f === 'bankLineModal.tsx') continue
       const src = read(f)
-      assert.ok(!src.includes('link_bank_line_to_payment'), `${f} must not link a payment by hand`)
+      assert.ok(!src.includes('link_bank_line_to_payment'), `${f} must not link a payment`)
       assert.ok(!src.includes('unlink_bank_line_payment'), `${f} must not unlink a payment`)
     }
+    const modal = read('bankLineModal.tsx')
+    assert.ok(modal.includes("rpc('link_bank_line_to_payment', { p_line_id: line.id, p_payment_id: m.paymentId })"))
+    assert.ok(modal.includes("rpc('unlink_bank_line_payment', { p_link_id: linkId, p_reason: unlinkReason.trim() })"))
+  })
+
+  test('no browser file reaches the internal function that can override a possible duplicate', () => {
+    for (const f of bankFiles) {
+      assert.ok(!read(f).includes('create_payment_from_bank_line'), `${f} must go through add_bank_line_to_confirmed`)
+    }
+    assert.ok(read('bankAddConfirmedModal.tsx').includes("rpc('add_bank_line_to_confirmed'"))
+  })
+
+  test('a failed read of the sync state stops the month; it is never drawn as a list nobody checked', () => {
+    const model = read('bankStatementsModel.ts')
+    assert.ok(model.includes("if (error) throw new Error('The sync status could not be read.')"))
+    assert.ok(model.includes("if (error) throw new Error('The recorded payments could not be compared.')"))
+    assert.ok(read('BankStatementsView.tsx').includes('await Promise.all(['))
+    assert.ok(read('bankSyncCheck.tsx').includes("overview === 'failed'"))
   })
 
   test('sync: the page names the credits, never sends an amount, and Not Synced is drawn red', () => {
@@ -59,7 +82,7 @@ describe('Bank Statements never decides a payment', () => {
     const view = read('BankStatementsView.tsx')
     assert.ok(model.includes("rpc('sync_bank_credits', { p_line_ids: "))
     assert.ok(!/p_amount/.test(model + view))
-    assert.ok(view.includes("not_synced: { tone: 'over', label: 'Not Synced' }"))
+    assert.ok(model.includes("not_synced: { tone: 'over', label: 'Not Synced' }"))
     assert.ok(view.includes('syncUpload(importId, message)'))
     assert.ok(view.includes('Check sync'))
   })

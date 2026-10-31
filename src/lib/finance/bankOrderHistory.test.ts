@@ -90,7 +90,7 @@ describe('the page and the migration', () => {
 
   test('the screen adds one payment per press and the word "Add to Confirmed" appears on it', () => {
     const modal = readFileSync(join(ROOT, 'src', 'app', 'finance', 'bank', 'bankAddConfirmedModal.tsx'), 'utf8')
-    assert.ok(modal.includes("rpc('create_payment_from_bank_line'"))
+    assert.ok(modal.includes("rpc('add_bank_line_to_confirmed'"))
     assert.ok(modal.includes('disabled={busy'))
     const dir = join(ROOT, 'src', 'app', 'finance', 'bank')
     assert.ok(readdirSync(dir).includes('bankAddConfirmedModal.tsx'))

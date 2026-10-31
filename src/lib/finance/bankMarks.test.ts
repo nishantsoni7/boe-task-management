@@ -35,9 +35,17 @@ describe('deriveBankMarks', () => {
     assert.deepEqual(part.kind === 'linked' && part.complete, false)
   })
 
-  test('a credit already used up by another payment is not offered again', () => {
+  test('a credit already used up by another payment is not offered, and the verifier is told it may be the same money', () => {
     const m = deriveBankMarks([pay({})], [], [line({ linkedAmount: 50000 })], COVER).get('P1')!
-    assert.equal(m.kind, 'none')
+    assert.equal(m.kind, 'lookalike')
+    if (m.kind !== 'lookalike') return
+    assert.equal(m.lineDate, '2026-10-06'); assert.equal(m.deposit, 50000)
+  })
+
+  test('a near amount is the same warning; a far date or another amount is not', () => {
+    assert.equal(deriveBankMarks([pay({ amount: 50400, remaining: 50400 })], [], [line({ linkedAmount: 50000 })], COVER).get('P1')!.kind, 'lookalike')
+    assert.equal(deriveBankMarks([pay({ payment_date: '2026-09-01' })], [], [line({ linkedAmount: 50000 })], COVER).get('P1')!.kind, 'none')
+    assert.equal(deriveBankMarks([pay({ amount: 90000, remaining: 90000 })], [], [line({ linkedAmount: 50000 })], COVER).get('P1')!.kind, 'none')
   })
 
   test('no match inside the stored statements is "none"; outside them it is "uncovered", never a false alarm', () => {
