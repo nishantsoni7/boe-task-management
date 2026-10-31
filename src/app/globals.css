@@ -11197,7 +11197,9 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 
 /* A wide table scrolls inside its board instead of crushing its columns. */
 .fin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.fin-table--orders { min-width: 880px; }
+/* 1020, not 880: at 880 the status pills and the dates were cut (measured
+   2026-10-31). Below this the table scrolls, which cuts nothing. */
+.fin-table--orders { min-width: 1020px; }
 .fin-table--drafts { min-width: 920px; }
 
 /* An Order with unread updates: a tint and a left edge, as before. */
@@ -11480,15 +11482,19 @@ textarea.pi-form-input { height: auto; }
 .orders-list-flag--sample_order { background: #FBF0D9; color: #8A5A00; }
 .orders-list-flag--commission { background: #DDF1EE; color: #0F6B62; }
 /* The markers sit at the RIGHT EDGE of the Project code cell (owner,
-   2026-10-19): the code (and any update badge) on the left, the symbols pushed
-   right with margin-left: auto. A flex wrapper inside the cell, never on the
-   <td> itself, so the table keeps its column widths. */
+   2026-10-19): the code on the left, the symbols pushed right with
+   margin-left: auto. A flex wrapper inside the cell, never on the <td> itself,
+   so the table keeps its column widths. Any update note goes on its own line
+   under them, which is what lets this column be narrow (owner, 2026-10-31). */
 .orders-code-cell .orders-list-flags,
 .orders-list-card-top .orders-list-flags { margin-left: auto; }
-.orders-code-cell > .orders-row-link,
-.orders-code-cell > .order-update-badge { vertical-align: middle; }
+.orders-code-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .orders-code-cell { white-space: nowrap; }
-.orders-code-cell .orders-list-flags { float: right; }
+.orders-update-note {
+  display: flex; align-items: center; gap: 5px; margin-top: 2px;
+  font-size: 11px; font-weight: 700; line-height: 1.3; color: #335A86;
+}
+.orders-update-note .order-update-dot { background: #335A86; }
 
 /* A cancelled Order is a gap in the sequence (owner, 2026-10-31): a thin striped
    row at its project code, the code struck through. Its number is never reused. */
@@ -11502,6 +11508,39 @@ textarea.pi-form-input { height: auto; }
 .orders-gap-card .orders-list-card-link { font-weight: 500; color: #686D6C; text-decoration: line-through; }
 .orders-gap-text { font-size: 12px; color: #686D6C; }
 .orders-gap-card { background: repeating-linear-gradient(135deg, #F7F5F1 0 6px, #FFFFFF 6px 12px); }
+
+/* ── The Confirmed Orders table (owner, 2026-10-31) ──
+   Quiet until it needs someone: row lines only, money on its right edge, and a
+   pill only where something is outstanding. Scoped to this table: .fin-table is
+   shared with every Finance list. */
+.fin-table--orders th, .fin-table--orders td { padding-left: 10px; padding-right: 10px; }
+.fin-table--orders td { height: 48px; padding-top: 4px; padding-bottom: 4px; }
+.fin-table--orders th + th, .fin-table--orders td + td { border-left: 0; }
+/* Right-aligned money beside left-aligned text needs air, or they touch. */
+.fin-table--orders .orders-after-value { padding-left: 24px; }
+/* The shared grey is 3.1:1 on white; this one is 5.3:1. */
+.fin-table--orders .fin-sub:not(.fin-sub--alert) { color: #686D6C; }
+/* .fin-table td outweighs .fin-muted, so the Confirmed date was never muted. */
+.fin-table--orders td.fin-muted { color: #686D6C; }
+
+/* A good state is a dot and a word, never a pill, so the pills are the problems.
+   The word carries the meaning, so colour is never the only signal. */
+.orders-status-ok { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #4C5352; white-space: nowrap; }
+.orders-status-ok::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #3F9B6E; flex-shrink: 0; }
+
+/* A heading that sorts: the arrow shows on the sorted column, and on hover. */
+.orders-sort {
+  display: inline-flex; align-items: center; gap: 4px; height: 35px; padding: 0;
+  border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+}
+.orders-sort:hover, .orders-sort.is-active { color: #303536; }
+.orders-sort.is-active { font-weight: 600; }
+.orders-sort svg { opacity: 0; flex-shrink: 0; }
+.orders-sort:hover svg, .orders-sort:focus-visible svg, .orders-sort.is-active svg { opacity: 1; }
+/* The arrow goes on the inner side, so the word stays over the numbers' edge. */
+.fin-num .orders-sort { flex-direction: row-reverse; }
+/* Inside the line: the heading cell clips anything outside it. */
+.orders-sort:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; border-radius: 6px; }
 
 /* ── The sample choice (20270320000000): PI draft and Order ── */
 .pi-sample-type { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ECE7E0; min-width: 0; }
