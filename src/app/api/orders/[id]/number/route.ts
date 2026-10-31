@@ -9,6 +9,7 @@ import {
   normalizeNewOrderNumber,
   type OrderNumberChangeCode,
 } from '@/lib/orders/orderNumberChange'
+import { readCancelledOrderLock } from '@/lib/orders/cancelledOrderLock'
 import { SUBMISSION_ID_RE } from '@/lib/orders/submissionFilesServer'
 
 // GIVING A CONFIRMED ORDER A DIFFERENT NUMBER — ADMINISTRATORS ONLY.
@@ -16,8 +17,8 @@ import { SUBMISSION_ID_RE } from '@/lib/orders/submissionFilesServer'
 // THE DATABASE DECIDES. change_confirmed_order_number() (20270502000000) runs
 // as the signed-in user, so auth.uid() is the administrator; it checks the
 // role, the number, that no Order has it and no PI Draft reserved it, and that
-// it is below the cycle's next number. This route only refuses View As and
-// malformed input before asking.
+// it is below the cycle's next number. This route refuses View As, malformed
+// input and a cancelled Order before asking: a cancelled Order keeps its number.
 
 export const runtime = 'nodejs'
 
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null) as { number?: unknown } | null
   const typed = typeof body?.number === 'string' ? body.number : ''
   if (normalizeNewOrderNumber(typed) === null) return fail('INVALID')
+
+  const lock = await readCancelledOrderLock(authClient, orderId)
+  if (lock === 'cancelled') return fail('CANCELLED')
+  if (lock === 'unknown') return fail('FAILED')
 
   const { data, error } = await authClient.rpc('change_confirmed_order_number', {
     p_order_id: orderId,

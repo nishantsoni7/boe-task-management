@@ -5,7 +5,8 @@
 // that the caller is an active administrator, that the typed confirmation is the
 // Order's own number, and that no payment allocation, intent or payment request
 // names the Order or its PI. Everything here only decides what is worth SHOWING
-// and words the refusals; none of it is a gate.
+// and words the refusals; none of it is a gate. The one check the database does
+// not make, that a cancelled Order stays, is the route's (cancelledOrderLock.ts).
 
 export const DELETE_ORDER_ACTION_LABEL = 'Delete Order'
 export const DELETE_ORDER_DIALOG_TITLE = 'Delete Order?'
@@ -26,11 +27,13 @@ export type DeleteOrderViewer = {
   isAdmin: boolean
   /** An administrator previewing another person's view performs no action. */
   viewingAs: boolean
+  /** A cancelled Order stays: deleting it would free its number for another Order. */
+  cancelled: boolean
 }
 
-/** Whether the control is worth drawing. The database decides again. */
+/** Whether the control is worth drawing. The route and the database decide again. */
 export function canDeleteOrder(viewer: DeleteOrderViewer): boolean {
-  return viewer.isAdmin && !viewer.viewingAs
+  return viewer.isAdmin && !viewer.viewingAs && !viewer.cancelled
 }
 
 /** The typed confirmation must be the Order's own number, exactly. */
@@ -48,6 +51,7 @@ export type OrderDeletionCode =
   | 'CONFIRMATION'
   | 'BLOCKED_PAYMENTS'
   | 'BLOCKED_REQUESTS'
+  | 'CANCELLED'
   | 'NOT_CONFIGURED'
   | 'UNAUTHORIZED'
   | 'BAD_REQUEST'
@@ -71,6 +75,10 @@ const FAILURE_COPY: Record<OrderDeletionCode, Omit<OrderDeletionFailure, 'code'>
   },
   BLOCKED_REQUESTS: {
     message: 'A retired Order Request was converted into this Order, so it is kept. Nothing has been deleted.',
+    blocked: true,
+  },
+  CANCELLED: {
+    message: 'A cancelled Order is kept so its number is never used again. Nothing has been deleted.',
     blocked: true,
   },
   NOT_CONFIGURED: {
@@ -108,6 +116,7 @@ export const ORDER_DELETION_HTTP: Record<OrderDeletionCode, number> = {
   CONFIRMATION: 422,
   BLOCKED_PAYMENTS: 409,
   BLOCKED_REQUESTS: 409,
+  CANCELLED: 409,
   NOT_CONFIGURED: 500,
   UNAUTHORIZED: 401,
   BAD_REQUEST: 400,

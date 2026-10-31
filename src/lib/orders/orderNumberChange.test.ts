@@ -33,9 +33,13 @@ const MIGRATION = 'supabase/migrations/20270502000000_order_number_rename.sql'
 
 describe('who sees the control', () => {
   test('an administrator, not previewing', () => {
-    assert.equal(canChangeOrderNumber({ isAdmin: true, viewingAs: false }), true)
-    assert.equal(canChangeOrderNumber({ isAdmin: false, viewingAs: false }), false)
-    assert.equal(canChangeOrderNumber({ isAdmin: true, viewingAs: true }), false)
+    assert.equal(canChangeOrderNumber({ isAdmin: true, viewingAs: false, cancelled: false }), true)
+    assert.equal(canChangeOrderNumber({ isAdmin: false, viewingAs: false, cancelled: false }), false)
+    assert.equal(canChangeOrderNumber({ isAdmin: true, viewingAs: true, cancelled: false }), false)
+  })
+
+  test('never on a cancelled Order: it keeps its number (owner, 2026-10-31)', () => {
+    assert.equal(canChangeOrderNumber({ isAdmin: true, viewingAs: false, cancelled: true }), false)
   })
 })
 
@@ -75,6 +79,11 @@ describe('refusals', () => {
     assert.equal(ORDER_NUMBER_CHANGE_HTTP.DENIED, 403)
     assert.match(describeOrderNumberChangeFailure('IN_USE').message, /another Order/)
   })
+
+  test('a cancelled Order is refused in words, and nothing changes', () => {
+    assert.equal(ORDER_NUMBER_CHANGE_HTTP.CANCELLED, 409)
+    assert.match(describeOrderNumberChangeFailure('CANCELLED').message, /cancelled Order keeps its number/)
+  })
 })
 
 describe('what the administrator is told afterwards', () => {
@@ -106,7 +115,7 @@ describe('where the action sits on the Order page', () => {
 
   test('the page draws it from canChangeOrderNumber and reloads the Order after', () => {
     const page = read('src/app/orders/[id]/page.tsx')
-    assert.ok(page.includes("canChangeOrderNumber: canChangeOrderNumber({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId })"))
+    assert.ok(page.includes("canChangeOrderNumber: canChangeOrderNumber({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId, cancelled: order.status === 'cancelled' })"))
     assert.ok(page.includes('<ChangeOrderNumberModal'))
     assert.ok(page.includes("case 'change_number':        setChangeNumberOpen(true); return"))
     assert.ok(page.includes('onChanged={() => { loadOrder() }}'))
@@ -143,6 +152,14 @@ describe('the route asks the database as the signed-in user', () => {
     assert.ok(route.includes('isPreviewRequest(req.headers)'))
     assert.ok(route.includes('SUBMISSION_ID_RE.test(orderId)'))
     assert.ok(route.includes("normalizeNewOrderNumber(typed) === null) return fail('INVALID')"))
+  })
+
+  test('it refuses a cancelled Order, or a status it could not read, before the RPC', () => {
+    const lock = route.indexOf('await readCancelledOrderLock(authClient, orderId)')
+    const rpc = route.indexOf("authClient.rpc('change_confirmed_order_number'")
+    assert.ok(lock > 0 && rpc > lock)
+    assert.ok(route.includes("if (lock === 'cancelled') return fail('CANCELLED')"))
+    assert.ok(route.includes("if (lock === 'unknown') return fail('FAILED')"))
   })
 
   test('it calls the one RPC with the user session and never the service role', () => {

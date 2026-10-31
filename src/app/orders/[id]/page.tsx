@@ -3008,8 +3008,8 @@ export default function OrderDetailPage() {
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
     canCleanUp: profile?.role === 'admin' && !viewAsUserId && canCleanUp,
-    canChangeOrderNumber: canChangeOrderNumber({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId }),
-    canDeleteOrder: canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId }),
+    canChangeOrderNumber: canChangeOrderNumber({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId, cancelled: order.status === 'cancelled' }),
+    canDeleteOrder: canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId, cancelled: order.status === 'cancelled' }),
   })
 
   const actionLabel = (key: OrderHeaderActionKey): string => {

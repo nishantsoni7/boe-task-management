@@ -30,13 +30,16 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('who is offered the control', () => {
   test('an administrator is', () => {
-    assert.equal(canDeleteOrder({ isAdmin: true, viewingAs: false }), true)
+    assert.equal(canDeleteOrder({ isAdmin: true, viewingAs: false, cancelled: false }), true)
   })
   test('nobody else is', () => {
-    assert.equal(canDeleteOrder({ isAdmin: false, viewingAs: false }), false)
+    assert.equal(canDeleteOrder({ isAdmin: false, viewingAs: false, cancelled: false }), false)
   })
   test('an administrator previewing somebody else’s view is not: a preview performs no action', () => {
-    assert.equal(canDeleteOrder({ isAdmin: true, viewingAs: true }), false)
+    assert.equal(canDeleteOrder({ isAdmin: true, viewingAs: true, cancelled: false }), false)
+  })
+  test('nobody is on a cancelled Order: deleting it would free its number (owner, 2026-10-31)', () => {
+    assert.equal(canDeleteOrder({ isAdmin: true, viewingAs: false, cancelled: true }), false)
   })
 })
 
@@ -81,6 +84,14 @@ describe('refusals are stable codes, worded for the person, never database text'
     assert.ok(/nothing has been deleted/i.test(failure.message))
   })
 
+  test('a cancelled Order is a block, not an error, and says nothing was deleted', () => {
+    const failure = describeOrderDeletionFailure('CANCELLED')
+    assert.equal(failure.blocked, true)
+    assert.ok(/number is never used again/.test(failure.message))
+    assert.ok(/nothing has been deleted/i.test(failure.message))
+    assert.equal(ORDER_DELETION_HTTP.CANCELLED, 409)
+  })
+
   test('an unrecognised code falls back rather than building a sentence from it', () => {
     assert.equal(describeOrderDeletionFailure('<script>').code, 'FAILED')
     assert.equal(describeOrderDeletionFailure(undefined).code, 'FAILED')
@@ -120,7 +131,7 @@ describe('where the action sits on the Order page', () => {
 
   test('the page draws it from canDeleteOrder, which an admin preview never satisfies', () => {
     const page = read('src/app/orders/[id]/page.tsx')
-    assert.ok(page.includes("canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId })"))
+    assert.ok(page.includes("canDeleteOrder({ isAdmin: profile?.role === 'admin', viewingAs: !!viewAsUserId, cancelled: order.status === 'cancelled' })"))
     assert.ok(page.includes('<DeleteOrderModal'))
   })
 
@@ -139,6 +150,14 @@ describe('the route: the database first, the files after, and no Finance', () =>
     assert.ok(route.includes('await authClient.auth.getUser()'))
     assert.ok(route.includes('isPreviewRequest(req.headers)'))
     assert.ok(route.includes('SUBMISSION_ID_RE.test(orderId)'))
+  })
+
+  test('it refuses a cancelled Order, or a status it could not read, before the RPC', () => {
+    const lock = route.indexOf('await readCancelledOrderLock(authClient, orderId)')
+    const rpc = route.indexOf("authClient.rpc('delete_confirmed_order'")
+    assert.ok(lock > 0 && rpc > lock)
+    assert.ok(route.includes("if (lock === 'cancelled') return fail('CANCELLED')"))
+    assert.ok(route.includes("if (lock === 'unknown') return fail('FAILED')"))
   })
 
   test('the service role is proven available BEFORE the Order is touched', () => {
