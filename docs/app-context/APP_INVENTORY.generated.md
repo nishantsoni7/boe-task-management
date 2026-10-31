@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `99bf7fbc` — Bank Statements: Synced is checked, a person decides every possible duplicate (#544)
-- Commits on this branch: 1109
+- Commit: `e395e186` — Docs: Bank credit review merged as PR #544 (99bf7fbc)
+- Commits on this branch: 1111
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `e395e186` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc)
+- `0e639f09` 2026-10-31 Docs: Confirmed Orders gap merged as PR #543 (4c0629be) (#545)
 - `99bf7fbc` 2026-10-31 Bank Statements: Synced is checked, a person decides every possible duplicate (#544)
 - `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)
 - `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
@@ -37,8 +39,6 @@
 - `f8c05835` 2026-10-30 Attendance machine: each punch kept once, and a Machine ID per employee (#523)
 - `c7f72505` 2026-10-30 Docs: product list tabs merged as PR #522 (3807938b) (#524)
 - `3807938b` 2026-10-30 Orders: Product details, F&P Cost and Approvals tabs on the product list (#522)
-- `14a3fc5a` 2026-10-30 Docs: sales team dashboard merged as PR #519 (c267c004) (#521)
-- `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
 
 ## Pages by top-level area
 
