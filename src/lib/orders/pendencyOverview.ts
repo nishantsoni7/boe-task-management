@@ -2,10 +2,11 @@
  * THE PENDENCIES COLUMN of the Confirmed Orders list (owner, 2026-10-27).
  *
  * An Order reads "Approved" only when Fabric and Finish are both Fully Approved
- * AND no pendency is open; otherwise "Not Approved", and the popup lists exactly
- * what is outstanding. Display only: the approvals themselves are written by
- * record_order_approval_event() and approve_order_pendency(), which re-derive
- * every rule.
+ * AND no pendency is open; otherwise how many are still pending ("3 pending",
+ * owner, 2026-10-31: a column of the same red "Not Approved" said nothing), and
+ * the popup lists exactly what is outstanding. Display only: the approvals
+ * themselves are written by record_order_approval_event() and
+ * approve_order_pendency(), which re-derive every rule.
  */
 
 import { APPROVAL_KINDS, APPROVAL_KIND_LABEL, APPROVAL_STATUS_LABEL, type ApprovalKind, type ApprovalStatus } from '@/lib/orders/orderApprovals'
@@ -13,6 +14,9 @@ import { APPROVAL_KINDS, APPROVAL_KIND_LABEL, APPROVAL_STATUS_LABEL, type Approv
 export const PENDENCY_COLUMN_LABEL = 'Pendencies'
 export const PENDENCY_ALL_APPROVED = 'Approved'
 export const PENDENCY_NOT_APPROVED = 'Not Approved'
+
+/** What the column says for an Order with something outstanding. */
+export const pendencyCountLabel = (count: number) => `${count} pending`
 
 /** One row of public.order_approval_current. */
 export type CurrentApprovalRow = { order_id: string; approval_kind: string; status: string }

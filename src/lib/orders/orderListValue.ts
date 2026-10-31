@@ -96,7 +96,9 @@ export function orderListFlags(o: OrderListFlagsInput): { sample: SampleType | n
   }
 }
 
-export const FACTORY_ALIGNED_LABEL = 'Aligned for Production'
+// The short word the Order page already uses (owner, 2026-10-31): the column
+// heading says it is about the factory, so the value need not say it again.
+export const FACTORY_ALIGNED_LABEL = 'Aligned'
 export const FACTORY_NOT_ALIGNED_LABEL = 'Not Aligned'
 export const COMMISSION_ICON_LABEL = 'Middleman commission'
 

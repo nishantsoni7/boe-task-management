@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPendencyOverviews } from './pendencyOverview'
+import { buildPendencyOverviews, pendencyCountLabel } from './pendencyOverview'
 import { activityCategory } from './orderActivityCategory'
 import { isMainActivityEvent } from './orderActivityImportance'
 import { checkPendencyScreenshot, describePendencyError, pendencyEvidencePath } from './orderPendencies'
@@ -8,6 +8,16 @@ import { checkPendencyScreenshot, describePendencyError, pendencyEvidencePath } 
 const A = '11111111-1111-1111-1111-111111111111'
 const B = '22222222-2222-2222-2222-222222222222'
 const C = '33333333-3333-3333-3333-333333333333'
+
+test('the list says how many are pending, counting Fabric, Finish and the open pendencies', () => {
+  const overviews = buildPendencyOverviews(
+    [A],
+    [{ order_id: A, approval_kind: 'fabric', status: 'fully_approved' }],
+    [{ order_id: A, label: 'Sample approval' }, { order_id: A, label: 'Drawing sign-off' }],
+  )
+  assert.equal(pendencyCountLabel(overviews.get(A)?.pending.length ?? 0), '3 pending', 'Finish and the two open')
+  assert.equal(pendencyCountLabel(1), '1 pending')
+})
 
 test('Approved only when Fabric and Finish are Fully Approved and nothing is open', () => {
   const out = buildPendencyOverviews(
