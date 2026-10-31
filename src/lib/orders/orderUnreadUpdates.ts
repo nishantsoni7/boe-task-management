@@ -58,6 +58,16 @@ export function unreadUpdateLabel(count: number): string | null {
 }
 
 /**
+ * The same count as a quiet line under the Project code in the Confirmed Orders
+ * table (owner, 2026-10-31). The row's tint and left edge already catch the eye;
+ * capitals in that narrow column would only shout. Phone cards keep the badge.
+ */
+export function unreadUpdateNote(count: number): string | null {
+  if (!Number.isFinite(count) || count < 1) return null
+  return count === 1 ? 'New update' : `${count} new updates`
+}
+
+/**
  * The oldest unread update's timestamp for one Order, or null.
  *
  * This is the line the Order page draws "New since your last visit" above:

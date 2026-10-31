@@ -44,6 +44,7 @@ import {
   oldestUnreadAt,
   unreadUpdateCounts,
   unreadUpdateLabel,
+  unreadUpdateNote,
 } from './orderUnreadUpdates'
 
 const ROOT = process.cwd()
@@ -552,6 +553,13 @@ describe('the unread state the list reads', () => {
     assert.equal(unreadUpdateLabel(2), '2 NEW UPDATES')
     assert.equal(unreadUpdateLabel(0), null)
     assert.equal(unreadUpdateLabel(-1), null)
+  })
+
+  test('the quiet line in the table follows the same rule as the badge', () => {
+    assert.equal(unreadUpdateNote(1), 'New update')
+    assert.equal(unreadUpdateNote(2), '2 new updates')
+    assert.equal(unreadUpdateNote(0), null)
+    assert.equal(unreadUpdateNote(-1), null)
   })
 
   test('"new since" is the OLDEST unread, so nothing unseen hides behind it', () => {

@@ -5,21 +5,20 @@
 
 ## Snapshot
 
-- Commit: `445a066f` — Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
-- Commits on this branch: 1120
+- Commit: `47b3387b` — Merge main (#551) into the Confirmed Orders table redesign
+- Commits on this branch: 1119
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
-- Test files: 702   Next.js 16.2.6, React 19.2.4
+- Test files: 703   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `445a066f` 2026-10-31 Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
+- `47b3387b` 2026-10-31 Merge main (#551) into the Confirmed Orders table redesign
 - `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
-- `b41fa3b9` 2026-10-31 Docs: inventory after merging main
-- `7109a477` 2026-10-31 Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
-- `fb064232` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed
+- `10e294be` 2026-10-31 Merge main (#550) into the Confirmed Orders table redesign
 - `d77c777f` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first (#550)
+- `14698334` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone
 - `25df502b` 2026-10-31 Confirmed Order: shorter Payment card, Product Code column, banners side by side, commission in both forms (#549)
 - `6aa8129e` 2026-10-31 Docs: Founders' payouts redesign merged as PR #547 (d454773c) (#548)
 - `d454773c` 2026-10-31 Finance: Founders' payouts redesigned, and its missing styles restored (#547)
@@ -39,6 +38,7 @@
 - `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
 - `013b7715` 2026-10-30 Docs: Attendance Overview merged as PR #532 (03346ec0) (#533)
 - `03346ec0` 2026-10-30 Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (#532)
+- `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 
 ## Pages by top-level area
 

@@ -2,22 +2,23 @@
 
 // ── THE PENDENCIES COLUMN AND ITS POPUP (owner, 2026-10-27) ──────────────────
 //
-// "Approved" in green when nothing is outstanding; "Not Approved" in red
-// otherwise, and a click lists exactly what is. Approving is not done here: it
-// needs the ERP screenshot, so the popup hands over to the Order's Pendencies
-// card. Display only — the rules live in pendencyOverview.ts and the database.
+// A green dot and "Approved" when nothing is outstanding; otherwise a red pill
+// saying how many are pending (owner, 2026-10-31), and a click lists exactly
+// what is. Approving is not done here: it needs the ERP screenshot, so the popup
+// hands over to the Order's Pendencies card. Display only — the rules live in
+// pendencyOverview.ts and the database.
 
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { X } from 'lucide-react'
 import {
-  PENDENCY_ALL_APPROVED, PENDENCY_NOT_APPROVED, type OrderPendencyOverview,
+  PENDENCY_ALL_APPROVED, pendencyCountLabel, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
 
 export function PendencyCell({ overview, onOpen }: { overview: OrderPendencyOverview | undefined; onOpen: () => void }) {
   // Not read yet (or unreadable): say nothing rather than a status nobody checked.
   if (!overview) return <span className="fin-muted">—</span>
-  if (overview.approved) return <span className="fin-pill fin-pill--full">{PENDENCY_ALL_APPROVED}</span>
+  if (overview.approved) return <span className="orders-status-ok">{PENDENCY_ALL_APPROVED}</span>
   return (
     <button
       type="button"
@@ -28,7 +29,7 @@ export function PendencyCell({ overview, onOpen }: { overview: OrderPendencyOver
       // The row opens the Order on click; this opens the list instead.
       onClick={e => { e.stopPropagation(); onOpen() }}
     >
-      {PENDENCY_NOT_APPROVED}
+      {pendencyCountLabel(overview.pending.length)}
     </button>
   )
 }

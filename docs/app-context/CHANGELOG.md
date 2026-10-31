@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
+## 2026-10-31 — Confirmed Orders table redesigned (PR open) · no SQL
+- **Owner request.** A screenshot of `/orders/all`: narrow Project Code and Factory Status (values Aligned / Not Aligned), reanalyse and redesign the table with the UI/UX Pro Max skill, professional. Three options previewed at the owner's window, with real rows, so the preview stayed on this computer. The owner chose B.
+- **Widths.** Project Code 195 to 116px, Factory Status 195 to 136px at the owner's window (24px of that is air after the money). Client grows from 265 to 378px and Sales Person from 153 to 188px, so "Ashok Choudhary" is no longer cut.
+- **Two earlier owner decisions reversed by that choice.** Product Value is right-aligned (2026-10-19 said every column left). The list says "3 pending" instead of "Not Approved" (2026-10-27); the popup and the Order page keep "Not Approved".
+- **Quiet until it needs someone.** Aligned and Approved are a green dot and the word, and only Not Aligned and pending are pills. Row lines only, no initials circles, rows 52 to 48px, the source line darkened from 3.1:1 to 5.3:1, and the Confirmed date is now really grey (a shared rule had always overridden it).
+- **Updates.** A quiet "New update" line under the code, replacing the badge beside it, which is what lets the column be narrow. Tint, left edge and phone badge unchanged.
+- **Sorting.** Project Code and Product Value sort from their headings, with an arrow and `aria-sort`. The chip stays, because a phone has no headings.
+- **One name for one thing.** Sales Person instead of Assignee, Project code instead of Order no. The URL parameter keeps its name, so saved links still work.
+- **Table floor** 880 to 1020px: at 880 pills and dates were already cut. Below the new floor the table scrolls and nothing is cut, so sideways scrolling starts at a window of about 1,134px instead of about 994px.
+- **Unchanged.** No SQL, same reads, same column order, status cards, markers, cancelled gap row and popup. Every style is scoped to `.fin-table--orders`, so no Finance list moves.
 ## 2026-10-31 — A class a screen asks for must exist: repo-wide guard, three small styling faults fixed (PR open) · no SQL
 - **Why.** #522 deleted 64 classes still in use and nothing failed, because a class name is only a string. An audit of every class and rule against all 205 commits that touched CSS found no other page hurt that way: #522 is the only accident of its kind.
 - **Guard.** `src/app/stylesDefined.test.ts` reads every screen with the TypeScript parser and fails when a className names a class with no rule in `globals.css` or an inline `<style>`, or a `styles.x` its module does not define. `NO_RULE_NEEDED` lists the 25 deliberate exceptions, each with its reason, and the test fails if one goes stale. Replayed on the code before #547 it flags all 64 Founders' classes plus `is-ok` and `is-off`. About 10 seconds on the owner's PC. It cannot see names built at run time, or a rule deleted while its name survives in another rule.
