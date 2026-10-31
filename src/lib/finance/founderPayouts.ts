@@ -277,6 +277,37 @@ export function summariseYear(book: FounderBook, taxYear: number): FounderYear {
   }
 }
 
+/** The kinds with money in this year, in their usual order: only these get a column. */
+export function kindsPaidIn(year: FounderYear): typeof FOUNDER_PAYOUT_KINDS[number][] {
+  return FOUNDER_PAYOUT_KINDS.filter(k => year.accounts.some(a => (a.byKind.get(k.value) ?? 0) > 0))
+}
+
+/** The year's accounts under their side. A side left with no account to show is dropped. */
+export function accountsBySide(year: FounderYear, keep: (a: AccountYear) => boolean = () => true): { side: SideYear; accounts: AccountYear[] }[] {
+  return year.sides
+    .map(side => ({ side, accounts: year.accounts.filter(a => a.account.side === side.side && keep(a)) }))
+    .filter(group => group.accounts.length > 0)
+}
+
+/** How dark a month's cell is drawn: 0 for nothing paid, then three steps of the year's largest month. */
+export function monthShade(paise: number, maxPaise: number): 0 | 1 | 2 | 3 {
+  if (paise <= 0 || maxPaise <= 0) return 0
+  const share = paise / maxPaise
+  if (share > 0.75) return 3
+  return share > 0.4 ? 2 : 1
+}
+
+/** Flat lines back under their payouts, in the order they came. */
+export function groupByPayout(lines: readonly FlatLine[]): { payout: FounderPayout; lines: FlatLine[] }[] {
+  const groups: { payout: FounderPayout; lines: FlatLine[] }[] = []
+  for (const line of lines) {
+    const last = groups[groups.length - 1]
+    if (last && last.payout.id === line.payout.id) last.lines.push(line)
+    else groups.push({ payout: line.payout, lines: [line] })
+  }
+  return groups
+}
+
 /** With exactly two sides, how far the first is ahead of the second on the equal share (negative = behind). */
 export function equalShareGap(sides: readonly SideYear[]): { ahead: string; behind: string; paise: number } | null {
   if (sides.length !== 2) return null

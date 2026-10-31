@@ -24,11 +24,15 @@ import {
   taxIfPaid,
 } from './founderPayoutTax'
 import {
+  accountsBySide,
   availableTaxYears,
   draftProblems,
   equalShareGap,
   formatLakh,
   formatRupees,
+  groupByPayout,
+  kindsPaidIn,
+  monthShade,
   monthsLeftInTaxYear,
   parseFounderBook,
   splitEqually,
@@ -196,6 +200,37 @@ describe('reading the book', () => {
     const y25 = summariseYear(book, 2025)
     assert.deepEqual(equalShareGap(y25.sides), { ahead: 'Nishant', behind: 'Nitish', paise: 29000000 })
     assert.equal(equalShareGap([]), null)
+  })
+
+  test('only the kinds with money this year get a column, in their usual order', () => {
+    assert.deepEqual(kindsPaidIn(summariseYear(book, 2026)).map(k => k.value), ['partner_remuneration', 'incentive', 'drawings'])
+    assert.deepEqual(kindsPaidIn(summariseYear(book, 2025)).map(k => k.value), ['partner_remuneration'])
+    assert.deepEqual(kindsPaidIn(summariseYear(book, 2024)), [])
+  })
+
+  test('accounts sit under their side; a side with nobody left to show is dropped', () => {
+    const y = summariseYear(book, 2026)
+    assert.deepEqual(accountsBySide(y).map(g => [g.side.side, g.accounts.map(a => a.account.id)]),
+      [['Nishant', ['a-nam', 'a-jai']], ['Nitish', ['a-nit', 'a-odd']]])
+    assert.deepEqual(accountsBySide(y, a => a.account.id === 'a-jai').map(g => g.side.side), ['Nishant'])
+  })
+
+  test('a month is shaded against the year’s largest month, and nothing paid is never shaded', () => {
+    assert.equal(monthShade(0, 1000), 0)
+    assert.equal(monthShade(100, 0), 0)
+    assert.equal(monthShade(-5, 1000), 0)
+    assert.equal(monthShade(1, 1000), 1)
+    assert.equal(monthShade(400, 1000), 1)
+    assert.equal(monthShade(401, 1000), 2)
+    assert.equal(monthShade(750, 1000), 2)
+    assert.equal(monthShade(751, 1000), 3)
+    assert.equal(monthShade(1000, 1000), 3)
+  })
+
+  test('flat lines go back under their payouts, keeping the order they came in', () => {
+    const groups = groupByPayout(summariseYear(book, 2026).lines)
+    assert.deepEqual(groups.map(g => [g.payout.id, g.lines.map(l => l.id)]), [['p3', ['l5', 'l6']], ['p2', ['l4']], ['p1', ['l3']]])
+    assert.deepEqual(groupByPayout([]), [])
   })
 })
 
