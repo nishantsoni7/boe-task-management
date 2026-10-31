@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7109a477` — Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
-- Commits on this branch: 1117
+- Commit: `b41fa3b9` — Docs: inventory after merging main
+- Commits on this branch: 1118
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 393 (first `20260530_create_positions.sql`, latest `20270514000000_finance_bank_line_review.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 861   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `b41fa3b9` 2026-10-31 Docs: inventory after merging main
 - `7109a477` 2026-10-31 Merge remote-tracking branch 'origin/main' into claude/wizardly-leavitt-4b32f5
 - `fb064232` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed
 - `d77c777f` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first (#550)
@@ -38,7 +39,6 @@
 - `03346ec0` 2026-10-30 Attendance Overview: a score for each person, and Monthly Review's Late and Half day fixed (#532)
 - `22f1d8b6` 2026-10-30 Docs: Today tab release recorded, and the Machine ID correction (#530)
 - `52998fff` 2026-10-30 Orders: Client PO and Design Files open on a submitted PI (#529)
-- `f5eb5d3b` 2026-10-30 Attendance machine: Today tab, and an alert when punches stop (#528)
 
 ## Pages by top-level area
 

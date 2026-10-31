@@ -17,7 +17,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · bac
 - **Unchanged.** No SQL. The doors, the matches, what counts as Synced, and the verifier's bank panel, which keeps its own Link.
 - **Proof.** The window driven in a DOM for every press and refusal, and ten deliberate breaks of the new code, all caught. An earlier replay of the real rows on PGlite with the merged functions proved the two doors in this order. Not seen signed in, and no live row pressed.
 
-## 2026-10-31 — Confirmed Order tidy: five changes from the owner's screenshots of Order 542 (#549) · no SQL
+## 2026-10-31 — Confirmed Order tidy: changes from the owner's screenshots of Order 542 (#549, 25df502b, merged by the owner 15:59 UTC) · no SQL · deployed (deployment 7460918087), live stylesheet checked · backup bundle 20261031T160013Z, database 20261031T160056Z (203 tables, 100,982 rows), verified
 - **Open cost sheet removed.** The F&P Cost tab on the Products card is the way to the sheet.
 - **Payment card shorter.** Last verified payment and Verified by mode are gone; the Verified box still opens the list.
 - **Products card.** The first column reads Product Code on all three tabs and pictures are 108px, up from 84. Customization gives up the room. The PI Draft, the import preview and phones are unchanged.
