@@ -1,6 +1,6 @@
 # 24. Sales, Marketing, Pricing (Coming soon)
 
-Written 2026-10-31 from the build, on branch `feat/coming-soon-modules`. Migration `20270515000000` is **NOT yet applied**; see the changelog for its state.
+Written 2026-10-31 from the build, on branch `feat/coming-soon-modules` (PR #557). Migration `20270515000000` is **NOT yet applied**; see the changelog for its state.
 
 ## 1. Purpose & users
 

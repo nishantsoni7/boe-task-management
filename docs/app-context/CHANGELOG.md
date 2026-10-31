@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR open) · 20270515000000 → NOT APPLIED
+## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → NOT APPLIED
 - **Owner request.** Create the three modules now with a Coming soon option; what goes in them comes later.
 - **Added.** Each has a launcher tile, a route (`/sales`, `/marketing`, `/pricing`) behind `ModuleGuard`, the standard module shell and a Coming soon notice, and a row in Control Center → Access (group Sales, Off / On). Dossier `modules/24-sales-marketing-pricing.md`.
 - **Owner decisions, agreed from a mockup.** Admin only until granted per person. The tile stays an ordinary tile; Coming soon shows on the page that opens. A person refused goes back to Modules, not to `/coming-soon`, which is hard-coded to Attendance.
