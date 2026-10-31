@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-31 — Assigned By Me redesigned: one-line list, Team response bar, Approve and Cancel on the row; Task Details returns to the list (PR number and merge SHA to be added on merge) · no migration
+## 2026-10-31 — Assigned By Me redesigned: one-line list, Team response bar, Approve and Cancel on the row; Task Details returns to the list (PR #535, squash-merged as a4cde4af, 07:55 UTC, on the owner's yes) · no migration · Production deployment 7456015835 success 07:59 UTC · backup bundle 20261031T075941Z, database 20261031T080000Z verified, 3 restricted tables not covered (Docker off)
 - **Owner request.** A neater list with no description, a view on the right of who responds and who is least active to use when talking to the person, Approve and Cancel task on the list, and after Approve or Cancel on Task Details a notice and a return to Assigned By Me (not the Cancelled page). Mockup approved first.
 - **What.** One panel with hairlines, one line per task. Created On replaced by Last update, three row icons replaced by one ⋯ menu, tasks waiting for approval first in All. Team response bar: a 12-working-day strip, a label, a reply time, and "To discuss" facts on click, which also filters the list.
 - **Names.** "member", "Unknown" and "Someone" were deactivated accounts: the `users` row policy hides them from the browser. New `GET /api/tasks/people` returns id, name and active flag only, for Task Management entry. The policy is unchanged. The Completed and Cancelled pages and `/tasks/all` use the same lookup.
