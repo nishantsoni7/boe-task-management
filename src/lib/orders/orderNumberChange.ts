@@ -6,7 +6,9 @@
 // unused by any Order, never reserved by a PI Draft and below the cycle's next
 // number, and — under the cycle lock — gives the old number back to the next
 // Order when it was the newest. Everything here only decides what is worth
-// SHOWING and words the refusals; none of it is a gate.
+// SHOWING and words the refusals; none of it is a gate. The one check the
+// database does not make, that a cancelled Order keeps its number, is the
+// route's (cancelledOrderLock.ts).
 
 import { displayOrderNumber } from '@/lib/orderNumbering'
 
@@ -24,11 +26,13 @@ export type ChangeOrderNumberViewer = {
   isAdmin: boolean
   /** An administrator previewing another person's view performs no action. */
   viewingAs: boolean
+  /** A cancelled Order keeps its number: changing it would free it for another Order. */
+  cancelled: boolean
 }
 
-/** Whether the control is worth drawing. The database decides again. */
+/** Whether the control is worth drawing. The route and the database decide again. */
 export function canChangeOrderNumber(viewer: ChangeOrderNumberViewer): boolean {
-  return viewer.isAdmin && !viewer.viewingAs
+  return viewer.isAdmin && !viewer.viewingAs && !viewer.cancelled
 }
 
 /**
@@ -50,6 +54,7 @@ export type OrderNumberChangeCode =
   | 'IN_USE'
   | 'RESERVED'
   | 'TOO_HIGH'
+  | 'CANCELLED'
   | 'UNAUTHORIZED'
   | 'BAD_REQUEST'
   | 'FAILED'
@@ -62,6 +67,7 @@ const FAILURE_COPY: Record<OrderNumberChangeCode, string> = {
   IN_USE: 'That number already belongs to another Order. Choose a number no Order has.',
   RESERVED: 'That number was reserved for a PI Draft and cannot be used.',
   TOO_HIGH: 'The new number must be lower than the number the next Order will be given.',
+  CANCELLED: 'A cancelled Order keeps its number. Nothing has changed.',
   UNAUTHORIZED: 'Sign in again to change this Order number.',
   BAD_REQUEST: 'The request could not be read. Nothing has changed.',
   FAILED: 'The Order number could not be changed. Nothing has changed; try again.',
@@ -99,6 +105,7 @@ export const ORDER_NUMBER_CHANGE_HTTP: Record<OrderNumberChangeCode, number> = {
   IN_USE: 409,
   RESERVED: 409,
   TOO_HIGH: 422,
+  CANCELLED: 409,
   UNAUTHORIZED: 401,
   BAD_REQUEST: 400,
   FAILED: 500,

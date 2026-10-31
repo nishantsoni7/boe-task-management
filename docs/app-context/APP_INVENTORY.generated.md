@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `14b91f3e` — Docs: For you merged as PR #540 (66d63333)
-- Commits on this branch: 1106
+- Commit: `4fbb0780` — Docs: For you merged as PR #540 (66d63333) (#542)
+- Commits on this branch: 1107
 - Pages (`page.tsx`): 160   API routes (`route.ts`): 179
 - Migrations: 392 (first `20260530_create_positions.sql`, latest `20270513000000_for_you_settings.sql`)
 - Tables ever created: 194 (dropped at some point: 7)   SQL functions: 853   Enums: 0
-- Test files: 696   Next.js 16.2.6, React 19.2.4
+- Test files: 697   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `14b91f3e` 2026-10-31 Docs: For you merged as PR #540 (66d63333)
+- `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
+- `911d809a` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f) (#541)
 - `66d63333` 2026-10-31 For you: payment request cards, Control Center settings, each person's own choices (#540)
 - `2421612f` 2026-10-31 Payments lists: order by payment date, latest first (#539)
 - `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
@@ -38,7 +39,6 @@
 - `c267c004` 2026-10-30 Orders: sales team dashboard, and a one-line returned-PI notice in three places (#519)
 - `d26778f4` 2026-10-30 Docs: PI Draft layout pass 2 merged as PR #515 (4e817da6) (#520)
 - `4e817da6` 2026-10-30 Orders: PI Draft page — one place to submit, fabric and packing in the product list (#515)
-- `cc3a60a8` 2026-10-30 Docs: PI payments popup table merged as PR #513 (f3058f0c) (#518)
 
 ## Pages by top-level area
 
@@ -147,7 +147,7 @@
 - `src/lib/modules` — 4 source, 5 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 100 source, 150 test
+- `src/lib/orders` — 101 source, 151 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

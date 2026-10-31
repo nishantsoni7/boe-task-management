@@ -104,3 +104,25 @@ export function factoryStatus(productionAlignment: string | null | undefined): {
   const aligned = productionAlignment === 'aligned'
   return { aligned, label: aligned ? FACTORY_ALIGNED_LABEL : FACTORY_NOT_ALIGNED_LABEL }
 }
+
+// ── PROJECT CODE ORDER AND THE CANCELLED GAP (owner, 2026-10-31) ─────────────
+//
+// The list runs by project code, highest on top, whenever each PI was uploaded.
+// A cancelled Order keeps its code for good and that code is never given to
+// another Order, so it stays in the sequence as a gap: the code, the word
+// cancelled and who it was, with none of the other columns drawn.
+
+// display_number is four numeric digits (20260704), but sort defensively so a
+// legacy or unexpected value orders predictably instead of collapsing to NaN.
+export function compareOrderNumber(a: string, b: string): number {
+  const na = Number(a), nb = Number(b)
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
+  return a.localeCompare(b)
+}
+
+export const CANCELLED_ORDER_LABEL = 'Cancelled order'
+
+export function cancelledOrderGapText(clientName: string | null | undefined): string {
+  const client = (clientName ?? '').trim()
+  return client ? `${CANCELLED_ORDER_LABEL} · ${client}` : CANCELLED_ORDER_LABEL
+}
