@@ -182,6 +182,16 @@ Modules launcher (`src/app/modules/page.tsx`):
      - "With you" (light red ground): the viewer's held payments in no open handover (`holderId === viewerId &&
        !openHandover`), one card "You hold ₹N", Hand over -> `HandoverModal` (nothing ticked) when any `canHandOver`.
        A custodian's cash is with the company, so it never appears.
+  2b. Records waiting on the viewer (owner 2026-10-31; `src/lib/modules/forYouWork.ts`, `src/hooks/queries/useForYouWork.ts`):
+     one short read per item, under the reader's own RLS, running only while that item is on for this person. Five
+     cards, then "N more" (reads 20 + an exact count). Each button opens the record's existing page; a failed read says so.
+     - New payment request: `finance_payment_requests` `pending_approval`, NEWEST first, for `canApprovePayment` AND
+       `canViewAllFinance` (`approve` alone gives no read of other people's payments). Own payments are left out
+       unless `verify_own_payment`. Review -> `/finance?tab=pending&request=<id>`, which opens the payment. It leaves
+       when decided or sent back; a resubmitted payment returns (`updated_at` is in its Clear all key).
+     - Four more, OFF by default, added from Control Center: Payment sent back to you (own `needs_clarification`),
+       PI waiting for approval (`orders.approve_order`), Order change request (admins, because the Order page offers
+       the review to an acting admin alone), PI waiting for Operations (own `awaiting` handoff, cancelled Orders dropped).
   3. "Cash not with the company", EVERYBODY ELSE's: `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin /
      custodian / view_all, else the viewer's own), minus the viewer's own held payments and payments whose open
      handover is TO the viewer (item 2), grouped by holder (`totalsByHolder`, oldest first): "X holds ₹N" + "N
@@ -193,6 +203,16 @@ Modules launcher (`src/app/modules/page.tsx`):
     (`src/lib/modules/forYouSnooze.ts`, localStorage `boe.forYou.cleared.<userId>`; a key names the thing AND what it
     says, so a new or changed item shows at once; a timer brings everything back at `until`; an event keeps the panel
     and the strip in step). Nothing is deleted, decided or marked read.
+  - Which items show (owner 2026-10-31; `src/lib/modules/forYouCatalogue.ts`, the one list of 13 items, each with its
+    words, default and who it applies to). Control Center › For you sets each item Off, Optional or Always on through
+    `set_for_you_item_mode` (active admin, database-enforced), stored in `for_you_item_settings`; no row = the default
+    in the list, so a new item needs no seed. Each person turns Optional items off in Account Settings
+    (`ForYouChoicesCard`, `user_for_you_preferences`, own row only); the sliders button in the panel header links there
+    because an empty panel is not drawn. Always on ignores the person's choice. "Cash handed to you" defaults to Always
+    on (owner). THESE SETTINGS ONLY HIDE: they grant nothing and no guard reads them. Until both are known the panel
+    shows nothing, so nothing flashes and no read runs for an item that is off. A failed read = the defaults, so the
+    launcher never breaks; the two editing screens refuse to save over something they could not read. Control Center
+    can only offer items in the list: a new kind of card needs its own read and access rule in code.
   - NOTHING TO SHOW = NO PANEL (`itemCount === 0` and no read error; only an open "Hand over cash" is still drawn): not drawn at all, no "caught up" line, and
     the reserved width goes with it, so the tiles take the whole width.
   - Layout: from 1132 px of window `.attention` is `position: fixed; top/right/bottom: 0; width: 280px`, own
@@ -322,6 +342,7 @@ At #327 a clean `main` has 0 failures without a database (live-DB suites SKIP; `
 into a failure). Never run two suites at once against the same linked project (shared fixtures).
 Relevant: `src/lib/auth/recoveryLink.test.ts`, `src/lib/safeReturnPath.test.ts`, `src/lib/supabase/adminClient.test.ts`,
 `src/lib/viewAs.test.ts`, `src/lib/modules/moduleOrder.test.ts`, `moduleOrderStorage.test.ts`,
+`src/lib/modules/forYouCatalogue.test.ts`, `forYouWork.test.ts`, `src/app/modules/forYouSettings.test.ts`,
 `src/lib/permissions/moduleParentGate.test.ts`, `moduleVisibility.test.ts`, `uiEnforcement.test.ts`,
 `src/lib/users/noStarSelect.test.ts`, `src/lib/security/usersPrivateColumns.test.ts` (live DB),
 `src/lib/navigation/*.test.ts*`, `src/components/layout/controlCenterNav.test.ts`, `boeOsDrawerInert.test.ts`,

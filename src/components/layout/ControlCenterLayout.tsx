@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
-  Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, X,
+  Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, SlidersHorizontal, X,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -93,6 +93,10 @@ const PATH_HEADINGS: Record<string, Heading> = {
     title: 'Announcements',
     subtitle: 'Publish a notice to chosen employees for a set of dates, and see who has read it.',
   },
+  [`${MAIN_PATH}/for-you`]: {
+    title: 'For you',
+    subtitle: 'Decide what can appear in the right-hand column on Modules. Keep it to what needs attention now.',
+  },
   [`${MAIN_PATH}/data-management`]: {
     group: 'Records & Data', title: 'Data Management',
     subtitle: 'Clear all operational Order and Finance data. Admin only, and never reversible.',
@@ -110,7 +114,7 @@ function headingFor(pathname: string, tab: ControlCenterTab | null): Heading {
 
 const HUB_ICON: Record<HubId, typeof Home> = {
   home: LayoutGrid, people: Users, access: ShieldCheck, orders: Hash,
-  announcements: Megaphone, records: DatabaseZap,
+  announcements: Megaphone, 'for-you': SlidersHorizontal, records: DatabaseZap,
 }
 
 type ControlCenterLayoutProps = {

@@ -124,7 +124,8 @@ describe('cash not with the company', () => {
 describe('a PI returned to you (owner, 2026-10-30)', () => {
   test('one card per PI, read from the one definition, only with the Orders module', () => {
     assert.match(PAGE, /ordersAllowed: mayOpenOrders,/)
-    assert.match(PANEL, /const returnedPis = useMyReturnedPis\(ordersAllowed\)/)
+    assert.match(PANEL, /const returnedOn = ordersAllowed && on\('pi_returned'\)/)
+    assert.match(PANEL, /const returnedPis = useMyReturnedPis\(returnedOn\)/)
     const HOOK = read('src/hooks/queries/useMyReturnedPis.ts')
     assert.match(HOOK, /createClient\(\)\.rpc\('my_returned_pis'\)/)
     // Not while previewing someone: the read is the signed-in person's own.
@@ -154,7 +155,7 @@ describe('a PI returned to you (owner, 2026-10-30)', () => {
   })
 
   test('a failed read says so instead of showing nothing', () => {
-    assert.match(PANEL, /returnedError: ordersAllowed && returnedPis\.isError/)
+    assert.match(PANEL, /returnedError: returnedOn && returnedPis\.isError/)
     assert.match(PANEL, /label="PIs returned to you"/)
   })
 })
@@ -168,12 +169,13 @@ describe('the newest announcement', () => {
 
 describe('the attendance machine has stopped (owner, 2026-10-30)', () => {
   test('read only for the signed-in admin', () => {
-    assert.match(PANEL, /useMachineHealth\(showAttendance\)/)
-    assert.match(PANEL, /machineError: showAttendance && machineHealth\.isError/)
+    assert.match(PANEL, /const machineOn = showAttendance && on\('machine_stopped'\)/)
+    assert.match(PANEL, /useMachineHealth\(machineOn\)/)
+    assert.match(PANEL, /machineError: machineOn && machineHealth\.isError/)
   })
 
   test('only while stopped, keyed by the day, and one way to act', () => {
-    assert.match(PANEL, /machineHealth\.data\?\.state === 'stopped' && shown\(itemKeys\.machineStopped\(machineHealth\.data\.today\)\)/)
+    assert.match(PANEL, /machineOn && machineHealth\.data\?\.state === 'stopped' && shown\(itemKeys\.machineStopped\(machineHealth\.data\.today\)\)/)
     assert.match(PANEL, /href="\/attendance\/today"/)
     assert.match(PANEL, />\s*Open Today\s*</)
   })
