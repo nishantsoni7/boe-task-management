@@ -4,7 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state) · backup taken (UTC stamp)`
 
-## 2026-10-31 — Confirmed Orders table redesigned (PR open) · no SQL
+## 2026-10-31 — Confirmed Order: the Custom word removed from the Customization column (PR #554 open) · no SQL
+- **Owner request.** A screenshot of Order 542's product table: the word is not required on every line.
+- **Changed.** The small CUSTOM mark is gone from `OrderCustomizationCell`, on wide screens and phone cards. The pale red ground and red rule stay. `.order-custom-mark` went with it, and `.order-custom-head` keeps only the gap under a phone card's label.
+
+## 2026-10-31 — Confirmed Orders table redesigned (#552, ebfe69a5) · no SQL · deployed (deployment 7461725073), live bundle checked · backup bundle 20261031T171127Z, database 20261031T171139Z (203 tables, 100,982 rows), verified
 - **Owner request.** A screenshot of `/orders/all`: narrow Project Code and Factory Status (values Aligned / Not Aligned), reanalyse and redesign the table with the UI/UX Pro Max skill, professional. Three options previewed at the owner's window, with real rows, so the preview stayed on this computer. The owner chose B.
 - **Widths.** Project Code 195 to 116px, Factory Status 195 to 136px at the owner's window (24px of that is air after the money). Client grows from 265 to 378px and Sales Person from 153 to 188px, so "Ashok Choudhary" is no longer cut.
 - **Two earlier owner decisions reversed by that choice.** Product Value is right-aligned (2026-10-19 said every column left). The list says "3 pending" instead of "Not Approved" (2026-10-27); the popup and the Order page keep "Not Approved".
