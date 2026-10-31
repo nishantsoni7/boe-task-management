@@ -531,7 +531,7 @@ Read first, in this order:
 ## Client PO and Design Files on a submitted PI (2026-10-30, no SQL)
 - Every viewer of a PI with management can open its files: `PiSentColumns` draws each name as the `.pi-attach-name` button and `openPiDocument` asks for a 60-second signed link. Nothing is offered to add or remove. Storage already allowed this; only the screen did not.
 
-## Confirmed Order tidy (2026-10-31, owner, five screenshots of Order 542; no SQL; #549)
+## Confirmed Order tidy (2026-10-31, owner, screenshots of Order 542; no SQL; #549 merged as 25df502b, deployed)
 - **Pendencies card.** Open cost sheet is gone. The F&P Cost tab on the Products card is the way to the sheet, for the same people. Update stays.
 - **Payment card.** Last verified payment and Verified by mode are gone, to make the card shorter. `orderPaymentFacts` now reads only the Order value and the advance. The Verified box still opens the payment list.
 - **Products card, Order only.** The first column reads Product Code on all three tabs, and the photograph is 108px (`ORDER_PRODUCT_THUMBNAIL`, was 84). `OrderProductTableHead` lives in `OrderPiSections.tsx` because `piPreview.tsx` is pinned down to its commercial summary, and its `representative` size is tested to 80–88. Code column 108px (104 at 1440 and below), image column 132 (124); `.order-products-table` and `.pv-table--order` must stay equal or the columns jump between tabs, and a test holds that. Customization gives up the room, about 24px on large screens and 48px on laptops. The floor at 1200 and below is 1000px. The PI Draft, the import preview and the phone cards keep `#`, `Code` and their picture sizes.
