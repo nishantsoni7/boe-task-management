@@ -11,7 +11,7 @@
 // trip, and put the database's refusal into words after it.
 
 import { sumExact, exactToString } from './exactMoney'
-import type { ExpenseRow } from './expenses'
+import type { ExpenseFilters, ExpenseRow } from './expenses'
 
 // ── Payment source ───────────────────────────────────────────────────────────
 
@@ -45,25 +45,76 @@ export const REIMBURSEMENT_STATE_LABEL: Record<ReimbursementState, string> = {
   unknown: 'Source not recorded',
 }
 
-/** The compact word the list uses. */
-export const REIMBURSEMENT_STATE_SHORT: Record<ReimbursementState, string> = {
-  company: 'Company',
-  pending: 'Pending',
+/**
+ * THE WORDS BEHIND THE LIST'S TWO ICONS (owner, 2026-10-31): a clock and a tick
+ * beside Personal. A company expense has no reimbursement and an older one never
+ * said which it was, so neither has an icon.
+ */
+export const REIMBURSEMENT_ICON_LABEL = {
+  pending: 'Not reimbursed',
   reimbursed: 'Reimbursed',
-  unknown: '',
-}
+} as const
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 
-export type ReimbursementFilter = '' | ReimbursementState
+export type ReimbursementFilter = '' | ReimbursementState | 'personal'
 
+/** Every value, named. The Excel file is named from this list. */
 export const REIMBURSEMENT_FILTER_OPTIONS: readonly { value: ReimbursementFilter; label: string }[] = [
   { value: '', label: 'All payment sources' },
   { value: 'company', label: 'Company-paid' },
+  { value: 'personal', label: 'Paid personally' },
   { value: 'pending', label: 'Pending reimbursement' },
   { value: 'reimbursed', label: 'Reimbursed' },
   { value: 'unknown', label: 'Source not recorded' },
 ]
+
+// ONE FILTER, TWO CONTROLS. All, Company and Personal are the switch on the page;
+// the states inside Personal, and the older expenses that are neither, are in the
+// Filters panel. Both read and write the same value, so they can never disagree.
+
+export type PaidFromView = '' | 'company' | 'personal'
+
+export const PAID_FROM_VIEW_OPTIONS: readonly { value: PaidFromView; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'company', label: 'Company' },
+  { value: 'personal', label: 'Personal' },
+]
+
+/** Which switch position a filter is, or null when it is none of the three. */
+export function paidFromView(filter: ReimbursementFilter | undefined): PaidFromView | null {
+  switch (filter ?? '') {
+    case '': return ''
+    case 'company': return 'company'
+    case 'personal':
+    case 'pending':
+    case 'reimbursed': return 'personal'
+    default: return null
+  }
+}
+
+export const REIMBURSEMENT_PANEL_OPTIONS: readonly { value: ReimbursementFilter; label: string }[] = [
+  { value: '', label: 'Any' },
+  { value: 'pending', label: REIMBURSEMENT_ICON_LABEL.pending },
+  { value: 'reimbursed', label: REIMBURSEMENT_ICON_LABEL.reimbursed },
+  { value: 'unknown', label: REIMBURSEMENT_STATE_LABEL.unknown },
+]
+
+/** What the panel's select shows: the switch's own values are not its business. */
+export function reimbursementPanelValue(filter: ReimbursementFilter | undefined): ReimbursementFilter {
+  return filter === 'pending' || filter === 'reimbursed' || filter === 'unknown' ? filter : ''
+}
+
+/** A company expense has no payer, so a chosen payer cannot outlive Company. */
+export function withPaidFromView(filters: ExpenseFilters, view: PaidFromView): ExpenseFilters {
+  return { ...filters, reimbursement: view, paidBy: view === 'company' ? '' : filters.paidBy }
+}
+
+/** Only a personal expense has a payer, so choosing one is choosing Personal. */
+export function withPaidBy(filters: ExpenseFilters, paidBy: string): ExpenseFilters {
+  const current = filters.reimbursement ?? ''
+  return { ...filters, paidBy, reimbursement: paidBy && (current === '' || current === 'company') ? 'personal' : current }
+}
 
 // ── Selecting expenses to reimburse ──────────────────────────────────────────
 

@@ -20,11 +20,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { ExpenseForm } from './ExpenseForm'
 import {
   ExpenseList, ExpenseTable, expenseListMode,
-  EXPENSE_TABLE_MIN_CONTAINER_PX, EXPENSE_TABLE_COLUMNS, EXPENSE_FLEX_COLUMN_MIN_PX,
+  EXPENSE_TABLE_MIN_CONTAINER_PX, EXPENSE_TABLE_COLUMNS, EXPENSE_PAID_TO_MIN_PX,
 } from './ExpensesView'
 import type { ExpenseCategory, ExpenseListRow, ExpenseRow } from '@/lib/finance/expenses'
 import { mayDeleteExpense, mayEditExpense } from '@/lib/finance/expenseDeletion'
 import { VOICE_UNSUPPORTED_MESSAGE } from '@/lib/finance/expenseVoice'
+import { colors } from '@/lib/tokens'
 
 const CATEGORIES: ExpenseCategory[] = [
   { id: 'cat-1', name: 'Diesel', is_active: true },
@@ -250,14 +251,18 @@ describe('table or cards, by the room actually available', () => {
     // The first version of this number was 720 — the container a 1024px window
     // leaves — which is what the LIST has, not what the TABLE needs. At 720 the
     // two flexible columns shared about 50px and the payee truncated to nothing.
-    const fixed = EXPENSE_TABLE_COLUMNS
-      .filter(c => 'width' in c)
-      .reduce((sum, c) => sum + parseInt((c as { width: string }).width, 10), 0)
-    const flexible = EXPENSE_TABLE_COLUMNS.filter(c => !('width' in c))
-    assert.equal(flexible.length, 1, 'Paid to takes the remainder; there is no Remark column')
-    assert.ok(EXPENSE_TABLE_MIN_CONTAINER_PX - fixed >= EXPENSE_FLEX_COLUMN_MIN_PX,
-      'the threshold leaves Paid to a readable width')
-    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 894, '732 fixed + 160 for Paid to + 2 for the border')
+    const floors = EXPENSE_TABLE_COLUMNS.reduce((sum, c) => sum + parseInt(c.width, 10), 0)
+    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, floors + 2, 'every floor, plus the border of the card')
+    assert.equal(EXPENSE_TABLE_MIN_CONTAINER_PX, 954, '952 of floors + 2 for the border')
+    assert.equal(EXPENSE_TABLE_COLUMNS.find(c => c.key === 'paid_to')?.width, `${EXPENSE_PAID_TO_MIN_PX}px`)
+    assert.ok(EXPENSE_TABLE_MIN_CONTAINER_PX <= 972,
+      'a 1280px window with the sidebar pinned (972px of list) still gets the table')
+  })
+
+  test('NO COLUMN IS LEFT TO SWALLOW THE SPARE WIDTH', () => {
+    // With every width stated, table-layout: fixed shares a wide window across
+    // all eight. One auto column took all of it and left Paid to 640px across.
+    assert.equal(EXPENSE_TABLE_COLUMNS.every(c => /^\d+px$/.test(c.width)), true)
   })
 
   test('THE FIRST FRAME IS CARDS, so nothing can scroll sideways before measuring', () => {
@@ -285,7 +290,7 @@ describe('the desktop table', () => {
   test('every column the requirement names has a header, in order', () => {
     const headers = [...html.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1])
     assert.deepEqual(headers,
-      ['Date', 'Amount', 'Paid to', 'Category', 'Mode', 'Recorded by', 'Actions'])
+      ['Date', 'Amount', 'Paid to', 'Paid from', 'Category', 'Mode', 'Recorded by', 'Actions'])
     assert.deepEqual(headers, EXPENSE_TABLE_COLUMNS.map(c => c.label),
       'the header row is drawn from the column list the threshold is computed from')
   })
@@ -312,10 +317,104 @@ describe('the desktop table', () => {
       mayEdit: () => false, mayDelete: () => false,
       onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {}, onOpen: () => {},
     }))
-    assert.ok(view.includes('>View</button>'))
+    assert.ok(view.includes('data-testid="expense-view"'))
     assert.ok(/aria-label="View the expense of [^"]+ paid to [^"]+"/.test(view))
-    assert.equal(view.includes('>Edit</button>'), false)
+    assert.equal(/aria-label="Correct the expense/.test(view), false)
     assert.equal(/aria-label="Delete the expense/.test(view), false)
+  })
+
+  test('THE THREE ACTIONS ARE ICONS, AND EACH ONE IS NAMED', () => {
+    // The tall word buttons were what held every row at 57px.
+    const row = renderToStaticMarkup(createElement(ExpenseTable, {
+      rows: [listRow()], loading: false, error: null, narrowed: false,
+      categoryName: () => 'Diesel', personName: () => 'Nishant',
+      mayEdit: () => true, mayDelete: () => true,
+      onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {}, onOpen: () => {},
+    }))
+    assert.equal((row.match(/class="expense-row-icon/g) ?? []).length, 3)
+    for (const title of ['View', 'Edit', 'Delete']) {
+      assert.ok(row.includes(`title="${title}"`), `${title} names itself to a pointer`)
+    }
+    assert.equal(row.includes('boe-btn'), false, 'no tall button is left to stretch the row')
+  })
+})
+
+describe('the Paid from column', () => {
+  const table = (over: Partial<ExpenseListRow>) => renderToStaticMarkup(createElement(ExpenseTable, {
+    rows: [listRow(over)], loading: false, error: null, narrowed: false,
+    categoryName: () => 'Diesel', personName: () => 'Recorder', payerName: () => 'Dhruv',
+    mayEdit: () => false, mayDelete: () => false,
+    onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {},
+  }))
+
+  test('Company is the word Company, in blue, with no reimbursement icon', () => {
+    const html = table({ paid_from: 'company', paid_by: null })
+    assert.ok(new RegExp(`color:${colors.blue}[^>]*>Company<`).test(html))
+    assert.equal(html.includes('lucide-clock'), false)
+    assert.equal(html.includes('lucide-circle-check'), false)
+  })
+
+  test('Personal and not reimbursed: the word in terracotta, and a clock', () => {
+    const html = table({ paid_from: 'personal', paid_by: 'u-2', reimbursement_id: null })
+    assert.ok(new RegExp(`color:${colors.brandInk}[^>]*>Personal<`).test(html))
+    assert.ok(html.includes('lucide-clock'))
+    assert.equal(html.includes('lucide-circle-check'), false)
+    assert.ok(html.includes('aria-label="Not reimbursed, paid by Dhruv"'), 'named for a screen reader')
+  })
+
+  test('Personal and reimbursed: a filled tick instead of the clock', () => {
+    const html = table({ paid_from: 'personal', paid_by: 'u-2', reimbursement_id: 'b-1' })
+    assert.ok(html.includes('lucide-circle-check'))
+    assert.equal(html.includes('lucide-clock'), false)
+    assert.ok(html.includes(`fill="${colors.green}"`), 'the shape differs too, not only the colour')
+    assert.ok(html.includes('aria-label="Reimbursed, paid by Dhruv"'))
+  })
+
+  test('who paid is not printed in the row, and is one point of the mouse away', () => {
+    const html = table({ paid_from: 'personal', paid_by: 'u-2', reimbursement_id: null })
+    assert.ok(html.includes('title="Paid by Dhruv · Not reimbursed"'))
+    assert.equal(/>[^<]*Dhruv[^<]*</.test(html), false, 'the payer is not a word in the row')
+  })
+
+  test('AN OLDER EXPENSE IS A DASH, NEVER COMPANY AND NEVER PERSONAL', () => {
+    const html = table({ paid_from: null, paid_by: null })
+    assert.ok(html.includes('aria-label="Source not recorded"'))
+    assert.equal(html.includes('>Company<'), false)
+    assert.equal(html.includes('>Personal<'), false)
+  })
+
+  test('the row has no Pending, Reimbursed or Company label beside the payee any more', () => {
+    for (const over of [{ paid_from: 'personal' as const, paid_by: 'u-2' }, { paid_from: 'company' as const, paid_by: null }]) {
+      const payee = table(over).split('Sharma Ji')[1].split('</td>')[0]
+      assert.equal(/Pending|Reimbursed|Company/.test(payee), false)
+    }
+  })
+
+  test('a bill still shows, whatever the source', () => {
+    const row = listRow({ paid_from: null, paid_by: null }) as ExpenseListRow & { bills: { id: string }[] }
+    row.bills = [{ id: 'b-1' }]
+    const html = renderToStaticMarkup(createElement(ExpenseTable, {
+      rows: [row], loading: false, error: null, narrowed: false,
+      categoryName: () => 'Diesel', personName: () => 'Recorder',
+      mayEdit: () => false, mayDelete: () => false,
+      onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {},
+    }))
+    assert.ok(html.includes('aria-label="Bill attached"'))
+  })
+
+  test('A PHONE HAS NO POINTER: the card prints the state and the payer in words', () => {
+    const html = renderList({
+      rows: [listRow({ paid_from: 'personal', paid_by: 'u-2', reimbursement_id: null })],
+      payerName: () => 'Dhruv',
+    })
+    assert.ok(html.includes('>Not reimbursed<'))
+    assert.ok(html.includes('paid by <!-- -->Dhruv') || html.includes('paid by Dhruv'))
+    assert.equal(html.includes('aria-label="Not reimbursed'), false, 'the word already says it')
+  })
+
+  test('a card for an older expense draws no source line', () => {
+    const html = renderList({ rows: [listRow({ paid_from: null, paid_by: null })] })
+    assert.equal(html.includes('data-reimbursement-state'), false)
   })
 })
 

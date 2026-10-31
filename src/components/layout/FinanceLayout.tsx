@@ -371,8 +371,12 @@ export function FinanceLayout({
         {/* Page body */}
         <div className="boe-page-body">
           <ViewModeBanner />
-          <HandoverBanner />
-          <UnclosedFundsCard />
+          {/* One line when it can be: the closed "Other open handovers" sits
+              beside the money line (.boe-finance-notices). */}
+          <div className="boe-finance-notices">
+            <HandoverBanner />
+            <UnclosedFundsCard />
+          </div>
           {children}
         </div>
 

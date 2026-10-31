@@ -221,6 +221,15 @@ describe('source contracts', () => {
     assert.match(LAYOUT, /Hand over cash/)
   })
 
+  test('the closed handovers and the money line share a line, and an open list takes its own', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r/g, '')
+    assert.match(LAYOUT, /className="boe-finance-notices">\s*<HandoverBanner \/>\s*<UnclosedFundsCard \/>\s*<\/div>/)
+    assert.match(css, /\.boe-finance-notices > \.boe-handover-stack \{ display: contents; \}/)
+    assert.match(css, /\.boe-finance-notices > \.boe-handover-stack > \* \{ flex: 1 1 100%;/)
+    assert.match(css, /\.boe-finance-notices > \.boe-handover-stack > details:not\(\[open\]\) \{ flex: 0 0 auto; \}/)
+    assert.match(css, /\.boe-finance-notices:empty \{ display: none; \}/)
+  })
+
   test('and on the home screen, for recipients without Finance access', () => {
     // On the launcher, "Cash handed to you" in the For you panel, whatever the
     // person's Finance access: Accept is right there, through the same

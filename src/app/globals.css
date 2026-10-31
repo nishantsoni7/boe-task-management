@@ -8558,6 +8558,247 @@ tr:hover .boe-payment-id-copy,
 @media (max-width: 480px) {
   .expense-filter-check { height: 38px; font-size: 13px; }
 }
+
+/* ── Expenses: one line of controls, 36px rows (owner, 2026-10-31) ──
+   The tabs, the Paid from switch, the total, what is owed and three quiet tools.
+   It wraps as whole groups in a narrower window. Below 768px the groups stack in
+   a fixed order and every control is a full tap target. */
+.expense-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 36px;
+  margin-bottom: 6px;
+}
+.expense-tabs { display: flex; gap: 18px; margin-right: 14px; }
+.expense-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--boe-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-tab:hover { color: var(--boe-text); }
+.expense-tab[aria-selected="true"] {
+  font-weight: 700;
+  color: var(--boe-text);
+  box-shadow: inset 0 -2px 0 var(--boe-brand);
+}
+.expense-source-switch {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--boe-surface-sunken);
+}
+.expense-source-option {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--boe-text-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-source-option[data-source="company"] { color: #335A86; }
+.expense-source-option[data-source="personal"] { color: var(--boe-brand-ink); }
+.expense-source-option[aria-pressed="true"] {
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(48,53,54, 0.18);
+}
+.expense-figures {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-left: auto;
+}
+.expense-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--boe-text-muted);
+  white-space: nowrap;
+}
+.expense-total strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--boe-text);
+  font-variant-numeric: tabular-nums;
+}
+.expense-divider { flex: none; width: 1px; height: 18px; background: var(--boe-border-strong); }
+.expense-owed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #805B0D;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-owed strong { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.expense-owed:hover { background: rgba(196,138,26, 0.10); }
+.expense-owed[aria-pressed="true"] { background: rgba(196,138,26, 0.16); }
+.expense-tools {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+.expense-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--boe-text-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-tool:hover:not(:disabled),
+.expense-tool[aria-expanded="true"] { background: var(--boe-surface-sunken); color: var(--boe-text); }
+.expense-tool:disabled { opacity: 0.45; cursor: not-allowed; }
+.boe-list-search.expense-search {
+  flex: none;
+  width: 36px;
+  max-width: 100%;
+  padding: 0 9px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--boe-text-strong);
+  overflow: hidden;
+  transition: width 0.16s ease;
+}
+.boe-list-search.expense-search:hover { background: var(--boe-surface-sunken); }
+.boe-list-search.expense-search:focus-within,
+.boe-list-search.expense-search.is-filled { width: 250px; background: #FFFFFF; }
+.boe-list-search.expense-search.is-filled:not(:focus-within) { border-color: var(--boe-border-input); }
+.boe-list-search.expense-search input::placeholder { color: var(--boe-text-placeholder); }
+@media (prefers-reduced-motion: reduce) {
+  .boe-list-search.expense-search { transition: none; }
+}
+.expense-filter-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--boe-text-strong);
+}
+.expense-filter-dates { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--boe-text-muted); }
+.expense-filter-dates input {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 36px;
+  padding: 0 6px;
+  border: 1px solid var(--boe-border-input);
+  border-radius: 8px;
+  background: #FFFFFF;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--boe-text);
+}
+.expense-row:hover > td { background: var(--boe-surface-sunken); }
+/* The table is never drawn on a phone, so these are small on purpose: three of
+   them were what used to hold a row at 57px. */
+.expense-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--boe-text-strong);
+  cursor: pointer;
+}
+.expense-row-icon:hover { background: var(--boe-surface-hover); color: var(--boe-text); }
+.expense-row-icon-danger,
+.expense-row-icon-danger:hover { color: #B42332; }
+.expense-row-icon-danger:hover { background: #FBE9EC; }
+/* A touch screen wide enough for the table: as large as the column allows. */
+@media (pointer: coarse) {
+  .expense-row-icon { width: 30px; height: 32px; }
+}
+@media (min-width: 768px) {
+  .boe-page-body:has(.expense-controls) { padding-top: 12px; }
+  .boe-page-body:has(.expense-controls) .boe-finance-notices { margin-bottom: 8px; }
+}
+@media (max-width: 767px) {
+  .expense-controls { gap: 8px; }
+  .expense-tabs { flex: 1 1 100%; margin-right: 0; }
+  .expense-tab { height: 44px; }
+  .expense-source-switch { order: 2; height: 44px; }
+  .expense-source-option { padding: 0 8px; }
+  .expense-tools { order: 3; margin-left: auto; }
+  .expense-tool { min-width: 44px; height: 44px; }
+  .expense-tool-word { display: none; }
+  .boe-list-search.expense-search { width: 44px; height: 44px; padding: 0 13px; }
+  .boe-list-search.expense-search:focus-within,
+  .boe-list-search.expense-search.is-filled { width: min(250px, calc(100vw - 32px)); }
+  .expense-figures { order: 4; flex: 1 1 100%; flex-wrap: wrap; gap: 2px 10px; margin-left: 0; }
+  .expense-divider { display: none; }
+  .expense-owed { padding: 0; }
+}
+@media (max-width: 480px) {
+  .expense-filter-dates { flex-wrap: wrap; }
+  .expense-filter-dates input { flex-basis: 100%; }
+  .expense-filter-dates > span { display: none; }
+}
+
+/* ── Finance notices: one line when it can be ──
+   The closed "Other open handovers" and the money-not-with-the-company line sit
+   side by side. display: contents lets the banner's children join this row; the
+   viewer's own handovers, an error, and the list once opened each take a line. */
+.boe-finance-notices {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 16px;
+}
+.boe-finance-notices:empty { display: none; }
+.boe-finance-notices > .boe-handover-stack { display: contents; }
+.boe-finance-notices > .boe-handover-stack > * { flex: 1 1 100%; min-width: 0; }
+.boe-finance-notices > .boe-handover-stack > details:not([open]) { flex: 0 0 auto; }
+.boe-finance-notices .boe-handover-observers-title { margin: 0; }
+.boe-finance-notices > section { flex: 1 1 0; min-width: min(100%, 420px); }
 /* The bar is FIXED, not sticky: below 768px .boe-main-content sets
    overflow-x: hidden, which makes it the container sticky binds to while the
    WINDOW scrolls, so sticky would never engage. Beside the 260px sidebar on a

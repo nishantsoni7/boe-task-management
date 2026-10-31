@@ -445,8 +445,8 @@ export type ExpenseFilters = {
   categoryId: string
   paymentMode: string
   search: string
-  /** '' | 'company' | 'pending' | 'reimbursed' | 'unknown' — see expenseReimbursements.ts. */
-  reimbursement?: '' | 'company' | 'pending' | 'reimbursed' | 'unknown'
+  /** '' | 'company' | 'personal' | 'pending' | 'reimbursed' | 'unknown' — see expenseReimbursements.ts. */
+  reimbursement?: '' | 'company' | 'personal' | 'pending' | 'reimbursed' | 'unknown'
   /** A payer's user id, or ''. */
   paidBy?: string
   /** Only expenses with no bill attached. */
