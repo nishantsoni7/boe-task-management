@@ -12,7 +12,12 @@ import {
   type DebitKind,
   type NonCustomerKind,
 } from '@/lib/finance/bankStatement'
+import { BANK_ACCOUNT_LABEL } from '@/lib/finance/bankStatement'
 import {
+  amountsClose,
+  daysBetween,
+  nameOverlap,
+  payerFromNarration,
   suggestExpensesForDebit,
   suggestPaymentsForLine,
   type ExpenseSuggestion,
@@ -20,8 +25,11 @@ import {
   type MatchPayment,
   type PaymentSuggestion,
 } from '@/lib/finance/bankMatching'
-import { toPaise } from '@/lib/finance/bankMoney'
+import { samePaise, toPaise } from '@/lib/finance/bankMoney'
 import { samePayer, suggestOrdersForLine, type OrderSuggestion, type PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
+import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { formatMoney } from '@/lib/finance/piPaymentView'
+import { isConfirmedPayment } from '@/app/finance/paymentRouting'
 
 export type BankLink = {
   id: string
@@ -129,6 +137,55 @@ export type BankExpense = MatchExpense & {
   linkedAmount: number
 }
 
+// ── What the database says about a credit ───────────────────────────────────
+//
+// THE PAGE DECIDES NOTHING HERE. bank_lines_sync_state is the one definition of
+// Synced and bank_lines_recorded_matches the one list of payments a credit could
+// be, the same rule that refuses a second payment, so the screen and the refusal
+// cannot disagree. Both are read live, so a payment rejected, deleted or edited
+// after it was linked shows at once.
+
+/** Why a credit is not Synced. Null means it truly is. */
+export type SyncIssue =
+  | 'no_payment' | 'part_linked' | 'waiting'
+  | 'payment_rejected' | 'payment_deleted' | 'other_account' | 'amount_changed'
+
+/**
+ * reference: the bank's reference is on this payment and it has room: it IS this
+ * credit. reference_used: the reference is on a payment already fully linked.
+ * amount: the same rupees and paise left, either HDFC account, within 21 days.
+ * linked_elsewhere: the same money, on a payment linked in full to a credit further
+ * from its date than this one, so that link may be the mistake.
+ */
+export type MatchKind = 'reference' | 'reference_used' | 'amount' | 'linked_elsewhere'
+
+export type BankMatch = {
+  paymentId: string
+  humanPaymentId: string | null
+  clientName: string | null
+  amount: number
+  leftToLink: number
+  paymentDate: string
+  paymentMode: string
+  proofNote: string | null
+  status: string
+  kind: MatchKind
+  /** linked_elsewhere only: the link a person can undo, and the credit it is on now. */
+  linkedLinkId: string | null
+  linkedLineDate: string | null
+  linkedNarration: string | null
+}
+
+export type LineReview = {
+  issue: SyncIssue | null
+  /** Rupees of the credit no verified payment covers yet. */
+  uncovered: number
+  /** The linked payment the issue is about. */
+  paymentLabel: string | null
+  paymentMode: string | null
+  matches: BankMatch[]
+}
+
 export type LineWithSuggestions = {
   line: BankLine
   status: LineStatus
@@ -140,13 +197,16 @@ export type LineWithSuggestions = {
   debitKind: { kind: DebitKind; reason: string; payee: string | null } | null
   /** Money in: orders that earlier credits from the same payer went to. */
   orderSuggestions: OrderSuggestion[]
+  /** Money in: what the database found. A credit it did not answer for is not in sync. */
+  review: LineReview
 }
 
 export function analyseLine(
   line: BankLine, payments: BankPayment[], expenses: BankExpense[] = [], history: PayerHistoryEntry[] = [],
+  review: LineReview = { issue: 'no_payment', uncovered: line.deposit, paymentLabel: null, paymentMode: null, matches: [] },
 ): LineWithSuggestions {
   const status = lineStatus(line)
-  const none = { line, status, suggestions: [], nonCustomer: null, expenseSuggestions: [], debitKind: null, orderSuggestions: [] }
+  const none = { line, status, suggestions: [], nonCustomer: null, expenseSuggestions: [], debitKind: null, orderSuggestions: [], review }
   if (status !== 'unlinked' && status !== 'partly') return none
   if (line.withdrawal > 0) {
     const remainingOut = (toPaise(line.withdrawal) - toPaise(linkedTotal(line))) / 100
@@ -249,20 +309,151 @@ export async function loadMonthLines(supabase: SupabaseClient, account: BankAcco
 // ── Sync: every customer credit should be a payment in Confirmed Payments ───
 
 /**
- * Synced = the credit is linked to a payment. Not needed = marked (or looking
- * like) money that is not a customer's. Everything else is Not Synced, with the
- * reason the last attempt gave, if there was one.
+ * Synced = verified payments in this account cover every rupee of the credit.
+ * Not needed = a PERSON marked it; a text guess never finishes a credit. Waiting
+ * = fully linked, but the payment is not verified, so it is not in Confirmed
+ * Payments yet. Everything else is Not Synced, with the reason.
  */
-export type SyncState = 'synced' | 'not_synced' | 'not_needed'
+export type SyncState = 'synced' | 'waiting' | 'not_synced' | 'not_needed'
 
 export function syncState(a: LineWithSuggestions): SyncState {
   if (a.line.deposit <= 0) return 'not_needed'
-  if (activeLinks(a.line).length > 0) return 'synced'
-  if (a.status === 'old_order' || a.status === 'not_customer' || a.nonCustomer) return 'not_needed'
-  return 'not_synced'
+  if (a.status === 'old_order' || a.status === 'not_customer') return 'not_needed'
+  if (a.review.issue === null) return 'synced'
+  return a.review.issue === 'waiting' ? 'waiting' : 'not_synced'
+}
+
+export const SYNC_PILL: Record<SyncState, { tone: 'full' | 'over' | 'zero' | 'neutral'; label: string }> = {
+  synced: { tone: 'full', label: 'Synced' },
+  waiting: { tone: 'zero', label: 'Waiting for Finance' },
+  not_synced: { tone: 'over', label: 'Not Synced' },
+  not_needed: { tone: 'neutral', label: 'Not needed' },
 }
 
 export const SYNC_NOT_YET = 'Not added to Confirmed Payments yet'
+
+/** Sentences the page wrote before these reasons existed; live matches replace them. */
+const OUTDATED_SYNC_ERROR = /may already be recorded|already carries|(already on|this may be) .* linked to another/
+
+/** What stands between this credit and Synced, in a sentence. Null when nothing does. */
+export function syncReason(a: LineWithSuggestions): string | null {
+  const { issue, paymentLabel, paymentMode, uncovered, matches } = a.review
+  const payment = paymentLabel ?? 'The linked payment'
+  switch (issue) {
+    case null: return null
+    case 'waiting': return `${payment} is waiting for Finance`
+    case 'payment_rejected': return `${payment} was rejected`
+    case 'payment_deleted': return `${payment} was deleted`
+    case 'other_account': return `${payment} says ${paymentModeLabel(paymentMode)}`
+    case 'amount_changed': return `${payment} was changed and no longer covers this credit`
+    case 'part_linked': return `${formatMoney(uncovered)} of this credit has no payment`
+    case 'no_payment': {
+      const match = matches[0]
+      if (match?.linkedLineDate) return `May be ${match.humanPaymentId ?? 'a recorded payment'}, linked to the credit of ${formatBankDate(match.linkedLineDate)}`
+      if (match) return `May already be ${match.humanPaymentId ?? 'a recorded payment'}`
+      if (a.nonCustomer) return `Looks like: ${a.nonCustomer.reason}. Please confirm.`
+      const error = a.line.sync_error
+      return error && !OUTDATED_SYNC_ERROR.test(error) ? error : SYNC_NOT_YET
+    }
+  }
+}
+
+/** Plain credit nobody can mistake for anything else: one press adds it. Anything else is looked at first. */
+export function rowAction(a: LineWithSuggestions, canAdd: boolean): 'add' | 'review' | null {
+  if (syncState(a) !== 'not_synced') return null
+  const plain = a.review.issue === 'no_payment' && a.review.matches.length === 0 && !a.nonCustomer
+  return plain && canAdd ? 'add' : 'review'
+}
+
+/** The credits Check sync may try: no payment yet, and not a guess that it is not a customer's. */
+export function syncableLineIds(items: LineWithSuggestions[]): string[] {
+  return items.filter(a => a.review.issue === 'no_payment' && !a.nonCustomer).map(a => a.line.id)
+}
+
+export type CompareRow = { label: string; credit: string; payment: string; verdict: string; tone: 'same' | 'differs' | 'plain' }
+
+/** The credit and a recorded payment side by side, so a person can decide. */
+export function compareMatch(line: BankLine, m: BankMatch): CompareRow[] {
+  const left = (toPaise(line.deposit) - toPaise(linkedTotal(line))) / 100
+  // A payment linked elsewhere has nothing left to link; the money to compare is the payment itself.
+  const elsewhere = m.kind === 'linked_elsewhere'
+  const compared = elsewhere ? m.amount : m.leftToLink
+  const sameAmount = samePaise(left, compared)
+  const sharedReference = m.kind === 'reference' || m.kind === 'reference_used'
+  const days = Math.abs(daysBetween(line.line_date, m.paymentDate))
+  const sameAccount = m.paymentMode === line.account
+  const payer = payerFromNarration(line.narration)
+  const overlap = nameOverlap(m.clientName, line.narration)
+  const verified = isConfirmedPayment(m.status)
+  return [
+    {
+      label: 'Amount',
+      credit: formatMoney(left),
+      payment: elsewhere || samePaise(m.amount, m.leftToLink) ? formatMoney(m.amount) : `${formatMoney(m.amount)} (${formatMoney(m.leftToLink)} left)`,
+      verdict: m.kind === 'reference_used' ? 'Already linked' : sameAmount ? 'Same' : `Differs by ${formatMoney(Math.abs(toPaise(left) - toPaise(compared)) / 100)}`,
+      tone: sameAmount ? 'same' : 'differs',
+    },
+    {
+      label: 'Date',
+      credit: formatBankDate(line.line_date),
+      payment: formatBankDate(m.paymentDate),
+      verdict: days === 0 ? 'Same day' : `${days} day${days === 1 ? '' : 's'} apart`,
+      tone: days <= 3 ? 'same' : 'differs',
+    },
+    {
+      label: 'Account',
+      credit: BANK_ACCOUNT_LABEL[line.account],
+      payment: paymentModeLabel(m.paymentMode),
+      verdict: sameAccount ? 'Same' : 'Different',
+      tone: sameAccount ? 'same' : 'differs',
+    },
+    {
+      label: 'Name',
+      credit: payer ?? '—',
+      payment: m.clientName ?? 'Not identified',
+      verdict: !m.clientName ? '' : overlap >= 0.99 ? 'Same' : overlap >= 0.5 ? 'Partly the same' : 'No match',
+      tone: overlap >= 0.5 ? 'same' : 'plain',
+    },
+    {
+      label: 'Reference',
+      credit: line.bank_ref ?? '—',
+      payment: m.proofNote ?? 'None recorded',
+      verdict: sharedReference ? 'Same reference' : '',
+      tone: sharedReference ? 'same' : 'plain',
+    },
+    {
+      label: 'Status',
+      credit: '',
+      payment: PAYMENT_STATUS_LABEL[m.status] ?? m.status,
+      verdict: verified ? 'In Confirmed Payments' : 'Not verified yet',
+      tone: verified ? 'same' : 'differs',
+    },
+  ]
+}
+
+/** Where a payment opens: Confirmed Payments once verified, Payment Requests before that. */
+export function paymentHref(paymentId: string, status: string): string {
+  return isConfirmedPayment(status) ? `/finance/received?payment=${paymentId}` : `/finance?tab=all&request=${paymentId}`
+}
+
+export type LookAlike = { line: BankLine; exact: boolean; otherPayment: string | null }
+
+/**
+ * A payment with no bank credit, beside a credit of the same money that already
+ * has a payment: the signature of one credit recorded twice. A flag for a person.
+ * Only this month's credits are on the page, so one just over a month-end is not
+ * flagged; the payment is still listed.
+ */
+export function lookAlikeCredit(p: BankPayment, credits: LineWithSuggestions[], payments: BankPayment[]): LookAlike | null {
+  const found = credits
+    .filter(a => a.status === 'linked' && !activeLinks(a.line).some(k => k.payment_id === p.id))
+    .filter(a => amountsClose(a.line.deposit, p.remaining) && Math.abs(daysBetween(a.line.line_date, p.payment_date)) <= 21)
+    .sort((a, b) => Number(samePaise(b.line.deposit, p.remaining)) - Number(samePaise(a.line.deposit, p.remaining))
+      || Math.abs(daysBetween(a.line.line_date, p.payment_date)) - Math.abs(daysBetween(b.line.line_date, p.payment_date)))[0]
+  if (!found) return null
+  const other = payments.find(x => x.id === activeLinks(found.line)[0].payment_id)
+  return { line: found.line, exact: samePaise(found.line.deposit, p.remaining), otherPayment: other?.human_payment_id ?? null }
+}
 
 export type SyncResult = {
   created: number
@@ -284,6 +475,58 @@ export async function syncBankCredits(supabase: SupabaseClient, lineIds: string[
     out.failed.push(...(r?.failed ?? []).map(f => ({ lineId: f.line_id, reason: f.reason })))
   }
   return out
+}
+
+const REVIEW_CHUNK = 500
+
+type SyncRow = { line_id: string; issue: SyncIssue | null; uncovered: number | string; payment_label: string | null; payment_mode: string | null }
+type MatchRow = {
+  line_id: string; payment_id: string; human_payment_id: string | null; client_name: string | null; amount: number | string
+  left_to_link: number | string; payment_date: string; payment_mode: string; proof_note: string | null; status: string; match_kind: MatchKind
+  linked_link_id: string | null; linked_line_date: string | null; linked_narration: string | null
+}
+
+/**
+ * What the database says about these credits. A failed read throws, so the month
+ * shows an error rather than a list nobody has checked.
+ */
+export async function loadLineReview(supabase: SupabaseClient, creditIds: string[]): Promise<Map<string, LineReview>> {
+  const out = new Map<string, LineReview>()
+  for (let i = 0; i < creditIds.length; i += REVIEW_CHUNK) {
+    const { data, error } = await supabase.rpc('bank_lines_sync_state', { p_line_ids: creditIds.slice(i, i + REVIEW_CHUNK) })
+    if (error) throw new Error('The sync status could not be read.')
+    for (const r of (data ?? []) as SyncRow[]) {
+      out.set(r.line_id, { issue: r.issue, uncovered: num(r.uncovered), paymentLabel: r.payment_label, paymentMode: r.payment_mode, matches: [] })
+    }
+  }
+  const open = [...out].filter(([, r]) => r.issue !== null && r.issue !== 'waiting').map(([id]) => id)
+  for (let i = 0; i < open.length; i += REVIEW_CHUNK) {
+    const { data, error } = await supabase.rpc('bank_lines_recorded_matches', { p_line_ids: open.slice(i, i + REVIEW_CHUNK) })
+    if (error) throw new Error('The recorded payments could not be compared.')
+    for (const r of (data ?? []) as MatchRow[]) {
+      out.get(r.line_id)?.matches.push({
+        paymentId: r.payment_id, humanPaymentId: r.human_payment_id, clientName: r.client_name, amount: num(r.amount),
+        leftToLink: num(r.left_to_link), paymentDate: r.payment_date, paymentMode: r.payment_mode, proofNote: r.proof_note,
+        status: r.status, kind: r.match_kind,
+        linkedLinkId: r.linked_link_id, linkedLineDate: r.linked_line_date, linkedNarration: r.linked_narration,
+      })
+    }
+  }
+  return out
+}
+
+export type SyncOverview = {
+  accounts: BankAccountKey[]
+  months: { account: BankAccountKey; month: string; not_synced: number; not_synced_amount: number; not_in_bank: number }[]
+  gaps: { account: BankAccountKey; gap_from: string; gap_to: string }[]
+}
+
+/** Both accounts, every month: what is still open, and dates no statement covers. */
+export async function loadSyncOverview(supabase: SupabaseClient): Promise<SyncOverview> {
+  const { data, error } = await supabase.rpc('bank_sync_overview')
+  if (error || !data) throw new Error('The sync check could not be read.')
+  const r = data as SyncOverview
+  return { ...r, months: r.months.map(m => ({ ...m, not_synced_amount: num(m.not_synced_amount) })) }
 }
 
 /** The customer credits of one import: unmarked, and not looking like non-customer money. */

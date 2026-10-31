@@ -98,6 +98,15 @@ describe('suggestNonCustomerKind', () => {
     assert.equal(k('NEFT CR-PUNB0196000-SHREE RAM WOODEN INDUSTRIES PVT LTD-BEST OF EXPORTS-PUNBQ26246025396'), null)
     assert.equal(k('RTGS CR-SBIN0005166-MAHANTESH ENTERPRISES PROP M S NARA-BEST OF EXPORTS-SBINR12026100645079909'), null)
     assert.equal(k('IMPS-626113596259-M S LOGISTICS-KKBK-XXXXXX2052-TABLE  BASE'), null)
+    assert.equal(k('IMPS-626113596259-M S LOGISTICS-KKBK-XXXXXX2052-PRINT PD'), null)
+  })
+  test('the company paying itself is recognised however the bank spells it', () => {
+    assert.equal(k('NEFT CR-KKBK0000958-BESTOFEXPORTS-BESTOFEXPORTS-KKBKH26295886339'), 'own_transfer')
+    assert.equal(k('NEFT CR-KKBK0000958-BEST OF EXPORT-BESTOFEXPORTS-KKBKH26295886339'), 'own_transfer')
+  })
+  test('interest is still recognised', () => {
+    assert.equal(k('INT PD 01-07-2026 TO 30-09-2026'), 'interest')
+    assert.equal(k('INT. PD 01-07-2026'), 'interest')
   })
 })
 

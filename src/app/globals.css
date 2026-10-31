@@ -11962,6 +11962,30 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .bank-suggest-head > div { min-width: 0; }
 .bank-suggest-why { font-size: 12px; color: #4C5352; }
 .bank-warn { color: #805B0D; margin-top: 2px; }
+.bank-compare { border: 1px solid #ECE7E0; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.bank-compare-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: #303536; }
+.bank-compare-head a { font-size: 12px; color: #335A86; white-space: nowrap; }
+.bank-compare-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.bank-compare-table th, .bank-compare-table td { padding: 2px 8px 2px 0; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.bank-compare-table th { font-weight: 500; color: #686D6C; }
+.bank-compare-table thead th:first-child { width: 72px; }
+.bank-compare-table td { color: #303536; }
+.bank-compare-table td.is-same { color: #276247; }
+.bank-compare-table td.is-differs { color: #805B0D; }
+.bank-compare-table td.is-plain { color: #686D6C; }
+.bank-compare-other { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.bank-sync-check { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.bank-sync-card { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; text-align: left; font: inherit; font-size: 12px; color: #303536; background: #FFFFFF; border: 1px solid #ECE7E0; border-radius: 10px; cursor: pointer; }
+.bank-sync-card:hover { border-color: #C9C2B8; }
+.bank-sync-card.is-active { border-color: #303536; }
+.bank-sync-card:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: 1px !important; }
+.bank-sync-card strong { font-size: 13px; font-weight: 600; }
+.bank-sync-good { color: #276247; }
+.bank-sync-bad { color: #A12438; }
+.bank-gap-note { margin: 0 0 10px; padding: 7px 10px; border-radius: 8px; background: #FAF0DA; color: #805B0D; font-size: 12px; }
+@media (max-width: 640px) {
+  .bank-sync-check { grid-template-columns: 1fr; }
+}
 
 .bank-drop {
   border: 1.5px dashed #CFC8BF; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer;

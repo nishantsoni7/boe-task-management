@@ -5,10 +5,11 @@
 // One press records the credit as a payment (Suspense: no customer until it is
 // allocated), links it to the bank line and — only for a person who may verify
 // their own payments — verifies it. EVERY RULE IS THE DATABASE'S
-// (create_payment_from_bank_line): the duplicate checks, the permission, the
-// lock on the line. This window explains the outcome in words and never
-// decides anything itself. It does not allocate: the suggested order is offered
-// as a link into Confirmed Payments' own Allocate flow.
+// (add_bank_line_to_confirmed): the duplicate checks, the permission, the lock
+// on the line. When recorded payments could be this money the window comes from
+// the comparison: it sends the ids the person compared with a reason, and the
+// database refuses if anything else matches by then. It does not allocate: the
+// suggested order is offered as a link into Confirmed Payments' own Allocate flow.
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -19,7 +20,7 @@ import { BANK_ACCOUNT_LABEL } from '@/lib/finance/bankStatement'
 import { payerFromNarration } from '@/lib/finance/bankMatching'
 import { orderSuggestionLabel } from '@/lib/finance/bankOrderHistory'
 import { notifyFinance } from '@/lib/notify'
-import { formatBankDate, rpcMessage, type LineWithSuggestions } from './bankStatementsModel'
+import { formatBankDate, rpcMessage, type BankMatch, type LineWithSuggestions } from './bankStatementsModel'
 
 type Added = {
   payment_request_id: string
@@ -32,6 +33,8 @@ type Added = {
 type Props = {
   supabase: SupabaseClient
   item: LineWithSuggestions
+  /** The recorded payments the person compared and said this is not. */
+  compared: BankMatch[]
   /** The viewer holds verify_own_payment (or is an admin): the payment is verified as it is added. */
   verifiesOwn: boolean
   onClose: () => void
@@ -39,28 +42,34 @@ type Props = {
   onAdded: () => void
 }
 
-export function BankAddConfirmedModal({ supabase, item, verifiesOwn, onClose, onAdded }: Props) {
+const REASON_MIN = 3
+const REASON_MAX = 200
+
+export function BankAddConfirmedModal({ supabase, item, compared, verifiesOwn, onClose, onAdded }: Props) {
   const { line, orderSuggestions } = item
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [possibleDuplicate, setPossibleDuplicate] = useState(false)
-  const [sure, setSure] = useState(false)
+  const [refused, setRefused] = useState(false)
+  const [reason, setReason] = useState('')
   const [added, setAdded] = useState<Added | null>(null)
   const payer = payerFromNarration(line.narration)
   const suggestion = orderSuggestions[0] ?? null
+  const needsReason = compared.length > 0
+  const checked = compared.map(m => m.humanPaymentId ?? 'a recorded payment').join(', ')
 
   const add = async () => {
     setBusy(true)
     setError(null)
-    const { data, error: err } = await supabase.rpc('create_payment_from_bank_line', {
+    const { data, error: err } = await supabase.rpc('add_bank_line_to_confirmed', {
       p_line_id: line.id,
-      p_allow_possible_duplicate: possibleDuplicate && sure,
+      p_checked_payment_ids: compared.map(m => m.paymentId),
+      p_reason: needsReason ? reason.trim() : null,
     })
     setBusy(false)
     if (err) {
-      setPossibleDuplicate((err.message ?? '').includes('BANK_PAYMENT_POSSIBLE_DUPLICATE'))
-      setSure(false)
+      setRefused((err.message ?? '').includes('BANK_'))
       setError(rpcMessage(err, 'That did not save. Try again.'))
+      onAdded() // the page reads what the refusal found
       return
     }
     const result = data as Added
@@ -102,10 +111,8 @@ export function BankAddConfirmedModal({ supabase, item, verifiesOwn, onClose, on
     )
   }
 
-  const hardStop = error !== null && !possibleDuplicate
-
   return (
-    <FinanceModal title="Add to Confirmed Payments" onClose={() => { if (!busy) onClose() }} width="520px" closeOnBackdropClick={!busy}>
+    <FinanceModal title={needsReason ? 'Add as a different payment' : 'Add to Confirmed Payments'} onClose={() => { if (!busy) onClose() }} width="520px" closeOnBackdropClick={!busy}>
       <dl className="bank-facts">
         <div><dt>Received from</dt><dd>{payer ?? line.narration}</dd></div>
         <div><dt>Bank date</dt><dd>{formatBankDate(line.line_date)}</dd></div>
@@ -118,22 +125,26 @@ export function BankAddConfirmedModal({ supabase, item, verifiesOwn, onClose, on
           : 'This records the payment and links it to this bank line. A verifier then decides it. It will show as “Not identified” until it is allocated to an order.'}
         {' '}It is checked first that this credit is not already recorded.
       </p>
+      {needsReason && (
+        <>
+          <p style={{ margin: 0, fontSize: 13 }}>
+            You checked this credit against <strong>{checked}</strong>. Your name, the date and this reason are saved on the new payment.
+          </p>
+          <label className="bank-field"><span>Why is this a different payment? *</span>
+            <input className="boe-input" value={reason} onChange={e => setReason(e.target.value)} maxLength={REASON_MAX} autoFocus disabled={busy || refused} />
+          </label>
+        </>
+      )}
       {suggestion && (
         <p style={{ margin: 0, fontSize: 13 }}>
           Suggested order: <strong>{orderSuggestionLabel(suggestion)}</strong>
         </p>
       )}
       {error && <p role="alert" style={{ margin: 0, fontSize: 13, color: '#9B2C2C' }}>{error}</p>}
-      {possibleDuplicate && (
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-          <input type="checkbox" checked={sure} onChange={e => setSure(e.target.checked)} />
-          <span>This is a different payment. Add it anyway.</span>
-        </label>
-      )}
       <div className="bank-actions">
-        <button className="boe-btn boe-btn-ghost" disabled={busy} onClick={onClose}>{hardStop ? 'Close' : 'Cancel'}</button>
-        {!hardStop && (
-          <button className="boe-btn boe-btn-primary" disabled={busy || (possibleDuplicate && !sure)} onClick={add}>
+        <button className="boe-btn boe-btn-ghost" disabled={busy} onClick={onClose}>{refused ? 'Close' : 'Cancel'}</button>
+        {!refused && (
+          <button className="boe-btn boe-btn-primary" disabled={busy || (needsReason && reason.trim().length < REASON_MIN)} onClick={add}>
             {busy ? 'Adding…' : 'Add to Confirmed Payments'}
           </button>
         )}
