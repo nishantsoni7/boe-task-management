@@ -103,7 +103,7 @@ export function Leaderboard({
   const shown = boardRows(data.rows, 5, all)
 
   return (
-    <section id="leaderboard" className={`${a.board} ${a.boardCard}${open ? ` ${a.boardOpen}` : ''}`} aria-label="Leaderboard">
+    <section id="leaderboard" className={`${a.boardCard}${open ? ` ${a.boardOpen}` : ''}`} aria-label="Leaderboard">
       <button type="button" className={a.boardHead} aria-expanded={open} onClick={onToggle}>
         <span className={a.boardIcon} aria-hidden="true"><Trophy size={18} /></span>
         <span className={a.boardText}>

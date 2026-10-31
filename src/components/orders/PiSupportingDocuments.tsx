@@ -406,7 +406,7 @@ function PiAttachmentColumn({ supabase, state, canEdit, category }: {
         </ul>
       )}
       {canEdit && (
-        <label className="boe-btn boe-btn-ghost pi-attach-add" title={DRAFT_ATTACHMENT_RESTRICTIONS}
+        <label className="boe-btn boe-btn-ghost" title={DRAFT_ATTACHMENT_RESTRICTIONS}
                style={{ cursor: state.staging ? 'default' : 'pointer' }}>
           {state.staging ? 'Uploading…' : addLabel}
           <input type="file" multiple={many} accept={DOCUMENT_ACCEPT_ATTR}
