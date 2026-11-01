@@ -5,20 +5,18 @@
 
 ## Snapshot
 
-- Commit: `8299e9ce` — Docs: #562 and #563 stamped as merged, inventory regenerated
-- Commits on this branch: 1130
+- Commit: `e9891f70` — Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
+- Commits on this branch: 1128
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
-- Migrations: 395 (first `20260530_create_positions.sql`, latest `20270516000000_finance_bank_proof_before_verify.sql`)
+- Migrations: 396 (first `20260530_create_positions.sql`, latest `20270516000100_finance_bank_old_routes_closed.sql`)
 - Tables ever created: 195 (dropped at some point: 7)   SQL functions: 866   Enums: 0
 - Test files: 707   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `8299e9ce` 2026-11-01 Docs: #562 and #563 stamped as merged, inventory regenerated
+- `e9891f70` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
 - `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
 - `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
-- `84826c54` 2026-11-01 Docs: the gap before the apply is not timed, so do not state one
-- `6f994920` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
 - `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
@@ -39,6 +37,8 @@
 - `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)
 - `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
 - `911d809a` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f) (#541)
+- `66d63333` 2026-10-31 For you: payment request cards, Control Center settings, each person's own choices (#540)
+- `2421612f` 2026-10-31 Payments lists: order by payment date, latest first (#539)
 
 ## Pages by top-level area
 
@@ -405,7 +405,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270418000000_finance_handover_not_received_final.sql`
 - `20270419000000_finance_bank_add_confirmed_payment.sql`
 - `20270420000000_orders_customize_image_learning.sql`
 - `20270421000000_order_pendency_approvals.sql`
@@ -435,6 +434,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270514000000_finance_bank_line_review.sql`
 - `20270515000000_register_sales_marketing_pricing_modules.sql`
 - `20270516000000_finance_bank_proof_before_verify.sql`
+- `20270516000100_finance_bank_old_routes_closed.sql`
 
 ## All SQL function names
 

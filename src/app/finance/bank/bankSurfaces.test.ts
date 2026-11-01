@@ -67,6 +67,16 @@ describe('Bank Statements never decides a payment', () => {
     assert.ok(!bankFiles.includes('bankAddConfirmedModal.tsx'))
   })
 
+  test('the old doors are closed to browsers, kept for a rollback, and the door that replaced them stays', () => {
+    const name = '20270516000100_finance_bank_old_routes_closed.sql'
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations', name), 'utf8')
+    assert.ok(sql.includes('revoke all on function public.sync_bank_credits(uuid[]) from public, anon, authenticated;'))
+    assert.ok(sql.includes('revoke all on function public.add_bank_line_to_confirmed(uuid, uuid[], text) from public, anon, authenticated;'))
+    assert.ok(!/^\s*drop\s/im.test(sql))
+    assert.ok(sql.includes('verify_payment_with_bank must stay callable'))
+    assert.ok(!/credit/i.test(name))
+  })
+
   test('a failed read of the sync state stops the month; it is never drawn as a list nobody checked', () => {
     const model = read('bankStatementsModel.ts')
     assert.ok(model.includes("if (error) throw new Error('The sync status could not be read.')"))

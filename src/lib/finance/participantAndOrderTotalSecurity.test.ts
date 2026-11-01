@@ -1184,6 +1184,8 @@ describe('the applied migrations are frozen', () => {
       '20270515000000_register_sales_marketing_pricing_modules.sql',
       // An HDFC payment is verified only against the bank.
       '20270516000000_finance_bank_proof_before_verify.sql',
+      // The old bank doors closed to browsers, now the new screens are proven.
+      '20270516000100_finance_bank_old_routes_closed.sql',
     ])
   })
 
@@ -1619,6 +1621,8 @@ describe('the applied migrations are frozen', () => {
       '20270515000000_register_sales_marketing_pricing_modules.sql',
       // An HDFC payment is verified only against the bank.
       '20270516000000_finance_bank_proof_before_verify.sql',
+      // The old bank doors closed to browsers, now the new screens are proven.
+      '20270516000100_finance_bank_old_routes_closed.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

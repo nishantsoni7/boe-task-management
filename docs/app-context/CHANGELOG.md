@@ -15,6 +15,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
+## 2026-11-01 — The old bank routes are closed to browsers (not merged) · 20270516000100 → NOT APPLIED
+- **Why now.** The new screens are live and the owner verified a real payment through them.
+- **Changed.** `sync_bank_credits` and `add_bank_line_to_confirmed` can no longer be called from a browser, so an old tab still running the old code is refused instead of adding a payment. `create_payment_from_bank_line` was already closed. Closed, not dropped: a rollback is one grant each. No data changes, and no screen changes.
+- **Proof.** `supabase/tests/bank_old_routes_closed_pglite.mjs`, 6 checks; its deliberate breaks all caught.
+
 ## 2026-11-01 — Bank Statements: one list for both HDFC accounts (PR #563, fd176da4) · no SQL
 - **Owner request.** The two account tabs were causing problems: a credit in one account sat unmatched while its likely payment was recorded against the other.
 - **Changed.** Money in, Payments not in the bank and Money out each show both accounts, with an Account column. The status cards and month list count both. An Account filter, or an account's box at the top, narrows the list; the box pressed again shows both. The date line gives each account's own last date. The month read no longer stops at 2,000 lines.
