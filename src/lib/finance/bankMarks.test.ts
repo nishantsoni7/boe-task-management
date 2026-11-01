@@ -185,8 +185,8 @@ describe('the marker is for reconcilers only, and a decision goes through its ow
 
   test('the payment popup only draws the slot it is handed', () => {
     const src = read('src/app/finance/paymentRequestsDetails.tsx')
-    assert.ok(src.includes('top={canVerify ? bankPanel : undefined}'))
-    assert.ok(src.includes('{!canVerify && bankPanel}'))
+    assert.ok(src.includes('body={bankWindow && !showDetails ? bankPanel : undefined}'))
+    assert.ok(src.includes('{!bankWindow && bankPanel}'))
     assert.ok(!src.includes('bank_statement'))
   })
 })

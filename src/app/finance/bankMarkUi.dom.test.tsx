@@ -243,6 +243,8 @@ describe('searching by hand', () => {
     assert.deepEqual(sent, [{ fn: 'search_bank_unmatched', args: { p_query: 'BS-00431', p_date: null } }])
     assert.ok(ui.text().includes('BS-00431'))
     assert.ok(ui.text().includes('Back to the suggestions'))
+    ui.click(ui.button('Back to the suggestions'))
+    assert.deepEqual(primary(ui), ['Verify and link'])
   })
 
   test('a typed date is sent as a date', async () => {

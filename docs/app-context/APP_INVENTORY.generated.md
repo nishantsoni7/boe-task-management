@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `1344cea4` — Finance: the old bank routes are closed to browsers (#564)
-- Commits on this branch: 1129
+- Commit: `9ef7e74f` — Finance: compare and link, with a Bank Statements ID
+- Commits on this branch: 1130
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 397 (first `20260530_create_positions.sql`, latest `20270517000000_finance_bank_line_ids_and_match_search.sql`)
 - Tables ever created: 196 (dropped at some point: 7)   SQL functions: 869   Enums: 0
-- Test files: 707   Next.js 16.2.6, React 19.2.4
+- Test files: 708   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `9ef7e74f` 2026-11-01 Finance: compare and link, with a Bank Statements ID
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
 - `e9891f70` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
 - `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
@@ -38,7 +39,6 @@
 - `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)
 - `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
 - `911d809a` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f) (#541)
-- `66d63333` 2026-10-31 For you: payment request cards, Control Center settings, each person's own choices (#540)
 
 ## Pages by top-level area
 

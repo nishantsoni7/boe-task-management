@@ -151,6 +151,7 @@ export function RequestModalShell({
   ariaLabel,
   top,
   bottom,
+  body,
   footer,
   width = '880px',
   closeOnBackdropClick = true,
@@ -167,6 +168,8 @@ export function RequestModalShell({
   // (context/history blocks that must span both columns).
   top?: React.ReactNode
   bottom?: React.ReactNode
+  // One full-width column in place of the two zones, for a window with one job.
+  body?: React.ReactNode
   // Optional non-scrolling action bar pinned below the body. Callers that
   // don't pass it get the exact previous layout.
   footer?: React.ReactNode
@@ -239,14 +242,16 @@ export function RequestModalShell({
             `overflowY: auto` above actually take effect. ── */}
         <div style={{ padding: '18px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {top && <div style={{ flexShrink: 0 }}>{top}</div>}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start', flexShrink: 0 }}>
-            <div style={{ flex: '56 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {left}
+          {body ? <div style={{ flexShrink: 0 }}>{body}</div> : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start', flexShrink: 0 }}>
+              <div style={{ flex: '56 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {left}
+              </div>
+              <div style={{ flex: '44 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {right}
+              </div>
             </div>
-            <div style={{ flex: '44 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {right}
-            </div>
-          </div>
+          )}
           {bottom && <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>{bottom}</div>}
         </div>
 
