@@ -26,6 +26,8 @@ else {
 }
 const code = readStatus('code-full')
 add('full code backup (bundle+memory+env)', !!code && age(code.at) <= maxH, code ? `${age(code.at).toFixed(1)} h old` : 'never run')
+const projects = code?.steps?.projects
+add('SEO folder + scheduled tasks', !!projects && Object.values(projects).every((n) => n > 0), projects ? JSON.stringify(projects) : 'not in the last full backup')
 const bdir = path.join(BACKUP_ROOT, 'bundles')
 const latestBundle = fs.existsSync(bdir) ? fs.readdirSync(bdir).filter((f) => f.endsWith('.bundle')).sort().slice(-1)[0] : null
 if (latestBundle) add('latest bundle verifies', gitTry(MAIN_REPO, 'bundle', 'verify', path.join(bdir, latestBundle)).ok, latestBundle)

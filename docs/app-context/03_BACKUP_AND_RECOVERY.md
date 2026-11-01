@@ -15,6 +15,7 @@
 | Hosting config | `vercel.json` (regions `hnd1`, daily cron) in git; project settings in Vercel | mostly (see §6) | git + §6 checklist |
 | Project memory (decisions, traps) | `~/.claude/projects/.../memory` | no | `memory/<timestamp>/` copies |
 | Uncommitted work | worktrees on the laptop | no | `wip/<timestamp>/` copies — but **commit it** |
+| SEO project folder and scheduled-task instructions | `repositories\bestofexports-website` (no git) and `~/.claude/scheduled-tasks` | no | `projects/<timestamp>/` copies; off this PC only through the second copy |
 
 ## 2. The backup layers
 
@@ -31,7 +32,8 @@ All local backups live in `%USERPROFILE%\BOE-Development\backups\boe-task-manage
 | L7 storage | `storage/<bucket>/…` | `backup-database.mjs` | byte-for-byte copy of every bucket object, incremental by size | cumulative |
 | L8 GitHub bundle | Actions artifact `boe-code-bundle-<sha>` | **daily** 02:17 UTC + manual (no longer per merge, since 2026-10-28) | verified bundle of all branches | 7 days |
 | L9 private mirror repo | `nishantsoni7/boe-task-management-mirror` (private) — **ACTIVE since 2026-10-18** | every push to `main` + daily | all 241 branches + tags (verified equal to the source) | forever |
-| L10 second copy (recommended) | `BOE_BACKUP_COPY_TO` folder | `backup-all.mjs` | newest bundle, DB snapshot, secrets, memory, git mirror | per run |
+| L4b projects | `projects/<UTC>/` | full backup | the `bestofexports-website` SEO folder and the scheduled-task instructions, neither of which is in git. A locked file reports `FAILED` in `verify-backups.mjs` and does not stop the code backup | newest 14 |
+| L10 second copy (recommended) | `BOE_BACKUP_COPY_TO` folder | `backup-all.mjs` | newest bundle, DB snapshot, secrets, memory, projects, git mirror | per run |
 | L11 Supabase platform backups | Supabase dashboard → Database → Backups | provider, daily ~21:55 UTC | **Pro plan: 7 daily PHYSICAL backups confirmed 2026-10-18** (full database incl. the 5 tables the export cannot read; storage objects NOT included). **PITR deliberately NOT enabled (owner decision, cost)** | 7 days |
 
 **Encryption note.** Database tables and env files are encrypted with a passphrase (`BOE_BACKUP_PASSPHRASE`, or an auto-generated file `backups\.keys\backup-passphrase.txt`). **Copy that passphrase into your password manager once.** A laptop crash that also takes the key file makes the encrypted layers unreadable. Storage files are copied as-is (they are already served through signed URLs).
@@ -85,7 +87,7 @@ What the database export needs: only Node 20+ and `.env.local` (`NEXT_PUBLIC_SUP
 1. Install Git, Node 20+, GitHub CLI; `git clone https://github.com/nishantsoni7/boe-task-management.git` into `%USERPROFILE%\BOE-Development\repositories\boe-task-management`.
 2. `npm ci`. Recreate `.env.local` from the password manager (or decrypt `secrets\env-local-*.enc` from the second copy with `decrypt-file.mjs` + the passphrase). Variables are listed in `APP_INVENTORY.generated.md` and `.env.example`.
 3. Unpushed branches/uncommitted work: restore from the second copy (L10) — `git clone <path>/git/boe-task-management.git x`, then `git branch <name> refs/local/heads/<name>`; or `git clone boe-code-*.bundle`.
-4. Restore the project memory folder from `memory/<latest>/` into `~/.claude/projects/<project>/memory`.
+4. Restore the project memory folder from `memory/<latest>/` into `~/.claude/projects/<project>/memory`. From `projects/<latest>/`, copy `bestofexports-website` back into `repositories\` and `scheduled-tasks` into `~/.claude/`.
 5. `node scripts/backup/install-backup-system.mjs`, `npm test`, `npm run dev`.
 
 ### 5.2 GitHub repository lost or force-pushed

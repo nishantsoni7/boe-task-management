@@ -32,7 +32,7 @@ if (copyTo) {
     const d = path.join(BACKUP_ROOT, dir)
     return fs.existsSync(d) ? fs.readdirSync(d).filter((f) => re.test(f)).sort().slice(-1)[0] : null
   }
-  for (const [dir, re] of [['bundles', /\.bundle$/], ['database', /^\d/], ['secrets', /\.enc$/], ['memory', /^\d/]]) {
+  for (const [dir, re] of [['bundles', /\.bundle$/], ['database', /^\d/], ['secrets', /\.enc$/], ['memory', /^\d/], ['projects', /^\d/]]) {
     const n = newest(dir, re)
     if (!n) continue
     copyMissing(path.join(BACKUP_ROOT, dir, n), path.join(dest, dir, n))
