@@ -28,7 +28,7 @@ describe('deriveBankMarks', () => {
   })
 
   test('a payment already linked says so, and says whether the link is complete', () => {
-    const links: MarkLink[] = [{ payment_id: 'P1', line_id: 'L1', amount: 50000, line_date: '2026-10-06', narration: 'x' }]
+    const links: MarkLink[] = [{ payment_id: 'P1', line_id: 'L1', amount: 50000, line_date: '2026-10-06', narration: 'x', account: 'hdfc' as const }]
     const full = deriveBankMarks([pay({})], links, [line({ linkedAmount: 50000 })], COVER).get('P1')!
     assert.deepEqual(full.kind === 'linked' && full.complete, true)
     const part = deriveBankMarks([pay({ amount: 80000, remaining: 80000 })], links, [], COVER).get('P1')!
@@ -72,14 +72,15 @@ describe('deriveBankMarks', () => {
   })
 })
 
-describe('the marker is information for reconcilers only, and never a decision', () => {
+describe('the marker is for reconcilers only, and a decision goes through its own doors', () => {
   test('the page loads and draws marks only for finance.reconcile', () => {
     const src = read('src/app/finance/page.tsx')
-    assert.ok(src.includes('caps.canReconcileBank ? visible : []'))
+    assert.ok(src.includes("caps.canReconcileBank && activeTab !== 'pending' ? visibleMarkRows : []"))
+    assert.ok(src.includes('if (!caps.canReconcileBank || activeTab !== \'pending\') return'))
     assert.ok(src.includes('const bankMarks = caps.canReconcileBank &&'))
   })
 
-  test('the marker files call no verification, rejection, edit or allocation RPC and write no table', () => {
+  test('the marker files call the bank doors and no other decision, edit or allocation RPC, and write no table', () => {
     for (const f of ['src/app/finance/bankMarkUi.tsx', 'src/lib/finance/bankMarks.ts']) {
       const src = read(f)
       for (const rpc of ['approve_finance_payment_request', 'reject_finance_payment_request', 'request_finance_payment_clarification',
@@ -87,13 +88,16 @@ describe('the marker is information for reconcilers only, and never a decision',
         assert.ok(!src.includes(rpc), `${f} must not call ${rpc}`)
       }
       assert.ok(!/\.(insert|update|delete|upsert)\(/.test(src), `${f} writes a table directly`)
-      for (const m of src.matchAll(/\.rpc\('([a-z_]+)'/g)) assert.equal(m[1], 'link_bank_line_to_payment')
+      for (const m of src.matchAll(/\.rpc\('([a-z_]+)'/g)) {
+        assert.ok(['link_bank_line_to_payment', 'verify_payment_with_bank', 'verify_payment_bank_check_pending', 'finance_bank_check_pending'].includes(m[1]), m[1])
+      }
     }
   })
 
   test('the payment popup only draws the slot it is handed', () => {
     const src = read('src/app/finance/paymentRequestsDetails.tsx')
-    assert.ok(src.includes('{bankPanel}'))
+    assert.ok(src.includes('{canVerify && bankPanel}'))
+    assert.ok(src.includes('{!canVerify && bankPanel}'))
     assert.ok(!src.includes('bank_statement'))
   })
 })

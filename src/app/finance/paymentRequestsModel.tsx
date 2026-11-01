@@ -9,6 +9,7 @@ import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon
 import { type FilterTab } from './paymentRequestsQuery'
 import { paymentTargetErrorMessage } from './paymentTargets'
 import { paymentCashLockErrorMessage } from '@/lib/finance/paymentCashLock'
+import { bankVerifyRefusal } from '@/lib/finance/bankMarks'
 import { PAYMENT_DISPLAY_STATE_META, orderNumberDisplay, type PaymentDestination } from '@/lib/finance/paymentDestination'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -208,6 +209,9 @@ export function friendlyDbErrorMessage(dbError: { code?: string; message: string
   if (cashLocked) return cashLocked
   const target = paymentTargetErrorMessage(dbError.message)
   if (target) return target
+  // 20270516000000: an HDFC payment is verified only against the bank.
+  const bank = bankVerifyRefusal(dbError.message)
+  if (bank) return bank
   // Named BEFORE the generic 23514 branch: all three are check-constraint
   // failures, and these two have nothing to do with order linkage.
   if (dbError.message?.includes('finance_payment_requests_handover_pair')) {

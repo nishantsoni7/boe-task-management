@@ -197,8 +197,8 @@ export const NON_CUSTOMER_KIND_LABEL: Record<NonCustomerKind, string> = {
 
 /**
  * A suggestion that a credit is NOT customer money. A suggestion only: the credit
- * stays Not Synced until a person confirms it with one click, or says it is a
- * customer's and adds it. It only keeps the credit out of the automatic sync.
+ * stays Not matched until a person confirms it with one click, or says it is a
+ * customer's and records it.
  */
 export function suggestNonCustomerKind(narration: string): { kind: NonCustomerKind; reason: string } | null {
   const n = narration.toUpperCase()

@@ -47,7 +47,7 @@ const review = (matches: BankMatch[], over: Partial<LineReview> = {}): LineRevie
 function open(line: BankLine, r: LineReview, refusals: Record<string, string> = {}) {
   const sent: { fn: string; args: unknown }[] = []
   const changed: [string, boolean | undefined][] = []
-  const added: BankMatch[][] = []
+  const recorded_: number[] = []
   const supabase = {
     rpc: async (fn: string, args: unknown) => {
       sent.push({ fn, args })
@@ -61,7 +61,7 @@ function open(line: BankLine, r: LineReview, refusals: Record<string, string> = 
       payments={[]}
       expenses={[]}
       canAdd
-      onAddNew={compared => { added.push(compared) }}
+      onRecord={() => { recorded_.push(1) }}
       onClose={() => {}}
       onChanged={(message, close) => { changed.push([message, close]) }}
     />
@@ -70,7 +70,7 @@ function open(line: BankLine, r: LineReview, refusals: Record<string, string> = 
   cleanup = () => ui.unmount()
   /** What the page does after a reload: the same window, handed fresh data. */
   const show = (l: BankLine, rv: LineReview) => ui.render(modal(l, rv))
-  return { ui, sent, changed, added, show }
+  return { ui, sent, changed, recorded_, show }
 }
 
 const buttonLabels = (ui: ReturnType<typeof open>['ui']) => ui.all('button').map(b => (b.textContent ?? '').trim())
@@ -153,11 +153,20 @@ describe('a payment linked to another credit', () => {
     assert.deepEqual(sent, [])
   })
 
-  test('a person can still say it is a different payment, naming every payment compared', () => {
+  test('a person can still say it is a different payment: that opens the form and adds nothing here', () => {
     const other = recorded({ paymentId: 'P2', humanPaymentId: 'P-AA-0002', paymentDate: '2026-09-26' })
-    const { ui, added } = open(credit(), review([heldElsewhere(), other]))
-    ui.click(ui.button('Different payment, add it'))
-    assert.deepEqual(added[0].map(m => m.paymentId), ['P1', 'P2'])
+    const { ui, recorded_, sent } = open(credit(), review([heldElsewhere(), other]))
+    ui.click(ui.button('Different payment, record it'))
+    assert.equal(recorded_.length, 1)
+    assert.deepEqual(sent, [])
+  })
+
+  test('a credit nobody recorded says so and offers Record it', () => {
+    const { ui, recorded_, sent } = open(credit(), review([]))
+    assert.ok((ui.container.textContent ?? '').includes('No request yet'))
+    ui.click(ui.button('Record it'))
+    assert.equal(recorded_.length, 1)
+    assert.deepEqual(sent, [])
   })
 })
 
@@ -173,14 +182,14 @@ describe('the other cards', () => {
   test('a bank reference on a payment with room can only be linked', () => {
     const { ui } = open(credit(), review([recorded({ kind: 'reference' })]))
     assert.ok(ui.button('Same payment, link them'))
-    assert.ok(!buttonLabels(ui).includes('Different payment, add it'))
+    assert.ok(!buttonLabels(ui).includes('Different payment, record it'))
   })
 
   test('a reference on a payment fully linked elsewhere offers neither Link nor Move', () => {
     const { ui } = open(credit(), review([recorded({ kind: 'reference_used', leftToLink: 0 })]))
     assert.ok(!buttonLabels(ui).includes('Same payment, link them'))
     assert.ok(!buttonLabels(ui).includes('Move this payment here'))
-    assert.ok(ui.button('Different payment, add it'))
+    assert.ok(ui.button('Different payment, record it'))
   })
 
   test('a credit\'s own link is still unlinked from its own section', async () => {

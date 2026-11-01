@@ -2,10 +2,10 @@
 
 // ── One bank credit: what it is, and what to do with it ─────────────────────
 //
-// What this credit is, whether it is Synced into Confirmed Payments, the recorded
+// What this credit is, whether it is Matched to a verified payment, the recorded
 // payments it could be, side by side, and the marks that say it is not customer
-// money. A person links the same money, or sends it to be added as a different
-// payment. Which payments to compare comes from the database, the same rule that
+// money. A person links the same money, or opens the payment form to record it as a
+// different payment. Which payments to compare comes from the database, the same rule that
 // refuses a second payment. A payment linked to the wrong credit is moved here with
 // a reason. A match with a doubt is never the obvious button and asks first. Nothing
 // in this file verifies, rejects or edits a payment, and it never sends an amount.
@@ -39,6 +39,7 @@ import {
   type LineWithSuggestions,
 } from './bankStatementsModel'
 import { BankDebitPanel } from './bankDebitPanel'
+import { orderSuggestionLabel } from '@/lib/finance/bankOrderHistory'
 
 type Props = {
   supabase: SupabaseClient
@@ -48,8 +49,8 @@ type Props = {
   expenses: BankExpense[]
   /** The viewer may record a payment (finance.create). */
   canAdd: boolean
-  /** Add this credit as a payment, having compared these recorded ones. */
-  onAddNew: (compared: BankMatch[]) => void
+  /** Opens the ordinary payment form, filled in from this credit. */
+  onRecord: () => void
   onClose: () => void
   /** Reload the page's data after a write; the modal closes itself when told to. */
   onChanged: (message: string, close?: boolean) => void
@@ -115,8 +116,8 @@ function MatchCard({ line, match, busy, asking, onAsk, onLink, children }: {
   )
 }
 
-export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAddNew, onClose, onChanged }: Props) {
-  const { line, status, nonCustomer, review } = item
+export function BankLineModal({ supabase, item, payments, expenses, canAdd, onRecord, onClose, onChanged }: Props) {
+  const { line, status, nonCustomer, review, orderSuggestions } = item
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'none' | 'old' | 'other'>('none')
@@ -205,7 +206,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
     <div className="bank-form">
       {error && <div role="alert" className="bank-error">{error}</div>}
       <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
-        {m.humanPaymentId ?? 'The payment'} moves to this credit, and the other credit goes back to Not Synced. The payment itself does not change. Your name and this reason are kept.
+        {m.humanPaymentId ?? 'The payment'} moves to this credit, and the other credit goes back to Not matched. The payment itself does not change. Your name and this reason are kept.
       </p>
       <label className="bank-field"><span>Why is that link wrong? *</span>
         <input className="boe-input" value={unlinkReason} onChange={e => setUnlinkReason(e.target.value)} maxLength={REASON_MAX} autoFocus />
@@ -293,7 +294,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
             )
           })}
           {state === 'synced'
-            ? <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>Synced: verified payments in this account cover this credit.</p>
+            ? <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>Matched: verified payments in this account cover this credit.</p>
             : <p style={{ fontSize: 12, margin: 0, color: state === 'waiting' ? '#805B0D' : '#A12438' }}>{reason}</p>}
           {status === 'partly' && (
             <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>
@@ -343,7 +344,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
           {status === 'unlinked' && canAdd && !mustLink && (
             <div className="bank-compare-other">
               <span className="fin-muted">None of these is this money?</span>
-              <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={() => onAddNew(review.matches)}>Different payment, add it</button>
+              <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={onRecord}>Different payment, record it</button>
             </div>
           )}
         </section>
@@ -355,21 +356,22 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onAd
           {nonCustomer && review.matches.length === 0 && (
             <section className="bank-section bank-hint">
               <h3>This looks like: {NON_CUSTOMER_KIND_LABEL[nonCustomer.kind]}</h3>
-              <div className="fin-muted">{nonCustomer.reason}. This is only a guess from the bank&apos;s words, so it stays Not Synced until you decide.</div>
+              <div className="fin-muted">{nonCustomer.reason}. This is only a guess from the bank&apos;s words, so it stays Not matched until you decide.</div>
               <div className="bank-choice">
                 <button className="boe-btn boe-btn-primary" disabled={busy !== null} onClick={() => saveOther(nonCustomer.kind)}>
                   {busy === 'other' ? 'Saving…' : 'Yes, not customer money'}
                 </button>
-                {canAdd && <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={() => onAddNew([])}>No, it is a customer&apos;s, add it</button>}
+                {canAdd && <button className="boe-btn boe-btn-ghost" disabled={busy !== null} onClick={onRecord}>No, it is a customer&apos;s, record it</button>}
               </div>
             </section>
           )}
 
           {!nonCustomer && review.matches.length === 0 && (
             <section className="bank-section">
-              <h3>Not synced</h3>
-              <div style={{ color: '#A12438' }}>{reason}</div>
-              {canAdd && <div><button className="boe-btn boe-btn-primary" disabled={busy !== null} onClick={() => onAddNew([])}>Add to Confirmed</button></div>}
+              <h3>{reason}</h3>
+              <div className="fin-muted">A statement records nothing by itself. Record this money, and it can then be verified against this credit.</div>
+              {orderSuggestions[0] && <div className="fin-muted">Earlier money from this payer went to {orderSuggestionLabel(orderSuggestions[0])}.</div>}
+              {canAdd && <div><button className="boe-btn boe-btn-primary" disabled={busy !== null} onClick={onRecord}>Record it</button></div>}
             </section>
           )}
 

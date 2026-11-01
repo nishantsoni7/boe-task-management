@@ -88,11 +88,10 @@ describe('the page and the migration', () => {
     assert.ok(!/\b\d{10,}\b/.test(migration.replace(/20270419000000/g, '')))
   })
 
-  test('the screen adds one payment per press and the word "Add to Confirmed" appears on it', () => {
-    const modal = readFileSync(join(ROOT, 'src', 'app', 'finance', 'bank', 'bankAddConfirmedModal.tsx'), 'utf8')
-    assert.ok(modal.includes("rpc('add_bank_line_to_confirmed'"))
-    assert.ok(modal.includes('disabled={busy'))
+  test('the suggestion is shown on a credit nobody has recorded, and only says where earlier money went', () => {
+    const modal = readFileSync(join(ROOT, 'src', 'app', 'finance', 'bank', 'bankLineModal.tsx'), 'utf8')
+    assert.ok(modal.includes('Earlier money from this payer went to {orderSuggestionLabel(orderSuggestions[0])}.'))
     const dir = join(ROOT, 'src', 'app', 'finance', 'bank')
-    assert.ok(readdirSync(dir).includes('bankAddConfirmedModal.tsx'))
+    assert.ok(!readdirSync(dir).includes('bankAddConfirmedModal.tsx'))
   })
 })

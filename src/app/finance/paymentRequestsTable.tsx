@@ -14,7 +14,7 @@ import { fmtDate, fmtAmount, canManageRequest, isStaleClarification, type Paymen
 import { StatusBadge, StaleBadge } from './paymentRequestsAtoms'
 import { PaymentIdChip } from './components/PaymentIdChip'
 import { FinancePerson } from './components/FinanceListParts'
-import { BankMarkChip } from './bankMarkUi'
+import { BankMarkChip, PiWaitingChip } from './bankMarkUi'
 import type { BankMark } from '@/lib/finance/bankMarks'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
@@ -67,7 +67,10 @@ export function PaymentsTable({
   salesView = false,
   totals = null,
   bankMarks = null,
+  piWaiting = null,
 }: {
+  /** Payments whose PI cannot be approved until they are decided. Only with bankMarks. */
+  piWaiting?: ReadonlySet<string> | null
   /**
    * Whether each payment is in the bank, by payment id — ONLY for a holder of
    * finance.reconcile (the page passes null to everybody else, and the chip draws
@@ -410,6 +413,7 @@ export function PaymentsTable({
                       <StatusBadge status={r.status} destination={destination} />
                       {isStaleClarification(r, cutoff) && <StaleBadge />}
                       {bankMarks && <div><BankMarkChip mark={bankMarks.get(r.id)} /></div>}
+                      {piWaiting?.has(r.id) && <div><PiWaitingChip /></div>}
                     </td>
                     {actionCell}
                   </>

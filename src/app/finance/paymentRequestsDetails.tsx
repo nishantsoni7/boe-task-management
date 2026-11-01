@@ -14,6 +14,7 @@ import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
+import { isBankAccountMode } from '@/lib/finance/bankMarks'
 import { PaymentCustodyTrail, PaymentDestinationSummary, usePaymentDestination } from './components/PaymentDestinationBlock'
 import { PaymentModeHint } from './components/PaymentModeHint'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
@@ -34,6 +35,23 @@ const DECISIONS: { key: AdminAction; label: string; hint: string; Icon: LucideIc
   { key: 'needs_clarification', label: 'Needs Clarification', hint: 'Send back with a question',                Icon: MessageCircleQuestion, color: colors.blue,  tint: colors.blueTint },
   { key: 'reject',              label: 'Reject',              hint: 'Decline this payment request',             Icon: CircleX,               color: colors.red,   tint: colors.redTint },
 ]
+
+/**
+ * Tells the recorder, and the people on the Order, that a payment was verified.
+ * The same notices wherever it was verified from.
+ */
+export function announcePaymentVerified(r: PaymentRequest) {
+  void notifyFinance(
+    r.payment_against === 'new_order'
+      ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
+      : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
+  )
+  // AND THE PEOPLE ON THE ORDER, when the money landed on one: a verified
+  // payment is the event that unblocks their next step. The route reads the
+  // payment_verified row the database's own echo trigger just wrote, so the
+  // figure in the sentence is the ALLOCATED amount, not one computed here.
+  if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
+}
 
 // ── Details modal (read-only for creators; includes status correction for admin) ──
 
@@ -126,6 +144,10 @@ export function DetailsModal({
   // their own payments — the database refuses that decision, so it is not offered.
   const canVerify = canVerifyPayment(r.status, mayApprovePayments)
     && !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)
+  // AN HDFC PAYMENT IS VERIFIED AGAINST THE BANK (20270516000000): its Verify is on
+  // the bank match in this window, so this list offers only the other two decisions.
+  const verifiedAtTheBank = isBankAccountMode(r.payment_mode)
+  const decisions = verifiedAtTheBank ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS
   const [decisionAction, setDecisionAction] = useState<AdminAction | null>(null)
   const [decisionNote,   setDecisionNote]   = useState('')
   const [deciding,       setDeciding]       = useState(false)
@@ -160,16 +182,7 @@ export function DetailsModal({
         setDecisionError(friendlyDbErrorMessage(rpcError))
         return
       }
-      void notifyFinance(
-        r.payment_against === 'new_order'
-          ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
-          : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
-      )
-      // AND THE PEOPLE ON THE ORDER, when the money landed on one: a verified
-      // payment is the event that unblocks their next step. The route reads the
-      // payment_verified row the database's own echo trigger just wrote, so the
-      // figure in the sentence is the ALLOCATED amount, not one computed here.
-      if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
+      announcePaymentVerified(r)
       // The ref is deliberately NOT reset: the modal is going away, and leaving
       // it armed makes a late second click a no-op rather than a second call.
       onCorrected()
@@ -312,6 +325,9 @@ export function DetailsModal({
         </div>
       </div>
 
+      {/* The bank match, up here for the person deciding: it is the decision. */}
+      {canVerify && bankPanel}
+
       {/* B. Decision block — compact status-tinted note, only when one exists */}
       {decision && (
         <div style={{ padding: '12px 14px', borderRadius: '8px', background: decision.bg, border: `1px solid ${decision.border}` }}>
@@ -383,7 +399,7 @@ export function DetailsModal({
 
       {/* G. BANK STATEMENT — only for a holder of finance.reconcile (the page
           decides). Information for the verifier; linking never verifies. */}
-      {bankPanel}
+      {!canVerify && bankPanel}
     </>
   )
 
@@ -410,8 +426,15 @@ export function DetailsModal({
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
           <SectionHeader>Decision</SectionHeader>
+          {verifiedAtTheBank && (
+            <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+              {bankPanel
+                ? 'An HDFC payment is verified against its bank credit, in the Bank statement section of this window.'
+                : 'An HDFC payment is verified against its bank credit, which needs access to Bank Statements.'}
+            </div>
+          )}
           <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {DECISIONS.map(d => {
+            {decisions.map(d => {
               const on = decisionAction === d.key
               return (
                 <button

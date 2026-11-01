@@ -19,11 +19,26 @@ Every screen now uses the same words for a payment:
 - When Sales (or you, on an Order) add a payment and the client's money is already in the system, they tap **Use this money**. The same payment, with the same Payment ID, moves onto the new PI or Order. You get a notice for information only: "Payment … was moved onto PID-… from money already received". There's nothing to verify again.
 - Every move is recorded in the payment's history with who, when and why, and **Correct Allocation** can undo it.
 
-## Checking a payment
+## Checking an HDFC payment
 
-1. Look at the tracker: Recorded → Waiting for Finance.
-2. Check the bank status if you have Bank Statements access ("In the bank", "Bank match", "Not found in the bank").
-3. If the same client has a payment with the same amount and date close by, ask the person who recorded it before verifying. Automatic duplicate flags arrive in the next step of this work.
+An HDFC PRI or SEC payment can only be verified against its bank credit. You need Bank Statements access for this.
+
+1. A statement adds nothing to Confirmed Payments. Only a Payment Request does. When Sales ask, upload the latest statement.
+2. In Payment Requests, open **Pending**, then **Match found**. A **PI waiting** tag means a PI cannot be approved until you decide.
+3. Open the payment. The request and the bank credit are side by side.
+4. If it is the same money, press **Verify**. That links the credit and moves the payment to Confirmed Payments.
+
+If a credit says **Check first**, the name or date does not fit. Use it only if you are sure. If it is a little short of the payment, edit the payment to the bank amount, then verify it. If the money came as part of a bigger transfer in another name and no match shows, add the UTR to the payment and it will appear.
+
+**Urgent, and you can see the money in the bank app?** Admins can press **Verify, bank check pending** and give a reason. It counts at once. Confirm the match from **Bank check pending** after your next upload. It turns red if the statement covers the date and no credit is there after 7 days.
+
+## Checking a cash payment
+
+PNB, Paytm and Canara have no statement. Verify them as before, from the **Decision** section.
+
+## Money in the bank with no request
+
+On Bank Statements it reads **No request yet**. Mark it **An old order** or **Not customer money** if it is one, or press **Record it** and say what it is for. It then appears in **Match found**.
 
 ## Cleaning up a duplicate that is already in
 

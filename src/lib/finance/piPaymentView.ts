@@ -359,6 +359,11 @@ export type PiPaymentRowView = {
    */
   canDecide: boolean
   /**
+   * An HDFC payment is verified against its bank credit, in Payment Requests
+   * (20270516000000), so this row offers a way there instead of Approve.
+   */
+  verifiedAtBank: boolean
+  /**
    * A pending payment the verifier looking at it recorded themselves. It draws
    * no decision — a non-admin never decides their own payment, and the database
    * refuses it — and says why instead.
@@ -411,6 +416,7 @@ export function describePiPaymentRow(
       : { heading: rejected ? 'Rejection reason' : 'Finance note', text: remark, rejected },
     canOpenProof: row.proof_count > 0 && row.can_view_proof,
     canDecide: !reversed && !opts.ownPayment && canVerifyPayment(row.status, opts.canVerify),
+    verifiedAtBank: row.payment_mode === 'hdfc' || row.payment_mode === 'hdfc_sec',
     ownPending: !reversed && Boolean(opts.ownPayment) && canVerifyPayment(row.status, opts.canVerify),
     canEdit: !reversed && Boolean(opts.canEdit) && isCorrectablePayment(row.status),
   }

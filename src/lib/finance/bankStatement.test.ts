@@ -167,7 +167,7 @@ describe('suggestPaymentsForLine', () => {
   })
 
   test('different amount and no reference is not suggested; rejected and used-up payments never are', () => {
-    assert.equal(suggestPaymentsForLine(line, [pay({ amount: 70000, remaining: 70000 })]).length, 0)
+    assert.equal(suggestPaymentsForLine(line, [pay({ amount: 70000, remaining: 70000, client_name: 'Another Client' })]).length, 0)
     assert.equal(suggestPaymentsForLine(line, [pay({ status: 'rejected' })]).length, 0)
     assert.equal(suggestPaymentsForLine(line, [pay({ remaining: 0 })]).length, 0)
   })
@@ -178,6 +178,12 @@ describe('suggestPaymentsForLine', () => {
       pay({ id: 'b' }),
     ])
     assert.equal(list[0].paymentId, 'b')
+  })
+
+  test('a credit smaller than the payment is offered only as one part, when it carries the client\'s name', () => {
+    const [s] = suggestPaymentsForLine(line, [pay({ amount: 70000, remaining: 70000 })])
+    assert.ok(s.reasons.includes('Could be one part of this payment'))
+    assert.equal(s.amountExact, false)
   })
 
   test('a payment that is part of a bigger credit is offered as possible', () => {

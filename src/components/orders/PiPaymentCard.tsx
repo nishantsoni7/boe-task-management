@@ -28,6 +28,7 @@ import {
   PaymentDetailsFields,
   scrollToFirstProblem,
 } from '@/app/finance/components/PaymentFormParts'
+import Link from 'next/link'
 import { paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
@@ -400,6 +401,8 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
 
 export const PAYMENT_DETAILS_TITLE = 'Payment details'
 export const APPROVE_PAYMENT_LABEL = 'Approve'
+/** An HDFC payment is verified against its bank credit, which is shown in Finance. */
+export const VERIFY_IN_FINANCE_LABEL = 'Verify in Finance'
 export const REJECT_PAYMENT_LABEL = 'Reject'
 export const EDIT_PAYMENT_LABEL = 'Edit'
 
@@ -644,15 +647,25 @@ export function PiPaymentRow({
           <div className="pi-pay-actions">
             {row.canDecide && armed === null && (
               <>
-                <button
-                  type="button"
-                  className="pi-pay-btn"
-                  onClick={() => onArm('approve')}
-                  disabled={busy}
-                  style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
-                >
-                  {APPROVE_PAYMENT_LABEL}
-                </button>
+                {row.verifiedAtBank ? (
+                  <Link
+                    className="pi-pay-btn"
+                    href={`/finance?tab=all&request=${row.paymentId}`}
+                    style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff', textDecoration: 'none' }}
+                  >
+                    {VERIFY_IN_FINANCE_LABEL}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="pi-pay-btn"
+                    onClick={() => onArm('approve')}
+                    disabled={busy}
+                    style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
+                  >
+                    {APPROVE_PAYMENT_LABEL}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="pi-pay-btn"
