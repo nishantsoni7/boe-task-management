@@ -5,7 +5,7 @@
 //   node backup-code.mjs --no-github  full backup without the network fetch
 import fs from 'node:fs'
 import path from 'node:path'
-import { BACKUP_ROOT, MAIN_REPO, MEMORY_DIR, HOME, ensureDir, encryptFile, git, gitTry, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, DEV_ROOT, MAIN_REPO, MEMORY_DIR, HOME, ensureDir, encryptFile, git, gitTry, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
 
 const quick = process.argv.includes('--quick')
 const noGithub = process.argv.includes('--no-github')
@@ -76,6 +76,17 @@ if (!quick) {
     prune(path.join(BACKUP_ROOT, 'memory'), /^\d/, 20)
     result.steps.memory = { files: fs.readdirSync(mdir).length }
   }
+
+  // 4b ── SEO project folder + scheduled-task instructions (neither is in git) ─
+  result.steps.projects = {}
+  for (const [name, src] of [['bestofexports-website', path.join(DEV_ROOT, 'repositories', 'bestofexports-website')], ['scheduled-tasks', path.join(HOME, '.claude', 'scheduled-tasks')]]) {
+    // A file locked by a running session must not cost tonight's code backup, so this reports and carries on.
+    try {
+      fs.cpSync(src, path.join(BACKUP_ROOT, 'projects', ts, name), { recursive: true })
+      result.steps.projects[name] = fs.readdirSync(path.join(BACKUP_ROOT, 'projects', ts, name), { recursive: true }).length
+    } catch (e) { result.steps.projects[name] = 'FAILED: ' + e.message; log('WARNING: not backed up:', src, e.message) }
+  }
+  prune(path.join(BACKUP_ROOT, 'projects'), /^\d/, 14)
 
   // 5 ── env files (secrets) — encrypted, never plain ──────────────────────────
   const sdir = ensureDir(path.join(BACKUP_ROOT, 'secrets'))

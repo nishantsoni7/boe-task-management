@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9d6af8c3` — Finance: one screen for a pending HDFC payment (#567)
-- Commits on this branch: 1132
+- Commit: `3d392197` — Merge remote-tracking branch 'origin/main' into feat/seo-module
+- Commits on this branch: 1135
 - Pages (`page.tsx`): 168   API routes (`route.ts`): 180
 - Migrations: 400 (first `20260530_create_positions.sql`, latest `20270518000100_seo_tables.sql`)
 - Tables ever created: 202 (dropped at some point: 7)   SQL functions: 870   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `3d392197` 2026-11-01 Merge remote-tracking branch 'origin/main' into feat/seo-module
+- `25ba0e77` 2026-11-01 SEO module, step 1: five read-only screens
+- `dbf26e8b` 2026-11-01 Docs: one-screen window merged as PR #567 (9d6af8c3) (#568)
 - `9d6af8c3` 2026-11-01 Finance: one screen for a pending HDFC payment (#567)
 - `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
 - `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
@@ -36,9 +39,6 @@
 - `6aa8129e` 2026-10-31 Docs: Founders' payouts redesign merged as PR #547 (d454773c) (#548)
 - `d454773c` 2026-10-31 Finance: Founders' payouts redesigned, and its missing styles restored (#547)
 - `3e7adf1c` 2026-10-31 Docs: Bank credit review merged as PR #544 (99bf7fbc) (#546)
-- `0e639f09` 2026-10-31 Docs: Confirmed Orders gap merged as PR #543 (4c0629be) (#545)
-- `99bf7fbc` 2026-10-31 Bank Statements: Synced is checked, a person decides every possible duplicate (#544)
-- `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)
 
 ## Pages by top-level area
 
