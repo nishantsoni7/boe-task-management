@@ -28,11 +28,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
-## 2026-11-01 — One screen for a pending HDFC payment (not merged) · no SQL
+## 2026-11-01 — One screen for a pending HDFC payment (PR #567, 9d6af8c3) · no SQL
 - **Owner request.** After seeing Compare and link on the preview: the window repeated facts, scrolled a long way, and kept Reject far from the comparison.
 - **Changed.** For somebody who may decide a pending HDFC payment, the window answers one question. The header carries amount, client, what it is for and who submitted it, and the comparison carries the rest, so no fact appears twice. Needs clarification and Reject payment sit in a bottom bar and open a reason box there. Proof, notes, custody, activity, Edit and Delete are behind Details. Everybody else, and every cash payment, keeps the old window; #565 had widened the cash window by mistake, and that is undone here.
 - **Release.** Built for #565, but #565 was merged before this was pushed, so it follows on its own. Always read a pull request's state before pushing to it.
-- **Proof.** `bankWindowBar.dom.test.tsx`, the bar driven in a DOM, 10 deliberate breaks all caught. Not seen on the live site.
+- **Proof.** `bankWindowBar.dom.test.tsx`, the bar driven in a DOM, 10 deliberate breaks all caught. The owner tested it on the preview; the live bundle was checked after merging.
 
 ## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (PR #565, 10133012) · 20270517000000 → APPLIED 2026-11-01
 - **Owner request.** Compare what Sales entered with the bank in two clean columns, reject a wrong suggestion, and search by hand, including by a new Bank Statements ID.
