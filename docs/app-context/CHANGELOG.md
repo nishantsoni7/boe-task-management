@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (PR pending) · 20270519000000 → NOT APPLIED
+## 2026-11-02 — SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (PR #571, af8476b4) · 20270519000000 → APPLIED 2026-11-02
 - **Added.** `/seo/reviews` and `/seo/tasks`. Update on each board item. Keep or Change on each strategy change. `GET /api/integrations/seo/decisions`, so edits and answers go back to the website folder before anything is sent.
 - **Access.** `edit` (Contributor) updates a board item and `approve` (Manager) answers a strategy change, in place of the one `manage` action the plan named. No browser writes to a table: the two writes are `seo_update_plan_item` and `seo_decide_proposal`.
 - **Tasks.** The four scheduled tasks send their own results from 2 Nov. This needed no code here.
