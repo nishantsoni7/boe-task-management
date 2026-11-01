@@ -501,3 +501,13 @@ registerModule({
   description: 'Pricing module. Coming soon.',
   actions: [{ actionKey: 'view', displayName: 'View' }],
 })
+
+// SEO: Google rankings, competitors, the 30/60-day board and the Monday review, filled by the owner's scheduled
+// sessions. view: open the module and read it; nothing in it writes yet. Registered by 20270518000000; off for
+// everybody until an administrator grants it.
+registerModule({
+  moduleKey: 'seo',
+  displayName: 'SEO',
+  description: 'Google rankings, competitors, the plan and the weekly review.',
+  actions: [{ actionKey: 'view', displayName: 'View' }],
+})

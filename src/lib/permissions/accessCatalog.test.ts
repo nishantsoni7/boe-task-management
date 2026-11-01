@@ -63,6 +63,7 @@ describe('levels are offered only where they change behaviour', () => {
       sales: ['viewer'],                               // Coming soon: entry is all there is
       marketing: ['viewer'],
       pricing: ['viewer'],
+      seo: ['viewer'],                                 // read-only so far: entry is all there is
     }
     for (const [moduleKey, levels] of Object.entries(expected)) {
       assert.deepEqual(offeredLevels(moduleKey, keysOf(moduleKey)), levels, moduleKey)
@@ -165,6 +166,7 @@ describe('hidden actions: stored, read by nothing, offered to nobody', () => {
       sales: [],
       marketing: [],
       pricing: [],
+      seo: [],
     }
     for (const [moduleKey, hidden] of Object.entries(expected)) {
       assert.deepEqual(hiddenActions(moduleKey, keysOf(moduleKey)), hidden, moduleKey)

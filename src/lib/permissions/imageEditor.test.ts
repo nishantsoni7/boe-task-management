@@ -151,7 +151,7 @@ describe('the administrator convention is preserved', () => {
 describe('registration', () => {
   test('the module is engine-gated', () => {
     assert.ok((ENGINE_GATED_MODULE_KEYS as readonly string[]).includes(IMAGE_EDITOR_MODULE_KEY))
-    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 16) // + inventory (20270313000000), vendors (20270426000000), sales, marketing, pricing (20270515000000)
+    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 17) // + inventory (20270313000000), vendors (20270426000000), sales, marketing, pricing (20270515000000), seo (20270518000000)
   })
 
   test('the key is spelled once and shared', () => {
@@ -357,7 +357,7 @@ describe('the /modules launcher card', () => {
     assert.deepEqual(keys, [
       'assets', 'attendance_payroll', 'control_center', 'customer_reviews', 'exhibition_leads',
       'finance', 'image_editor', 'inventory', 'marketing', 'meetings', 'members', 'orders', 'performance',
-      'pricing', 'sales', 'samples', 'showroom', 'tasks', 'vendors',
+      'pricing', 'sales', 'samples', 'seo', 'showroom', 'tasks', 'vendors',
     ])
     // Exactly one Image Editor card. It no longer carries an accent colour of
     // its own: the launcher draws every module in one neutral palette (see

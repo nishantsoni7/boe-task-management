@@ -162,6 +162,13 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View opens the module, which shows a Coming soon page for now.',
   },
 
+  // Every read is RLS on the seo_* tables (module_entry_open('seo')). Nothing in the app writes: the only writer is
+  // POST /api/integrations/seo/ingest, with its own secret. Entry: src/app/seo/layout.tsx via ModuleGuard.
+  seo: {
+    state: 'enforced',
+    detail: 'View opens the module and is enforced in the screen and in the database. The module only reads.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //

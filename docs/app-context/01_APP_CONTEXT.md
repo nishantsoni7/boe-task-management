@@ -67,6 +67,7 @@ Status at `852e0493`. Click through for the 12-section dossier. "Apply state" it
 | 22 | Announcements | Shipped | `modules/22-announcements.md` | Admin-only publishing; India date, never UTC |
 | 23 | Vendors (outsourcing vendor base, visit log with photos + GPS) | Built 2026-10-28 (PR #472), **NOT merged; 20270426000000 APPLIED 2026-10-28**; stages potential → contacted → prospect, meetings at our factory, past entries window | `modules/23-vendors.md` | Visits append-only; module granted per person (Dhruv), nobody by default; unseen on screen; list filters by expertise / team size / area / registration (PR pending, 20270427 not applied); access levels view / create / edit / approve / export / view_all (PR pending, 20270429 not applied); scan a card or name plate to fill the form (PR pending) |
 | 24 | Sales, Marketing, Pricing | Coming soon page only, 2026-11-01 (#557 merged, 3ac61f79); 20270515000000 APPLIED 2026-11-01 | `modules/24-sales-marketing-pricing.md` | Registration only, no data; Admin only until granted per person; the owner will say what goes in each |
+| 25 | SEO | Step 1 built 2026-11-01 (PR #570); 20270518000000 and 20270518000100 APPLIED 2026-11-01 | `modules/25-seo.md` | Read-only screens, filled by the owner's scheduled sessions through `SEO_INGEST_SECRET`; no SEO figures in this public repository; no paid package, Toolsurf stays |
 
 ## 5. Decisions recorded but NOT built (do not assume they exist)
 

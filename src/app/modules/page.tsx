@@ -23,7 +23,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Tag, TrendingUp } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag, TrendingUp } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, PerformanceIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
@@ -652,6 +652,15 @@ export default function BoeOsHomePage() {
       description: 'Pricing module. Coming soon.',
       href: '/pricing',
       icon: <Tag size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('seo') ? [{
+      key: 'seo',
+      title: 'SEO',
+      // The registered module description, verbatim.
+      description: 'Google rankings, competitors, the plan and the weekly review.',
+      href: '/seo',
+      icon: <Search size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{

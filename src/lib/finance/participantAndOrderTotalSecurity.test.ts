@@ -1190,6 +1190,9 @@ describe('the applied migrations are frozen', () => {
       '20270517000000_finance_bank_line_ids_and_match_search.sql',
       // Confirmed Orders: the Advance column's one read.
       '20270517000100_orders_advance_percent.sql',
+      // SEO: the module's registration, then its six tables.
+      '20270518000000_register_seo_module.sql',
+      '20270518000100_seo_tables.sql',
     ])
   })
 
@@ -1631,6 +1634,9 @@ describe('the applied migrations are frozen', () => {
       '20270517000000_finance_bank_line_ids_and_match_search.sql',
       // Confirmed Orders: the Advance column's one read.
       '20270517000100_orders_advance_percent.sql',
+      // SEO: the module's registration, then its six tables.
+      '20270518000000_register_seo_module.sql',
+      '20270518000100_seo_tables.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
