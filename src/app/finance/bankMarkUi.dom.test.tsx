@@ -178,6 +178,29 @@ describe('part of the money', () => {
   })
 })
 
+describe('one transfer paying for more than one request', () => {
+  const big = () => credit({ deposit: 475000 })
+
+  test('it says what is linked and what stays free', () => {
+    const p = pay()
+    const { ui } = open(p, markFor(p, [big()]))
+    assert.ok(ui.text().includes('This links ₹3,75,000.00. The other ₹1,00,000.00 of this credit stays free for another payment.'))
+  })
+
+  test('the next payment sees only what is left of the credit, as an exact match', () => {
+    const p = pay({ id: 'P2', amount: 100000, remaining: 100000 })
+    const { ui } = open(p, markFor(p, [big(), ].map(l => ({ ...l, linkedAmount: 375000 }))))
+    assert.ok(ui.text().includes('Bank statement · BS-00412'))
+    assert.ok(!ui.text().includes('stays free'))
+  })
+
+  test('a credit of exactly the payment says nothing about the rest', () => {
+    const p = pay()
+    const { ui } = open(p, markFor(p, [credit()]))
+    assert.ok(!ui.text().includes('stays free'))
+  })
+})
+
 describe('Not this one', () => {
   test('it records the answer and reads the marks again, and verifies nothing', async () => {
     const p = pay()

@@ -42,6 +42,8 @@ To reject the whole payment, use **Reject payment** at the bottom of the window.
 
 If a credit says **Check first**, the name or date does not fit. Use it only if you are sure. If it is a little short of the payment, edit the payment to the bank amount, then verify it. If the money came as part of a bigger transfer in another name and no match shows, add the UTR to the payment and it will appear.
 
+**One transfer for two requests?** If the client sent one amount and Sales recorded it across two PIs, verify each request against the same credit, one after the other. The first links only its share, and the second then shows what is left as a match.
+
 **It says May be a duplicate?** A credit of the same amount, near the same date, is already on another payment. The window names that payment and has **Open this credit**. This check looks only at amount and date, so it can be a different client's money.
 
 - **The other payment has no client:** it usually came from the old bank sync. If it is the same money, open the credit and press **Unlink**, delete that payment in Confirmed Payments, then come back and **Verify** the request. The PI stays attached. Stop first if that payment is on an order or PI.

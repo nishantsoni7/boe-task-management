@@ -102,6 +102,8 @@ function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel,
   const bankAmount = (toPaise(payment.amount) - toPaise(remaining) + toPaise(credit.remaining)) / 100
   // When something does not fit, the safe answer is the easy one.
   const rejectFirst = canVerify && covers && credit.sameAccount && !sure && !asking
+  // One transfer can pay for several requests: only this payment's share is linked.
+  const leftOver = (toPaise(credit.remaining) - toPaise(remaining)) / 100
   return (
     <div className="bank-compare">
       <table className="bank-compare-table">
@@ -119,6 +121,7 @@ function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel,
       </table>
       <div className="fin-sub" title={credit.narration}>{credit.narration}</div>
       {doubts.length > 0 && <p className="bank-warn" style={{ fontSize: 13, margin: 0 }}><strong>Check first:</strong> {doubts.join(' and ')}.</p>}
+      {leftOver > 0 && <p className="fin-muted" style={{ fontSize: 13, margin: 0 }}>This links {formatMoney(remaining)}. The other {formatMoney(leftOver)} of this credit stays free for another payment.</p>}
       {short && <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>If the bank amount is right, edit this payment to {formatMoney(bankAmount)}, then verify it.</p>}
       {!credit.sameAccount && <p className="fin-muted" style={{ fontSize: 12, margin: 0 }}>This credit is in {BANK_ACCOUNT_LABEL[credit.account]}. To use it, correct the payment&apos;s account first.</p>}
       <div className="bank-compare-actions">
