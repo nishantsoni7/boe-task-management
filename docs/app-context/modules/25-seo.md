@@ -12,7 +12,7 @@ Written 2026-11-01 from the build, updated 2026-11-02. Plan: https://claude.ai/a
 
 Step 1 is live (#570, `b1bc5ab6`, merged by the owner 2026-11-01): five screens, six tables and the door the sessions send results through. Migrations `20270518000000` and `20270518000100` APPLIED 2026-11-01. The saved history was sent the same day.
 
-Step 2 adds the Weekly review and Scheduled tasks screens, a board that can be updated, Keep or Change on strategy changes, and the way back to the website folder. The four scheduled tasks send their own results from 2 Nov 2026.
+Step 2 is live (#571, `af8476b4`, merged by the owner 2026-11-02): the Weekly review and Scheduled tasks screens, a board that can be updated, Keep or Change on strategy changes, and the way back to the website folder. Migration `20270519000000` APPLIED 2026-11-02. A real sender run after the deploy fetched from `decisions` and sent. The four scheduled tasks end by running the sender, from 2 Nov 2026.
 
 Neither step has been seen in a browser or signed in. `permissions:check` is refused as a production read, so it was not run.
 
