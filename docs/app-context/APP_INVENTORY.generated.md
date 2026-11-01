@@ -5,18 +5,18 @@
 
 ## Snapshot
 
-- Commit: `f3616ad5` — Docs: 20270517000100 applied, rehearsal passed on production rows
+- Commit: `930978d3` — Finance: one screen for a pending HDFC payment
 - Commits on this branch: 1132
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 398 (first `20260530_create_positions.sql`, latest `20270517000100_orders_advance_percent.sql`)
 - Tables ever created: 196 (dropped at some point: 7)   SQL functions: 870   Enums: 0
-- Test files: 708   Next.js 16.2.6, React 19.2.4
+- Test files: 709   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `f3616ad5` 2026-11-01 Docs: 20270517000100 applied, rehearsal passed on production rows
-- `1e8ad45c` 2026-11-01 Confirmed Orders: the Advance migration goes after 20270517000000
-- `29922afb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40%
+- `930978d3` 2026-11-01 Finance: one screen for a pending HDFC payment
+- `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
+- `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
 - `e9891f70` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
 - `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)

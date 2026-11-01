@@ -13,6 +13,7 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
+import { BankWindowBar } from './bankWindowBar'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import { isBankAccountMode } from '@/lib/finance/bankMarks'
 import { PaymentCustodyTrail, PaymentDestinationSummary, usePaymentDestination } from './components/PaymentDestinationBlock'
@@ -147,9 +148,12 @@ export function DetailsModal({
   // AN HDFC PAYMENT IS VERIFIED AGAINST THE BANK (20270516000000): its Verify is on
   // the bank match in this window, so this list offers only the other two decisions.
   const verifiedAtTheBank = isBankAccountMode(r.payment_mode)
-  const decisions = verifiedAtTheBank
-    ? DECISIONS.filter(d => d.key !== 'approve').map(d => (d.key === 'reject' ? { ...d, label: 'Reject payment' } : d))
-    : DECISIONS
+  const decisions = verifiedAtTheBank ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS
+  // A PENDING HDFC PAYMENT, FOR SOMEBODY WHO MAY DECIDE IT, HAS ONE JOB: is this the
+  // same money? The comparison is the whole window, every fact appears once, and what
+  // is left of the record waits behind Details.
+  const bankWindow = canVerify && verifiedAtTheBank && !!bankPanel && !!supabase && !!onCorrected
+  const [showDetails, setShowDetails] = useState(false)
   const [decisionAction, setDecisionAction] = useState<AdminAction | null>(null)
   const [decisionNote,   setDecisionNote]   = useState('')
   const [deciding,       setDeciding]       = useState(false)
@@ -285,6 +289,48 @@ export function DetailsModal({
   const againstLine  = paymentAgainstDisplay(destination)
   const orderNoLine  = orderNoCell(destination)
 
+  const proofBlock = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <SectionHeader>Payment Proof / Reference</SectionHeader>
+      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {supabase
+              ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" />
+              : <span style={{ fontSize: '13px', color: colors.muted }}>No payment proof attached</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+            {r.proof_note || 'No reference provided'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
+          <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+            {r.sales_note || 'No notes provided'}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+  const custodyBlock = supabase && (
+    <PaymentCustodyTrail
+      supabase={supabase}
+      payment={r}
+      canAppend={mayApprovePayments || mayCorrectPayments || r.submitted_by === userId}
+      formatDateTime={fmtDateTime}
+      onAppended={onCorrected}
+    />
+  )
+  const activityBlock = supabase && (
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
+      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+    </div>
+  )
+
   const left = (
     <>
       {/* A. Primary summary card — amount + client lead, payment details below */}
@@ -354,15 +400,7 @@ export function DetailsModal({
           which is what makes "collect today, hand over tomorrow" work. That is a
           DRAWING rule: append_payment_custody_events re-derives the authority
           itself and refuses anyone else. */}
-      {supabase && (
-        <PaymentCustodyTrail
-          supabase={supabase}
-          payment={r}
-          canAppend={mayApprovePayments || mayCorrectPayments || r.submitted_by === userId}
-          formatDateTime={fmtDateTime}
-          onAppended={onCorrected}
-        />
-      )}
+      {custodyBlock}
 
       {/* D. PAYMENT PROOF / REFERENCE — the attachment, the reference and the
           notes, under ONE heading and in one frame. They are three parts of the
@@ -370,55 +408,26 @@ export function DetailsModal({
           together on all three entry forms, so they are answered together here.
           The database keeps them in separate columns because they mean separate
           things; this is a grouping, not a merge. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <SectionHeader>Payment Proof / Reference</SectionHeader>
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {supabase
-                ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" />
-                : <span style={{ fontSize: '13px', color: colors.muted }}>No payment proof attached</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-            <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-              {r.proof_note || 'No reference provided'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
-            <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-              {r.sales_note || 'No notes provided'}
-            </span>
-          </div>
-        </div>
-      </div>
+      {proofBlock}
 
       {/* G. BANK STATEMENT — only for a holder of finance.reconcile (the page
           decides). Information for the verifier; linking never verifies. */}
-      {!canVerify && bankPanel}
+      {!bankWindow && bankPanel}
     </>
   )
 
-  // An HDFC payment is decided in the comparison at the top, so what is left here is
-  // about the whole payment, not one credit, and it sits below everything.
-  const decisionBelow = verifiedAtTheBank && !!bankPanel
   const decisionBlock = canVerify && supabase && onCorrected ? (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          <SectionHeader>{decisionBelow ? 'The whole payment' : 'Decision'}</SectionHeader>
+          <SectionHeader>Decision</SectionHeader>
           {verifiedAtTheBank && (
             <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
-              {bankPanel
-                ? 'An HDFC payment is verified against its bank credit, in the Bank statement section of this window.'
-                : 'An HDFC payment is verified against its bank credit, which needs access to Bank Statements.'}
+              An HDFC payment is verified against its bank credit, which needs access to Bank Statements.
             </div>
           )}
-          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: decisionBelow ? 'row' : 'column', flexWrap: 'wrap', gap: '6px' }}>
+          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {decisions.map(d => {
               const on = decisionAction === d.key
               return (
@@ -430,7 +439,7 @@ export function DetailsModal({
                   onClick={() => { setDecisionAction(d.key); setDecisionError(null) }}
                   disabled={deciding}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', flex: '1 1 240px',
+                    display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', width: '100%',
                     padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
                     border: `1px solid ${on ? d.color : colors.border}`, background: on ? d.tint : '#FFFFFF',
                   }}
@@ -506,11 +515,7 @@ export function DetailsModal({
     <>
       {/* E. Activity panel — subtle bordered panel; the timeline keeps its
           own "Activity" heading, query, ordering, and event text. */}
-      {supabase && (
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
-          <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
-        </div>
-      )}
+      {activityBlock}
 
       {/* E2. DECISION — verify, send back, or reject. One section, three outcomes,
           each through its own protected door (see handleDecide). Drawn only for
@@ -519,7 +524,7 @@ export function DetailsModal({
           every call re-derives the actor, the permission and the row's status
           under a row lock. Moving a row into the approved statuses is never an
           option in a status <select>: a protected action gets its own door. */}
-      {!decisionBelow && decisionBlock}
+      {!bankWindow && decisionBlock}
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
@@ -630,18 +635,38 @@ export function DetailsModal({
     </div>
   ) : undefined
 
+  const bankFooter = bankWindow ? (
+    <BankWindowBar
+      details={showDetails}
+      action={decisionAction === 'approve' ? null : decisionAction}
+      note={decisionNote}
+      sending={deciding}
+      error={decisionError}
+      manage={footer}
+      onToggleDetails={() => setShowDetails(!showDetails)}
+      onAsk={a => { setDecisionAction(a); setDecisionNote(''); setDecisionError(null) }}
+      onNote={setDecisionNote}
+      onCancel={() => { setDecisionAction(null); setDecisionNote(''); setDecisionError(null) }}
+      onSend={handleDecide}
+    />
+  ) : undefined
+
   return (
     <RequestModalShell
       requestNumber={r.human_payment_id}
-      submittedLine={submittedLine}
+      submittedLine={bankWindow ? (
+        <>
+          <span className="bank-window-amount">{fmtAmount(r.amount)} <span>· {customerDisplayName(r.client_name)}</span></span>
+          {againstLine} · {submittedLine}
+        </>
+      ) : submittedLine}
       statusBadge={<StatusBadge status={r.status} />}
       onClose={onClose}
-      left={left}
-      right={right}
-      top={canVerify ? bankPanel : undefined}
-      bottom={decisionBelow ? decisionBlock : undefined}
-      width={canVerify && bankPanel ? '1040px' : undefined}
-      footer={footer}
+      left={bankWindow ? <>{proofBlock}{custodyBlock}</> : left}
+      right={bankWindow ? activityBlock : right}
+      body={bankWindow && !showDetails ? bankPanel : undefined}
+      width={bankWindow ? '1040px' : undefined}
+      footer={bankWindow ? bankFooter : footer}
     />
   )
 }
