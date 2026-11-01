@@ -212,7 +212,7 @@ describe('Verify, bank check pending', () => {
 
 describe('no match', () => {
   const twin = (holders: BankHolder[] = []): BankMark => ({
-    kind: 'lookalike', lineId: 'L1', account: 'hdfc', lineDate: '2026-10-06', deposit: 375000, narration: 'NEFT', holders,
+    kind: 'lookalike', lineId: 'L1', lineDate: '2026-10-06', deposit: 375000, narration: 'NEFT', holders,
   })
   const held = (over: Partial<BankHolder> = {}): BankHolder => ({ paymentId: 'P9', humanId: 'P-ZZ-0009', clientName: null, status: 'approved_unlinked', ...over })
   const hrefs = (ui: ReturnType<typeof open>['ui']) => ui.all('a').map(a => a.getAttribute('href'))
@@ -229,13 +229,13 @@ describe('no match', () => {
     assert.ok(ui.text().includes('Suspense payment (no client)'))
     assert.ok(ui.text().includes('P-ZZ-0009'))
     assert.ok(ui.text().includes('unlink that payment, delete it in Confirmed Payments'))
-    assert.deepEqual(hrefs(ui), ['/finance/received?payment=P9', '/finance/bank?account=hdfc&month=2026-10&credit=L1'])
+    assert.deepEqual(hrefs(ui), ['/finance/received?payment=P9', '/finance/bank?month=2026-10&credit=L1'])
   })
 
   test('with no names read it still says where to look, and opens the credit', () => {
     const { ui } = open(pay(), twin())
     assert.ok(ui.text().includes('Open the credit to see which payment holds it.'))
-    assert.deepEqual(hrefs(ui), ['/finance/bank?account=hdfc&month=2026-10&credit=L1'])
+    assert.deepEqual(hrefs(ui), ['/finance/bank?month=2026-10&credit=L1'])
   })
 
   test('the urgent form stays closed on a possible second record, for an admin too', () => {

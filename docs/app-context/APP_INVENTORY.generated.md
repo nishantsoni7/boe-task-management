@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `f8616267` — Finance: an HDFC payment is verified only against its bank credit (#560)
-- Commits on this branch: 1125
+- Commit: `5abb1145` — Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
+- Commits on this branch: 1126
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 395 (first `20260530_create_positions.sql`, latest `20270516000000_finance_bank_proof_before_verify.sql`)
 - Tables ever created: 195 (dropped at some point: 7)   SQL functions: 866   Enums: 0
-- Test files: 706   Next.js 16.2.6, React 19.2.4
+- Test files: 707   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
 - `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
@@ -38,7 +39,6 @@
 - `2421612f` 2026-10-31 Payments lists: order by payment date, latest first (#539)
 - `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
 - `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
-- `7e60d9ed` 2026-10-31 Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
 
 ## Pages by top-level area
 
