@@ -47,7 +47,7 @@ export type BankMark =
   | { kind: 'linked'; complete: boolean; otherAccount: boolean; remaining: number; links: { lineId: string; lineDate: string; amount: number; narration: string }[]; candidates: BankCandidate[] }
   | { kind: 'suggested'; remaining: number; candidates: BankCandidate[] }
   /** No free credit, but one of the same money already has another payment: this may be a second record of it. */
-  | { kind: 'lookalike'; lineId: string; account: BankAccountKey; lineDate: string; deposit: number; narration: string; holders: BankHolder[] }
+  | { kind: 'lookalike'; lineId: string; lineDate: string; deposit: number; narration: string; holders: BankHolder[] }
   | { kind: 'none' }
   | { kind: 'uncovered' }
 
@@ -131,7 +131,7 @@ export function deriveBankMarks(
       .sort((a, b) => Math.abs(daysBetween(a.line_date, p.payment_date)) - Math.abs(daysBetween(b.line_date, p.payment_date)))[0]
     if (twin) {
       // The loader names the holders; this works out only that there is a twin.
-      marks.set(p.id, { kind: 'lookalike', lineId: twin.id, account: twin.account, lineDate: twin.line_date, deposit: twin.raw.deposit, narration: twin.narration, holders: [] })
+      marks.set(p.id, { kind: 'lookalike', lineId: twin.id, lineDate: twin.line_date, deposit: twin.raw.deposit, narration: twin.narration, holders: [] })
       continue
     }
     const cov = coverage[p.payment_mode as BankAccountKey]

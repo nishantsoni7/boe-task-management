@@ -252,7 +252,7 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
             </div>
           ))}
           <p className="fin-muted bank-panel-note">{creditHolderAdvice(mark.holders, payment.client_name)}</p>
-          <div><Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.account, mark.lineDate)} target="_blank">Open this credit</Link></div>
+          <div><Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.lineDate)} target="_blank">Open this credit</Link></div>
         </div>
       )}
       {mark.kind === 'none' && <p className="fin-muted bank-panel-note">The bank statement covers this date, but no credit matches this payment. It may not have arrived yet, or was recorded with a different amount or date. If it came as part of a bigger transfer in another name, add the UTR to this payment and it will show here.</p>}

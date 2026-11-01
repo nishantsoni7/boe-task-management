@@ -96,7 +96,7 @@ describe('deriveBankMarks', () => {
     assert.equal(m.kind, 'lookalike')
     if (m.kind !== 'lookalike') return
     assert.equal(m.lineDate, '2026-10-06'); assert.equal(m.deposit, 50000)
-    assert.equal(m.lineId, 'L1'); assert.equal(m.account, 'hdfc')
+    assert.equal(m.lineId, 'L1')
     assert.deepEqual(m.holders, [])
   })
 

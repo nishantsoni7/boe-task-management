@@ -19,6 +19,12 @@ Every screen now uses the same words for a payment:
 - When Sales (or you, on an Order) add a payment and the client's money is already in the system, they tap **Use this money**. The same payment, with the same Payment ID, moves onto the new PI or Order. You get a notice for information only: "Payment … was moved onto PID-… from money already received". There's nothing to verify again.
 - Every move is recorded in the payment's history with who, when and why, and **Correct Allocation** can undo it.
 
+## One list for both HDFC accounts
+
+Bank Statements shows HDFC PRI and HDFC SEC together, month by month, and the **Account** column says where each line is. To look at one account, use the **Account** filter or press its box at the top. Press the box again to see both.
+
+If a credit is in one account and the payment says the other, press **Edit** on the payment and correct the account. Then it can be matched.
+
 ## Checking an HDFC payment
 
 An HDFC PRI or SEC payment can only be verified against its bank credit. You need Bank Statements access for this.

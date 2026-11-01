@@ -158,7 +158,7 @@ describe('bank check pending', () => {
   })
 
   test('its credit on another payment is named as a problem', () => {
-    assert.equal(bankCheckState(paid(2), { kind: 'lookalike', lineId: 'L1', account: 'hdfc', lineDate: '2026-10-06', deposit: 1, narration: '', holders: [] }, today).tone, 'warn')
+    assert.equal(bankCheckState(paid(2), { kind: 'lookalike', lineId: 'L1', lineDate: '2026-10-06', deposit: 1, narration: '', holders: [] }, today).tone, 'warn')
   })
 })
 
@@ -240,11 +240,10 @@ describe('the rule stays where it is', () => {
     assert.ok(page.includes("setDetailMark({ id: r.id, mark: undefined, failed: true })"))
   })
 
-  test('a credit opens from its address, in its own account and month', () => {
-    assert.equal(creditHref('L1', 'hdfc_sec', '2026-10-06'), '/finance/bank?account=hdfc_sec&month=2026-10&credit=L1')
+  test('a credit opens from its address, in its own month', () => {
+    assert.equal(creditHref('L1', '2026-10-06'), '/finance/bank?month=2026-10&credit=L1')
     const view = read('src/app/finance/bank/BankStatementsView.tsx')
     assert.ok(view.includes("useState<string | null>(() => params.get('credit'))"))
-    assert.ok(view.includes("params.get('account') === 'hdfc_sec' ? 'hdfc_sec' : 'hdfc'"))
     assert.ok(read('src/app/finance/bank/page.tsx').includes('<Suspense'))
   })
 

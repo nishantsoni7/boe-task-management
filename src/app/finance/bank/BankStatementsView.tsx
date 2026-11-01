@@ -23,8 +23,12 @@
 // WHO: finance.reconcile (protected; admins hold it through the admin branch).
 // The database refuses everyone else regardless of what this page draws.
 //
-// SIZE: one account, one month at a time. A month is a few hundred lines, so the
-// month is read whole (capped at 2,000) and paged on screen, 50 at a time.
+// BOTH ACCOUNTS, ONE LIST. A payment recorded against the wrong HDFC account was
+// invisible from the other tab, so a month is always read for both, each row says
+// which account it is in, and the Account filter only narrows what is on screen.
+//
+// SIZE: one month at a time. A month is a few hundred lines, so it is read whole
+// and paged on screen, 50 at a time.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -38,6 +42,7 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL, DEBIT_KIND_LABEL, type BankAccountKey, type DebitKind } from '@/lib/finance/bankStatement'
+import { statementsRunTo, type Coverage } from '@/lib/finance/bankMarks'
 import { payerFromNarration } from '@/lib/finance/bankMatching'
 import { payeeFromDebitNarration } from '@/lib/finance/bankStatement'
 import { toPaise } from '@/lib/finance/bankMoney'
@@ -48,14 +53,16 @@ import {
   SYNC_PILL,
   activeLinks,
   analyseLine,
+  combinedRange,
   formatBankDate,
+  inAccount,
   linkedTotal,
   loadCandidateExpenses,
   loadCandidatePayments,
   loadLineReview,
   loadMonthLines,
   loadPayerHistory,
-  loadStoredRange,
+  loadStoredRanges,
   loadSyncOverview,
   lookAlikeCredit,
   monthLabel,
@@ -68,6 +75,7 @@ import {
   statusLabelFor,
   syncReason,
   syncState,
+  type AccountFilter,
   type BankExpense,
   type BankLine,
   type BankPayment,
@@ -108,11 +116,10 @@ export function BankStatementsView() {
   const [caps, setCaps] = useState(NO_FINANCE_CAPABILITIES)
   const [booting, setBooting] = useState(true)
 
-  const [account, setAccount] = useState<BankAccountKey>(() => (params.get('account') === 'hdfc_sec' ? 'hdfc_sec' : 'hdfc'))
-  // The stored date range is remembered WITH the account it belongs to, so
-  // switching account reads as "not loaded yet" without resetting state in an effect.
-  const [rangeFor, setRangeFor] = useState<{ account: BankAccountKey; range: { first: string; last: string } | null } | null>(null)
-  const range = rangeFor?.account === account ? rangeFor.range : undefined
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>('all')
+  // Undefined until read; a fresh object only when the read returns, so it can drive an effect.
+  const [ranges, setRanges] = useState<Coverage | undefined>(undefined)
+  const range = useMemo(() => (ranges === undefined ? undefined : combinedRange(ranges)), [ranges])
   const [month, setMonth] = useState<string | null>(() => (params.get('credit') ? params.get('month') : null))
   const [tab, setTab] = useState<Tab>('in')
   const [card, setCard] = useState<CardKey>('all')
@@ -122,15 +129,15 @@ export function BankStatementsView() {
   const [search, setSearch] = useState('')
   // The page number is keyed by the filters it was chosen under: change any of
   // them and the page is 0 again, with no reset in an effect.
-  const pageKey = `${account}|${month}|${tab}|${card}|${outCard}|${search}`
+  const pageKey = `${accountFilter}|${month}|${tab}|${card}|${outCard}|${search}`
   const [pageState, setPageState] = useState({ key: pageKey, page: 0 })
   const page = pageState.key === pageKey ? pageState.page : 0
   const setPage = (p: number) => setPageState({ key: pageKey, page: p })
 
-  // One month's data, tagged with the (account, month) it answers. `loading` is
+  // One month's data, tagged with the month it answers. `loading` is
   // "the data on screen answers a different question", so a reload after a write
   // replaces it in place instead of flashing the list away.
-  const dataKey = `${account}|${month}`
+  const dataKey = month ?? ''
   const [data, setData] = useState<{ key: string; lines: BankLine[]; payments: BankPayment[]; expenses: BankExpense[]; history: PayerHistoryEntry[]; review: Map<string, LineReview>; error: string | null } | null>(null)
   const loading = month !== null && data?.key !== dataKey
   const lines = useMemo(() => (data?.key === dataKey ? data.lines : []), [data, dataKey])
@@ -162,11 +169,12 @@ export function BankStatementsView() {
     return () => { alive = false }
   }, [supabase, router])
 
-  // ── which months does this account have ──
-  const loadRange = useCallback(async (acct: BankAccountKey, preferMonth?: string) => {
+  // ── which months are stored ──
+  const loadRange = useCallback(async (preferMonth?: string) => {
     try {
-      const r = await loadStoredRange(supabase, acct)
-      setRangeFor({ account: acct, range: r })
+      const found = await loadStoredRanges(supabase)
+      const r = combinedRange(found)
+      setRanges(found)
       setMonth(prev => {
         if (preferMonth) return preferMonth
         if (!r) return null
@@ -174,7 +182,7 @@ export function BankStatementsView() {
         return m
       })
     } catch {
-      setRangeFor({ account: acct, range: null })
+      setRanges({})
     }
   }, [supabase])
 
@@ -184,9 +192,9 @@ export function BankStatementsView() {
     // loadRange runs after its first await). react-hooks/set-state-in-effect cannot
     // see through the await, so the call goes through a named local, as the
     // customer-reviews screens and Data Management do.
-    const startFetch = () => { void loadRange(account) }
+    const startFetch = () => { void loadRange() }
     startFetch()
-  }, [account, caps.canReconcileBank, loadRange])
+  }, [caps.canReconcileBank, loadRange])
 
   // ── both accounts, every month ──
   const refreshOverview = useCallback(async () => {
@@ -196,9 +204,9 @@ export function BankStatementsView() {
   // ── the month's lines and candidate payments ──
   const loadMonth = useCallback(async () => {
     if (!month) { await refreshOverview(); return }
-    const key = `${account}|${month}`
+    const key = month
     try {
-      const ls = await loadMonthLines(supabase, account, month)
+      const ls = await loadMonthLines(supabase, month)
       const linked = [...new Set(ls.filter(l => l.deposit > 0).flatMap(l => activeLinks(l).map(k => k.payment_id ?? '')))].filter(Boolean)
       const linkedExpenses = [...new Set(ls.filter(l => l.withdrawal > 0).flatMap(l => activeLinks(l).map(k => k.expense_id ?? '')))].filter(Boolean)
       // What the database says about each credit. If it cannot be read the month
@@ -217,7 +225,7 @@ export function BankStatementsView() {
       setData({ key, lines: [], payments: [], expenses: [], history: [], review: new Map(), error: e instanceof Error ? e.message : 'This month could not be loaded.' })
     }
     await refreshOverview()
-  }, [supabase, account, month, refreshOverview])
+  }, [supabase, month, refreshOverview])
 
   useEffect(() => {
     if (!caps.canReconcileBank || range === undefined) return
@@ -226,8 +234,8 @@ export function BankStatementsView() {
   }, [caps.canReconcileBank, range, loadMonth])
 
   // ── derived ──
-  const credits = useMemo(() => lines.filter(l => l.deposit > 0), [lines])
-  const debits = useMemo(() => lines.filter(l => l.withdrawal > 0), [lines])
+  const credits = useMemo(() => lines.filter(l => l.deposit > 0 && inAccount(l.account, accountFilter)), [lines, accountFilter])
+  const debits = useMemo(() => lines.filter(l => l.withdrawal > 0 && inAccount(l.account, accountFilter)), [lines, accountFilter])
   const analysed = useMemo<LineWithSuggestions[]>(() => credits.map(l => analyseLine(l, payments, [], history, review.get(l.id))), [credits, payments, history, review])
 
   const counts = useMemo(() => {
@@ -246,8 +254,8 @@ export function BankStatementsView() {
 
   const notInBank = useMemo(() => {
     if (!month) return []
-    return payments.filter(p => p.remaining > 0 && p.payment_mode === account && monthOf(p.payment_date) === month)
-  }, [payments, account, month])
+    return payments.filter(p => p.remaining > 0 && inAccount(p.payment_mode, accountFilter) && monthOf(p.payment_date) === month)
+  }, [payments, accountFilter, month])
 
   const q = search.trim().toLowerCase()
   const qDigits = q.replace(/[,₹\s]/g, '')
@@ -326,15 +334,18 @@ export function BankStatementsView() {
   const months = range ? monthsBetween(monthOf(range.first), monthOf(range.last)) : []
   const openInMonth = (m: string) => {
     if (overview === null || overview === 'failed') return 0
-    const row = overview.months.find(x => x.account === account && x.month === m)
-    return row ? row.not_synced + row.not_in_bank : 0
+    return overview.months
+      .filter(x => x.month === m && inAccount(x.account, accountFilter))
+      .reduce((n, x) => n + x.not_synced + x.not_in_bank, 0)
   }
+  // The card of the account already shown goes back to both.
   const openProblem = (acct: BankAccountKey, m: string | undefined, t: 'in' | 'payments') => {
-    setAccount(acct)
     setCard('all')
     setSearch('')
+    if (accountFilter === acct) { setAccountFilter('all'); return }
+    setAccountFilter(acct)
     setTab(t)
-    void loadRange(acct, m)
+    if (m) setMonth(m)
   }
 
   const handleSignOut = async () => {
@@ -357,6 +368,7 @@ export function BankStatementsView() {
     )
   }
 
+  const shownAccount = accountFilter === 'all' ? 'the HDFC accounts' : BANK_ACCOUNT_LABEL[accountFilter]
   const total = tab === 'in' ? shownIn.length : tab === 'out' ? shownOut.length : shownPayments.length
   const pageStart = page * PAGE_SIZE
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -367,20 +379,12 @@ export function BankStatementsView() {
       title="Bank Statements"
       subtitle="Every credit that reaches the bank, matched to a verified payment"
       onSignOut={handleSignOut}
-      onRefresh={async () => { await loadRange(account); await loadMonth() }}
+      onRefresh={async () => { await loadRange(); await loadMonth() }}
       actions={<button className="boe-btn boe-btn-primary" onClick={() => setUploading(true)}>Upload statement</button>}
     >
-      <BankSyncCheck overview={overview} account={account} onOpen={openProblem} />
+      <BankSyncCheck overview={overview} account={accountFilter} onOpen={openProblem} />
 
       <div className="bank-controls">
-        <div className="bank-accounts" role="tablist" aria-label="Account">
-          {(['hdfc', 'hdfc_sec'] as const).map(a => (
-            <button key={a} role="tab" aria-selected={account === a} className="bank-account" onClick={() => { setAccount(a); setCard('all'); setSearch('') }}>
-              {BANK_ACCOUNT_LABEL[a]}
-              <span className="fin-muted"> {a === 'hdfc' ? 'main' : 'petty cash'}</span>
-            </button>
-          ))}
-        </div>
         {months.length > 0 && (
           <label className="bank-month">
             <span className="fin-muted">Month</span>
@@ -389,13 +393,20 @@ export function BankStatementsView() {
             </select>
           </label>
         )}
-        {range && <span className="fin-muted" style={{ fontSize: 12 }}>Statements stored: {formatBankDate(range.first)} – {formatBankDate(range.last)}</span>}
+        <label className="bank-month">
+          <span className="fin-muted">Account</span>
+          <select className="boe-input" value={accountFilter} onChange={e => { setAccountFilter(e.target.value as AccountFilter); setCard('all') }}>
+            <option value="all">All accounts</option>
+            {(['hdfc', 'hdfc_sec'] as const).map(a => <option key={a} value={a}>{BANK_ACCOUNT_LABEL[a]}</option>)}
+          </select>
+        </label>
+        {range && <span className="fin-muted" style={{ fontSize: 12 }}>{statementsRunTo(ranges)}</span>}
       </div>
 
       {range === null && !loadError && (
         <FinanceEmpty
           icon="file"
-          title={`No ${BANK_ACCOUNT_LABEL[account]} statement uploaded yet`}
+          title="No statement uploaded yet"
           body="Download the statement from NetBanking and drop the .xls here. You can upload overlapping periods; nothing is counted twice."
           action={<button className="boe-btn boe-btn-primary" onClick={() => setUploading(true)}>Upload statement</button>}
         />
@@ -436,7 +447,7 @@ export function BankStatementsView() {
           )}
           {tab === 'out' && !loading && outCounts.unexplained > 0 && (
             <p className="bank-unlinked-note">
-              <strong>{formatMoney(outCounts.unexplainedMoney)}</strong> left {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} without an expense or a reason attached.
+              <strong>{formatMoney(outCounts.unexplainedMoney)}</strong> left {shownAccount} in {month ? monthLabel(month) : 'this month'} without an expense or a reason attached.
               {bulkItems.length > 0 && (
                 <> <button className="bank-link-button" onClick={() => setConfirmingAll(true)}>Confirm {bulkItems.length} suggested {bulkItems.length === 1 ? 'reason' : 'reasons'}</button></>
               )}
@@ -444,7 +455,7 @@ export function BankStatementsView() {
           )}
           {tab !== 'out' && !loading && counts.not_synced > 0 && (
             <p className="bank-unlinked-note">
-              <strong>{formatMoney(money)}</strong> reached {BANK_ACCOUNT_LABEL[account]} in {month ? monthLabel(month) : 'this month'} and is not in Confirmed Payments yet.
+              <strong>{formatMoney(money)}</strong> reached {shownAccount} in {month ? monthLabel(month) : 'this month'} and is not in Confirmed Payments yet.
             </p>
           )}
 
@@ -486,7 +497,7 @@ export function BankStatementsView() {
               <FinanceEmpty
                 icon={tab === 'payments' ? 'check' : 'search'}
                 title={tab === 'payments' ? 'Every recorded payment of this month has a bank credit' : 'Nothing to show'}
-                body={tab === 'payments' ? 'Payments recorded in this account for this month that no bank line is linked to would appear here.' : 'Try another filter or month.'}
+                body={tab === 'payments' ? 'Payments recorded for this month that no bank line is linked to would appear here.' : 'Try another filter or month.'}
               />
             ) : (
               <div className="fin-table-wrap">
@@ -494,6 +505,7 @@ export function BankStatementsView() {
                   <table className="fin-table bank-table">
                     <thead><tr>
                       <th style={{ width: 104 }}>Date</th>
+                      <th style={{ width: 96 }}>Account</th>
                       <th>Received from</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
                       <th style={{ width: 170 }}>Matched</th>
@@ -505,6 +517,7 @@ export function BankStatementsView() {
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0}
                           onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
                           <td>{formatBankDate(a.line.line_date)}</td>
+                          <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
                           <td>
                             <span className="fin-primary-text">{payerFromNarration(a.line.narration) ?? a.line.narration}</span>
                             <span className="fin-sub">{a.line.narration}</span>
@@ -525,6 +538,7 @@ export function BankStatementsView() {
                   <table className="fin-table bank-table">
                     <thead><tr>
                       <th style={{ width: 104 }}>Date</th>
+                      <th style={{ width: 96 }}>Account</th>
                       <th>Paid to</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
                       <th style={{ width: 170 }}>Status</th>
@@ -534,6 +548,7 @@ export function BankStatementsView() {
                       {shownOut.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
                           <td>{formatBankDate(a.line.line_date)}</td>
+                          <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
                           <td>
                             <span className="fin-primary-text">{a.line.debit_payee ?? payeeFromDebitNarration(a.line.narration) ?? a.line.narration}</span>
                             <span className="fin-sub">{a.line.narration}</span>
@@ -551,6 +566,7 @@ export function BankStatementsView() {
                   <table className="fin-table bank-table">
                     <thead><tr>
                       <th style={{ width: 104 }}>Recorded</th>
+                      <th style={{ width: 96 }}>Account</th>
                       <th>Client</th>
                       <th style={{ width: 120 }}>Payment ID</th>
                       <th className="fin-num" style={{ width: 140 }}>Not in bank</th>
@@ -563,6 +579,7 @@ export function BankStatementsView() {
                         return (
                           <tr key={p.id}>
                             <td>{formatBankDate(p.payment_date)}</td>
+                            <td>{BANK_ACCOUNT_LABEL[p.payment_mode as BankAccountKey]}</td>
                             <td>
                               <span className="fin-primary-text">{p.client_name ?? 'Suspense payment'}</span>
                               {twin && (
@@ -639,12 +656,12 @@ export function BankStatementsView() {
         <BankUploadModal
           supabase={supabase}
           onClose={() => setUploading(false)}
-          onImported={(acct, m, message) => {
+          onImported={(_acct, m, message) => {
             setUploading(false)
-            setAccount(acct)
+            setAccountFilter('all')
             setCard('all')
             setTab('in')
-            void loadRange(acct, m)
+            void loadRange(m)
             show(`${message}. Nothing was added to Confirmed Payments. New matches are in Payment Requests.`)
           }}
         />

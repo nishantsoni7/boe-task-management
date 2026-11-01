@@ -2,8 +2,8 @@
 
 // ── The sync check: both accounts, every month ──────────────────────────────
 //
-// The page shows one account and one month; this strip shows what is open in all
-// of them, in both directions: credits not matched, and payments with no bank
+// The page shows one month; this strip shows what is open in every month of each
+// account, in both directions: credits not matched, and payments with no bank
 // credit. When both are zero on both accounts the bank and the records agree,
 // because one credit cannot carry more than its amount, so a second payment for
 // the same money always lands on the second count. A failed read says so; it
@@ -11,13 +11,13 @@
 
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL, type BankAccountKey } from '@/lib/finance/bankStatement'
-import { formatBankDate, type SyncOverview } from './bankStatementsModel'
+import { formatBankDate, type AccountFilter, type SyncOverview } from './bankStatementsModel'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export function BankSyncCheck({ overview, account, onOpen }: {
   overview: SyncOverview | 'failed' | null
-  account: BankAccountKey
+  account: AccountFilter
   /** Show the newest month with something open; `tab` is where it is. */
   onOpen: (account: BankAccountKey, month: string | undefined, tab: 'in' | 'payments') => void
 }) {

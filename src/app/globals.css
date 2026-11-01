@@ -11968,13 +11968,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    Same vocabulary as FINANCE LISTS above: the board, the view bar, the table,
    the status pills. Only what those do not already give is defined here. */
 .bank-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; }
-.bank-accounts { display: inline-flex; padding: 3px; gap: 2px; background: #F3F0EB; border-radius: 10px; }
-.bank-account {
-  height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: none; cursor: pointer;
-  font: 600 13px var(--boe-font-body); color: #4C5352; white-space: nowrap;
-}
-.bank-account[aria-selected="true"] { background: #FFFFFF; color: #303536; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-.bank-account:focus-visible { outline: 2px solid var(--boe-brand) !important; outline-offset: 1px !important; }
 .bank-month { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .bank-month select { height: 32px; padding: 0 8px; }
 .bank-unlinked-note { margin: 10px 2px 14px; font-size: 13px; color: #805B0D; }
