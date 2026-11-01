@@ -7,6 +7,32 @@ import type { SeoData, SeoLogRow, SeoMetric, SeoPlanItem, SeoReview, SeoRun, Seo
 // module_entry_open('seo'). Thirteen months keeps a full year on the screen and the read small as days add up.
 const KEEP_DAYS = 400
 
+export type SeoDecision = 'keep' | 'change'
+
+const WRITE_MESSAGES: [RegExp, string][] = [
+  [/SEO_FORBIDDEN/, 'You do not have access to change this.'],
+  [/SEO_NOT_FOUND/, 'This is no longer there. Refresh the page.'],
+  [/SEO_ALREADY_DECIDED/, 'This was already answered. Refresh the page.'],
+  [/SEO_EVIDENCE_REQUIRED/, 'Say what shows this is done.'],
+  [/SEO_INVALID/, 'That could not be saved. Check what you entered.'],
+]
+
+/** A sentence a person can act on. The database's own code never reaches the screen. */
+export function seoWriteMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  return WRITE_MESSAGES.find(([code]) => code.test(message))?.[1] ?? 'Could not save. Check your connection and try again.'
+}
+
+export async function updatePlanItem(supabase: SupabaseClient, id: string, status: SeoPlanItem['status'], evidence: string) {
+  const { error } = await supabase.rpc('seo_update_plan_item', { p_id: id, p_status: status, p_evidence: evidence })
+  if (error) throw new Error(error.message)
+}
+
+export async function decideProposal(supabase: SupabaseClient, id: string, decision: SeoDecision, note: string) {
+  const { error } = await supabase.rpc('seo_decide_proposal', { p_id: id, p_decision: decision, p_note: note })
+  if (error) throw new Error(error.message)
+}
+
 export async function fetchSeoData(supabase: SupabaseClient): Promise<SeoData> {
   const since = istAddDays(istToday(), -KEEP_DAYS)
   const [metrics, watchlist, planItems, reviews, log, runs] = await Promise.all([
@@ -20,9 +46,9 @@ export async function fetchSeoData(supabase: SupabaseClient): Promise<SeoData> {
       .range(from, to)),
     supabase.from('seo_watchlist').select('kind, entry_key, label, note, active'),
     supabase.from('seo_plan_items').select('id, window_key, title, who, due_date, status, evidence').order('due_date').order('id'),
-    supabase.from('seo_reviews').select('review_date, verdict, items_due, items_done, numbers_on_target, summary')
+    supabase.from('seo_reviews').select('review_date, verdict, items_due, items_done, numbers_on_target, summary, detail')
       .order('review_date', { ascending: false }).limit(60),
-    supabase.from('seo_log').select('id, kind, log_date, title, body, before_value, after_value, source')
+    supabase.from('seo_log').select('id, kind, log_date, title, body, before_value, after_value, source, decision, decision_note, decided_at')
       .order('log_date', { ascending: false }).limit(500),
     supabase.from('seo_feed_runs').select('feed, run_date, status, message, row_count')
       .order('run_date', { ascending: false }).limit(100),

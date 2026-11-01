@@ -3,6 +3,11 @@
 .stack { display: grid; gap: 24px; min-width: 0; }
 .tight { display: grid; gap: 8px; min-width: 0; }
 .heading { margin: 0; font-family: var(--boe-font-heading); font-size: 16px; font-weight: 700; color: var(--boe-text); }
+.subheading { margin: 0; font-size: 13px; font-weight: 600; color: var(--boe-text); }
+.list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; color: var(--boe-text); }
+.form { display: grid; gap: 8px; margin-top: 4px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .note { margin: 0; font-size: 13px; color: var(--boe-text-muted); }
 .text { margin: 0; font-size: 14px; color: var(--boe-text); max-width: 72ch; }
 

@@ -7,6 +7,8 @@ import { BoardBody } from './SeoBoard'
 import { CompetitorsBody } from './SeoCompetitors'
 import { OverviewBody } from './SeoOverview'
 import { RankingsBody } from './SeoRankings'
+import { ReviewsBody } from './SeoReviews'
+import { TasksBody } from './SeoTasks'
 import { YearBody } from './SeoYear'
 
 const empty: SeoData = { metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
@@ -63,6 +65,64 @@ describe('each screen draws saved data', () => {
   test('Board: the status in words, its evidence, the targets, what is waiting for an answer', () => {
     const page = html(<BoardBody data={full} today={TODAY} />)
     for (const text of ['Waiting on you', '0 done · 0 started · 1 waiting on you · 0 not started', 'Fixed on staging', 'Due 8 Nov', '100', '0 of 9', 'Move city pages to January', 'City words are tiny.']) {
+      assert.ok(page.includes(text), text)
+    }
+  })
+})
+
+describe('who sees which control', () => {
+  const save = async () => {}
+  const decide = async () => {}
+
+  test('a reader sees the board and the proposal, and no way to change either', () => {
+    const page = html(<BoardBody data={full} today={TODAY} />)
+    assert.equal(page.includes('>Update<'), false)
+    assert.equal(page.includes('Change the plan'), false)
+    assert.ok(page.includes('Waiting for an answer'))
+  })
+  test('edit alone gives Update and never the strategy answer', () => {
+    const page = html(<BoardBody data={full} today={TODAY} onSave={save} />)
+    assert.ok(page.includes('>Update<'))
+    assert.equal(page.includes('Change the plan'), false)
+  })
+  test('approve gives both answers, on the board and on the review', () => {
+    for (const page of [html(<BoardBody data={full} today={TODAY} onDecide={decide} />), html(<ReviewsBody data={full} onDecide={decide} />)]) {
+      assert.ok(page.includes('Change the plan'))
+      assert.ok(page.includes('Keep the plan'))
+    }
+  })
+  test('an answered proposal shows its answer and offers nothing, whoever is looking', () => {
+    const answered: SeoData = {
+      ...full,
+      log: full.log.map(l => (l.kind === 'proposal' ? { ...l, decision: 'keep', decision_note: 'Not yet', decided_at: '2026-11-03T10:00:00Z' } : l)),
+    }
+    const page = html(<ReviewsBody data={answered} onDecide={decide} />)
+    for (const text of ['Plan kept', '3 Nov', 'Not yet']) assert.ok(page.includes(text), text)
+    assert.equal(page.includes('Change the plan'), false)
+    assert.equal(html(<BoardBody data={answered} today={TODAY} onDecide={decide} />).includes('Move city pages to January'), false)
+  })
+})
+
+describe('the Weekly review and Scheduled tasks screens', () => {
+  test('Weekly review: the verdict, its sum, and the page the Monday session wrote', () => {
+    const data: SeoData = {
+      ...full,
+      reviews: [{
+        ...full.reviews[0],
+        detail: { direction: 'Better', numbers: [{ measure: 'Website leads', this_week: 12, last_week: 10, target: 55, note: 'September' }], needs_ok: ['Send photos'], next_tasks: ['Rebuild the page'], risk: 'Photos are late' },
+      }],
+    }
+    const page = html(<ReviewsBody data={data} />)
+    for (const text of ['Week of 2 Nov', 'Watch', '3 of 5 due items done, 2 of 5 numbers on target. Better than last week', 'Hold course.', 'Website leads', 'Send photos', 'Rebuild the page', 'Photos are late']) {
+      assert.ok(page.includes(text), text)
+    }
+  })
+  test('Weekly review with none yet says so', () => {
+    assert.ok(html(<ReviewsBody data={{ ...empty }} />).includes('No Monday review yet'))
+  })
+  test('Scheduled tasks: every task, its time, its state, what to do and its recent runs', () => {
+    const page = html(<TasksBody data={full} today={TODAY} />)
+    for (const text of ['Daily SEO numbers', 'Every day, about 10:09 am', 'Mondays, about 11:07 am', 'Logged out 1 Nov', 'Log in to tools.toolsurf.com', 'No run yet']) {
       assert.ok(page.includes(text), text)
     }
   })

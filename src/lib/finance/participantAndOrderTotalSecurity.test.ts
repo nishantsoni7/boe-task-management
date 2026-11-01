@@ -1193,6 +1193,8 @@ describe('the applied migrations are frozen', () => {
       // SEO: the module's registration, then its six tables.
       '20270518000000_register_seo_module.sql',
       '20270518000100_seo_tables.sql',
+      // SEO step 2: board edits and answers to strategy changes.
+      '20270519000000_seo_board_edits_and_decisions.sql',
     ])
   })
 
@@ -1637,6 +1639,8 @@ describe('the applied migrations are frozen', () => {
       // SEO: the module's registration, then its six tables.
       '20270518000000_register_seo_module.sql',
       '20270518000100_seo_tables.sql',
+      // SEO step 2: board edits and answers to strategy changes.
+      '20270519000000_seo_board_edits_and_decisions.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

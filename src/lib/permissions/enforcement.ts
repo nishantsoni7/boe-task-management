@@ -162,11 +162,12 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View opens the module, which shows a Coming soon page for now.',
   },
 
-  // Every read is RLS on the seo_* tables (module_entry_open('seo')). Nothing in the app writes: the only writer is
+  // Every read is RLS on the seo_* tables (module_entry_open('seo')). Browsers cannot write to the tables: `edit` is
+  // checked in seo_update_plan_item and `approve` in seo_decide_proposal. The sessions write through
   // POST /api/integrations/seo/ingest, with its own secret. Entry: src/app/seo/layout.tsx via ModuleGuard.
   seo: {
     state: 'enforced',
-    detail: 'View opens the module and is enforced in the screen and in the database. The module only reads.',
+    detail: 'View is enforced in the screen and in the database. Edit (update a Vision board item) and Approve (answer a strategy change) are enforced in the database functions.',
   },
 
   // sample_dispatches RLS resolves the four lifecycle actions

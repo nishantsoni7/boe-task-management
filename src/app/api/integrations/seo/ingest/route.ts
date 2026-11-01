@@ -5,32 +5,17 @@
 // fails half way is simply sent again. With SEO_INGEST_SECRET unset the route answers 503 and writes nothing.
 
 import { NextResponse } from 'next/server'
-import { timingSafeEqual } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
+import { refuseWithoutSeoSecret } from '@/lib/seo/doorSecret'
 import { SEO_MAX_INGEST_BYTES, SeoIngestError, parseSeoIngest } from '@/lib/seo/ingest'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-function secretMatches(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
-}
-
 export async function POST(req: Request) {
-  const expected = process.env.SEO_INGEST_SECRET
-  if (!expected) {
-    console.error('[seo/ingest] SEO_INGEST_SECRET is not set - refusing to run')
-    return NextResponse.json({ error: 'The SEO door is not configured.' }, { status: 503 })
-  }
-
-  const provided = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!provided || !secretMatches(provided, expected)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const refusal = refuseWithoutSeoSecret(req)
+  if (refusal) return refusal
 
   const declared = Number(req.headers.get('content-length') ?? '0')
   if (Number.isFinite(declared) && declared > SEO_MAX_INGEST_BYTES) {
