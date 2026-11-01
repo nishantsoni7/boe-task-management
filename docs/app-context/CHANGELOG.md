@@ -14,6 +14,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
+## 2026-11-01 — May be a duplicate: the window names who holds the credit, and the urgent option stays closed (not merged) · no SQL
+- **Found on the first live look.** The window said a credit was on another payment but not which, so the owner had no way forward, and for an admin the one thing left to press was Verify, bank check pending, which would have counted the same money twice.
+- **Changed.** The window names the holder, opens that payment, and opens the exact credit on Bank Statements (`/finance/bank?account=&month=&credit=`, new). The advice follows the holder: no client usually means the old sync. The urgent form stays closed on this mark, warns, and starts with no reason.
+- **Proof.** The window driven in a DOM, the loader against a stub, 15 deliberate breaks all caught. Not seen in a browser.
+
 ## 2026-11-01 — Backups run once a day, not after every merge (PR #559) · no SQL
 - **Owner request.** A backup after every merge wastes time and resources. Do it once in 24 hours for everything merged, and keep a record of what was merged but not yet backed up.
 - **Why this is also safer.** Retention counts runs, not days. At 19 to 24 merges a day, all 14 kept database snapshots and all 30 kept bundles came from 2026-10-31 alone, so a mistake noticed the next morning had almost no history to go back to. One run a day keeps 14 days of snapshots.

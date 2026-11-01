@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `052dc888` — Finance: an HDFC payment is verified only against its bank credit
+- Commit: `f8616267` — Finance: an HDFC payment is verified only against its bank credit (#560)
 - Commits on this branch: 1125
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 395 (first `20260530_create_positions.sql`, latest `20270516000000_finance_bank_proof_before_verify.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `052dc888` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit
+- `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
 - `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
 - `3ac61f79` 2026-11-01 Sales, Marketing and Pricing: three modules, Coming soon (#557)

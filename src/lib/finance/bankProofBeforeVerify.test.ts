@@ -15,6 +15,7 @@ import {
 } from './bankMarks'
 import { describePaymentDecisionError } from './paymentDecision'
 import { suggestPaymentsForLine } from './bankMatching'
+import { creditHref } from '@/app/finance/bank/bankStatementsModel'
 
 const pay = (over: Partial<MarkPayment> = {}): MarkPayment => ({
   id: 'P1', human_payment_id: 'P-ZZ-0101', client_name: 'Sample Hotels LLP', amount: 375000, remaining: 375000,
@@ -157,7 +158,7 @@ describe('bank check pending', () => {
   })
 
   test('its credit on another payment is named as a problem', () => {
-    assert.equal(bankCheckState(paid(2), { kind: 'lookalike', lineDate: '2026-10-06', deposit: 1, narration: '' }, today).tone, 'warn')
+    assert.equal(bankCheckState(paid(2), { kind: 'lookalike', lineId: 'L1', account: 'hdfc', lineDate: '2026-10-06', deposit: 1, narration: '', holders: [] }, today).tone, 'warn')
   })
 })
 
@@ -239,6 +240,14 @@ describe('the rule stays where it is', () => {
     assert.ok(page.includes("setDetailMark({ id: r.id, mark: undefined, failed: true })"))
   })
 
+  test('a credit opens from its address, in its own account and month', () => {
+    assert.equal(creditHref('L1', 'hdfc_sec', '2026-10-06'), '/finance/bank?account=hdfc_sec&month=2026-10&credit=L1')
+    const view = read('src/app/finance/bank/BankStatementsView.tsx')
+    assert.ok(view.includes("useState<string | null>(() => params.get('credit'))"))
+    assert.ok(view.includes("params.get('account') === 'hdfc_sec' ? 'hdfc_sec' : 'hdfc'"))
+    assert.ok(read('src/app/finance/bank/page.tsx').includes('<Suspense'))
+  })
+
   test('the Confirmed Payments edit says the refusal in plain words, not the code', () => {
     assert.ok(read('src/app/finance/received/receivedPaymentsModel.tsx').includes('bankVerifyRefusal(dbError.message)'))
   })
@@ -247,6 +256,7 @@ describe('the rule stays where it is', () => {
     const marks = read('src/lib/finance/bankMarks.ts')
     assert.ok(marks.includes('fetchAllRows<LineRow>'))
     assert.ok(marks.includes(".order('line_date', { ascending: true }).order('id', { ascending: true })"))
+    assert.ok(marks.includes('bank_line_payment_links(amount, unlinked_at, payment_id)'))
   })
 
   test('the address that opens the form from a credit carries only the line', () => {

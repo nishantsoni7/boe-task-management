@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -100,18 +100,20 @@ type Tab = 'in' | 'payments' | 'out'
 export function BankStatementsView() {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  // ?credit= opens one credit, from a payment that may be a second record of it.
+  const params = useSearchParams()
   const { toast, show, dismiss } = useToast()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [caps, setCaps] = useState(NO_FINANCE_CAPABILITIES)
   const [booting, setBooting] = useState(true)
 
-  const [account, setAccount] = useState<BankAccountKey>('hdfc')
+  const [account, setAccount] = useState<BankAccountKey>(() => (params.get('account') === 'hdfc_sec' ? 'hdfc_sec' : 'hdfc'))
   // The stored date range is remembered WITH the account it belongs to, so
   // switching account reads as "not loaded yet" without resetting state in an effect.
   const [rangeFor, setRangeFor] = useState<{ account: BankAccountKey; range: { first: string; last: string } | null } | null>(null)
   const range = rangeFor?.account === account ? rangeFor.range : undefined
-  const [month, setMonth] = useState<string | null>(null)
+  const [month, setMonth] = useState<string | null>(() => (params.get('credit') ? params.get('month') : null))
   const [tab, setTab] = useState<Tab>('in')
   const [card, setCard] = useState<CardKey>('all')
   const [outCard, setOutCard] = useState<OutCardKey>('all')
@@ -139,7 +141,7 @@ export function BankStatementsView() {
   const loadError = data?.key === dataKey ? data.error : null
 
   const [overview, setOverview] = useState<SyncOverview | 'failed' | null>(null)
-  const [opened, setOpened] = useState<string | null>(null)
+  const [opened, setOpened] = useState<string | null>(() => params.get('credit'))
   const [uploading, setUploading] = useState(false)
 
   // ── who is this, and may they be here ──

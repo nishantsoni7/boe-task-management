@@ -9,16 +9,17 @@
 // Linking on its own stays a note beside the payment and verifies nothing.
 
 import { useState } from 'react'
+import Link from 'next/link'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL } from '@/lib/finance/bankStatement'
 import { amountsClose } from '@/lib/finance/bankMatching'
 import { toPaise } from '@/lib/finance/bankMoney'
 import {
-  bankMarkSummary, bankVerifyRefusal, candidateDoubts, compareCandidate, isBankAccountMode, markCandidates,
+  bankMarkSummary, bankVerifyRefusal, candidateDoubts, compareCandidate, creditHolderAdvice, isBankAccountMode, markCandidates,
   type BankCandidate, type BankMark, type BankMarkTone,
 } from '@/lib/finance/bankMarks'
-import { formatBankDate, rpcMessage } from './bank/bankStatementsModel'
+import { PAYMENT_STATUS_LABEL, creditHref, formatBankDate, paymentHref, rpcMessage } from './bank/bankStatementsModel'
 
 /** What an admin usually means when a payment cannot wait for the next statement. They can change it. */
 export const BANK_CHECK_DEFAULT_REASON = 'Seen in the bank app'
@@ -164,6 +165,14 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
   const remaining = mark.kind === 'suggested' || mark.kind === 'linked' ? mark.remaining : 0
   const fits = candidates.filter(c => c.amountExact).length
   const covered = mark.kind === 'linked' && mark.complete
+  const mayBeDuplicate = mark.kind === 'lookalike'
+
+  // On a possible second record the sentence is theirs to write: the usual reason
+  // says the money was seen, and that is true of a credit already recorded too.
+  const openUrgent = () => {
+    if (mayBeDuplicate) setReason('')
+    setUrgentOpen(true)
+  }
 
   const refused = (message: string | undefined, fallback: string) => {
     setBusy(null)
@@ -233,6 +242,17 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
         <div className="bank-panel-line">
           <strong>May be a duplicate.</strong> {formatMoney(mark.deposit)} credited on {formatBankDate(mark.lineDate)} is already linked to another payment, so this one cannot be verified unless it is different money with its own credit.
           <div className="fin-sub">{mark.narration}</div>
+          {mark.holders.map(h => (
+            <div key={h.paymentId} className="bank-row">
+              <div style={{ minWidth: 0 }}>
+                <div className="fin-primary-text">{h.clientName || 'Suspense payment (no client)'}</div>
+                <div className="fin-sub">{h.humanId ?? 'Payment'} · {PAYMENT_STATUS_LABEL[h.status] ?? h.status}</div>
+              </div>
+              <Link className="boe-btn boe-btn-ghost" href={paymentHref(h.paymentId, h.status)} target="_blank">Open payment</Link>
+            </div>
+          ))}
+          <p className="fin-muted bank-panel-note">{creditHolderAdvice(mark.holders, payment.client_name)}</p>
+          <div><Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.account, mark.lineDate)} target="_blank">Open this credit</Link></div>
         </div>
       )}
       {mark.kind === 'none' && <p className="fin-muted bank-panel-note">The bank statement covers this date, but no credit matches this payment. It may not have arrived yet, or was recorded with a different amount or date. If it came as part of a bigger transfer in another name, add the UTR to this payment and it will show here.</p>}
@@ -240,8 +260,9 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
 
       {error && <div role="alert" className="bank-error">{error}</div>}
 
-      {canVerifyUrgent && !covered && (candidates.length === 0 || urgentOpen ? (
+      {canVerifyUrgent && !covered && ((candidates.length === 0 && !mayBeDuplicate) || urgentOpen ? (
         <div className="bank-form">
+          {mayBeDuplicate && <p className="bank-warn" style={{ fontSize: 12, margin: 0 }}>Only if this is different money. If it is the credit above, verifying here counts the same money twice.</p>}
           <label className="bank-field"><span>Why can this not wait for the statement? *</span>
             <input className="boe-input" value={reason} onChange={e => setReason(e.target.value)} maxLength={REASON_MAX} />
           </label>
@@ -253,7 +274,7 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
           </div>
         </div>
       ) : (
-        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setUrgentOpen(true)}>The money is in the bank but not on a statement yet</button></div>
+        <div><button className="bank-link-button" disabled={busy !== null} onClick={openUrgent}>{mayBeDuplicate ? 'This is different money, and it cannot wait' : 'The money is in the bank but not on a statement yet'}</button></div>
       ))}
     </div>
   )

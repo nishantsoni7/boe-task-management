@@ -7,8 +7,14 @@
 // is decided by the view (finance.reconcile) and, for every read and write,
 // by the database.
 
+import { Suspense } from 'react'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { BankStatementsView } from './BankStatementsView'
 
 export default function BankStatementsPage() {
-  return <BankStatementsView />
+  return (
+    <Suspense fallback={<FinanceRouteFallback />}>
+      <BankStatementsView />
+    </Suspense>
+  )
 }
