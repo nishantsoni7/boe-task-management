@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-01 — Confirmed Orders: Advance column (PR open) · 20270516000200 → NOT APPLIED
+## 2026-11-01 — Confirmed Orders: Advance column (PR open) · 20270517000100 → NOT APPLIED
 - **Owner request.** A column with the advance percentage confirmed for each Order; below 40% on a subtle red background, otherwise plain.
 - **Changed.** Advance after Product Value, and a line on the phone card: verified payments as a percentage of Total before GST, the Payment card's own figure. A dash when no figure is known or the read fails, never 0%. Table floor 1120, was 1020.
 - **Database.** `orders_advance_percent()`, read-only, same access as `order_advance_readiness`. Rollback: drop the function; the column then shows dashes and nothing else changes.

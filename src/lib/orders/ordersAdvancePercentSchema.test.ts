@@ -1,5 +1,5 @@
 /**
- * THE CONFIRMED ORDERS LIST'S BATCH ADVANCE PERCENTAGE (20270516000200), read as text.
+ * THE CONFIRMED ORDERS LIST'S BATCH ADVANCE PERCENTAGE (20270517000100), read as text.
  *
  * Holds the migration to its promises without a database:
  *   * it is read-only: one function and no other change;
@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
-const SQL = read('supabase/migrations/20270516000200_orders_advance_percent.sql')
+const SQL = read('supabase/migrations/20270517000100_orders_advance_percent.sql')
   .split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
 describe('orders_advance_percent', () => {

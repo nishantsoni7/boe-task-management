@@ -1187,7 +1187,7 @@ describe('the applied migrations are frozen', () => {
       // The old bank doors closed to browsers, now the new screens are proven.
       '20270516000100_finance_bank_old_routes_closed.sql',
       // Confirmed Orders: the Advance column's one read.
-      '20270516000200_orders_advance_percent.sql',
+      '20270517000100_orders_advance_percent.sql',
     ])
   })
 
@@ -1626,7 +1626,7 @@ describe('the applied migrations are frozen', () => {
       // The old bank doors closed to browsers, now the new screens are proven.
       '20270516000100_finance_bank_old_routes_closed.sql',
       // Confirmed Orders: the Advance column's one read.
-      '20270516000200_orders_advance_percent.sql',
+      '20270517000100_orders_advance_percent.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

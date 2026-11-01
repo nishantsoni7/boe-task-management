@@ -38,7 +38,7 @@ end;
 $$;
 
 comment on function public.orders_advance_percent() is
-  'Advance % (verified, of Total before GST, truncated to 2 dp) for each Order the caller may open; order_advance_position()''s own figure. An Order the caller may not open returns no row; NULL means no base is known. 20270516000200.';
+  'Advance % (verified, of Total before GST, truncated to 2 dp) for each Order the caller may open; order_advance_position()''s own figure. An Order the caller may not open returns no row; NULL means no base is known. 20270517000100.';
 
 revoke execute on function public.orders_advance_percent() from public, anon;
 grant  execute on function public.orders_advance_percent() to authenticated;
