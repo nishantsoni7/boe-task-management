@@ -13,12 +13,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import { formatMoney, paymentModeLabel } from './piPaymentView'
-import { amountsClose, daysBetween, payerFromNarration, suggestLinesForPayment, type LineSuggestion, type MatchLine, type MatchPayment, type MatchConfidence } from './bankMatching'
+import { amountsClose, daysBetween, lineFactsForPayment, payerFromNarration, suggestLinesForPayment, type LineSuggestion, type MatchLine, type MatchPayment, type MatchConfidence } from './bankMatching'
 import { samePaise, toPaise } from './bankMoney'
 import { BANK_ACCOUNT_LABEL, type BankAccountKey } from './bankStatement'
 
 export type BankCandidate = {
   lineId: string
+  statementNo: number
   account: BankAccountKey
   lineDate: string
   deposit: number
@@ -38,7 +39,12 @@ export type BankCandidate = {
 /** A payment that holds a credit, named for the verifier of another payment. */
 export type BankHolder = { paymentId: string; humanId: string | null; clientName: string | null; status: string }
 
-export type BankMark =
+export type BankMark = BankMarkState & {
+  /** Credits a person answered Not this one to, so the answer can be seen and undone. */
+  dismissed?: { lineId: string; statementNo: number }[]
+}
+
+type BankMarkState =
   /**
    * Credits are linked. Only credits in the payment's own account cover it, as in
    * the database's rule: `remaining` is what they leave uncovered, `candidates` what
@@ -61,8 +67,10 @@ export type MarkLine = {
   deposit: number
   narration: string
   bank_ref: string | null
+  statementNo: number
   linkedAmount: number
 }
+export type MarkDismissal = { payment_id: string; line_id: string }
 export type Coverage = Partial<Record<BankAccountKey, { first: string; last: string }>>
 
 const BANK_MODES = new Set(['hdfc', 'hdfc_sec'])
@@ -78,7 +86,7 @@ export function isBankCheckable(p: { payment_mode: string; status: string }): bo
 }
 
 export function deriveBankMarks(
-  payments: MarkPayment[], links: MarkLink[], lines: MarkLine[], coverage: Coverage,
+  payments: MarkPayment[], links: MarkLink[], lines: MarkLine[], coverage: Coverage, dismissals: MarkDismissal[] = [],
 ): Map<string, BankMark> {
   const marks = new Map<string, BankMark>()
   const linksByPayment = new Map<string, MarkLink[]>()
@@ -95,7 +103,7 @@ export function deriveBankMarks(
   const candidate = (s: LineSuggestion): BankCandidate => {
     const l = byId.get(s.lineId)!
     return {
-      lineId: s.lineId, account: l.account, lineDate: l.line_date, deposit: l.raw.deposit, remaining: l.remaining,
+      lineId: s.lineId, statementNo: l.raw.statementNo, account: l.account, lineDate: l.line_date, deposit: l.raw.deposit, remaining: l.remaining,
       narration: l.narration, bankRef: l.bank_ref, confidence: s.confidence, amountExact: s.amountExact,
       referenceMatch: s.referenceMatch, nameFit: s.nameFit, daysApart: s.daysApart, sameAccount: s.sameAccount,
       reasons: s.reasons, warnings: s.warnings,
@@ -104,6 +112,8 @@ export function deriveBankMarks(
 
   for (const p of payments) {
     if (!isBankCheckable(p)) continue
+    const rejected = new Set(dismissals.filter(d => d.payment_id === p.id).map(d => d.line_id))
+    const offerable = matchLines.filter(l => !rejected.has(l.id))
     const mine = linksByPayment.get(p.id) ?? []
     const own = mine.filter(l => l.account === p.payment_mode)
     const otherAccount = own.length < mine.length
@@ -117,11 +127,11 @@ export function deriveBankMarks(
         remaining: left,
         links: mine.map(l => ({ lineId: l.line_id, lineDate: l.line_date, amount: l.amount, narration: l.narration })),
         // A link in the other account holds the payment's room, so that comes first.
-        candidates: left > 0 && !otherAccount ? suggestLinesForPayment({ ...p, remaining: left }, matchLines).map(candidate) : [],
+        candidates: left > 0 && !otherAccount ? suggestLinesForPayment({ ...p, remaining: left }, offerable).map(candidate) : [],
       })
       continue
     }
-    const found = suggestLinesForPayment({ ...p, remaining: left }, matchLines)
+    const found = suggestLinesForPayment({ ...p, remaining: left }, offerable)
     if (found.length > 0) {
       marks.set(p.id, { kind: 'suggested', remaining: left, candidates: found.map(candidate) })
       continue
@@ -136,6 +146,11 @@ export function deriveBankMarks(
     }
     const cov = coverage[p.payment_mode as BankAccountKey]
     marks.set(p.id, !cov || p.payment_date < cov.first || p.payment_date > cov.last ? { kind: 'uncovered' } : { kind: 'none' })
+  }
+  for (const d of dismissals) {
+    const mark = marks.get(d.payment_id)
+    const line = byId.get(d.line_id)
+    if (mark && line) marks.set(d.payment_id, { ...mark, dismissed: [...(mark.dismissed ?? []), { lineId: line.id, statementNo: line.raw.statementNo }] })
   }
   return marks
 }
@@ -302,7 +317,7 @@ type LinkRow = {
   bank_statement_lines: { line_date: string; narration: string; account: BankAccountKey } | null
 }
 type LineRow = {
-  id: string; account: BankAccountKey; line_date: string; deposit: number | string; narration: string; bank_ref: string | null
+  id: string; account: BankAccountKey; line_date: string; deposit: number | string; narration: string; bank_ref: string | null; statement_no: number | string
   bank_line_payment_links: { amount: number | string; unlinked_at: string | null; payment_id: string | null }[] | null
 }
 
@@ -339,23 +354,24 @@ export async function loadBankState(supabase: SupabaseClient, payments: MarkPaym
   const from = addDays(dates[0], -21)
   const to = addDays(dates[dates.length - 1], 21)
 
-  const [linkRes, lineRes, ...cov] = await Promise.all([
+  const [linkRes, lineRes, dismissRes, ...cov] = await Promise.all([
     supabase.from('bank_line_payment_links')
       .select('payment_id, line_id, amount, bank_statement_lines(line_date, narration, account)')
       .in('payment_id', ids).is('unlinked_at', null),
     // EVERY credit in the window, in a fixed order: one old pending payment can make
     // it months wide, and a credit cut off here would read as Not found in the bank.
     fetchAllRows<LineRow>((a, b) => supabase.from('bank_statement_lines')
-      .select('id, account, line_date, deposit, narration, bank_ref, bank_line_payment_links(amount, unlinked_at, payment_id)')
+      .select('id, account, line_date, deposit, narration, bank_ref, statement_no, bank_line_payment_links(amount, unlinked_at, payment_id)')
       .gt('deposit', 0).is('classification', null).gte('line_date', from).lte('line_date', to)
       .order('line_date', { ascending: true }).order('id', { ascending: true })
       .range(a, b) as unknown as PromiseLike<{ data: LineRow[] | null; error: { message: string } | null }>),
+    supabase.from('bank_match_dismissals').select('payment_id, line_id').in('payment_id', ids).is('undone_at', null),
     ...(['hdfc', 'hdfc_sec'] as const).flatMap(a => [
       supabase.from('bank_statement_lines').select('line_date').eq('account', a).order('line_date', { ascending: true }).limit(1),
       supabase.from('bank_statement_lines').select('line_date').eq('account', a).order('line_date', { ascending: false }).limit(1),
     ]),
   ])
-  if (linkRes.error || !lineRes.ok) throw new Error('Bank matches could not be read.')
+  if (linkRes.error || !lineRes.ok || dismissRes.error) throw new Error('Bank matches could not be read.')
 
   const coverage: Coverage = {}
   ;(['hdfc', 'hdfc_sec'] as const).forEach((a, i) => {
@@ -370,16 +386,66 @@ export async function loadBankState(supabase: SupabaseClient, payments: MarkPaym
     account: r.bank_statement_lines?.account as BankAccountKey,
   }))
   const lines: MarkLine[] = lineRes.rows.map(r => ({
-    id: r.id, account: r.account, line_date: r.line_date, deposit: Number(r.deposit), narration: r.narration, bank_ref: r.bank_ref,
+    id: r.id, account: r.account, line_date: r.line_date, deposit: Number(r.deposit), narration: r.narration, bank_ref: r.bank_ref, statementNo: Number(r.statement_no),
     linkedAmount: (r.bank_line_payment_links ?? []).filter(k => k.unlinked_at === null).reduce((a, k) => a + toPaise(Number(k.amount)), 0) / 100,
   }))
-  const marks = deriveBankMarks(eligible, links, lines, coverage)
+  const marks = deriveBankMarks(eligible, links, lines, coverage, (dismissRes.data ?? []) as MarkDismissal[])
   await nameCreditHolders(supabase, marks, lineRes.rows)
   return { marks, coverage }
 }
 
 export async function loadBankMarks(supabase: SupabaseClient, payments: MarkPayment[]): Promise<Map<string, BankMark>> {
   return (await loadBankState(supabase, payments)).marks
+}
+
+// ── Searching by hand ───────────────────────────────────────────────────────
+
+export type SearchCredit = {
+  lineId: string
+  statementNo: number
+  account: BankAccountKey
+  lineDate: string
+  deposit: number
+  remaining: number
+  narration: string
+  bankRef: string | null
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+/** A date as people type it, or null. 31 Oct 2026, 31/10/2026 and 2026-10-31. */
+export function parseSearchDate(text: string): string | null {
+  const t = text.trim().toLowerCase()
+  const parts = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t)?.slice(1).map(Number)
+    ?? /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(t)?.slice(1).map(Number).reverse()
+  const worded = /^(\d{1,2}) ([a-z]{3})[a-z]* (\d{4})$/.exec(t)
+  const [y, m, d] = parts ?? (worded ? [Number(worded[3]), MONTHS.indexOf(worded[2]) + 1, Number(worded[1])] : [0, 0, 0])
+  if (!y || m < 1 || m > 12 || d < 1 || d > 31) return null
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  return new Date(iso + 'T00:00:00Z').toISOString().slice(0, 10) === iso ? iso : null
+}
+
+/** Credits with money left that fit what was typed. The newest 50. */
+export async function searchBankCredits(supabase: SupabaseClient, text: string): Promise<SearchCredit[]> {
+  type Row = { line_id: string; statement_no: number | string; account: BankAccountKey; line_date: string; deposit: number | string; remaining: number | string; narration: string; bank_ref: string | null }
+  const { data, error } = await supabase.rpc('search_bank_unmatched', { p_query: text, p_date: parseSearchDate(text) })
+  if (error) throw new Error('The bank statement could not be searched.')
+  return ((data ?? []) as Row[]).map(r => ({
+    lineId: r.line_id, statementNo: Number(r.statement_no), account: r.account, lineDate: r.line_date,
+    deposit: Number(r.deposit), remaining: Number(r.remaining), narration: r.narration, bankRef: r.bank_ref,
+  }))
+}
+
+/** A credit a person picked, in the shape the comparison reads. */
+export function searchCandidate(
+  p: { client_name: string | null; payment_date: string; payment_mode: string; proof_note: string | null },
+  need: number,
+  c: SearchCredit,
+): BankCandidate {
+  const facts = lineFactsForPayment({ ...p, remaining: need }, {
+    id: c.lineId, account: c.account, line_date: c.lineDate, narration: c.narration, bank_ref: c.bankRef, remaining: c.remaining,
+  })
+  return { ...c, ...facts, confidence: 'possible', reasons: [], warnings: [] }
 }
 
 /**
