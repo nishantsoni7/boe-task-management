@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3ac61f79` — Sales, Marketing and Pricing: three modules, Coming soon (#557)
-- Commits on this branch: 1122
+- Commit: `052dc888` — Finance: an HDFC payment is verified only against its bank credit
+- Commits on this branch: 1125
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 395 (first `20260530_create_positions.sql`, latest `20270516000000_finance_bank_proof_before_verify.sql`)
 - Tables ever created: 195 (dropped at some point: 7)   SQL functions: 866   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `052dc888` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit
+- `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
+- `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
 - `3ac61f79` 2026-11-01 Sales, Marketing and Pricing: three modules, Coming soon (#557)
 - `3fa2b704` 2026-10-31 Docs: class guard merged as PR #553 (2f9d5795) (#555)
 - `534c9007` 2026-10-31 Confirmed Order: remove the Custom word from the Customization column (#554)
@@ -36,9 +39,6 @@
 - `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
 - `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
 - `7e60d9ed` 2026-10-31 Docs: Assigned By Me redesign merged as PR #535 (a4cde4af) (#536)
-- `a4cde4af` 2026-10-31 Assigned By Me: one-line list, Team response bar, Approve and Cancel on the row (#535)
-- `90a5b0b6` 2026-10-31 Docs: Incoming Minop redesign merged as PR #531 (a4e60f5c) (#534)
-- `a4e60f5c` 2026-10-31 Incoming Minop data: table redesigned around punch time, delay and name (#531)
 
 ## Pages by top-level area
 
