@@ -75,17 +75,28 @@ export type NewPaymentModalProps = {
   initialClientName?: string
   initialSalesNote?: string
   contextLabel?: string
+  /** Opened from a bank credit: what the bank says, for the person to complete. */
+  initialPayment?: { amount: string; paymentDate: string; paymentMode: string; reference: string }
 }
 
 export function NewPaymentConfirmationModal({
   userId, supabase, onClose, onSaved,
-  initialClientName, initialSalesNote, contextLabel,
+  initialClientName, initialSalesNote, contextLabel, initialPayment,
 }: NewPaymentModalProps) {
   useModalScrollLock()
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
 
-  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, salesNote: initialSalesNote ?? '' }))
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_FORM,
+    salesNote: initialSalesNote ?? '',
+    ...(initialPayment ? {
+      amount: initialPayment.amount,
+      paymentDate: initialPayment.paymentDate,
+      paymentMode: initialPayment.paymentMode,
+      proofNote: initialPayment.reference,
+    } : {}),
+  }))
   const [entry, setEntry] = useState<PaymentEntryState>(EMPTY_PAYMENT_ENTRY)
   // WHERE IS THIS MONEY NOW (20270413000000). For PNB, Paytm and Canara the
   // recorder says whether they still hold it or handed it to someone; a handover
@@ -101,7 +112,7 @@ export function NewPaymentConfirmationModal({
   // after they press Send, and each one clears the moment it is put right.
   const [showProblems, setShowProblems] = useState(false)
   // Proof and notes stay closed unless something is already in them.
-  const [proofOpen, setProofOpen] = useState(!!(initialSalesNote ?? '').trim())
+  const [proofOpen, setProofOpen] = useState(!!(initialSalesNote ?? '').trim() || !!initialPayment?.reference)
 
   // ONE SUBMISSION, NOT ONE PER CLICK. `saving` re-renders and a second click
   // can land inside the same tick; a ref is read and written synchronously, so

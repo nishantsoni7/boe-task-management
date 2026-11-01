@@ -22,6 +22,7 @@ import { colors } from '@/lib/tokens'
 import {
   APPROVE_PAYMENT_LABEL,
   EDIT_PAYMENT_LABEL,
+  VERIFY_IN_FINANCE_LABEL,
   PAYMENT_BAR_COLORS,
   PAYMENT_DETAILS_NOTHING_ADDED,
   PAYMENT_DETAILS_TITLE,
@@ -101,6 +102,9 @@ const SUMMARY = {
   payments: ROWS,
 } as PiPaymentSummary
 
+/** The same rows with the pending payment in an account no statement covers, so it is verified by hand. */
+const CASH_SUMMARY = { ...SUMMARY, payments: ROWS.map(r => ({ ...r, payment_mode: 'bank_transfer' })) } as PiPaymentSummary
+
 const STATUS: PiPaymentStatusFigures = {
   received: '₹4,50,000',
   receivedPercent: '38.13%',
@@ -158,9 +162,18 @@ describe('approve and reject are offered only to a payment verifier', () => {
   })
 
   test('a verifier gets exactly one Approve and one Reject — on the one pending, active row', () => {
-    const labels = buttonLabels(modal({ canVerify: true, onDecide: decide }))
+    const labels = buttonLabels(modal({ canVerify: true, onDecide: decide, summary: CASH_SUMMARY }))
     assert.equal(labels.filter(l => l === APPROVE_PAYMENT_LABEL).length, 1)
     assert.equal(labels.filter(l => l === REJECT_PAYMENT_LABEL).length, 1)
+  })
+
+  test('an HDFC payment is sent to Finance instead: it is verified against its bank credit there', () => {
+    const html = modal({ canVerify: true, onDecide: decide })
+    const labels = buttonLabels(html)
+    assert.equal(labels.filter(l => l === APPROVE_PAYMENT_LABEL).length, 0)
+    assert.equal(labels.filter(l => l === REJECT_PAYMENT_LABEL).length, 1)
+    assert.ok(text(html).includes(VERIFY_IN_FINANCE_LABEL))
+    assert.ok(html.includes('/finance?tab=all&amp;request=p-pending'))
   })
 
   test('the row rule is the shared Finance rule, plus an allocation that still counts', () => {
@@ -186,7 +199,7 @@ describe('a verifier never decides a payment they recorded', () => {
   })
 
   test('somebody else’s pending row is still decidable, with no such note', () => {
-    const html = modal({ canVerify: true, onDecide: decide, ownPaymentIds: new Set(['p-clar']) })
+    const html = modal({ canVerify: true, onDecide: decide, summary: CASH_SUMMARY, ownPaymentIds: new Set(['p-clar']) })
     assert.equal(buttonLabels(html).filter(l => l === APPROVE_PAYMENT_LABEL).length, 1)
     assert.ok(!text(html).includes(OWN_PAYMENT_DECISION_NOTE))
   })
@@ -338,7 +351,7 @@ describe('the Awaiting verification view', () => {
   })
 
   test('keeps Approve and Reject for a verifier, on the decidable row only', () => {
-    const labels = buttonLabels(modal({ initialFilter: 'awaiting', canVerify: true, onDecide: decide }))
+    const labels = buttonLabels(modal({ initialFilter: 'awaiting', canVerify: true, onDecide: decide, summary: CASH_SUMMARY }))
     assert.equal(labels.filter(l => l === APPROVE_PAYMENT_LABEL).length, 1)
     assert.equal(labels.filter(l => l === REJECT_PAYMENT_LABEL).length, 1)
   })

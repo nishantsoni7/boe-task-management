@@ -20,4 +20,6 @@ If you're unsure, choose **Return to Sales**. A closed PI can't be reopened.
 
 ## Approving
 
-Nothing changes: when the advance rules are met, **Approve PI & Create Order** works as before. Payments on the PI move onto the new Order automatically.
+A PI cannot be approved while any payment on it is undecided. An HDFC payment is verified against the bank, in Payment Requests, so ask Finance if one is holding the PI.
+
+Otherwise nothing changes: when the advance rules are met, **Approve PI & Create Order** works as before. Payments on the PI move onto the new Order automatically.

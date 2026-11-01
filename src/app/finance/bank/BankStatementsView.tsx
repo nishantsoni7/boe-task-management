@@ -3,8 +3,8 @@
 // ── /finance/bank — Bank Statements ─────────────────────────────────────────
 //
 // THREE JOBS, ONE SCREEN:
-//   Money in            every credit of the month and whether it is Synced into
-//                       Confirmed Payments, Not Synced (with the reason), or
+//   Money in            every credit of the month and whether it is Matched to a
+//                       verified payment, Not matched (with the reason), or
 //                       does not need it (a person marked it an Old order or Not
 //                       customer money).
 //   Not in the bank     recorded payments of the month no bank credit has been
@@ -12,15 +12,13 @@
 //                       where a second payment for one credit shows up.
 //   Money out           the debits, so the balances can be seen to add up.
 //
-// SYNC: uploading a statement adds each new customer credit to Confirmed Payments
-// (sync_bank_credits, which links a payment it is sure of and refuses duplicates);
-// "Check sync" repeats it for the month and lists what could not be synced. A credit
-// that may already be recorded is never added on its own: the popup compares it with
-// the payments the database found, and a person links it or adds it as a different
-// payment. WHAT COUNTS AS
-// SYNCED IS THE DATABASE'S (bank_lines_sync_state), read live. This page never
-// verifies or approves anything itself; the database verifies only for an admin /
-// verify_own_payment holder.
+// A STATEMENT CREATES NOTHING (20270516000000). Uploading stores the lines and adds
+// no payment: one transfer used to become two records when Sales recorded the money
+// the upload had already added. A credit waits here until a Payment Request is
+// recorded for it and verified against it in Payment Requests. "Record it" opens the
+// ordinary payment form filled in from the credit. WHAT COUNTS AS MATCHED IS THE
+// DATABASE'S (bank_lines_sync_state), read live. This page never verifies or approves
+// anything itself.
 //
 // WHO: finance.reconcile (protected; admins hold it through the admin branch).
 // The database refuses everyone else regardless of what this page draws.
@@ -54,7 +52,6 @@ import {
   linkedTotal,
   loadCandidateExpenses,
   loadCandidatePayments,
-  loadImportSyncableIds,
   loadLineReview,
   loadMonthLines,
   loadPayerHistory,
@@ -65,25 +62,21 @@ import {
   monthOf,
   monthsBetween,
   paymentHref,
+  recordCreditHref,
   rowAction,
   rpcMessage,
   statusLabelFor,
-  syncBankCredits,
   syncReason,
   syncState,
-  syncableLineIds,
   type BankExpense,
   type BankLine,
-  type BankMatch,
   type BankPayment,
   type LineReview,
   type LineWithSuggestions,
   type SyncOverview,
-  type SyncResult,
 } from './bankStatementsModel'
 import type { PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
 import { BankLineModal } from './bankLineModal'
-import { BankAddConfirmedModal } from './bankAddConfirmedModal'
 import { BankSyncCheck } from './bankSyncCheck'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { BankUploadModal } from './bankUploadModal'
@@ -92,7 +85,7 @@ const PAGE_SIZE = 50
 
 type CardKey = 'all' | 'not_synced' | 'synced' | 'old_order' | 'not_customer'
 const CARD_LABEL: Record<CardKey, string> = {
-  all: 'All credits', not_synced: 'Not synced', synced: 'Synced', old_order: 'Old orders', not_customer: 'Not customer money',
+  all: 'All credits', not_synced: 'Not matched', synced: 'Matched', old_order: 'Old orders', not_customer: 'Not customer money',
 }
 
 /** The card a credit is counted under. Only a person's mark takes a credit out of Not synced. */
@@ -147,12 +140,7 @@ export function BankStatementsView() {
 
   const [overview, setOverview] = useState<SyncOverview | 'failed' | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
-  const [adding, setAdding] = useState<{ lineId: string; compared: BankMatch[] } | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [syncReport, setSyncReport] = useState<SyncResult | null>(null)
-  // Bumped when a sync finishes after an upload, so the month is read again.
-  const [syncTick, setSyncTick] = useState(0)
 
   // ── who is this, and may they be here ──
   useEffect(() => {
@@ -233,7 +221,7 @@ export function BankStatementsView() {
     if (!caps.canReconcileBank || range === undefined) return
     const startFetch = () => { void loadMonth() }
     startFetch()
-  }, [caps.canReconcileBank, range, loadMonth, syncTick])
+  }, [caps.canReconcileBank, range, loadMonth])
 
   // ── derived ──
   const credits = useMemo(() => lines.filter(l => l.deposit > 0), [lines])
@@ -333,40 +321,6 @@ export function BankStatementsView() {
     void loadMonth()
   }
 
-  const notSynced = useMemo(() => analysed.filter(a => bucket(a) === 'not_synced'), [analysed])
-
-  // Check sync: try every credit of the month that has no payment again, then
-  // list everything still Not Synced, whatever the reason.
-  const checkSync = async () => {
-    setSyncing(true)
-    try {
-      const ids = syncableLineIds(notSynced)
-      const r = ids.length > 0
-        ? await syncBankCredits(supabase, ids)
-        : { created: 0, linkedExisting: 0, alreadySynced: 0, failed: [] }
-      await loadMonth()
-      setSyncReport(r)
-    } catch (e) {
-      show(e instanceof Error ? e.message : 'The credits could not be synced.', 'error')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  // After an upload: sync the credits that upload added (not the older ones).
-  const syncUpload = async (importId: string, message: string) => {
-    try {
-      const r = await syncBankCredits(supabase, await loadImportSyncableIds(supabase, importId))
-      const parts = [`${r.created} added to Confirmed Payments`]
-      if (r.linkedExisting > 0) parts.push(`${r.linkedExisting} linked to a payment already recorded`)
-      if (r.failed.length > 0) parts.push(`${r.failed.length} not synced`)
-      show(`${message}. ${parts.join(', ')}.`, r.failed.length > 0 ? 'error' : 'success')
-    } catch (e) {
-      show(`${message}. Sync did not finish: ${e instanceof Error ? e.message : 'try Check sync'}.`, 'error')
-    }
-    setSyncTick(t => t + 1)
-  }
-
   const months = range ? monthsBetween(monthOf(range.first), monthOf(range.last)) : []
   const openInMonth = (m: string) => {
     if (overview === null || overview === 'failed') return 0
@@ -409,7 +363,7 @@ export function BankStatementsView() {
     <FinanceLayout
       profile={profile}
       title="Bank Statements"
-      subtitle="Every credit that reaches the bank, synced into Confirmed Payments"
+      subtitle="Every credit that reaches the bank, matched to a verified payment"
       onSignOut={handleSignOut}
       onRefresh={async () => { await loadRange(account); await loadMonth() }}
       actions={<button className="boe-btn boe-btn-primary" onClick={() => setUploading(true)}>Upload statement</button>}
@@ -515,9 +469,6 @@ export function BankStatementsView() {
                     aria-label="Search"
                   />
                 </div>
-                {tab === 'in' && caps.canCreatePaymentRecord && (
-                  <button className="boe-btn boe-btn-ghost" disabled={syncing || loading} onClick={checkSync}>{syncing ? 'Checking…' : 'Check sync'}</button>
-                )}
                 {tab === 'in' && card !== 'all' && (
                   <FilterChip label={`Showing: ${CARD_LABEL[card]}`} isSet icon="tag">
                     <button className="boe-btn boe-btn-ghost" onClick={() => setCard('all')}>Show all credits</button>
@@ -543,7 +494,7 @@ export function BankStatementsView() {
                       <th style={{ width: 104 }}>Date</th>
                       <th>Received from</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
-                      <th style={{ width: 170 }}>Synced</th>
+                      <th style={{ width: 170 }}>Matched</th>
                       <th style={{ width: 240 }}>Confirmed payment</th>
                       <th style={{ width: 150 }} aria-label="What to do" />
                     </tr></thead>
@@ -560,7 +511,7 @@ export function BankStatementsView() {
                           <td><span className={`fin-pill fin-pill--${SYNC_PILL[syncState(a)].tone}`}>{SYNC_PILL[syncState(a)].label}</span></td>
                           <td><LinkedCell a={a} payments={payments} /></td>
                           <td onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-                            <RowButton a={a} canAdd={caps.canCreatePaymentRecord} onAdd={() => setAdding({ lineId: a.line.id, compared: [] })} onReview={() => setOpened(a.line.id)} />
+                            <RowButton a={a} canRecord={caps.canCreatePaymentRecord} onReview={() => setOpened(a.line.id)} />
                           </td>
                         </tr>
                       ))}
@@ -653,7 +604,7 @@ export function BankStatementsView() {
           payments={payments}
           expenses={expenses}
           canAdd={caps.canCreatePaymentRecord}
-          onAddNew={compared => { setOpened(null); setAdding({ lineId: openedItem.line.id, compared }) }}
+          onRecord={() => router.push(recordCreditHref(openedItem.line.id))}
           onClose={() => setOpened(null)}
           onChanged={(message, close) => {
             show(message)
@@ -662,20 +613,6 @@ export function BankStatementsView() {
           }}
         />
       )}
-
-      {adding && (() => {
-        const item = analysed.find(a => a.line.id === adding.lineId)
-        return item ? (
-          <BankAddConfirmedModal
-            supabase={supabase}
-            item={item}
-            compared={adding.compared}
-            verifiesOwn={caps.canDecideOwnPayment}
-            onClose={() => setAdding(null)}
-            onAdded={() => { void loadMonth() }}
-          />
-        ) : null
-      })()}
 
       {confirmingAll && (
         <FinanceModal title="Confirm suggested reasons" onClose={() => { if (!markingAll) setConfirmingAll(false) }} width="520px" closeOnBackdropClick={!markingAll}>
@@ -700,47 +637,15 @@ export function BankStatementsView() {
         <BankUploadModal
           supabase={supabase}
           onClose={() => setUploading(false)}
-          onImported={(acct, m, message, importId) => {
+          onImported={(acct, m, message) => {
             setUploading(false)
             setAccount(acct)
             setCard('all')
             setTab('in')
             void loadRange(acct, m)
-            if (importId && caps.canCreatePaymentRecord) void syncUpload(importId, message)
-            else show(importId ? `${message}. Not synced: adding payments needs Finance create access.` : message)
+            show(`${message}. Nothing was added to Confirmed Payments. New matches are in Payment Requests.`)
           }}
         />
-      )}
-
-      {syncReport && (
-        <FinanceModal title={`Sync check — ${month ? monthLabel(month) : ''}`} onClose={() => setSyncReport(null)} width="640px">
-          <p style={{ margin: 0, fontSize: 14 }}>
-            {syncReport.created} added to Confirmed Payments
-            {syncReport.linkedExisting > 0 && <>, {syncReport.linkedExisting} linked to a payment already recorded</>}
-            {' '}· {notSynced.length === 0 ? 'every customer credit of this month is synced.' : <strong>{notSynced.length} not synced:</strong>}
-          </p>
-          {notSynced.length > 0 && (
-            <ul className="bank-checks">
-              {notSynced.map(a => (
-                <li key={a.line.id} className="bank-row">
-                  <div style={{ minWidth: 0 }}>
-                    <div className="fin-primary-text">{formatBankDate(a.line.line_date)} · {payerFromNarration(a.line.narration) ?? a.line.narration} · {formatMoney(a.line.deposit)}</div>
-                    <div className="fin-sub" style={{ color: '#A12438' }}>{syncReason(a)}</div>
-                  </div>
-                  <RowButton a={a} canAdd={caps.canCreatePaymentRecord}
-                    onAdd={() => { setSyncReport(null); setAdding({ lineId: a.line.id, compared: [] }) }}
-                    onReview={() => { setSyncReport(null); setOpened(a.line.id) }} />
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="fin-muted" style={{ margin: 0, fontSize: 12 }}>
-            A credit that may already be recorded is never added on its own. Open it to compare, then link it, or add it if it is a different payment.
-          </p>
-          <div className="bank-actions">
-            <button className="boe-btn boe-btn-primary" onClick={() => setSyncReport(null)}>Close</button>
-          </div>
-        </FinanceModal>
       )}
 
       <Toast toast={toast} onDismiss={dismiss} />
@@ -749,13 +654,13 @@ export function BankStatementsView() {
 }
 
 /**
- * What a Not Synced credit offers. A plain credit adds with one press; one that
- * could be a recorded payment, or has any other reason, is opened and looked at.
- * A Synced or Waiting credit offers nothing.
+ * What a Not matched credit offers. A plain credit opens the payment form with one
+ * press; one that could be a recorded payment, or has any other reason, is opened
+ * and looked at. A Matched or Waiting credit offers nothing.
  */
-function RowButton({ a, canAdd, onAdd, onReview }: { a: LineWithSuggestions; canAdd: boolean; onAdd: () => void; onReview: () => void }) {
-  const action = rowAction(a, canAdd)
-  if (action === 'add') return <button className="boe-btn boe-btn-ghost" onClick={onAdd}>Add to Confirmed</button>
+function RowButton({ a, canRecord, onReview }: { a: LineWithSuggestions; canRecord: boolean; onReview: () => void }) {
+  const action = rowAction(a, canRecord)
+  if (action === 'record') return <Link className="boe-btn boe-btn-ghost" href={recordCreditHref(a.line.id)}>Record it</Link>
   if (action === 'review') return <button className="boe-btn boe-btn-ghost" onClick={onReview}>{a.review.matches.length > 0 ? 'Review match' : 'Review'}</button>
   return null
 }

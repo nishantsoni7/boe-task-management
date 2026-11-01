@@ -140,12 +140,12 @@ export type BankExpense = MatchExpense & {
 // ── What the database says about a credit ───────────────────────────────────
 //
 // THE PAGE DECIDES NOTHING HERE. bank_lines_sync_state is the one definition of
-// Synced and bank_lines_recorded_matches the one list of payments a credit could
+// Matched and bank_lines_recorded_matches the one list of payments a credit could
 // be, the same rule that refuses a second payment, so the screen and the refusal
 // cannot disagree. Both are read live, so a payment rejected, deleted or edited
 // after it was linked shows at once.
 
-/** Why a credit is not Synced. Null means it truly is. */
+/** Why a credit is not Matched. Null means it truly is. */
 export type SyncIssue =
   | 'no_payment' | 'part_linked' | 'waiting'
   | 'payment_rejected' | 'payment_deleted' | 'other_account' | 'amount_changed'
@@ -309,10 +309,13 @@ export async function loadMonthLines(supabase: SupabaseClient, account: BankAcco
 // ── Sync: every customer credit should be a payment in Confirmed Payments ───
 
 /**
- * Synced = verified payments in this account cover every rupee of the credit.
+ * Matched = verified payments in this account cover every rupee of the credit.
  * Not needed = a PERSON marked it; a text guess never finishes a credit. Waiting
  * = fully linked, but the payment is not verified, so it is not in Confirmed
- * Payments yet. Everything else is Not Synced, with the reason.
+ * Payments yet. Everything else is Not matched, with the reason.
+ *
+ * A statement creates nothing (20270516000000): a credit stays here until a Payment
+ * Request is recorded for it and verified against it.
  */
 export type SyncState = 'synced' | 'waiting' | 'not_synced' | 'not_needed'
 
@@ -324,18 +327,15 @@ export function syncState(a: LineWithSuggestions): SyncState {
 }
 
 export const SYNC_PILL: Record<SyncState, { tone: 'full' | 'over' | 'zero' | 'neutral'; label: string }> = {
-  synced: { tone: 'full', label: 'Synced' },
+  synced: { tone: 'full', label: 'Matched' },
   waiting: { tone: 'zero', label: 'Waiting for Finance' },
-  not_synced: { tone: 'over', label: 'Not Synced' },
+  not_synced: { tone: 'over', label: 'Not matched' },
   not_needed: { tone: 'neutral', label: 'Not needed' },
 }
 
-export const SYNC_NOT_YET = 'Not added to Confirmed Payments yet'
+export const SYNC_NOT_YET = 'No request yet'
 
-/** Sentences the page wrote before these reasons existed; live matches replace them. */
-const OUTDATED_SYNC_ERROR = /may already be recorded|already carries|(already on|this may be) .* linked to another/
-
-/** What stands between this credit and Synced, in a sentence. Null when nothing does. */
+/** What stands between this credit and Matched, in a sentence. Null when nothing does. */
 export function syncReason(a: LineWithSuggestions): string | null {
   const { issue, paymentLabel, paymentMode, uncovered, matches } = a.review
   const payment = paymentLabel ?? 'The linked payment'
@@ -352,22 +352,21 @@ export function syncReason(a: LineWithSuggestions): string | null {
       if (match?.linkedLineDate) return `May be ${match.humanPaymentId ?? 'a recorded payment'}, linked to the credit of ${formatBankDate(match.linkedLineDate)}`
       if (match) return `May already be ${match.humanPaymentId ?? 'a recorded payment'}`
       if (a.nonCustomer) return `Looks like: ${a.nonCustomer.reason}. Please confirm.`
-      const error = a.line.sync_error
-      return error && !OUTDATED_SYNC_ERROR.test(error) ? error : SYNC_NOT_YET
+      return SYNC_NOT_YET
     }
   }
 }
 
-/** Plain credit nobody can mistake for anything else: one press adds it. Anything else is looked at first. */
-export function rowAction(a: LineWithSuggestions, canAdd: boolean): 'add' | 'review' | null {
+/** Plain credit nobody can mistake for anything else: one press opens the form for it. Anything else is looked at first. */
+export function rowAction(a: LineWithSuggestions, canRecord: boolean): 'record' | 'review' | null {
   if (syncState(a) !== 'not_synced') return null
   const plain = a.review.issue === 'no_payment' && a.review.matches.length === 0 && !a.nonCustomer
-  return plain && canAdd ? 'add' : 'review'
+  return plain && canRecord ? 'record' : 'review'
 }
 
-/** The credits Check sync may try: no payment yet, and not a guess that it is not a customer's. */
-export function syncableLineIds(items: LineWithSuggestions[]): string[] {
-  return items.filter(a => a.review.issue === 'no_payment' && !a.nonCustomer).map(a => a.line.id)
+/** The ordinary payment form, filled in from this credit. The address carries only the line's id. */
+export function recordCreditHref(lineId: string): string {
+  return `/finance?new=1&bankLine=${lineId}`
 }
 
 export type CompareRow = { label: string; credit: string; payment: string; verdict: string; tone: 'same' | 'differs' | 'plain' }
@@ -474,28 +473,6 @@ export function lookAlikeCredit(p: BankPayment, credits: LineWithSuggestions[], 
   return { line: found.line, exact: samePaise(found.line.deposit, p.remaining), otherPayment: other?.human_payment_id ?? null }
 }
 
-export type SyncResult = {
-  created: number
-  linkedExisting: number
-  alreadySynced: number
-  failed: { lineId: string; reason: string }[]
-}
-
-/** Runs sync_bank_credits over the lines, 200 at a time (its limit). */
-export async function syncBankCredits(supabase: SupabaseClient, lineIds: string[]): Promise<SyncResult> {
-  const out: SyncResult = { created: 0, linkedExisting: 0, alreadySynced: 0, failed: [] }
-  for (let i = 0; i < lineIds.length; i += 200) {
-    const { data, error } = await supabase.rpc('sync_bank_credits', { p_line_ids: lineIds.slice(i, i + 200) })
-    if (error) throw new Error(rpcMessage(error, 'The credits could not be synced.'))
-    const r = data as { created?: number; linked_existing?: number; already_synced?: number; failed?: { line_id: string; reason: string }[] } | null
-    out.created += Number(r?.created) || 0
-    out.linkedExisting += Number(r?.linked_existing) || 0
-    out.alreadySynced += Number(r?.already_synced) || 0
-    out.failed.push(...(r?.failed ?? []).map(f => ({ lineId: f.line_id, reason: f.reason })))
-  }
-  return out
-}
-
 const REVIEW_CHUNK = 500
 
 type SyncRow = { line_id: string; issue: SyncIssue | null; uncovered: number | string; payment_label: string | null; payment_mode: string | null }
@@ -546,21 +523,6 @@ export async function loadSyncOverview(supabase: SupabaseClient): Promise<SyncOv
   if (error || !data) throw new Error('The sync check could not be read.')
   const r = data as SyncOverview
   return { ...r, months: r.months.map(m => ({ ...m, not_synced_amount: num(m.not_synced_amount) })) }
-}
-
-/** The customer credits of one import: unmarked, and not looking like non-customer money. */
-export async function loadImportSyncableIds(supabase: SupabaseClient, importId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('bank_statement_lines')
-    .select('id, narration')
-    .eq('import_id', importId)
-    .gt('deposit', 0)
-    .is('classification', null)
-    .range(0, 1999)
-  if (error) throw new Error('The imported credits could not be read.')
-  return ((data ?? []) as { id: string; narration: string }[])
-    .filter(l => !suggestNonCustomerKind(l.narration))
-    .map(l => l.id)
 }
 
 type PaymentRow = {

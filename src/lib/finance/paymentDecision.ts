@@ -33,6 +33,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
+import { bankVerifyRefusal } from './bankMarks'
 
 export type PaymentDecision = 'approve' | 'reject'
 
@@ -81,6 +82,9 @@ export function describePaymentDecisionError(
 ): string {
   const code = error?.code ?? ''
   const message = error?.message ?? ''
+  // An HDFC payment is verified only against the bank (20270516000000).
+  const bank = bankVerifyRefusal(message)
+  if (bank) return bank
   // Before the generic 42501: this refusal has a reason the viewer can act on.
   if (message.includes('PAYMENT_SELF_DECISION_FORBIDDEN')) return PAYMENT_DECISION_MESSAGE.selfDecision
   if (code === '42501' || /row-level security|permission denied/i.test(message)) {

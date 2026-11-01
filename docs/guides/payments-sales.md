@@ -13,6 +13,8 @@
 
 Never record the same transfer twice. If you're not sure, ask Finance before you record it.
 
+An HDFC payment counts once Finance has matched it to the bank statement. If your PI is waiting for one, tell Finance so they can upload the latest statement.
+
 ## Reading a payment
 
 Every payment shows a small tracker:

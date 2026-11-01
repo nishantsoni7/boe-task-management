@@ -335,7 +335,7 @@ describe('the helper opens only the two decision RPCs', () => {
   test('the same notification events as Finance', () => {
     for (const event of ['finance_approved_suspense', 'finance_approved_linked', 'finance_rejected']) {
       assert.ok(helper.includes(`'${event}'`), `${event} missing from the helper`)
-      assert.ok(reviewModal.includes(`'${event}'`), `${event} missing from Finance`)
+      assert.ok(popup.includes(`'${event}'`), `${event} missing from Finance`)
     }
     assert.ok(helper.includes("notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })"))
   })

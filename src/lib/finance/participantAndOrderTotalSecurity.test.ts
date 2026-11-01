@@ -1182,6 +1182,8 @@ describe('the applied migrations are frozen', () => {
       '20270514000000_finance_bank_line_review.sql',
       // Sales, Marketing and Pricing registered; each opens a Coming soon page.
       '20270515000000_register_sales_marketing_pricing_modules.sql',
+      // An HDFC payment is verified only against the bank.
+      '20270516000000_finance_bank_proof_before_verify.sql',
     ])
   })
 
@@ -1615,6 +1617,8 @@ describe('the applied migrations are frozen', () => {
       '20270514000000_finance_bank_line_review.sql',
       // Sales, Marketing and Pricing registered; each opens a Coming soon page.
       '20270515000000_register_sales_marketing_pricing_modules.sql',
+      // An HDFC payment is verified only against the bank.
+      '20270516000000_finance_bank_proof_before_verify.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

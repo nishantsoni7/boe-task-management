@@ -46,6 +46,13 @@ export type PaymentSuggestion = {
   score: number
   confidence: MatchConfidence
   amountExact: boolean
+  /** The bank's reference is on the payment. */
+  referenceMatch: boolean
+  /** Share of the client's significant words the narration contains, 0 to 1. */
+  nameFit: number
+  daysApart: number
+  /** The payment says it arrived in this account. */
+  sameAccount: boolean
   reasons: string[]
   warnings: string[]
 }
@@ -123,8 +130,12 @@ export function suggestPaymentsForLine(line: MatchLine, payments: MatchPayment[]
     } else if (diffPaise <= 100 * 500 && diffPaise <= toPaise(line.remaining) * 0.01) {
       score += 18
       reasons.push('Within ₹' + (diffPaise / 100).toFixed(2) + ' of the credit (bank charges?)')
-    } else if (!refHit) {
+    } else if (!refHit && nameOverlap(p.client_name, line.narration) < 0.5) {
       continue
+    } else if (!refHit) {
+      // Smaller than the payment, but the client's own name: one of several transfers.
+      score += 8
+      reasons.push('Could be one part of this payment')
     }
 
     // name
@@ -157,6 +168,10 @@ export function suggestPaymentsForLine(line: MatchLine, payments: MatchPayment[]
       score,
       confidence: strong ? 'strong' : likely ? 'likely' : 'possible',
       amountExact,
+      referenceMatch: refHit,
+      nameFit: overlap,
+      daysApart: ad,
+      sameAccount: p.payment_mode === line.account,
       reasons,
       warnings,
     })

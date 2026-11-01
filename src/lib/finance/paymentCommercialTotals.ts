@@ -64,6 +64,21 @@ export function piIdForDestination(
   return null
 }
 
+/** The payments on this page whose PI is with the approver, so an undecided payment is holding it. */
+export async function loadPaymentsHoldingPi(
+  supabase: ReturnType<typeof createClient>,
+  destinations: ReadonlyMap<string, PaymentDestination>,
+): Promise<Set<string>> {
+  const held = new Set<string>()
+  const byPayment = [...destinations].filter(([, d]) => d.kind === 'pi_draft' && d.submissionId)
+  if (byPayment.length === 0) return held
+  const piIds = [...new Set(byPayment.map(([, d]) => d.submissionId as string))]
+  const { data } = await supabase.from('order_submissions').select('id, status').in('id', piIds)
+  const submitted = new Set(((data ?? []) as { id: string; status: string }[]).filter(r => r.status === 'submitted').map(r => r.id))
+  for (const [paymentId, d] of byPayment) if (submitted.has(d.submissionId as string)) held.add(paymentId)
+  return held
+}
+
 export async function loadPaymentTotals(
   supabase: ReturnType<typeof createClient>,
   destinations: ReadonlyMap<string, PaymentDestination>,

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { pageParam } from '@/lib/listState'
 import { useMirrorToUrl } from '@/hooks/useMirrorToUrl'
@@ -18,7 +19,7 @@ import { canDeletePayment } from '@/lib/finance/paymentDeletion'
 import { deleteOwnPaymentRequest } from '@/lib/finance/ownPaymentRequestDeletion'
 import { DeleteOwnPaymentRequestModal } from '@/components/finance/DeleteOwnPaymentRequestModal'
 import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView'
-import { loadPaymentTotals } from '@/lib/finance/paymentCommercialTotals'
+import { loadPaymentTotals, loadPaymentsHoldingPi } from '@/lib/finance/paymentCommercialTotals'
 import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
@@ -32,6 +33,16 @@ import { FinanceStatusCards, FinanceEmpty, type FinanceTabTone } from './compone
 
 // The view-bar tabs (redesign 2026-10): sentence-case names, and the status
 // colour each one stands for — the same key the row pills use.
+/** How a reconciler looks at Pending. Bank check pending holds verified money, so it is a list of its own. */
+type BankView = 'all' | PendingBankView | 'bank_check'
+const BANK_VIEW_TABS: { key: BankView; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'match_found', label: 'Match found' },
+  { key: 'waiting_for_bank', label: 'Waiting for bank' },
+  { key: 'bank_check', label: 'Bank check pending' },
+  { key: 'cash', label: 'Cash to verify' },
+]
+
 const REQUEST_TAB_LABEL: Record<FilterTab, string> = {
   pending: 'Pending',
   clarification: 'Needs clarification',
@@ -46,7 +57,7 @@ const REQUEST_TAB_TONE: Record<FilterTab, FinanceTabTone | undefined> = {
   archive: 'neutral',
   all: undefined,
 }
-import { REQUEST_STAGE_STATUSES } from './paymentRouting'
+import { REQUEST_STAGE_STATUSES, canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import {
   COUNTED_TABS,
   archiveCutoffIso,
@@ -73,7 +84,7 @@ export type { PaymentRequest } from './paymentRequestsModel'
 
 // @split: src/app/finance/paymentRequestsAtoms.tsx private=Field,ErrorBanner,SectionHeader,MetaItem,PaymentDestinationLine,StatusBadge,StaleBadge,STATUS_CORRECTION_OPTIONS
 
-import { DetailsModal } from './paymentRequestsDetails'
+import { DetailsModal, announcePaymentVerified } from './paymentRequestsDetails'
 // @split: src/app/finance/paymentRequestsDetails.tsx private=DetailsModal
 
 import { NewPaymentConfirmationModal } from './paymentRequestsNew'
@@ -83,7 +94,11 @@ import { EditPaymentModal } from './paymentRequestsEdit'
 // @split: src/app/finance/paymentRequestsEdit.tsx private=EditPaymentModalProps,EditPaymentModal
 
 import { BankMatchPanel } from './bankMarkUi'
-import { loadBankMarks, type BankMark } from '@/lib/finance/bankMarks'
+import { BankCheckList } from './bankCheckPending'
+import {
+  isBankAccountMode, loadBankCheckPending, loadBankMarks, loadBankState, loadPendingBankPayments, pendingBankView, statementsRunTo,
+  type BankCheckRow, type BankMark, type Coverage, type MarkPayment, type PendingBankView,
+} from '@/lib/finance/bankMarks'
 
 import { PaymentsTable } from './paymentRequestsTable'
 export { PaymentsTable } from './paymentRequestsTable'
@@ -119,7 +134,12 @@ function FinancePageInner() {
   // Prefill carried in from another module's "Add Payment" action (currently
   // the Order Requests details modal). Cleared with the form, so the plain
   // "+ New" button always opens an empty one.
-  const [formPrefill, setFormPrefill]     = useState<{ clientName: string; salesNote: string; contextLabel: string } | null>(null)
+  const [formPrefill, setFormPrefill]     = useState<{
+    clientName: string
+    salesNote: string
+    contextLabel: string
+    payment?: { amount: string; paymentDate: string; paymentMode: string; reference: string }
+  } | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
@@ -230,6 +250,35 @@ function FinancePageInner() {
    */
   const [cutoffMs, setCutoffMs] = useState(0)
 
+  // ── The views of Pending, ONLY for a holder of finance.reconcile ──
+  //
+  // Worked out over EVERY pending payment, not the fifty on this page: a view
+  // applied to one page would silently hide every match on the next. The list is
+  // then asked for those ids, so paging and the count stay the database's. The rows
+  // and their marks land together, so a reload swaps the views in one step and the
+  // list never shows unfiltered in between.
+  const [bankView, setBankView] = useState<BankView>('all')
+  const [pendingBank, setPendingBank] = useState<{ rows: MarkPayment[]; marks: Map<string, BankMark>; coverage: Coverage } | null>(null)
+  const [bankState, setBankState] = useState<{ forRows: MarkPayment[]; marks: Map<string, BankMark> } | null>(null)
+  const [bankReload, setBankReload] = useState(0)
+  const [bankCheck, setBankCheck] = useState<{ rows: BankCheckRow[]; marks: Map<string, BankMark> } | 'failed' | null>(null)
+  // The open payment's own mark, read for it alone: a payment reached by a link may
+  // not be on this page of the list, and it must still be possible to verify it.
+  const [detailMark, setDetailMark] = useState<{ id: string; mark: BankMark | undefined; failed: boolean } | null>(null)
+  const [piWaiting, setPiWaiting] = useState<ReadonlySet<string> | null>(null)
+  const bankViews = useMemo(() => {
+    if (activeTab !== 'pending' || !pendingBank) return null
+    const ids: Record<PendingBankView, string[]> = { match_found: [], waiting_for_bank: [], cash: [] }
+    for (const p of pendingBank.rows) ids[pendingBankView(p.payment_mode, pendingBank.marks.get(p.id))].push(p.id)
+    return ids
+  }, [activeTab, pendingBank])
+  const bankIds = bankViews && bankView !== 'all' && bankView !== 'bank_check' ? bankViews[bankView] : null
+  const bankIdsKey = bankIds ? `${bankView}:${bankIds.join(',')}` : ''
+  const bankCheckOpen = bankView === 'bank_check' && bankViews !== null
+  // Read by the loader, so a search timer already running cannot repaint the view just left.
+  const bankIdsRef = useRef<string[] | null>(null)
+  useEffect(() => { bankIdsRef.current = bankIds }, [bankIds])
+
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest may write to state. Without it a slow query for "REQ" can land after
   // a fast one for "REQ-2026" and repaint the wider result under a narrower box.
@@ -285,23 +334,25 @@ function FinancePageInner() {
     setListLoading(true)
 
     const range = pageRange(page)
+    const listed = scopedQuery(
+      supabase
+        .from('finance_payment_requests')
+        .select(`
+          id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
+          received_in, collected_by_user_id, collected_from_text,
+          handed_over_to_user_id, handed_over_at, collection_handover_note,
+          proof_note, order_number, order_id,
+          order_request_id, order_request_number, sales_note,
+          payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
+          updated_at, rejected_at, clarification_requested_at,
+          submitted_by_user:users!submitted_by(full_name),
+          collected_by_user:users!collected_by_user_id(full_name),
+          handed_over_to_user:users!handed_over_to_user_id(full_name)
+        `, { count: 'exact' }),
+    )
+    const narrowedTo = bankIdsRef.current
     const { data, count, error } = await applyTab(
-      scopedQuery(
-        supabase
-          .from('finance_payment_requests')
-          .select(`
-            id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-            received_in, collected_by_user_id, collected_from_text,
-            handed_over_to_user_id, handed_over_at, collection_handover_note,
-            proof_note, order_number, order_id,
-            order_request_id, order_request_number, sales_note,
-            payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
-            updated_at, rejected_at, clarification_requested_at,
-            submitted_by_user:users!submitted_by(full_name),
-            collected_by_user:users!collected_by_user_id(full_name),
-            handed_over_to_user:users!handed_over_to_user_id(full_name)
-          `, { count: 'exact' }),
-      ),
+      narrowedTo ? listed.in('id', narrowedTo) : listed,
       activeTab,
       cutoffIso,
     )
@@ -432,7 +483,7 @@ function FinancePageInner() {
    * that is no longer there. The two run together — the counts are head-only
    * requests and carry no payload.
    */
-  const refreshAfterMutation = () => { reload() }
+  const refreshAfterMutation = () => { reload(); setBankReload(n => n + 1) }
 
   // ── Auth + profile ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -540,6 +591,14 @@ function FinancePageInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page])
 
+  // Choosing a view of Pending is one more read of the same tab.
+  useEffect(() => {
+    if (pageLoading) return
+    const timer = setTimeout(() => { loadRequests(new Date(cutoffMs).toISOString()) }, 0)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankIdsKey])
+
   // ── Deep-link resolution (Admin Action Queue → ?tab=&request=) ───────────────
   // Runs exactly once, once `requests` is loaded. A missing, invalid, or
   // no-longer-pending id is a silent no-op — the normal tab still renders,
@@ -555,7 +614,21 @@ function FinancePageInner() {
       if (searchParams.get('new') === '1') {
         const client = searchParams.get('client')?.trim() ?? ''
         const note   = searchParams.get('note')?.trim() ?? ''
-        setFormPrefill({ clientName: client, salesNote: note, contextLabel: note })
+        // ?bankLine= — "Record it" on a bank credit. The address carries only the
+        // line's id; the amount and reference are read here under the reader's RLS.
+        const bankLineId = searchParams.get('bankLine')
+        const credit = bankLineId
+          ? (await supabase.from('bank_statement_lines').select('deposit, line_date, account, bank_ref').eq('id', bankLineId).maybeSingle()).data as
+              { deposit: number | string; line_date: string; account: string; bank_ref: string | null } | null
+          : null
+        setFormPrefill({
+          clientName: client,
+          salesNote: note,
+          contextLabel: credit ? 'From a bank credit. Choose what this money is for.' : note,
+          payment: credit
+            ? { amount: String(credit.deposit), paymentDate: credit.line_date, paymentMode: credit.account, reference: credit.bank_ref ?? '' }
+            : undefined,
+        })
         setShowForm(true)
         router.replace('/finance')
         return
@@ -686,23 +759,76 @@ function FinancePageInner() {
   // The marks are tagged with the rows they were read for, so a slow answer for
   // a previous page is never drawn against this one. Read-only: nothing here
   // links, verifies or edits anything. A failed read draws no marker.
-  const [bankState, setBankState] = useState<{ forRows: PaymentRequest[]; marks: Map<string, BankMark> } | null>(null)
-  const bankMarkRows = useMemo(() => (caps.canReconcileBank ? visible : []), [caps.canReconcileBank, visible])
-  const [bankReload, setBankReload] = useState(0)
+  const visibleMarkRows = useMemo<MarkPayment[]>(() => visible.map(r => ({
+    id: r.id, human_payment_id: r.human_payment_id, client_name: r.client_name, amount: r.amount, remaining: r.amount,
+    payment_date: r.payment_date, payment_mode: r.payment_mode, proof_note: r.proof_note, status: r.status,
+  })), [visible])
+  const bankMarkRows = useMemo<MarkPayment[]>(
+    () => (caps.canReconcileBank && activeTab !== 'pending' ? visibleMarkRows : []),
+    [caps.canReconcileBank, activeTab, visibleMarkRows])
   useEffect(() => {
     if (bankMarkRows.length === 0) return
     let current = true
     const startFetch = () => {
-      void loadBankMarks(supabase, bankMarkRows.map(r => ({
-        id: r.id, human_payment_id: r.human_payment_id, client_name: r.client_name, amount: r.amount, remaining: r.amount,
-        payment_date: r.payment_date, payment_mode: r.payment_mode, proof_note: r.proof_note, status: r.status,
-      }))).then(marks => { if (current) setBankState({ forRows: bankMarkRows, marks }) })
+      void loadBankMarks(supabase, bankMarkRows)
+        .then(marks => { if (current) setBankState({ forRows: bankMarkRows, marks }) })
         .catch(() => { if (current) setBankState(null) })
     }
     startFetch()
     return () => { current = false }
   }, [bankMarkRows, bankReload, supabase])
-  const bankMarks = caps.canReconcileBank && bankState && bankState.forRows === bankMarkRows ? bankState.marks : null
+  const bankMarks = caps.canReconcileBank && activeTab === 'pending'
+    ? pendingBank?.marks ?? null
+    : caps.canReconcileBank && bankState && bankState.forRows === bankMarkRows ? bankState.marks : null
+
+  // Every pending payment, and what is still waiting for its bank credit.
+  useEffect(() => {
+    if (!caps.canReconcileBank || activeTab !== 'pending') return
+    let current = true
+    const startFetch = () => {
+      void loadPendingBankPayments(supabase)
+        .then(async rows => {
+          const state = await loadBankState(supabase, rows)
+          if (current) setPendingBank({ rows, ...state })
+        })
+        .catch(() => { if (current) setPendingBank(null) })
+      void loadBankCheckPending(supabase)
+        .then(async rows => {
+          const marks = await loadBankMarks(supabase, rows.map(r => ({
+            id: r.payment_id, human_payment_id: r.human_payment_id, client_name: r.client_name, amount: r.amount, remaining: r.amount,
+            payment_date: r.payment_date, payment_mode: r.payment_mode, proof_note: r.proof_note, status: r.status,
+          })))
+          if (current) setBankCheck({ rows, marks })
+        })
+        .catch(() => { if (current) setBankCheck('failed') })
+    }
+    startFetch()
+    return () => { current = false }
+  }, [caps.canReconcileBank, activeTab, bankReload, supabase])
+
+  useEffect(() => {
+    if (!caps.canReconcileBank || !detailRequest || !isBankAccountMode(detailRequest.payment_mode)) return
+    const r = detailRequest
+    let current = true
+    const startFetch = () => {
+      void loadBankMarks(supabase, [{
+        id: r.id, human_payment_id: r.human_payment_id, client_name: r.client_name, amount: r.amount, remaining: r.amount,
+        payment_date: r.payment_date, payment_mode: r.payment_mode, proof_note: r.proof_note, status: r.status,
+      }])
+        .then(marks => { if (current) setDetailMark({ id: r.id, mark: marks.get(r.id), failed: false }) })
+        .catch(() => { if (current) setDetailMark({ id: r.id, mark: undefined, failed: true }) })
+    }
+    startFetch()
+    return () => { current = false }
+  }, [caps.canReconcileBank, detailRequest, bankReload, supabase])
+
+  // Which payments on this page a PI is waiting for.
+  useEffect(() => {
+    if (!caps.canReconcileBank || activeTab !== 'pending' || !destinations) return
+    let current = true
+    void loadPaymentsHoldingPi(supabase, destinations).then(held => { if (current) setPiWaiting(held) })
+    return () => { current = false }
+  }, [caps.canReconcileBank, activeTab, destinations, supabase])
 
   useEffect(() => {
     if (!salesView || !shownDestinations || !historySettled) return
@@ -743,11 +869,14 @@ function FinancePageInner() {
       title="Payment Requests"
       subtitle="Sales can submit customer payment details here for admin approval."
       onSignOut={handleSignOut}
-      onRefresh={reload}
+      onRefresh={async () => { setBankReload(n => n + 1); await reload() }}
       actions={
-        <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary">
-          + New
-        </button>
+        <>
+          {caps.canReconcileBank && <Link href="/finance/bank" className="boe-btn boe-btn-ghost">Upload statements</Link>}
+          <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary">
+            + New
+          </button>
+        </>
       }
     >
       {/* ── The status cards ARE the filter (owner, 2026-10: no tabs) ── */}
@@ -755,7 +884,7 @@ function FinancePageInner() {
         ariaLabel="Payment request status"
         noun="request"
         active={activeTab}
-        onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
+        onSelect={key => { setActiveTab(key); setBankView('all'); setSearch(''); setPage(1) }}
         cards={FILTER_TABS.map(t => ({ key: t.key, label: REQUEST_TAB_LABEL[t.key], tone: REQUEST_TAB_TONE[t.key], count: tabCount[t.key] }))}
       />
 
@@ -763,6 +892,17 @@ function FinancePageInner() {
 
         {/* ── The view bar ── the search. */}
         <div className="fin-viewbar">
+          {bankViews && (
+            <div className="fin-tabs" role="tablist" aria-label="Pending, by bank match">
+              {BANK_VIEW_TABS.map(v => (
+                <button key={v.key} role="tab" className="fin-tab" aria-selected={bankView === v.key}
+                  onClick={() => { setBankView(v.key); setPage(1) }}>
+                  {v.label}
+                  {v.key !== 'all' && <span className="fin-tab-count">{v.key !== 'bank_check' ? bankViews[v.key].length : bankCheck && bankCheck !== 'failed' ? bankCheck.rows.length : '?'}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="fin-tools" role="search" aria-label="Filter payment requests">
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -801,10 +941,26 @@ function FinancePageInner() {
           </div>
         )}
 
+        {bankViews && statementsRunTo(pendingBank?.coverage) && (
+          <div className="fin-muted" style={{ fontSize: '12px', padding: '6px 12px' }}>{statementsRunTo(pendingBank?.coverage)}</div>
+        )}
+
+        {bankCheckOpen && (bankCheck === 'failed' ? (
+          <FinanceEmpty icon="search" role="alert" title="The bank check list could not be read" body="Press refresh before relying on this list." />
+        ) : (
+          <BankCheckList
+            supabase={supabase}
+            rows={bankCheck?.rows ?? []}
+            marks={bankCheck?.marks ?? new Map()}
+            onChanged={() => setBankReload(n => n + 1)}
+          />
+        ))}
+
         {/* ── Table ──
             A RE-READ KEEPS THE ROWS. The table used to be swapped for
             "Loading…" after every edit, approval and page step, which threw the
             reader back to the top; now it only shows before there is anything. */}
+        <div hidden={bankCheckOpen}>
         {listLoading && visible.length === 0 ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
@@ -826,7 +982,7 @@ function FinancePageInner() {
           ) : (
             <FinanceEmpty
               icon={activeTab === 'pending' ? 'check' : 'card'}
-              title={EMPTY_MESSAGES[activeTab]}
+              title={bankView === 'all' ? EMPTY_MESSAGES[activeTab] : 'Nothing in this view'}
               body={activeTab === 'pending' ? 'You are all caught up. New payment requests from sales appear here for review.' : undefined}
               action={activeTab === 'pending' ? (
                 <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
@@ -849,16 +1005,18 @@ function FinancePageInner() {
             salesView={salesView}
             totals={totals}
             bankMarks={bankMarks}
+            piWaiting={piWaiting}
             onDelete={openDelete}
           />
         )}
+        </div>
 
         {/* ── Paging ──
             Rendered only when there is more than one page, so a short queue
             looks exactly as it always has. ?tab= and ?request= deep links are
             unaffected: the tab is a filter, and a request that is not on the
             loaded page is fetched by its own id. */}
-        {!listLoading && pages > 1 && (
+        {!listLoading && pages > 1 && !bankCheckOpen && (
           <nav
             aria-label="Payment request pages"
             style={{
@@ -898,6 +1056,7 @@ function FinancePageInner() {
           initialClientName={formPrefill?.clientName}
           initialSalesNote={formPrefill?.salesNote}
           contextLabel={formPrefill?.contextLabel}
+          initialPayment={formPrefill?.payment}
           onClose={() => { setShowForm(false); setFormPrefill(null) }}
           onSaved={() => { setShowForm(false); setFormPrefill(null); refreshAfterMutation() }}
         />
@@ -913,12 +1072,22 @@ function FinancePageInner() {
           userId={userId}
           supabase={supabase}
           // The bank-statement panel: ONLY for a holder of finance.reconcile.
-          bankPanel={bankMarks ? (
+          bankPanel={caps.canReconcileBank && detailRequest.status !== 'rejected' ? (
             <BankMatchPanel
               supabase={supabase}
-              paymentId={detailRequest.id}
-              mark={bankMarks.get(detailRequest.id)}
+              payment={detailRequest}
+              mark={detailMark?.id === detailRequest.id ? detailMark.mark : undefined}
+              markFailed={detailMark?.id === detailRequest.id && detailMark.failed}
+              canVerify={canVerifyPayment(detailRequest.status, caps.canApprovePayment)
+                && !isOwnPaymentDecision(detailRequest.submitted_by, userId, caps.canDecideOwnPayment)}
+              canVerifyUrgent={isAdmin && detailRequest.status === 'pending_approval'}
               onChanged={() => setBankReload(n => n + 1)}
+              onVerified={() => {
+                announcePaymentVerified(detailRequest)
+                setDetailRequest(null)
+                refreshAfterMutation()
+                queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+              }}
             />
           ) : undefined}
           // A decision, a correction or a custody entry closes the popup and reloads

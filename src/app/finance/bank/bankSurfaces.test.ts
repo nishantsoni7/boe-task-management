@@ -32,10 +32,6 @@ describe('Bank Statements never decides a payment', () => {
       'import_bank_statement',
       'classify_bank_line', 'clear_bank_line_classification',
       'link_bank_debit_to_expense', 'unlink_bank_debit_expense', 'classify_bank_debits',
-      // 20270514000000: the one door that adds a credit (the comparison and the reason are checked in the database).
-      'add_bank_line_to_confirmed',
-      // 20270423000000: adds the named credits to Confirmed Payments (or links one to the payment already carrying its reference).
-      'sync_bank_credits',
       // A person's decision on a credit, in the popup only (see below).
       'link_bank_line_to_payment', 'unlink_bank_line_payment',
       // Reads: the database's own answer on each credit, and on both accounts.
@@ -62,11 +58,13 @@ describe('Bank Statements never decides a payment', () => {
     assert.ok(modal.includes("rpc('unlink_bank_line_payment', { p_link_id: linkId, p_reason: unlinkReason.trim() })"))
   })
 
-  test('no browser file reaches the internal function that can override a possible duplicate', () => {
+  test('A STATEMENT CREATES NOTHING: no bank file can add a payment any more', () => {
     for (const f of bankFiles) {
-      assert.ok(!read(f).includes('create_payment_from_bank_line'), `${f} must go through add_bank_line_to_confirmed`)
+      for (const door of ['create_payment_from_bank_line', 'add_bank_line_to_confirmed', 'sync_bank_credits']) {
+        assert.ok(!read(f).includes(door), `${f} must not call ${door}: a request is the only thing that creates a payment`)
+      }
     }
-    assert.ok(read('bankAddConfirmedModal.tsx').includes("rpc('add_bank_line_to_confirmed'"))
+    assert.ok(!bankFiles.includes('bankAddConfirmedModal.tsx'))
   })
 
   test('a failed read of the sync state stops the month; it is never drawn as a list nobody checked', () => {
@@ -77,14 +75,19 @@ describe('Bank Statements never decides a payment', () => {
     assert.ok(read('bankSyncCheck.tsx').includes("overview === 'failed'"))
   })
 
-  test('sync: the page names the credits, never sends an amount, and Not Synced is drawn red', () => {
+  test('upload says plainly that nothing was added, and there is no Check sync or Add to Confirmed left to press', () => {
     const model = read('bankStatementsModel.ts')
     const view = read('BankStatementsView.tsx')
-    assert.ok(model.includes("rpc('sync_bank_credits', { p_line_ids: "))
     assert.ok(!/p_amount/.test(model + view))
-    assert.ok(model.includes("not_synced: { tone: 'over', label: 'Not Synced' }"))
-    assert.ok(view.includes('syncUpload(importId, message)'))
-    assert.ok(view.includes('Check sync'))
+    assert.ok(model.includes("not_synced: { tone: 'over', label: 'Not matched' }"))
+    assert.ok(view.includes('Nothing was added to Confirmed Payments.'))
+    for (const gone of ['Check sync', 'Add to Confirmed', 'syncUpload']) assert.ok(!(view + read('bankLineModal.tsx')).includes(gone), gone)
+  })
+
+  test('a credit nobody recorded goes through the ordinary payment form', () => {
+    const view = read('BankStatementsView.tsx')
+    assert.ok(view.includes('recordCreditHref(a.line.id)'))
+    assert.ok(view.includes('recordCreditHref(openedItem.line.id)'))
   })
 
   test('linking never sends an amount from the browser by default (the database defaults it)', () => {

@@ -14,10 +14,10 @@ import {
   lookAlikeCredit,
   matchDoubts,
   paymentHref,
+  recordCreditHref,
   rowAction,
   syncReason,
   syncState,
-  syncableLineIds,
   type BankLine,
   type BankMatch,
   type BankPayment,
@@ -78,13 +78,13 @@ describe('Synced is what the database says, and nothing else', () => {
   })
 
   test('the pills say what is true', () => {
-    assert.equal(SYNC_PILL.synced.label, 'Synced')
+    assert.equal(SYNC_PILL.synced.label, 'Matched')
     assert.equal(SYNC_PILL.waiting.label, 'Waiting for Finance')
     assert.equal(SYNC_PILL.not_synced.tone, 'over')
   })
 })
 
-describe('the reason shown on a Not Synced credit', () => {
+describe('the reason shown on a Not matched credit', () => {
   const says = (issue: SyncIssue, over: Partial<LineReview> = {}) => syncReason(read(line(), review(issue, over)))
 
   test('names the payment and what happened to it', () => {
@@ -118,15 +118,23 @@ describe('the reason shown on a Not Synced credit', () => {
     }
   })
 
-  test('any other stored reason is kept', () => {
-    assert.equal(syncReason(read(line({ sync_error: 'the amount has more than two decimals' }), review('no_payment'))), 'the amount has more than two decimals')
+  test('nothing the old sync stored is repeated: a statement no longer tries to add a credit', () => {
+    assert.equal(syncReason(read(line({ sync_error: 'the amount has more than two decimals' }), review('no_payment'))), SYNC_NOT_YET)
+  })
+
+  test('a credit nobody has recorded says so', () => {
+    assert.equal(SYNC_NOT_YET, 'No request yet')
   })
 })
 
 describe('what a credit offers', () => {
-  test('one press adds only a plain credit, and only for someone who may record a payment', () => {
-    assert.equal(rowAction(read(line(), review('no_payment')), true), 'add')
+  test('one press opens the form only for a plain credit, and only for someone who may record a payment', () => {
+    assert.equal(rowAction(read(line(), review('no_payment')), true), 'record')
     assert.equal(rowAction(read(line(), review('no_payment')), false), 'review')
+  })
+
+  test('the address carries the line, never its amount or reference', () => {
+    assert.equal(recordCreditHref('L1'), '/finance?new=1&bankLine=L1')
   })
 
   test('anything that needs a person is opened first', () => {
@@ -138,25 +146,12 @@ describe('what a credit offers', () => {
     }
   })
 
-  test('a Synced, Waiting or marked credit offers nothing', () => {
+  test('a Matched, Waiting or marked credit offers nothing', () => {
     assert.equal(rowAction(read(line({ bank_line_payment_links: linked() }), review(null)), true), null)
     assert.equal(rowAction(read(line({ bank_line_payment_links: linked() }), review('waiting')), true), null)
     assert.equal(rowAction(read(line({ classification: 'old_order' })), true), null)
   })
 
-  test('Check sync tries only credits with no payment, and never a guess', () => {
-    const plain = read(line({ id: 'A' }), review('no_payment'))
-    const guess = read(line({ id: 'B', narration: 'REF-SAMPLE-1' }), review('no_payment'))
-    const part = read(line({ id: 'C', bank_line_payment_links: linked(100) }), review('part_linked'))
-    const waiting = read(line({ id: 'D', bank_line_payment_links: linked() }), review('waiting'))
-    assert.deepEqual(syncableLineIds([plain, guess, part, waiting]), ['A'])
-  })
-
-  test('Check sync still sends a credit with a possible match: the database decides whether it is sure', () => {
-    const a = read(line({ id: 'A' }), review('no_payment', { matches: [match()] }))
-    const b = read(line({ id: 'B' }), review('no_payment', { matches: [elsewhere()] }))
-    assert.deepEqual(syncableLineIds([a, b]), ['A', 'B'])
-  })
 })
 
 describe('the comparison', () => {

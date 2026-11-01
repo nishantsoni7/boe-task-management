@@ -12241,7 +12241,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .ops-running { padding-bottom: 8px; }
 }
 
-/* BANK STATEMENTS: Add to Confirmed Payments window */
+/* BANK STATEMENTS: the facts of a credit */
 .bank-facts { margin: 0; display: grid; gap: 6px; font-size: 14px; }
 .bank-facts > div { display: flex; justify-content: space-between; gap: 16px; }
 .bank-facts dt { color: #6B7573; }

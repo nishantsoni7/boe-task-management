@@ -3,7 +3,7 @@
 // ── The sync check: both accounts, every month ──────────────────────────────
 //
 // The page shows one account and one month; this strip shows what is open in all
-// of them, in both directions: credits not in sync, and payments with no bank
+// of them, in both directions: credits not matched, and payments with no bank
 // credit. When both are zero on both accounts the bank and the records agree,
 // because one credit cannot carry more than its amount, so a second payment for
 // the same money always lands on the second count. A failed read says so; it
@@ -23,11 +23,11 @@ export function BankSyncCheck({ overview, account, onOpen }: {
 }) {
   if (overview === null) return null
   if (overview === 'failed') {
-    return <p className="bank-gap-note" role="alert">The sync check could not be read. Press refresh before relying on this page.</p>
+    return <p className="bank-gap-note" role="alert">The bank check could not be read. Press refresh before relying on this page.</p>
   }
   return (
     <>
-      <div className="bank-sync-check" aria-label="Sync check, both accounts">
+      <div className="bank-sync-check" aria-label="Bank check, both accounts">
         {(['hdfc', 'hdfc_sec'] as const).map(a => {
           const months = overview.months.filter(m => m.account === a)
           const notSynced = months.reduce((n, m) => n + m.not_synced, 0)
@@ -43,7 +43,7 @@ export function BankSyncCheck({ overview, account, onOpen }: {
               {uploaded && (
                 <>
                   <span className={notSynced > 0 ? 'bank-sync-bad' : 'bank-sync-good'}>
-                    {notSynced > 0 ? `${plural(notSynced, 'credit', 'credits')} not synced · ${formatMoney(paise / 100)}` : '✓ All credits synced'}
+                    {notSynced > 0 ? `${plural(notSynced, 'credit', 'credits')} not matched · ${formatMoney(paise / 100)}` : '✓ All credits matched'}
                   </span>
                   <span className={notInBank > 0 ? 'bank-sync-bad' : 'bank-sync-good'}>
                     {notInBank > 0 ? `${plural(notInBank, 'payment', 'payments')} not in the bank` : '✓ Every payment found in the bank'}
