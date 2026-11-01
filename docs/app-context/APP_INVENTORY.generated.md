@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `930978d3` — Finance: one screen for a pending HDFC payment
+- Commit: `9d6af8c3` — Finance: one screen for a pending HDFC payment (#567)
 - Commits on this branch: 1132
-- Pages (`page.tsx`): 163   API routes (`route.ts`): 179
-- Migrations: 398 (first `20260530_create_positions.sql`, latest `20270517000100_orders_advance_percent.sql`)
-- Tables ever created: 196 (dropped at some point: 7)   SQL functions: 870   Enums: 0
-- Test files: 709   Next.js 16.2.6, React 19.2.4
+- Pages (`page.tsx`): 168   API routes (`route.ts`): 180
+- Migrations: 400 (first `20260530_create_positions.sql`, latest `20270518000100_seo_tables.sql`)
+- Tables ever created: 202 (dropped at some point: 7)   SQL functions: 870   Enums: 0
+- Test files: 713   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `930978d3` 2026-11-01 Finance: one screen for a pending HDFC payment
+- `9d6af8c3` 2026-11-01 Finance: one screen for a pending HDFC payment (#567)
 - `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
 - `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
@@ -75,6 +75,7 @@
 - **reset-password** (1): `/reset-password`
 - **sales** (1): `/sales`
 - **samples** (3): `/samples`, `/samples/dispatch/[id]`, `/samples/notifications`
+- **seo** (5): `/seo`, `/seo/board`, `/seo/competitors`, `/seo/rankings`, `/seo/year`
 - **settings** (3): `/settings`, `/settings/positions`, `/settings/roles`
 - **showroom** (6): `/showroom/done`, `/showroom/join`, `/showroom/product/[product_code]`, `/showroom/project-list`, `/showroom/scan`, `/showroom/share/[token]`
 - **showroom-admin** (7): `/showroom-admin`, `/showroom-admin/categories`, `/showroom-admin/inquiry/[inquiryId]`, `/showroom-admin/products`, `/showroom-admin/products/[product_code]/edit`, `/showroom-admin/products/new`, `/showroom-admin/qr`
@@ -107,7 +108,7 @@
 - **finance** (4): `/bank/parse [POST]`, `/handovers/remind [GET]`, `/notify [POST]`, `/payments/delete [POST]`
 - **image-editor** (5): `/cleanup [GET]`, `/convert [POST]`, `/results [GET]`, `/results/[id] [DELETE,PATCH]`, `/studio [POST]`
 - **impersonation** (3): `/end [POST]`, `/members [GET]`, `/start [POST]`
-- **integrations** (2): `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`
+- **integrations** (3): `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`, `/seo/ingest [POST]`
 - **meetings** (5): `/delete [POST]`, `/import [POST]`, `/import-pi [POST]`, `/import-pi/confirm [POST]`, `/template [GET]`
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
@@ -157,6 +158,7 @@
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
+- `src/lib/seo` — 3 source, 2 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
 - `src/lib/tasks` — 23 source, 37 test
@@ -191,13 +193,14 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (12 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (142 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (144 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
+- `SEO_INGEST_SECRET` (3 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (142 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (144 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 
@@ -386,6 +389,12 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `push_subscriptions` — 20270425000000
 - `role_permissions` — 20260660_creat
 - `sample_dispatches` — 20260622_creat
+- `seo_feed_runs` — 20270518000100
+- `seo_log` — 20270518000100
+- `seo_metrics` — 20270518000100
+- `seo_plan_items` — 20270518000100
+- `seo_reviews` — 20270518000100
+- `seo_watchlist` — 20270518000100
 - `showroom_categories` — 20260669_creat
 - `showroom_inquiries` — 20260643_creat
 - `showroom_inquiry_items` — 20260643_creat
@@ -406,8 +415,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270421000000_order_pendency_approvals.sql`
-- `20270422000000_order_handoff_clarification_response.sql`
 - `20270423000000_finance_bank_line_sync.sql`
 - `20270424000000_user_task_order.sql`
 - `20270425000000_phone_push_notifications.sql`
@@ -436,6 +443,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270516000100_finance_bank_old_routes_closed.sql`
 - `20270517000000_finance_bank_line_ids_and_match_search.sql`
 - `20270517000100_orders_advance_percent.sql`
+- `20270518000000_register_seo_module.sql`
+- `20270518000100_seo_tables.sql`
 
 ## All SQL function names
 

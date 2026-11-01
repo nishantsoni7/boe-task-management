@@ -1,4 +1,4 @@
-import { Armchair, ContactRound, Factory, Image as ImageIcon, Megaphone, Tag, TrendingUp } from 'lucide-react'
+import { Armchair, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag, TrendingUp } from 'lucide-react'
 
 // ── The module icons, drawn once ─────────────────────────────────────────────
 //
@@ -153,6 +153,7 @@ export function ModuleIcon({ moduleKey, size = 18 }: { moduleKey: string; size?:
     case 'sales': return <TrendingUp size={size} strokeWidth={1.8} aria-hidden />
     case 'marketing': return <Megaphone size={size} strokeWidth={1.8} aria-hidden />
     case 'pricing': return <Tag size={size} strokeWidth={1.8} aria-hidden />
+    case 'seo': return <Search size={size} strokeWidth={1.8} aria-hidden />
     default: return <ControlCenterIcon size={size} />
   }
 }

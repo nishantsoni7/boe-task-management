@@ -1,0 +1,50 @@
+/* The SEO screens. Colours and type come from the BOE tokens; this file only lays things out. */
+
+.stack { display: grid; gap: 24px; min-width: 0; }
+.tight { display: grid; gap: 8px; min-width: 0; }
+.heading { margin: 0; font-family: var(--boe-font-heading); font-size: 16px; font-weight: 700; color: var(--boe-text); }
+.note { margin: 0; font-size: 13px; color: var(--boe-text-muted); }
+.text { margin: 0; font-size: 14px; color: var(--boe-text); max-width: 72ch; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.stat { padding: 12px 16px; display: grid; gap: 2px; }
+.statValue { font-family: var(--boe-font-heading); font-size: 24px; font-weight: 700; color: var(--boe-text); font-variant-numeric: tabular-nums; }
+.statLabel { font-size: 13px; color: var(--boe-text); }
+
+.columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.columns > * { min-width: 0; }
+.panel { padding: 16px; display: grid; gap: 12px; min-width: 0; }
+
+.verdict { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 14px; }
+.verdictWord { font-family: var(--boe-font-heading); font-size: 18px; font-weight: 700; color: var(--boe-text); }
+
+.row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; font-size: 14px; color: var(--boe-text); }
+.row > :first-child { min-width: 0; }
+.row > :last-child { flex-shrink: 0; }
+
+.tableScroll { overflow-x: auto; }
+.tableScroll th { white-space: nowrap; }
+.us td { font-weight: 600; background: var(--boe-brand-tint); }
+
+.board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.board > * { min-width: 0; }
+.meter { display: flex; gap: 2px; height: 8px; }
+.meter > i { display: block; border-radius: 2px; }
+.card { border: 1px solid var(--boe-border); border-radius: 8px; padding: 8px 12px; display: grid; gap: 4px; font-size: 14px; color: var(--boe-text); }
+.cardMeta { font-size: 12px; color: var(--boe-text-muted); }
+.cardStatus { justify-self: start; }
+
+.chart { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chartTitle { font-size: 13px; font-weight: 600; color: var(--boe-text); }
+
+.bar { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr) 44px; gap: 8px; align-items: center; font-size: 13px; color: var(--boe-text); }
+.barTrack { display: block; }
+.barFill { display: block; height: 10px; min-width: 2px; border-radius: 0 3px 3px 0; background: #335A86; }
+.barFillUseful { background: #276247; }
+.barValue { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 760px) {
+  .columns, .board { grid-template-columns: minmax(0, 1fr); }
+  .bar { grid-template-columns: minmax(0, 130px) minmax(0, 1fr) 40px; }
+}

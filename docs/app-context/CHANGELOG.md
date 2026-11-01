@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-01 — SEO module, step 1: five read-only screens (PR pending) · 20270518000000, 20270518000100 → NOT APPLIED
+- **Owner request.** A new SEO module joined to the daily scheduled tasks: rankings, competitors, the year, a 30/60-day vision board and a weekly review. No additional paid package; Toolsurf stays.
+- **Added.** Tile and `/seo` with Overview, Rankings, Competitors, Year review and Vision board. Six `seo_*` tables, read through `module_entry_open('seo')`, with no browser writes. `POST /api/integrations/seo/ingest`, the only writer, behind `SEO_INGEST_SECRET`. Admin only until granted.
+- **Data.** Not in the repository, which is public. `scripts/push-to-boe-one.mjs` in the website folder sends it through the door.
+- **Proof.** 51 new tests. Both migrations executed on PGlite over the real registration tables with Supabase's default grants: 58 checks, including that neither anon nor a browser can write, and that the migration's own check catches a table left open. The sender's real payload passed the real door validation and matched the published plan's figures. Not yet seen signed in. `permissions:check` not run.
+- **Rollback.** Revert the PR; the headers of both migrations carry their undo. The scheduled tasks keep saving files either way.
+
 ## 2026-11-01 — Confirmed Orders: Advance column (PR #566) · 20270517000100 → APPLIED 2026-11-01
 - **Owner request.** A column with the advance percentage confirmed for each Order; below 40% on a subtle red background, otherwise plain.
 - **Changed.** Advance after Product Value, and a line on the phone card: verified payments as a percentage of Total before GST, the Payment card's own figure. A dash when no figure is known or the read fails, never 0%. Table floor 1120, was 1020.

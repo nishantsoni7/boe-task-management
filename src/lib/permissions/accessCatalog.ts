@@ -215,6 +215,12 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
     levels: { on: 'Open Pricing, which shows a Coming soon page for now.' },
     authorities: {},
   },
+  seo: {
+    group: 'Sales',
+    blurb: 'Google rankings, competitors, the plan and the weekly review.',
+    levels: { on: 'Open SEO and read everything in it.' },
+    authorities: {},
+  },
   assets_access: {
     group: 'People & assets',
     blurb: 'Assigned devices and the access register.',
