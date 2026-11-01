@@ -218,7 +218,11 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
   seo: {
     group: 'Sales',
     blurb: 'Google rankings, competitors, the plan and the weekly review.',
-    levels: { on: 'Open SEO and read everything in it.' },
+    levels: {
+      viewer: 'Open SEO and read everything in it.',
+      contributor: 'Viewer, plus update Vision board items.',
+      manager: 'Contributor, plus answer proposed strategy changes.',
+    },
     authorities: {},
   },
   assets_access: {

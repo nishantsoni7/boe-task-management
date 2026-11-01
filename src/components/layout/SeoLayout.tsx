@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { CalendarRange, Home, LayoutDashboard, ListOrdered, Target, Users } from 'lucide-react'
+import { CalendarClock, CalendarRange, ClipboardCheck, Home, LayoutDashboard, ListOrdered, Target, Users } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -19,6 +19,8 @@ const NAV_ITEMS = [
   { href: `${BASE}/competitors`, label: 'Competitors', icon: Users },
   { href: `${BASE}/year`, label: 'Year review', icon: CalendarRange },
   { href: `${BASE}/board`, label: 'Vision board', icon: Target },
+  { href: `${BASE}/reviews`, label: 'Weekly review', icon: ClipboardCheck },
+  { href: `${BASE}/tasks`, label: 'Scheduled tasks', icon: CalendarClock },
 ] as const
 
 type Props = {

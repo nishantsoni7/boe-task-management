@@ -25,6 +25,7 @@ export type SeoReview = {
   items_done: number | null
   numbers_on_target: number | null
   summary: string
+  detail?: Record<string, unknown> | null
 }
 export type SeoLogRow = {
   id: string
@@ -35,6 +36,9 @@ export type SeoLogRow = {
   before_value: string | null
   after_value: string | null
   source: string
+  decision?: 'keep' | 'change' | null
+  decision_note?: string
+  decided_at?: string | null
 }
 export type SeoRun = {
   feed: 'daily_numbers' | 'city_check' | 'ahrefs_research' | 'monday_review'
@@ -281,11 +285,36 @@ export function progress(data: SeoData) {
   return latestByScope(data, 'plan.progress').map(r => ({ label: r.scope, done: r.value ?? 0, of: numberIn(r.detail, 'of') ?? 0 }))
 }
 
-export const openProposals = (data: SeoData) => data.log.filter(r => r.kind === 'proposal')
+export const openProposals = (data: SeoData) => data.log.filter(r => r.kind === 'proposal' && !r.decision)
+export const answeredProposals = (data: SeoData) =>
+  data.log.filter(r => r.kind === 'proposal' && r.decision).sort((a, b) => (b.decided_at ?? '').localeCompare(a.decided_at ?? ''))
 export const needsOwner = (data: SeoData) => data.planItems.filter(i => i.status === 'waiting_owner')
 
-export const latestReview = (data: SeoData): SeoReview | null =>
-  [...data.reviews].sort((a, b) => b.review_date.localeCompare(a.review_date))[0] ?? null
+export const reviewsNewestFirst = (data: SeoData) => [...data.reviews].sort((a, b) => b.review_date.localeCompare(a.review_date))
+export const latestReview = (data: SeoData): SeoReview | null => reviewsNewestFirst(data)[0] ?? null
+
+const words = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [])
+const said = (value: unknown) => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '')
+
+/** The Monday session writes this page, so nothing in it is taken on trust: a missing or wrong field just stays blank. */
+export function reviewPage(review: SeoReview) {
+  const page = review.detail ?? {}
+  const numbers = Array.isArray(page.numbers) ? page.numbers.filter((n): n is Record<string, unknown> => typeof n === 'object' && n !== null) : []
+  return {
+    direction: said(page.direction),
+    numbers: numbers
+      .map(n => ({ measure: said(n.measure), thisWeek: said(n.this_week), lastWeek: said(n.last_week), target: said(n.target), note: said(n.note) }))
+      .filter(n => n.measure),
+    done: words(page.done),
+    pending: words(page.pending),
+    shipped: words(page.shipped),
+    needsOk: words(page.needs_ok),
+    competitors: words(page.competitors),
+    nextTasks: words(page.next_tasks),
+    biggestMove: said(page.biggest_move),
+    risk: said(page.risk),
+  }
+}
 
 export const VERDICT_LABEL: Record<SeoReview['verdict'], string> = {
   on_track: 'On track',
@@ -296,12 +325,16 @@ export const VERDICT_LABEL: Record<SeoReview['verdict'], string> = {
 
 // ── Scheduled tasks ─────────────────────────────────────────────────────────
 
-const FEEDS: { feed: SeoRun['feed']; label: string; allowedDays: number }[] = [
-  { feed: 'daily_numbers', label: 'Daily SEO numbers', allowedDays: 1 },
-  { feed: 'city_check', label: 'Daily city check', allowedDays: 1 },
-  { feed: 'ahrefs_research', label: 'Daily Ahrefs research', allowedDays: 1 },
-  { feed: 'monday_review', label: 'Monday review', allowedDays: 7 },
+const FEEDS: { feed: SeoRun['feed']; label: string; schedule: string; allowedDays: number }[] = [
+  { feed: 'daily_numbers', label: 'Daily SEO numbers', schedule: 'Every day, about 10:09 am', allowedDays: 1 },
+  { feed: 'city_check', label: 'Daily city check', schedule: 'Every day, about 3:44 pm', allowedDays: 1 },
+  { feed: 'ahrefs_research', label: 'Daily Ahrefs research', schedule: 'Every day, about 9:52 pm', allowedDays: 1 },
+  { feed: 'monday_review', label: 'Monday review', schedule: 'Mondays, about 11:07 am', allowedDays: 7 },
 ]
+
+export const RUN_LABEL: Record<SeoRun['status'], string> = {
+  ok: 'Ran', partial: 'Part done', blocked: 'Blocked', logged_out: 'Logged out', failed: 'Failed',
+}
 
 export type TaskState = { label: string; state: 'never' | 'ok' | 'late' | 'problem'; text: string }
 
@@ -316,5 +349,22 @@ export function taskStates(data: SeoData, today: string): TaskState[] {
     if (last.status === 'failed') return { label, state: 'problem', text: `Failed ${when}` }
     if (daysBetween(last.run_date, today) > allowedDays) return { label, state: 'late', text: `Late, last ran ${when}` }
     return { label, state: 'ok', text: last.status === 'partial' ? `Part done ${when}` : `Ran ${when}` }
+  })
+}
+
+/** What to do about a task's state, in one line, or null when nothing is needed. */
+function adviceFor(state: TaskState['state'], last: SeoRun | undefined): string | null {
+  if (state === 'late') return 'Check that the PC was on and the Claude app was open.'
+  if (state !== 'problem') return null
+  if (last?.status === 'logged_out') return 'Log in to tools.toolsurf.com in Chrome before the next run.'
+  if (last?.status === 'blocked') return 'Nothing to do. It tries again at its next run.'
+  return 'Ask Claude to look at this task.'
+}
+
+export function taskHistories(data: SeoData, today: string) {
+  const states = taskStates(data, today)
+  return FEEDS.map(({ feed, schedule }, index) => {
+    const recent = data.runs.filter(r => r.feed === feed).sort((a, b) => b.run_date.localeCompare(a.run_date)).slice(0, 7)
+    return { ...states[index], schedule, recent, advice: adviceFor(states[index].state, recent[0]) }
   })
 }

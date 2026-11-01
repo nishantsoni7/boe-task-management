@@ -4,7 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-01 — SEO module, step 1: five read-only screens (PR #570) · 20270518000000, 20270518000100 → APPLIED 2026-11-01
+## 2026-11-02 — SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (PR pending) · 20270519000000 → NOT APPLIED
+- **Added.** `/seo/reviews` and `/seo/tasks`. Update on each board item. Keep or Change on each strategy change. `GET /api/integrations/seo/decisions`, so edits and answers go back to the website folder before anything is sent.
+- **Access.** `edit` (Contributor) updates a board item and `approve` (Manager) answers a strategy change, in place of the one `manage` action the plan named. No browser writes to a table: the two writes are `seo_update_plan_item` and `seo_decide_proposal`.
+- **Tasks.** The four scheduled tasks send their own results from 2 Nov. This needed no code here.
+- **Proof.** Step 2's migration executed on PGlite over the real tables: 34 checks, as anon, no session, no grant, view, edit, approve and Admin. The real sender ran against a fake local BOE One on a copy of the folder: 13 checks, including that the board is held back when the fetch fails. Not yet seen signed in. `permissions:check` not run.
+- **Rollback.** Revert the PR; the migration's header carries its undo. The sender treats the missing route as nothing to bring back.
+
+## 2026-11-01 — SEO module, step 1: five read-only screens (PR #570, b1bc5ab6) · 20270518000000, 20270518000100 → APPLIED 2026-11-01
 - **Owner request.** A new SEO module joined to the daily scheduled tasks: rankings, competitors, the year, a 30/60-day vision board and a weekly review. No additional paid package; Toolsurf stays.
 - **Added.** Tile and `/seo` with Overview, Rankings, Competitors, Year review and Vision board. Six `seo_*` tables, read through `module_entry_open('seo')`, with no browser writes. `POST /api/integrations/seo/ingest`, the only writer, behind `SEO_INGEST_SECRET`. Admin only until granted.
 - **Data.** Not in the repository, which is public. `scripts/push-to-boe-one.mjs` in the website folder sends it through the door.

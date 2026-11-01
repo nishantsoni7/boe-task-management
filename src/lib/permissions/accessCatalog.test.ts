@@ -63,7 +63,7 @@ describe('levels are offered only where they change behaviour', () => {
       sales: ['viewer'],                               // Coming soon: entry is all there is
       marketing: ['viewer'],
       pricing: ['viewer'],
-      seo: ['viewer'],                                 // read-only so far: entry is all there is
+      seo: ['viewer', 'contributor', 'manager'],       // edit a board item, then answer a strategy change
     }
     for (const [moduleKey, levels] of Object.entries(expected)) {
       assert.deepEqual(offeredLevels(moduleKey, keysOf(moduleKey)), levels, moduleKey)
