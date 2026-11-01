@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5abb1145` — Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
-- Commits on this branch: 1126
+- Commit: `8299e9ce` — Docs: #562 and #563 stamped as merged, inventory regenerated
+- Commits on this branch: 1130
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 395 (first `20260530_create_positions.sql`, latest `20270516000000_finance_bank_proof_before_verify.sql`)
 - Tables ever created: 195 (dropped at some point: 7)   SQL functions: 866   Enums: 0
@@ -14,7 +14,11 @@
 
 ## Latest 25 commits
 
+- `8299e9ce` 2026-11-01 Docs: #562 and #563 stamped as merged, inventory regenerated
+- `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
 - `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
+- `84826c54` 2026-11-01 Docs: the gap before the apply is not timed, so do not state one
+- `6f994920` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
 - `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
@@ -35,10 +39,6 @@
 - `4c0629be` 2026-10-31 Confirmed Orders: by project code, cancelled Orders as a gap, a cancelled number locked (#543)
 - `4fbb0780` 2026-10-31 Docs: For you merged as PR #540 (66d63333) (#542)
 - `911d809a` 2026-10-31 Docs: payment-date order merged as PR #539 (2421612f) (#541)
-- `66d63333` 2026-10-31 For you: payment request cards, Control Center settings, each person's own choices (#540)
-- `2421612f` 2026-10-31 Payments lists: order by payment date, latest first (#539)
-- `ad6b8f6d` 2026-10-31 Docs: Expenses redesign merged as PR #537 (cf4b9d27) (#538)
-- `cf4b9d27` 2026-10-31 Expenses: one line of controls, Paid from column, twice the rows on screen (#537)
 
 ## Pages by top-level area
 

@@ -4,23 +4,24 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-01 — An HDFC payment is verified only against the bank; a statement creates nothing (not merged) · 20270516000000 → NOT APPLIED
+## 2026-11-01 — An HDFC payment is verified only against the bank; a statement creates nothing (PR #560, f8616267) · 20270516000000 → APPLIED 2026-11-01
 - **Owner's process, in place of Claim, don't create.** One transfer became two payments because two sides created records: Sales, and the statement sync. Now a request is the only thing that creates a payment, and the owner verifies it against the bank credit. Design on the canvas, page Hybrid: your process.
 - **The rule.** A trigger on the table, so no door or person gets round it: an HDFC PRI or SEC payment cannot turn verified unless active links in its own account cover its amount, or an admin recorded an exception. One credit cannot carry more than its amount, so a second payment for the same money can never be confirmed. Payments already verified, PNB, Paytm, Canara and test data are not touched.
 - **Doors.** `verify_payment_with_bank` links and verifies in one transaction (reconcile + approve). `verify_payment_bank_check_pending` is admin only, with a reason, for money seen in the bank app before a statement is uploaded; it counts at once and stays on `finance_bank_check_pending` until credits cover it. `complete_payment_entry` leaves an unmatched HDFC entry by a self-verifier pending, where the rule would otherwise have failed the whole entry.
 - **Screens.** Payment Requests: Pending has views for a reconciler (All, Match found, Waiting for bank, Bank check pending, Cash to verify), worked out over every pending payment; a PI waiting tag; the request and the credit side by side near the top of the window, with Verify on the credit. A credit that does not plainly fit never gets the red button and asks first. Bank Statements: upload and Check sync add nothing, Add to Confirmed and its window are gone, Synced reads Matched, and Record it opens the ordinary form filled in from the credit. The PI page offers Verify in Finance for an HDFC payment. Cash payments are decided as before.
-- **Not yet.** `sync_bank_credits` and `add_bank_line_to_confirmed` stay open until the new screens are live, then a second migration closes them to browsers. UTR refusal, Verify all exact matches, one-drop upload, the cash warning, Use bank amount and the clean-up are later steps.
-- **Proof.** `supabase/tests/bank_proof_before_verify_pglite.mjs`, 55 checks on the real verification, guard and link functions; 30 deliberate breaks of the migration all caught. Not seen in a browser or signed in; not run on the real rows.
+- **Release.** Merged before the migration was applied, so until it was, HDFC payments could not be verified on the live app. Nothing was recorded wrongly: a refused Verify leaves the payment pending. The rehearsal passed on the real rows with nothing left behind, and the migration was the only one pending. This order is the reverse of the plan; apply first next time.
+- **Not yet.** `sync_bank_credits` and `add_bank_line_to_confirmed` stay open until the owner has seen the new screens work, then a second migration closes them to browsers. UTR refusal, Verify all exact matches, one-drop upload, the cash warning, Use bank amount and the clean-up are later steps.
+- **Proof.** `supabase/tests/bank_proof_before_verify_pglite.mjs`, 55 checks on the real verification, guard and link functions; 30 deliberate breaks of the migration all caught. Not yet seen in a browser or signed in.
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
-## 2026-11-01 — Bank Statements: one list for both HDFC accounts (not merged) · no SQL
+## 2026-11-01 — Bank Statements: one list for both HDFC accounts (PR #563, fd176da4) · no SQL
 - **Owner request.** The two account tabs were causing problems: a credit in one account sat unmatched while its likely payment was recorded against the other.
 - **Changed.** Money in, Payments not in the bank and Money out each show both accounts, with an Account column. The status cards and month list count both. An Account filter, or an account's box at the top, narrows the list; the box pressed again shows both. The date line gives each account's own last date. The month read no longer stops at 2,000 lines.
 - **Unchanged.** Upload, matching and every rule. A credit still covers only a payment in its own account.
 - **Proof.** Helpers and the month read tested, page source pinned, 14 deliberate breaks all caught. Not seen in a browser.
 
-## 2026-11-01 — May be a duplicate: the window names who holds the credit, and the urgent option stays closed (not merged) · no SQL
+## 2026-11-01 — May be a duplicate: the window names who holds the credit, and the urgent option stays closed (PR #562, 5abb1145) · no SQL
 - **Found on the first live look.** The window said a credit was on another payment but not which, so the owner had no way forward, and for an admin the one thing left to press was Verify, bank check pending, which would have counted the same money twice.
 - **Changed.** The window names the holder, opens that payment, and opens the exact credit on Bank Statements (`/finance/bank?account=&month=&credit=`, new). The advice follows the holder: no client usually means the old sync. The urgent form stays closed on this mark, warns, and starts with no reason.
 - **Proof.** The window driven in a DOM, the loader against a stub, 15 deliberate breaks all caught. Not seen in a browser.
