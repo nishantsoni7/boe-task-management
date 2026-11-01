@@ -21,7 +21,7 @@ let cleanup: (() => void) | null = null
 afterEach(() => { cleanup?.(); cleanup = null })
 
 const credit = (over: Partial<BankLine> = {}): BankLine => ({
-  id: 'L1', account: 'hdfc', seq: 1, line_date: '2026-10-06', value_date: null,
+  statement_no: 412, id: 'L1', account: 'hdfc', seq: 1, line_date: '2026-10-06', value_date: null,
   narration: 'RTGS CR-SBIN0000001-SAMPLE TRADERS-BEST OF EXPORTS-SBINR00000000000001', bank_ref: null,
   withdrawal: 0, deposit: 500000, balance: 900000, classification: null, non_customer_kind: null,
   old_order_customer: null, old_order_ref: null, debit_kind: null, debit_payee: null, note: null,

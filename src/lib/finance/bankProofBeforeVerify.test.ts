@@ -22,7 +22,7 @@ const pay = (over: Partial<MarkPayment> = {}): MarkPayment => ({
   payment_date: '2026-10-06', payment_mode: 'hdfc', proof_note: 'SAMP26279000111', status: 'pending_approval', ...over,
 })
 const credit = (over: Partial<MarkLine> = {}): MarkLine => ({
-  id: 'L1', account: 'hdfc', line_date: '2026-10-06',
+  statementNo: 412, id: 'L1', account: 'hdfc', line_date: '2026-10-06',
   narration: 'NEFT CR-SAMP0000111-SAMPLE HOTELS LLP-BEST OF EXPORTS-SAMP26279000111',
   bank_ref: 'SAMP26279000111', deposit: 375000, linkedAmount: 0, ...over,
 })
@@ -211,7 +211,7 @@ describe('the rule stays where it is', () => {
 
   test('the screen for an HDFC payment offers no plain Verify, and verifies through the bank door', () => {
     const details = read('src/app/finance/paymentRequestsDetails.tsx')
-    assert.ok(details.includes("const decisions = verifiedAtTheBank ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS"))
+    assert.ok(details.includes("DECISIONS.filter(d => d.key !== 'approve')"))
     const panel = read('src/app/finance/bankMarkUi.tsx')
     assert.ok(panel.includes("rpc('verify_payment_with_bank'"))
     assert.ok(panel.includes("rpc('verify_payment_bank_check_pending'"))

@@ -26,7 +26,7 @@ import {
 } from './bankStatementsModel'
 
 const line = (over: Partial<BankLine> = {}): BankLine => ({
-  id: 'L1', account: 'hdfc_sec', seq: 1, line_date: '2026-10-28', value_date: null,
+  statement_no: 412, id: 'L1', account: 'hdfc_sec', seq: 1, line_date: '2026-10-28', value_date: null,
   narration: 'NEFT CR-KKBK0000958-SAMPLE TRADERS-BESTOFEXPORTS-KKBKH26295886339', bank_ref: 'KKBKH26295886339',
   withdrawal: 0, deposit: 21000, balance: 100000, classification: null, non_customer_kind: null,
   old_order_customer: null, old_order_ref: null, debit_kind: null, debit_payee: null, note: null,

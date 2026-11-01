@@ -87,6 +87,7 @@ export function BankCheckList({ supabase, rows, marks, onChanged }: {
             canVerifyUrgent={false}
             confirmLabel="Confirm match"
             onChanged={() => { setOpenId(null); onChanged() }}
+            onReread={onChanged}
             onVerified={() => { setOpenId(null); onChanged() }}
           />
         </FinanceModal>

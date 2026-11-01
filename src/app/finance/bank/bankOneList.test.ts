@@ -11,7 +11,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { combinedRange, inAccount, loadMonthLines, loadStoredRanges } from './bankStatementsModel'
+import { combinedRange, inAccount, loadMonthLines, loadStoredRanges, matchesBankLineId } from './bankStatementsModel'
+import { bankLineId } from '@/lib/finance/bankStatement'
 
 const read = (f: string) => readFileSync(join(process.cwd(), 'src/app/finance/bank', f), 'utf8').replace(/\r\n/g, '\n')
 
@@ -82,6 +83,27 @@ describe('the month read', () => {
   test('a failed read says so, it does not draw an empty month', async () => {
     const { supabase } = stub(() => ({ data: null, error: { message: 'no' } }))
     await assert.rejects(loadMonthLines(supabase, '2026-10'), /could not be read/)
+  })
+})
+
+describe('the Bank Statements ID', () => {
+  test('it reads as BS and five digits, and grows past that', () => {
+    assert.equal(bankLineId(412), 'BS-00412')
+    assert.equal(bankLineId(123456), 'BS-123456')
+  })
+
+  test('however it is typed, it finds that line and no other', () => {
+    for (const t of ['BS-00412', 'bs-412', 'BS412', ' bs00412 ']) assert.equal(matchesBankLineId(412, t), true, t)
+    assert.equal(matchesBankLineId(4120, 'BS-412'), false)
+    assert.equal(matchesBankLineId(412, '412'), false)
+  })
+
+  test('it is on the lists, the credit window and the page search', () => {
+    const view = read('BankStatementsView.tsx')
+    assert.equal(view.split('<th style={{ width: 92 }}>ID</th>').length - 1, 2)
+    assert.equal(view.split('{bankLineId(a.line.statement_no)}').length - 1, 2)
+    assert.equal(view.split('matchesBankLineId(a.line.statement_no, q)').length - 1, 2)
+    assert.ok(read('bankLineModal.tsx').includes('{bankLineId(line.statement_no)}'))
   })
 })
 

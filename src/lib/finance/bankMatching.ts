@@ -181,6 +181,24 @@ export function suggestPaymentsForLine(line: MatchLine, payments: MatchPayment[]
   return out.slice(0, max)
 }
 
+/**
+ * The same facts a suggestion carries, for a credit a person picked themselves.
+ * Nothing is filtered out here: they chose it, and the comparison says what differs.
+ */
+export function lineFactsForPayment(
+  p: { client_name: string | null; payment_date: string; payment_mode: string; proof_note: string | null; remaining: number },
+  line: MatchLine,
+) {
+  const note = (p.proof_note ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return {
+    amountExact: samePaise(p.remaining, line.remaining),
+    referenceMatch: note.length >= 8 && referenceTokens(line).some(r => note.includes(r)),
+    nameFit: nameOverlap(p.client_name, line.narration),
+    daysApart: Math.abs(daysBetween(line.line_date, p.payment_date)),
+    sameAccount: p.payment_mode === line.account,
+  }
+}
+
 /** The payer's name, as far as the narration states one. Display only. */
 export function payerFromNarration(narration: string): string | null {
   const n = narration.trim()
