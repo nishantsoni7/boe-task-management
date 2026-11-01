@@ -369,6 +369,11 @@ export function recordCreditHref(lineId: string): string {
   return `/finance?new=1&bankLine=${lineId}`
 }
 
+/** Opens one credit on Bank Statements, in its own account and month. */
+export function creditHref(lineId: string, account: string, lineDate: string): string {
+  return `/finance/bank?account=${account}&month=${monthOf(lineDate)}&credit=${lineId}`
+}
+
 export type CompareRow = { label: string; credit: string; payment: string; verdict: string; tone: 'same' | 'differs' | 'plain' }
 
 /** A date this close, and a name overlapping this much, count as fitting. */
