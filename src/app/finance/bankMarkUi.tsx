@@ -74,7 +74,7 @@ type PanelPayment = {
   proof_note: string | null
 }
 
-function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel, busy, onVerify, onLink, onReject, onBack }: {
+function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel, busy, onVerify, onLink, onReject, onBack, onSearch }: {
   payment: PanelPayment
   credit: BankCandidate
   /** What this payment still needs covered. */
@@ -90,6 +90,8 @@ function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel,
   onReject?: () => void
   /** Back to the search results, for a credit picked there. */
   onBack?: () => void
+  /** Leave the suggestions for the search. */
+  onSearch?: () => void
 }) {
   const [asking, setAsking] = useState(false)
   const doubts = candidateDoubts(credit, payment.client_name)
@@ -137,6 +139,7 @@ function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel,
         {onReject && <button className={`boe-btn ${rejectFirst ? 'boe-btn-primary' : 'boe-btn-ghost'}`} disabled={busy} onClick={onReject}>Not this one</button>}
         {onBack && <button className="boe-btn boe-btn-ghost" disabled={busy} onClick={onBack}>Back to the results</button>}
         {rejectFirst && <button className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => setAsking(true)}>Use this one anyway</button>}
+        {onSearch && <button className="bank-link-button bank-compare-search" disabled={busy} onClick={onSearch}>Search the bank statement</button>}
       </div>
     </div>
   )
@@ -171,12 +174,10 @@ function BankSearch({ supabase, payment, need, dismissed, onPick }: {
   return (
     <div className="bank-search">
       <div className="bank-search-side">
-        <strong>Sales entered</strong>
-        <span>{formatMoney(need)}</span>
-        <span>{formatBankDate(payment.payment_date)}</span>
-        <span>{paymentModeLabel(payment.payment_mode)}</span>
-        <span>{payment.client_name ?? 'Not identified'}</span>
-        <span className="fin-muted">{payment.proof_note ?? 'No UTR entered'}</span>
+        {need !== payment.amount && <span><small>Still needed</small>{formatMoney(need)}</span>}
+        <span><small>Date</small>{formatBankDate(payment.payment_date)}</span>
+        <span><small>Account</small>{paymentModeLabel(payment.payment_mode)}</span>
+        <span><small>UTR</small>{payment.proof_note ?? 'Not entered'}</span>
       </div>
       <div className="bank-search-main">
         <label className="bank-field"><span>Search the bank statement</span>
@@ -320,10 +321,12 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
 
   return (
     <div className="bank-panel">
-      <div className="bank-panel-head">
-        <div className="bank-panel-title">Bank statement</div>
-        {!picked && !searching && candidates.length > 1 && <span className="fin-muted" style={{ fontSize: 13 }}>Suggestion {position} of {candidates.length}</span>}
-      </div>
+      {!picked && !searching && candidates.length > 1 && (
+        <div className="bank-panel-head">
+          <span className="fin-muted" style={{ fontSize: 13 }}>{fits > 1 ? 'More than one credit fits this payment. Compare them and pick the right one.' : ''}</span>
+          <span className="fin-muted" style={{ fontSize: 13 }}>Suggestion {position} of {candidates.length}</span>
+        </div>
+      )}
 
       {mark.kind === 'linked' && mark.links.map(l => (
         <div key={l.lineId} className="bank-panel-line">
@@ -346,16 +349,9 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
           confirmLabel={confirmLabel} busy={busy !== null} onVerify={() => verify([picked.lineId])} onLink={() => link(picked.lineId)} onBack={() => setPicked(null)} />
       ) : focused && !searching && (
         <>
-          <p className="fin-muted bank-panel-note">
-            {fits > 1
-              ? 'More than one credit fits this payment. Compare them and pick the right one.'
-              : canVerify
-                ? 'Check this is the same money, then verify. That links the credit and moves the payment to Confirmed Payments.'
-                : 'This looks like the following bank credit.'}
-          </p>
           <CreditCard key={focused.lineId} payment={payment} credit={focused} remaining={remaining} best={focused === candidates[0]} canVerify={canVerify}
             confirmLabel={confirmLabel} busy={busy !== null} onVerify={() => verify([focused.lineId])} onLink={() => link(focused.lineId)}
-            onReject={() => reject(focused.lineId)} />
+            onReject={() => reject(focused.lineId)} onSearch={() => setSearching(true)} />
           {others.length > 0 && (
             <div className="bank-others">
               <strong style={{ fontSize: 13, paddingBottom: 6 }}>Also possible</strong>
@@ -390,14 +386,14 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
           <div><Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.lineDate)} target="_blank">Open this credit</Link></div>
         </div>
       )}
-      {mark.kind === 'none' && <p className="fin-muted bank-panel-note">The bank statement covers this date, but no credit matches this payment. It may not have arrived yet, or was recorded with a different amount or date. If it came as part of a bigger transfer in another name, add the UTR to this payment and it will show here.</p>}
-      {mark.kind === 'uncovered' && <p className="fin-muted bank-panel-note">No bank statement is stored for this date yet. Upload it on the Bank Statements page.</p>}
+      {mark.kind === 'none' && <p className="bank-panel-lead"><strong>No bank credit matches this payment.</strong> <span className="fin-muted">If it came as part of a bigger transfer in another name, add the UTR to this payment and it will show here.</span></p>}
+      {mark.kind === 'uncovered' && <p className="bank-panel-lead"><strong>No bank statement is stored for this date yet.</strong> <span className="fin-muted">Upload it on the Bank Statements page.</span></p>}
 
       {!picked && showSearch && (
         <BankSearch supabase={supabase} payment={payment} need={need} dismissed={new Set(dismissedLines.map(d => d.lineId))} onPick={setPicked} />
       )}
-      {!picked && !covered && candidates.length > 0 && (
-        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setSearching(!searching)}>{searching ? 'Back to the suggestions' : 'Search the bank statement'}</button></div>
+      {!picked && searching && candidates.length > 0 && (
+        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setSearching(false)}>Back to the suggestions</button></div>
       )}
 
       {dismissedLines.map(d => (

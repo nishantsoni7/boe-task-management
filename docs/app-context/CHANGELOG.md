@@ -21,12 +21,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
-## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (not merged) · 20270517000000 → NOT APPLIED
+## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (not merged) · 20270517000000 → APPLIED 2026-11-01
 - **Owner request.** Compare what Sales entered with the bank in two clean columns, reject a wrong suggestion, and search by hand, including by a new Bank Statements ID.
-- **Changed.** The payment window leads with one credit at a time, full width, with what differs highlighted. Not this one stops a credit being suggested for that payment and can be undone. The search finds credits with money left in both accounts by ID, name, amount, UTR or date. Every bank line has an ID such as BS-00412, on Bank Statements, the credit window and the page search. For an HDFC payment the decision block moves to the bottom as The whole payment, with Reject payment.
+- **Changed.** The payment window leads with one credit at a time, full width, with what differs highlighted. Not this one stops a credit being suggested for that payment and can be undone. The search finds credits with money left in both accounts by ID, name, amount, UTR or date. Every bank line has an ID such as BS-00412, on Bank Statements, the credit window and the page search. A pending HDFC payment's window is rebuilt around one question, with each fact once, Reject payment and Needs clarification in the bottom bar, and proof, notes, activity, Edit and Delete behind Details. Cash payments keep their window.
 - **Unchanged.** Every rule of 20270516000000. A credit covers only a payment in its own account, and one credit cannot carry more than its amount.
 - **Order.** The migration goes first: the new code reads the column and the table.
-- **Proof.** `supabase/tests/bank_compare_link_pglite.mjs`, 27 checks. The window driven in a DOM. 30 deliberate breaks caught; a 31st changed nothing, because a debit has no money left to offer anyway. Not seen in a browser.
+- **Proof.** `supabase/tests/bank_compare_link_pglite.mjs`, 27 checks. The window driven in a DOM. 40 deliberate breaks caught; a 41st changed nothing, because a debit has no money left to offer anyway. Not seen in a browser.
 
 ## 2026-11-01 — The old bank routes are closed to browsers (PR #564, 1344cea4) · 20270516000100 → APPLIED 2026-11-01
 - **Why now.** The new screens are live and the owner verified a real payment through them.

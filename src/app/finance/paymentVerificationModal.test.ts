@@ -175,7 +175,7 @@ describe('what the popup keeps', () => {
   })
 
   test('the bank-statement panel is a slot the page fills only for finance.reconcile', () => {
-    assert.ok(code.includes('top={canVerify ? bankPanel : undefined}') && code.includes('{!canVerify && bankPanel}'))
+    assert.ok(code.includes('body={bankWindow && !showDetails ? bankPanel : undefined}') && code.includes('{!bankWindow && bankPanel}'))
     assert.ok(!code.includes('bank_statement') && !code.includes('link_bank_line_to_payment'), 'the popup knows nothing about the bank')
     assert.ok(pageCode.includes("bankPanel={caps.canReconcileBank && detailRequest.status !== 'rejected' ? ("))
     assert.ok(pageCode.includes('payment={detailRequest}'))

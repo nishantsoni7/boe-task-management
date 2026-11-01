@@ -38,7 +38,7 @@ An HDFC PRI or SEC payment can only be verified against its bank credit. You nee
 
 Every bank line has a Bank Statements ID, shown on Bank Statements.
 
-To reject the whole payment, use **Reject payment** at the bottom of the window. **Not this one** only rejects one suggested credit.
+To reject the whole payment, use **Reject payment** at the bottom of the window. **Not this one** only rejects one suggested credit. Proof, notes, activity, **Edit** and **Delete** are under **Details**.
 
 If a credit says **Check first**, the name or date does not fit. Use it only if you are sure. If it is a little short of the payment, edit the payment to the bank amount, then verify it. If the money came as part of a bigger transfer in another name and no match shows, add the UTR to the payment and it will appear.
 
