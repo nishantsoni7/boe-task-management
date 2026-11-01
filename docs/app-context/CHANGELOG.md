@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-01 — Confirmed Orders: Advance column (PR open) · 20270516000200 → NOT APPLIED
+- **Owner request.** A column with the advance percentage confirmed for each Order; below 40% on a subtle red background, otherwise plain.
+- **Changed.** Advance after Product Value, and a line on the phone card: verified payments as a percentage of Total before GST, the Payment card's own figure. A dash when no figure is known or the read fails, never 0%. Table floor 1120, was 1020.
+- **Database.** `orders_advance_percent()`, read-only, same access as `order_advance_readiness`. Rollback: drop the function; the column then shows dashes and nothing else changes.
+- **Proof.** The migration on PGlite over stubs, 5 checks. Rehearsal on production rows, rolled back, is the owner's step. Not yet seen signed in.
+
 ## 2026-11-01 — An HDFC payment is verified only against the bank; a statement creates nothing (PR #560, f8616267) · 20270516000000 → APPLIED 2026-11-01
 - **Owner's process, in place of Claim, don't create.** One transfer became two payments because two sides created records: Sales, and the statement sync. Now a request is the only thing that creates a payment, and the owner verifies it against the bank credit. Design on the canvas, page Hybrid: your process.
 - **The rule.** A trigger on the table, so no door or person gets round it: an HDFC PRI or SEC payment cannot turn verified unless active links in its own account cover its amount, or an admin recorded an exception. One credit cannot carry more than its amount, so a second payment for the same money can never be confirmed. Payments already verified, PNB, Paytm, Canara and test data are not touched.
@@ -15,7 +21,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
-## 2026-11-01 — The old bank routes are closed to browsers (not merged) · 20270516000100 → NOT APPLIED
+## 2026-11-01 — The old bank routes are closed to browsers (PR #564, 1344cea4) · 20270516000100 → APPLIED 2026-11-01
 - **Why now.** The new screens are live and the owner verified a real payment through them.
 - **Changed.** `sync_bank_credits` and `add_bank_line_to_confirmed` can no longer be called from a browser, so an old tab still running the old code is refused instead of adding a payment. `create_payment_from_bank_line` was already closed. Closed, not dropped: a rollback is one grant each. No data changes, and no screen changes.
 - **Proof.** `supabase/tests/bank_old_routes_closed_pglite.mjs`, 6 checks; its deliberate breaks all caught.

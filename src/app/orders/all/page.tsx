@@ -42,6 +42,7 @@ import {
   PENDENCY_COLUMN_LABEL, buildPendencyOverviews,
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
+import { AdvanceCell } from './AdvanceCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
 
@@ -298,6 +299,12 @@ export default function AllOrdersPage() {
    */
   const [pendencyReads, setPendencyReads] = useState<{ approvals: CurrentApprovalRow[]; open: OpenPendencyRow[] } | null>(null)
   const [pendencyPopup, setPendencyPopup] = useState<string | null>(null)
+  /**
+   * THE ADVANCE COLUMN (owner, 2026-11-01): one read beside the list. Until it
+   * lands, or if it fails, the column shows a dash — never a percentage nobody
+   * read. An Order only a visibility scope admits has no row here, so a dash too.
+   */
+  const [advance, setAdvance] = useState<Map<string, number | string | null>>(new Map())
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -391,6 +398,12 @@ export default function AllOrdersPage() {
     })
   }
 
+  const loadAdvance = async () => {
+    const { data, error } = await supabase.rpc('orders_advance_percent')
+    setAdvance(new Map(error ? [] : ((data ?? []) as { order_id: string; advance_percent: number | string | null }[])
+      .map(r => [r.order_id, r.advance_percent])))
+  }
+
   const pendencyOverviews = useMemo(
     () => pendencyReads
       ? buildPendencyOverviews(orders.map(o => o.id), pendencyReads.approvals, pendencyReads.open)
@@ -420,6 +433,7 @@ export default function AllOrdersPage() {
         // for a decoration.
         loadUnread(),
         loadPendencies(),
+        loadAdvance(),
         // The operations queue, only when it was asked for. Beside the
         // others, so the filtered list costs no extra wait.
         opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
@@ -542,9 +556,10 @@ export default function AllOrdersPage() {
       title="Confirmed Orders"
       subtitle="Complete order list across all statuses."
       onSignOut={handleSignOut}
-      /* Refresh re-reads both: a reader who has just opened an Order in
-         another tab expects its badge to be gone when they come back. */
-      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread()]) }}
+      /* Refresh re-reads these: a reader who has just opened an Order in
+         another tab expects its badge to be gone when they come back, and a
+         payment verified meanwhile to count in its Advance. */
+      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance()]) }}
     >
       {deletedBanner && (
         <div style={{
@@ -777,6 +792,10 @@ export default function AllOrdersPage() {
                     <FactoryBadge alignment={o.production_alignment} />
                   </div>
                   <div className="orders-list-card-meta">
+                    <span>Advance</span>
+                    <AdvanceCell percent={advance.get(o.id)} />
+                  </div>
+                  <div className="orders-list-card-meta">
                     <span>{PENDENCY_COLUMN_LABEL}</span>
                     <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
                   </div>
@@ -818,18 +837,20 @@ export default function AllOrdersPage() {
                     cut; change one and measure at that width. */}
                 <col style={{ width: '116px' }} />{/* Project code + markers, update note under it */}
                 <col />{/* Client, lead source under it */}
-                <col style={{ width: '12%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '11%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '96px' }} />{/* Advance (owner, 2026-11-01) */}
                 <col style={{ width: '136px' }} />{/* Factory Status, 24px of it after the money */}
                 <col style={{ width: '116px' }} />{/* Pendencies (owner, 2026-10-27) */}
-                <col style={{ width: '13.5%' }} />{/* Sales person */}
-                <col style={{ width: '10.5%' }} />{/* Confirmed */}
-                <col style={{ width: '10.5%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '12.4%' }} />{/* Sales person */}
+                <col style={{ width: '9.6%' }} />{/* Confirmed */}
+                <col style={{ width: '9.6%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
                   <SortHeader label="Project Code" current={sortKey} high="number_desc" low="number_asc" onSort={setSortKey} />
                   <th>Client</th>
                   <SortHeader label="Product Value" className="fin-num" current={sortKey} high="value_desc" low="value_asc" onSort={setSortKey} />
+                  <th className="fin-num" title="Verified payments as a percentage of Total before GST">Advance</th>
                   <th className="orders-after-value">Factory Status</th>
                   <th>Pendencies</th>
                   <th>Sales Person</th>
@@ -893,7 +914,7 @@ export default function AllOrdersPage() {
                         )}
                       </td>
                       {cancelled ? (
-                        <td colSpan={7} title={o.client_name}>
+                        <td colSpan={8} title={o.client_name}>
                           <span className="orders-gap-text">{cancelledOrderGapText(o.client_name)}</span>
                         </td>
                       ) : (
@@ -906,6 +927,9 @@ export default function AllOrdersPage() {
                           </td>
                           <td className="fin-num">
                             <span className="fin-amount">{fmtAmount(o.subtotal)}</span>
+                          </td>
+                          <td className="fin-num">
+                            <AdvanceCell percent={advance.get(o.id)} />
                           </td>
                           <td className="orders-after-value">
                             <FactoryBadge alignment={o.production_alignment} />

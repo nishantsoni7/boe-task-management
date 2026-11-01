@@ -1,9 +1,10 @@
-// The two small pieces of the Confirmed Orders table that hold a decision: what
-// the Pendencies cell says, and what a sorting heading announces and asks for.
+// The small pieces of the Confirmed Orders table that hold a decision: what the
+// Advance and Pendencies cells say, and what a sorting heading announces and asks for.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { AdvanceCell } from './AdvanceCell'
 import { PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
 import type { OrderPendencyOverview } from '@/lib/orders/pendencyOverview'
@@ -14,6 +15,30 @@ const noop = () => {}
 const overview = (count: number): OrderPendencyOverview => ({
   approved: count === 0,
   pending: Array.from({ length: count }, (_, i) => ({ key: `k${i}`, label: `Item ${i}`, detail: 'Not Approved' })),
+})
+
+describe('the Advance cell (owner, 2026-11-01)', () => {
+  const cell = (percent: number | string | null | undefined) => renderToStaticMarkup(<AdvanceCell percent={percent} />)
+
+  test('below 40%: the percentage on the red background, with no dot', () => {
+    assert.equal(text(cell(35.5)), '35.5%')
+    assert.ok(cell('39.99').includes('fin-pill--over'))
+    assert.equal(cell(35.5).includes('fin-pill '), false)
+  })
+
+  test('40% and above: the percentage, plain', () => {
+    for (const [value, shown] of [['40.00', '40%'], [40.01, '40.01%'], [100, '100%']] as const) {
+      assert.equal(text(cell(value)), shown)
+      assert.equal(cell(value).includes('fin-pill--over'), false)
+    }
+  })
+
+  test('no figure: a dash, plain, never 0%', () => {
+    for (const none of [null, undefined]) {
+      assert.equal(text(cell(none)), '—')
+      assert.equal(cell(none).includes('fin-pill--over'), false)
+    }
+  })
 })
 
 describe('the Pendencies cell (owner, 2026-10-31)', () => {
