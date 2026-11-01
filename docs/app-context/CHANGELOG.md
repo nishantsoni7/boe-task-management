@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-01 — Backups: the SEO folder and the scheduled-task instructions (PR pending) · no migration
+- **Why.** A year of SEO evidence sat in `repositories\bestofexports-website`, which has no git, and the nightly backup covered neither that folder nor `~/.claude/scheduled-tasks`.
+- **Changed.** Every full backup copies both to `projects/<UTC>/` (newest 14), the second copy takes the newest, and `verify-backups.mjs` has a row for it. A locked file reports and does not cost the code backup.
+- **Limit.** This stays on this PC until the second copy runs, which needs the D: drive plugged in at 9:30 pm.
+
 ## 2026-11-01 — Confirmed Orders: Advance column (PR #566) · 20270517000100 → APPLIED 2026-11-01
 - **Owner request.** A column with the advance percentage confirmed for each Order; below 40% on a subtle red background, otherwise plain.
 - **Changed.** Advance after Product Value, and a line on the phone card: verified payments as a percentage of Total before GST, the Payment card's own figure. A dash when no figure is known or the read fails, never 0%. Table floor 1120, was 1020.
