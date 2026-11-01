@@ -21,9 +21,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
-## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (not merged) · 20270517000000 → APPLIED 2026-11-01
+## 2026-11-01 — One screen for a pending HDFC payment (not merged) · no SQL
+- **Owner request.** After seeing Compare and link on the preview: the window repeated facts, scrolled a long way, and kept Reject far from the comparison.
+- **Changed.** For somebody who may decide a pending HDFC payment, the window answers one question. The header carries amount, client, what it is for and who submitted it, and the comparison carries the rest, so no fact appears twice. Needs clarification and Reject payment sit in a bottom bar and open a reason box there. Proof, notes, custody, activity, Edit and Delete are behind Details. Everybody else, and every cash payment, keeps the old window; #565 had widened the cash window by mistake, and that is undone here.
+- **Release.** Built for #565, but #565 was merged before this was pushed, so it follows on its own. Always read a pull request's state before pushing to it.
+- **Proof.** `bankWindowBar.dom.test.tsx`, the bar driven in a DOM, 10 deliberate breaks all caught. Not seen on the live site.
+
+## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (PR #565, 10133012) · 20270517000000 → APPLIED 2026-11-01
 - **Owner request.** Compare what Sales entered with the bank in two clean columns, reject a wrong suggestion, and search by hand, including by a new Bank Statements ID.
-- **Changed.** The payment window leads with one credit at a time, full width, with what differs highlighted. Not this one stops a credit being suggested for that payment and can be undone. The search finds credits with money left in both accounts by ID, name, amount, UTR or date. Every bank line has an ID such as BS-00412, on Bank Statements, the credit window and the page search. A pending HDFC payment's window is rebuilt around one question, with each fact once, Reject payment and Needs clarification in the bottom bar, and proof, notes, activity, Edit and Delete behind Details. Cash payments keep their window.
+- **Changed.** The payment window leads with one credit at a time, full width, with what differs highlighted. Not this one stops a credit being suggested for that payment and can be undone. The search finds credits with money left in both accounts by ID, name, amount, UTR or date. Every bank line has an ID such as BS-00412, on Bank Statements, the credit window and the page search.
 - **Unchanged.** Every rule of 20270516000000. A credit covers only a payment in its own account, and one credit cannot carry more than its amount.
 - **Order.** The migration goes first: the new code reads the column and the table.
 - **Proof.** `supabase/tests/bank_compare_link_pglite.mjs`, 27 checks. The window driven in a DOM. 40 deliberate breaks caught; a 41st changed nothing, because a debit has no money left to offer anyway. Not seen in a browser.
