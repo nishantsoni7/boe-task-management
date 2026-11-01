@@ -147,7 +147,9 @@ export function DetailsModal({
   // AN HDFC PAYMENT IS VERIFIED AGAINST THE BANK (20270516000000): its Verify is on
   // the bank match in this window, so this list offers only the other two decisions.
   const verifiedAtTheBank = isBankAccountMode(r.payment_mode)
-  const decisions = verifiedAtTheBank ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS
+  const decisions = verifiedAtTheBank
+    ? DECISIONS.filter(d => d.key !== 'approve').map(d => (d.key === 'reject' ? { ...d, label: 'Reject payment' } : d))
+    : DECISIONS
   const [decisionAction, setDecisionAction] = useState<AdminAction | null>(null)
   const [decisionNote,   setDecisionNote]   = useState('')
   const [deciding,       setDeciding]       = useState(false)
@@ -325,9 +327,6 @@ export function DetailsModal({
         </div>
       </div>
 
-      {/* The bank match, up here for the person deciding: it is the decision. */}
-      {canVerify && bankPanel}
-
       {/* B. Decision block — compact status-tinted note, only when one exists */}
       {decision && (
         <div style={{ padding: '12px 14px', borderRadius: '8px', background: decision.bg, border: `1px solid ${decision.border}` }}>
@@ -403,29 +402,15 @@ export function DetailsModal({
     </>
   )
 
-  const right = (
-    <>
-      {/* E. Activity panel — subtle bordered panel; the timeline keeps its
-          own "Activity" heading, query, ordering, and event text. */}
-      {supabase && (
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
-          <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
-        </div>
-      )}
-
-      {/* E2. DECISION — verify, send back, or reject. One section, three outcomes,
-          each through its own protected door (see handleDecide). Drawn only for
-          somebody holding finance.approve, on a pending payment they did not
-          record themselves (unless they may decide their own). A DRAWING rule:
-          every call re-derives the actor, the permission and the row's status
-          under a row lock. Moving a row into the approved statuses is never an
-          option in a status <select>: a protected action gets its own door. */}
-      {canVerify && supabase && onCorrected && (
+  // An HDFC payment is decided in the comparison at the top, so what is left here is
+  // about the whole payment, not one credit, and it sits below everything.
+  const decisionBelow = verifiedAtTheBank && !!bankPanel
+  const decisionBlock = canVerify && supabase && onCorrected ? (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          <SectionHeader>Decision</SectionHeader>
+          <SectionHeader>{decisionBelow ? 'The whole payment' : 'Decision'}</SectionHeader>
           {verifiedAtTheBank && (
             <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               {bankPanel
@@ -433,7 +418,7 @@ export function DetailsModal({
                 : 'An HDFC payment is verified against its bank credit, which needs access to Bank Statements.'}
             </div>
           )}
-          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: decisionBelow ? 'row' : 'column', flexWrap: 'wrap', gap: '6px' }}>
             {decisions.map(d => {
               const on = decisionAction === d.key
               return (
@@ -445,7 +430,7 @@ export function DetailsModal({
                   onClick={() => { setDecisionAction(d.key); setDecisionError(null) }}
                   disabled={deciding}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', width: '100%',
+                    display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', flex: '1 1 240px',
                     padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
                     border: `1px solid ${on ? d.color : colors.border}`, background: on ? d.tint : '#FFFFFF',
                   }}
@@ -515,7 +500,26 @@ export function DetailsModal({
             </button>
           </div>
         </div>
+  ) : null
+
+  const right = (
+    <>
+      {/* E. Activity panel — subtle bordered panel; the timeline keeps its
+          own "Activity" heading, query, ordering, and event text. */}
+      {supabase && (
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
+          <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+        </div>
       )}
+
+      {/* E2. DECISION — verify, send back, or reject. One section, three outcomes,
+          each through its own protected door (see handleDecide). Drawn only for
+          somebody holding finance.approve, on a pending payment they did not
+          record themselves (unless they may decide their own). A DRAWING rule:
+          every call re-derives the actor, the permission and the row's status
+          under a row lock. Moving a row into the approved statuses is never an
+          option in a status <select>: a protected action gets its own door. */}
+      {!decisionBelow && decisionBlock}
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
@@ -634,6 +638,9 @@ export function DetailsModal({
       onClose={onClose}
       left={left}
       right={right}
+      top={canVerify ? bankPanel : undefined}
+      bottom={decisionBelow ? decisionBlock : undefined}
+      width={canVerify && bankPanel ? '1040px' : undefined}
       footer={footer}
     />
   )

@@ -1186,6 +1186,8 @@ describe('the applied migrations are frozen', () => {
       '20270516000000_finance_bank_proof_before_verify.sql',
       // The old bank doors closed to browsers, now the new screens are proven.
       '20270516000100_finance_bank_old_routes_closed.sql',
+      // Bank Statements ID, Not this one, and a search of the money not matched yet.
+      '20270517000000_finance_bank_line_ids_and_match_search.sql',
       // Confirmed Orders: the Advance column's one read.
       '20270517000100_orders_advance_percent.sql',
     ])
@@ -1625,6 +1627,8 @@ describe('the applied migrations are frozen', () => {
       '20270516000000_finance_bank_proof_before_verify.sql',
       // The old bank doors closed to browsers, now the new screens are proven.
       '20270516000100_finance_bank_old_routes_closed.sql',
+      // Bank Statements ID, Not this one, and a search of the money not matched yet.
+      '20270517000000_finance_bank_line_ids_and_match_search.sql',
       // Confirmed Orders: the Advance column's one read.
       '20270517000100_orders_advance_percent.sql',
     ])

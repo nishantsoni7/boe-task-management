@@ -21,6 +21,13 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-10-31 — Sales, Marketing and Pricing: three modules, Coming soon (PR #557 open) · 20270515000000 → APPLIED 2026-11-01
 
+## 2026-11-01 — Compare and link: side by side, Not this one, search, Bank Statements ID (not merged) · 20270517000000 → NOT APPLIED
+- **Owner request.** Compare what Sales entered with the bank in two clean columns, reject a wrong suggestion, and search by hand, including by a new Bank Statements ID.
+- **Changed.** The payment window leads with one credit at a time, full width, with what differs highlighted. Not this one stops a credit being suggested for that payment and can be undone. The search finds credits with money left in both accounts by ID, name, amount, UTR or date. Every bank line has an ID such as BS-00412, on Bank Statements, the credit window and the page search. For an HDFC payment the decision block moves to the bottom as The whole payment, with Reject payment.
+- **Unchanged.** Every rule of 20270516000000. A credit covers only a payment in its own account, and one credit cannot carry more than its amount.
+- **Order.** The migration goes first: the new code reads the column and the table.
+- **Proof.** `supabase/tests/bank_compare_link_pglite.mjs`, 27 checks. The window driven in a DOM. 30 deliberate breaks caught; a 31st changed nothing, because a debit has no money left to offer anyway. Not seen in a browser.
+
 ## 2026-11-01 — The old bank routes are closed to browsers (PR #564, 1344cea4) · 20270516000100 → APPLIED 2026-11-01
 - **Why now.** The new screens are live and the owner verified a real payment through them.
 - **Changed.** `sync_bank_credits` and `add_bank_line_to_confirmed` can no longer be called from a browser, so an old tab still running the old code is refused instead of adding a payment. `create_payment_from_bank_line` was already closed. Closed, not dropped: a rollback is one grant each. No data changes, and no screen changes.

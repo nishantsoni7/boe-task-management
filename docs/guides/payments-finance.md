@@ -31,8 +31,14 @@ An HDFC PRI or SEC payment can only be verified against its bank credit. You nee
 
 1. A statement adds nothing to Confirmed Payments. Only a Payment Request does. When Sales ask, upload the latest statement.
 2. In Payment Requests, open **Pending**, then **Match found**. A **PI waiting** tag means a PI cannot be approved until you decide.
-3. Open the payment. The request and the bank credit are side by side.
-4. If it is the same money, press **Verify**. That links the credit and moves the payment to Confirmed Payments.
+3. Open the payment. What Sales entered and what the bank shows are side by side, one credit at a time. Anything that differs is highlighted.
+4. If it is the same money, press **Verify and link**. That links the credit and moves the payment to Confirmed Payments.
+5. If it is not, press **Not this one**. That credit stops being suggested for this payment, and the next one shows. **Undo** brings it back.
+6. To find a credit yourself, use **Search the bank statement**: Bank Statements ID (such as BS-00412), name, amount, UTR or date. It shows only credits with money not matched yet, in both accounts. **Compare** opens the same side-by-side view.
+
+Every bank line has a Bank Statements ID, shown on Bank Statements.
+
+To reject the whole payment, use **Reject payment** at the bottom of the window. **Not this one** only rejects one suggested credit.
 
 If a credit says **Check first**, the name or date does not fit. Use it only if you are sure. If it is a little short of the payment, edit the payment to the bank amount, then verify it. If the money came as part of a bigger transfer in another name and no match shows, add the UTR to the payment and it will appear.
 

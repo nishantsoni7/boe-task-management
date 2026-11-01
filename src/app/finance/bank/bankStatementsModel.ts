@@ -47,6 +47,8 @@ export type BankLine = {
   id: string
   account: BankAccountKey
   seq: number
+  /** The Bank Statements ID, shown through bankLineId. */
+  statement_no: number
   line_date: string
   value_date: string | null
   narration: string
@@ -281,6 +283,12 @@ export async function loadStoredRange(supabase: SupabaseClient, account: BankAcc
   return first && last ? { first, last } : null
 }
 
+/** Does what was typed name this line's ID? BS-00412, bs412 and BS412 all do. */
+export function matchesBankLineId(statementNo: number, text: string): boolean {
+  const m = /^bs-?0*(\d+)$/i.exec(text.trim())
+  return m !== null && Number(m[1]) === statementNo
+}
+
 /** How far each account's statements run. An account with nothing stored is left out. */
 export async function loadStoredRanges(supabase: SupabaseClient): Promise<Coverage> {
   const [pri, sec] = await Promise.all([loadStoredRange(supabase, 'hdfc'), loadStoredRange(supabase, 'hdfc_sec')])
@@ -301,7 +309,7 @@ export function inAccount(account: string, filter: AccountFilter): boolean {
 }
 
 const LINE_COLUMNS =
-  'id, account, seq, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, sync_error, ' +
+  'id, account, seq, statement_no, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, sync_error, ' +
   'bank_line_payment_links(id, payment_id, amount, unlinked_at), bank_line_expense_links(id, expense_id, amount, unlinked_at)'
 
 /**
@@ -323,6 +331,7 @@ export async function loadMonthLines(supabase: SupabaseClient, month: string): P
   if (!result.ok) throw new Error('Bank lines could not be read.')
   return result.rows.map(l => ({
     ...l,
+    statement_no: num(l.statement_no),
     withdrawal: num(l.withdrawal),
     deposit: num(l.deposit),
     balance: num(l.balance),

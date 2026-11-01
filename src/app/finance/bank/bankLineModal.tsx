@@ -15,7 +15,7 @@ import Link from 'next/link'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { BANK_ACCOUNT_LABEL, NON_CUSTOMER_KIND_LABEL, type NonCustomerKind } from '@/lib/finance/bankStatement'
+import { BANK_ACCOUNT_LABEL, NON_CUSTOMER_KIND_LABEL, bankLineId, type NonCustomerKind } from '@/lib/finance/bankStatement'
 import { payerFromNarration } from '@/lib/finance/bankMatching'
 import { toPaise } from '@/lib/finance/bankMoney'
 import {
@@ -256,7 +256,7 @@ export function BankLineModal({ supabase, item, payments, expenses, canAdd, onRe
         <div>
           <div className="bank-amount">{formatMoney(isCredit ? line.deposit : line.withdrawal)}</div>
           <div className="fin-muted" style={{ fontSize: 12 }}>
-            {formatBankDate(line.line_date)} · {BANK_ACCOUNT_LABEL[line.account]}
+            {bankLineId(line.statement_no)} · {formatBankDate(line.line_date)} · {BANK_ACCOUNT_LABEL[line.account]}
           </div>
         </div>
         <span className={`fin-pill fin-pill--${pill.tone}`}>{pill.label}</span>

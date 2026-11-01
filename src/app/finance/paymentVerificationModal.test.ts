@@ -121,7 +121,7 @@ describe('the Decision section: three outcomes, the rules the review window had'
   })
 
   test('it is drawn only for somebody who may decide, and supersedes the status select', () => {
-    assert.ok(code.includes('{canVerify && supabase && onCorrected && ('))
+    assert.ok(code.includes('const decisionBlock = canVerify && supabase && onCorrected ? ('))
     assert.ok(code.includes('canVerifyPayment(r.status, mayApprovePayments)'))
     assert.ok(code.includes('!isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)'))
     // Everybody else who may correct keeps the admin status select; a verifier
@@ -175,7 +175,7 @@ describe('what the popup keeps', () => {
   })
 
   test('the bank-statement panel is a slot the page fills only for finance.reconcile', () => {
-    assert.ok(code.includes('{canVerify && bankPanel}') && code.includes('{!canVerify && bankPanel}'))
+    assert.ok(code.includes('top={canVerify ? bankPanel : undefined}') && code.includes('{!canVerify && bankPanel}'))
     assert.ok(!code.includes('bank_statement') && !code.includes('link_bank_line_to_payment'), 'the popup knows nothing about the bank')
     assert.ok(pageCode.includes("bankPanel={caps.canReconcileBank && detailRequest.status !== 'rejected' ? ("))
     assert.ok(pageCode.includes('payment={detailRequest}'))

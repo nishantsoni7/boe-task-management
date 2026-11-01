@@ -41,7 +41,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { BANK_ACCOUNT_LABEL, DEBIT_KIND_LABEL, type BankAccountKey, type DebitKind } from '@/lib/finance/bankStatement'
+import { BANK_ACCOUNT_LABEL, DEBIT_KIND_LABEL, bankLineId, type BankAccountKey, type DebitKind } from '@/lib/finance/bankStatement'
 import { statementsRunTo, type Coverage } from '@/lib/finance/bankMarks'
 import { payerFromNarration } from '@/lib/finance/bankMatching'
 import { payeeFromDebitNarration } from '@/lib/finance/bankStatement'
@@ -65,6 +65,7 @@ import {
   loadStoredRanges,
   loadSyncOverview,
   lookAlikeCredit,
+  matchesBankLineId,
   monthLabel,
   monthOf,
   monthsBetween,
@@ -263,7 +264,7 @@ export function BankStatementsView() {
     return analysed.filter(a => {
       if (card !== 'all' && bucket(a) !== card) return false
       if (!q) return true
-      return a.line.narration.toLowerCase().includes(q) ||
+      return matchesBankLineId(a.line.statement_no, q) || a.line.narration.toLowerCase().includes(q) ||
         (a.line.bank_ref ?? '').toLowerCase().includes(q) ||
         (qDigits !== '' && String(a.line.deposit).includes(qDigits))
     })
@@ -291,7 +292,7 @@ export function BankStatementsView() {
       if (outCard === 'linked' && a.status !== 'linked') return false
       if (outCard === 'not_expense' && a.status !== 'not_expense') return false
       if (!q) return true
-      return a.line.narration.toLowerCase().includes(q) || (a.line.debit_payee ?? '').toLowerCase().includes(q) ||
+      return matchesBankLineId(a.line.statement_no, q) || a.line.narration.toLowerCase().includes(q) || (a.line.debit_payee ?? '').toLowerCase().includes(q) ||
         (qDigits !== '' && String(a.line.withdrawal).includes(qDigits))
     }),
     [analysedOut, outCard, q, qDigits],
@@ -478,7 +479,7 @@ export function BankStatementsView() {
                     type="search"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder={tab === 'payments' ? 'Search client, payment ID or amount' : 'Search name, reference or amount'}
+                    placeholder={tab === 'payments' ? 'Search client, payment ID or amount' : 'Search ID, name, reference or amount'}
                     aria-label="Search"
                   />
                 </div>
@@ -505,6 +506,7 @@ export function BankStatementsView() {
                   <table className="fin-table bank-table">
                     <thead><tr>
                       <th style={{ width: 104 }}>Date</th>
+                      <th style={{ width: 92 }}>ID</th>
                       <th style={{ width: 96 }}>Account</th>
                       <th>Received from</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
@@ -517,6 +519,7 @@ export function BankStatementsView() {
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0}
                           onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
                           <td>{formatBankDate(a.line.line_date)}</td>
+                          <td className="fin-muted">{bankLineId(a.line.statement_no)}</td>
                           <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
                           <td>
                             <span className="fin-primary-text">{payerFromNarration(a.line.narration) ?? a.line.narration}</span>
@@ -538,6 +541,7 @@ export function BankStatementsView() {
                   <table className="fin-table bank-table">
                     <thead><tr>
                       <th style={{ width: 104 }}>Date</th>
+                      <th style={{ width: 92 }}>ID</th>
                       <th style={{ width: 96 }}>Account</th>
                       <th>Paid to</th>
                       <th className="fin-num" style={{ width: 140 }}>Amount</th>
@@ -548,6 +552,7 @@ export function BankStatementsView() {
                       {shownOut.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
                           <td>{formatBankDate(a.line.line_date)}</td>
+                          <td className="fin-muted">{bankLineId(a.line.statement_no)}</td>
                           <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
                           <td>
                             <span className="fin-primary-text">{a.line.debit_payee ?? payeeFromDebitNarration(a.line.narration) ?? a.line.narration}</span>

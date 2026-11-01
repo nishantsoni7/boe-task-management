@@ -2,7 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { creditHolderAdvice, deriveBankMarks, isBankCheckable, loadBankState, type BankHolder, type MarkLine, type MarkLink, type MarkPayment } from './bankMarks'
+import { creditHolderAdvice, deriveBankMarks, isBankCheckable, loadBankState, markCandidates, parseSearchDate, searchCandidate, type BankHolder, type MarkLine, type MarkLink, type MarkPayment } from './bankMarks'
 import { suggestLinesForPayment } from './bankMatching'
 
 const pay = (over: Partial<MarkPayment>): MarkPayment => ({
@@ -10,12 +10,43 @@ const pay = (over: Partial<MarkPayment>): MarkPayment => ({
   payment_date: '2026-10-05', payment_mode: 'hdfc', proof_note: null, status: 'pending_approval', ...over,
 })
 const line = (over: Partial<MarkLine>): MarkLine => ({
-  id: 'L1', account: 'hdfc', line_date: '2026-10-06',
+  statementNo: 412, id: 'L1', account: 'hdfc', line_date: '2026-10-06',
   narration: 'NEFT CR-KKBK0000958-GREEN SKY HOSPITALITY LLP-BEST OF EXPORTS JODHPUR-KKBKH26279861023',
   bank_ref: 'KKBKH26279861023', deposit: 50000, linkedAmount: 0, ...over,
 })
 const COVER = { hdfc: { first: '2026-08-01', last: '2026-10-19' } }
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
+
+describe('what a person answered and searched', () => {
+  test('a rejected credit is not suggested for that payment, and the answer stays on the mark', () => {
+    const m = deriveBankMarks([pay({})], [], [line({})], COVER, [{ payment_id: 'P1', line_id: 'L1' }]).get('P1')!
+    assert.deepEqual(markCandidates(m), [])
+    assert.deepEqual(m.dismissed, [{ lineId: 'L1', statementNo: 412 }])
+  })
+
+  test('it is rejected only for that payment', () => {
+    const other = pay({ id: 'P2' })
+    const marks = deriveBankMarks([pay({}), other], [], [line({})], COVER, [{ payment_id: 'P1', line_id: 'L1' }])
+    assert.equal(markCandidates(marks.get('P2')).length, 1)
+  })
+
+  test('dates as people type them, and nothing that is not one', () => {
+    assert.equal(parseSearchDate('31 Oct 2026'), '2026-10-31')
+    assert.equal(parseSearchDate('31 October 2026'), '2026-10-31')
+    assert.equal(parseSearchDate('31/10/2026'), '2026-10-31')
+    assert.equal(parseSearchDate('31-10-2026'), '2026-10-31')
+    assert.equal(parseSearchDate('2026-10-31'), '2026-10-31')
+    for (const t of ['31 Feb 2026', '32/10/2026', '10/13/2026', 'BS-00412', '375000', 'sample', '']) assert.equal(parseSearchDate(t), null, t)
+  })
+
+  test('a picked credit carries the same facts as a suggestion, and nothing is thrown out', () => {
+    const p = { client_name: 'Sample Hotels', payment_date: '2026-10-06', payment_mode: 'hdfc', proof_note: 'SAMP26279000111' }
+    const c = { lineId: 'L9', statementNo: 9, account: 'hdfc_sec' as const, lineDate: '2026-10-16', deposit: 90, remaining: 90, narration: 'NEFT CR-DEMO FOODS-X', bankRef: 'OTHER00000' }
+    const f = searchCandidate(p, 100, c)
+    assert.deepEqual([f.amountExact, f.referenceMatch, f.daysApart, f.sameAccount], [false, false, 10, false])
+    assert.equal(searchCandidate({ ...p, payment_mode: 'hdfc_sec' }, 90, { ...c, bankRef: 'SAMP26279000111' }).referenceMatch, true)
+  })
+})
 
 describe('who holds a credit', () => {
   const holder = (clientName: string | null): BankHolder => ({ paymentId: 'P9', humanId: 'P-ZZ-0009', clientName, status: 'approved_unlinked' })
@@ -45,7 +76,7 @@ describe('who holds a credit', () => {
         : t === 'bank_line_payment_links' ? { data: [], error: null }
           : {
               data: [{
-                id: 'L1', account: 'hdfc', line_date: '2026-10-06', deposit: 50000, narration: 'NEFT', bank_ref: null,
+                id: 'L1', account: 'hdfc', line_date: '2026-10-06', deposit: 50000, narration: 'NEFT', bank_ref: null, statement_no: 412,
                 bank_line_payment_links: [
                   { amount: 50000, unlinked_at: null, payment_id: 'P9' },
                   { amount: 50000, unlinked_at: '2026-10-07', payment_id: 'P8' },
@@ -147,14 +178,14 @@ describe('the marker is for reconcilers only, and a decision goes through its ow
       }
       assert.ok(!/\.(insert|update|delete|upsert)\(/.test(src), `${f} writes a table directly`)
       for (const m of src.matchAll(/\.rpc\('([a-z_]+)'/g)) {
-        assert.ok(['link_bank_line_to_payment', 'verify_payment_with_bank', 'verify_payment_bank_check_pending', 'finance_bank_check_pending'].includes(m[1]), m[1])
+        assert.ok(['link_bank_line_to_payment', 'verify_payment_with_bank', 'verify_payment_bank_check_pending', 'dismiss_bank_match', 'restore_bank_match', 'search_bank_unmatched', 'finance_bank_check_pending'].includes(m[1]), m[1])
       }
     }
   })
 
   test('the payment popup only draws the slot it is handed', () => {
     const src = read('src/app/finance/paymentRequestsDetails.tsx')
-    assert.ok(src.includes('{canVerify && bankPanel}'))
+    assert.ok(src.includes('top={canVerify ? bankPanel : undefined}'))
     assert.ok(src.includes('{!canVerify && bankPanel}'))
     assert.ok(!src.includes('bank_statement'))
   })

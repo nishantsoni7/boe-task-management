@@ -217,6 +217,11 @@ export function suggestNonCustomerKind(narration: string): { kind: NonCustomerKi
 // other account, bank charges. A suggestion only — the owner confirms (one at a
 // time, or all the shown suggestions at once after seeing them).
 
+/** The Bank Statements ID as people read it: BS-00412. */
+export function bankLineId(statementNo: number): string {
+  return `BS-${String(statementNo).padStart(5, '0')}`
+}
+
 export type DebitKind = 'supplier_payment' | 'salary' | 'tax' | 'loan_emi' | 'own_transfer' | 'bank_charges' | 'other'
 
 export const DEBIT_KIND_LABEL: Record<DebitKind, string> = {
