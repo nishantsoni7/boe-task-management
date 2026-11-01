@@ -35,6 +35,9 @@ export type BankCandidate = {
   warnings: string[]
 }
 
+/** A payment that holds a credit, named for the verifier of another payment. */
+export type BankHolder = { paymentId: string; humanId: string | null; clientName: string | null; status: string }
+
 export type BankMark =
   /**
    * Credits are linked. Only credits in the payment's own account cover it, as in
@@ -44,7 +47,7 @@ export type BankMark =
   | { kind: 'linked'; complete: boolean; otherAccount: boolean; remaining: number; links: { lineId: string; lineDate: string; amount: number; narration: string }[]; candidates: BankCandidate[] }
   | { kind: 'suggested'; remaining: number; candidates: BankCandidate[] }
   /** No free credit, but one of the same money already has another payment: this may be a second record of it. */
-  | { kind: 'lookalike'; lineDate: string; deposit: number; narration: string }
+  | { kind: 'lookalike'; lineId: string; lineDate: string; deposit: number; narration: string; holders: BankHolder[] }
   | { kind: 'none' }
   | { kind: 'uncovered' }
 
@@ -127,7 +130,8 @@ export function deriveBankMarks(
       .filter(l => l.remaining <= 0 && amountsClose(l.raw.deposit, p.amount) && Math.abs(daysBetween(l.line_date, p.payment_date)) <= 21)
       .sort((a, b) => Math.abs(daysBetween(a.line_date, p.payment_date)) - Math.abs(daysBetween(b.line_date, p.payment_date)))[0]
     if (twin) {
-      marks.set(p.id, { kind: 'lookalike', lineDate: twin.line_date, deposit: twin.raw.deposit, narration: twin.narration })
+      // The loader names the holders; this works out only that there is a twin.
+      marks.set(p.id, { kind: 'lookalike', lineId: twin.id, lineDate: twin.line_date, deposit: twin.raw.deposit, narration: twin.narration, holders: [] })
       continue
     }
     const cov = coverage[p.payment_mode as BankAccountKey]
@@ -137,6 +141,24 @@ export function deriveBankMarks(
 }
 
 // ── What a person is told ───────────────────────────────────────────────────
+
+const clientWords = (name: string | null) => (name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/**
+ * What to do about a credit another payment holds. The names only choose the words:
+ * "May be a duplicate" compares amount and date, and only a person can say it is
+ * the same money.
+ */
+export function creditHolderAdvice(holders: BankHolder[], clientName: string | null): string {
+  if (holders.length === 0) return 'Open the credit to see which payment holds it.'
+  if (holders.some(h => clientWords(h.clientName) === '')) {
+    return 'A payment with no client usually came from the old bank sync. If this is the same money: open the credit, unlink that payment, delete it in Confirmed Payments, then verify this one here.'
+  }
+  if (holders.some(h => clientWords(h.clientName) === clientWords(clientName))) {
+    return 'Same client, so this is probably a second record of the same money. Compare the two and keep only one.'
+  }
+  return 'This is in another name. If it is a different client, it is not a duplicate, and this payment is waiting for its own credit: upload the latest statement and look again.'
+}
 
 /** Everything agrees: this credit, this amount, this account, this name, this UTR, within 3 days. */
 export function isExactCandidate(c: BankCandidate): boolean {
@@ -281,7 +303,30 @@ type LinkRow = {
 }
 type LineRow = {
   id: string; account: BankAccountKey; line_date: string; deposit: number | string; narration: string; bank_ref: string | null
-  bank_line_payment_links: { amount: number | string; unlinked_at: string | null }[] | null
+  bank_line_payment_links: { amount: number | string; unlinked_at: string | null; payment_id: string | null }[] | null
+}
+
+/**
+ * Who holds each credit a payment looks like a second record of. This is help beside
+ * a warning, so a failed read leaves the warning standing, without the names.
+ */
+async function nameCreditHolders(supabase: SupabaseClient, marks: Map<string, BankMark>, rows: LineRow[]) {
+  const held = new Map(rows.map(r => [r.id, (r.bank_line_payment_links ?? []).flatMap(k => (k.unlinked_at === null && k.payment_id ? [k.payment_id] : []))]))
+  const twins = [...marks].flatMap(([id, mark]) => (mark.kind === 'lookalike' ? [{ id, mark }] : []))
+  const ids = [...new Set(twins.flatMap(t => held.get(t.mark.lineId) ?? []))]
+  if (ids.length === 0) return
+  const { data, error } = await supabase.from('finance_payment_requests')
+    .select('id, human_payment_id, client_name, status').in('id', ids)
+  if (error) return
+  type Row = { id: string; human_payment_id: string | null; client_name: string | null; status: string }
+  const byId = new Map(((data ?? []) as Row[]).map(r => [r.id, r]))
+  for (const { id, mark } of twins) {
+    const holders = (held.get(mark.lineId) ?? []).flatMap(p => {
+      const r = byId.get(p)
+      return r ? [{ paymentId: r.id, humanId: r.human_payment_id, clientName: r.client_name, status: r.status }] : []
+    })
+    marks.set(id, { ...mark, holders })
+  }
 }
 
 /** The marks, and how far each account's statements run. */
@@ -301,7 +346,7 @@ export async function loadBankState(supabase: SupabaseClient, payments: MarkPaym
     // EVERY credit in the window, in a fixed order: one old pending payment can make
     // it months wide, and a credit cut off here would read as Not found in the bank.
     fetchAllRows<LineRow>((a, b) => supabase.from('bank_statement_lines')
-      .select('id, account, line_date, deposit, narration, bank_ref, bank_line_payment_links(amount, unlinked_at)')
+      .select('id, account, line_date, deposit, narration, bank_ref, bank_line_payment_links(amount, unlinked_at, payment_id)')
       .gt('deposit', 0).is('classification', null).gte('line_date', from).lte('line_date', to)
       .order('line_date', { ascending: true }).order('id', { ascending: true })
       .range(a, b) as unknown as PromiseLike<{ data: LineRow[] | null; error: { message: string } | null }>),
@@ -328,7 +373,9 @@ export async function loadBankState(supabase: SupabaseClient, payments: MarkPaym
     id: r.id, account: r.account, line_date: r.line_date, deposit: Number(r.deposit), narration: r.narration, bank_ref: r.bank_ref,
     linkedAmount: (r.bank_line_payment_links ?? []).filter(k => k.unlinked_at === null).reduce((a, k) => a + toPaise(Number(k.amount)), 0) / 100,
   }))
-  return { marks: deriveBankMarks(eligible, links, lines, coverage), coverage }
+  const marks = deriveBankMarks(eligible, links, lines, coverage)
+  await nameCreditHolders(supabase, marks, lineRes.rows)
+  return { marks, coverage }
 }
 
 export async function loadBankMarks(supabase: SupabaseClient, payments: MarkPayment[]): Promise<Map<string, BankMark>> {

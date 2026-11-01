@@ -28,6 +28,8 @@ import {
 import { samePaise, toPaise } from '@/lib/finance/bankMoney'
 import { samePayer, suggestOrdersForLine, type OrderSuggestion, type PayerHistoryEntry } from '@/lib/finance/bankOrderHistory'
 import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { isBankAccountMode, type Coverage } from '@/lib/finance/bankMarks'
+import { fetchAllRows } from '@/lib/supabasePaging'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { isConfirmedPayment } from '@/app/finance/paymentRouting'
 
@@ -279,24 +281,47 @@ export async function loadStoredRange(supabase: SupabaseClient, account: BankAcc
   return first && last ? { first, last } : null
 }
 
+/** How far each account's statements run. An account with nothing stored is left out. */
+export async function loadStoredRanges(supabase: SupabaseClient): Promise<Coverage> {
+  const [pri, sec] = await Promise.all([loadStoredRange(supabase, 'hdfc'), loadStoredRange(supabase, 'hdfc_sec')])
+  return { ...(pri ? { hdfc: pri } : {}), ...(sec ? { hdfc_sec: sec } : {}) }
+}
+
+/** The dates the page can show: earliest to latest across both accounts. */
+export function combinedRange(ranges: Coverage): { first: string; last: string } | null {
+  const found = [ranges.hdfc, ranges.hdfc_sec].filter((r): r is { first: string; last: string } => !!r)
+  if (found.length === 0) return null
+  return { first: found.map(r => r.first).sort()[0], last: found.map(r => r.last).sort().reverse()[0] }
+}
+
+/** All accounts, or one. Only the two HDFC accounts are ever on this page. */
+export type AccountFilter = BankAccountKey | 'all'
+export function inAccount(account: string, filter: AccountFilter): boolean {
+  return filter === 'all' ? isBankAccountMode(account) : account === filter
+}
+
 const LINE_COLUMNS =
   'id, account, seq, line_date, value_date, narration, bank_ref, withdrawal, deposit, balance, classification, non_customer_kind, old_order_customer, old_order_ref, debit_kind, debit_payee, note, sync_error, ' +
   'bank_line_payment_links(id, payment_id, amount, unlinked_at), bank_line_expense_links(id, expense_id, amount, unlinked_at)'
 
-/** Every line of one account in one month (a month is a few hundred lines at most), newest first. */
-export async function loadMonthLines(supabase: SupabaseClient, account: BankAccountKey, month: string): Promise<BankLine[]> {
+/**
+ * Every line of both accounts in one month, newest first. All of them: a line cut
+ * off here would read as a credit that is not there. `seq` runs per account, so
+ * the account comes before it to keep the order fixed from page to page.
+ */
+export async function loadMonthLines(supabase: SupabaseClient, month: string): Promise<BankLine[]> {
   const { from, to } = monthBounds(month)
-  const { data, error } = await supabase
+  const result = await fetchAllRows<BankLine>((a, b) => supabase
     .from('bank_statement_lines')
     .select(LINE_COLUMNS)
-    .eq('account', account)
     .gte('line_date', from)
     .lte('line_date', to)
     .order('line_date', { ascending: false })
+    .order('account', { ascending: true })
     .order('seq', { ascending: false })
-    .range(0, 1999)
-  if (error) throw new Error('Bank lines could not be read.')
-  return ((data ?? []) as unknown as BankLine[]).map(l => ({
+    .range(a, b) as unknown as PromiseLike<{ data: BankLine[] | null; error: { message: string } | null }>)
+  if (!result.ok) throw new Error('Bank lines could not be read.')
+  return result.rows.map(l => ({
     ...l,
     withdrawal: num(l.withdrawal),
     deposit: num(l.deposit),
@@ -367,6 +392,11 @@ export function rowAction(a: LineWithSuggestions, canRecord: boolean): 'record' 
 /** The ordinary payment form, filled in from this credit. The address carries only the line's id. */
 export function recordCreditHref(lineId: string): string {
   return `/finance?new=1&bankLine=${lineId}`
+}
+
+/** Opens one credit on Bank Statements, in its own month. */
+export function creditHref(lineId: string, lineDate: string): string {
+  return `/finance/bank?month=${monthOf(lineDate)}&credit=${lineId}`
 }
 
 export type CompareRow = { label: string; credit: string; payment: string; verdict: string; tone: 'same' | 'differs' | 'plain' }

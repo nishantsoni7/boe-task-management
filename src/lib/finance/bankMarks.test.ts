@@ -2,7 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { deriveBankMarks, isBankCheckable, type MarkLine, type MarkLink, type MarkPayment } from './bankMarks'
+import { creditHolderAdvice, deriveBankMarks, isBankCheckable, loadBankState, type BankHolder, type MarkLine, type MarkLink, type MarkPayment } from './bankMarks'
 import { suggestLinesForPayment } from './bankMatching'
 
 const pay = (over: Partial<MarkPayment>): MarkPayment => ({
@@ -16,6 +16,62 @@ const line = (over: Partial<MarkLine>): MarkLine => ({
 })
 const COVER = { hdfc: { first: '2026-08-01', last: '2026-10-19' } }
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
+
+describe('who holds a credit', () => {
+  const holder = (clientName: string | null): BankHolder => ({ paymentId: 'P9', humanId: 'P-ZZ-0009', clientName, status: 'approved_unlinked' })
+
+  test('the advice follows the holder, and never says it is the same money', () => {
+    assert.match(creditHolderAdvice([holder(null)], 'Sample Hotels'), /old bank sync. If this is the same money/)
+    assert.match(creditHolderAdvice([holder('  ')], 'Sample Hotels'), /old bank sync/)
+    assert.match(creditHolderAdvice([holder('SAMPLE hotels')], 'Sample Hotels'), /Same client/)
+    assert.match(creditHolderAdvice([holder('Demo Foods')], 'Sample Hotels'), /If it is a different client, it is not a duplicate/)
+    assert.match(creditHolderAdvice([], 'Sample Hotels'), /Open the credit/)
+  })
+
+  test('any holder with no client is the one that matters', () => {
+    assert.match(creditHolderAdvice([holder('Demo Foods'), holder(null)], 'Sample Hotels'), /old bank sync/)
+  })
+
+  // One table's answer, for the chain the loader builds.
+  const answer = (result: unknown) => {
+    const q: Record<string, unknown> = { then: (done: (r: unknown) => unknown) => Promise.resolve(result).then(done) }
+    for (const m of ['select', 'in', 'is', 'gt', 'gte', 'lte', 'order', 'eq', 'range']) q[m] = () => q
+    q.limit = () => answer({ data: [{ line_date: '2026-10-01' }], error: null })
+    return q
+  }
+  const client = (payments: unknown) => ({
+    from: (t: string) => answer(
+      t === 'finance_payment_requests' ? payments
+        : t === 'bank_line_payment_links' ? { data: [], error: null }
+          : {
+              data: [{
+                id: 'L1', account: 'hdfc', line_date: '2026-10-06', deposit: 50000, narration: 'NEFT', bank_ref: null,
+                bank_line_payment_links: [
+                  { amount: 50000, unlinked_at: null, payment_id: 'P9' },
+                  { amount: 50000, unlinked_at: '2026-10-07', payment_id: 'P8' },
+                ],
+              }],
+              error: null,
+            }),
+  }) as unknown as Parameters<typeof loadBankState>[0]
+
+  test('the loader names only who holds it now, not who held it', async () => {
+    // P8 is readable too, so only the unlink can keep it off the list.
+    const payments = {
+      data: ['P9', 'P8'].map(id => ({ id, human_payment_id: null, client_name: null, status: 'approved_unlinked' })),
+      error: null,
+    }
+    const m = (await loadBankState(client(payments), [pay({})])).marks.get('P1')!
+    assert.equal(m.kind, 'lookalike')
+    assert.deepEqual(m.kind === 'lookalike' && m.holders.map(h => h.paymentId), ['P9'])
+  })
+
+  test('a failed read of the names leaves the warning standing', async () => {
+    const m = (await loadBankState(client({ data: null, error: { message: 'no' } }), [pay({})])).marks.get('P1')!
+    assert.equal(m.kind, 'lookalike')
+    assert.deepEqual(m.kind === 'lookalike' && m.holders, [])
+  })
+})
 
 describe('deriveBankMarks', () => {
   test('a payment that matches a credit is marked suggested, with the credit and the reasons', () => {
@@ -40,6 +96,8 @@ describe('deriveBankMarks', () => {
     assert.equal(m.kind, 'lookalike')
     if (m.kind !== 'lookalike') return
     assert.equal(m.lineDate, '2026-10-06'); assert.equal(m.deposit, 50000)
+    assert.equal(m.lineId, 'L1')
+    assert.deepEqual(m.holders, [])
   })
 
   test('a near amount is the same warning; a far date or another amount is not', () => {

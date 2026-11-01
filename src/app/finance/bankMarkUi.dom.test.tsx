@@ -12,7 +12,10 @@ import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BANK_CHECK_ACTION, BANK_CHECK_DEFAULT_REASON, BankMatchPanel, bankMarkText } from './bankMarkUi'
-import { deriveBankMarks, type BankMark, type MarkLine, type MarkLink, type MarkPayment } from '@/lib/finance/bankMarks'
+import { deriveBankMarks, type BankHolder, type BankMark, type MarkLine, type MarkLink, type MarkPayment } from '@/lib/finance/bankMarks'
+
+// next/link reads `self`, which the DOM harness does not define.
+Object.defineProperty(globalThis, 'self', { value: globalThis, configurable: true, writable: true })
 
 let cleanup: (() => void) | null = null
 afterEach(() => { cleanup?.(); cleanup = null })
@@ -172,7 +175,7 @@ describe('Verify, bank check pending', () => {
   test('nothing in the bank yet: an admin sees it at once, with a reason ready, and it is not the red button', async () => {
     const p = pay()
     const { ui, sent, verified } = open(p, { kind: 'uncovered' }, { urgent: true })
-    assert.equal(ui.one<HTMLInputElement>('.bank-form input').value, BANK_CHECK_DEFAULT_REASON)
+    assert.equal((ui.one('.bank-form input') as HTMLInputElement).value, BANK_CHECK_DEFAULT_REASON)
     assert.deepEqual(primary(ui), [])
     ui.click(ui.button(BANK_CHECK_ACTION))
     await ui.settle()
@@ -208,11 +211,52 @@ describe('Verify, bank check pending', () => {
 })
 
 describe('no match', () => {
+  const twin = (holders: BankHolder[] = []): BankMark => ({
+    kind: 'lookalike', lineId: 'L1', lineDate: '2026-10-06', deposit: 375000, narration: 'NEFT', holders,
+  })
+  const held = (over: Partial<BankHolder> = {}): BankHolder => ({ paymentId: 'P9', humanId: 'P-ZZ-0009', clientName: null, status: 'approved_unlinked', ...over })
+  const hrefs = (ui: ReturnType<typeof open>['ui']) => ui.all('a').map(a => a.getAttribute('href'))
+
   test('a look-alike says it cannot be verified as it stands', () => {
-    const { ui } = open(pay(), { kind: 'lookalike', lineDate: '2026-10-06', deposit: 375000, narration: 'NEFT' })
+    const { ui } = open(pay(), twin())
     assert.ok(ui.text().includes('May be a duplicate.'))
     assert.ok(ui.text().includes('cannot be verified'))
     assert.deepEqual(primary(ui), [])
+  })
+
+  test('it names who holds the credit, and opens that payment and that credit', () => {
+    const { ui } = open(pay(), twin([held()]))
+    assert.ok(ui.text().includes('Suspense payment (no client)'))
+    assert.ok(ui.text().includes('P-ZZ-0009'))
+    assert.ok(ui.text().includes('unlink that payment, delete it in Confirmed Payments'))
+    assert.deepEqual(hrefs(ui), ['/finance/received?payment=P9', '/finance/bank?month=2026-10&credit=L1'])
+  })
+
+  test('with no names read it still says where to look, and opens the credit', () => {
+    const { ui } = open(pay(), twin())
+    assert.ok(ui.text().includes('Open the credit to see which payment holds it.'))
+    assert.deepEqual(hrefs(ui), ['/finance/bank?month=2026-10&credit=L1'])
+  })
+
+  test('the urgent form stays closed on a possible second record, for an admin too', () => {
+    const { ui } = open(pay(), twin([held()]), { urgent: true })
+    assert.equal(ui.all('.bank-form').length, 0)
+    assert.ok(ui.text().includes('This is different money, and it cannot wait'))
+    assert.ok(!ui.text().includes(BANK_CHECK_ACTION))
+  })
+
+  test('opened anyway, it warns of counting twice and asks for a reason of their own', () => {
+    const { ui } = open(pay(), twin([held()]), { urgent: true })
+    ui.click(ui.button('This is different money, and it cannot wait'))
+    assert.ok(ui.text().includes('counts the same money twice'))
+    assert.equal((ui.one('.bank-form input') as HTMLInputElement).value, '')
+    assert.equal(ui.button(BANK_CHECK_ACTION).hasAttribute('disabled'), true)
+  })
+
+  test('with no twin the urgent form opens as it always did, with the usual reason', () => {
+    const { ui } = open(pay(), { kind: 'none' }, { urgent: true })
+    assert.equal((ui.one('.bank-form input') as HTMLInputElement).value, BANK_CHECK_DEFAULT_REASON)
+    assert.ok(!ui.text().includes('counts the same money twice'))
   })
 
   test('a cash payment draws nothing', () => {

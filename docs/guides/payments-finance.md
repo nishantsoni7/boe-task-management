@@ -19,6 +19,12 @@ Every screen now uses the same words for a payment:
 - When Sales (or you, on an Order) add a payment and the client's money is already in the system, they tap **Use this money**. The same payment, with the same Payment ID, moves onto the new PI or Order. You get a notice for information only: "Payment … was moved onto PID-… from money already received". There's nothing to verify again.
 - Every move is recorded in the payment's history with who, when and why, and **Correct Allocation** can undo it.
 
+## One list for both HDFC accounts
+
+Bank Statements shows HDFC PRI and HDFC SEC together, month by month, and the **Account** column says where each line is. To look at one account, use the **Account** filter or press its box at the top. Press the box again to see both.
+
+If a credit is in one account and the payment says the other, press **Edit** on the payment and correct the account. Then it can be matched.
+
 ## Checking an HDFC payment
 
 An HDFC PRI or SEC payment can only be verified against its bank credit. You need Bank Statements access for this.
@@ -29,6 +35,13 @@ An HDFC PRI or SEC payment can only be verified against its bank credit. You nee
 4. If it is the same money, press **Verify**. That links the credit and moves the payment to Confirmed Payments.
 
 If a credit says **Check first**, the name or date does not fit. Use it only if you are sure. If it is a little short of the payment, edit the payment to the bank amount, then verify it. If the money came as part of a bigger transfer in another name and no match shows, add the UTR to the payment and it will appear.
+
+**It says May be a duplicate?** A credit of the same amount, near the same date, is already on another payment. The window names that payment and has **Open this credit**. This check looks only at amount and date, so it can be a different client's money.
+
+- **The other payment has no client:** it usually came from the old bank sync. If it is the same money, open the credit and press **Unlink**, delete that payment in Confirmed Payments, then come back and **Verify** the request. The PI stays attached. Stop first if that payment is on an order or PI.
+- **It is in another name:** if that is a different client, this payment is waiting for its own credit. Upload the latest statement and look again.
+
+Do not use the urgent option below for this unless you are sure it is different money, because it would count the same money twice.
 
 **Urgent, and you can see the money in the bank app?** Admins can press **Verify, bank check pending** and give a reason. It counts at once. Confirm the match from **Bank check pending** after your next upload. It turns red if the statement covers the date and no credit is there after 7 days.
 
