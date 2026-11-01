@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   ORDER_LIST_SOURCE_PI_EMBED,
+  advanceBelowStandard,
   cancelledOrderGapText,
   compareOrderNumber,
   factoryStatus,
@@ -45,10 +46,10 @@ describe('project code order and the cancelled gap (owner, 2026-10-31)', () => {
     assert.equal(cancelledOrderGapText(null), 'Cancelled order')
   })
 
-  test('the table and the phone card both draw it, and the row still spans all eight columns', () => {
+  test('the table and the phone card both draw it, and the row still spans all nine columns', () => {
     assert.equal((page.match(/\{cancelledOrderGapText\(o\.client_name\)\}/g) ?? []).length, 2, 'table and phone card')
-    assert.equal((page.match(/<col /g) ?? []).length, 8)
-    assert.ok(page.includes('<td colSpan={7} title={o.client_name}>'), 'beside the Project code cell')
+    assert.equal((page.match(/<col /g) ?? []).length, 9)
+    assert.ok(page.includes('<td colSpan={8} title={o.client_name}>'), 'beside the Project code cell')
     assert.ok(page.includes("cancelled && 'orders-gap-row'"))
     assert.ok(page.includes('className="orders-list-card orders-gap-card"'))
     assert.ok(page.includes('{!cancelled && <ProjectFlags sample={o.sample} commission={o.commission} />}'))
@@ -126,11 +127,11 @@ describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
     assert.deepEqual(factoryStatus(null), { aligned: false, label: 'Not Aligned' })
   })
 
-  test('the table: Project Code, Client, Product Value, Factory Status, Pendencies, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
+  test('the table: Project Code, Client, Product Value, Advance, Factory Status, Pendencies, Sales Person, Confirmed, Due — no Requested by, no Status', () => {
     const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
     const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'))
     const cols = [...head.matchAll(/<SortHeader label="([^"]+)"|<th[^>]*>([^<]+)<\/th>/g)].map(m => m[1] ?? m[2])
-    assert.deepEqual(cols, ['Project Code', 'Client', 'Product Value', 'Factory Status', 'Pendencies', 'Sales Person', 'Confirmed', 'Due'])
+    assert.deepEqual(cols, ['Project Code', 'Client', 'Product Value', 'Advance', 'Factory Status', 'Pendencies', 'Sales Person', 'Confirmed', 'Due'])
     assert.equal(page.includes('requested_by_name} />'), false, 'no Requested by cell')
     assert.ok(page.includes('production_alignment'))
     // Symbols only, named by tooltip and accessible label.
@@ -140,6 +141,30 @@ describe('columns, markers and Factory Status (owner, 2026-10-19)', () => {
     assert.ok(page.includes('className="fin-ordno orders-code-cell"'))
     assert.ok(page.includes('sample_type, sample_type_set_at'), "the Order's own sample choice is read")
     assert.ok(page.includes('title={COMMISSION_ICON_LABEL} aria-label={COMMISSION_ICON_LABEL} role="img"'))
+  })
+})
+
+describe('the Advance column (owner, 2026-11-01)', () => {
+  const page = readFileSync('src/app/orders/all/page.tsx', 'utf8')
+
+  test('below 40 is below; 40 is not; no figure is never red', () => {
+    for (const below of [0, 35.5, 39.99, '39.99', '0']) assert.equal(advanceBelowStandard(below), true, String(below))
+    for (const met of [40, '40', '40.00', 40.01, 100, 250]) assert.equal(advanceBelowStandard(met), false, String(met))
+    for (const none of [null, undefined, '', '  ', 'NaN']) assert.equal(advanceBelowStandard(none), false, String(none))
+  })
+
+  test('it is read beside the list, again on Refresh, and a failed read leaves dashes', () => {
+    assert.ok(page.includes("supabase.rpc('orders_advance_percent')"))
+    assert.ok(page.includes('setAdvance(new Map(error ? [] :'), 'a failed read draws no old figure')
+    assert.match(page, /loadPendencies\(\),\s+loadAdvance\(\),/)
+    assert.ok(page.includes('await Promise.all([loadOrders(), loadUnread(), loadAdvance()])'))
+  })
+
+  test('the table and the phone card draw it, and a cancelled Order has none', () => {
+    assert.equal((page.match(/<AdvanceCell percent=\{advance\.get\(o\.id\)\} \/>/g) ?? []).length, 2)
+    const table = page.slice(page.indexOf('<tbody>'), page.indexOf('</tbody>'))
+    assert.ok(table.indexOf('{cancelled ? (') < table.indexOf('<td colSpan={8}'))
+    assert.ok(table.indexOf('<td colSpan={8}') < table.indexOf('<AdvanceCell'), 'inside the not-cancelled branch')
   })
 })
 
@@ -154,20 +179,21 @@ describe('the table redesign (owner, 2026-10-31)', () => {
 
   test('Project Code and Factory Status are narrow, and the widths fit the table floor', () => {
     const widths = [...page.matchAll(/<col(?: style=\{\{ width: '([\d.]+)(px|%)' \}\})? \/>/g)]
-    assert.equal(widths.length, 8)
+    assert.equal(widths.length, 9)
     assert.deepEqual(widths.map(m => m[1] ? `${m[1]}${m[2]}` : 'auto'),
-      ['116px', 'auto', '12%', '136px', '116px', '13.5%', '10.5%', '10.5%'])
+      ['116px', 'auto', '11%', '96px', '136px', '116px', '12.4%', '9.6%', '9.6%'])
 
     const floor = Number(/\.fin-table--orders \{ min-width: (\d+)px; \}/.exec(css)?.[1])
-    assert.equal(floor, 1020)
+    assert.equal(floor, 1120)
     const taken = widths.reduce((sum, m) => sum + (m[2] === 'px' ? Number(m[1]) : m[2] === '%' ? floor * Number(m[1]) / 100 : 0), 0)
     // The longest client still has a column at the floor.
     assert.ok(floor - taken >= 170, `Client is left ${floor - taken}px`)
   })
 
-  test('money sits on the right with air after it; only that column does', () => {
+  test('money and its Advance sit on the right with air after them; only those columns do', () => {
     assert.ok(page.includes('<SortHeader label="Product Value" className="fin-num"'))
-    assert.equal((page.match(/<td className="fin-num">/g) ?? []).length, 1)
+    assert.ok(page.includes('<th className="fin-num" title="Verified payments as a percentage of Total before GST">Advance</th>'))
+    assert.equal((page.match(/<td className="fin-num">/g) ?? []).length, 2)
     assert.equal((page.match(/orders-after-value/g) ?? []).length, 2, 'heading and cell')
     assert.ok(css.includes('.fin-table--orders .orders-after-value { padding-left: 24px; }'))
   })

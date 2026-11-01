@@ -11197,9 +11197,9 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 
 /* A wide table scrolls inside its board instead of crushing its columns. */
 .fin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-/* 1020, not 880: at 880 the status pills and the dates were cut (measured
-   2026-10-31). Below this the table scrolls, which cuts nothing. */
-.fin-table--orders { min-width: 1020px; }
+/* 1120: the 1020 measured on 2026-10-31, when 880 cut the status pills and the
+   dates, plus the Advance column. Below this the table scrolls, which cuts nothing. */
+.fin-table--orders { min-width: 1120px; }
 .fin-table--drafts { min-width: 920px; }
 
 /* An Order with unread updates: a tint and a left edge, as before. */
@@ -11527,6 +11527,11 @@ textarea.pi-form-input { height: auto; }
    The word carries the meaning, so colour is never the only signal. */
 .orders-status-ok { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #4C5352; white-space: nowrap; }
 .orders-status-ok::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #3F9B6E; flex-shrink: 0; }
+
+/* Advance: every value has the padding, and the table pulls it back, so the
+   digits line up under the heading with or without the red below 40%. */
+.orders-advance { display: inline-block; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.fin-table--orders .orders-advance { margin-right: -8px; }
 
 /* A heading that sorts: the arrow shows on the sorted column, and on hover. */
 .orders-sort {

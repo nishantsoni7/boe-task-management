@@ -20,6 +20,7 @@
 // No source PI (an Order from before PIs) — the same product value. Nothing
 // known at all — null, drawn as a dash and sorted last.
 
+import { STANDARD_ADVANCE_PERCENT } from './advanceFormula'
 import { effectiveSampleType, type SampleType } from './sampleType'
 
 export type SourcePiFigures = {
@@ -94,6 +95,16 @@ export function orderListFlags(o: OrderListFlagsInput): { sample: SampleType | n
     }),
     commission: String(c?.middleman_commission ?? '').trim().toLowerCase() === 'yes',
   }
+}
+
+// ── THE ADVANCE COLUMN (owner, 2026-11-01) ───────────────────────────────────
+//
+// Verified money as a percentage of the Total before GST: the Payment card's own
+// figure, read for the whole list by orders_advance_percent(). The database
+// truncates it, so 39.99% stays below 40. No figure is a dash, never red.
+export function advanceBelowStandard(percent: number | string | null | undefined): boolean {
+  const n = num(percent)
+  return n !== null && n < STANDARD_ADVANCE_PERCENT
 }
 
 // The short word the Order page already uses (owner, 2026-10-31): the column

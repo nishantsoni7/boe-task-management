@@ -387,7 +387,9 @@ describe('no Order screen waits more than it must', () => {
       // order_pendencies), issued INSIDE the page's existing Promise.all via loadPendencies — more reads, no more waits.
       // DETAIL 44 -> 45 (20270422000000): respond_order_handoff_clarification, the PI owner's (or an
       // Admin's) answer to Operations' objection — a SAVE on a click, never on the startup path.
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 6, [DETAIL]: 45,
+      // ALL 6 -> 7 (20270517000100): the Advance column's one read, orders_advance_percent, issued INSIDE the
+      // page's existing Promise.all via loadAdvance — one more read, no more waits.
+      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 7, [DETAIL]: 45,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
