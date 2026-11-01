@@ -44,6 +44,9 @@ import { FabricFinishLineEditor } from './FabricFinishLineEditor'
 
 export type ProductView = 'details' | 'cost' | 'approvals'
 
+/** The Confirmed Order's list has one tab the PI Draft's does not (20270520000000). */
+export type OrderProductView = ProductView | 'dispatch'
+
 export const PRODUCT_VIEWS: readonly { key: ProductView; label: string }[] = [
   { key: 'details', label: 'Product details' },
   { key: 'cost', label: 'F&P Cost' },
@@ -66,28 +69,37 @@ export type ProductViewRow = {
 
 // ── The switch and what sits beside it ────────────────────────────────────────
 
-export function ProductViewTabs({ view, onChange, pending }: {
-  view: ProductView
-  onChange: (view: ProductView) => void
+export function ProductViewTabs<V extends OrderProductView>({ view, onChange, pending, dispatchPending }: {
+  view: V
+  onChange: (view: V) => void
   /** Products with an approval still open, once known. */
   pending: number | null
+  /** Pieces still to dispatch, once known. Left out, there is no Dispatch tab. */
+  dispatchPending?: number | null
 }) {
+  const hasDispatch = dispatchPending !== undefined
+  const tabs: readonly { key: OrderProductView; label: string }[] =
+    hasDispatch ? [...PRODUCT_VIEWS, { key: 'dispatch', label: 'Dispatch' }] : PRODUCT_VIEWS
+  const counts: Partial<Record<OrderProductView, number | null | undefined>> = { approvals: pending, dispatch: dispatchPending }
   return (
-    <span className="pv-tabs" role="group" aria-label="What the product list shows">
-      {PRODUCT_VIEWS.map(v => (
-        <button
-          key={v.key}
-          type="button"
-          className={`pv-tab${v.key === view ? ' is-on' : ''}`}
-          aria-pressed={v.key === view}
-          onClick={() => onChange(v.key)}
-        >
-          {v.label}
-          {v.key === 'approvals' && pending !== null && pending > 0 && (
-            <span className="pv-count">{pending}<span className="pv-count-word"> pending</span></span>
-          )}
-        </button>
-      ))}
+    <span className={`pv-tabs${hasDispatch ? ' pv-tabs--four' : ''}`} role="group" aria-label="What the product list shows">
+      {tabs.map(v => {
+        const count = counts[v.key]
+        return (
+          <button
+            key={v.key}
+            type="button"
+            className={`pv-tab${v.key === view ? ' is-on' : ''}`}
+            aria-pressed={v.key === view}
+            onClick={() => onChange(v.key as V)}
+          >
+            {v.label}
+            {typeof count === 'number' && count > 0 && (
+              <span className="pv-count">{count}<span className="pv-count-word"> pending</span></span>
+            )}
+          </button>
+        )
+      })}
     </span>
   )
 }

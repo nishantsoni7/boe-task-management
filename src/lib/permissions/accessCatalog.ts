@@ -115,6 +115,7 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
       view_pi_commission: { label: 'See PI middleman commission', meaning: 'Who is paid and how much, on every PI they did not prepare or review.' },
       view_payment_plan: { label: 'See the Payment plan', meaning: 'How much more the client must pay before each dispatch, on a Confirmed Order.' },
       edit_payment_plan: { label: 'Change the Payment plan', meaning: 'Set and change the dispatch lots and their amounts. Changing a lot already marked dispatched stays Admin only.' },
+      record_dispatch: { label: 'Record dispatches', meaning: 'Record what left on an Order they can open, and add its invoice, e-way bill and other papers. Changing goods or the date afterwards stays Admin only.' },
       manage: { label: 'Amend or cancel any Confirmed Order', meaning: 'Change or cancel orders they do not own.' },
       train_customize_image: { label: 'Train Customize image', meaning: 'Review AI attempts, write house rules and approve examples for Edit PI.' },
       can_be_order_assignee: { label: 'Counts as a sales candidate', meaning: 'Treated like the Sales department for Order Visibility and the salesperson dashboards, while outside Sales. Sales members count without it.' },

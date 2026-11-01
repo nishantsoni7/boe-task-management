@@ -180,6 +180,9 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // Registered by 20270428000000.
   'view_payment_plan',
   'edit_payment_plan',
+  // Recording a dispatch writes to the same lots, and its papers show invoice
+  // money. Protected: granted per person, never by a preset. 20270520000000.
+  'record_dispatch',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -274,6 +277,8 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // saving one without being able to see it would be a grant with nowhere to land.
   view_payment_plan: 'view',
   edit_payment_plan: 'view_payment_plan',
+  // The Dispatch tab lives on the Confirmed Order page behind module entry.
+  record_dispatch: 'view',
   // /orders/customize-learning sits behind the Orders module gate.
   train_customize_image: 'view',
   // A sales candidate's standing is exercised on the Orders dashboards, which

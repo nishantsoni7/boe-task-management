@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-02 — Orders: Dispatch tab on the product list (PR pending) · 20270520000000 → NOT APPLIED
+- **Owner request.** A dispatch section on Confirmed Orders: when an Order is dispatched the owner, Dhruv or Sales upload the papers, the details are read and kept (date, products, vehicle, e-way bill, invoice), and each product shows what is dispatched and what is pending. Designed with the UI/UX Pro Max rules; mockup Option A chosen.
+- **Added.** A fourth tab, Dispatch, on the Order's product list, a Dispatches card, a Dispatch cell on the status strip, and a Record dispatch screen with the papers beside the form. The protected `orders.record_dispatch` permission, nobody but admins until granted.
+- **Database.** `order_dispatch_details`, `order_dispatch_files`, `order_dispatch_read / _record / _update`. A dispatch IS a lot in `order_dispatch_lots`, so the Payment plan counts it with no second entry. No Order status moves. Rollback is in the migration's header; lots already recorded stay as ordinary dispatched lots.
+- **Reading.** `POST /api/orders/[id]/dispatch/read-paper` with ANTHROPIC_API_KEY. A reading only fills empty fields, and nothing is saved until a person presses Save.
+- **Proof.** 54 new tests, and the real migration on PGlite over stubs, 38 checks: who may record, no double count with the planned lot, quantities capped at the Order, Save pressed twice, papers on the right Order only, and the paperwork kept in the trail when a lot is deleted. Screens rendered with the real stylesheet. Not seen signed in, and reading has never run against the real API: no local copy of the key.
+
 ## 2026-11-02 — SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (PR #571, af8476b4) · 20270519000000 → APPLIED 2026-11-02
 - **Added.** `/seo/reviews` and `/seo/tasks`. Update on each board item. Keep or Change on each strategy change. `GET /api/integrations/seo/decisions`, so edits and answers go back to the website folder before anything is sent.
 - **Access.** `edit` (Contributor) updates a board item and `approve` (Manager) answers a strategy change, in place of the one `manage` action the plan named. No browser writes to a table: the two writes are `seo_update_plan_item` and `seo_decide_proposal`.

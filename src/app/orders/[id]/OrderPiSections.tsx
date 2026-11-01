@@ -20,7 +20,8 @@
 // approved PI screen. This adds no new design; it puts the agreed treatment on
 // a second screen so the two cannot look like two different products.
 
-import { ChevronRight, Download, FileSpreadsheet, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, Download, FileSpreadsheet, Truck, Upload } from 'lucide-react'
 import {
   APPROVE_REVISION_BUTTON_LABEL,
   OPEN_VERSION_LABEL,
@@ -40,9 +41,11 @@ import {
   ProductViewBody,
   ProductViewTabs,
   WorkbookRefresh,
-  type ProductView,
+  type OrderProductView,
   type ProductViewRow,
 } from '@/components/orders/ProductViews'
+import { OrderDispatchLedger, OrderDispatchRecords } from './OrderDispatch'
+import type { DispatchData, DispatchLedger } from '@/lib/orders/dispatch'
 import {
   PiCard,
   PiCardHeader,
@@ -608,16 +611,34 @@ export function OrderPiProducts({
   /** The F&P Cost and Approvals tabs, when this Order has a PI behind it (owner, 2026-10-30). */
   views?: {
     submissionId: string
-    view: ProductView
-    onChange: (view: ProductView) => void
+    view: OrderProductView
+    onChange: (view: OrderProductView) => void
     /** The sheet, read only once a tab has been opened. */
     data: FabricFinishData | null | undefined
     animate: boolean
     onChanged: () => void
+    /** The Dispatch tab (20270520000000). Left out, this person has no sight of it. */
+    dispatch?: {
+      /** undefined while reading. */
+      data: DispatchData | undefined
+      ledger: DispatchLedger | null
+      onRecord: () => void
+      onEdit: (lotId: string) => void
+      canChangeGoods: boolean
+      onChangeGoods: () => void
+    }
   }
 }) {
-  const open = views && views.view !== 'details' ? views : null
+  const [openLot, setOpenLot] = useState<string | null>(null)
+  const sheetView = views && (views.view === 'cost' || views.view === 'approvals') ? views.view : null
+  const open = sheetView ? views : null
+  const dispatch = views?.view === 'dispatch' ? views.dispatch ?? null : null
   const summary = views?.data ? productCostSummary(views.data) : null
+  const openDispatch = (lotId: string) => {
+    setOpenLot(lotId)
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    requestAnimationFrame(() => document.getElementById(`dispatch-${lotId}`)?.scrollIntoView({ behavior, block: 'center' }))
+  }
   const pieces = products.reduce((sum, p) => sum + (p.quantity ?? 0), 0)
   const viewRows: ProductViewRow[] = products.map(p => ({
     id: p.id,
@@ -635,17 +656,29 @@ export function OrderPiProducts({
     quantity: p.quantity ?? '—',
   }))
   return (
+    <>
     <PiCard>
       <span id="order-products" style={{ display: 'block', scrollMarginTop: '80px' }} />
       <PiCardHeader
         title={views ? (
           <span className="pv-title">
             {ORDER_PI_PRODUCTS_TITLE}
-            <ProductViewTabs view={views.view} onChange={views.onChange} pending={summary?.approvals.pending ?? null} />
+            <ProductViewTabs
+              view={views.view}
+              onChange={views.onChange}
+              pending={summary?.approvals.pending ?? null}
+              dispatchPending={views.dispatch ? views.dispatch.ledger?.pending ?? null : undefined}
+            />
           </span>
         ) : ORDER_PI_PRODUCTS_TITLE}
         style={views ? { ...SECTION_HEADER_STYLE, flexWrap: 'wrap' } : SECTION_HEADER_STYLE}
-        right={open ? (
+        right={dispatch ? (
+          dispatch.data?.canRecord && !isMobile && (
+            <button type="button" className="boe-btn boe-btn-primary" onClick={dispatch.onRecord}>
+              <Truck aria-hidden="true" />Record dispatch
+            </button>
+          )
+        ) : open ? (
           open.data?.canEdit && <WorkbookRefresh submissionId={open.submissionId} onDone={open.onChanged} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -671,9 +704,24 @@ export function OrderPiProducts({
         <div style={{ padding: '20px', fontSize: '12px', color: colors.secondary }}>
           No product lines are stored against the approved PI.
         </div>
-      ) : open && open.view !== 'details' ? (
+      ) : views?.view === 'dispatch' ? (
+        dispatch?.data && dispatch.ledger ? (
+          <OrderDispatchLedger
+            rows={viewRows}
+            ledger={dispatch.ledger}
+            isMobile={isMobile}
+            animate={views.animate}
+            openLot={openLot}
+            onOpen={openDispatch}
+            canRecord={dispatch.data.canRecord}
+            onRecord={dispatch.onRecord}
+          />
+        ) : (
+          <p className="pv-note" role="status">{dispatch ? 'Reading the dispatches…' : 'The dispatches could not be read.'}</p>
+        )
+      ) : open && sheetView ? (
         <ProductViewBody
-          view={open.view}
+          view={sheetView}
           rows={viewRows}
           data={open.data}
           isMobile={isMobile}
@@ -809,6 +857,20 @@ export function OrderPiProducts({
         </div>
       )}
     </PiCard>
+    {dispatch?.data && dispatch.ledger && (
+      <OrderDispatchRecords
+        data={dispatch.data}
+        ledger={dispatch.ledger}
+        isMobile={isMobile}
+        openLot={openLot}
+        onToggle={lotId => setOpenLot(openLot === lotId ? null : lotId)}
+        onRecord={dispatch.onRecord}
+        onEdit={dispatch.onEdit}
+        canChangeGoods={dispatch.canChangeGoods}
+        onChangeGoods={dispatch.onChangeGoods}
+      />
+    )}
+    </>
   )
 }
 

@@ -81,10 +81,13 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_pendency_removed:           'Pendency removed',
   // An administrator gave the Order a different number (20270502000000).
   order_number_changed:             'Order number changed',
+  // A dispatch and its papers were recorded (20270520000000).
+  order_dispatch_recorded:          'Dispatch recorded',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   ...OPERATIONS_HANDOFF_EVENT_TONE,
+  order_dispatch_recorded:      'green',
   pi_revision_proposed:         'amber',
   pi_revision_approved:         'green',
   pi_revision_rejected:         'red',
@@ -117,6 +120,11 @@ function monthOf(v: unknown): string | null {
 export function describeOrderEvent(row: OrderActivityRow): string | null {
   const p = row.payload ?? {}
   switch (row.event_type) {
+    case 'order_dispatch_recorded': {
+      const lot = typeof p.lot_no === 'number' ? `Dispatch ${p.lot_no}` : null
+      const pieces = typeof p.pieces === 'number' ? `${p.pieces} ${p.pieces === 1 ? 'piece' : 'pieces'}` : null
+      return [lot, pieces, text(p.vehicle_number)].filter(Boolean).join(' · ') || null
+    }
     case 'pi_revision_proposed': {
       const v = typeof p.version_number === 'number' ? `PI V${p.version_number}` : null
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null

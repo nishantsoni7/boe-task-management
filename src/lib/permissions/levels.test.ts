@@ -272,7 +272,7 @@ describe('Manager never receives a protected action', () => {
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'can_be_order_assignee', 'close', 'delete',
       'dispatch', 'edit_payment_plan', 'founder_payouts', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
-      'mark_lost', 'receive', 'reconcile', 'reimburse', 'train_customize_image', 'verify', 'verify_own_payment',
+      'mark_lost', 'receive', 'reconcile', 'record_dispatch', 'reimburse', 'train_customize_image', 'verify', 'verify_own_payment',
       'view_all', 'view_payment_plan', 'view_pi_commission', 'view_quotations', 'view_team',
     ])
   })
