@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `930978d3` — Finance: one screen for a pending HDFC payment
+- Commit: `9d6af8c3` — Finance: one screen for a pending HDFC payment (#567)
 - Commits on this branch: 1132
 - Pages (`page.tsx`): 163   API routes (`route.ts`): 179
 - Migrations: 398 (first `20260530_create_positions.sql`, latest `20270517000100_orders_advance_percent.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `930978d3` 2026-11-01 Finance: one screen for a pending HDFC payment
+- `9d6af8c3` 2026-11-01 Finance: one screen for a pending HDFC payment (#567)
 - `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
 - `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
