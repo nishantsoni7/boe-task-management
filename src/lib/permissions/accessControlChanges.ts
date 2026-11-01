@@ -184,6 +184,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   view_pi_commission:        'See PI middleman commissions',
   view_payment_plan:         'See the Payment plan on Confirmed Orders',
   edit_payment_plan:         'Change the Payment plan and its dispatch lots',
+  record_dispatch:           'Record dispatches and their papers on Confirmed Orders',
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
   verify_own_payment:        'Record and verify own payments in one step',

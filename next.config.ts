@@ -59,6 +59,8 @@ const nextConfig: NextConfig = {
     // Edit PI Customize image shrinks the product picture with sharp before sending it.
     '/api/orders/pi-edits/regenerate-image': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
     '/api/orders/pi-edits/interpret-customization': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
+    // A phone photograph of a dispatch paper is shrunk with sharp before it is read.
+    '/api/orders/\\[id\\]/dispatch/read-paper': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
   },
 
   images: {

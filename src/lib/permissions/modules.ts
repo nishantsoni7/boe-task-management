@@ -383,6 +383,11 @@ registerModule({
     // changing a lot after it was marked dispatched stays admin only.
     { actionKey: 'view_payment_plan', displayName: 'View Payment plan' },
     { actionKey: 'edit_payment_plan', displayName: 'Edit Payment plan' },
+    // Recording a dispatch and its papers on a Confirmed Order. Registered by
+    // 20270520000000, deny-by-default; admins hold it through the admin branch.
+    // Deliberately not edit_payment_plan: Sales record dispatches without
+    // seeing what each client owes. Confers no Order visibility of its own.
+    { actionKey: 'record_dispatch', displayName: 'Record dispatch' },
     // RE-REGISTERED 2026-10-29 under its honest meaning, on the owner's
     // decision. The retirement comment above was right that no Order Request
     // reads this key any more — but the database still does:

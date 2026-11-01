@@ -244,7 +244,7 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     enforcedActions: [
       'view', 'create', 'view_all', 'approve_order', 'approve_advance_exception', 'align_production',
       'view_pi_commission', 'manage', 'train_customize_image', 'view_payment_plan', 'edit_payment_plan',
-      'can_be_order_assignee',
+      'record_dispatch', 'can_be_order_assignee',
     ],
     detail: 'Opening the module, creating and submitting PIs, seeing all company orders, PI review, advance exceptions, production alignment, commission sight, amend/cancel, the Payment plan, Customize-image training and sales-candidate standing are enforced. Edit follows PI ownership; Export and Delete decide nothing.',
   },

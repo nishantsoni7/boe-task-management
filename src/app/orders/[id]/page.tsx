@@ -156,7 +156,9 @@ import {
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { useProductCosts } from '@/components/orders/useProductCosts'
-import type { ProductView } from '@/components/orders/ProductViews'
+import type { OrderProductView } from '@/components/orders/ProductViews'
+import { buildDispatchLedger } from '@/lib/orders/dispatch'
+import { useOrderDispatch } from './useOrderDispatch'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
 import {
@@ -960,7 +962,10 @@ export default function OrderDetailPage() {
   const [approvalBusy,  setApprovalBusy]  = useState(false)
   const [approvalError, setApprovalError] = useState<string | null>(null)
   // Product details, F&P Cost or Approvals (owner, 2026-10-30).
-  const [productView, setProductView] = useState<ProductView>('details')
+  // ?view=dispatch: back from the Record dispatch screen, to what was just saved.
+  const [productView, setProductView] = useState<OrderProductView>(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('view') === 'dispatch' ? 'dispatch' : 'details'
+  ))
   const [productViewMoved, setProductViewMoved] = useState(false)
   const [costSheetSaves, setCostSheetSaves] = useState(0)
   const [proofBusy,     setProofBusy]     = useState<string | null>(null)
@@ -993,8 +998,12 @@ export default function OrderDetailPage() {
   // The sheet behind the product list's tabs. Nothing of it runs at startup:
   // the one read is taken when a tab is first opened.
   const costSubmissionId = viewAsUserId ? null : order?.source_order_submission_id ?? null
-  const productCosts = useProductCosts(costSubmissionId ?? '', costSheetSaves, costSubmissionId !== null && productView !== 'details')
-  const switchProductView = (view: ProductView) => { setProductView(view); setProductViewMoved(true) }
+  const productCosts = useProductCosts(costSubmissionId ?? '', costSheetSaves, costSubmissionId !== null && (productView === 'cost' || productView === 'approvals'))
+  const switchProductView = (view: OrderProductView) => { setProductView(view); setProductViewMoved(true) }
+  // Dispatched and pending (20270520000000). Read beside the Order, not awaited
+  // by it; null when this person has no sight of them, and the tab is not drawn.
+  const orderDispatch = useOrderDispatch(order?.id ?? null, costSubmissionId !== null)
+  const dispatchLedger = useMemo(() => (orderDispatch ? buildDispatchLedger(orderDispatch) : null), [orderDispatch])
 
   // ── Design Files and Client PO submissions (20270112000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
@@ -3107,6 +3116,15 @@ export default function OrderDetailPage() {
         data: productCosts,
         animate: productViewMoved,
         onChanged: () => setCostSheetSaves(n => n + 1),
+        dispatch: orderDispatch === null ? undefined : {
+          data: orderDispatch,
+          ledger: dispatchLedger,
+          onRecord: () => router.push(`/orders/${order.id}/dispatch/new`),
+          onEdit: lotId => router.push(`/orders/${order.id}/dispatch/${lotId}`),
+          // Goods and the date stay the administrator's, in the Payment plan.
+          canChangeGoods: actingAsAdmin && ordersCaps.canEditPaymentPlan,
+          onChangeGoods: () => router.push(`/orders/${order.id}/payment-plan`),
+        },
       } : undefined}
     />
   )
@@ -3386,6 +3404,14 @@ export default function OrderDetailPage() {
           isSample={sampleType === 'sample_order'}
           sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
           fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
+          dispatch={dispatchLedger && dispatchLedger.ordered > 0 ? {
+            text: `${dispatchLedger.dispatched.toLocaleString('en-IN')} of ${dispatchLedger.ordered.toLocaleString('en-IN')} pcs`,
+            percent: dispatchLedger.percent,
+            onOpen: () => {
+              switchProductView('dispatch')
+              document.getElementById('order-products')?.scrollIntoView({ block: 'start' })
+            },
+          } : null}
         />
 
         {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══

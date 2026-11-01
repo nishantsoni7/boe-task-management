@@ -7,7 +7,7 @@
 // words come from the page's own builders (production alignment, status,
 // sample type); the day arithmetic is lib/orders/orderDatesTimeline.
 
-import { FlaskConical, Package } from 'lucide-react'
+import { ChevronRight, FlaskConical, Package } from 'lucide-react'
 import {
   SAMPLE_FIELD_LABEL,
   SAMPLE_NONE_LABEL,
@@ -49,7 +49,7 @@ function StageBadge({ label, tone }: { label: string; tone: WorkspaceTone }) {
  * pulsing dot so nobody ships it as a production order by mistake; a full order
  * is quiet. The pulse stops for readers who ask for reduced motion.
  */
-export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullNote = null }: {
+export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullNote = null, dispatch = null }: {
   erp: { label: string; tone: WorkspaceTone; line: string | null }
   production: { label: string; tone: WorkspaceTone }
   isSample: boolean
@@ -57,6 +57,8 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
   sampleLabel: string | null
   /** A short note beside "Full order" (for example "sampling first"). */
   fullNote?: string | null
+  /** How much of the Order has left; pressing it opens the Dispatch tab. */
+  dispatch?: { text: string; percent: number; onOpen: () => void } | null
 }) {
   return (
     <section className="order-stages" aria-label="Order stages">
@@ -73,6 +75,14 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
         <span className="order-stage-label">{ORDER_TYPE_STAGE_LABEL}</span>
         <OrderTypeValue isSample={isSample} fullNote={fullNote} />
       </div>
+      {dispatch && (
+        <button type="button" className="order-stage order-stage--dispatch" aria-label={`Dispatch, ${dispatch.text}. Open the Dispatch tab.`} onClick={dispatch.onOpen}>
+          <span className="order-stage-label">Dispatch</span>
+          <span className="order-stage-full">{dispatch.text}</span>
+          <span className="od-bar" aria-hidden="true"><i style={{ width: `${dispatch.percent}%` }} /></span>
+          <ChevronRight aria-hidden="true" />
+        </button>
+      )}
     </section>
   )
 }

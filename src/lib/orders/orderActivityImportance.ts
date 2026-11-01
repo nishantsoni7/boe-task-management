@@ -27,6 +27,7 @@ export const KEY_ORDER_EVENT_TYPES: ReadonlySet<string> = new Set([
   'order_advance_hold_opened',
   'order_advance_exception_approved',
   'order_advance_exception_voided',
+  'order_dispatch_recorded',
 ])
 
 /** The source PI's own trail is worded, not typed: these words mark its milestones. */
