@@ -370,20 +370,19 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
       )}
 
       {mark.kind === 'lookalike' && (
-        <div className="bank-panel-line">
-          <strong>May be a duplicate.</strong> {formatMoney(mark.deposit)} credited on {formatBankDate(mark.lineDate)} is already linked to another payment, so this one cannot be verified unless it is different money with its own credit.
-          <div className="fin-sub">{mark.narration}</div>
+        <div className="bank-twin">
+          <p className="bank-panel-lead"><strong>May be a duplicate.</strong> {formatMoney(mark.deposit)} credited on {formatBankDate(mark.lineDate)} is already on another payment.</p>
           {mark.holders.map(h => (
-            <div key={h.paymentId} className="bank-row">
-              <div style={{ minWidth: 0 }}>
-                <div className="fin-primary-text">{h.clientName || 'Suspense payment (no client)'}</div>
-                <div className="fin-sub">{h.humanId ?? 'Payment'} · {PAYMENT_STATUS_LABEL[h.status] ?? h.status}</div>
-              </div>
-              <Link className="boe-btn boe-btn-ghost" href={paymentHref(h.paymentId, h.status)} target="_blank">Open payment</Link>
+            <div key={h.paymentId} className="bank-twin-holder">
+              <strong>{h.humanId ?? 'Payment'}</strong> · {h.clientName || 'Suspense payment (no client)'} · {PAYMENT_STATUS_LABEL[h.status] ?? h.status}
             </div>
           ))}
+          <div className="fin-sub" title={mark.narration}>{mark.narration}</div>
           <p className="fin-muted bank-panel-note">{creditHolderAdvice(mark.holders, payment.client_name)}</p>
-          <div><Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.lineDate)} target="_blank">Open this credit</Link></div>
+          <div className="bank-compare-actions">
+            {mark.holders.map(h => <Link key={h.paymentId} className="boe-btn boe-btn-ghost" href={paymentHref(h.paymentId, h.status)} target="_blank">Open payment</Link>)}
+            <Link className="boe-btn boe-btn-ghost" href={creditHref(mark.lineId, mark.lineDate)} target="_blank">Open this credit</Link>
+          </div>
         </div>
       )}
       {mark.kind === 'none' && <p className="bank-panel-lead"><strong>No bank credit matches this payment.</strong> <span className="fin-muted">If it came as part of a bigger transfer in another name, add the UTR to this payment and it will show here.</span></p>}

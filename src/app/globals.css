@@ -12076,6 +12076,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .bank-search-side small { display: block; font-size: 12px; font-weight: 400; color: #5F6665; }
 .bank-search-main { flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .bank-compare-search { margin-left: auto; }
+.bank-twin { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: #FAF8F4; border-radius: 10px; }
+.bank-twin-holder { font-size: 15px; color: #303536; }
 .bank-panel-lead { margin: 0; font-size: 15px; color: #303536; }
 .bank-window-amount { display: block; font-size: 24px; font-weight: 600; color: #303536; line-height: 1.25; margin-bottom: 2px; }
 .bank-window-amount span { font-size: 18px; font-weight: 400; color: #4C5352; }

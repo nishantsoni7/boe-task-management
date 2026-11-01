@@ -379,7 +379,7 @@ describe('no match', () => {
   test('a look-alike says it cannot be verified as it stands', () => {
     const { ui } = open(pay(), twin())
     assert.ok(ui.text().includes('May be a duplicate.'))
-    assert.ok(ui.text().includes('cannot be verified'))
+    assert.ok(ui.text().includes('is already on another payment'))
     assert.deepEqual(primary(ui), [])
   })
 
