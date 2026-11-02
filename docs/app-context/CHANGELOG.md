@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — Modules launcher, A+ refinement on desktop and tablet (PR #TBD) · no migration
+## 2026-11-02 — Modules launcher, A+ refinement on desktop and tablet (PR #590) · no migration
 - **Owner request** (screenshot of `/modules`): design the first page after sign-in more professionally and minimally, with the UI/UX Pro Max rules, working with and without the For you panel. Three options were shown (A Refined cards, B One surface, C Grouped by area); the owner asked for A taken to 9 out of 10, approved the mock-up, then the build plan ("Approve plan").
 - **Changed.** Essentials (from 720 px of launcher width): 148 px tile, ink icon tile that turns BOE red when pointed at, and the unread count in words under the name (a chip, or a tick and "Nothing new" for a count known to be zero; blank at the same height while the count loads); the badge is hidden there. Compact tiles: 68 px, 38 px icon. "All modules": a count chip, 15 px section titles, a little more room under the header. Edit order: darker dashed edge, 36 px handle. A tile is named "Name, N unread" for a screen reader. Finance shows ₹, Sales its own icon (shared with the Control Center Access screens).
 - **Kept.** The phone layout (one row of icon-over-name Essentials, one grouped 52 px list), every gate, the saved order, Edit order's controls and labels, the For you panel and its stylesheet, `globals.css`. No SQL, no new route, no new permission.
