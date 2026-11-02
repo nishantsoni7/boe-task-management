@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (PR #580) · 20270522000000 and 20270522000100 → NOT APPLIED
+## 2026-11-02 — Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (PR #580) · 20270522000000 and 20270522000100 → APPLIED 2026-11-02, before the merge
 - **Owner request.** A Meta Ads section in Marketing that watches the running and old campaigns, learns from them and judges which work. The owner shared the old ad account to the business with the View performance role only, approved the layout on a mock-up and the plan in two PRs.
 - **Added.** `GET /api/integrations/meta/sync` (daily 00:40 UTC, `CRON_SECRET`) reads the ad account with a view-only token (`META_ACCESS_TOKEN`, `META_AD_ACCOUNT_IDS`, both set in Vercel by the owner) and fills six tables. Marketing gets the `edit` action. The page is still Coming soon; PR B draws the screens. With no token the route answers `not_configured`.
 - **Database.** `meta_ad_accounts`, `meta_campaigns`, `meta_ad_sets`, `meta_insights_daily`, `meta_sync_runs`, `meta_settings`, and `meta_set_targets`. Money in whole paise; results kept as Meta sent them; read through `module_entry_open('marketing')`; no browser write. Rollback is in the migration headers.

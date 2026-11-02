@@ -1,6 +1,6 @@
 # 26. Marketing — Meta Ads
 
-Written 2026-11-02 from the build of PR A (data and sync). PR B (the screens) is not built. Migrations `20270522000000` and `20270522000100` are **NOT APPLIED** as of this writing.
+Written 2026-11-02 from the build of PR A (data and sync). PR B (the screens) is not built. Migrations `20270522000000` and `20270522000100` were **APPLIED to production on 2026-11-02** by the owner, before the merge (checked on the live ledger afterwards; the dry-run listed only these two). PR #580.
 
 ## 1. Purpose & users
 
