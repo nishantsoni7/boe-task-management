@@ -22,16 +22,20 @@ import type { EffectivePermission } from '@/lib/permissions/types'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 // Marketing is the first of the three to get real work (Meta Ads, module 26): 20270522000000 adds its `edit` action
-// and changes its description, and its pages are the Meta Ads screens (PR B). It keeps the registration, the guard
-// and the launcher card the three share, so it stays in every list here; only its page differs.
+// and changes its description, and its pages are the Meta Ads screens (PR B). Sales is the second (the Lead Master,
+// module 27): 20270524000000 adds `create`, `edit` and `assign` and changes its description, and /sales opens the
+// Lead Master. Both keep the registration, the guard and the launcher card the three share, so they stay in every
+// list here; only their pages differ.
 const MODULES = [
-  { key: 'sales', title: 'Sales', actions: ['view'] },
+  { key: 'sales', title: 'Sales', actions: ['view', 'create', 'edit', 'assign'] },
   { key: 'marketing', title: 'Marketing', actions: ['view', 'edit'] },
   { key: 'pricing', title: 'Pricing', actions: ['view'] },
 ]
 const MIGRATION = read('supabase/migrations/20270515000000_register_sales_marketing_pricing_modules.sql')
 const MARKETING_MIGRATION = read('supabase/migrations/20270522000000_marketing_meta_edit_action.sql')
+const SALES_MIGRATION = read('supabase/migrations/20270524000000_sales_lead_master.sql')
 const FIRST_MARKETING_DESCRIPTION = 'Marketing module. Coming soon.'
+const FIRST_SALES_DESCRIPTION = 'Sales module. Coming soon.'
 const LAUNCHER = read('src/app/modules/page.tsx')
 
 const view = (allowed: boolean): EffectivePermission[] =>
@@ -65,13 +69,14 @@ describe('registration', () => {
     test(`${key}: the database says what the code says`, () => {
       const mod = getRegisteredModule(key)
       // The first registration holds the description the module was born with.
-      const bornWith = key === 'marketing' ? FIRST_MARKETING_DESCRIPTION : mod!.description
+      const bornWith = key === 'marketing' ? FIRST_MARKETING_DESCRIPTION : key === 'sales' ? FIRST_SALES_DESCRIPTION : mod!.description
       assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}', '/${key}', 'live', null,`), 'app_modules')
       assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}')`), 'permission_modules')
-      if (key === 'marketing') {
+      if (key === 'marketing' || key === 'sales') {
         // ...and the later migration changes it to what the code says now, in both tables.
-        assert.notEqual(mod!.description, FIRST_MARKETING_DESCRIPTION)
-        assert.equal(MARKETING_MIGRATION.split(`set description = '${mod!.description}'`).length - 1, 2, 'both tables')
+        assert.notEqual(mod!.description, bornWith)
+        const later = key === 'marketing' ? MARKETING_MIGRATION : SALES_MIGRATION
+        assert.equal(later.split(`set description = '${mod!.description}'`).length - 1, 2, 'both tables')
       }
     })
   }
@@ -90,10 +95,13 @@ describe('the routes and the launcher', () => {
       assert.ok(layout.includes(`<ModuleGuard moduleKey="${key}" deniedRoute="/modules">`))
     })
 
-    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : 'the Coming soon shell for this module'}`, () => {
+    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'the Lead Master' : 'the Coming soon shell for this module'}`, () => {
       const page = read(`src/app/${key}/page.tsx`)
       if (key === 'marketing') {
         assert.ok(page.includes('<MetaOverview />'))
+        assert.ok(!page.includes('ComingSoonModule'))
+      } else if (key === 'sales') {
+        assert.ok(page.includes("redirect('/sales/lead-master')"))
         assert.ok(!page.includes('ComingSoonModule'))
       } else {
         assert.ok(page.includes(`<ComingSoonModule moduleKey="${key}" title="${title}" />`))

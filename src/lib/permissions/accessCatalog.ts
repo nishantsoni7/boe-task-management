@@ -200,9 +200,14 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
   },
   sales: {
     group: 'Sales',
-    blurb: 'Coming soon.',
-    levels: { on: 'Open Sales, which shows a Coming soon page for now.' },
-    authorities: {},
+    blurb: 'The Lead Master: every lead, and who holds it.',
+    levels: {
+      viewer: 'Open Sales and read every lead.',
+      contributor: 'Viewer, plus add a lead and correct its details.',
+    },
+    authorities: {
+      assign: { label: 'Allot leads', meaning: 'Choose who holds a lead and change it later. The screen asks before an existing name is changed.' },
+    },
   },
   marketing: {
     group: 'Sales',

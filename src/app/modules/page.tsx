@@ -625,13 +625,13 @@ export default function BoeOsHomePage() {
       icon: <Armchair size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
-    // Sales, Marketing and Pricing open a Coming soon page for now. The tile is an ordinary tile: it says so
-    // when opened, not with a status pill here (see the note above ModuleDef).
+    // Sales opens the Lead Master. Marketing opens Meta Ads. Pricing still opens a Coming soon page: that tile is an
+    // ordinary tile and says so when opened, not with a status pill here (see the note above ModuleDef).
     ...(canOpenModule('sales') ? [{
       key: 'sales',
       title: 'Sales',
       // The registered module description, verbatim.
-      description: 'Sales module. Coming soon.',
+      description: 'Sales: the Lead Master, every lead and who holds it.',
       href: '/sales',
       icon: <ChartNoAxesCombined size={26} strokeWidth={1.8} />,
       notificationCount: null,
