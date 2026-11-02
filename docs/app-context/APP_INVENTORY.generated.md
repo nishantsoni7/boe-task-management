@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `cb89e58e` — PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
-- Commits on this branch: 1142
+- Commit: `55d73ec6` — Old orders (BDPI): a PI over 4.5 MB uploads
+- Commits on this branch: 1144
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 182
 - Migrations: 403 (first `20260530_create_positions.sql`, latest `20270521000000_seo_six_month_review.sql`)
 - Tables ever created: 206 (dropped at some point: 7)   SQL functions: 883   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `55d73ec6` 2026-11-02 Old orders (BDPI): a PI over 4.5 MB uploads
+- `2f8777e3` 2026-11-02 Docs: PI Draft page change merged as PR #577 (cb89e58e), deployed (#578)
 - `cb89e58e` 2026-11-02 PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
 - `d0c4d259` 2026-11-02 SEO: badges on the 6-month review keep sentence case; docs stamped for #575 (#576)
 - `4b5d9006` 2026-11-02 SEO module: the rolling 6-month review and the private discussion brief (#575)
@@ -37,8 +39,6 @@
 - `3ac61f79` 2026-11-01 Sales, Marketing and Pricing: three modules, Coming soon (#557)
 - `3fa2b704` 2026-10-31 Docs: class guard merged as PR #553 (2f9d5795) (#555)
 - `534c9007` 2026-10-31 Confirmed Order: remove the Custom word from the Customization column (#554)
-- `9add9946` 2026-10-31 Docs: Confirmed Orders table merged as PR #552 (ebfe69a5) (#556)
-- `ebfe69a5` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone (#552)
 
 ## Pages by top-level area
 
