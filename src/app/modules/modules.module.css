@@ -17,11 +17,17 @@
      #4C5352  resting compact-tile icons
      #F1EEE9  icon boxes and the Essentials arrow chip
      #E4DED7  tile and card borders
-     #B9472E  BOE red — the icon and arrow of the tile being pointed at
+     #B9472E  BOE red — the icon and arrow of the tile being pointed at, and
+              the Essentials icon tile while it is
      #B42332  notification badge
+     #FBF3F2  the unread chip's wash (the For you urgent card's), with #A32D2D
+              text and a #F1DEDB edge
+     #857F76  the dashed edge of a card in Edit order (3.6:1 on the canvas)
 
    A TILE IS AN ICON, ITS BADGE AND A NAME (plus a decorative arrow on an
-   Essentials tile). No description at any width — it is not in the markup. */
+   Essentials tile). From 720px of launcher width an Essentials tile also says
+   its count in words under the name and hides the badge. No description at any
+   width — it is not in the markup. */
 
 /* ── This page's surface and typeface ─────────────────────────────────────
    SCOPED TO THIS PAGE. `:has(.launcher)` matches only the shell that holds
@@ -54,22 +60,46 @@
   margin-top: 0;
 }
 
-/* Space only between blocks: the first thing in the launcher sits right under
-   the header. */
+/* Space only between blocks. The first section sits a little lower than the
+   header's own padding puts it, so the heading is not crowded against the
+   header's rule; a phone (below) opens straight on its content, as before. */
+.launcher > .section:first-child {
+  padding-top: 10px;
+}
+
 .section + .section {
-  margin-top: 32px;
+  margin-top: 36px;
 }
 
 /* A plain, readable heading: sentence case, ink, no rule or dash. The space
-   around it does the separating. */
+   around it does the separating. The count chip beside "All modules" is the
+   same small pill the For you panel draws beside its own heading. */
 .sectionTitle {
-  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
   font-family: var(--boe-font-heading);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: -0.01em;
   color: #303536;
+}
+
+.sectionCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #F1EEE9;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #4C5352;
 }
 
 /* Edit mode only: how the sections read the order being arranged. An inset
@@ -135,7 +165,7 @@
   }
 
   .grid {
-    gap: 14px;
+    gap: 16px;
   }
 }
 
@@ -162,8 +192,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 88px;
-  padding: 14px 16px;
+  min-height: 68px;
+  padding: 12px 14px;
   background: #fff;
   border: 1px solid #E4DED7;
   border-radius: 12px;
@@ -214,9 +244,9 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   background: #F1EEE9;
   color: #4C5352;
   transition: background-color 0.16s ease, color 0.16s ease;
@@ -329,16 +359,101 @@
   letter-spacing: -0.015em;
 }
 
+/* The count in words, under an Essentials name. Drawn from 720px of launcher
+   width only (below, the badge on the icon carries the count, as it always
+   has). The row is always there when it is drawn, so a count that arrives late
+   moves nothing. Pale red is the same wash the For you panel gives an urgent
+   card; the tile itself is never tinted. */
+.status {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px 0 9px;
+  border: 1px solid #F1DEDB;
+  border-radius: 999px;
+  background: #FBF3F2;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #A32D2D;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #B42332;
+}
+
+.calm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  font-size: 13px;
+  color: #686D6C;
+}
+
+.calm svg {
+  color: #276247;
+}
+
 @container (min-width: 720px) {
   .cardEssential {
-    min-height: 104px;
-    padding: 18px 20px;
+    min-height: 148px;
+    padding: 20px 22px;
+    border-radius: 16px;
   }
 
+  /* Icon and arrow on one row, the name and its count beneath, pushed to the
+     foot of the tile. The same three children as everywhere else, placed by
+     name, so the markup does not change with the width. */
+  .cardEssential .cardBody {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon arrow"
+      "name name";
+    align-content: space-between;
+    align-items: start;
+    row-gap: 26px;
+  }
+
+  .cardEssential .iconWrap {
+    grid-area: icon;
+    justify-self: start;
+  }
+
+  .cardEssential .cardArrow {
+    grid-area: arrow;
+    align-self: center;
+  }
+
+  .cardEssential .titleWrap {
+    grid-area: name;
+  }
+
+  /* An ink tile with a white icon; BOE red while the tile is pointed at, the
+     same signal as the red icon on a compact tile. */
   .cardEssential .iconBox {
     width: 48px;
     height: 48px;
-    border-radius: 12px;
+    border-radius: 14px;
+    background: #303536;
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+
+  .cardEssential:hover .iconBox,
+  .cardEssential:focus-visible .iconBox {
+    background: #B9472E;
+    color: #fff;
   }
 
   .cardEssential .iconBox svg {
@@ -348,6 +463,17 @@
 
   .cardEssential .title {
     font-size: 16.5px;
+  }
+
+  .cardEssential .badge {
+    display: none;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    margin-top: 8px;
   }
 }
 
@@ -448,6 +574,15 @@
     font-weight: 600;
     letter-spacing: 0;
     color: #686D6C;
+  }
+
+  /* A phone keeps its quiet label and its first row where they were. */
+  .sectionCount {
+    display: none;
+  }
+
+  .launcher > .section:first-child {
+    padding-top: 0;
   }
 
   .arrangeNote {
@@ -674,20 +809,21 @@
 /* ── The drag handle ──
    Absolutely positioned in the card's top-right corner, which the tile leaves
    empty, so it costs the card no layout and never covers the icon or the
-   name. 32px, the whole of it the touch target. */
+   name. 36px, the whole of it the touch target; its edge is the darker
+   neutral so the control reads against the canvas. */
 .dragHandle {
   position: absolute;
-  top: 12px;
+  top: 15px;
   right: 12px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border: 1px solid #E4DED7;
-  border-radius: 8px;
+  border: 1px solid #CFC8BF;
+  border-radius: 9px;
   background: #FBFAF8;
   color: #686D6C;
   cursor: grab;
@@ -717,9 +853,11 @@
   cursor: default;
   /* Room for the handle at the right-hand end of the row, so a long name
      wraps beside it rather than running underneath. */
-  padding-right: 56px;
+  padding-right: 60px;
   border-style: dashed;
-  border-color: #CFC8BF;
+  /* A dashed edge a reader can see against the canvas (3.6:1; the resting
+     card edge is 1.2:1 and would not say "movable"). */
+  border-color: #857F76;
   background: #FBFAF8;
   box-shadow: none;
   /* The card is not a link any more, and text selection during a drag looks
@@ -730,7 +868,7 @@
 .cardEditing:hover,
 .cardEditing:active {
   transform: none;
-  border-color: #CFC8BF;
+  border-color: #857F76;
   background: #FBFAF8;
   box-shadow: none;
 }
