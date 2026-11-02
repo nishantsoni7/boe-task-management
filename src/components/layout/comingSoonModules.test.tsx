@@ -21,12 +21,16 @@ import { canAccessManagementModule, isEngineGatedModule } from '@/lib/permission
 import type { EffectivePermission } from '@/lib/permissions/types'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
+// Marketing is the first of the three to get real work (Meta Ads, module 26): 20270522000000 adds its `edit` action
+// and changes its description. Its page is still Coming soon, so it stays in every list here.
 const MODULES = [
-  { key: 'sales', title: 'Sales' },
-  { key: 'marketing', title: 'Marketing' },
-  { key: 'pricing', title: 'Pricing' },
+  { key: 'sales', title: 'Sales', actions: ['view'] },
+  { key: 'marketing', title: 'Marketing', actions: ['view', 'edit'] },
+  { key: 'pricing', title: 'Pricing', actions: ['view'] },
 ]
 const MIGRATION = read('supabase/migrations/20270515000000_register_sales_marketing_pricing_modules.sql')
+const MARKETING_MIGRATION = read('supabase/migrations/20270522000000_marketing_meta_edit_action.sql')
+const FIRST_MARKETING_DESCRIPTION = 'Marketing module. Coming soon.'
 const LAUNCHER = read('src/app/modules/page.tsx')
 
 const view = (allowed: boolean): EffectivePermission[] =>
@@ -48,19 +52,26 @@ describe('who may open them', () => {
 })
 
 describe('registration', () => {
-  for (const { key, title } of MODULES) {
-    test(`${key}: engine-gated, with view as its only action`, () => {
+  for (const { key, title, actions } of MODULES) {
+    test(`${key}: engine-gated, with ${actions.join(' and ')} as its ${actions.length === 1 ? 'only action' : 'actions'}`, () => {
       assert.ok(isEngineGatedModule(key))
       const mod = getRegisteredModule(key)
       assert.ok(mod)
       assert.equal(mod.displayName, title)
-      assert.deepEqual(mod.actions.map(a => a.actionKey), ['view'])
+      assert.deepEqual(mod.actions.map(a => a.actionKey), actions)
     })
 
     test(`${key}: the database says what the code says`, () => {
       const mod = getRegisteredModule(key)
-      assert.ok(MIGRATION.includes(`('${key}', '${title}', '${mod!.description}', '/${key}', 'live', null,`), 'app_modules')
-      assert.ok(MIGRATION.includes(`('${key}', '${title}', '${mod!.description}')`), 'permission_modules')
+      // The first registration holds the description the module was born with.
+      const bornWith = key === 'marketing' ? FIRST_MARKETING_DESCRIPTION : mod!.description
+      assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}', '/${key}', 'live', null,`), 'app_modules')
+      assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}')`), 'permission_modules')
+      if (key === 'marketing') {
+        // ...and the later migration changes it to what the code says now, in both tables.
+        assert.notEqual(mod!.description, FIRST_MARKETING_DESCRIPTION)
+        assert.equal(MARKETING_MIGRATION.split(`set description = '${mod!.description}'`).length - 1, 2, 'both tables')
+      }
     })
   }
 

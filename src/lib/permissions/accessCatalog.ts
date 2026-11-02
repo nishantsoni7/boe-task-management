@@ -206,8 +206,11 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
   },
   marketing: {
     group: 'Sales',
-    blurb: 'Coming soon.',
-    levels: { on: 'Open Marketing, which shows a Coming soon page for now.' },
+    blurb: 'Meta Ads: what the ads cost and which to keep.',
+    levels: {
+      viewer: 'Open Marketing and read everything in it.',
+      contributor: 'Viewer, plus set the monthly spending cap and the target cost per enquiry.',
+    },
     authorities: {},
   },
   pricing: {
