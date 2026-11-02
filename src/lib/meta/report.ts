@@ -8,7 +8,7 @@ import { judge, type Verdict } from './verdict'
 
 export type MetaAccount = { account_id: string; name: string; currency: string; last_synced_at: string | null }
 export type MetaCampaign = {
-  campaign_id: string; name: string; effective_status: string
+  campaign_id: string; name: string; effective_status: string; created_time?: string | null
   daily_budget_paise: number | null; lifetime_budget_paise: number | null
 }
 export type MetaAdSet = {

@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-02 — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (PR pending) · 20270523000000 → NOT APPLIED when written, apply before the merge
+- **Owner request.** Learnings from old campaigns, a judgement of what works, and a needs list. The plan and the mock-up were agreed; PR D draws the screens.
+- **Added.** `GET /api/integrations/meta/review` (Mondays 02:00 UTC, `CRON_SECRET`). BOE One works out the week's figures in code, Claude writes the words through the existing `ANTHROPIC_API_KEY`, and the answer is checked before anything is saved: cited ad sets must exist and no figure may be added. A refused answer gets one more try; then the week is saved as failed and earlier reviews stay. A quiet week makes no call.
+- **Database.** `meta_reviews`, `meta_learnings`, `meta_needs`, `meta_decide_learning`, `meta_update_need`. Read through `module_entry_open('marketing')`; no browser write grant; the two functions need Admin or `edit`. Rollback is in the migration header.
+- **Changed from the plan.** The review runs at about 7:30 to 8:30 am India, not 6:40: the Hobby plan fires a cron anywhere in its hour, and it must follow the 6:10 am read. Campaign `created_time` is now read by the shared structure query.
+- **Proof.** New tests for the week, the verdict, the answer check, the needs and lessons rules and every failure path, with made-up figures. The migration on PGlite: 24 checks, the rollback included. **Never run against real Claude or real data**: the first run is by hand from Vercel.
+- **Order.** Apply the migration before the merge. The cron fires only on Mondays, and a run before the migration would fail without harm.
+- **Rollback.** Revert the PR, then run the migration header's rollback. Nothing else reads these tables.
+
 ## 2026-11-02 — Confirmed Order Product details: Material gets the room (PR open) · no migration
 - **Owner request** (screenshot of Order 543). Give more space to Material and less to the product name and Customization, so the table looks neat: Material sat in a 10% column and wrapped to 17 lines while Customization, mostly "No customization", held about 490px.
 - **Changed.** `.order-products-table`: product 11% (was 15), dimensions 11% (was 12), material 23% (was 10), Customization the rest. The scroll floor under 1200px is 1100px (was 1000) so Customization is not crushed. CSS and one test only.

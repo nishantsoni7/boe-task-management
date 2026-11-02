@@ -1201,6 +1201,7 @@ describe('the applied migrations are frozen', () => {
       // Marketing, Meta Ads: the `edit` action, then the six tables and the function that sets the two numbers.
       '20270522000000_marketing_meta_edit_action.sql',
       '20270522000100_meta_ads_tables.sql',
+      '20270523000000_meta_weekly_review.sql',
     ])
   })
 
@@ -1653,6 +1654,7 @@ describe('the applied migrations are frozen', () => {
       // Marketing, Meta Ads: the `edit` action, then the six tables and the function that sets the two numbers.
       '20270522000000_marketing_meta_edit_action.sql',
       '20270522000100_meta_ads_tables.sql',
+      '20270523000000_meta_weekly_review.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
