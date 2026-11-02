@@ -23,7 +23,7 @@ export async function fetchMetaStructure(supabase: SupabaseClient, today: string
   const [accounts, campaigns, adSets, month, runs, settings] = await Promise.all([
     supabase.from('meta_ad_accounts').select('account_id, name, currency, last_synced_at').order('account_id'),
     fetchAllRows<MetaCampaign>((from, to) => supabase.from('meta_campaigns')
-      .select('campaign_id, name, effective_status, daily_budget_paise, lifetime_budget_paise')
+      .select('campaign_id, name, effective_status, created_time, daily_budget_paise, lifetime_budget_paise')
       .order('campaign_id').range(from, to)),
     fetchAllRows<MetaAdSet>((from, to) => supabase.from('meta_ad_sets')
       .select('ad_set_id, campaign_id, name, effective_status, optimization_goal, daily_budget_paise, lifetime_budget_paise')

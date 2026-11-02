@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-02 — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (PR #592) · 20270523000000 → APPLIED 2026-11-02, before the merge
+- **Owner request.** Learnings from old campaigns, a judgement of what works, and a needs list. The plan and the mock-up were agreed; PR D draws the screens.
+- **Added.** `GET /api/integrations/meta/review` (Mondays 02:00 UTC, `CRON_SECRET`). BOE One works out the week's figures in code, Claude writes the words through the existing `ANTHROPIC_API_KEY`, and the answer is checked before anything is saved: cited ad sets must exist and no figure may be added. A refused answer gets one more try; then the week is saved as failed and earlier reviews stay. A quiet week makes no call.
+- **Database.** `meta_reviews`, `meta_learnings`, `meta_needs`, `meta_decide_learning`, `meta_update_need`. Read through `module_entry_open('marketing')`; no browser write grant; the two functions need Admin or `edit`. Rollback is in the migration header.
+- **Changed from the plan.** The review runs at about 7:30 to 8:30 am India, not 6:40: the Hobby plan fires a cron anywhere in its hour, and it must follow the 6:10 am read. Campaign `created_time` is now read by the shared structure query.
+- **Proof.** New tests for the week, the verdict, the answer check, the needs and lessons rules and every failure path, with made-up figures. The migration on PGlite: 24 checks, the rollback included. **Never run against real Claude or real data**: the first run is by hand from Vercel.
+- **Order.** Apply the migration before the merge. The cron fires only on Mondays, and a run before the migration would fail without harm.
+- **Rollback.** Revert the PR, then run the migration header's rollback. Nothing else reads these tables.
+
 ## 2026-11-02 — Modules launcher, A+ refinement on desktop and tablet (PR #590, 02abdb2e) · no migration
 - **Owner request** (screenshot of `/modules`): design the first page after sign-in more professionally and minimally, with the UI/UX Pro Max rules, working with and without the For you panel. Three options were shown (A Refined cards, B One surface, C Grouped by area); the owner asked for A taken to 9 out of 10, approved the mock-up, then the build plan ("Approve plan").
 - **Changed.** Essentials (from 720 px of launcher width): 148 px tile, ink icon tile that turns BOE red when pointed at, and the unread count in words under the name (a chip, or a tick and "Nothing new" for a count known to be zero; blank at the same height while the count loads); the badge is hidden there. Compact tiles: 68 px, 38 px icon. "All modules": a count chip, 15 px section titles, a little more room under the header. Edit order: darker dashed edge, 36 px handle. A tile is named "Name, N unread" for a screen reader. Finance shows ₹, Sales its own icon (shared with the Control Center Access screens).

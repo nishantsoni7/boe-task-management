@@ -14,6 +14,8 @@ PR A is live (#580, `d29f903f`, deployed 2026-11-02): the tables, the daily sync
 
 PR B draws the screens (Overview, Campaigns, Settings, and the states for nothing read yet, first read running, last read failed). No SQL. Checked by `tsc`, lint, 39 new tests (the rules, the figures drawn from made-up rows, and a guard that the browser code can only read) and the screens rendered with the real stylesheet in headless Edge at desktop and phone width. The owner opened the preview signed in with real data before merging: the Overview and the opened running campaign showed the figures already checked against Ads Manager the same day. **Not yet seen:** saving the cap and target on Settings, the states for nothing read yet and last read failed, and a phone.
 
+Phase 2, step 1 (PR C): the Monday review, built with no screen yet. Migration `20270523000000` (three tables, two functions) **APPLIED to production on 2026-11-02** by the owner, before the merge, and confirmed on the live ledger; rehearsed first on PGlite, 24 checks including the rollback. The job has **never run against real Claude or real data**; its first run is by hand from Vercel's Cron Jobs page. PR D draws the Weekly review, Learnings and Needs you screens from the approved mock-up.
+
 ## 3. The model
 
 Meta is read once a day (GET `/api/integrations/meta/sync`, Vercel Cron, 00:40 UTC = 06:10 India, `Authorization: Bearer $CRON_SECRET`) with a **view-only** token from a system user in the owner's Meta business. The sync writes the six `meta_*` tables with the service role; the screens only read.
@@ -23,6 +25,15 @@ Meta is read once a day (GET `/api/integrations/meta/sync`, Vercel Cron, 00:40 U
 - **A failed run** writes a `failed` row in `meta_sync_runs` and leaves every earlier row alone, so the screens keep the last good reading. A run that is `running` and younger than 15 minutes stops a second one starting.
 - **Results** are stored as Meta sent them (`meta_insights_daily.actions`) and what counts as a "chat" is worked out in `src/lib/meta/results.ts`. Only the `CONVERSATIONS` goal is mapped. Other goals have no result count and get no verdict. Add a goal only after checking its number against Ads Manager.
 
+**The Monday review** (GET `/api/integrations/meta/review`, Vercel Cron `0 2 * * 1`, about 7:30 to 8:30 am India, `CRON_SECRET`). The Hobby plan fires a cron anywhere in its hour, so it is set an hour clear of the 6:10 am read. `src/lib/meta/review.ts` runs it:
+
+1. The reviewed week is the last full Monday to Sunday. A week with an `ok` row is not asked for again, so a second call costs nothing; a `failed` week can be run again.
+2. `weekly.ts` works out every figure in code, including the changes against the week before and 13 months of results per ad set. The week's verdict is code too: **Better** or **Worse** when cost per chat moves 10%, otherwise **About the same**; **quiet** under the Too early limits, and a quiet week makes no call to Claude.
+3. Claude (`ANTHROPIC_API_KEY`, the existing key) gets those figures and the names of campaigns and ad sets, through a forced tool. It writes the words and picks from what it was given.
+4. `reviewAnswer.ts` checks the answer: every cited ad set must exist, Keep and Look at must cite one, and every rupee figure, percent, decimal or number over 31 must appear in the data. A refused answer is sent back once with the reason, then the week is saved as `failed` and earlier reviews stay.
+5. Lessons are saved as `open` with a strength worked out from the chats behind them (Solid 100+, Fair 20+, Thin below). A lesson a person decided is never overwritten.
+6. Needs come from rules (no target, no cap, a running campaign silent for the whole week, learnings to confirm) and from each Look at item. A rule's need closes itself when the rule stops applying and reopens if it returns; a dismissed need stays dismissed.
+
 ## 4. Pages and routes
 
 | Route | Screen | Answers |
@@ -31,6 +42,7 @@ Meta is read once a day (GET `/api/integrations/meta/sync`, Vercel Cron, 00:40 U
 | `/marketing/campaigns` | Every campaign, running first then by spend, filters All / Running / Off, search, 25 at a time; open one for its ad sets | Admin, or `view` |
 | `/marketing/settings` | The monthly spending cap and the target cost per chat; the connection | `view` reads, `edit` (or Admin) saves |
 | `GET /api/integrations/meta/sync` | none | The daily read; 503 with no `CRON_SECRET`, 401 for a wrong one, 200 `not_configured` with no token, 502 when a run fails |
+| `GET /api/integrations/meta/review` | none | The Monday review; the same answers, `not_configured` meaning no `ANTHROPIC_API_KEY` |
 
 Code: `src/components/layout/MarketingLayout.tsx` (the shell), `src/components/meta/` (`MetaScreen` holds the shared reads, the period and the states; `MetaOverview`, `MetaCampaigns`, `MetaSettings`, `metaParts`, `meta.module.css`), `src/lib/meta/report.ts` (every figure and the sync state, pure), `verdict.ts` (the rules), `api.ts` (the only file that talks to the database), `src/hooks/useMetaAccess.ts`. One shared read (`['meta', 'structure']`) and one per period (`['meta', 'insights', from, to]`), so moving between pages costs nothing.
 
@@ -52,7 +64,17 @@ Layout: the approved mock-up (private canvas), drawn in the real BOE shell with 
 | `meta_sync_runs` | one row per sync: kind, status, message, counts | `id` |
 | `meta_settings` | one row: monthly cap and target cost per enquiry, both empty until set | `id = true` |
 
-RLS: one SELECT policy each, `module_entry_open('marketing')`. No write policy and no write grant, so a browser cannot write, Admin included. `meta_set_targets(cap, target)` is the one write: `SECURITY DEFINER`, fixed `search_path`, Admin or `edit`, closed to anon, values in paise, 0 or negative or over ₹1 crore refused. The file raises if a table is left open. Rollback is in the file's header.
+`20270523000000_meta_weekly_review.sql` (phase 2):
+
+| Table | Holds | Key |
+|---|---|---|
+| `meta_reviews` | one row per reviewed week: `ok` or `failed`, verdict, figures, Claude's words, model | `week_start` |
+| `meta_learnings` | proposed lessons: evidence, strength, `open` / `confirmed` / `rejected`, who decided | `lesson_key` |
+| `meta_needs` | what the manager needs from the owner: next step, `open` / `done` / `dismissed`, the task made from it | `need_key` |
+
+`meta_decide_learning(id, decision)` and `meta_update_need(id, status, task_id)`: `SECURITY DEFINER`, Admin or `edit`, closed to anon; a linked task must be the caller's own. No foreign key to `tasks`, which can be hard-deleted.
+
+RLS (all nine tables): one SELECT policy each, `module_entry_open('marketing')`. No write policy and no write grant, so a browser cannot write, Admin included. `meta_set_targets(cap, target)` is the one write: `SECURITY DEFINER`, fixed `search_path`, Admin or `edit`, closed to anon, values in paise, 0 or negative or over ₹1 crore refused. The file raises if a table is left open. Rollback is in the file's header.
 
 ## 6. Business rules to remember
 
@@ -74,6 +96,9 @@ RLS: one SELECT policy each, `module_entry_open('marketing')`. No write policy a
 - **Confirmed against real data on 2026-11-02:** Meta's default listing leaves nothing out (the counts match Ads Manager), the chat action name and the attribution default match Ads Manager to the rupee and the chat, and a campaign's total equals the sum of its ad sets. Still open: how far back Meta serves daily results beyond what the first read returned, and the goals other than `CONVERSATIONS` (a profile-visit goal has no mapping, so such a campaign shows no result).
 - A `running` run that is older than 15 minutes means the function died; the screens show it as failed (`STALE_RUN_MINUTES` in `report.ts`, a test pins it to the sync's number).
 - **Reading the result of a run.** Vercel's Runtime Logs stay empty on success because the route logs nothing, and its Request Logs cannot tell `ok` from `not_configured` (both 200). The record is `meta_sync_runs`, which the Overview's badge and connection panel read.
+- **A lesson must not claim what BOE One cannot see.** It sees campaigns and ad sets, not the ads, audiences or placements. A word like "reel" in a name is only a name, and the prompt says so. Reading ads and audiences is phase 2b, with new tables.
+- **The figure check allows plain counts up to 31** because dates and counts read the same, so a wrong small count can pass. Anything larger, and every rupee, percent or decimal, must be in the data.
+- **The job needs a daily read no older than 3 days,** or it saves a failed week rather than review old figures.
 - **The sync is not a button.** Until a Sync now route exists, a run is only the daily cron or "Run" on Vercel's Cron Jobs page.
 - **A token needs more than a system user.** Meta needs an app in the business first; the system user needs a role on that app (Business settings → System users → Assign assets → Apps) before Generate token lists any permission; `ads_read` is on the app by default ("Ready for testing") and the Marketing API access tier stays "Limited access", which was enough for the old, person-owned ad account shared to the business. The app is never published and never goes through app review.
 - The migration rehearsal on the linked database is refused. Use PGlite (`~/BOE-Development/temporary/pglite-env/rehearse-meta.mjs`).
