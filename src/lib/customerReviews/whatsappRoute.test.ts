@@ -49,6 +49,10 @@ describe('NOTHING IN THIS REPOSITORY SENDS A WHATSAPP MESSAGE', () => {
     // path could be added in a file nobody thought to check, so this walks the
     // whole tree rather than the two files above.
     const hits: string[] = []
+    // The one file allowed to name graph.facebook.com: Marketing reads the owner's Meta ad account with a
+    // view-only token. It makes GET requests only and cannot send a message; that is pinned below and in
+    // src/lib/meta/graph.test.ts. Only that marker is excused, and only there.
+    const MARKETING_READ_CLIENT = join('src', 'lib', 'meta', 'graph.ts')
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name)
@@ -69,12 +73,18 @@ describe('NOTHING IN THIS REPOSITORY SENDS A WHATSAPP MESSAGE', () => {
           'messages/send',
           'twilio',
         ]) {
+          if (marker === 'graph.facebook.com' && path.endsWith(MARKETING_READ_CLIENT)) continue
           if (source.includes(marker)) hits.push(`${path}: ${marker}`)
         }
       }
     }
     walk(join(ROOT, 'src'))
     assert.deepEqual(hits, [], `a WhatsApp sending path exists: ${hits.join(', ')}`)
+
+    // The excused file stays a reader: no write method, and no messages edge.
+    const reader = readFileSync(join(ROOT, MARKETING_READ_CLIENT), 'utf8')
+    assert.equal(/method:\s*'(POST|PUT|PATCH|DELETE)'/i.test(reader), false, 'the Meta client writes')
+    assert.equal(/messages/i.test(reader), false, 'the Meta client names a messages edge')
   })
 
   test('the route itself makes no outbound call', () => {

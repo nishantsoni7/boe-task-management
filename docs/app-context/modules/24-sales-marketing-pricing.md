@@ -2,6 +2,8 @@
 
 Written 2026-10-31 from the build; merged 2026-11-01 as #557 (`3ac61f79`). Migration `20270515000000` was **APPLIED to production on 2026-11-01** by the owner, before the merge.
 
+**Update 2026-11-02:** Marketing is being filled, starting with Meta Ads: see `26-marketing-meta-ads.md`. From migration `20270522000000` Marketing has `view` and `edit` and its description reads "Marketing, starting with Meta Ads." Its page stays Coming soon until PR B. Sales and Pricing are unchanged. The rest of this file describes the registration as built on 2026-11-01.
+
 ## 1. Purpose & users
 
 - The owner named three modules for future work (2026-10-31) and will say what goes in each later. Do not invent their features. Nothing in the app is known to belong to them yet.

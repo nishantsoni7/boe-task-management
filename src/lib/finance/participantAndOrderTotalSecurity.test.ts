@@ -1198,6 +1198,9 @@ describe('the applied migrations are frozen', () => {
       // Orders: dispatch records and their papers.
       '20270520000000_order_dispatch_records.sql',
       '20270521000000_seo_six_month_review.sql',
+      // Marketing, Meta Ads: the `edit` action, then the six tables and the function that sets the two numbers.
+      '20270522000000_marketing_meta_edit_action.sql',
+      '20270522000100_meta_ads_tables.sql',
     ])
   })
 
@@ -1647,6 +1650,9 @@ describe('the applied migrations are frozen', () => {
       // Orders: dispatch records and their papers.
       '20270520000000_order_dispatch_records.sql',
       '20270521000000_seo_six_month_review.sql',
+      // Marketing, Meta Ads: the `edit` action, then the six tables and the function that sets the two numbers.
+      '20270522000000_marketing_meta_edit_action.sql',
+      '20270522000100_meta_ads_tables.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
