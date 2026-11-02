@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1b018fff` — Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
-- Commits on this branch: 1153
+- Commit: `d89d262d` — Docs: record the PR number (#590) for the Modules launcher A+ refinement
+- Commits on this branch: 1155
 - Pages (`page.tsx`): 175   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `d89d262d` 2026-11-02 Docs: record the PR number (#590) for the Modules launcher A+ refinement
+- `398b64f9` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet
 - `1b018fff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
 - `d38bf3a9` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
 - `173707de` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
@@ -37,8 +39,6 @@
 - `dbf26e8b` 2026-11-01 Docs: one-screen window merged as PR #567 (9d6af8c3) (#568)
 - `9d6af8c3` 2026-11-01 Finance: one screen for a pending HDFC payment (#567)
 - `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
-- `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
-- `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
 
 ## Pages by top-level area
 

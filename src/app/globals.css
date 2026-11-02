@@ -4387,10 +4387,13 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 }
 .order-products-table col:nth-child(1) { width: 108px; }  /* 524-BE0001, under "Product Code" */
 .order-products-table col:nth-child(2) { width: 132px; }  /* the 108px photograph */
-.order-products-table col:nth-child(3) { width: 15%; }    /* product */
+/* Material is the column read most: its lines are long, so it gets the most of
+   the share (owner, 2026-11-02), and Customization, usually "No customization",
+   takes what is left. */
+.order-products-table col:nth-child(3) { width: 11%; }    /* product */
 .order-products-table col:nth-child(4) { width: 52px; }   /* qty */
-.order-products-table col:nth-child(5) { width: 12%; }    /* dimensions */
-.order-products-table col:nth-child(6) { width: 10%; }    /* material */
+.order-products-table col:nth-child(5) { width: 11%; }    /* dimensions */
+.order-products-table col:nth-child(6) { width: 23%; }    /* material */
 .order-products-table col:nth-child(7) { width: auto; }   /* customization */
 /* Wide enough for the head’s own labels, which carry their own
    14px padding and never wrap: "Cost / piece" and "Line total". */
@@ -4437,9 +4440,10 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 /* BELOW THE WIDTH NINE COLUMNS CAN HOLD, the table keeps a floor and scrolls
    inside its own card rather than crushing Customization to a few pixels. The
    page itself still never scrolls sideways — the floor is under the width the
-   record column has at 1366, so no ordinary desktop ever reaches it. */
+   record column has at 1366, so no ordinary desktop ever reaches it. 1100px
+   keeps Customization near 120px now that Material is wider. */
 @media (max-width: 1200px) {
-  .order-products-table { min-width: 1000px; }
+  .order-products-table { min-width: 1100px; }
 }
 
 /* ── The customization cell ──
