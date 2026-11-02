@@ -22,12 +22,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Rollback.** Revert the PR; no data changes. A refused upload (unreadable file, duplicate old order, no permission) leaves nothing under `bdpi/`. A file under `bdpi-uploads/` can stay only when the tab is closed or the connection drops between the two calls; it is private, unreferenced and harmless, and can be deleted by hand.
 - **Shipped.** Squash-merged on the owner's go-ahead 2026-11-02 10:36 UTC as 6610af35 (the one required check was Vercel); production deployment 7489986961 succeeded at 10:40 UTC. No backup run for this merge: the nightly one covers the day. The owner's retry of the Order 498 upload on the live page has not been seen yet.
 
-## 2026-11-02 — SEO module: the six everyday pages rebuilt to the review's standard (PR pending) · no migration
+## 2026-11-02 — SEO module: the six everyday pages rebuilt to the review's standard (PR #579, f828b988) · no migration
 - **Owner request.** Give the other SEO pages the same effort as the review page. The owner accepted 8.5 of 10 from the review rounds and said to proceed; the last round reached 9 from an AI reviewer re-checking its own list, not a real expert.
 - **Changed.** Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks each lead with one finding and show what not to quote. Rankings and the targets now read India over 28 days. Strategy changes carry a recommendation. Scheduled tasks shows 7 days as squares and how old each figure is.
 - **Data.** New metric names and `detail` fields only, so the door and the tables did not change. The expert notes are in `seo_reviews.detail.pages`, written by the Monday task. The board gained 4 items and 2 proposals.
 - **Fixed.** #576's badge text swap had broken three compound selectors, so green numbers on the review showed in the plain colour. The sender marked a finished Ahrefs run as logged out when its file named an earlier attempt.
-- **Proof.** New tests for each rule in `pages.ts`, the screens redrawn from the real dry-run delivery at desktop and phone. Not seen signed in.
+- **Proof.** New tests for each rule in `pages.ts`, the screens redrawn from the real dry-run delivery at desktop and phone. Live: deployment 7489610707 succeeded, the new text is in the served code and the old text is gone, and all six were read signed in as Admin at desktop width. Update and the strategy answers were not clicked.
 
 ## 2026-11-02 — SEO module: the rolling 6-month review and the private discussion brief (PR #575, 4b5d9006) · 20270521000000 → APPLIED 2026-11-02
 - **Owner request.** Track the last 6 months each time, show the top good and bad things, give feedback for discussions with the SEO person, and act as an expert guide against a wrong step. The owner pre-approved the build once the mock-up reached 9 of 10 from a senior SEO and AI-search review.

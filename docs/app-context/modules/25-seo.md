@@ -18,7 +18,7 @@ Neither step has been seen in a browser or signed in. `permissions:check` is ref
 
 The 6-month review and the discussion brief are live (#575, `4b5d9006`, merged by the owner 2026-11-02). Migration `20270521000000` APPLIED 2026-11-02 by the owner, after the merge, and read as remote. The real documents were sent the same morning. The review was seen signed in; the brief was not. Mock-up: https://claude.ai/artifact/MqaZb24wxgVofxCbLX4XkA (private). The owner asked on 2026-11-02 for a rolling 6-month view that shows what improved and what dropped, feedback for discussions with the SEO person, and an expert guide against wrong action, and pre-approved the build once an expert-style review reached 9 of 10.
 
-Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks were rebuilt to the review's standard 2026-11-02 (PR pending). No migration. Each page now answers one question, says what it must not be read as, and names the next step. Seen with real figures from the sender's dry run, at desktop and phone, in a plain page with the real stylesheet. Not seen signed in.
+Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks were rebuilt to the review's standard (#579, `f828b988`, merged by the owner 2026-11-02). No migration. Each page now answers one question, says what it must not be read as, and names the next step. Seen with real figures from the sender's dry run, at desktop and phone, in a plain page with the real stylesheet. Then read live, signed in as Admin at desktop width, 2026-11-02: all six draw with real figures and nothing overflows. Update and the strategy answers were not clicked, and no lower access level or phone was tried live.
 
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
@@ -96,6 +96,7 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 - The sender must not post a new key before the code that accepts it is live: the door refuses the whole delivery, and the daily runs fail with it.
 - `results.json` holds older URLs without `https://`. Normalise before counting, or brand counts come out too low (the sender's `host()`).
 - A finished Ahrefs file can name `not_run_logged_out` in its attempts, so read its top-level `status`, not the text. The sender used to mark 28 Oct logged out this way.
+- A city day's Stop is not remembered. The sender works it out from the queue on each send, so once the queue moves on that day reads Ran, as 1 Nov now does.
 - Filename order is not run order in `data/ahrefs-daily/`: a day can have `_run2.json` and `_run2_not_run.json`. The sender orders by file time.
 - The sender resends everything each run. That is safe only because every table upserts on a stable key, so keep ids stable. A proposal's id is its position in `proposed_changes`: never reorder or delete that list.
 - An item removed from `board.json` stays in `seo_plan_items`, because the door only upserts. Delete it by hand.
