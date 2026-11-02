@@ -1,18 +1,18 @@
 # 26. Marketing — Meta Ads
 
-Written 2026-11-02 from the build of PR A (data and sync) and updated the same day for PR B (the screens, no SQL; pull request pending when written). Migrations `20270522000000` and `20270522000100` were **APPLIED to production on 2026-11-02** by the owner, before the merge (checked on the live ledger afterwards; the dry-run listed only these two). PR #580, merged 2026-11-02 as `d29f903f` and deployed.
+Written 2026-11-02 from the build of PR A (data and sync) and updated the same day for PR B (the screens, no SQL; PR #587, merged 2026-11-02 as `d38bf3a9` and deployed). Migrations `20270522000000` and `20270522000100` were **APPLIED to production on 2026-11-02** by the owner, before the merge (checked on the live ledger afterwards; the dry-run listed only these two). PR #580, merged 2026-11-02 as `d29f903f` and deployed.
 
 ## 1. Purpose & users
 
 - The owner asked on 2026-11-02 for a Meta Ads section inside Marketing: watch the running and old campaigns, learn from them, say which work and which do not, and later propose new campaigns and make a needs list and a task for the owner. The goal is high volume of good leads at a sensible cost. Phase 1 only reads and shows; nothing in this module can change the Meta account.
-- Admin holds the module. Anybody else is Off until granted per person in Control Center → Access (group Sales): Viewer reads (`view`), Contributor also sets the monthly spending cap and the target cost per enquiry (`edit`). `approve` arrives with the phase that proposes campaigns.
+- Admin holds the module. Anybody else is Off until granted per person in Control Center → Access (group Sales): Viewer reads (`view`), Contributor also sets the monthly spending cap and the target cost per chat (`edit`). `approve` arrives with the phase that proposes campaigns.
 - Marketing is separate from SEO (module 25). Sales and Pricing are still registration-only (module 24).
 
 ## 2. Status
 
 PR A is live (#580, `d29f903f`, deployed 2026-11-02): the tables, the daily sync, the cron and the registration. **The first real read happened on 2026-11-02**, after the owner made a system user and a view-only token and set the two Vercel names: it finished `ok` in 43 seconds, and its campaign and ad set counts, and the spend and chats of the running campaign (and of its ad sets), matched Ads Manager exactly. So the "chat" action and the attribution default are right, and Meta's default listing leaves nothing out.
 
-PR B draws the screens (Overview, Campaigns, Settings, and the states for nothing read yet, first read running, last read failed). No SQL. Checked by `tsc`, lint, 39 new tests (the rules, the figures drawn from made-up rows, and a guard that the browser code can only read) and the screens rendered with the real stylesheet in headless Edge at desktop and phone width. **Not seen signed in with real data by the builder**; the owner checks on the Vercel preview before the merge.
+PR B draws the screens (Overview, Campaigns, Settings, and the states for nothing read yet, first read running, last read failed). No SQL. Checked by `tsc`, lint, 39 new tests (the rules, the figures drawn from made-up rows, and a guard that the browser code can only read) and the screens rendered with the real stylesheet in headless Edge at desktop and phone width. The owner opened the preview signed in with real data before merging: the Overview and the opened running campaign showed the figures already checked against Ads Manager the same day. **Not yet seen:** saving the cap and target on Settings, the states for nothing read yet and last read failed, and a phone.
 
 ## 3. The model
 
