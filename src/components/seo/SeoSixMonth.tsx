@@ -16,7 +16,7 @@ export function Tag({ tag, className = '' }: { tag: SeoTag; className?: string }
   return <span className={`boe-badge ${s.tag} ${BADGE[tag.tone]} ${className}`}>{tag.text}</span>
 }
 
-const Head = ({ title, note }: { title: string; note: string }) => (
+export const Head = ({ title, note }: { title: string; note?: string }) => (
   <div className={s.head}><h2 className={s.title}>{title}</h2><span className={s.note}>{note}</span></div>
 )
 

@@ -1,46 +1,14 @@
 import { strict as assert } from 'node:assert'
 import { describe, test } from 'node:test'
 import {
-  answeredProposals, boardCounts, cityTable, competitors, halfOnHalf, latestReview, moneyKeywords, months, needsOwner, openProposals,
-  reviewPage, targetForMonth, targets, taskHistories, taskStates,
+  answeredProposals, boardCounts, cityTable, competitors, halfOnHalf, latestReview, months, openProposals,
+  reviewPage, tagOf, targetForMonth, targets, taskHistories, taskStates,
   type SeoData, type SeoLogRow, type SeoMetric, type SeoPlanItem, type SeoReview,
 } from './report'
 
 const empty: SeoData = { sixMonth: null, metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
 const row = (metric: string, scope: string, value: number | null, metric_date = '2026-10-26', detail: SeoMetric['detail'] = null): SeoMetric =>
   ({ metric, scope, value, metric_date, detail, source: 'test' })
-
-describe('money keywords', () => {
-  const data: SeoData = {
-    ...empty,
-    watchlist: [
-      { kind: 'keyword', entry_key: 'a', label: 'a', note: null, active: true },
-      { kind: 'keyword', entry_key: 'b', label: 'b', note: null, active: true },
-      { kind: 'keyword', entry_key: 'gone', label: 'gone', note: null, active: true },
-    ],
-    metrics: [
-      row('keyword.position', 'a', 10.9, '2026-10-26', { previous: 12 }),
-      row('keyword.position', 'b', 20, '2026-10-26', { previous: 15 }),
-      row('keyword.position', 'a', 12, '2026-10-19'),
-      // Ranked last week, nothing this week: silent now, never carried forward as a position.
-      row('keyword.position', 'gone', 5, '2026-10-19'),
-    ],
-  }
-
-  test('reads the newest date, best position first, and a lower position is a rise', () => {
-    const { rows, asOf } = moneyKeywords(data)
-    assert.equal(asOf, '2026-10-26')
-    assert.deepEqual(rows.map(r => [r.keyword, r.move]), [['a', 'up'], ['b', 'down']])
-  })
-  test('10.9 counts as top 10, 11 does not', () => {
-    assert.equal(moneyKeywords(data).inTop10, 1)
-    assert.equal(moneyKeywords({ ...data, metrics: [row('keyword.position', 'a', 11)] }).inTop10, 0)
-  })
-  test('a keyword missing from the newest reading is silent, not old news', () => {
-    assert.deepEqual(moneyKeywords(data).silent, ['gone'])
-  })
-  test('no data gives no date', () => assert.equal(moneyKeywords(empty).asOf, null))
-})
 
 describe('cities', () => {
   const city = (scope: string, value: number | null, top: string[], date = '2026-10-26') => row('city.position', scope, value, date, { top })
@@ -133,6 +101,17 @@ describe('the board and targets', () => {
     ] }
     assert.deepEqual(targets(data, '2026-11-02').map(t => [t.measure, t.onTarget, t.april]), [['first', true, null], ['second', false, 12]])
   })
+  test('a target keeps its own words and state, and falls back to the sum', () => {
+    const data = { ...empty, metrics: [
+      row('plan.target', 'old name', 5, '2026-11-01', { order: 1, label: 'New name', now_text: '5, 1 real', state: { text: 'New measure', tone: 'pending' }, months: { '2026-11': 2, '2026-12': 3 } }),
+      row('plan.target', 'plain', 1, '2026-11-01', { order: 2, state: { text: 'x', tone: 'nonsense' }, months: { '2026-11': 2 } }),
+      row('plan.target', 'unread', null, '2026-11-01', { order: 3, months: { '2026-11': 2 } }),
+    ] }
+    const [first, second, third] = targets(data, '2026-11-02')
+    assert.deepEqual([first.label, first.nowText, first.state.text, first.december], ['New name', '5, 1 real', 'New measure', 3])
+    assert.deepEqual([second.label, second.nowText, second.state], ['plain', '1', { text: 'Behind', tone: 'bad' }])
+    assert.deepEqual([third.nowText, third.state.text], ['—', 'No reading'])
+  })
   test('the newest review is the verdict', () => {
     const review = (review_date: string) => ({ review_date, verdict: 'watch', items_due: 1, items_done: 0, numbers_on_target: 1, summary: '' }) as const
     assert.equal(latestReview({ ...empty, reviews: [review('2026-11-02'), review('2026-11-09')] })?.review_date, '2026-11-09')
@@ -155,10 +134,6 @@ describe('proposals and what needs the owner', () => {
   test('other log rows are never proposals', () => {
     assert.equal(openProposals({ ...empty, log: [{ ...proposal('w', null), kind: 'work' }] }).length, 0)
   })
-  test('only items waiting on the owner need the owner', () => {
-    const item = (id: string, status: SeoPlanItem['status']) => ({ id, status }) as SeoPlanItem
-    assert.deepEqual(needsOwner({ ...empty, planItems: [item('a', 'waiting_owner'), item('b', 'started')] }).map(i => i.id), ['a'])
-  })
 })
 
 describe('the Monday page', () => {
@@ -167,11 +142,16 @@ describe('the Monday page', () => {
 
   test('reads a full page', () => {
     const page = reviewPage(review({
-      direction: 'Better', done: ['a'], pending: ['b'], shipped: ['c'], needs_ok: ['d'], competitors: ['e'], next_tasks: ['f'], biggest_move: 'g', risk: 'h',
-      numbers: [{ measure: 'Leads', this_week: 12, last_week: '10', target: 55, note: 'monthly' }],
+      direction: 'Better', done: ['a'], pending: ['b'], competitors: ['e'], next_tasks: ['f'], biggest_move: 'g', risk: 'h',
+      biggest_move_tag: { text: 'Noise', tone: 'pending' }, risk_tag: { text: 'x', tone: 'nonsense' },
+      numbers: [{ measure: 'Leads', this_week: 12, last_week: '10', target: 55, note: 'monthly', tag: { text: 'Behind', tone: 'bad' } }],
     }))
-    assert.deepEqual(page.numbers, [{ measure: 'Leads', thisWeek: '12', lastWeek: '10', target: '55', note: 'monthly' }])
-    assert.deepEqual([page.direction, page.done, page.needsOk, page.nextTasks, page.biggestMove, page.risk], ['Better', ['a'], ['d'], ['f'], 'g', 'h'])
+    assert.deepEqual(page.numbers, [{ measure: 'Leads', thisWeek: '12', lastWeek: '10', target: '55', note: 'monthly', tag: { text: 'Behind', tone: 'bad' } }])
+    assert.deepEqual([page.direction, page.done, page.nextTasks, page.biggestMove, page.risk], ['Better', ['a'], ['f'], 'g', 'h'])
+    assert.deepEqual([page.moveTag, page.riskTag], [{ text: 'Noise', tone: 'pending' }, null])
+  })
+  test('a tag needs words and a known tone', () => {
+    for (const bad of [null, undefined, 'x', {}, { text: '', tone: 'good' }, { text: 'x', tone: 'loud' }]) assert.equal(tagOf(bad), null)
   })
   test('a page the session got wrong stays blank and never breaks the screen', () => {
     for (const detail of [null, undefined, {}, { numbers: 'x', done: 'x', pending: [1, null, ''], risk: {} }, { numbers: [null, 1, { this_week: 1 }] }]) {
@@ -195,20 +175,17 @@ describe('scheduled tasks', () => {
     assert.equal(state('Monday review', [run('monday_review', '2026-10-27')])?.state, 'ok')
     assert.equal(state('Monday review', [run('monday_review', '2026-10-26')])?.state, 'late')
   })
-  test('a login or CAPTCHA stop outranks late, because it says what to do', () => {
+  test('a login stop needs the owner and a CAPTCHA stop retries, and both outrank late', () => {
     assert.deepEqual(state('Daily Ahrefs research', [run('ahrefs_research', '2026-10-20', 'logged_out')]), { label: 'Daily Ahrefs research', state: 'problem', text: 'Logged out 20 Oct' })
-    assert.equal(state('Daily city check', [run('city_check', '2026-11-02', 'blocked')])?.state, 'problem')
+    assert.equal(state('Daily city check', [run('city_check', '2026-10-20', 'blocked')])?.state, 'retry')
   })
   test('only the newest run counts', () => {
     assert.equal(state('Daily city check', [run('city_check', '2026-11-01', 'blocked'), run('city_check', '2026-11-02')])?.state, 'ok')
   })
-  test('each task says what to do, newest run first, seven at most', () => {
+  test('each task says what to do, from its newest run', () => {
     const days = Array.from({ length: 9 }, (_, i) => run('ahrefs_research', `2026-10-2${i}`))
     const history = taskHistories({ ...empty, runs: [...days, run('ahrefs_research', '2026-11-02', 'logged_out'), run('city_check', '2026-11-02', 'blocked')] }, '2026-11-03')
-    const ahrefs = history.find(t => t.label === 'Daily Ahrefs research')
-    assert.equal(ahrefs?.recent.length, 7)
-    assert.equal(ahrefs?.recent[0].run_date, '2026-11-02')
-    assert.match(ahrefs?.advice ?? '', /Log in to tools.toolsurf.com/)
+    assert.match(history.find(t => t.label === 'Daily Ahrefs research')?.advice ?? '', /Log in to tools.toolsurf.com/)
     assert.match(history.find(t => t.label === 'Daily city check')?.advice ?? '', /Nothing to do/)
   })
   test('a late task points at the PC, and a task that is fine says nothing', () => {
