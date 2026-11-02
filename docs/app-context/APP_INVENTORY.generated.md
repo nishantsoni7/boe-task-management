@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b80eae1a` — Docs: record that the BDPI upload fix is deployed
-- Commits on this branch: 1147
+- Commit: `baa0a80b` — Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
+- Commits on this branch: 1148
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
@@ -14,8 +14,9 @@
 
 ## Latest 25 commits
 
-- `b80eae1a` 2026-11-02 Docs: record that the BDPI upload fix is deployed
-- `1cf2ab4d` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35)
+- `baa0a80b` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
+- `834e86c7` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35) (#583)
+- `d29f903f` 2026-11-02 Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (#580)
 - `6610af35` 2026-11-02 Old orders (BDPI): a PI over 4.5 MB uploads (#581)
 - `f828b988` 2026-11-02 SEO module: rebuild the six everyday pages to the review's standard (#579)
 - `2f8777e3` 2026-11-02 Docs: PI Draft page change merged as PR #577 (cb89e58e), deployed (#578)
@@ -38,7 +39,6 @@
 - `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
-- `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
 
 ## Pages by top-level area
 
