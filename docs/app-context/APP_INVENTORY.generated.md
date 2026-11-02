@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `ce769be0` — Docs: SEO step 2 merged as PR #571 (af8476b4), 20270519000000 applied (#572)
-- Commits on this branch: 1137
-- Pages (`page.tsx`): 171   API routes (`route.ts`): 182
-- Migrations: 402 (first `20260530_create_positions.sql`, latest `20270520000000_order_dispatch_records.sql`)
-- Tables ever created: 204 (dropped at some point: 7)   SQL functions: 883   Enums: 0
-- Test files: 717   Next.js 16.2.6, React 19.2.4
+- Commit: `9086a4af` — Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
+- Commits on this branch: 1139
+- Pages (`page.tsx`): 173   API routes (`route.ts`): 182
+- Migrations: 403 (first `20260530_create_positions.sql`, latest `20270521000000_seo_six_month_review.sql`)
+- Tables ever created: 206 (dropped at some point: 7)   SQL functions: 883   Enums: 0
+- Test files: 718   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `9086a4af` 2026-11-02 Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
+- `a7981e45` 2026-11-02 Orders: Dispatch tab on the product list, papers read and checked (#573)
 - `ce769be0` 2026-11-02 Docs: SEO step 2 merged as PR #571 (af8476b4), 20270519000000 applied (#572)
 - `af8476b4` 2026-11-02 SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (#571)
 - `b1bc5ab6` 2026-11-01 SEO module, step 1: five read-only screens (#570)
@@ -37,8 +39,6 @@
 - `2f9d5795` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed (#553)
 - `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
 - `d77c777f` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first (#550)
-- `25df502b` 2026-10-31 Confirmed Order: shorter Payment card, Product Code column, banners side by side, commission in both forms (#549)
-- `6aa8129e` 2026-10-31 Docs: Founders' payouts redesign merged as PR #547 (d454773c) (#548)
 
 ## Pages by top-level area
 
@@ -75,7 +75,7 @@
 - **reset-password** (1): `/reset-password`
 - **sales** (1): `/sales`
 - **samples** (3): `/samples`, `/samples/dispatch/[id]`, `/samples/notifications`
-- **seo** (7): `/seo`, `/seo/board`, `/seo/competitors`, `/seo/rankings`, `/seo/reviews`, `/seo/tasks`, `/seo/year`
+- **seo** (9): `/seo`, `/seo/board`, `/seo/brief`, `/seo/competitors`, `/seo/rankings`, `/seo/review`, `/seo/reviews`, `/seo/tasks`, `/seo/year`
 - **settings** (3): `/settings`, `/settings/positions`, `/settings/roles`
 - **showroom** (6): `/showroom/done`, `/showroom/join`, `/showroom/product/[product_code]`, `/showroom/project-list`, `/showroom/scan`, `/showroom/share/[token]`
 - **showroom-admin** (7): `/showroom-admin`, `/showroom-admin/categories`, `/showroom-admin/inquiry/[inquiryId]`, `/showroom-admin/products`, `/showroom-admin/products/[product_code]/edit`, `/showroom-admin/products/new`, `/showroom-admin/qr`
@@ -158,7 +158,7 @@
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
-- `src/lib/seo` — 4 source, 2 test
+- `src/lib/seo` — 6 source, 3 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
 - `src/lib/tasks` — 23 source, 37 test
@@ -391,11 +391,13 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `push_subscriptions` — 20270425000000
 - `role_permissions` — 20260660_creat
 - `sample_dispatches` — 20260622_creat
+- `seo_discussion_briefs` — 20270521000000
 - `seo_feed_runs` — 20270518000100
 - `seo_log` — 20270518000100
 - `seo_metrics` — 20270518000100
 - `seo_plan_items` — 20270518000100
 - `seo_reviews` — 20270518000100
+- `seo_six_month_reviews` — 20270521000000
 - `seo_watchlist` — 20270518000100
 - `showroom_categories` — 20260669_creat
 - `showroom_inquiries` — 20260643_creat
@@ -417,7 +419,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270425000000_phone_push_notifications.sql`
 - `20270426000000_vendor_management.sql`
 - `20270427000000_vendor_area_and_filters.sql`
 - `20270428000000_order_payment_plan.sql`
@@ -447,6 +448,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270518000100_seo_tables.sql`
 - `20270519000000_seo_board_edits_and_decisions.sql`
 - `20270520000000_order_dispatch_records.sql`
+- `20270521000000_seo_six_month_review.sql`
 
 ## All SQL function names
 

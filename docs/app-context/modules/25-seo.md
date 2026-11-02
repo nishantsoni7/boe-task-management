@@ -16,6 +16,8 @@ Step 2 is live (#571, `af8476b4`, merged by the owner 2026-11-02): the Weekly re
 
 Neither step has been seen in a browser or signed in. `permissions:check` is refused as a production read, so it was not run.
 
+The 6-month review and the discussion brief are in the PR that adds `20270521000000`. Mock-up: https://claude.ai/artifact/MqaZb24wxgVofxCbLX4XkA (private). The owner asked on 2026-11-02 for a rolling 6-month view that shows what improved and what dropped, feedback for discussions with the SEO person, and an expert guide against wrong action, and pre-approved the build once an expert-style review reached 9 of 10.
+
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
 ## 3. The model
@@ -33,7 +35,9 @@ Owner decision 2026-11-01: **no additional paid package.** Ahrefs stays on the T
 | `/seo` | `SeoOverview` | Verdict, five numbers, what needs the owner, the state of each task |
 | `/seo/rankings` | `SeoRankings` | The 20 money keywords, the 8 cities |
 | `/seo/competitors` | `SeoCompetitors` | Who wins, how strong, read on which date |
-| `/seo/year` | `SeoYear` | 12 months of clicks and leads, page groups, work done |
+| `/seo/review` | `SeoSixMonth` | The rolling 6-month review: verdict, likely causes, top 5 good and bad, dated next moves, targets, what to be careful quoting, 18 months of visits, leads and forms, what moved in India, AI readiness, blind spots |
+| `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief for a meeting with the SEO person: credit, what to raise, what is not on them, what is scored and what is not |
+| `/seo/year` | `SeoYear` | 12 months of clicks and leads, page groups, work done. Off the menu since the 6-month review; reached from the review's footnote |
 | `/seo/board` | `SeoBoard` | The 30 and 60-day board, targets, achieved, open proposals; Update and Keep or Change for those who hold them |
 | `/seo/reviews` | `SeoReviews` | Open strategy changes, every Monday page, the answers given |
 | `/seo/tasks` | `SeoTasks` | Each task's time, state, what to do, and its last 7 runs |
@@ -61,6 +65,8 @@ Metrics in use: `site.month.{clicks,impressions,position,sessions,website_leads}
 
 RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write policy and no write grant, so a browser cannot write to a table, Admin included. The file revokes Supabase's default grants itself and raises if a table is left open.
 
+`20270521000000_seo_six_month_review.sql`: `seo_six_month_reviews` and `seo_discussion_briefs`, one JSON document a period, keyed on `period_end`. The review reads through `module_entry_open('seo')`. The brief reads for `users.role = 'admin'` only, so SEO `view` does not open it. No write grant on either. The shape is `src/lib/seo/sixMonth.ts`, and the door refuses a document that does not match.
+
 `20270519000000_seo_board_edits_and_decisions.sql`: registers `edit` and `approve`, adds `edited_at`, `edited_by` to `seo_plan_items` and `decision`, `decision_note`, `decided_at`, `decided_by` to `seo_log`, and creates the app's only two writes. `seo_update_plan_item(id, status, evidence)` needs `edit`. `seo_decide_proposal(id, decision, note)` needs `approve`. Both are `SECURITY DEFINER` with a fixed `search_path`, read `auth.uid()`, and are closed to anon. The door's upsert does not name the new columns, so it leaves them alone.
 
 ## 6. Business rules to remember
@@ -72,11 +78,15 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 - Verdict rules and the guard against changing course on one week's moves are in `data/plan/board.json` in the website folder. The Monday review applies them; the app shows the result.
 - A board item needs evidence to be marked Done, as the board's own rule says. An answer to a strategy change cannot be overwritten, even by Admin, because the Monday review may already have acted on it. `change` means the owner adopted it; `keep` means declined, and the same change is not proposed again.
 - Lead data is counts only. Names and phone numbers never enter this module.
+- The 6-month review is a written analysis, not a calculation: the scheduled session writes `data/plan/six-month-review.json` and `data/plan/discussion-brief.json` in the website folder and the sender delivers them. BOE One draws what it is given and works nothing out, so a wrong figure is fixed in the file.
+- Positions and views are compared from 13 Sep only. Google stopped counting 100-result pages around 10 to 13 Sep 2025, so an earlier year-ago position reads about 7 places worse than it was. Clicks are not affected.
+- Bing's AI Performance has no data from 27 Aug to 19 Oct 2026, so its 3-month view covers 36 days and must not be compared with its 6-month total.
 - The employee audit, pay and role cost never enter this module. `docs/change-log.md` in the website folder can name customers, so the Year review reads the hand-written `data/plan/year-work.json`, not that file.
 
 ## 7. Traps
 
-- The repository is public. No SEO figures go in a migration, a fixture or a test.
+- The repository is public. No SEO figures go in a migration, a fixture or a test. `sixMonthSample.ts` is made up.
+- The sender must not post a new key before the code that accepts it is live: the door refuses the whole delivery, and the daily runs fail with it.
 - `results.json` holds older URLs without `https://`. Normalise before counting, or brand counts come out too low (the sender's `host()`).
 - Filename order is not run order in `data/ahrefs-daily/`: a day can have `_run2.json` and `_run2_not_run.json`. The sender orders by file time.
 - The sender resends everything each run. That is safe only because every table upserts on a stable key, so keep ids stable. A proposal's id is its position in `proposed_changes`: never reorder or delete that list.
@@ -86,4 +96,4 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 
 ## 8. Recheck before changing
 
-Every new writer goes through the ingest door or a new function with its own check. A new table needs `module_entry_open('seo')`. Screens read through `fetchSeoData`; do not add a second read per screen. The read keeps 400 days, so anything shown for longer needs its own query.
+Every new writer goes through the ingest door or a new function with its own check. A new table needs `module_entry_open('seo')`. Screens read through `fetchSeoData`; do not add a second read per screen. The one exception is the brief, `fetchLatestBrief`: it stays out of the shared read so it never reaches anybody else's browser. The read keeps 400 days, so anything shown for longer needs its own query.

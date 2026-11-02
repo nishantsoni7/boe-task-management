@@ -2,6 +2,8 @@
 // decides what is allowed in. Anything unexpected refuses the whole delivery, so a wrong file changes nothing, and
 // nothing reaches the database except the columns named here.
 
+import { briefProblem, sixMonthProblem } from './sixMonth'
+
 export const SEO_MAX_INGEST_BYTES = 2_000_000
 export const SEO_MAX_ROWS_PER_TABLE = 5_000
 
@@ -59,6 +61,12 @@ function json(row: Raw, field: string, where: string): Raw | null {
   if (value === undefined || value === null) return null
   if (typeof value !== 'object' || Array.isArray(value)) fail(where, `${field} must be an object`)
   return value as Raw
+}
+
+function document(row: Raw, where: string, problem: (body: unknown) => string | null): Raw {
+  const found = problem(row.body)
+  if (found) fail(`${where}.body`, found)
+  return row.body as Raw
 }
 
 const TABLES = {
@@ -135,6 +143,16 @@ const TABLES = {
       message: text(r, 'message', w, 500, ''),
       row_count: count(r, 'row_count', w) ?? 0,
     }),
+  },
+  six_month_reviews: {
+    table: 'seo_six_month_reviews',
+    onConflict: 'period_end',
+    row: (r: Raw, w: string): Row => ({ period_end: date(r, 'period_end', w), body: document(r, w, sixMonthProblem) }),
+  },
+  discussion_briefs: {
+    table: 'seo_discussion_briefs',
+    onConflict: 'period_end',
+    row: (r: Raw, w: string): Row => ({ period_end: date(r, 'period_end', w), body: document(r, w, briefProblem) }),
   },
 } as const
 

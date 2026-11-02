@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { istAddDays, istToday } from '@/lib/istDate'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import type { SeoData, SeoLogRow, SeoMetric, SeoPlanItem, SeoReview, SeoRun, SeoWatch } from './report'
+import type { DiscussionBriefRow, SixMonthRow } from './sixMonth'
 
 // All the SEO screens share this one read, so moving between them costs nothing. RLS decides who gets rows:
 // module_entry_open('seo'). Thirteen months keeps a full year on the screen and the read small as days add up.
@@ -33,9 +34,17 @@ export async function decideProposal(supabase: SupabaseClient, id: string, decis
   if (error) throw new Error(error.message)
 }
 
+/** Admin only by RLS, and kept out of the shared read so it never reaches anybody else's browser. */
+export async function fetchLatestBrief(supabase: SupabaseClient): Promise<DiscussionBriefRow | null> {
+  const { data, error } = await supabase.from('seo_discussion_briefs').select('period_end, body')
+    .order('period_end', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw new Error(error.message)
+  return data as DiscussionBriefRow | null
+}
+
 export async function fetchSeoData(supabase: SupabaseClient): Promise<SeoData> {
   const since = istAddDays(istToday(), -KEEP_DAYS)
-  const [metrics, watchlist, planItems, reviews, log, runs] = await Promise.all([
+  const [metrics, watchlist, planItems, reviews, log, runs, sixMonth] = await Promise.all([
     fetchAllRows<SeoMetric>((from, to) => supabase
       .from('seo_metrics')
       .select('metric_date, metric, scope, value, detail, source')
@@ -52,12 +61,14 @@ export async function fetchSeoData(supabase: SupabaseClient): Promise<SeoData> {
       .order('log_date', { ascending: false }).limit(500),
     supabase.from('seo_feed_runs').select('feed, run_date, status, message, row_count')
       .order('run_date', { ascending: false }).limit(100),
+    supabase.from('seo_six_month_reviews').select('period_end, body').order('period_end', { ascending: false }).limit(1).maybeSingle(),
   ])
   if (!metrics.ok) throw new Error(metrics.error)
-  for (const result of [watchlist, planItems, reviews, log, runs]) {
+  for (const result of [watchlist, planItems, reviews, log, runs, sixMonth]) {
     if (result.error) throw new Error(result.error.message)
   }
   return {
+    sixMonth: sixMonth.data as SixMonthRow | null,
     metrics: metrics.rows,
     watchlist: (watchlist.data ?? []) as SeoWatch[],
     planItems: (planItems.data ?? []) as SeoPlanItem[],

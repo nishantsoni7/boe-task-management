@@ -1,4 +1,5 @@
 // Everything the SEO screens work out from the saved rows. Pure, so each rule is tested without a database.
+import type { SixMonthRow } from './sixMonth'
 
 export type SeoMetric = {
   metric_date: string
@@ -48,6 +49,8 @@ export type SeoRun = {
   row_count: number
 }
 export type SeoData = {
+  /** The newest rolling 6-month review. */
+  sixMonth: SixMonthRow | null
   metrics: SeoMetric[]
   watchlist: SeoWatch[]
   planItems: SeoPlanItem[]
