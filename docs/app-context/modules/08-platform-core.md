@@ -150,9 +150,21 @@ Modules launcher (`src/app/modules/page.tsx`):
   ~100 px, `grid-auto-flow: column` so 1-2 Essentials share the width); up to 479 px "All modules" is ONE rounded
   white surface of 52 px rows (32 px icon chip, 15 px name, chevron) split by hairlines. The chevron
   (`styles.cardChevron`, compact tiles only, not in edit mode) is `display: none` at every other size. Edit order
-  uses the same list (dashed hairlines; the held card gets its own ink edge). Desktop/tablet (>= 480 px compact, >= 720 px Essentials) are unchanged. Layout values live in the CSS
+  uses the same list (dashed hairlines; the held card gets its own ink edge). Layout values live in the CSS
   module because inline `style` beats media queries. Pinned by `moduleCardSurface.test.ts` (PHONE_LIST /
   PHONE_ESSENTIALS) and the dimension list in `src/lib/modules/moduleOrderStorage.test.ts`.
+- **A+ refinement (2026-11-02, owner chose it from three mock-ups; desktop and tablet only, the phone above is
+  untouched).** From 720 px of launcher width an Essentials tile is 148 px with an ink icon tile (BOE red while the
+  tile is pointed at) and, under the name, the count in words: a pale-red chip "3 unread", or a tick and "Nothing new"
+  only for a count KNOWN to be zero; a count that has not arrived leaves the row blank, at the same height, so nothing
+  moves when it lands. There the badge is hidden (`.cardEssential .badge`); on a phone and on every compact tile the
+  badge on the icon is unchanged. The root of a tile carries `aria-label` "Name, N unread" while it is a button.
+  Compact tiles are 68 px (were 88; tap floor now 64) with a 38 px icon; "All modules" has a count chip beside its
+  heading (hidden on a phone); section titles are 15 px; Edit order draws a darker dashed edge (`#857F76`) and a 36 px
+  handle. Finance's icon is the rupee sign and Sales has its own (`ChartNoAxesCombined`); `ModuleIcons.tsx` is shared
+  with the Control Center Access screens, so both change. The Edit order controls, the For you panel and `globals.css`
+  were not touched. Decisions the owner approved: the chip reverses "the badge is the only count on a tile" for wide
+  Essentials only; no pale-pink hover wash (the "no pink" pin stays).
 - Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
   over a grid of equal tiles (`repeat(auto-fit, minmax(140px, 1fr))`, 52 px, icon in a 32 px neutral chip); one
   action spans the row, the featured Add Exhibition Lead always takes its own row. The sidebar copy is unchanged.

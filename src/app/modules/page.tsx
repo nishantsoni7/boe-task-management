@@ -23,7 +23,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag, TrendingUp } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, PerformanceIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
@@ -633,7 +633,7 @@ export default function BoeOsHomePage() {
       // The registered module description, verbatim.
       description: 'Sales module. Coming soon.',
       href: '/sales',
-      icon: <TrendingUp size={26} strokeWidth={1.8} />,
+      icon: <ChartNoAxesCombined size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(canOpenModule('marketing') ? [{
@@ -979,6 +979,7 @@ export default function BoeOsHomePage() {
               <section className={styles.section} aria-labelledby="modules-more-heading">
                 <h2 id="modules-more-heading" className={styles.sectionTitle}>
                   {essentialModules.length > 0 ? 'All modules' : 'Your modules'}
+                  <span className={styles.sectionCount} aria-hidden="true">{moreModules.length}</span>
                 </h2>
                 <div className={styles.grid}>
                   {moreModules.map((mod, index) =>
@@ -1071,6 +1072,11 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
       // names the module, and read by nothing else.
       data-module-key={mod.key}
       {...press}
+      // The count is part of the button's name, so a screen reader hears
+      // "Finance, 7 unread" once rather than a bare "7" after the name. Not
+      // while arranging: the card is not a button then, and a label on a plain
+      // div is not announced.
+      aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} unread` : mod.title}
       onPointerEnter={onIntent}
       onFocus={onIntent}
       onTouchStart={onIntent}
@@ -1098,6 +1104,27 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
           <div className={styles.title}>
             {mod.title}
           </div>
+
+          {/* Essentials, from 720px of launcher width only (CSS hides it below,
+              where the badge on the icon carries the count): the same count the
+              badge shows, said in words. The row is always drawn so a count that
+              arrives late does not move the tile; only a count KNOWN to be zero
+              says "Nothing new", and an unresolved one says nothing. */}
+          {variant === 'essential' && !editing && (
+            <div className={styles.status} aria-hidden="true">
+              {hasNotif ? (
+                <span className={styles.chip}>
+                  <span className={styles.chipDot} />
+                  {count! > 99 ? '99+' : count} unread
+                </span>
+              ) : count === 0 ? (
+                <span className={styles.calm}>
+                  <Check size={14} strokeWidth={2.2} />
+                  Nothing new
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {/* Essentials only, and decoration only: aria-hidden, no pointer

@@ -1,4 +1,4 @@
-import { Armchair, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag, TrendingUp } from 'lucide-react'
+import { Armchair, ChartNoAxesCombined, ContactRound, Factory, Image as ImageIcon, IndianRupee, Megaphone, Search, Tag } from 'lucide-react'
 
 // ── The module icons, drawn once ─────────────────────────────────────────────
 //
@@ -80,12 +80,9 @@ export function PerformanceIcon({ size = 26 }: IconProps) {
   )
 }
 
+// The rupee sign, not a dollar: every amount in Finance is in rupees.
 export function FinanceIcon({ size = 26 }: IconProps) {
-  return (
-    <svg {...attrs(size)}>
-      <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  )
+  return <IndianRupee size={size} strokeWidth={1.8} aria-hidden />
 }
 
 export function OrdersIcon({ size = 26 }: IconProps) {
@@ -150,7 +147,8 @@ export function ModuleIcon({ moduleKey, size = 18 }: { moduleKey: string; size?:
     case 'exhibition_leads': return <ContactRound size={size} strokeWidth={1.8} aria-hidden />
     case 'vendors': return <Factory size={size} strokeWidth={1.8} aria-hidden />
     case 'inventory': return <Armchair size={size} strokeWidth={1.8} aria-hidden />
-    case 'sales': return <TrendingUp size={size} strokeWidth={1.8} aria-hidden />
+    // Its own icon: Performance already draws the rising line.
+    case 'sales': return <ChartNoAxesCombined size={size} strokeWidth={1.8} aria-hidden />
     case 'marketing': return <Megaphone size={size} strokeWidth={1.8} aria-hidden />
     case 'pricing': return <Tag size={size} strokeWidth={1.8} aria-hidden />
     case 'seo': return <Search size={size} strokeWidth={1.8} aria-hidden />
