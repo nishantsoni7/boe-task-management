@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (PR #592) · 20270523000000 → NOT APPLIED when written, apply before the merge
+## 2026-11-02 — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (PR #592) · 20270523000000 → APPLIED 2026-11-02, before the merge
 - **Owner request.** Learnings from old campaigns, a judgement of what works, and a needs list. The plan and the mock-up were agreed; PR D draws the screens.
 - **Added.** `GET /api/integrations/meta/review` (Mondays 02:00 UTC, `CRON_SECRET`). BOE One works out the week's figures in code, Claude writes the words through the existing `ANTHROPIC_API_KEY`, and the answer is checked before anything is saved: cited ad sets must exist and no figure may be added. A refused answer gets one more try; then the week is saved as failed and earlier reviews stay. A quiet week makes no call.
 - **Database.** `meta_reviews`, `meta_learnings`, `meta_needs`, `meta_decide_learning`, `meta_update_need`. Read through `module_entry_open('marketing')`; no browser write grant; the two functions need Admin or `edit`. Rollback is in the migration header.

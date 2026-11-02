@@ -14,7 +14,7 @@ PR A is live (#580, `d29f903f`, deployed 2026-11-02): the tables, the daily sync
 
 PR B draws the screens (Overview, Campaigns, Settings, and the states for nothing read yet, first read running, last read failed). No SQL. Checked by `tsc`, lint, 39 new tests (the rules, the figures drawn from made-up rows, and a guard that the browser code can only read) and the screens rendered with the real stylesheet in headless Edge at desktop and phone width. The owner opened the preview signed in with real data before merging: the Overview and the opened running campaign showed the figures already checked against Ads Manager the same day. **Not yet seen:** saving the cap and target on Settings, the states for nothing read yet and last read failed, and a phone.
 
-Phase 2, step 1 (PR C): the Monday review, built with no screen yet. Migration `20270523000000` (three tables, two functions) rehearsed on PGlite, 24 checks including the rollback. The job has **never run against real Claude or real data**; its first run is by hand from Vercel's Cron Jobs page. PR D draws the Weekly review, Learnings and Needs you screens from the approved mock-up.
+Phase 2, step 1 (PR C): the Monday review, built with no screen yet. Migration `20270523000000` (three tables, two functions) **APPLIED to production on 2026-11-02** by the owner, before the merge, and confirmed on the live ledger; rehearsed first on PGlite, 24 checks including the rollback. The job has **never run against real Claude or real data**; its first run is by hand from Vercel's Cron Jobs page. PR D draws the Weekly review, Learnings and Needs you screens from the approved mock-up.
 
 ## 3. The model
 
