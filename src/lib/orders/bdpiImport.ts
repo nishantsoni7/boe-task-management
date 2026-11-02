@@ -185,6 +185,13 @@ export function bdpiPicturePath(bdpiId: string, itemSequence: string, image: Pic
 
 export const bdpiWorkbookPath = (bdpiId: string) => `bdpi/${bdpiId}/workbook.xlsx`
 
+/** Where the browser leaves a workbook for the server to read: one folder per person, so nobody reads another's. */
+export const bdpiUploadFolder = (userId: string) => `bdpi-uploads/${userId}/`
+export function isBdpiUploadPath(userId: string, path: string): boolean {
+  const folder = bdpiUploadFolder(userId)
+  return path.startsWith(folder) && /^[0-9a-f-]{36}\.xlsx$/.test(path.slice(folder.length))
+}
+
 /** Plain words for the database's refusals at upload. */
 export function describeBdpiError(message: string): string {
   if (/BDPI_OLD_ORDER_EXISTS/.test(message)) return 'A BDPI for this old order number already exists.'

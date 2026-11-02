@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type { PiParseResult, PiProduct, PiProductImage } from '@/lib/pi/types'
-import { bdpiFromWorkbook, bdpiPicturePath, describeBdpiError } from './bdpiImport'
+import { bdpiFromWorkbook, bdpiPicturePath, bdpiUploadFolder, describeBdpiError, isBdpiUploadPath } from './bdpiImport'
 import { itemDetails, parsePlanData } from './paymentPlan'
 import { activeOrdersNav } from '@/lib/navigation/moduleNav'
 
@@ -167,9 +167,44 @@ test('the migration keeps the tables closed and every door gated', () => {
 
 test('the routes ask the database as the person before the service role touches a file', () => {
   const upload = read('src/app/api/orders/bdpi/import/route.ts')
-  assert.ok(upload.indexOf("rpc('create_bdpi'") < upload.indexOf('adminClient()'))
+  // The upload key is handed out only after the same two questions create_bdpi asks...
+  assert.ok(upload.indexOf("rpc('actor_has_module_permission'") < upload.indexOf('adminClient()'))
+  assert.ok(upload.indexOf("rpc('module_entry_open'") < upload.indexOf('adminClient()'))
+  assert.match(upload, /p_action_key: 'edit_payment_plan'/)
+  // ...and nothing is stored under bdpi/<id>/ until the database has created the BDPI.
+  assert.ok(upload.indexOf("rpc('create_bdpi'") < upload.indexOf('bdpiWorkbookPath(id)'))
+  assert.ok(upload.indexOf("rpc('create_bdpi'") < upload.indexOf('bdpiPicturePath('))
   const pics = read('src/app/api/orders/bdpi/[id]/pictures/route.ts')
   assert.ok(pics.indexOf("rpc('bdpi_payment_plan_read'") < pics.indexOf('adminClient()'))
   const del = read('src/app/api/orders/bdpi/[id]/delete/route.ts')
   assert.ok(del.indexOf("rpc('delete_bdpi'") < del.indexOf('adminClient()'))
+})
+
+test('an upload key leads only to the asking person\'s own folder, one .xlsx per key', () => {
+  const me = '7f0c6a52-1f55-4c4e-9d0e-3c2f8d1b9a10'
+  const them = '0b2f1d44-6a77-4c1b-8e0a-5d9c7e3f2b21'
+  const key = 'c1a4d2e8-93b6-4f60-8a51-2e7b9d0c4f13'
+  assert.equal(bdpiUploadFolder(me), `bdpi-uploads/${me}/`)
+  assert.equal(isBdpiUploadPath(me, `bdpi-uploads/${me}/${key}.xlsx`), true)
+  assert.equal(isBdpiUploadPath(me, `bdpi-uploads/${them}/${key}.xlsx`), false, 'not another person\'s file')
+  assert.equal(isBdpiUploadPath(me, `bdpi-uploads/${me}/../${them}/${key}.xlsx`), false, 'no way out of the folder')
+  assert.equal(isBdpiUploadPath(me, `bdpi-uploads/${me}/${key}.png`), false)
+  assert.equal(isBdpiUploadPath(me, `bdpi/${key}/workbook.xlsx`), false, 'a stored BDPI is not an upload')
+  assert.equal(isBdpiUploadPath(me, `bdpi-uploads/${me}/${key}.xlsx/extra`), false)
+  assert.equal(isBdpiUploadPath(me, ''), false)
+})
+
+test('the PI goes to storage, not through the request body (a serverless body is 4.5 MB, a PI up to 10 MiB)', () => {
+  const route = read('src/app/api/orders/bdpi/import/route.ts')
+  assert.doesNotMatch(route, /formData\(/, 'the route no longer takes the file in the request')
+  assert.match(route, /createSignedUploadUrl\(/)
+  assert.match(route, /isBdpiUploadPath\(user\.id, uploadedPath\)/, 'only the asking person\'s own upload is read')
+  // The temporary file is removed whatever happens after the download.
+  assert.match(route, /finally \{\n\s+await storage\.remove\(\[uploadedPath\]\)/)
+
+  const page = read('src/app/orders/bdpi/page.tsx')
+  assert.doesNotMatch(page, /new FormData\(\)/, 'the page does not post the file')
+  assert.match(page, /uploadToSignedUrl\(/)
+  assert.ok(page.indexOf('uploadToSignedUrl(') < page.indexOf('path: prepared.json.path, file_name'), 'the file is stored before the server is asked to read it')
+  assert.match(page, /file\.size > PI_MAX_WORKBOOK_BYTES/, 'a file over the bucket\'s 10 MiB is refused in plain words, not by a bare error')
 })
