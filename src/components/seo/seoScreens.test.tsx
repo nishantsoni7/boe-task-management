@@ -51,6 +51,7 @@ describe('the 6-month review and the discussion brief', () => {
     assert.ok(page.includes('<b>Limit: </b>'), 'a labelled proof line keeps its label')
     assert.ok(page.indexOf(SAMPLE_REVIEW.moves.items[0].title) < page.indexOf(SAMPLE_REVIEW.moves.items[1].title))
     assert.ok(page.includes(SAMPLE_REVIEW.moves.then!))
+    assert.ok(page.includes('class="boe-badge tag '), 'badges hold sentences, so they opt out of the shared capitalising')
     assert.ok(page.includes(SAMPLE_REVIEW.targets.warning!))
     assert.ok(page.includes('/seo/year'), 'the 12-month view stays reachable')
   })

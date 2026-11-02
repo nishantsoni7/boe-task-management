@@ -16,7 +16,7 @@ Step 2 is live (#571, `af8476b4`, merged by the owner 2026-11-02): the Weekly re
 
 Neither step has been seen in a browser or signed in. `permissions:check` is refused as a production read, so it was not run.
 
-The 6-month review and the discussion brief are in the PR that adds `20270521000000`. Mock-up: https://claude.ai/artifact/MqaZb24wxgVofxCbLX4XkA (private). The owner asked on 2026-11-02 for a rolling 6-month view that shows what improved and what dropped, feedback for discussions with the SEO person, and an expert guide against wrong action, and pre-approved the build once an expert-style review reached 9 of 10.
+The 6-month review and the discussion brief are live (#575, `4b5d9006`, merged by the owner 2026-11-02). Migration `20270521000000` APPLIED 2026-11-02 by the owner, after the merge, and read as remote. The real documents were sent the same morning. The review was seen signed in; the brief was not. Mock-up: https://claude.ai/artifact/MqaZb24wxgVofxCbLX4XkA (private). The owner asked on 2026-11-02 for a rolling 6-month view that shows what improved and what dropped, feedback for discussions with the SEO person, and an expert guide against wrong action, and pre-approved the build once an expert-style review reached 9 of 10.
 
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
