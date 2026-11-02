@@ -95,7 +95,10 @@ describe('a card shows the module name and nothing else', () => {
   })
 })
 
-describe('the notification badge is unchanged, and is the only count on the card', () => {
+// The badge is unchanged on every compact tile and on a phone. From 720px an
+// Essentials tile also says the same count in words (see "the Essentials tile
+// says its count in words" below); that is the one place a count is spelled out.
+describe('the notification badge is unchanged on the icon', () => {
   test('a positive count draws a badge and a zero or missing one does not', () => {
     assert.ok(CARD.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'))
     assert.ok(CARD.includes('{hasNotif && ('))
@@ -103,7 +106,7 @@ describe('the notification badge is unchanged, and is the only count on the card
     assert.ok(CARD.includes("{count! > 99 ? '99+' : count}"), '99+ cap is unchanged')
   })
 
-  test('the count is not ALSO spelled out underneath', () => {
+  test('the old "N notifications" footer stays gone', () => {
     assert.equal(CARD.includes("'No notifications'"), false)
     assert.equal(/notification(s)?\`/.test(CARD), false,
       'the "3 notifications" line went with the footer')
@@ -340,9 +343,16 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
 
   test('the badge stays on the icon in BOTH tile sizes', () => {
     // .badge is positioned against .iconWrap, which both sizes render, and no
-    // rule anywhere repositions it against the tile.
-    assert.equal((stripCss(CSS).match(/\.badge\s*\{/g) ?? []).length, 1,
-      'one badge rule, not a per-size override that could move it to a corner')
+    // rule anywhere repositions it against the tile. The one other rule that
+    // names it only HIDES it on a wide Essentials tile, where the count is said
+    // in words instead.
+    assert.equal((stripCss(CSS).match(/^\.badge\s*\{/gm) ?? []).length, 1,
+      'one rule that places the badge, not a per-size override that could move it to a corner')
+    const others = (stripCss(CSS).match(/[^\n]*\.badge\s*\{[^}]*\}/g) ?? [])
+      .map(rule => rule.trim())
+      .filter(rule => !rule.startsWith('.badge {'))
+    assert.deepEqual(others.map(rule => rule.replace(/\s+/g, ' ')), ['.cardEssential .badge { display: none; }'],
+      'the only other badge rule hides it on a wide Essentials tile')
     assert.ok(CARD.indexOf(styleClass('badge')) > CARD.indexOf(styleClass('iconWrap')))
     assert.ok(CARD.indexOf(styleClass('badge')) < CARD.indexOf(styleClass('titleWrap')),
       'the badge is inside the icon wrapper, before the name')
@@ -362,8 +372,11 @@ describe('a phone gets one row of Essentials tiles and a grouped list of modules
     const essential = baseRule('.cardEssential').match(/min-height:\s*(\d+)px/)
     assert.ok(essential && Number(essential[1]) >= 64,
       `a phone Essentials row must stay tappable — found ${essential?.[1]}px`)
+    // 64px is far above the 24px WCAG 2.2 minimum target and above the 48px a
+    // phone list row keeps below. The tile used to be 88px; it is 68px since
+    // the A+ refinement, so the launcher shows more of itself on a laptop.
     const compact = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
-    assert.ok(compact && Number(compact[1]) >= 88,
+    assert.ok(compact && Number(compact[1]) >= 64,
       `a compact tile must stay tappable — found ${compact?.[1]}px`)
   })
 
@@ -773,6 +786,91 @@ describe('this page has no dark variant, and adds none', () => {
     assert.ok(/transition:\s*none/.test(rm), 'nothing eases')
     assert.ok(/\.card:hover,\s*\.card:focus-visible\s*\{\s*transform:\s*none/.test(rm),
       'and the 2px lift — motion and nothing else — is dropped')
+  })
+})
+
+// ── The A+ refinement: count in words, section count, Edit order, icons ──────
+describe('the Essentials tile says its count in words, from 720px', () => {
+  /** The status row inside ModuleCard. */
+  const STATUS = (() => {
+    const at = CARD.indexOf('styles.status')
+    assert.notEqual(at, -1, 'the status row exists on the card')
+    return CARD.slice(at, CARD.indexOf('</div>', at))
+  })()
+  /** The container block for a launcher 720px wide or more, Essentials part. */
+  const WIDE = (() => {
+    const at = CSS.indexOf('@container (min-width: 720px) {\n  .cardEssential {')
+    assert.notEqual(at, -1, 'the wide Essentials block exists')
+    return CSS.slice(at, CSS.indexOf('\n}\n', at))
+  })()
+
+  test('only an Essentials tile draws it, and never while arranging', () => {
+    assert.match(CARD,
+      /\{variant === 'essential' && !editing && \(\s*<div className=\{styles\.status\} aria-hidden="true">/)
+  })
+
+  test('a count above zero is a chip, and only a count KNOWN to be zero says Nothing new', () => {
+    assert.ok(STATUS.includes('{hasNotif ? ('))
+    assert.ok(STATUS.includes("{count! > 99 ? '99+' : count} unread"), 'the same 99+ cap as the badge')
+    assert.ok(STATUS.includes('count === 0'), 'a count that has not arrived must not read as zero')
+    assert.ok(STATUS.includes('Nothing new'))
+    assert.equal(STATUS.includes("'No notifications'"), false)
+  })
+
+  test('the row is hidden below 720px, keeps its height from there, and the badge steps aside', () => {
+    assert.match(baseRule('.status'), /display:\s*none/)
+    assert.match(WIDE, /\.status\s*\{[^}]*display:\s*flex[^}]*min-height:\s*24px/,
+      'a count that arrives late moves nothing')
+    assert.match(WIDE, /\.cardEssential \.badge\s*\{\s*display:\s*none;\s*\}/)
+  })
+
+  test('the button is named with its count once, and only while it is a button', () => {
+    assert.ok(CARD.includes(
+      'aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} unread` : mod.title}'))
+  })
+
+  test('the icon tile is ink at rest and BOE red while the tile is pointed at', () => {
+    assert.match(stripCss(WIDE), /\.cardEssential \.iconBox\s*\{[^}]*background:\s*#303536;[^}]*color:\s*#fff;/)
+    assert.match(stripCss(WIDE),
+      /\.cardEssential:hover \.iconBox,\s*\.cardEssential:focus-visible \.iconBox\s*\{[^}]*background:\s*#B9472E;[^}]*color:\s*#fff;/)
+  })
+
+  test('the chip is the For you urgent wash; the tile itself is still never tinted', () => {
+    assert.match(baseRule('.chip'), /background:\s*#FBF3F2/)
+    assert.equal(PAGE.includes('cardAttention'), false)
+  })
+})
+
+describe('"All modules" carries a count chip on a laptop and a tablet', () => {
+  test('it counts the cards of that section and is decoration', () => {
+    assert.ok(PAGE.includes('<span className={styles.sectionCount} aria-hidden="true">{moreModules.length}</span>'))
+  })
+
+  test('a phone keeps its quiet label, shows no chip, and opens where it did', () => {
+    assert.match(PHONE_LIST, /\.sectionCount\s*\{\s*display:\s*none;/)
+    assert.match(PHONE_LIST, /\.launcher > \.section:first-child\s*\{\s*padding-top:\s*0;/)
+  })
+})
+
+describe('Edit order is readable and easy to grab', () => {
+  test('the dashed edge reaches 3:1 and the handle is a 36px target', () => {
+    assert.match(stripCss(CSS), /\.cardEditing\s*\{[^}]*border-style:\s*dashed;[^}]*border-color:\s*#857F76;/)
+    assert.match(stripCss(CSS), /\.dragHandle\s*\{[^}]*width:\s*36px;\s*height:\s*36px;/)
+  })
+})
+
+describe('the module icons', () => {
+  const ICONS = read('src/components/modules/ModuleIcons.tsx')
+
+  test('Finance draws the rupee sign, not a dollar', () => {
+    assert.ok(ICONS.includes('<IndianRupee size={size}'))
+    assert.equal(/M17 5H9\.5/.test(ICONS), false, 'the hand-drawn dollar is gone')
+  })
+
+  test('Sales has an icon of its own, because Performance already draws the rising line', () => {
+    assert.ok(PAGE.includes('icon: <ChartNoAxesCombined size={26} strokeWidth={1.8} />'))
+    assert.ok(ICONS.includes("case 'sales': return <ChartNoAxesCombined"))
+    assert.equal(/TrendingUp/.test(PAGE + ICONS), false)
   })
 })
 
