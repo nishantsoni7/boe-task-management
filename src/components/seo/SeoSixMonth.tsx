@@ -13,7 +13,7 @@ const BADGE: Record<SeoTone, string> = {
 const TEXT: Partial<Record<SeoTone, string>> = { good: s.up, bad: s.down }
 
 export function Tag({ tag, className = '' }: { tag: SeoTag; className?: string }) {
-  return <span className={`boe-badge ${BADGE[tag.tone]} ${className}`}>{tag.text}</span>
+  return <span className={`boe-badge ${s.tag} ${BADGE[tag.tone]} ${className}`}>{tag.text}</span>
 }
 
 const Head = ({ title, note }: { title: string; note: string }) => (

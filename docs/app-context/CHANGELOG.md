@@ -4,10 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — SEO module: the rolling 6-month review and the private discussion brief · 20270521000000 → see the dossier for its apply state
+## 2026-11-02 — SEO module: the rolling 6-month review and the private discussion brief (PR #575, 4b5d9006) · 20270521000000 → APPLIED 2026-11-02
 - **Owner request.** Track the last 6 months each time, show the top good and bad things, give feedback for discussions with the SEO person, and act as an expert guide against a wrong step. The owner pre-approved the build once the mock-up reached 9 of 10 from a senior SEO and AI-search review.
 - **Added.** `/seo/review` replaces Year review on the menu, and `/seo/brief` is Admin only. `/seo/year` stays, reached from the review's footnote.
 - **Database.** `seo_six_month_reviews` and `seo_discussion_briefs`, one JSON document a period, written only through the ingest door. The brief has its own Admin-only policy, so SEO `view` does not open it, and it stays out of the shared read.
+- **Order slipped.** The PR was merged before the migration, so the screens could have shown an error until the owner applied it minutes later, before or just after the deploy landed. Nothing was lost.
 - **Proof.** New tests for the document check, the door, the screens and who can read. The real migration on PGlite with Supabase's default grants copied in, 19 checks: who reads what, no browser writes, the rollback.
 
 ## 2026-11-02 — Orders: Dispatch tab on the product list (PR #573, a7981e45) · 20270520000000 → APPLIED 2026-11-02

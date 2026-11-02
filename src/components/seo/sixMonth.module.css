@@ -12,11 +12,15 @@
 .noteLeft { font-size: 13px; color: var(--boe-text-muted); }
 .strong { font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--boe-text); }
 .small { font-size: 13px; line-height: 1.5; color: var(--boe-text-muted); }
+/* These badges hold sentences, and the shared badge would capitalise every word. */
+.page .tag { text-transform: none; }
 .up { color: var(--boe-completed-fg); }
 .down { color: var(--boe-blocked-fg); }
 .number { width: 24px; height: 24px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--boe-brand); color: var(--boe-text-on-brand); font: 700 12px var(--boe-font-heading); }
 .bigValue { font: 800 25px/1.15 var(--boe-font-heading); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--boe-text); }
-.bigValue.up { color: var(--boe-completed-fg); }
+.bigValue/* These badges hold sentences, and the shared badge would capitalise every word. */
+.page .tag { text-transform: none; }
+.up { color: var(--boe-completed-fg); }
 .bigValue.down { color: var(--boe-blocked-fg); }
 
 .hero { display: grid; grid-template-columns: minmax(0, 1fr) 340px; overflow: hidden; }
@@ -34,7 +38,9 @@
 .headline > span { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--boe-text); }
 .headline small { display: block; font-size: 12px; font-weight: 400; color: var(--boe-text-muted); }
 .headline b { font: 800 24px/1 var(--boe-font-heading); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--boe-text); }
-.headline b.up { color: var(--boe-completed-fg); }
+.headline b/* These badges hold sentences, and the shared badge would capitalise every word. */
+.page .tag { text-transform: none; }
+.up { color: var(--boe-completed-fg); }
 .headline b.down { color: var(--boe-blocked-fg); }
 
 .causes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -48,7 +54,9 @@
 .item summary:hover { background: var(--boe-surface-quiet); }
 .item summary:focus-visible, .figures summary:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: -2px; }
 .itemValue { font: 700 16px/1.2 var(--boe-font-heading); font-variant-numeric: tabular-nums; color: var(--boe-text); }
-.itemValue.up { color: var(--boe-completed-fg); }
+.itemValue/* These badges hold sentences, and the shared badge would capitalise every word. */
+.page .tag { text-transform: none; }
+.up { color: var(--boe-completed-fg); }
 .itemValue.down { color: var(--boe-blocked-fg); }
 .itemTitle { font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--boe-text); }
 .itemTag { justify-self: end; }
