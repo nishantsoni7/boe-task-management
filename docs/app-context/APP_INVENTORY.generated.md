@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `d89d262d` — Docs: record the PR number (#590) for the Modules launcher A+ refinement
+- Commit: `02abdb2e` — Modules launcher: A+ refinement on desktop and tablet (#590)
 - Commits on this branch: 1155
 - Pages (`page.tsx`): 175   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `d89d262d` 2026-11-02 Docs: record the PR number (#590) for the Modules launcher A+ refinement
-- `398b64f9` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet
+- `02abdb2e` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet (#590)
+- `2f72c6bb` 2026-11-02 Confirmed Order Product details: Material gets the room (#589)
 - `1b018fff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
 - `d38bf3a9` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
 - `173707de` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
