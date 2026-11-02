@@ -11,7 +11,9 @@ export const SUPPORTING_DETAILS_TITLE = 'Supporting details'
 /**
  * SUPPORTING DETAILS: the optional things around a PI, in one row of four
  * tiles — Order highlight, Sample, Client PO and Design files — the last
- * section of the PI details card (owner, 2026-10-30).
+ * section of the PI details card (owner, 2026-10-30). A reader who cannot edit
+ * the sample choice gets three tiles, the highlight twice as wide: the Order
+ * type at the top of the page already says it (owner, 2026-11-02).
  *
  * Nothing here is needed to submit. Each part keeps the door it always had: the
  * files go through the staging table and the highlight through its own RPC. The
@@ -42,6 +44,10 @@ export function PiSupportingDetails({
   const sent = useSentWithPi(supabase, submissionId, submittedAt)
   // Before the migration that lets the database remember files, none are offered.
   const filesOffered = locked ? true : supporting.stagedReadable
+  // The sample choice is drawn only for someone who can change it. For everyone
+  // else it repeated the Order type at the top of the page (owner, 2026-11-02),
+  // and its width goes to the Order highlight.
+  const canEditSample = canEditHighlight && !locked
 
   return (
     <section
@@ -54,7 +60,7 @@ export function PiSupportingDetails({
         {!locked && <SectionChip tone="grey">Optional</SectionChip>}
       </div>
 
-      <div className="pi-support-row" data-files={filesOffered ? 'on' : 'off'}>
+      <div className="pi-support-row" data-files={filesOffered ? 'on' : 'off'} data-tiles={canEditSample ? '4' : '3'}>
         <div className="pi-support-col pi-support-highlight">
           <PiHighlightRemark
             supabase={supabase}
@@ -66,13 +72,15 @@ export function PiSupportingDetails({
             bare
           />
           {/* The sample choice (20270320000000): same editor rule as the highlight. */}
-          <PiSampleType
-            supabase={supabase}
-            submissionId={submissionId}
-            canEdit={canEditHighlight && !locked}
-            rowVersion={rowVersion}
-            onSaved={() => { void onSaved() }}
-          />
+          {canEditSample && (
+            <PiSampleType
+              supabase={supabase}
+              submissionId={submissionId}
+              canEdit
+              rowVersion={rowVersion}
+              onSaved={() => { void onSaved() }}
+            />
+          )}
         </div>
         {locked
           ? <PiSentColumns supabase={supabase} shown={sent} />

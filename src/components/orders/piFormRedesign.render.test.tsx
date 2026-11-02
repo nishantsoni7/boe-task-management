@@ -51,6 +51,21 @@ describe('Supporting details', () => {
     assert.match(css, /@container \(max-width: 720px\) \{\s*\.pi-support-row \{ grid-template-columns: minmax\(0, 1fr\)/)
   })
 
+  test('a reader who cannot edit the sample choice gets three tiles, the highlight twice as wide (owner, 2026-11-02)', () => {
+    assert.match(supporting(), /data-tiles="4"/, 'an editor keeps the Sample tile: it is the only control that sets it')
+    const readOnly = supporting({ locked: true, canEditFiles: false, canEditHighlight: false })
+    assert.match(readOnly, /data-tiles="3"/)
+    assert.ok(!readOnly.includes('pi-sample-type') && !readOnly.includes('Sample order only'),
+      'the Order type at the top of the page already says it')
+    assert.match(supporting({ canEditHighlight: false }), /data-tiles="3"/,
+      'someone who may not edit the highlight may not edit the sample choice either')
+    assert.ok(read('src/components/orders/PiSupportingDetails.tsx').includes('{canEditSample && ('),
+      'the control is drawn only for an editor')
+    assert.match(read('src/app/globals.css'),
+      /\.pi-zone \.pi-support-row\[data-tiles='3'\] \{ grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\) minmax\(0, 1fr\); \}/,
+      'half the row for the highlight, a quarter for each file tile')
+  })
+
   test('locked: the same areas read-only — no Add, no Save, no input', () => {
     const html = supporting({ locked: true, canEditFiles: false, canEditHighlight: false })
     assert.ok(html.includes('Client PO') && html.includes('Design Files'))

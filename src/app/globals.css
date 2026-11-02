@@ -13112,6 +13112,13 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pi-zone .pi-detail-highlight-text,
 .pi-zone .pi-sample-type-value { font-size: 14px; font-weight: 600; color: #303536; }
 .pi-zone .pi-detail-highlight--bare .pi-detail-highlight-input { min-height: 64px; border-color: #E4DED7; }
+/* Without the Sample tile (owner, 2026-11-02) the Order highlight takes its
+   width: half the row, the two file tiles a quarter each. A narrow card falls
+   back to the wrapping tiles above. */
+.pi-zone .pi-support-row[data-tiles='3'] { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+@container (max-width: 720px) {
+  .pi-zone .pi-support-row[data-tiles='3'] { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+}
 
 /* ── The payment, in the right column ──
    The amount received, the bar with the advance tick and its label, one row
