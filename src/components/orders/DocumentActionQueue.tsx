@@ -31,7 +31,7 @@ import {
 } from '@/lib/orders/orderDocumentSubmissions'
 import { splitRevisionQueue, type RevisionQueueRow } from '@/lib/orders/orderPiVersions'
 
-const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_admin', 'rejected_operations']
+export const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_admin', 'rejected_operations']
 
 type Loaded = {
   rows: { submission: PersistedDocumentSubmission; orderNumber: string }[]
@@ -49,12 +49,14 @@ const TONE: Record<string, { bg: string; fg: string }> = {
   accepted: { bg: '#E8F5EE', fg: '#276247' },
 }
 
-export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, formatWhen }: {
+export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, formatWhen, hideNeedsYou = false }: {
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
   viewingAs: boolean
   formatWhen: (iso: string) => string
+  /** The approver's dashboard lists what needs them in "Needs your decision"; here only "awaiting someone else" is drawn. */
+  hideNeedsYou?: boolean
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
 
@@ -109,7 +111,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
   }
   const { needsYou, waitingOnOthers } = splitDocumentQueue(loaded.rows, viewer)
   const rev = splitRevisionQueue(loaded.revisions, { viewerId, isAdmin, viewingAs })
-  const needsCount = needsYou.length + rev.needsYou.length
+  const needsCount = hideNeedsYou ? 0 : needsYou.length + rev.needsYou.length
   if (needsCount === 0 && waitingOnOthers.length === 0 && rev.waitingOnOthers.length === 0) return null
   const nameOf = (id: string | null) => (id ? loaded.names.get(id) ?? null : null)
 
@@ -168,17 +170,21 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
 
   return (
     <section className="order-docq" aria-label="Needs your action">
-      <div className="order-docq-head">
-        <h2 className="order-docq-title">Needs your action — Order documents and revised PIs</h2>
-        {needsCount > 0 && <span className="order-docq-count" aria-label={`${needsCount} waiting on you`}>{needsCount}</span>}
-      </div>
-      {needsCount > 0 ? (
-        <ul className="order-docq-list">
-          {rev.needsYou.map(r => <RevRow key={r.id} r={r} />)}
-          {needsYou.map(r => <Row key={r.submission.id} r={r} />)}
-        </ul>
-      ) : (
-        <p className="order-docq-meta" style={{ padding: '8px 14px', margin: 0 }}>Nothing is waiting on you.</p>
+      {hideNeedsYou ? null : (
+        <>
+          <div className="order-docq-head">
+            <h2 className="order-docq-title">Needs your action — Order documents and revised PIs</h2>
+            {needsCount > 0 && <span className="order-docq-count" aria-label={`${needsCount} waiting on you`}>{needsCount}</span>}
+          </div>
+          {needsCount > 0 ? (
+            <ul className="order-docq-list">
+              {rev.needsYou.map(r => <RevRow key={r.id} r={r} />)}
+              {needsYou.map(r => <Row key={r.submission.id} r={r} />)}
+            </ul>
+          ) : (
+            <p className="order-docq-meta" style={{ padding: '8px 14px', margin: 0 }}>Nothing is waiting on you.</p>
+          )}
+        </>
       )}
       {(waitingOnOthers.length > 0 || rev.waitingOnOthers.length > 0) && (
         <>

@@ -1,0 +1,132 @@
+/* The admin's Orders dashboard: Needs your decision | Revenue, then Orders to watch.
+ * Owner-approved layout, 2026-11-02. Scoped in a module on purpose: globals.css lost a whole
+ * block of rules by accident once (PR #522), and nothing else shares these names.
+ * Widths follow the CONTAINER, not the window, because the sidebar changes how much room the page has. */
+
+.root { container-type: inline-size; container-name: admin; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px; align-items: start; }
+.topSolo { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+.card { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: 14px; box-shadow: var(--boe-shadow-panel); overflow: hidden; min-width: 0; }
+.cardHead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 15px 24px; background: #FAF8F5; border-bottom: 1px solid var(--boe-border); }
+.cardTitle { margin: 0; font-family: var(--boe-font-heading); font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; color: var(--boe-text); }
+.count { min-width: 24px; padding: 1px 9px; border-radius: 999px; background: #F0EBE5; font-size: 13px; font-weight: 700; line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums; }
+.countAttn { background: var(--boe-waiting-bg); color: var(--boe-waiting-fg); }
+.hint { margin-left: auto; font-size: 12px; color: var(--boe-text-muted); }
+.tip { display: inline-flex; color: var(--boe-text-muted); }
+.tag { margin-left: auto; padding: 3px 10px; border-radius: 999px; background: #F0EBE5; font-size: 12px; font-weight: 500; color: var(--boe-text-muted); }
+.sub { display: block; font-size: 12px; color: var(--boe-text-muted); overflow-wrap: anywhere; }
+.note { margin: 0; padding: 20px 24px; font-size: 14px; color: var(--boe-text-muted); }
+.skeleton { height: 220px; background: #F3F0EB; }
+.empty { display: flex; align-items: center; gap: 10px; padding: 32px 24px; font-size: 14px; color: var(--boe-text-muted); }
+.empty svg { flex: none; color: var(--boe-completed-fg); }
+
+/* A chip always carries an icon and words: colour is never the only signal. */
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border: 1px solid; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4; text-align: left; }
+.chip svg { flex: none; }
+.chipOk { color: var(--boe-completed-fg); background: var(--boe-completed-bg); border-color: var(--boe-success-border); }
+.chipWarn { color: var(--boe-waiting-fg); background: var(--boe-waiting-bg); border-color: var(--boe-warning-border); }
+.chipDanger { color: var(--boe-blocked-fg); background: var(--boe-blocked-bg); border-color: var(--boe-error-border); }
+.chipInfo { color: var(--boe-working-fg); background: var(--boe-working-bg); border-color: var(--boe-info-border); }
+.chipNeutral { color: var(--boe-pending-fg); background: var(--boe-pending-bg); border-color: var(--boe-border-strong); }
+
+/* ── Needs your decision ── */
+.dlist, .blist { list-style: none; margin: 0; padding: 0; }
+.dcols, .drow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 0.95fr) minmax(0, 1.6fr) minmax(0, 0.95fr) 20px; gap: 4px 18px; align-items: center; padding: 0 24px; }
+.dcols { height: 38px; font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; color: var(--boe-text-muted); border-bottom: 1px solid #EFEAE3; }
+.drow { min-height: 76px; padding-top: 10px; padding-bottom: 10px; color: var(--boe-text); text-decoration: none; }
+.dlist > li + li .drow { border-top: 1px solid #EFEAE3; }
+.drow:hover, .brow:hover { background: #FAF8F5; }
+.drow:hover .go, .brow:hover .go { color: var(--boe-brand); }
+.drow:focus-visible, .brow:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: -2px; }
+.kind { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: 0.06em; text-transform: uppercase; color: var(--boe-brand-ink); }
+.who { display: flex; flex-direction: column; min-width: 0; }
+.name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.age { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ageWarn { color: var(--boe-waiting-fg); }
+.ageDanger { color: var(--boe-blocked-fg); }
+.cellv { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.right { align-items: flex-end; text-align: right; }
+.val { font-size: 15px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.go { justify-self: end; color: #A9A39B; }
+
+/* ── Revenue ── */
+.revRow { padding: 14px 24px 16px; }
+.revRow + .revRow { border-top: 1px solid #EFEAE3; }
+.revHero { padding-top: 16px; padding-bottom: 18px; }
+.revTop { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; }
+.revLabel { font-size: 11px; font-weight: 600; line-height: 1.2; letter-spacing: 0.06em; text-transform: uppercase; color: var(--boe-text-muted); }
+.revRange { font-size: 12px; color: var(--boe-text-muted); }
+.revLine { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 6px; }
+.revAmt { font-family: var(--boe-font-heading); font-size: 25px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.revHero .revAmt { font-size: 34px; }
+.revZero .revAmt { color: var(--boe-text-strong); }
+.revMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--boe-text-muted); }
+.pill { padding: 2px 10px; border-radius: 999px; background: #F3F0EB; font-size: 12px; font-weight: 600; color: var(--boe-text-strong); font-variant-numeric: tabular-nums; }
+.revGaps { margin: 0; padding: 12px 24px 16px; border-top: 1px solid #EFEAE3; list-style: none; font-size: 12px; color: var(--boe-waiting-fg); }
+
+/* ── Orders to watch ── */
+.watchHead { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 24px; padding: 15px 24px; background: #FAF8F5; border-bottom: 1px solid var(--boe-border); }
+.pipe { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; font-size: 13px; color: var(--boe-text-muted); }
+.pipe b { font-size: 14px; font-weight: 700; color: var(--boe-text); }
+.bar { display: flex; gap: 2px; width: 200px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--boe-surface-sunken); }
+.barOk { display: block; height: 100%; background: #3F9B6E; }
+.barWarn { display: block; height: 100%; background: #E2A93B; }
+.leg { display: inline-flex; align-items: center; gap: 6px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3F9B6E; }
+.dotWarn { background: #E2A93B; }
+.tabs { display: flex; gap: 4px; padding: 0 14px; border-bottom: 1px solid var(--boe-border); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px; padding: 13px 12px 12px; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 500; color: var(--boe-text-strong); white-space: nowrap; cursor: pointer; }
+.tab:hover { color: var(--boe-text); background: #FAF8F5; }
+.tab[aria-selected="true"] { border-bottom-color: var(--boe-brand); font-weight: 600; color: var(--boe-text); }
+.tab:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: -2px; }
+.tabN { min-width: 22px; padding: 0 7px; border-radius: 999px; background: #F0EBE5; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.tabNDanger { background: var(--boe-blocked-bg); color: var(--boe-blocked-fg); }
+.tabNZero { background: transparent; font-weight: 500; color: var(--boe-text-muted); }
+.brow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.5fr) minmax(0, 1fr) 20px; gap: 4px 18px; align-items: center; min-height: 72px; padding: 12px 24px; color: var(--boe-text); text-decoration: none; }
+.blist > li + li .brow { border-top: 1px solid #EFEAE3; }
+.oid { font-family: var(--boe-font-heading); font-size: 15px; font-weight: 700; line-height: 1.2; letter-spacing: -0.005em; color: var(--boe-brand-ink); }
+.oclient { display: block; font-size: 13px; color: var(--boe-text-strong); overflow-wrap: anywhere; }
+.ctx1 { font-size: 13px; color: var(--boe-text); overflow-wrap: anywhere; }
+.more { display: flex; justify-content: center; padding: 10px; border-top: 1px solid #EFEAE3; }
+
+/* ── Medium: the two cards stack and revenue becomes three columns ── */
+@container admin (max-width: 1079px) {
+  .top { grid-template-columns: minmax(0, 1fr); }
+  .revBody { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .revRow + .revRow { border-top: 0; border-left: 1px solid #EFEAE3; }
+  .revHero .revAmt { font-size: 25px; }
+  .revRow, .revHero { padding: 16px 24px 18px; }
+  .revTop, .revLine { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .revLine { margin-top: 8px; gap: 8px; }
+  .pipe { width: 100%; margin-left: 0; }
+}
+
+/* ── Phone ── */
+@container admin (max-width: 700px) {
+  .root { gap: 16px; }
+  .cardHead, .watchHead { padding: 13px 16px; }
+  .revBody { display: block; }
+  .revRow + .revRow { border-top: 1px solid #EFEAE3; border-left: 0; }
+  .revRow { padding: 14px 16px 16px; }
+  .revHero .revAmt { font-size: 30px; }
+  .dcols { display: none; }
+  .drow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who val" "age det"; gap: 10px 12px; min-height: 0; padding: 14px 16px; }
+  .cWho { grid-area: who; }
+  .cVal { grid-area: val; align-self: start; }
+  .cAge { grid-area: age; }
+  .cDet { grid-area: det; align-items: flex-end; text-align: right; }
+  .drow .go, .brow .go { display: none; }
+  .brow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "ord fig" "iss iss" "ctx ctx"; gap: 8px 12px; min-height: 0; padding: 14px 16px; }
+  .cOrd { grid-area: ord; }
+  .cFig { grid-area: fig; align-items: flex-end; }
+  .cIss { grid-area: iss; }
+  .cCtx { grid-area: ctx; }
+  .bar { order: 3; width: 100%; }
+  .tabs { padding: 0 8px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab, .drow, .brow { transition: background-color 0.12s, color 0.12s; }
+}

@@ -25,8 +25,10 @@ import {
   advanceLine,
   alignmentLine,
   dueLine,
+  fabricFinishIssue,
   fabricFinishLine,
   formatDate,
+  formatPercent,
   formatRupees,
   formatWaiting,
   overviewCards,
@@ -48,6 +50,8 @@ type BoardRow = DashboardOrderRef & {
   key: string
   /** What is wrong, or what is coming. */
   headline: string
+  /** The admin board's chip, where the figure column already carries the money or the days; headline when absent. */
+  issue?: string
   /** Who or what it waits on; muted. */
   sub: string
   /** Right-hand figure: a rupee value or an elapsed time. */
@@ -78,6 +82,7 @@ export function boardRows(summary: DashboardSummary, key: BoardKey): BoardRow[] 
         orderId: r.orderId, displayNumber: r.displayNumber, clientName: r.clientName, status: r.status,
         key: r.orderId,
         headline: advanceLine(r),
+        issue: `${formatPercent(r.percent)} verified`,
         sub: [r.exceptionApproved ? 'Exception approved' : null, r.held ? 'Held for advance' : null].filter(Boolean).join(' · ') || 'Advance not yet verified',
         figure: formatRupees(r.shortfall),
         figureLabel: 'Short',
@@ -87,6 +92,7 @@ export function boardRows(summary: DashboardSummary, key: BoardKey): BoardRow[] 
         orderId: r.orderId, displayNumber: r.displayNumber, clientName: r.clientName, status: r.status,
         key: r.orderId,
         headline: fabricFinishLine(r),
+        issue: fabricFinishIssue(r),
         sub: `Confirmed ${formatDate(r.confirmDate)}`,
         figure: plural(r.daysSinceConfirmation, 'day'),
         figureLabel: 'Since confirmation',
