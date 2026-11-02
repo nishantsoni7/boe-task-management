@@ -4,6 +4,8 @@ Written 2026-10-31 from the build; merged 2026-11-01 as #557 (`3ac61f79`). Migra
 
 **Update 2026-11-02:** Marketing is being filled, starting with Meta Ads: see `26-marketing-meta-ads.md`. From migration `20270522000000` Marketing has `view` and `edit` and its description reads "Marketing, starting with Meta Ads." Its pages are the Meta Ads screens from PR B (`/marketing`, `/marketing/campaigns`, `/marketing/settings`, in `MarketingLayout`), no longer Coming soon; the registration, the layout guard and the launcher card below still apply to it. Sales and Pricing are unchanged. The rest of this file describes the registration as built on 2026-11-01.
 
+**Update 2026-11-02 (later):** Sales is now filled too, starting with the Lead Master: see `27-sales-lead-master.md`. From migration `20270524000000` Sales has `view`, `create`, `edit` and `assign` and its description reads "Sales: the Lead Master, every lead and who holds it." `/sales` redirects to `/sales/lead-master` (in `SalesLayout`), no longer Coming soon; the registration, the layout guard and the launcher card below still apply to it. Only Pricing is still Coming soon.
+
 ## 1. Purpose & users
 
 - The owner named three modules for future work (2026-10-31) and will say what goes in each later. Do not invent their features. Nothing in the app is known to belong to them yet.

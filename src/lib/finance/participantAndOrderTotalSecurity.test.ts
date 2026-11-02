@@ -1202,6 +1202,8 @@ describe('the applied migrations are frozen', () => {
       '20270522000000_marketing_meta_edit_action.sql',
       '20270522000100_meta_ads_tables.sql',
       '20270523000000_meta_weekly_review.sql',
+      // Sales, Lead Master: three more actions on the Sales module, the register, its history and the functions.
+      '20270524000000_sales_lead_master.sql',
     ])
   })
 
@@ -1655,6 +1657,8 @@ describe('the applied migrations are frozen', () => {
       '20270522000000_marketing_meta_edit_action.sql',
       '20270522000100_meta_ads_tables.sql',
       '20270523000000_meta_weekly_review.sql',
+      // Sales, Lead Master: three more actions on the Sales module, the register, its history and the functions.
+      '20270524000000_sales_lead_master.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

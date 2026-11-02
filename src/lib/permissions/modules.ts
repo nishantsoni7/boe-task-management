@@ -484,13 +484,23 @@ registerModule({
   ],
 })
 
-// Sales, Marketing and Pricing open a Coming soon page and nothing else until the owner sets out what each one
-// does. view: open the module. Registered by 20270515000000; off for everybody until an administrator grants it.
+// Sales, Marketing and Pricing were registered together (20270515000000) and open a Coming soon page until the owner
+// sets out what each one does. Off for everybody until an administrator grants it.
+// Sales: the Lead Master first (20270524000000 adds create, edit and assign, and this description).
 registerModule({
   moduleKey: 'sales',
   displayName: 'Sales',
-  description: 'Sales module. Coming soon.',
-  actions: [{ actionKey: 'view', displayName: 'View' }],
+  description: 'Sales: the Lead Master, every lead and who holds it.',
+  actions: [
+    // view: open the module and read every lead.
+    { actionKey: 'view', displayName: 'View' },
+    // create: add a lead. edit: correct a lead's details (number, source, name, email, place, requirement).
+    { actionKey: 'create', displayName: 'Create' },
+    { actionKey: 'edit', displayName: 'Edit' },
+    // assign: allot a lead to a sales candidate and change who holds it. Protected (levels.ts), so a preset never
+    // hands it out: it is granted per person in Control Center.
+    { actionKey: 'assign', displayName: 'Assign Leads' },
+  ],
 })
 
 // Marketing: Meta Ads first (20270522000000 adds `edit` and this description; the tables are 20270522000100).
