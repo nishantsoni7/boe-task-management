@@ -319,6 +319,7 @@ import {
   PiAdvanceBand,
   PiBlockingPanel,
   PiCommercialBreakdown,
+  PI_DETAIL_PRODUCT_THUMBNAIL,
   PiDetailProductHead,
   PiPaymentStatusCard,
   PiProductTotalsRow,
@@ -2603,15 +2604,11 @@ function PiDraftDetailPageInner() {
     code: <span className="pv-code">{orDash(p.itemSequence)}</span>,
     image: compact => (compact
       ? <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
-      : <PiProductThumbnail {...representativeThumbnail(p.row)} />),
+      : <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_DETAIL_PRODUCT_THUMBNAIL} />),
     product: (
-      <>
-        <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
-          {orDash(p.productName)}
-        </MultilineText>
-        {p.dimensions && <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>{p.dimensions}</MultilineText>}
-        {p.material && <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>{p.material}</MultilineText>}
-      </>
+      <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
+        {orDash(p.productName)}
+      </MultilineText>
     ),
     quantity: p.quantity ?? '—',
   }))
@@ -2961,10 +2958,10 @@ function PiDraftDetailPageInner() {
             </div>
           ) : (
             <div className={`pi-products-table pv-scroll${productViewMoved ? ' pv-animate' : ''}`}>
-              <table className="pv-table pv-table--pi" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <table className="pv-table pv-table--pi pv-table--details" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <colgroup>
                   <col className="pv-col-code" /><col className="pv-col-image" /><col className="pv-col-product" /><col className="pv-col-qty" />
-                  <col /><col className="pv-col-cost" /><col className="pv-col-total" />
+                  <col className="pv-col-dim" /><col className="pv-col-mat" /><col /><col className="pv-col-cost" /><col className="pv-col-total" />
                 </colgroup>
                 {/* The PI page's own head: Qty beside Product, so everything
                     to its right is what the tabs change. */}
@@ -2972,28 +2969,18 @@ function PiDraftDetailPageInner() {
                 <tbody>
                   {products.map(p => (
                     <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
+                      {/* NO INLINE PADDING on the cells: `.pv-table td` and `.pv-swap`
+                          set it, so the narrower window can tighten it. */}
+                      <td style={{ whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>
                         {orDash(p.itemSequence)}
                       </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <PiProductThumbnail {...representativeThumbnail(p.row)} />
+                      <td>
+                        <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_DETAIL_PRODUCT_THUMBNAIL} />
                       </td>
-                      <td style={{ padding: '12px 14px', minWidth: '180px', maxWidth: '280px' }}>
+                      <td>
                         <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                           {orDash(p.productName)}
                         </MultilineText>
-                        {/* DIMENSIONS AND MATERIAL UNDER THE NAME (owner,
-                            2026-10-30), so they stay in every tab. */}
-                        {p.dimensions && (
-                          <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>
-                            {p.dimensions}
-                          </MultilineText>
-                        )}
-                        {p.material && (
-                          <MultilineText className="pi-product-meta" style={{ margin: '2px 0 0' }}>
-                            {p.material}
-                          </MultilineText>
-                        )}
                         {/* INSIDE THE PRODUCT CELL, not in a column of its own:
                             an edit control is not a fact about the product. */}
                         {canEditProducts && (
@@ -3008,20 +2995,33 @@ function PiDraftDetailPageInner() {
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                      <td style={{ whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
                         {p.quantity ?? '—'}
                       </td>
-                      <td className="pv-swap" style={{ padding: '12px 14px' }}>
+                      {/* DIMENSIONS AND MATERIAL have a column each (owner,
+                          2026-11-02), as on the Confirmed Order; they change
+                          with the tab like everything right of Qty. */}
+                      <td className="pv-swap">
+                        <MultilineText style={{ fontSize: '12px', lineHeight: 1.5, color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
+                          {orDash(p.dimensions)}
+                        </MultilineText>
+                      </td>
+                      <td className="pv-swap">
+                        <MultilineText style={{ fontSize: '12px', lineHeight: 1.5, color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
+                          {orDash(p.material)}
+                        </MultilineText>
+                      </td>
+                      <td className="pv-swap">
                         <PiCustomizationCell
                           text={p.customization}
                           thumbnails={customizationThumbnails(p.row)}
                           compact={false}
                         />
                       </td>
-                      <td className="pv-swap" style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                      <td className="pv-swap" style={{ whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
                         {formatInr(p.costPerPiece)}
                       </td>
-                      <td className="pv-swap" style={{ padding: '12px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
+                      <td className="pv-swap" style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
                         {formatInr(p.lineTotal)}
                       </td>
                     </tr>

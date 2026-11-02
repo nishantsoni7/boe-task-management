@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9086a4af` — Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
-- Commits on this branch: 1139
+- Commit: `4b5d9006` — SEO module: the rolling 6-month review and the private discussion brief (#575)
+- Commits on this branch: 1140
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 182
 - Migrations: 403 (first `20260530_create_positions.sql`, latest `20270521000000_seo_six_month_review.sql`)
 - Tables ever created: 206 (dropped at some point: 7)   SQL functions: 883   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `4b5d9006` 2026-11-02 SEO module: the rolling 6-month review and the private discussion brief (#575)
 - `9086a4af` 2026-11-02 Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
 - `a7981e45` 2026-11-02 Orders: Dispatch tab on the product list, papers read and checked (#573)
 - `ce769be0` 2026-11-02 Docs: SEO step 2 merged as PR #571 (af8476b4), 20270519000000 applied (#572)
@@ -38,7 +39,6 @@
 - `ebfe69a5` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone (#552)
 - `2f9d5795` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed (#553)
 - `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
-- `d77c777f` 2026-10-31 Bank Statements: Move a wrongly held payment, a doubtful match asks first (#550)
 
 ## Pages by top-level area
 

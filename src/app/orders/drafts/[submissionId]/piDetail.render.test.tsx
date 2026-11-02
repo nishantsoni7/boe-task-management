@@ -51,6 +51,7 @@ import {
   TOP_ORDER_LABEL,
   TOP_DATES_LABEL,
   PI_DETAIL_PRODUCT_COLUMNS,
+  PI_DETAIL_PRODUCT_THUMBNAIL,
   PiPaymentStatusCard,
   PiPaymentStatusCardView,
   PiCommercialCard,
@@ -3592,18 +3593,18 @@ describe('the products section: the preview’s columns, with fabric and packing
     assert.ok(products.includes('<PiDetailProductHead />'))
     assert.ok(!products.includes('<PiProductTableHead'), 'piPreview is held byte-for-byte, and Qty moved')
     assert.deepEqual(PI_DETAIL_PRODUCT_COLUMNS.map(c => c.label),
-      ['#', 'Image', 'Product', 'Qty', 'Customization', 'Cost / piece', 'Line total'])
+      ['#', 'Image', 'Product', 'Qty', 'Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'])
     assert.deepEqual(PI_DETAIL_PRODUCT_COLUMNS.filter(c => c.swap).map(c => c.label),
-      ['Customization', 'Cost / piece', 'Line total'], 'everything right of Qty is what the tabs change')
+      ['Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'], 'everything right of Qty is what the tabs change')
   })
 
-  test('the desktop row: dimensions and material under the name, Qty beside Product, no fabric or packing', () => {
+  test('the desktop row: Qty beside Product, then Dimensions, Material and Customization, no fabric or packing (owner, 2026-11-02)', () => {
     const table = products.slice(products.indexOf('<tbody>'), products.indexOf('</tbody>'))
-    assert.equal([...table.matchAll(/<td\b/g)].length, 7, 'seven cells')
+    assert.equal([...table.matchAll(/<td\b/g)].length, 9, 'nine cells')
     assert.ok(!/fabric|packing/i.test(table), 'no cost shows until F&P Cost is opened')
     const order = [
-      'p.itemSequence', '<PiProductThumbnail', 'p.productName', 'p.dimensions', 'p.material',
-      'p.quantity', '<PiCustomizationCell', 'p.costPerPiece', 'p.lineTotal',
+      'p.itemSequence', '<PiProductThumbnail', 'p.productName',
+      'p.quantity', 'p.dimensions', 'p.material', '<PiCustomizationCell', 'p.costPerPiece', 'p.lineTotal',
     ].map(marker => {
       const index = table.indexOf(marker)
       assert.ok(index > 0, `${marker} must still be in the row`)
@@ -3617,12 +3618,56 @@ describe('the products section: the preview’s columns, with fabric and packing
     assert.ok(products.includes("textAlign: 'right', fontWeight: 600, color: colors.primary"))
   })
 
-  test('thumbnails keep the shared sizes and the shared viewer wiring', () => {
-    assert.ok(products.includes('<PiProductThumbnail {...representativeThumbnail(p.row)} />'),
-      'the desktop table takes the default representative size')
+  test('thumbnails: the desktop photograph is 108px, the phone card keeps the compact size, the viewer wiring is shared', () => {
+    assert.ok(products.includes('<PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_DETAIL_PRODUCT_THUMBNAIL} />'),
+      'the desktop table takes the page-owned size')
+    assert.equal(PI_DETAIL_PRODUCT_THUMBNAIL, 108, 'the size the Confirmed Order table already uses')
+    assert.ok(read(PAGE).includes('size={PI_DETAIL_PRODUCT_THUMBNAIL} />),'),
+      'and so does the picture in the F&P Cost and Approvals tabs, so the first columns do not move between tabs')
     assert.ok(products.includes('size={PI_THUMBNAIL_SIZE.representativeCompact}'),
       'and the phone card takes the compact one')
     assert.ok(products.includes('customizationThumbnails(p.row)'))
+  })
+
+  test('the table has no inline padding, so the narrower window can tighten it (owner, 2026-11-02)', () => {
+    const table = products.slice(products.indexOf('<tbody>'), products.indexOf('</tbody>'))
+    assert.ok(!/padding:/.test(table), 'padding comes from .pv-table td and .pv-swap')
+    assert.ok(!/padding:/.test(read(SECTIONS).slice(
+      read(SECTIONS).indexOf('export function PiDetailProductHead'),
+      read(SECTIONS).indexOf('export function PiProductTotalsRow'),
+    )), 'and the head the same way')
+  })
+
+  test('the widths: a narrow code and name, nine columns, the same first four in every tab (owner, 2026-11-02)', () => {
+    const sheet = read(GLOBAL_CSS)
+    const width = (selector: string, from = 0) => {
+      const at = sheet.indexOf(`${selector} {`, from)
+      assert.ok(at >= 0, `${selector} is defined`)
+      return /width: ([^;]+);/.exec(sheet.slice(at, sheet.indexOf('}', at)))?.[1]
+    }
+    assert.equal(width('.pv-table--pi col.pv-col-code'), '76px', 'the code is narrower than the 96px it had')
+    assert.equal(width('.pv-table--pi col.pv-col-image'), '136px', 'room for the 108px photograph')
+    assert.equal(width('.pv-table--pi col.pv-col-product'), '11.5%', 'the name is narrower than the 250px it had')
+    assert.equal(width('.pv-table--pi col.pv-col-qty'), '52px')
+    assert.equal(width('.pv-table--pi col.pv-col-dim'), '9.5%')
+    assert.equal(width('.pv-table--pi col.pv-col-mat'), '26%', 'Material is the wide one: its lines are long')
+    const colgroup = products.slice(products.indexOf('<colgroup>'), products.indexOf('</colgroup>'))
+    assert.deepEqual([...colgroup.matchAll(/<col\b[^>]*>/g)].map(m => /className="([^"]+)"/.exec(m[0])?.[1] ?? 'auto'),
+      ['pv-col-code', 'pv-col-image', 'pv-col-product', 'pv-col-qty', 'pv-col-dim', 'pv-col-mat', 'auto', 'pv-col-cost', 'pv-col-total'],
+      'Customization takes everything the other eight leave')
+    assert.ok(products.includes('pv-table pv-table--pi pv-table--details'))
+    // At 1440px and below the first columns tighten, in every tab alike, and the
+    // table keeps a floor and scrolls inside its card below 1200px.
+    const narrow = sheet.indexOf('@media (max-width: 1440px) {', sheet.indexOf('.pv-animate .pv-swap { animation: none; }'))
+    assert.equal(width('.pv-table--pi col.pv-col-image', narrow), '124px')
+    assert.equal(width('.pv-table--pi col.pv-col-code', narrow), '68px')
+    assert.ok(/\.pv-table--details \{ min-width: 1100px; \}/.test(sheet))
+  })
+
+  test('the Verified amount is never broken across two lines in the right column (owner, 2026-11-02)', () => {
+    const sheet = read(GLOBAL_CSS)
+    assert.ok(/\.pi-zone-rail \.pi-detail-paystatus-metric-value \{[^}]*flex: none[^}]*white-space: nowrap/.test(sheet),
+      'the amount keeps its width and stays on one line; the grey line beside it wraps')
   })
 
   test('customization keeps its own cell and its accent', () => {

@@ -1969,13 +1969,23 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
 // of the first tab. Code, Image, Product and Qty stay put across all three, so
 // Qty sits beside Product and everything to its right is what changes.
 
-/** The PI page's product columns: the import preview's, with Dimensions and
- *  Material under the product name. */
+/**
+ * THE PI PAGE'S PRODUCT PHOTOGRAPH, a quarter bigger than the shared 84px so a
+ * product can be told apart in the list (owner, 2026-11-02) — the size the
+ * Confirmed Order's table already uses. Page-owned because piPreview.tsx is pinned.
+ */
+export const PI_DETAIL_PRODUCT_THUMBNAIL = 108
+
+/** The PI page's product columns: the import preview's, with Qty beside Product.
+ *  Dimensions and Material have a column each (owner, 2026-11-02), as on the
+ *  Confirmed Order, so they change with the tab like everything right of Qty. */
 export const PI_DETAIL_PRODUCT_COLUMNS: readonly { key: string; label: string; align: 'left' | 'right'; swap?: true; accent?: true }[] = [
   { key: 'sequence', label: '#', align: 'left' },
   { key: 'image', label: 'Image', align: 'left' },
   { key: 'product', label: 'Product', align: 'left' },
   { key: 'quantity', label: 'Qty', align: 'right' },
+  { key: 'dimensions', label: 'Dimensions', align: 'left', swap: true },
+  { key: 'material', label: 'Material', align: 'left', swap: true },
   { key: 'customization', label: 'Customization', align: 'left', swap: true, accent: true },
   { key: 'cost', label: 'Cost / piece', align: 'right', swap: true },
   { key: 'lineTotal', label: 'Line total', align: 'right', swap: true },
@@ -1992,8 +2002,9 @@ export function PiDetailProductHead() {
             key={column.key}
             scope="col"
             className={column.swap ? 'pv-swap' : undefined}
+            // The cell's padding comes from `.pv-table th` and `.pv-swap`, so the
+            // narrower window can tighten it (globals.css, max-width 1440px).
             style={{
-              padding: '8px 14px',
               textAlign: column.align,
               fontSize: '12px', fontWeight: column.accent ? 700 : 600,
               background: column.accent ? PI_CUSTOMIZATION_TINT : undefined,
@@ -2022,6 +2033,8 @@ export function PiProductTotalsRow({ pieces, productValue }: {
       <tr className="pi-products-total">
         <td colSpan={3}>Total</td>
         <td style={{ textAlign: 'right' }}>{pieces}</td>
+        <td className="pv-swap" />
+        <td className="pv-swap" />
         <td className="pv-swap" />
         <td className="pv-swap" />
         <td className="pv-swap" style={{ textAlign: 'right' }}>{productValue ?? ''}</td>
