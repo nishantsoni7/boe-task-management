@@ -22,7 +22,8 @@ import type { EffectivePermission } from '@/lib/permissions/types'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 // Marketing is the first of the three to get real work (Meta Ads, module 26): 20270522000000 adds its `edit` action
-// and changes its description. Its page is still Coming soon, so it stays in every list here.
+// and changes its description, and its pages are the Meta Ads screens (PR B). It keeps the registration, the guard
+// and the launcher card the three share, so it stays in every list here; only its page differs.
 const MODULES = [
   { key: 'sales', title: 'Sales', actions: ['view'] },
   { key: 'marketing', title: 'Marketing', actions: ['view', 'edit'] },
@@ -89,8 +90,14 @@ describe('the routes and the launcher', () => {
       assert.ok(layout.includes(`<ModuleGuard moduleKey="${key}" deniedRoute="/modules">`))
     })
 
-    test(`${key}: the page opens the Coming soon shell for this module`, () => {
-      assert.ok(read(`src/app/${key}/page.tsx`).includes(`<ComingSoonModule moduleKey="${key}" title="${title}" />`))
+    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : 'the Coming soon shell for this module'}`, () => {
+      const page = read(`src/app/${key}/page.tsx`)
+      if (key === 'marketing') {
+        assert.ok(page.includes('<MetaOverview />'))
+        assert.ok(!page.includes('ComingSoonModule'))
+      } else {
+        assert.ok(page.includes(`<ComingSoonModule moduleKey="${key}" title="${title}" />`))
+      }
     })
 
     test(`${key}: the launcher card is behind the same gate and goes to the route`, () => {
