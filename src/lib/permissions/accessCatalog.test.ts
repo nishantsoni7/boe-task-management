@@ -61,7 +61,7 @@ describe('levels are offered only where they change behaviour', () => {
       exhibition_leads: ['viewer'],
       customer_review_requests: ['viewer'],            // entry is `use`
       sales: ['viewer'],                               // Coming soon: entry is all there is
-      marketing: ['viewer'],
+      marketing: ['viewer', 'contributor'],            // Meta Ads: read, then set the spending cap and the target
       pricing: ['viewer'],
       seo: ['viewer', 'contributor', 'manager'],       // edit a board item, then answer a strategy change
     }

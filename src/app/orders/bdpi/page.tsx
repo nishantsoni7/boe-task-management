@@ -16,6 +16,8 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities, type OrdersCapabilities } from '@/lib/permissions/orders'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatPaise } from '@/lib/orders/paymentPlan'
+import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
+import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import type { UserProfile } from '@/lib/types'
 
 type Row = {
@@ -72,28 +74,51 @@ export default function BdpiListPage() {
     return () => { live = false }
   }, [supabase, router, load])
 
+  // A PI is up to 10 MiB and a serverless request body is 4.5 MB, so the file
+  // goes straight to private storage and the server reads it there (two calls).
+  const callImport = async (payload: Record<string, unknown>) => {
+    const res = await fetch('/api/orders/bdpi/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })
+    const json = await res.json().catch(() => ({})) as {
+      id?: string; bdpiNo?: string; notes?: string[]; message?: string; path?: string; token?: string
+    }
+    return { ok: res.ok, json }
+  }
+
   const upload = async () => {
     if (!file) { setMessage({ kind: 'error', text: 'Choose the PI file first.' }); return }
+    if (!/\.xlsx$/i.test(file.name)) { setMessage({ kind: 'error', text: 'Upload the PI as an .xlsx workbook.' }); return }
+    if (file.size === 0) { setMessage({ kind: 'error', text: 'The file is empty.' }); return }
+    if (file.size > PI_MAX_WORKBOOK_BYTES) { setMessage({ kind: 'error', text: 'The file is larger than 10 MB.' }); return }
     setBusy(true); setMessage(null)
-    const body = new FormData()
-    body.set('file', file)
-    body.set('old_order_no', oldNo)
-    body.set('client_name', client)
     try {
-      const res = await fetch('/api/orders/bdpi/import', { method: 'POST', body })
-      const json = await res.json().catch(() => ({})) as { id?: string; bdpiNo?: string; notes?: string[]; message?: string }
-      if (!res.ok || !json.id) {
-        setMessage({ kind: 'error', text: json.message ?? 'The PI could not be uploaded. Please try again.' })
-      } else {
-        const notes = (json.notes ?? []).join(' ')
-        setMessage({ kind: 'ok', text: `${json.bdpiNo} saved.${notes ? ` ${notes}` : ''}`, openId: json.id })
-        setFile(null); setOldNo(''); setClient('')
-        await load()
+      const prepared = await callImport({})
+      if (!prepared.ok || !prepared.json.path || !prepared.json.token) {
+        setMessage({ kind: 'error', text: prepared.json.message ?? 'The PI could not be uploaded. Please try again.' })
+        return
       }
+      const sent = await supabase.storage.from(ORDER_FILES_BUCKET).uploadToSignedUrl(prepared.json.path, prepared.json.token, file, {
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      if (sent.error) {
+        setMessage({ kind: 'error', text: 'The PI could not be uploaded. Please check the connection and try again.' })
+        return
+      }
+      const done = await callImport({ path: prepared.json.path, file_name: file.name, old_order_no: oldNo, client_name: client })
+      if (!done.ok || !done.json.id) {
+        setMessage({ kind: 'error', text: done.json.message ?? 'The PI could not be uploaded. Please try again.' })
+        return
+      }
+      const notes = (done.json.notes ?? []).join(' ')
+      setMessage({ kind: 'ok', text: `${done.json.bdpiNo} saved.${notes ? ` ${notes}` : ''}`, openId: done.json.id })
+      setFile(null); setOldNo(''); setClient('')
+      await load()
     } catch {
       setMessage({ kind: 'error', text: 'The PI could not be uploaded. Please check the connection and try again.' })
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   const handleSignOut = async () => { await supabase.auth.signOut(); router.replace('/login') }
