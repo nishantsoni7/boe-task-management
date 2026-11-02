@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e6452b40` — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet
-- Commits on this branch: 1155
+- Commit: `3d6c8805` — Merge origin/main into feat/meta-ads-review (docs only: changelog keeps both entries, inventory regenerated)
+- Commits on this branch: 1157
 - Pages (`page.tsx`): 175   API routes (`route.ts`): 184
 - Migrations: 406 (first `20260530_create_positions.sql`, latest `20270523000000_meta_weekly_review.sql`)
 - Tables ever created: 215 (dropped at some point: 7)   SQL functions: 886   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `3d6c8805` 2026-11-02 Merge origin/main into feat/meta-ads-review (docs only: changelog keeps both entries, inventory regenerated)
 - `e6452b40` 2026-11-02 Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet
+- `02abdb2e` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet (#590)
 - `2f72c6bb` 2026-11-02 Confirmed Order Product details: Material gets the room (#589)
 - `1b018fff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
 - `d38bf3a9` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
@@ -37,8 +39,6 @@
 - `b1bc5ab6` 2026-11-01 SEO module, step 1: five read-only screens (#570)
 - `3537839c` 2026-11-01 Backups: the SEO folder and the scheduled-task instructions (#569)
 - `dbf26e8b` 2026-11-01 Docs: one-screen window merged as PR #567 (9d6af8c3) (#568)
-- `9d6af8c3` 2026-11-01 Finance: one screen for a pending HDFC payment (#567)
-- `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
 
 ## Pages by top-level area
 
