@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a305fdeb` — Merge main into feat/meta-ads-sync
-- Commits on this branch: 1146
+- Commit: `baa0a80b` — Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
+- Commits on this branch: 1148
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
@@ -14,9 +14,11 @@
 
 ## Latest 25 commits
 
-- `a305fdeb` 2026-11-02 Merge main into feat/meta-ads-sync
+- `baa0a80b` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
+- `834e86c7` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35) (#583)
+- `d29f903f` 2026-11-02 Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (#580)
+- `6610af35` 2026-11-02 Old orders (BDPI): a PI over 4.5 MB uploads (#581)
 - `f828b988` 2026-11-02 SEO module: rebuild the six everyday pages to the review's standard (#579)
-- `d4e6486f` 2026-11-02 Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account
 - `2f8777e3` 2026-11-02 Docs: PI Draft page change merged as PR #577 (cb89e58e), deployed (#578)
 - `cb89e58e` 2026-11-02 PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
 - `d0c4d259` 2026-11-02 SEO: badges on the 6-month review keep sentence case; docs stamped for #575 (#576)
@@ -37,8 +39,6 @@
 - `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 - `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
-- `10eb96fd` 2026-11-01 Docs: Sales, Marketing and Pricing merged as PR #557 (3ac61f79) (#558)
-- `3ac61f79` 2026-11-01 Sales, Marketing and Pricing: three modules, Coming soon (#557)
 
 ## Pages by top-level area
 
