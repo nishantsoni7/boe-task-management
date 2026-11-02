@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `90e2a240` — Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens
-- Commits on this branch: 1151
+- Commit: `1b018fff` — Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
+- Commits on this branch: 1153
 - Pages (`page.tsx`): 175   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `90e2a240` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens
+- `1b018fff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
+- `d38bf3a9` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
+- `173707de` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
 - `cf79df54` 2026-11-02 Orders dashboard for approvers: Needs your decision, Revenue, Orders to watch (#585)
 - `e75a514e` 2026-11-02 Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
 - `a6ce1bd6` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed (#584)
@@ -37,8 +39,6 @@
 - `89e3b1eb` 2026-11-01 Confirmed Orders: Advance column, soft red below 40% (#566)
 - `10133012` 2026-11-01 Finance: compare and link, with a Bank Statements ID (#565)
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
-- `e9891f70` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
-- `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
 
 ## Pages by top-level area
 

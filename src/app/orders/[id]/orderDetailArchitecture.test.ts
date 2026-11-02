@@ -820,6 +820,15 @@ describe('the business rules this pass must not touch', () => {
     assert.ok(page.includes('className="order-products"'), 'and it is full width, above everything else')
   })
 
+  test('Material takes the widest share of the Product details table, Customization the rest (owner, 2026-11-02)', () => {
+    const css = read(CSS)
+    const share = (n: number) => Number(new RegExp(`\\.order-products-table col:nth-child\\(${n}\\) \\{ width: (\\d+)%`).exec(css)?.[1])
+    assert.deepEqual([share(3), share(5), share(6)], [11, 11, 23], 'product, dimensions, material')
+    assert.ok(css.includes('.order-products-table col:nth-child(7) { width: auto; }'), 'Customization takes what is left')
+    // Below 1200px the table scrolls inside its card at a floor that keeps Customization readable.
+    assert.match(css, /@media \(max-width: 1200px\) \{\s*\n\s*\.order-products-table \{ min-width: 1100px; \}/)
+  })
+
   test('the code and image columns are the same width in all three tabs, so nothing jumps on a tab change', () => {
     const css = read(CSS)
     const width = (selector: string, from = 0) => {
