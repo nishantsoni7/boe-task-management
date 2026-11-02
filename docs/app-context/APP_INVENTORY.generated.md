@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `baa0a80b` — Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
-- Commits on this branch: 1148
+- Commit: `e75a514e` — Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
+- Commits on this branch: 1149
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
-- Test files: 725   Next.js 16.2.6, React 19.2.4
+- Test files: 726   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `baa0a80b` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed
+- `e75a514e` 2026-11-02 Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
+- `a6ce1bd6` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed (#584)
 - `834e86c7` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35) (#583)
 - `d29f903f` 2026-11-02 Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (#580)
 - `6610af35` 2026-11-02 Old orders (BDPI): a PI over 4.5 MB uploads (#581)
@@ -38,7 +39,6 @@
 - `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
 - `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
 - `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
-- `b83ad400` 2026-11-01 Backups: once a day for everything merged, not after every merge (#559)
 
 ## Pages by top-level area
 
@@ -152,7 +152,7 @@
 - `src/lib/modules` — 4 source, 5 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
-- `src/lib/orders` — 104 source, 154 test
+- `src/lib/orders` — 105 source, 155 test
 - `src/lib/payroll` — 34 source, 32 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

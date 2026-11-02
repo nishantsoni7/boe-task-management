@@ -530,10 +530,15 @@ export function advanceLine(r: AdvanceRow): string {
 
 const items = (ks: ItemKind[]) => ks.map(k => ITEM_LABEL[k]).join(' and ')
 
-export function fabricFinishLine(r: FabricFinishRow): string {
+/** What is pending, without the elapsed days: the board's chip, where the days have a column of their own. */
+export function fabricFinishIssue(r: FabricFinishRow): string {
   const pending = r.pending.map(p => `${ITEM_LABEL[p.kind]} ${PENDING_STATUS_LABEL[p.status]}`).join(' · ')
   const gap = r.notRecorded.length > 0 ? ` · ${items(r.notRecorded)} status not recorded` : ''
-  return `${pending}${gap} · ${plural(r.daysSinceConfirmation, 'day')} since confirmation`
+  return `${pending}${gap}`
+}
+
+export function fabricFinishLine(r: FabricFinishRow): string {
+  return `${fabricFinishIssue(r)} · ${plural(r.daysSinceConfirmation, 'day')} since confirmation`
 }
 
 export function unrecordedLine(r: UnrecordedRow): string {

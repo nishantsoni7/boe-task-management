@@ -39,7 +39,7 @@ import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/da
 import { AdvanceSection, AlignmentSection, FabricFinishSection, StatusStrip } from '@/components/orders/dashboard/AttentionSections'
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
-import { PiReviewSections } from '@/components/orders/dashboard/PiReviewSections'
+import { AdminDashboardView } from '@/components/orders/dashboard/AdminDashboardView'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
@@ -335,14 +335,6 @@ export default function OrdersDashboardPage() {
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
             stepping in. Revenue only when the read returned it: the database sends it to a reader
             who sees every Order. */}
-        {approverView ? (
-          <PiReviewSections
-            supabase={supabase}
-            viewerId={profile?.id ?? null}
-            isAdmin={ordersCaps.canApproveOrderSubmission}
-            viewingAs={!!viewAsUserId}
-          />
-        ) : null}
         {ready?.overview && !approverView ? (
           // ── THE AT-A-GLANCE CARDS ── lead the page once the database offers the overview.
           <OverviewCards
@@ -389,11 +381,15 @@ export default function OrdersDashboardPage() {
           </div>
         ) : (
           approverView ? (
-            <>
-              {/* ── REVENUE, THEN THE THREE CARDS THAT STILL NEED WATCHING ── plain figures. */}
-              <RevenueSection revenue={summary.summary.revenue} />
-              <OverviewCards summary={summary.summary} only={['payments', 'fabric', 'aligned']} />
-            </>
+            // ── THE APPROVER'S DASHBOARD ── what needs their decision | revenue, then the orders to watch.
+            // The decision list reads its own rows (PIs for review, revised PIs, documents) under the reader's RLS.
+            <AdminDashboardView
+              summary={summary.summary}
+              supabase={supabase}
+              viewerId={profile?.id ?? null}
+              isAdmin={ordersCaps.canApproveOrderSubmission}
+              viewingAs={!!viewAsUserId}
+            />
           ) : summary.summary.overview ? (
             <>
               {/* ── THE ACTION BOARD ── one list at a time, then revenue. */}
@@ -426,6 +422,8 @@ export default function OrdersDashboardPage() {
           // (Control Center), not users.role — the RPCs ask the same (20270120000000).
           isAdmin={ordersCaps.canApproveOrderSubmission}
           viewingAs={!!viewAsUserId}
+          // The approver's "Needs your decision" already lists what waits on them.
+          hideNeedsYou={approverView}
           formatWhen={iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         />
 
