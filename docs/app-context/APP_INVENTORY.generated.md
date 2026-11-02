@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `e75a514e` — Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
-- Commits on this branch: 1149
-- Pages (`page.tsx`): 173   API routes (`route.ts`): 183
+- Commit: `90e2a240` — Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens
+- Commits on this branch: 1151
+- Pages (`page.tsx`): 175   API routes (`route.ts`): 183
 - Migrations: 405 (first `20260530_create_positions.sql`, latest `20270522000100_meta_ads_tables.sql`)
 - Tables ever created: 212 (dropped at some point: 7)   SQL functions: 884   Enums: 0
-- Test files: 726   Next.js 16.2.6, React 19.2.4
+- Test files: 729   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `90e2a240` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens
+- `cf79df54` 2026-11-02 Orders dashboard for approvers: Needs your decision, Revenue, Orders to watch (#585)
 - `e75a514e` 2026-11-02 Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
 - `a6ce1bd6` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed (#584)
 - `834e86c7` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35) (#583)
@@ -37,8 +39,6 @@
 - `1344cea4` 2026-11-01 Finance: the old bank routes are closed to browsers (#564)
 - `e9891f70` 2026-11-01 Docs: bank proof merged as PR #560 (f8616267), 20270516000000 applied (#561)
 - `fd176da4` 2026-11-01 Bank Statements: one list for both HDFC accounts (#563)
-- `5abb1145` 2026-11-01 Finance: May be a duplicate names who holds the credit, urgent stays closed (#562)
-- `f8616267` 2026-11-01 Finance: an HDFC payment is verified only against its bank credit (#560)
 
 ## Pages by top-level area
 
@@ -59,7 +59,7 @@
 - **inventory** (6): `/inventory`, `/inventory/[id]`, `/inventory/[id]/edit`, `/inventory/new`, `/inventory/notifications`, `/inventory/requests`
 - **login** (1): `/login`
 - **manager** (1): `/manager`
-- **marketing** (1): `/marketing`
+- **marketing** (3): `/marketing`, `/marketing/campaigns`, `/marketing/settings`
 - **meetings** (6): `/meetings`, `/meetings/[id]`, `/meetings/completed`, `/meetings/follow-ups`, `/meetings/guide`, `/meetings/inbox`
 - **modules** (1): `/modules`
 - **my-attendance** (1): `/my-attendance`
@@ -147,7 +147,7 @@
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
-- `src/lib/meta` — 5 source, 5 test
+- `src/lib/meta` — 8 source, 7 test
 - `src/lib/minop` — 11 source, 9 test
 - `src/lib/modules` — 4 source, 5 test
 - `src/lib/navigation` — 4 source, 6 test

@@ -1,5 +1,5 @@
-import { ComingSoonModule } from '@/components/layout/ComingSoonModule'
+import { MetaOverview } from '@/components/meta/MetaOverview'
 
 export default function MarketingPage() {
-  return <ComingSoonModule moduleKey="marketing" title="Marketing" />
+  return <MetaOverview />
 }
