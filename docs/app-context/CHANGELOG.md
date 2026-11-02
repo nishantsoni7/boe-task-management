@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-02 — SEO module: the rolling 6-month review and the private discussion brief · 20270521000000 → see the dossier for its apply state
+- **Owner request.** Track the last 6 months each time, show the top good and bad things, give feedback for discussions with the SEO person, and act as an expert guide against a wrong step. The owner pre-approved the build once the mock-up reached 9 of 10 from a senior SEO and AI-search review.
+- **Added.** `/seo/review` replaces Year review on the menu, and `/seo/brief` is Admin only. `/seo/year` stays, reached from the review's footnote.
+- **Database.** `seo_six_month_reviews` and `seo_discussion_briefs`, one JSON document a period, written only through the ingest door. The brief has its own Admin-only policy, so SEO `view` does not open it, and it stays out of the shared read.
+- **Proof.** New tests for the document check, the door, the screens and who can read. The real migration on PGlite with Supabase's default grants copied in, 19 checks: who reads what, no browser writes, the rollback.
+
 ## 2026-11-02 — Orders: Dispatch tab on the product list (PR #573, a7981e45) · 20270520000000 → APPLIED 2026-11-02
 - **Owner request.** A dispatch section on Confirmed Orders: when an Order is dispatched the owner, Dhruv or Sales upload the papers, the details are read and kept (date, products, vehicle, e-way bill, invoice), and each product shows what is dispatched and what is pending. Designed with the UI/UX Pro Max rules; mockup Option A chosen.
 - **Added.** A fourth tab, Dispatch, on the Order's product list, a Dispatches card, a Dispatch cell on the status strip, and a Record dispatch screen with the papers beside the form. The protected `orders.record_dispatch` permission, nobody but admins until granted.

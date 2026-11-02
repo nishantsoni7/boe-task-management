@@ -6,7 +6,7 @@ import {
   type SeoData, type SeoLogRow, type SeoMetric, type SeoPlanItem, type SeoReview,
 } from './report'
 
-const empty: SeoData = { metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
+const empty: SeoData = { sixMonth: null, metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
 const row = (metric: string, scope: string, value: number | null, metric_date = '2026-10-26', detail: SeoMetric['detail'] = null): SeoMetric =>
   ({ metric, scope, value, metric_date, detail, source: 'test' })
 

@@ -3,18 +3,22 @@ import { strict as assert } from 'node:assert'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { SeoData } from '@/lib/seo/report'
+import { SAMPLE_BRIEF, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
 import { BoardBody } from './SeoBoard'
+import { BriefBody } from './SeoBrief'
 import { CompetitorsBody } from './SeoCompetitors'
 import { OverviewBody } from './SeoOverview'
 import { RankingsBody } from './SeoRankings'
+import { ReviewBody } from './SeoSixMonth'
 import { ReviewsBody } from './SeoReviews'
 import { TasksBody } from './SeoTasks'
 import { YearBody } from './SeoYear'
 
-const empty: SeoData = { metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
+const empty: SeoData = { sixMonth: null, metrics: [], watchlist: [], planItems: [], reviews: [], log: [], runs: [] }
 const TODAY = '2026-11-02'
 
 const full: SeoData = {
+  sixMonth: null,
   metrics: [
     { metric_date: '2026-11-01', metric: 'plan.target', scope: 'Website leads a month', value: 50, detail: { order: 1, months: { '2026-11': 55, '2027-04': 100 } }, source: 'board' },
     { metric_date: '2026-10-26', metric: 'keyword.position', scope: 'hotel chairs', value: 18.6, detail: { previous: 16.4 }, source: 'search_console' },
@@ -36,6 +40,36 @@ const full: SeoData = {
 }
 
 const html = (node: React.ReactElement) => renderToStaticMarkup(node)
+
+describe('the 6-month review and the discussion brief', () => {
+  test('the review draws the verdict, the good and bad lists, the moves in order and the proof behind a line', () => {
+    const page = html(<ReviewBody review={SAMPLE_REVIEW} />)
+    assert.ok(page.includes(SAMPLE_REVIEW.verdict.title))
+    assert.ok(page.includes(SAMPLE_REVIEW.period))
+    assert.ok(page.includes(SAMPLE_REVIEW.good[0].title))
+    assert.ok(page.includes(SAMPLE_REVIEW.bad[0].title))
+    assert.ok(page.includes('<b>Limit: </b>'), 'a labelled proof line keeps its label')
+    assert.ok(page.indexOf(SAMPLE_REVIEW.moves.items[0].title) < page.indexOf(SAMPLE_REVIEW.moves.items[1].title))
+    assert.ok(page.includes(SAMPLE_REVIEW.moves.then!))
+    assert.ok(page.includes(SAMPLE_REVIEW.targets.warning!))
+    assert.ok(page.includes('/seo/year'), 'the 12-month view stays reachable')
+  })
+
+  test('a keyword that moved shows both positions, and one past the scale stays on the chart', () => {
+    const page = html(<ReviewBody review={SAMPLE_REVIEW} />)
+    assert.ok(page.includes('5.0 → 50.0'))
+    assert.ok(page.includes('left:100%'), 'position 50 sits at the right edge, not off the chart')
+  })
+
+  test('the brief separates what is scored from what is not, and keeps each question', () => {
+    const page = html(<BriefBody brief={SAMPLE_BRIEF} />)
+    assert.ok(page.includes(SAMPLE_BRIEF.message))
+    assert.ok(page.includes(SAMPLE_BRIEF.raise[0].ask))
+    assert.ok(page.indexOf('Scored: SEO person') < page.indexOf(SAMPLE_BRIEF.scored[0].title))
+    assert.ok(page.indexOf(SAMPLE_BRIEF.scored[0].title) < page.indexOf('Not scored against them'))
+    assert.ok(page.indexOf('Not scored against them') < page.indexOf(SAMPLE_BRIEF.others[0].title))
+  })
+})
 
 describe('each screen draws saved data', () => {
   test('Overview: the verdict with its sum, the numbers, what needs the owner, the task states', () => {

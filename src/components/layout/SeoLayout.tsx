@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { CalendarClock, CalendarRange, ClipboardCheck, Home, LayoutDashboard, ListOrdered, Target, Users } from 'lucide-react'
+import { CalendarClock, CalendarRange, ClipboardCheck, Home, LayoutDashboard, ListOrdered, MessageSquareText, Target, Users } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -15,13 +15,15 @@ const BASE = '/seo'
 
 const NAV_ITEMS = [
   { href: BASE, label: 'Overview', icon: LayoutDashboard },
+  { href: `${BASE}/review`, label: '6-month review', icon: CalendarRange },
   { href: `${BASE}/rankings`, label: 'Rankings', icon: ListOrdered },
   { href: `${BASE}/competitors`, label: 'Competitors', icon: Users },
-  { href: `${BASE}/year`, label: 'Year review', icon: CalendarRange },
   { href: `${BASE}/board`, label: 'Vision board', icon: Target },
   { href: `${BASE}/reviews`, label: 'Weekly review', icon: ClipboardCheck },
   { href: `${BASE}/tasks`, label: 'Scheduled tasks', icon: CalendarClock },
 ] as const
+
+const BRIEF_ITEM = { href: `${BASE}/brief`, label: 'Discussion brief', icon: MessageSquareText }
 
 type Props = {
   profile: UserProfile | null
@@ -67,7 +69,7 @@ export function SeoLayout({ profile, title, subtitle, onSignOut, children }: Pro
         </div>
 
         <div className="boe-sidebar-section">
-          {NAV_ITEMS.map(item => {
+          {[...NAV_ITEMS, ...(profile?.role === 'admin' ? [BRIEF_ITEM] : [])].map(item => {
             const active = pathname === item.href
             const Icon = item.icon
             return (

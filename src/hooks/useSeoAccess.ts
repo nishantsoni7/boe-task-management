@@ -14,7 +14,7 @@ export function useSeoAccess() {
   const { role, permissionsByModule } = usePermissionContext()
   const { readOnly } = useDisplaySubject()
   const holds = (action: string) => role === 'admin' || (permissionsByModule.get('seo') ?? []).some(p => p.actionKey === action && p.allowed)
-  return { canEdit: !readOnly && holds('edit'), canDecide: !readOnly && holds('approve') }
+  return { canEdit: !readOnly && holds('edit'), canDecide: !readOnly && holds('approve'), isAdmin: role === 'admin' }
 }
 
 export function useSeoWrites() {
