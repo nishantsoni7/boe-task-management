@@ -13155,7 +13155,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pi-zone-rail .pi-detail-paystatus-metric .pi-detail-paystatus-metric-label { font-size: 13px; font-weight: 600; color: #4C5352; }
 .pi-zone-rail .pi-detail-paystatus-metric-label > svg { display: none; }
 .pi-zone-rail .pi-detail-paystatus-metric-meta { font-size: 11.5px; }
-.pi-zone-rail .pi-detail-paystatus-metric-value { margin-left: auto; font-size: 14px; font-weight: 700; }
+/* An amount is never broken across two lines (owner, 2026-11-02): at the narrow
+   rail the grey line beside it wraps instead, because the base rule's
+   `overflow-wrap: anywhere` let a squeezed ₹1,00,000 split before its last digit. */
+.pi-zone-rail .pi-detail-paystatus-metric-value { margin-left: auto; flex: none; font-size: 14px; font-weight: 700; white-space: nowrap; }
 .pi-zone-rail .pi-detail-paystatus-metric-shortfall .pi-detail-paystatus-metric-value { color: #303536; }
 .pi-zone-rail .pi-detail-paystatus-actions > .boe-btn { flex: 1 1 0; justify-content: center; }
 
@@ -13358,7 +13361,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 
 /* ── Products: the foot of the list ── */
 .pi-products-table td { vertical-align: top; }
-.pi-product-meta { font-size: 12px; color: #686D6C; }
 .pi-products-total td {
   padding: 12px 14px;
   background: #FBFAF8;
@@ -13464,6 +13466,17 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .pv-table--order col.pv-col-image { width: 132px; }
 .pv-table--order col.pv-col-product { width: 15%; }
 .pv-table--order col.pv-col-qty { width: 52px; }
+/* The PI Draft page (owner, 2026-11-02): a narrow code and name leave room for
+   Dimensions and Material in columns of their own, and Customization keeps what
+   is left. Code, Image, Product and Qty hold these widths in every tab. */
+.pv-table--pi col.pv-col-code { width: 76px; }
+.pv-table--pi col.pv-col-image { width: 136px; }
+.pv-table--pi col.pv-col-product { width: 11.5%; }
+.pv-table--pi col.pv-col-qty { width: 52px; }
+.pv-table--pi col.pv-col-dim { width: 9.5%; }
+.pv-table--pi col.pv-col-mat { width: 26%; }
+.pv-table--pi col.pv-col-cost { width: 104px; }
+.pv-table--pi col.pv-col-total { width: 112px; }
 .pv-table thead tr,
 .pv-table tbody tr { border-bottom: 1px solid #E4DED7; }
 .pv-table th { padding: 8px 14px; text-align: left; font-size: 12px; font-weight: 600; color: #686D6C; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -13515,12 +13528,19 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .pv-table--order td { padding: 7px 8px; }
   .pv-table--order col.pv-col-code { width: 104px; }
   .pv-table--order col.pv-col-image { width: 124px; }
+  .pv-table--pi col.pv-col-code { width: 68px; }
+  .pv-table--pi col.pv-col-image { width: 124px; }
+  .pv-table--pi col.pv-col-cost { width: 96px; }
+  .pv-table--pi col.pv-col-total { width: 100px; }
+  .pv-table--pi tr:not(.pv-edit-row) > td,
+  .pv-table--pi th { padding-left: 8px; padding-right: 8px; }
 }
 .pv-card-total { background: #FBFAF8; }
 /* A narrow window scrolls inside the card rather than crushing the columns. */
 @media (max-width: 1200px) {
   .pv-scroll { overflow-x: auto; }
   .pv-table { min-width: 980px; }
+  .pv-table--details { min-width: 1100px; }
   .pv-animate .pv-swap { animation: none; }
 }
 @media (max-width: 767px) {

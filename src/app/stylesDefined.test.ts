@@ -37,7 +37,7 @@ const NO_RULE_NEEDED: Record<string, readonly string[]> = {
   ],
   'the shared base class is the whole look; the second name only labels this use': [
     'boe-cj-age', 'boe-row-icon--edit', 'order-doc-change--rejected', 'order-doc-pi-notice',
-    'pi-pay-details-activity', 'pv-table--pi',
+    'pi-pay-details-activity',
   ],
   'a table cell or wrapper that takes the default look': [
     'od-strip-label', 'ops-na-due', 'ops-na-sp', 'ops-na-wait', 'pv-editor',
