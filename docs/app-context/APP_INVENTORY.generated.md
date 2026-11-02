@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `4b5d9006` — SEO module: the rolling 6-month review and the private discussion brief (#575)
-- Commits on this branch: 1140
+- Commit: `cb89e58e` — PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
+- Commits on this branch: 1142
 - Pages (`page.tsx`): 173   API routes (`route.ts`): 182
 - Migrations: 403 (first `20260530_create_positions.sql`, latest `20270521000000_seo_six_month_review.sql`)
 - Tables ever created: 206 (dropped at some point: 7)   SQL functions: 883   Enums: 0
-- Test files: 718   Next.js 16.2.6, React 19.2.4
+- Test files: 719   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `cb89e58e` 2026-11-02 PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
+- `d0c4d259` 2026-11-02 SEO: badges on the 6-month review keep sentence case; docs stamped for #575 (#576)
 - `4b5d9006` 2026-11-02 SEO module: the rolling 6-month review and the private discussion brief (#575)
 - `9086a4af` 2026-11-02 Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
 - `a7981e45` 2026-11-02 Orders: Dispatch tab on the product list, papers read and checked (#573)
@@ -37,8 +39,6 @@
 - `534c9007` 2026-10-31 Confirmed Order: remove the Custom word from the Customization column (#554)
 - `9add9946` 2026-10-31 Docs: Confirmed Orders table merged as PR #552 (ebfe69a5) (#556)
 - `ebfe69a5` 2026-10-31 Confirmed Orders: table redesigned, quiet until it needs someone (#552)
-- `2f9d5795` 2026-10-31 Styles: a class a screen asks for must exist, and three small faults fixed (#553)
-- `ee5bc019` 2026-10-31 Docs: Confirmed Order tidy merged as PR #549 (25df502b) (#551)
 
 ## Pages by top-level area
 
@@ -158,7 +158,7 @@
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
-- `src/lib/seo` — 6 source, 3 test
+- `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
 - `src/lib/tasks` — 23 source, 37 test
