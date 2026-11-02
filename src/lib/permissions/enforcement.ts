@@ -153,13 +153,17 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     state: 'enforced',
     detail: 'View opens the module, which shows a Coming soon page for now.',
   },
-  marketing: {
-    state: 'enforced',
-    detail: 'View opens the module, which shows a Coming soon page for now.',
-  },
   pricing: {
     state: 'enforced',
     detail: 'View opens the module, which shows a Coming soon page for now.',
+  },
+
+  // Marketing, Meta Ads: every read is RLS on the meta_* tables (module_entry_open('marketing')). Browsers cannot
+  // write to them; the daily sync writes with the service role (GET /api/integrations/meta/sync, CRON_SECRET), and
+  // `edit` is checked inside meta_set_targets. Entry: src/app/marketing/layout.tsx via ModuleGuard.
+  marketing: {
+    state: 'enforced',
+    detail: 'View is enforced in the screen and in the database. Edit (set the spending cap and the target cost) is enforced in the database function.',
   },
 
   // Every read is RLS on the seo_* tables (module_entry_open('seo')). Browsers cannot write to the tables: `edit` is

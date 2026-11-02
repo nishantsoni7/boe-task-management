@@ -493,11 +493,17 @@ registerModule({
   actions: [{ actionKey: 'view', displayName: 'View' }],
 })
 
+// Marketing: Meta Ads first (20270522000000 adds `edit` and this description; the tables are 20270522000100).
 registerModule({
   moduleKey: 'marketing',
   displayName: 'Marketing',
-  description: 'Marketing module. Coming soon.',
-  actions: [{ actionKey: 'view', displayName: 'View' }],
+  description: 'Marketing, starting with Meta Ads.',
+  actions: [
+    // view: open the module and read it.
+    { actionKey: 'view', displayName: 'View' },
+    // edit: set the monthly spending cap and the target cost per enquiry.
+    { actionKey: 'edit', displayName: 'Edit' },
+  ],
 })
 
 registerModule({
