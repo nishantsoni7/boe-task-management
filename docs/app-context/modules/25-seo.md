@@ -18,6 +18,8 @@ Neither step has been seen in a browser or signed in. `permissions:check` is ref
 
 The 6-month review and the discussion brief are live (#575, `4b5d9006`, merged by the owner 2026-11-02). Migration `20270521000000` APPLIED 2026-11-02 by the owner, after the merge, and read as remote. The real documents were sent the same morning. The review was seen signed in; the brief was not. Mock-up: https://claude.ai/artifact/MqaZb24wxgVofxCbLX4XkA (private). The owner asked on 2026-11-02 for a rolling 6-month view that shows what improved and what dropped, feedback for discussions with the SEO person, and an expert guide against wrong action, and pre-approved the build once an expert-style review reached 9 of 10.
 
+Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks were rebuilt to the review's standard 2026-11-02 (PR pending). No migration. Each page now answers one question, says what it must not be read as, and names the next step. Seen with real figures from the sender's dry run, at desktop and phone, in a plain page with the real stylesheet. Not seen signed in.
+
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
 ## 3. The model
@@ -32,15 +34,15 @@ Owner decision 2026-11-01: **no additional paid package.** Ahrefs stays on the T
 
 | Route | Screen | Answers |
 |---|---|---|
-| `/seo` | `SeoOverview` | Verdict, five numbers, what needs the owner, the state of each task |
-| `/seo/rankings` | `SeoRankings` | The 20 money keywords, the 8 cities |
-| `/seo/competitors` | `SeoCompetitors` | Who wins, how strong, read on which date |
+| `/seo` | `SeoOverview` | This week in one line, what needs the owner in date order, the five numbers against their targets, clicks each day, what moved, whether the figures are fresh |
+| `/seo/rankings` | `SeoRankings` | The 20 money keywords in India over 28 days, with demand, position track and next step; where Google shows the wrong page; the 8 cities; the keywords too thin to judge |
+| `/seo/competitors` | `SeoCompetitors` | Who to watch and what to copy, who is rising or falling, the directories' share, the other sites, what winners do that we do not |
 | `/seo/review` | `SeoSixMonth` | The rolling 6-month review: verdict, likely causes, top 5 good and bad, dated next moves, targets, what to be careful quoting, 18 months of visits, leads and forms, what moved in India, AI readiness, blind spots |
 | `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief for a meeting with the SEO person: credit, what to raise, what is not on them, what is scored and what is not |
 | `/seo/year` | `SeoYear` | 12 months of clicks and leads, page groups, work done. Off the menu since the 6-month review; reached from the review's footnote |
-| `/seo/board` | `SeoBoard` | The 30 and 60-day board, targets, achieved, open proposals; Update and Keep or Change for those who hold them |
-| `/seo/reviews` | `SeoReviews` | Open strategy changes, every Monday page, the answers given |
-| `/seo/tasks` | `SeoTasks` | Each task's time, state, what to do, and its last 7 runs |
+| `/seo/board` | `SeoBoard` | The 30 and 60-day board, open proposals with a recommendation, targets, achieved; Update and Keep or Change for those who hold them |
+| `/seo/reviews` | `SeoReviews` | The newest Monday in full: verdict, numbers, the week's work, move and risk, competitors, open and answered strategy changes. Earlier Mondays are one line each |
+| `/seo/tasks` | `SeoTasks` | Seven days of runs as squares, how old each figure is, what can stop a task |
 
 `src/app/seo/layout.tsx` is `ModuleGuard` with `deniedRoute="/modules"`. Shell: `src/components/layout/SeoLayout.tsx`. `SeoScreen` holds the shell, the one shared read (`fetchSeoData`, query key `['seo', 'data']`) and the loading, error and empty states. Every rule the screens show is in `src/lib/seo/report.ts`, which is pure. `useSeoAccess` decides which controls to draw, and draws none while an administrator is previewing somebody else; the database functions decide what is allowed.
 
@@ -61,7 +63,7 @@ Owner decision 2026-11-01: **no additional paid package.** Ahrefs stays on the T
 | `seo_log` | Work, findings, decisions, proposals | `id` |
 | `seo_feed_runs` | One row per task per day | `feed, run_date` |
 
-Metrics in use: `site.month.{clicks,impressions,position,sessions,website_leads}` (first of the month), `keyword.position`, `site.money_in_top10`, `city.position` (`detail.top` holds the first 5 hosts), `city.demand`, `competitor.snapshot` (`value` is DR), `pages.clicks`, `work.count`, `plan.target`, `plan.progress`.
+Metrics in use: `site.month.{clicks,impressions,position,sessions,website_leads}` (first of the month), `keyword.india` (28 days in India, `detail` holds the other figures and the next step), `site.week` (with 14 days of clicks), `site.28d`, `source.age` (no value, `detail.date` is the figure's date), `keyword.position` and `site.money_in_top10` (still sent, no screen reads them), `city.position` (`detail.top` holds the first 5 hosts), `city.demand`, `competitor.snapshot` (`value` is DR), `pages.clicks`, `work.count`, `plan.target`, `plan.progress`.
 
 RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write policy and no write grant, so a browser cannot write to a table, Admin included. The file revokes Supabase's default grants itself and raises if a table is left open.
 
@@ -71,10 +73,15 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 
 ## 6. Business rules to remember
 
-- A keyword missing from the newest reading has no impressions that week. It is silent, never carried forward with an old position.
-- Position under 11 counts as top 10, because 10.9 shows as position 10.
+- Money keywords are read in India over 28 days. The 7-day worldwide reading missed most of them, because the buyers are in India and many keywords get few views in a week. A keyword missing from the newest reading is left out, never carried forward with an old position.
+- A position under 11 is page 1 and under 21 is page 2, because 10.9 shows as 10. Page 1 with real views means 100 or more in the 28 days.
+- Numbers are worked out from rows; the expert reading is written. Each Monday the session writes `pages` inside `data/weekly-reviews/YYYY-MM-DD.json`, one block per page, read tolerantly by `pageNotes` in `src/lib/seo/pages.ts`. Stored in `seo_reviews.detail`, so no table changed. With no notes a page draws its figures and a plain sentence.
+- A target keeps its `seo_metrics` scope when its wording changes (`detail.label`), because a new scope would add a sixth number beside the old row.
+- A need tied to a plan item drops off Overview once that item is done. The Toolsurf login and the count of strategy changes are worked out, not written.
+- A proposal's recommendation is in `seo_log.after_value`.
 - Directories never count as competitors. They are counted as a share of the top-3 spots.
-- A login or CAPTCHA stop outranks "late" on the task state, because it says what to do.
+- A login or CAPTCHA stop outranks "late" on the task state, because it says what to do. A login stop needs the owner; a CAPTCHA stop retries by itself, so it reads No action.
+- An Ahrefs day reads Saved when a logged-out attempt came before a finished run on that day, and Login when it ended logged out. The morning check in `data/daily` counts as an attempt.
 - Verdict rules and the guard against changing course on one week's moves are in `data/plan/board.json` in the website folder. The Monday review applies them; the app shows the result.
 - A board item needs evidence to be marked Done, as the board's own rule says. An answer to a strategy change cannot be overwritten, even by Admin, because the Monday review may already have acted on it. `change` means the owner adopted it; `keep` means declined, and the same change is not proposed again.
 - Lead data is counts only. Names and phone numbers never enter this module.
@@ -88,6 +95,7 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 - The repository is public. No SEO figures go in a migration, a fixture or a test. `sixMonthSample.ts` is made up.
 - The sender must not post a new key before the code that accepts it is live: the door refuses the whole delivery, and the daily runs fail with it.
 - `results.json` holds older URLs without `https://`. Normalise before counting, or brand counts come out too low (the sender's `host()`).
+- A finished Ahrefs file can name `not_run_logged_out` in its attempts, so read its top-level `status`, not the text. The sender used to mark 28 Oct logged out this way.
 - Filename order is not run order in `data/ahrefs-daily/`: a day can have `_run2.json` and `_run2_not_run.json`. The sender orders by file time.
 - The sender resends everything each run. That is safe only because every table upserts on a stable key, so keep ids stable. A proposal's id is its position in `proposed_changes`: never reorder or delete that list.
 - An item removed from `board.json` stays in `seo_plan_items`, because the door only upserts. Delete it by hand.

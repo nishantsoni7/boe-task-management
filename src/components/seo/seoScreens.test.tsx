@@ -21,7 +21,8 @@ const full: SeoData = {
   sixMonth: null,
   metrics: [
     { metric_date: '2026-11-01', metric: 'plan.target', scope: 'Website leads a month', value: 50, detail: { order: 1, months: { '2026-11': 55, '2027-04': 100 } }, source: 'board' },
-    { metric_date: '2026-10-26', metric: 'keyword.position', scope: 'hotel chairs', value: 18.6, detail: { previous: 16.4 }, source: 'search_console' },
+    { metric_date: '2026-10-26', metric: 'keyword.india', scope: 'hotel chairs', value: 18.6, detail: { order: 1, previous: 16.4, clicks: 2, views: 300, demand: '500', step: 'Rebuild the page.', shown: ['/old-page/ at 18.6'], want: '/hotel-chairs/ at 40' }, source: 'search_console' },
+    { metric_date: '2026-10-26', metric: 'keyword.india', scope: 'bar stools', value: 30, detail: { order: 2, previous: 28, clicks: 0, views: 9 }, source: 'search_console' },
     { metric_date: '2026-10-26', metric: 'city.position', scope: 'Pune | hotel furniture', value: 2, detail: { top: ['justdial.com', 'bestofexports.com', 'nakhtal.com'] }, source: 'google' },
     { metric_date: '2026-10-24', metric: 'competitor.snapshot', scope: 'bestofexports.com', value: 29, detail: { ref_domains: 1400, keywords: 904, visits: 4828, visits_year_ago: 2174 }, source: 'ahrefs' },
     { metric_date: '2026-09-01', metric: 'site.month.clicks', scope: '', value: 5312, detail: null, source: 'search_console' },
@@ -75,13 +76,13 @@ describe('the 6-month review and the discussion brief', () => {
 describe('each screen draws saved data', () => {
   test('Overview: the verdict with its sum, the numbers, what needs the owner, the task states', () => {
     const page = html(<OverviewBody data={full} today={TODAY} />)
-    for (const text of ['Watch', '3 of 5 due items done, 2 of 5 numbers on target', 'Hold course.', 'target 55', 'Put the category sitemap back on the live site', 'Move city pages to January', 'Logged out 1 Nov', 'No run yet']) {
+    for (const text of ['Watch', '3 of 5 due items done, 2 of 5 numbers on target', 'Hold course.', '55 / 100', 'Log in to tools.toolsurf.com in Chrome', 'Put the category sitemap back on the live site', 'Answer 1 strategy change', 'Logged out 1 Nov', 'No run yet', 'Needs you']) {
       assert.ok(page.includes(text), text)
     }
   })
-  test('Rankings: the keyword, its move, the silent keywords, the city', () => {
+  test('Rankings: the keyword, its move and step, the wrong page, the thin keyword, the city', () => {
     const page = html(<RankingsBody data={full} />)
-    for (const text of ['18.6', '16.4', 'Down', 'No impressions that week: cafe chairs', 'Pune', '1 of 1', 'nakhtal.com 1']) {
+    for (const text of ['16.4 → 18.6', '2 / 300', 'Rebuild the page.', '/old-page/ at 18.6', '/hotel-chairs/ at 40', 'Too few views to act on', 'Pune', '1 in top 3, 1 in top 10', 'nakhtal.com 1']) {
       assert.ok(page.includes(text), text)
     }
   })
@@ -89,7 +90,13 @@ describe('each screen draws saved data', () => {
     const page = html(<CompetitorsBody data={full} />)
     assert.ok(page.includes('bestofexports.com (us)'))
     assert.ok(page.includes('4,828'))
+    assert.ok(page.includes('+122%'))
     assert.ok(page.includes('24 Oct'))
+  })
+  test('Competitors: our own fall reads as a fall', () => {
+    const fell: SeoData = { ...full, metrics: full.metrics.map(m => (m.metric === 'competitor.snapshot' ? { ...m, detail: { ...m.detail, visits: 100, visits_year_ago: 200 } } : m)) }
+    assert.ok(html(<CompetitorsBody data={fell} />).includes('Down from 200 a year ago'))
+    assert.ok(html(<CompetitorsBody data={full} />).includes('Up from 2,174 a year ago'))
   })
   test('Year: the months, the page groups with their change, the work and its gap', () => {
     const page = html(<YearBody data={full} />)
@@ -99,7 +106,7 @@ describe('each screen draws saved data', () => {
   })
   test('Board: the status in words, its evidence, the targets, what is waiting for an answer', () => {
     const page = html(<BoardBody data={full} today={TODAY} />)
-    for (const text of ['Waiting on you', '0 done · 0 started · 1 waiting on you · 0 not started', 'Fixed on staging', 'Due 8 Nov', '100', '0 of 9', 'Move city pages to January', 'City words are tiny.']) {
+    for (const text of ['Waiting on you', '1 waiting on you', 'Fixed on staging', 'Due 8 Nov', '100', '0 of 9', 'Move city pages to January', 'City words are tiny.']) {
       assert.ok(page.includes(text), text)
     }
   })
@@ -139,16 +146,29 @@ describe('who sees which control', () => {
 })
 
 describe('the Weekly review and Scheduled tasks screens', () => {
+  test('a proposal shows its recommendation', () => {
+    const data: SeoData = { ...full, log: full.log.map(l => (l.kind === 'proposal' ? { ...l, after_value: 'Change. Category pages first.' } : l)) }
+    assert.ok(html(<BoardBody data={data} today={TODAY} />).includes('Change. Category pages first.'))
+  })
+  test('the notes the Monday session wrote replace the plain summary', () => {
+    const data: SeoData = {
+      ...full,
+      reviews: [{ ...full.reviews[0], detail: { pages: { overview: { kicker: 'Monday', title: 'Clicks fell.', text: 'Why they fell.', lenses: [{ label: 'Plan', tag: { text: 'Hold', tone: 'good' } }], checks: { numbers: 'Read this first.' }, foot: 'Where it comes from.' } } } }],
+    }
+    const page = html(<OverviewBody data={data} today={TODAY} />)
+    for (const text of ['Clicks fell.', 'Why they fell.', 'Hold', 'Read this first.', 'Expert check', 'Where it comes from.']) assert.ok(page.includes(text), text)
+    assert.equal(page.includes('Hold course.'), false)
+  })
   test('Weekly review: the verdict, its sum, and the page the Monday session wrote', () => {
     const data: SeoData = {
       ...full,
       reviews: [{
         ...full.reviews[0],
-        detail: { direction: 'Better', numbers: [{ measure: 'Website leads', this_week: 12, last_week: 10, target: 55, note: 'September' }], needs_ok: ['Send photos'], next_tasks: ['Rebuild the page'], risk: 'Photos are late' },
+        detail: { direction: 'Better', numbers: [{ measure: 'Website leads', this_week: 12, last_week: 10, target: 55, note: 'September' }], next_tasks: ['Rebuild the page'], risk: 'Photos are late' },
       }],
     }
     const page = html(<ReviewsBody data={data} />)
-    for (const text of ['Week of 2 Nov', 'Watch', '3 of 5 due items done, 2 of 5 numbers on target. Better than last week', 'Hold course.', 'Website leads', 'Send photos', 'Rebuild the page', 'Photos are late']) {
+    for (const text of ['Week of 2 Nov', 'Watch', '3 of 5', '2 of 5', 'Better than last week', 'Hold course.', 'Website leads', 'Rebuild the page', 'Photos are late', 'Past weeks']) {
       assert.ok(page.includes(text), text)
     }
   })
@@ -157,7 +177,7 @@ describe('the Weekly review and Scheduled tasks screens', () => {
   })
   test('Scheduled tasks: every task, its time, its state, what to do and its recent runs', () => {
     const page = html(<TasksBody data={full} today={TODAY} />)
-    for (const text of ['Daily SEO numbers', 'Every day, about 10:09 am', 'Mondays, about 11:07 am', 'Logged out 1 Nov', 'Log in to tools.toolsurf.com', 'No run yet']) {
+    for (const text of ['Daily SEO numbers', 'Every day, about 10:09 am', 'Mondays, about 11:07 am', 'Login', 'Log in to tools.toolsurf.com', 'No run yet']) {
       assert.ok(page.includes(text), text)
     }
   })
@@ -170,7 +190,7 @@ describe('an empty module still draws, and says why', () => {
     assert.ok(page.includes('Nothing is waiting on you.'))
   })
   test('the others name what is missing', () => {
-    assert.ok(html(<RankingsBody data={empty} />).includes('No keyword positions saved yet.'))
+    assert.ok(html(<RankingsBody data={empty} />).includes('No India keyword reading saved yet.'))
     assert.ok(html(<RankingsBody data={empty} />).includes('No city results saved yet.'))
     assert.ok(html(<CompetitorsBody data={empty} />).includes('No competitor figures saved yet.'))
     assert.ok(html(<YearBody data={empty} />).includes('No monthly figures saved yet.'))

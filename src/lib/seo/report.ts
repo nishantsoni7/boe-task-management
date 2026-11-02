@@ -1,5 +1,5 @@
 // Everything the SEO screens work out from the saved rows. Pure, so each rule is tested without a database.
-import type { SixMonthRow } from './sixMonth'
+import type { SeoTag, SeoTone, SixMonthRow } from './sixMonth'
 
 export type SeoMetric = {
   metric_date: string
@@ -70,10 +70,10 @@ export const dayLabel = (date: string) =>
 
 export const formatCount = (value: number) => value.toLocaleString('en-IN')
 
-const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000)
+export const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000)
 
 /** The newest row for each scope of one metric, and how it was read on what date. */
-function latestByScope(data: SeoData, metric: string): SeoMetric[] {
+export function latestByScope(data: SeoData, metric: string): SeoMetric[] {
   const newest = new Map<string, SeoMetric>()
   for (const row of data.metrics) {
     if (row.metric !== metric) continue
@@ -83,32 +83,8 @@ function latestByScope(data: SeoData, metric: string): SeoMetric[] {
   return [...newest.values()]
 }
 
-const newestDate = (rows: SeoMetric[]) => rows.reduce<string | null>((max, r) => (!max || r.metric_date > max ? r.metric_date : max), null)
-const numberIn = (detail: SeoMetric['detail'], key: string) => (typeof detail?.[key] === 'number' ? (detail[key] as number) : null)
-
-// ── Money keywords ──────────────────────────────────────────────────────────
-
-export type KeywordRow = { keyword: string; position: number; previous: number | null; move: 'up' | 'down' | 'same' }
-
-/** Search Console keeps no row for a keyword with no impressions, so a keyword missing from the newest reading is silent, not ranked. */
-export function moneyKeywords(data: SeoData): { rows: KeywordRow[]; silent: string[]; asOf: string | null; inTop10: number } {
-  const latest = latestByScope(data, 'keyword.position')
-  const asOf = newestDate(latest)
-  const rows = latest
-    .filter(r => r.metric_date === asOf && r.value !== null)
-    .map((r): KeywordRow => {
-      const position = r.value as number
-      const previous = numberIn(r.detail, 'previous')
-      // A lower position is better.
-      const move = previous === null || previous === position ? 'same' : position < previous ? 'up' : 'down'
-      return { keyword: r.scope, position, previous, move }
-    })
-    .sort((a, b) => a.position - b.position)
-  const ranked = new Set(rows.map(r => r.keyword))
-  const silent = data.watchlist.filter(w => w.kind === 'keyword' && w.active && !ranked.has(w.entry_key)).map(w => w.label)
-  // 10.9 still shows as position 10 in Search Console.
-  return { rows, silent, asOf, inTop10: rows.filter(r => r.position < 11).length }
-}
+export const newestDate = (rows: SeoMetric[]) => rows.reduce<string | null>((max, r) => (!max || r.metric_date > max ? r.metric_date : max), null)
+export const numberIn = (detail: SeoMetric['detail'], key: string) => (typeof detail?.[key] === 'number' ? (detail[key] as number) : null)
 
 // ── Cities ──────────────────────────────────────────────────────────────────
 
@@ -172,11 +148,17 @@ export type CompetitorRow = {
   isUs: boolean
 }
 
-export function competitors(data: SeoData): CompetitorRow[] {
+/** How many top-3 spots each site holds across the newest city checks. */
+export function topThreeSpots(data: SeoData) {
   const spots = new Map<string, number>()
   for (const row of latestByScope(data, 'city.position')) {
     for (const domain of topOf(row).slice(0, 3)) spots.set(domain, (spots.get(domain) ?? 0) + 1)
   }
+  return spots
+}
+
+export function competitors(data: SeoData): CompetitorRow[] {
+  const spots = topThreeSpots(data)
   const notes = new Map(data.watchlist.filter(w => w.kind === 'competitor').map(w => [w.entry_key, w.note]))
   return latestByScope(data, 'competitor.snapshot')
     .map((r): CompetitorRow => ({
@@ -260,7 +242,17 @@ export function boardCounts(items: SeoPlanItem[]) {
   return { total: items.length, done: count('done'), started: count('started'), waiting: count('waiting_owner'), notStarted: count('not_started') }
 }
 
-export type TargetRow = { measure: string; now: number | null; target: number | null; april: number | null; onTarget: boolean | null }
+export type TargetRow = {
+  measure: string
+  label: string
+  now: number | null
+  nowText: string
+  target: number | null
+  december: number | null
+  april: number | null
+  onTarget: boolean | null
+  state: SeoTag
+}
 
 /** This month's target, or the next one set when this month has none. */
 export function targetForMonth(byMonth: Record<string, number>, month: string): number | null {
@@ -274,12 +266,18 @@ export function targets(data: SeoData, today: string): TargetRow[] {
     .map((r): TargetRow => {
       const byMonth = (r.detail?.months ?? {}) as Record<string, number>
       const target = targetForMonth(byMonth, today.slice(0, 7))
+      const onTarget = r.value === null || target === null ? null : r.value >= target
       return {
         measure: r.scope,
+        label: said(r.detail?.label) || r.scope,
         now: r.value,
+        nowText: said(r.detail?.now_text) || (r.value === null ? '—' : formatCount(r.value)),
         target,
+        december: byMonth['2026-12'] ?? null,
         april: byMonth['2027-04'] ?? null,
-        onTarget: r.value === null || target === null ? null : r.value >= target,
+        onTarget,
+        // The Monday session can say more than the sum, such as when a reading is too old to trust.
+        state: tagOf(r.detail?.state) ?? (onTarget === null ? { text: 'No reading', tone: 'pending' } : onTarget ? { text: 'On target', tone: 'good' } : { text: 'Behind', tone: 'bad' }),
       }
     })
 }
@@ -291,10 +289,16 @@ export function progress(data: SeoData) {
 export const openProposals = (data: SeoData) => data.log.filter(r => r.kind === 'proposal' && !r.decision)
 export const answeredProposals = (data: SeoData) =>
   data.log.filter(r => r.kind === 'proposal' && r.decision).sort((a, b) => (b.decided_at ?? '').localeCompare(a.decided_at ?? ''))
-export const needsOwner = (data: SeoData) => data.planItems.filter(i => i.status === 'waiting_owner')
 
 export const reviewsNewestFirst = (data: SeoData) => [...data.reviews].sort((a, b) => b.review_date.localeCompare(a.review_date))
 export const latestReview = (data: SeoData): SeoReview | null => reviewsNewestFirst(data)[0] ?? null
+
+const TONES: readonly SeoTone[] = ['good', 'bad', 'wait', 'work', 'pending']
+/** A tag the Monday session wrote, or null when it is missing or wrong. */
+export function tagOf(value: unknown): SeoTag | null {
+  const raw = value as Record<string, unknown> | null | undefined
+  return typeof raw?.text === 'string' && raw.text && TONES.includes(raw.tone as SeoTone) ? { text: raw.text, tone: raw.tone as SeoTone } : null
+}
 
 const words = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [])
 const said = (value: unknown) => (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '')
@@ -306,16 +310,16 @@ export function reviewPage(review: SeoReview) {
   return {
     direction: said(page.direction),
     numbers: numbers
-      .map(n => ({ measure: said(n.measure), thisWeek: said(n.this_week), lastWeek: said(n.last_week), target: said(n.target), note: said(n.note) }))
+      .map(n => ({ measure: said(n.measure), thisWeek: said(n.this_week), lastWeek: said(n.last_week), target: said(n.target), note: said(n.note), tag: tagOf(n.tag) }))
       .filter(n => n.measure),
     done: words(page.done),
     pending: words(page.pending),
-    shipped: words(page.shipped),
-    needsOk: words(page.needs_ok),
     competitors: words(page.competitors),
     nextTasks: words(page.next_tasks),
     biggestMove: said(page.biggest_move),
+    moveTag: tagOf(page.biggest_move_tag),
     risk: said(page.risk),
+    riskTag: tagOf(page.risk_tag),
   }
 }
 
@@ -335,11 +339,8 @@ const FEEDS: { feed: SeoRun['feed']; label: string; schedule: string; allowedDay
   { feed: 'monday_review', label: 'Monday review', schedule: 'Mondays, about 11:07 am', allowedDays: 7 },
 ]
 
-export const RUN_LABEL: Record<SeoRun['status'], string> = {
-  ok: 'Ran', partial: 'Part done', blocked: 'Blocked', logged_out: 'Logged out', failed: 'Failed',
-}
-
-export type TaskState = { label: string; state: 'never' | 'ok' | 'late' | 'problem'; text: string }
+// A blocked run retries by itself, so it is not a problem for the owner.
+export type TaskState = { label: string; state: 'never' | 'ok' | 'late' | 'retry' | 'problem'; text: string }
 
 /** One line per task. A problem on its last run outranks lateness, because it says what to do. */
 export function taskStates(data: SeoData, today: string): TaskState[] {
@@ -348,7 +349,7 @@ export function taskStates(data: SeoData, today: string): TaskState[] {
     if (!last) return { label, state: 'never', text: 'No run yet' }
     const when = dayLabel(last.run_date)
     if (last.status === 'logged_out') return { label, state: 'problem', text: `Logged out ${when}` }
-    if (last.status === 'blocked') return { label, state: 'problem', text: `Blocked ${when}` }
+    if (last.status === 'blocked') return { label, state: 'retry', text: `Blocked ${when}` }
     if (last.status === 'failed') return { label, state: 'problem', text: `Failed ${when}` }
     if (daysBetween(last.run_date, today) > allowedDays) return { label, state: 'late', text: `Late, last ran ${when}` }
     return { label, state: 'ok', text: last.status === 'partial' ? `Part done ${when}` : `Ran ${when}` }
@@ -358,16 +359,16 @@ export function taskStates(data: SeoData, today: string): TaskState[] {
 /** What to do about a task's state, in one line, or null when nothing is needed. */
 function adviceFor(state: TaskState['state'], last: SeoRun | undefined): string | null {
   if (state === 'late') return 'Check that the PC was on and the Claude app was open.'
+  if (state === 'retry') return 'Nothing to do. It tries again at its next run.'
   if (state !== 'problem') return null
   if (last?.status === 'logged_out') return 'Log in to tools.toolsurf.com in Chrome before the next run.'
-  if (last?.status === 'blocked') return 'Nothing to do. It tries again at its next run.'
   return 'Ask Claude to look at this task.'
 }
 
 export function taskHistories(data: SeoData, today: string) {
   const states = taskStates(data, today)
   return FEEDS.map(({ feed, schedule }, index) => {
-    const recent = data.runs.filter(r => r.feed === feed).sort((a, b) => b.run_date.localeCompare(a.run_date)).slice(0, 7)
-    return { ...states[index], schedule, recent, advice: adviceFor(states[index].state, recent[0]) }
+    const last = data.runs.filter(r => r.feed === feed).sort((a, b) => b.run_date.localeCompare(a.run_date))[0]
+    return { ...states[index], feed, schedule, advice: adviceFor(states[index].state, last) }
   })
 }
