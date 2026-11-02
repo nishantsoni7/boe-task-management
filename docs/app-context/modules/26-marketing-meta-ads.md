@@ -1,6 +1,6 @@
 # 26. Marketing — Meta Ads
 
-Written 2026-11-02 from the build of PR A (data and sync). PR B (the screens) is not built. Migrations `20270522000000` and `20270522000100` were **APPLIED to production on 2026-11-02** by the owner, before the merge (checked on the live ledger afterwards; the dry-run listed only these two). PR #580.
+Written 2026-11-02 from the build of PR A (data and sync). PR B (the screens) is not built. Migrations `20270522000000` and `20270522000100` were **APPLIED to production on 2026-11-02** by the owner, before the merge (checked on the live ledger afterwards; the dry-run listed only these two). PR #580, merged 2026-11-02 as `d29f903f` and deployed.
 
 ## 1. Purpose & users
 
@@ -10,7 +10,7 @@ Written 2026-11-02 from the build of PR A (data and sync). PR B (the screens) is
 
 ## 2. Status
 
-PR A is built and not merged: the tables, the daily sync, the cron and the registration. The Marketing page still shows Coming soon until PR B. Checked by `tsc`, lint, new tests (including three deliberate breaks that the tests caught) and an executed rehearsal of both migrations on PGlite with Supabase's default grants copied in: 28 checks, the rollback included. **Not run against Meta**: there is no token yet, so Meta's real answers have not been read.
+PR A is live (#580, `d29f903f`, deployed 2026-11-02): the tables, the daily sync, the cron and the registration. In production the route answers 401 to a caller without the secret; it has not yet read Meta. The Marketing page still shows Coming soon until PR B. Checked by `tsc`, lint, new tests (including three deliberate breaks that the tests caught) and an executed rehearsal of both migrations on PGlite with Supabase's default grants copied in: 28 checks, the rollback included. **Not run against Meta**: there is no token yet, so Meta's real answers have not been read.
 
 ## 3. The model
 

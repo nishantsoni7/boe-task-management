@@ -4,13 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-02 — Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (PR #580) · 20270522000000 and 20270522000100 → APPLIED 2026-11-02, before the merge
+## 2026-11-02 — Marketing, Meta Ads, PR A: the daily read of the owner's Meta ad account (PR #580, d29f903f) · 20270522000000 and 20270522000100 → APPLIED 2026-11-02, before the merge
 - **Owner request.** A Meta Ads section in Marketing that watches the running and old campaigns, learns from them and judges which work. The owner shared the old ad account to the business with the View performance role only, approved the layout on a mock-up and the plan in two PRs.
 - **Added.** `GET /api/integrations/meta/sync` (daily 00:40 UTC, `CRON_SECRET`) reads the ad account with a view-only token (`META_ACCESS_TOKEN`, `META_AD_ACCOUNT_IDS`, both set in Vercel by the owner) and fills six tables. Marketing gets the `edit` action. The page is still Coming soon; PR B draws the screens. With no token the route answers `not_configured`.
 - **Database.** `meta_ad_accounts`, `meta_campaigns`, `meta_ad_sets`, `meta_insights_daily`, `meta_sync_runs`, `meta_settings`, and `meta_set_targets`. Money in whole paise; results kept as Meta sent them; read through `module_entry_open('marketing')`; no browser write. Rollback is in the migration headers.
 - **Proof.** 56 new tests and three deliberate breaks that the tests caught (the cron secret, parent-before-child write order, the token in a URL). Both migrations on PGlite with Supabase's default grants copied in: 28 checks, the rollback included. **Never run against Meta**: the first real read checks that the sync shows the same campaign and ad set counts and the same spend and chats as Ads Manager.
 - **Existing tests changed, and why.** Two pinned Marketing as "view only, described by the first migration": they now expect `view` and `edit` and the later migration's description. The guard "nothing in this repository sends a WhatsApp message" flagged `graph.facebook.com` in the new read-only client. It now excuses that one file for that one marker, and fails if the file ever gains a write method or a `messages` edge. The address was not disguised to get past the guard.
 - **Order.** Apply both migrations before the merge. The route is safe to merge before the token exists.
+- **Shipped.** Squash-merged on the owner's "Merge 580" on 2026-11-02 at 11:07 UTC as d29f903f. The production deployment (7490562140) succeeded at 11:10 UTC, and the route answers 401 to a caller with no secret or a wrong one, so it is live and guarded. No backup run for this merge: the nightly one covers the day. Staff see no change (the page is still Coming soon), and nothing reads Meta until the owner adds the token.
 
 ## 2026-11-02 — Old orders (BDPI): a PI over 4.5 MB uploads (PR #581, 6610af35) · no migration
 - **Owner report.** Uploading the PI for Order 498 (`498 chinchwad Site.xlsx`, 6.09 MiB) on Old orders (BDPI) showed "The PI could not be uploaded. Please try again." every time.
