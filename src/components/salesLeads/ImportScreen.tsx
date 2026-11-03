@@ -7,9 +7,11 @@ import { CheckCircle2, Download, FileUp, X } from 'lucide-react'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { istToday } from '@/lib/istDate'
-import { fetchPeople, importLeads, SALES_KEY, type ImportOutcome } from '@/lib/salesLeads/api'
+import { fetchPeople, importHistory, importLeads, SALES_KEY, type HistoryOutcome, type ImportOutcome } from '@/lib/salesLeads/api'
 import { stageLabel } from '@/lib/salesLeads/board'
-import { buildPlan, guessHolder, readExport, toSave, type ClickupTask, type Refused } from '@/lib/salesLeads/clickup'
+import {
+  buildPlan, guessHolder, historyBatches, readExport, readHistory, toSave, type ClickupTask, type HistoryRow, type Refused,
+} from '@/lib/salesLeads/clickup'
 import { dayLabel, plural } from '@/lib/salesLeads/format'
 import { createClient } from '@/lib/supabase/client'
 import { SalesFrame } from './SalesFrame'
@@ -19,12 +21,14 @@ import s from './salesPages.module.css'
 // Bringing ClickUp over. The files are read here, in the browser, and go nowhere until the button is pressed. The whole
 // result is on the screen first: who gets what, what each old status becomes, and what cannot come across. Saving goes in
 // small batches, and a task already saved is skipped, so an interrupted import is simply started again.
+// A CSV export carries only each task's latest comment, undated. The history file (scripts/clickup-history.mjs, read from
+// ClickUp's API) carries every comment with its date and author; added here, it goes in after the leads.
 
 const BATCH = 200
 const PER_DAY = [10, 15, 20, 30]
 
 type LoadedFile = { name: string; tasks: ClickupTask[] }
-type Progress = { done: number; total: number; result: ImportOutcome }
+type Progress = { done: number; total: number; result: ImportOutcome; history?: { done: number; total: number; result: HistoryOutcome } }
 
 const NOBODY = 'nobody'
 const shortName = (file: string) => file.replace(/^.*Best Of Exports - /i, '').replace(/\.csv$/i, '')
@@ -47,6 +51,7 @@ export function ImportScreen() {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<LoadedFile[]>([])
+  const [history, setHistory] = useState<{ name: string; rows: HistoryRow[] } | null>(null)
   const [badFiles, setBadFiles] = useState<string[]>([])
   const [perDay, setPerDay] = useState(20)
   const [chosen, setChosen] = useState<Record<string, string>>({})
@@ -69,8 +74,12 @@ export function ImportScreen() {
 
   async function addFiles(list: FileList | null) {
     if (!list) return
-    const read = await Promise.all(Array.from(list).map(async f => ({ name: f.name, tasks: readExport(await f.text()) })))
-    setBadFiles(read.filter(f => !f.tasks).map(f => f.name))
+    const all = Array.from(list)
+    const histories = await Promise.all(all.filter(f => /\.jsonl$/i.test(f.name)).map(async f => ({ name: f.name, rows: readHistory(await f.text()) })))
+    const good = histories.find(h => h.rows)
+    if (good?.rows) setHistory({ name: good.name, rows: good.rows })
+    const read = await Promise.all(all.filter(f => !/\.jsonl$/i.test(f.name)).map(async f => ({ name: f.name, tasks: readExport(await f.text()) })))
+    setBadFiles([...read.filter(f => !f.tasks).map(f => f.name), ...histories.filter(h => !h.rows).map(h => h.name)])
     setFiles(now => [...now, ...read.flatMap(f => (f.tasks && !now.some(n => n.name === f.name) ? [{ name: f.name, tasks: f.tasks }] : []))])
     setProgress(null)
   }
@@ -96,6 +105,22 @@ export function ImportScreen() {
         result.already += r.already
         result.failed.push(...r.failed)
         setProgress({ done: Math.min(i + BATCH, rows.length), total: rows.length, result: { ...result } })
+      }
+      if (history) {
+        const batches = historyBatches(history.rows)
+        const total = history.rows.reduce((n, r) => n + r.comments.length, 0)
+        const h: HistoryOutcome = { comments: 0, statuses: 0, already: 0, not_imported: 0, failed: [] }
+        let done = 0
+        for (const batch of batches) {
+          const r = await importHistory(supabase, batch)
+          h.comments += r.comments
+          h.statuses += r.statuses
+          h.already += r.already
+          h.not_imported += r.not_imported
+          h.failed.push(...r.failed)
+          done += batch.reduce((n, x) => n + x.comments.length, 0)
+          setProgress({ done: rows.length, total: rows.length, result: { ...result }, history: { done, total, result: { ...h } } })
+        }
       }
       await queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
     } catch (e) {
@@ -135,10 +160,18 @@ export function ImportScreen() {
           >
             <FileUp aria-hidden="true" />
             <b>Drop CSV files here, or press to choose</b>
-            <span>ClickUp: open a list, then Export, then CSV</span>
-            <input ref={input} className="boe-sr-only" type="file" accept=".csv,text/csv" multiple disabled={running} onChange={e => { void addFiles(e.target.files); e.target.value = '' }} />
+            <span>ClickUp: open a list, then Export, then CSV. Add the history file (history.jsonl) with them.</span>
+            <input ref={input} className="boe-sr-only" type="file" accept=".csv,text/csv,.jsonl" multiple disabled={running} onChange={e => { void addFiles(e.target.files); e.target.value = '' }} />
           </label>
-          {badFiles.map(f => <p key={f} className={s.bad}>{shortName(f)} is not a ClickUp task export.</p>)}
+          {badFiles.map(f => <p key={f} className={s.bad}>{shortName(f)} is not a ClickUp task export or history file.</p>)}
+          {history && (
+            <ul className={s.files}>
+              <li>
+                <span>{history.name}: every comment with its date</span><span className={b.count}>{plural(history.rows.length, 'task')}</span>
+                <button type="button" aria-label="Remove the history file" disabled={running} onClick={() => setHistory(null)}><X aria-hidden="true" /></button>
+              </li>
+            </ul>
+          )}
           {files.length > 0 && (
             <ul className={s.files}>
               {files.map(f => (
@@ -157,8 +190,19 @@ export function ImportScreen() {
               <Tile label="Open leads" value={plan.open} sub="go to a salesperson" />
               <Tile label="Dead leads" value={plan.dead} sub="kept, so a repeat number is known" />
               <Tile label="Same number twice" value={plan.samePhone} sub="become a note on the lead" />
-              <Tile label="Cannot come across" value={plan.refused.length} sub="no valid number" />
+              <Tile label="Cannot come across" value={plan.refused.length} sub="the download says why" />
             </div>
+
+            {!history && (
+              <section className={s.card} aria-labelledby="import-history">
+                <h2 id="import-history">Only the latest comment is in these files</h2>
+                <p>
+                  A ClickUp export carries each task&apos;s latest comment, without its date. To bring every comment with its date and
+                  who wrote it, run the history download on this computer (Sales dossier, &quot;ClickUp history&quot;) and add the
+                  history.jsonl file it makes. You can also import now and add the history file later: nothing is saved twice.
+                </p>
+              </section>
+            )}
 
             <section className={s.card} aria-labelledby="import-people">
               <h2 id="import-people">Who gets what</h2>
@@ -213,6 +257,12 @@ export function ImportScreen() {
                   <span className={b.progressTrack} aria-hidden="true"><span className={b.progressFill} style={{ width: `${Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%` }} /></span>
                 </div>
               )}
+              {progress?.history && (
+                <div className={s.progress} role="status">
+                  <div className={b.progressText}><b>{progress.history.done.toLocaleString('en-IN')}</b> of {progress.history.total.toLocaleString('en-IN')} comments saved</div>
+                  <span className={b.progressTrack} aria-hidden="true"><span className={b.progressFill} style={{ width: `${Math.round((progress.history.done / Math.max(progress.history.total, 1)) * 100)}%` }} /></span>
+                </div>
+              )}
               {failure && <p className={s.bad} role="alert">{failure}</p>}
               {finished && (
                 <div className={s.done} role="status">
@@ -220,6 +270,7 @@ export function ImportScreen() {
                   <div>
                     <b>{plural(progress.result.created, 'lead')} imported.</b>{' '}
                     {plural(progress.result.merged, 'task')} added as notes{progress.result.already ? `, ${progress.result.already.toLocaleString('en-IN')} already here` : ''}.
+                    {progress.history && <> {plural(progress.history.result.comments, 'comment')} and {plural(progress.history.result.statuses, 'status change')} added with their dates.</>}
                     {' '}<Link href="/sales/team">Open the Team page</Link>, or give people access in <Link href="/admin/control-center?tab=sales-team">Control Center</Link>.
                   </div>
                 </div>
@@ -228,6 +279,7 @@ export function ImportScreen() {
                 {refusedRows(plan.refused, progress?.result).length > 0 && (
                   <button type="button" className="boe-btn boe-btn-secondary" onClick={() => downloadRefused(refusedRows(plan.refused, progress?.result))}><Download aria-hidden="true" />Download what did not come across</button>
                 )}
+                {people.isError && <p className={s.bad} role="alert">The list of salespeople could not be loaded. Reload the page.</p>}
                 <button type="button" className="boe-btn boe-btn-primary" disabled={running || !people.data} onClick={() => void run()}>
                   {running ? 'Importing...' : `Import ${(plan.open + plan.dead).toLocaleString('en-IN')} leads`}
                 </button>

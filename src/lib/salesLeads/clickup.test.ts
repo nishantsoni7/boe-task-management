@@ -11,8 +11,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEAD_REASONS } from './board'
 import {
-  buildPlan, deadReasonFor, guessHolder, mapTask, parseClickupDate, parseCsv, readExport, ruleFor, sourceFor, spreadFollowUps,
-  statusFamily, toSave, workingDay, type ClickupTask, type PlannedLead,
+  buildPlan, deadReasonFor, guessHolder, historyBatches, mapTask, parseClickupDate, parseCsv, readExport, readHistory, ruleFor,
+  sourceFor, spreadFollowUps, statusFamily, toSave, workingDay, type ClickupTask, type HistoryRow, type PlannedLead,
 } from './clickup'
 
 const MIGRATION = readFileSync(join(process.cwd(), 'supabase/migrations/20270526000100_sales_go_live.sql'), 'utf8')
@@ -217,5 +217,37 @@ describe('the plan', () => {
     assert.ok(held.next_due_on)
     assert.deepEqual([free.holder_id, free.next_step, free.next_due_on], [null, null, null])
     assert.equal('folder' in held, false, 'only what the database takes is sent')
+  })
+})
+
+describe('the history file from ClickUp', () => {
+  const line = (task: string, n: number, statuses = false) => JSON.stringify({
+    task_id: task,
+    comments: Array.from({ length: n }, (_, i) => ({ id: `${task}-${i}`, at: '2025-01-01T10:00:00.000Z', author: 'Ashok', text: `note ${i}` })),
+    ...(statuses ? { statuses: [{ status: 'new leads', at: '2025-01-01T09:00:00.000Z', current: true }] } : {}),
+  })
+
+  test('reads one task a line, and skips a task the script could not read', () => {
+    const rows = readHistory([line('t1', 2, true), JSON.stringify({ task_id: 't2', error: 'could not be read' }), '', line('t3', 0)].join('\n'))
+    assert.deepEqual(rows?.map(r => [r.task_id, r.comments.length, r.statuses?.length ?? 0]), [['t1', 2, 1], ['t3', 0, 0]])
+  })
+
+  test('is refused when it is not a history file', () => {
+    assert.equal(readHistory('Task ID,Status\n1,new'), null)
+    assert.equal(readHistory(''), null)
+  })
+
+  test('goes in calls of at most 300 tasks and 3,000 comments, a long task split over calls', () => {
+    const rows = readHistory([line('big', 7, true), line('a', 2), line('b', 2), line('c', 1)].join('\n')) as HistoryRow[]
+    const batches = historyBatches(rows, 2, 4)
+    for (const b of batches) {
+      assert.ok(b.length <= 2)
+      assert.ok(b.reduce((n, r) => n + r.comments.length, 0) <= 4)
+    }
+    const all = batches.flat()
+    assert.equal(all.filter(r => r.task_id === 'big').reduce((n, r) => n + r.comments.length, 0), 7, 'no comment lost')
+    assert.equal(all.filter(r => r.task_id === 'big' && r.statuses?.length).length, 1, 'statuses sent once')
+    assert.equal(all.reduce((n, r) => n + r.comments.length, 0), 12)
+    assert.deepEqual(historyBatches(readHistory(line('none', 0)) as HistoryRow[]).flat().map(r => r.task_id), ['none'])
   })
 })

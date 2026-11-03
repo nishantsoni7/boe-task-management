@@ -74,7 +74,7 @@ export const KINDS = [
 export type ActivityKind = typeof KINDS[number]['value']
 export const kindLabel = (kind: string) => KINDS.find(k => k.value === kind)?.label ?? kind
 
-/** The answers on the log form. "Not interested" is not stored as an outcome: it asks why the lead is dead instead. */
+/** The answers on the log form. "Not interested" is logged like any call, then asks why the lead is dead. */
 export const OUTCOMES = [
   { value: 'interested', label: 'Interested', step: 'Call: send quotation', inDays: 3 },
   { value: 'still_deciding', label: 'Still deciding', step: 'Call back', inDays: 7 },
@@ -85,6 +85,7 @@ export type OutcomeChoice = typeof OUTCOMES[number]['value']
 
 const OUTCOME_WORDS: Record<string, string> = {
   interested: 'Interested', still_deciding: 'Still deciding', call_back: 'Call back', no_answer: 'No answer', sent: 'Sent',
+  not_interested: 'Not interested',
 }
 export const outcomeLabel = (outcome: string) => OUTCOME_WORDS[outcome] ?? outcome
 
@@ -248,10 +249,15 @@ type Ranked = Clocked & { temperature: string; expected_value_paise: number | nu
 const TEMPERATURE_RANK: Record<string, number> = { hot: 0, warm: 1, cold: 2 }
 const notTried = (l: Ranked) => !l.first_attempt_at
 
-/** My day's order: a lead nobody has called, then Hot, then the biggest value, then the longest overdue. */
+/** Enquired again since anybody last worked the lead: the customer is waiting for a call. */
+export const cameBack = (l: { enquired_again_at: string | null; last_activity_at: string | null }) =>
+  !!l.enquired_again_at && (!l.last_activity_at || l.enquired_again_at > l.last_activity_at)
+
+/** My day's order: a lead that came back, a lead nobody has called, then Hot, then the biggest value, then the longest overdue. */
 export function rankMyDay<T extends Ranked>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) =>
-    Number(notTried(b)) - Number(notTried(a))
+    Number(cameBack(b)) - Number(cameBack(a))
+    || Number(notTried(b)) - Number(notTried(a))
     || (TEMPERATURE_RANK[a.temperature] ?? 3) - (TEMPERATURE_RANK[b.temperature] ?? 3)
     || (b.expected_value_paise ?? 0) - (a.expected_value_paise ?? 0)
     || (a.next_due_on ?? '').localeCompare(b.next_due_on ?? ''))
@@ -259,7 +265,7 @@ export function rankMyDay<T extends Ranked>(rows: readonly T[]): T[] {
 
 /** The line that says why this lead is on top, so the order never feels random. */
 export function whyFirst(lead: Ranked, today: string): string {
-  if (lead.enquired_again_at && !lead.last_activity_at) return 'Came back with a new enquiry'
+  if (cameBack(lead)) return 'Came back with a new enquiry'
   if (notTried(lead)) return 'New lead, nobody has called yet'
   const overdue = !!lead.next_due_on && lead.next_due_on < today
   if (lead.temperature === 'hot') return overdue ? 'Hot and overdue' : 'Hot, due today'
