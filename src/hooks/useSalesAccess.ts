@@ -18,6 +18,8 @@ export function useSalesAccess() {
     canSeeAll: holds('view_all') || holds('assign'),
     /** The register is for whoever adds, allots or oversees leads. A salesperson lives on My day and the board. */
     canOpenRegister: holds('create') || holds('assign') || holds('view_all'),
+    /** The manager's page. */
+    canOpenTeam: holds('view_all') || holds('assign'),
     /** Nothing may be logged or moved while previewing somebody else. */
     readOnly,
   }

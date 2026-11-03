@@ -44,6 +44,7 @@ import {
 } from '@/hooks/queries/useControlCenterData'
 import { ModuleMemberPicker } from './ModuleMemberPicker'
 import { OrderVisibilityTab } from '@/components/controlCenter/OrderVisibilityTab'
+import { SalesTeamTab } from '@/components/controlCenter/SalesTeamTab'
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -1149,6 +1150,7 @@ function ControlCenterPageInner() {
       {tab === 'order-notifications' && <OrderNotificationRecipientsTab />}
       {tab === 'operations-handoff' && <OperationsReviewerTab members={members} />}
       {tab === 'order-visibility' && <OrderVisibilityTab />}
+      {tab === 'sales-team' && <SalesTeamTab />}
 
       {/* ── Departments ──────────────────────────────────────────────────── */}
       {tab === 'departments' && (

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Plus, Upload } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
@@ -197,9 +197,10 @@ export function LeadMasterScreen() {
                 {LEAD_SOURCES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <span className="fin-count">{first ? plural(first.total, 'lead') : ''}</span>
-              {canCreate && (
+              {(canCreate || canAssign) && (
                 <div className={s.headActions}>
-                  <Link className={`boe-btn boe-btn-primary ${s.add}`} href="/sales/lead-master/new"><Plus aria-hidden="true" />Add lead</Link>
+                  {canAssign && <Link className={`boe-btn boe-btn-secondary ${s.add}`} href="/sales/import"><Upload aria-hidden="true" />Import from ClickUp</Link>}
+                  {canCreate && <Link className={`boe-btn boe-btn-primary ${s.add}`} href="/sales/lead-master/new"><Plus aria-hidden="true" />Add lead</Link>}
                 </div>
               )}
             </div>

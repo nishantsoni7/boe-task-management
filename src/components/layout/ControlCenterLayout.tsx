@@ -58,6 +58,10 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
     group: 'Order Setup', title: 'Operations Handoff',
     subtitle: 'Who reviews each approved PI version for production and accepts it, or asks for clarification.',
   },
+  'sales-team': {
+    group: 'Access', title: 'Sales team',
+    subtitle: 'Who uses Sales, who sees everyone, and whose leads a senior can read.',
+  },
   'order-visibility': {
     group: 'Order Setup', title: 'Order Visibility',
     subtitle: 'Whose orders each sales candidate can see: their own, selected colleagues’, or all sales candidates’.',

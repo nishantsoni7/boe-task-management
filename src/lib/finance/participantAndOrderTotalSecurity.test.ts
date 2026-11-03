@@ -1206,6 +1206,9 @@ describe('the applied migrations are frozen', () => {
       '20270524000000_sales_lead_master.sql',
       // Sales, Lead Board: stages, the log of what happened, who sees whose leads, and the functions that work a lead.
       '20270525000000_sales_lead_board.sql',
+      // Sales, going live: the notification types, then the import, Team page, Sales team tab and alerts.
+      '20270526000000_sales_notification_types.sql',
+      '20270526000100_sales_go_live.sql',
     ])
   })
 
@@ -1663,6 +1666,9 @@ describe('the applied migrations are frozen', () => {
       '20270524000000_sales_lead_master.sql',
       // Sales, Lead Board: stages, the log of what happened, who sees whose leads, and the functions that work a lead.
       '20270525000000_sales_lead_board.sql',
+      // Sales, going live: the notification types, then the import, Team page, Sales team tab and alerts.
+      '20270526000000_sales_notification_types.sql',
+      '20270526000100_sales_go_live.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

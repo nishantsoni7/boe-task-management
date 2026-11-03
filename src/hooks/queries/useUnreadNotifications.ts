@@ -170,3 +170,7 @@ export function useUnreadReviewNotifications(enabled = true): number {
 export function useUnreadInventoryNotifications(enabled = true): number {
   return useUnreadCount('inventory', enabled)
 }
+
+export function useSalesUnreadNotifications() {
+  return useUnreadCount('sales', true)
+}

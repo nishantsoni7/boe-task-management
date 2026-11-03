@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Columns3, Home, ListChecks, Users } from 'lucide-react'
+import { BarChart3, Columns3, Home, ListChecks, Users } from 'lucide-react'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
+import { useSalesUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
+import { NotificationsNavItem } from './NotificationsNavItem'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -17,10 +19,11 @@ import s from './salesLayout.module.css'
 const BASE = '/sales'
 
 const NAV_ITEMS = [
-  { href: `${BASE}/my-day`, label: 'My day', icon: ListChecks, register: false },
-  { href: `${BASE}/board`, label: 'Lead Board', icon: Columns3, register: false },
+  { href: `${BASE}/my-day`, label: 'My day', icon: ListChecks, show: 'all' },
+  { href: `${BASE}/board`, label: 'Lead Board', icon: Columns3, show: 'all' },
+  { href: `${BASE}/team`, label: 'Team', icon: BarChart3, show: 'team' },
   // The register is for whoever adds, allots or oversees leads.
-  { href: `${BASE}/lead-master`, label: 'Lead Master', icon: Users, register: true },
+  { href: `${BASE}/lead-master`, label: 'Lead Master', icon: Users, show: 'register' },
 ] as const
 
 type Props = {
@@ -36,8 +39,9 @@ export function SalesLayout({ profile, title, subtitle, onSignOut, children }: P
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
   const pathname = usePathname()
-  const { canOpenRegister } = useSalesAccess()
-  const items = NAV_ITEMS.filter(item => !item.register || canOpenRegister)
+  const { canOpenRegister, canOpenTeam } = useSalesAccess()
+  const unread = useSalesUnreadNotifications()
+  const items = NAV_ITEMS.filter(item => item.show === 'all' || (item.show === 'team' ? canOpenTeam : canOpenRegister))
 
   return (
     <div className={railShellClass(railPinned)}>
@@ -88,6 +92,7 @@ export function SalesLayout({ profile, title, subtitle, onSignOut, children }: P
               </button>
             )
           })}
+          <NotificationsNavItem onNavigate={() => setSidebarOpen(false)} count={unread} href={`${BASE}/notifications`} />
         </div>
 
         <div className="boe-sidebar-foot">

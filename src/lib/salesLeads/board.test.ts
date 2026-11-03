@@ -14,7 +14,7 @@ import {
 } from './board'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
-const MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql')
+const MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')
 
 const TODAY = '2026-11-03'
 const NOW = Date.parse('2026-11-03T06:00:00Z')

@@ -17,6 +17,7 @@ their own inbox; the feed shows only rows addressed to them (`user_id = caller`)
 | Attendance & Payroll | `attendance_payroll` | `/attendance/notifications`, `/payroll/notifications`, `/my-issues/notifications` |
 | Review Workflow | `review` | `/customer-reviews/notifications` |
 | Inventory | `inventory` | `/inventory/notifications` |
+| Sales | `sales` | `/sales/notifications` |
 | Sample Tracking | OWN system (`sample_notifications` table, `/api/samples/notifications*`) | `/samples/notifications` |
 | Meetings, Exhibition Leads, Showroom, Image Editor, Control Center announcements | none (announcements are a separate system, module 10) | - |
 
