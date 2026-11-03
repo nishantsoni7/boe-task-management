@@ -11520,8 +11520,10 @@ textarea.pi-form-input { height: auto; }
 .fin-table--orders th, .fin-table--orders td { padding-left: 10px; padding-right: 10px; }
 .fin-table--orders td { height: 48px; padding-top: 4px; padding-bottom: 4px; }
 .fin-table--orders th + th, .fin-table--orders td + td { border-left: 0; }
-/* Right-aligned money beside left-aligned text needs air, or they touch. */
-.fin-table--orders .orders-after-value { padding-left: 24px; }
+/* Right-aligned money beside left-aligned text needs air, or they touch. 56,
+   not 24 (owner, 2026-11-03): with the cell's own 10 the gap here is 66, which
+   is what the gaps between the other columns are at a 1408px table. */
+.fin-table--orders .orders-after-value { padding-left: 56px; }
 /* The shared grey is 3.1:1 on white; this one is 5.3:1. */
 .fin-table--orders .fin-sub:not(.fin-sub--alert) { color: #686D6C; }
 /* .fin-table td outweighs .fin-muted, so the Confirmed date was never muted. */

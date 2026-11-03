@@ -177,17 +177,21 @@ describe('the table redesign (owner, 2026-10-31)', () => {
     return css.slice(at, css.indexOf('}', at))
   }
 
-  test('Project Code and Factory Status are narrow, and the widths fit the table floor', () => {
+  test('Project Code is the one fixed width and Due the one that takes the rest, so the gaps stay alike (owner, 2026-11-03)', () => {
     const widths = [...page.matchAll(/<col(?: style=\{\{ width: '([\d.]+)(px|%)' \}\})? \/>/g)]
     assert.equal(widths.length, 9)
     assert.deepEqual(widths.map(m => m[1] ? `${m[1]}${m[2]}` : 'auto'),
-      ['116px', 'auto', '11%', '96px', '136px', '116px', '12.4%', '9.6%', '9.6%'])
+      ['116px', '15.8%', '10.4%', '7.9%', '14.1%', '10.4%', '11.7%', '9.9%', 'auto'])
 
     const floor = Number(/\.fin-table--orders \{ min-width: (\d+)px; \}/.exec(css)?.[1])
     assert.equal(floor, 1120)
-    const taken = widths.reduce((sum, m) => sum + (m[2] === 'px' ? Number(m[1]) : m[2] === '%' ? floor * Number(m[1]) / 100 : 0), 0)
-    // The longest client still has a column at the floor.
-    assert.ok(floor - taken >= 170, `Client is left ${floor - taken}px`)
+    const atFloor = (m: RegExpMatchArray) => (m[2] === 'px' ? Number(m[1]) : floor * Number(m[1]) / 100)
+    const taken = widths.filter(m => m[1]).reduce((sum, m) => sum + atFloor(m), 0)
+    // Measured 2026-11-03 with the real font loaded: the longest client name in
+    // use needs 174px with its padding, and a date with "Overdue" needs 102px.
+    assert.ok(atFloor(widths[1]) >= 174, `Client is ${atFloor(widths[1])}px at the floor`)
+    assert.ok(floor - taken >= 102, `Due is left ${floor - taken}px at the floor`)
+    assert.equal(widths[8][1], undefined, 'Due, the last column, is the one left to the table: Client no longer takes what is left')
   })
 
   test('money and its Advance sit on the right with air after them; only those columns do', () => {
@@ -195,7 +199,7 @@ describe('the table redesign (owner, 2026-10-31)', () => {
     assert.ok(page.includes('<th className="fin-num" title="Verified payments as a percentage of Total before GST">Advance</th>'))
     assert.equal((page.match(/<td className="fin-num">/g) ?? []).length, 2)
     assert.equal((page.match(/orders-after-value/g) ?? []).length, 2, 'heading and cell')
-    assert.ok(css.includes('.fin-table--orders .orders-after-value { padding-left: 24px; }'))
+    assert.ok(css.includes('.fin-table--orders .orders-after-value { padding-left: 56px; }'))
   })
 
   test('a good state is a dot and a word, a problem is a pill', () => {
