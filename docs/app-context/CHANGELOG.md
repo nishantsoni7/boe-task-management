@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Orders: the Record dispatch screen is scan first (PR pending) · no migration
+## 2026-11-03 — Orders: the Record dispatch screen is scan first (PR #600 merged as e980e2da, 2026-11-03) · no migration
 - **Owner request.** Upload the invoice and the e-way bill, have them scanned and the details filled in, and keep every field for typing or correcting. Scan first, then manual, for both papers. Plan and mockups approved 2026-11-03.
 - **Changed.** Three steps, each paper in its own box with its fields under it: 1 Invoice, 2 E-way bill, 3 Dispatch and transport (LR / bilty optional). Choose file, drag a file onto the box, or take a photo on a phone; several papers per box; Remove. A paper in the wrong box moves to the right one. The paper being checked shows beside the details. The save bar says whether Save closes the Order as Dispatched or leaves it where it is.
 - **The reader.** Matches each invoice line by the BOE product code printed on it, not by guessing its name; reads an invoice printed three times once; saves the e-way bill number as its 12 digits; takes Packages from "loaded boxes" and Deliver to from Ship To; says when the e-way bill covers a different invoice, and when the papers name another Order.
@@ -20,7 +20,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** The real Payment plan, Dispatch and roll-up migrations on PGlite over stubs (`supabase/tests/order_dispatch_status_pglite.mjs`, 32 checks, two mutations caught), the rehearsal checks on PGlite, `tsc`, the whole suite, lint. Rehearsed on the real database in a rolled-back transaction (`REHEARSAL OK`, nothing left behind), backed up first (database snapshot 20261103T084534Z), then applied 2026-11-03 by one `db push`; `migration list --linked` shows both versions on both sides. **Not yet seen signed in.** Order 0536 was the one Order with a dispatch and every piece was sent, so on the owner's word ("Close Order 536") it was closed as Dispatched the same day by the backfill statement, limited to that Order and checking its own result before it committed: Running -> Dispatched, dispatched on 2026-10-27, one status_changed row with source dispatch, no other Order touched.
 - **Not done.** The scan-first Record dispatch screen (second PR, no SQL); a notification for an automatic close; a payment gate.
 
-## 2026-11-03 — Confirmed Orders: even spacing between the columns (PR pending) · no migration
+## 2026-11-03 — Confirmed Orders: even spacing between the columns (PR #597 merged as 10abb87b, 2026-11-03) · no migration
 - **Owner request** (screenshot of the list). The spacing was uneven, more in one place and less in another, above all too much empty space in the Client column; reduce it and make the other columns uniform.
 - **Cause.** Client was the one column left to the table, so it took every spare pixel: 344px of a 1408px table, 256px of clear space before Product Value, while Factory Status to Pendencies and Pendencies to Sales Person had 23 and 26px.
 - **Changed.** Project code stays 116px. Client, Product Value, Advance, Factory Status, Pendencies, Sales Person and Confirmed are percentages (15.8, 10.4, 7.9, 14.1, 10.4, 11.7, 9.9), so a wider window grows them together, and Due is the column left to the table. The air before Factory Status is 56px (was 24). CSS and column widths only: same reads, same order, same states.
