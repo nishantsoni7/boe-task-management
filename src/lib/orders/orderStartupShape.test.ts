@@ -389,7 +389,9 @@ describe('no Order screen waits more than it must', () => {
       // Admin's) answer to Operations' objection — a SAVE on a click, never on the startup path.
       // ALL 6 -> 7 (20270517000100): the Advance column's one read, orders_advance_percent, issued INSIDE the
       // page's existing Promise.all via loadAdvance — one more read, no more waits.
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 7, [DETAIL]: 45,
+      // ALL 7 -> 8 (20270528000000): the Factory Status line's one read, orders_dispatch_progress, issued INSIDE the
+      // same Promise.all via loadDispatch — one more read, no more waits; a failed read just draws no line.
+      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 8, [DETAIL]: 45,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

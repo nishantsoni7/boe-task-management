@@ -549,6 +549,9 @@ export function amendmentErrorMessage(message: string | null | undefined): strin
   if (m.includes('ORDER_ALREADY_CANCELLED')) {
     return 'This order has already been cancelled.'
   }
+  if (m.includes('ORDER_PART_DISPATCHED')) {
+    return 'Part of this order has already been dispatched, so it can no longer be cancelled. To stop the rest, revise the PI down to what was sent.'
+  }
   if (m.includes('ORDER_DISPATCHED')) {
     return 'This order has already been dispatched and can no longer be cancelled.'
   }
