@@ -1,6 +1,6 @@
 # 28. Sales — Lead Board
 
-Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR not yet opened). Migration `20270525000000_sales_lead_board.sql` was **NOT APPLIED** when this was written. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
+Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR #594). Migration `20270525000000_sales_lead_board.sql` was **NOT APPLIED** when this was written. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
 
 ## 1. Purpose & users
 

@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Sales, Lead Board: My day, the board, the lead panel (PR not yet opened) · 20270525000000 → NOT APPLIED
+## 2026-11-03 — Sales, Lead Board: My day, the board, the lead panel (PR #594) · 20270525000000 → NOT APPLIED
 - **Owner request.** Replace the ClickUp boards with a lead system on the level of Salesforce, Zoho and LeadSquared, with only the proven, practical features, easy enough to need no training. Mock-up approved 2026-11-03.
 - **Added.** `/sales/my-day` (one Next lead, then the rest in order), `/sales/board` (stages, drag on a desktop, Move on every card), a wide lead panel with a structured log, a stage checklist, No answer in one tap, WhatsApp quick messages, Undo, repeat enquiries. `/sales` now opens My day.
 - **Database.** Stage, temperature, segment, facts and the next step on `sales_leads`; `sales_lead_activities`; `sales_lead_access`; `view_all` on Sales. An allotted open lead cannot exist without a next step: a CHECK, not a screen rule.
