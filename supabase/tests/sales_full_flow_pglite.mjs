@@ -89,7 +89,7 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
-  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270602000000_sales_auto_allot.sql']) {
+  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -613,6 +613,115 @@ await step('Browser users cannot fire the alert job', () =>
   })
 }
 
+// ── Board paging (20270601000000): the next leads of one column ─────────────
+{
+  const ids = rows => rows.map(r => r.id)
+  const PAGE = `select public.sales_board_page($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+  const pageFull = (uid, stage, offset, limit, f = {}) =>
+    one(uid, PAGE, [stage, offset, limit, f.holder ?? 'all', f.market ?? null, f.segment ?? null, f.temperature ?? null, f.source ?? null, f.q ?? null])
+  const page = async (...args) => (await pageFull(...args)).rows
+  const board = (uid, f = {}) =>
+    one(uid, `select public.sales_board($1, $2, $3, $4, $5, $6)`, [f.holder ?? 'all', f.market ?? null, f.segment ?? null, f.temperature ?? null, f.source ?? null, f.q ?? null])
+  const column = (b, stage) => ids(b.rows.filter(r => r.stage === stage))
+
+  await step('Paging: 150 leads for the columns to page through', async () => {
+    let n = 0
+    for (const [to, count] of [[U.ashok, 130], [U.mohit, 20]]) {
+      for (let i = 0; i < count; i++) {
+        const phone = `+91 982${String(2000000 + n++).padStart(7, '0')}`
+        const r = await one(U.leadmgr, `select public.create_sales_lead($1, 'website', $2)`, [phone, `Paging ${n}`])
+        await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [r.lead.id, to])
+      }
+    }
+    // Mixed temperature, value and due date, so the order has something to decide.
+    await db.query(`update public.sales_leads set temperature = (array['hot','warm','cold'])[1 + (lead_no % 3)],
+      expected_value_paise = case when lead_no % 4 = 0 then lead_no * 100000 else null end, next_due_on = current_date + ((lead_no % 9)::int - 3)
+      where phone_e164 like '+919822%'`)
+    return `${n} leads`
+  })
+  await step('Paging: the first 60 are exactly the 60 the board shows, for every role', async () => {
+    for (const [name, uid] of [['ashok', U.ashok], ['mohit', U.mohit], ['senior', U.senior], ['manager', U.manager], ['leadmgr', U.leadmgr], ['admin', U.admin]]) {
+      const b = await board(uid)
+      for (const stage of ['new', 'under_process', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead']) {
+        const want = column(b, stage), got = ids(await page(uid, stage, 0, 60))
+        must(JSON.stringify(want) === JSON.stringify(got), `${name}/${stage}: board ${want.length} rows, page ${got.length}`)
+      }
+    }
+  })
+  await step('Paging: the pages cover the whole column once, in the board order', async () => {
+    const b = await board(U.ashok), total = b.stages.new.n
+    must(total >= 130, `only ${total} New leads for Ashok`)
+    const all = []
+    for (let offset = 0; ; offset += 40) {
+      const rows = await page(U.ashok, 'new', offset, 40)
+      if (rows.length === 0) break
+      must(rows.length <= 40, 'a page is longer than asked')
+      all.push(...ids(rows))
+    }
+    must(all.length === total, `pages hold ${all.length}, the column has ${total}`)
+    must(new Set(all).size === total, 'a lead came twice')
+    must(JSON.stringify(all.slice(0, 60)) === JSON.stringify(column(b, 'new')), 'the first 60 are not the board order')
+    return `${total} leads in ${Math.ceil(total / 40)} pages`
+  })
+  await step('Paging: the order is overdue, today, later, then Hot, Warm, Cold, then bigger value', async () => {
+    const rows = await page(U.ashok, 'new', 0, 100)
+    const today_ = await scalar(`select ((now() at time zone 'Asia/Kolkata')::date)::text`)
+    const bucket = r => (r.next_due_on < today_ ? 0 : r.next_due_on === today_ ? 1 : 2)
+    const heat = r => ({ hot: 0, warm: 1, cold: 2 })[r.temperature]
+    for (let i = 1; i < rows.length; i++) {
+      const a = rows[i - 1], c = rows[i]
+      must(bucket(a) <= bucket(c), `row ${i}: a later day came before an earlier one`)
+      if (bucket(a) === bucket(c)) must(heat(a) <= heat(c), `row ${i}: ${c.temperature} came after ${a.temperature}`)
+    }
+  })
+  await step('Paging: each column says how many it holds, how many are overdue and due today, as the board totals do', async () => {
+    for (const uid of [U.ashok, U.leadmgr, U.admin]) {
+      const b = await board(uid)
+      let overdue = 0, dueToday = 0
+      for (const stage of ['new', 'under_process', 'potential', 'negotiation', 'follow_up_later']) {
+        const p = await pageFull(uid, stage, 0, 1)
+        must(p.n === (b.stages[stage]?.n ?? 0), `${stage}: n ${p.n}, board ${b.stages[stage]?.n}`)
+        overdue += p.overdue; dueToday += p.due_today
+      }
+      must(overdue === b.stats.overdue && dueToday === b.stats.due_today, `overdue ${overdue}/${b.stats.overdue}, today ${dueToday}/${b.stats.due_today}`)
+      const parked = await pageFull(uid, 'follow_up_later', 0, 1)
+      must(parked.overdue === 0 && parked.due_today === 0, 'a parked lead counted as late')
+    }
+  })
+  await step('Paging: the filters and the search narrow it the same way the board does', async () => {
+    for (const f of [{ temperature: 'hot' }, { holder: U.mohit }, { q: 'Paging 7' }, { q: '9822000' }]) {
+      const b = await board(U.leadmgr, f)
+      const want = column(b, 'new'), got = ids(await page(U.leadmgr, 'new', 0, 60, f))
+      must(JSON.stringify(want) === JSON.stringify(got), `${JSON.stringify(f)}: board ${want.length}, page ${got.length}`)
+      must(want.length > 0, `${JSON.stringify(f)} found nothing`)
+    }
+  })
+  await step('Paging: a lead closed more than 30 days ago is left out, as on the board', async () => {
+    const id = (await one(U.leadmgr, `select public.create_sales_lead($1, 'website', 'Paging dead')`, ['+91 9822999001'])).lead.id
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [id, U.ashok])
+    await move(U.ashok, id, 'dead', 'new', 'wrong_number')
+    const before = ids(await page(U.leadmgr, 'dead', 0, 100)).length
+    await db.query(`update public.sales_leads set closed_at = now() - interval '45 days' where id = $1`, [id])
+    const after = ids(await page(U.leadmgr, 'dead', 0, 100))
+    must(after.length === before - 1 && !after.includes(id), `before ${before}, after ${after.length}`)
+    must(JSON.stringify(column(await board(U.leadmgr), 'dead')) === JSON.stringify(after), 'the board disagrees')
+  })
+  await step('Paging: a salesperson never gets another salesperson’s leads', async () => {
+    const mine = new Set(ids(await page(U.mohit, 'new', 0, 100)))
+    const theirs = new Set(ids(await page(U.ashok, 'new', 0, 100)))
+    const count = (await board(U.mohit)).stages.new.n
+    must(mine.size === count && mine.size >= 20 && [...mine].every(id => !theirs.has(id)), `Mohit sees ${mine.size} of ${count}`)
+  })
+  await step('Paging: a bad stage, no Sales access and the page size limit', async () => {
+    await expectErr(U.ashok, PAGE, /SALES_INVALID/, ['mystery', 0, 40, 'all', null, null, null, null, null])
+    await expectErr(U.nobody, PAGE, /SALES_FORBIDDEN/, ['new', 0, 40, 'all', null, null, null, null, null])
+    must((await page(U.ashok, 'new', 0, 1000)).length === 100, 'the page size is not capped at 100')
+    must((await page(U.ashok, 'new', -5, 0)).length === 1, 'a negative offset or a zero limit is not clamped')
+    const anon = await scalar(`select has_function_privilege('anon', 'public.sales_board_page(text, integer, integer, text, text, text, text, text, text)', 'EXECUTE')`)
+    must(anon === false, 'open to anon')
+  })
+}
+
 {
   // ── The automatic allotment (20270602000000) ─────────────────────────────
   const capture = async rows => {
@@ -628,7 +737,8 @@ await step('Browser users cannot fire the alert job', () =>
     await db.exec('delete from public.attendance_records')
     for (const u of who) await db.query(`insert into public.attendance_records values ($1, (now() at time zone 'Asia/Kolkata')::date, now())`, [u])
   }
-  const person = (uid, level, exp = false, limit = 25) => one(U.admin, `select public.set_sales_allot_person($1, $2, $3, $4)`, [uid, level, exp, limit])
+  // A limit of 200 by default: the paging checks above gave Ashok 130 leads and Mohit 20 today, past the real 25.
+  const person = (uid, level, exp = false, limit = 200) => one(U.admin, `select public.set_sales_allot_person($1, $2, $3, $4)`, [uid, level, exp, limit])
   const hours = (on, days = '{1,2,3,4,5,6,7}') => one(U.admin, `select public.set_sales_auto_allot($1, $2::integer[], '00:00', '24:00')`, [on, days])
 
   await step('Only Admin reads and sets the switch and the hours; a bad day or hour is refused', async () => {
@@ -649,6 +759,7 @@ await step('Browser users cannot fire the alert job', () =>
     await expectErr(U.leadmgr, `select public.set_sales_allot_person($1, 'senior', false, 25)`, /SALES_FORBIDDEN/, [U.senior])
     await expectErr(U.admin, `select public.set_sales_allot_person($1, 'boss', false, 25)`, /Choose a level/, [U.senior])
     await expectErr(U.admin, `select public.set_sales_allot_person($1, 'junior', false, 500)`, /0 to 200/, [U.senior])
+    await person(U.ashok, 'senior')
     await person(U.mohit, 'mid')
     await person(U.senior, 'junior')
     const again = await one(U.admin, `select public.list_sales_team()`)

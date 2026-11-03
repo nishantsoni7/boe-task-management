@@ -1220,6 +1220,8 @@ describe('the applied migrations are frozen', () => {
       // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
       '20270531000000_sales_lead_waiting_type.sql',
       '20270531000100_sales_website_capture.sql',
+      // Sales, the Lead Board loads a column page by page: one read-only function.
+      '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
     ])
@@ -1693,6 +1695,8 @@ describe('the applied migrations are frozen', () => {
       // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
       '20270531000000_sales_lead_waiting_type.sql',
       '20270531000100_sales_website_capture.sql',
+      // Sales, the Lead Board loads a column page by page: one read-only function.
+      '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
     ])

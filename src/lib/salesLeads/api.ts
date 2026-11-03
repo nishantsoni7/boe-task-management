@@ -259,6 +259,16 @@ export const fetchBoard = (s: Supabase, f: BoardFilter) =>
     p_temperature: f.temperature || null, p_source: f.source || null, p_q: f.q || null,
   }))
 
+/** One page of one column: the leads in the board's own order, and what the whole column holds. */
+export type BoardPage = { n: number; overdue: number; due_today: number; rows: WorkLead[] }
+
+export const fetchBoardPage = (s: Supabase, stage: Stage, offset: number, limit: number, f: BoardFilter) =>
+  call<BoardPage>(() => s.rpc('sales_board_page', {
+    p_stage: stage, p_offset: offset, p_limit: limit,
+    p_holder: f.holder || 'all', p_market: f.market || null, p_segment: f.segment || null,
+    p_temperature: f.temperature || null, p_source: f.source || null, p_q: f.q || null,
+  }))
+
 export const fetchWorkLead = (s: Supabase, id: string) =>
   call<WorkDetail>(() => s.rpc('get_sales_lead', { p_id: id }))
 
