@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Sales: Can be given leads, a tick per person (PR pending) · 20270529000000 → NOT APPLIED
+## 2026-11-03 — Sales: the old Google Sheets come into the Lead Master (PR pending) · 20270530000000 → NOT APPLIED
+- **Owner request.** Import the Leads Master sheet and the Website Leads sheet, as Phase 1 of the plan to automate lead capture and allotment (approved 2026-11-03).
+- **Added.** A card on `/sales/import` for the two sheets as Excel files, after the ClickUp import (the database refuses them before). A number already in BOE One keeps its ClickUp stage and salesperson and gains the sheet's name, email, location, message and a dated "Leads Master 2025, given to Ashok" line. A number only in the sheets becomes an **old lead**: in the register with an "Old lead" tag, known as a repeat, on nobody's board, out of the Not allotted queue; a repeat enquiry or allotting it brings it back. Sources BNI and Walk-in added.
+- **Dates.** Leads Master: day and month, the year from the tab; no day means the 1st. Website Leads: mostly undated, so a row takes the date of the nearest dated row around it, and its history says "date estimated".
+- **Proof.** The real sheets on PGlite after the real ClickUp import and history: 16,790 rows, 3,874 old leads, 12,868 fills, 0 refused, a second run adds nothing, the Not allotted queue and My day unchanged. `supabase/tests/sales_full_flow_pglite.mjs` (60 checks), `sheets.test.ts`. Not seen signed in.
+
+## 2026-11-03 — Sales: Can be given leads, a tick per person (PR #603, a38b5a5a) · 20270529000000 → APPLIED 2026-11-03, before the merge
 - **Owner request.** Nitish (a Manager, who reads every lead) and the dummy test account must not show in the lead allocation lists.
 - **Changed.** The Sales team tab has a **Can be given leads** tick per person. A Salesperson is ticked unless unticked; a Manager or a Lead manager is unticked unless ticked. The allot lists, Give to someone else, moving the due leads and the import all follow it. Leads already held stay with their holder.
 - **Database.** `sales_lead_holding` (only a tick that differs from the job is kept), `set_sales_lead_holding` (Admin only), `sales_lead_can_hold` and `list_sales_team` re-issued. Rollback in the header.

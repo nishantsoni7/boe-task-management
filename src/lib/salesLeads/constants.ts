@@ -12,6 +12,8 @@ export const LEAD_SOURCES = [
   { value: 'campaign', label: 'Campaign' },
   { value: 'reference', label: 'Reference' },
   { value: 'repeat_customer', label: 'Repeat Customer' },
+  { value: 'bni', label: 'BNI' },
+  { value: 'walk_in', label: 'Walk-in' },
   { value: 'others', label: 'Others' },
 ] as const
 

@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, and "Can be given leads" (20270529000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), and the two old Google Sheets (20270530000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -88,7 +88,7 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
   public.module_entry_open(text), public.resolve_permission(uuid, text, text) to authenticated;`)
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
-  '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql']) {
+  '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql']) {
   await db.exec(mig(f))
 }
 
@@ -121,6 +121,15 @@ const move = (uid, id, to, from, reason = null, note = null, step_ = null, due =
 const log = (uid, id, kind, outcome, note = null, step_ = 'Call back', due = day(1)) =>
   one(uid, `select public.log_sales_lead_activity($1, $2, $3, $4, $5, $6)`, [id, kind, outcome, note, step_, due])
 const facts = (uid, id, f) => one(uid, `select public.update_sales_lead_facts($1, $2::jsonb)`, [id, JSON.stringify(f)])
+
+const sheet = (over = {}) => ({ phone: '+91 98111 00040', received_on: '2025-03-14', source: 'website', name: 'Sheet Hotel', email: 'Sheet@Hotel.test',
+  location: 'Goa', requirement: 'Wants 50 chairs', detail: 'Leads Master 2025, given to Monika', ...over })
+const importSheet = (rows, uid = U.leadmgr) => one(uid, `select public.import_sales_lead_sheet($1::jsonb)`, [JSON.stringify(rows)])
+
+await step('The old sheets are refused before the ClickUp import, and by anybody without the allot right', async () => {
+  await expectErr(U.leadmgr, `select public.import_sales_lead_sheet('[]'::jsonb)`, /Import the ClickUp files first/)
+  await expectErr(U.ashok, `select public.import_sales_lead_sheet('[]'::jsonb)`, /SALES_FORBIDDEN/)
+})
 
 // ── Admin side: a lead arrives ─────────────────────────────────────────────
 let L1
@@ -501,6 +510,53 @@ await step('Browser users cannot fire the alert job', () =>
     must(Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.manager])) === held && held > 0, 'leads moved')
     const own = (await db.query(`select id from public.sales_leads where assigned_to = $1 and stage not in ('converted', 'dead') limit 1`, [U.manager])).rows[0]
     if (own) await one(U.manager, `select public.sales_lead_no_answer($1)`, [own.id])
+  })
+}
+
+{
+  // ── The old Google Sheets (20270530000000) ─────────────────────────────────
+  await step('A number only in the sheets becomes an old lead: dated, on nobody\'s board, not in the Not allotted queue', async () => {
+    const before = await one(U.leadmgr, `select public.sales_leads_page('all', 'none')`)
+    const waiting = (await one(U.leadmgr, `select public.sales_board()`)).waiting_allotment
+    const r = await importSheet([sheet(), sheet({ phone: '+91 98111 00041', source: 'bni', received_on: '2024-06-01', detail: 'Leads Master 2024, given to Munmun' })])
+    must(r.history === 2 && r.filled === 0, JSON.stringify(r))
+    const l = (await db.query(`select * from public.sales_leads where phone_e164 = '+919811100040'`)).rows[0]
+    must(l.is_history && !l.assigned_to && l.received_on.toISOString().slice(0, 10) === '2025-03-14' && l.email === 'sheet@hotel.test', 'old lead row')
+    const after = await one(U.leadmgr, `select public.sales_leads_page('all', 'none')`)
+    must(after.unallotted === before.unallotted && after.total === before.total, 'old leads entered the Not allotted queue')
+    must((await one(U.leadmgr, `select public.sales_board()`)).waiting_allotment === waiting, 'old leads counted as waiting')
+    const all = await one(U.leadmgr, `select public.sales_leads_page('all', 'all', null, '98111 00040')`)
+    must(all.rows.length === 1 && all.rows[0].is_history === true, 'not found in the register')
+    const ev = (await one(U.leadmgr, `select public.get_sales_lead($1)`, [l.id])).events.find(e => e.kind === 'imported')
+    must(ev && ev.detail === 'Leads Master 2025, given to Monika' && ev.at.startsWith('2025-03-14'), JSON.stringify(ev))
+  })
+  await step('A number already in BOE One keeps its stage and holder and gains what the sheet knows', async () => {
+    const before = await leadRow(L1)
+    const r = await importSheet([sheet({ phone: '+91 98111 00001', name: 'Other Name', location: 'Pune', requirement: 'Also wants tables', detail: 'Website form (all_leads), given to Ashok' })])
+    must(r.filled === 1 && r.history === 0, JSON.stringify(r))
+    const l = await leadRow(L1)
+    must(l.stage === before.stage && l.assigned_to === before.assigned_to && l.name === before.name, 'stage, holder or name changed')
+    must(l.requirement.includes('Restaurant chairs') && l.requirement.includes('Also wants tables'), 'requirement not added to: ' + l.requirement)
+  })
+  await step('Twice adds nothing; a new number with no date is not saved; a bad email is dropped', async () => {
+    const again = await importSheet([sheet()])
+    must(again.already === 1 && again.history === 0, JSON.stringify(again))
+    const r = await importSheet([sheet({ phone: '+91 98111 00042', received_on: null }), sheet({ phone: '+91 98111 00043', email: 'not an email' })])
+    must(r.failed.length === 1 && r.failed[0].why === 'no date' && r.history === 1, JSON.stringify(r))
+    must((await db.query(`select email from public.sales_leads where phone_e164 = '+919811100043'`)).rows[0].email === null, 'bad email kept')
+  })
+  await step('An old lead that enquires again comes back as a live lead in the queue', async () => {
+    const id = (await db.query(`select id from public.sales_leads where phone_e164 = '+919811100040'`)).rows[0].id
+    await one(U.leadmgr, `select public.record_sales_lead_enquiry($1, 'website', 'Called again')`, [id])
+    must(!(await leadRow(id)).is_history, 'still an old lead')
+    const q = await one(U.leadmgr, `select public.sales_leads_page('all', 'none', null, '98111 00040')`)
+    must(q.rows.length === 1, 'not in the Not allotted queue')
+  })
+  await step('Allotting an old lead by hand brings it back too', async () => {
+    const id = (await db.query(`select id from public.sales_leads where phone_e164 = '+919811100041'`)).rows[0].id
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [id, U.ashok])
+    const l = await leadRow(id)
+    must(!l.is_history && l.assigned_to === U.ashok && l.source === 'bni', JSON.stringify({ h: l.is_history, s: l.source }))
   })
 }
 

@@ -1,6 +1,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
 import type { HistoryRow, ImportRow } from './clickup'
+import type { SheetRow } from './sheets'
 import type { LeadSource, Period } from './constants'
 
 // Thin typed wrappers over the database functions (20270524000000). There is no API route in between on purpose:
@@ -27,6 +28,8 @@ export type SalesLead = {
   assigned_at: string | null
   /** The version of the lead: an edit sends it back, and is refused if the lead has changed since. */
   updated_at: string
+  /** An old lead from the sheets, kept for the record: on nobody's board and not in the Not allotted queue. */
+  is_history?: boolean
 }
 
 export type LeadPage = {
@@ -289,6 +292,11 @@ export const importLeads = (s: Supabase, rows: ImportRow[]) =>
   call<ImportOutcome>(() => s.rpc('import_sales_leads', { p_rows: rows }))
 
 export type HistoryOutcome = { comments: number; statuses: number; already: number; not_imported: number; failed: { task_id: string | null; why: string }[] }
+
+export type SheetOutcome = { history: number; filled: number; already: number; failed: { phone: string | null; why: string }[] }
+
+export const importSheet = (s: Supabase, rows: SheetRow[]) =>
+  call<SheetOutcome>(() => s.rpc('import_sales_lead_sheet', { p_rows: rows }))
 
 export const importHistory = (s: Supabase, rows: HistoryRow[]) =>
   call<HistoryOutcome>(() => s.rpc('import_sales_lead_history', { p_rows: rows }))
