@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-03 — Orders: the Record dispatch screen is scan first (PR pending) · no migration
+- **Owner request.** Upload the invoice and the e-way bill, have them scanned and the details filled in, and keep every field for typing or correcting. Scan first, then manual, for both papers. Plan and mockups approved 2026-11-03.
+- **Changed.** Three steps, each paper in its own box with its fields under it: 1 Invoice, 2 E-way bill, 3 Dispatch and transport (LR / bilty optional). Choose file, drag a file onto the box, or take a photo on a phone; several papers per box; Remove. A paper in the wrong box moves to the right one. The paper being checked shows beside the details. The save bar says whether Save closes the Order as Dispatched or leaves it where it is.
+- **The reader.** Matches each invoice line by the BOE product code printed on it, not by guessing its name; reads an invoice printed three times once; saves the e-way bill number as its 12 digits; takes Packages from "loaded boxes" and Deliver to from Ship To; says when the e-way bill covers a different invoice, and when the papers name another Order.
+- **Proof.** `tsc`, lint, the whole suite, a production build; the real scan box rendered with the real stylesheet at desktop and phone widths in every state. **The reader has not run against the real API from here, and nothing was seen signed in:** the live proof is uploading the three sample papers on the preview.
+- **Rollback.** Revert the PR; no data changes.
+
 ## 2026-11-03 — Orders: dispatch drives the Order's status; Confirmed Orders opens on Running (PR #598 merged as 5b37b88f, deployed 2026-11-03 09:04 UTC) · 20270528000000 → APPLIED 2026-11-03
 - **Owner request.** A fully or partly dispatched Order must show in Factory Status. Fully dispatched = Dispatched and not in the Running list; the list opens on Running with All orders one click away; part sent with the rest being made stays Running; part sent with the rest fully ready is Ready for Dispatch. Plan and mockups approved 2026-11-03.
 - **Changed.** The last piece recorded closes the Order as Dispatched (and removing a dispatch reopens an automatic close); Ready for Dispatch can go back to Running; an Order with anything dispatched cannot be cancelled (revise the PI down to what was sent). Factory Status says Not Aligned / Aligned, On hold, Ready for dispatch or Dispatched, with "Part dispatched · 22 of 74 pcs" under it. A search or the operations queue looks at every status.

@@ -43,7 +43,7 @@ describe('the reader\'s answer, made safe', () => {
     }, KNOWN)
     assert.equal(r.kind, 'eway_bill')
     assert.equal(r.vehicleNumber, 'RJ14 GA 4821')
-    assert.equal(r.ewayBillNumber, '3410 7716 2093')
+    assert.equal(r.ewayBillNumber, '341077162093', 'twelve digits are saved as digits: the invoice prints them without spaces, the e-way bill with')
     assert.equal(r.invoiceTotal, '182000.46')
     assert.equal(r.packages, '6')
     assert.deepEqual(r.goods, [{ itemSequence: '1', quantity: 4 }])

@@ -13644,31 +13644,56 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .odr-split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: stretch; }
 .odr-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid #E4DED7; border-radius: 8px; background: #FFFFFF; overflow: hidden; }
 .odr-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 9px 16px; border-bottom: 1px solid #E4DED7; font-size: 13px; font-weight: 700; color: #303536; }
-.odr-add { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border-bottom: 1px solid #E4DED7; }
 .odr-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
-.odr-add-btn { flex: 1 1 160px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px dashed #686D6C; border-radius: 8px; background: #FFFFFF; font-size: 14px; font-weight: 600; color: #303536; cursor: pointer; }
-.odr-add-btn:hover { background: #FBFAF8; }
-.odr-add-btn:focus-within { outline: 2px solid #B9472E; outline-offset: 2px; }
-.odr-add-btn svg { width: 18px; height: 18px; flex: none; }
-.odr-add-btn--photo { display: none; border: 1px solid #B9472E; background: #B9472E; color: #FFFFFF; }
-.odr-add-btn--photo:hover { background: #9E3B25; }
-.odr-paper-list { display: flex; flex-direction: column; }
-.odr-paper-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 12px; border-bottom: 1px solid #E4DED7; background: #FFFFFF; }
-.odr-paper-row.is-on { background: #FEF9F6; }
-.odr-paper-open { flex: 1 1 140px; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 36px; padding: 0; border: 0; background: none; font: inherit; color: #303536; text-align: left; cursor: pointer; }
-.odr-paper-state { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
-.odr-paper-state svg { width: 14px; height: 14px; flex: none; }
-.odr-state--read { color: #276247; }
-.odr-state--busy { color: #335A86; }
-.odr-state--problem { color: #805B0D; }
-.odr-paper-kind { width: auto; min-height: 32px; padding: 0 6px; font-size: 13px; }
-.odr-paper-note { flex: 1 1 100%; margin: 0; font-size: 12.5px; color: #805B0D; }
+/* Scan first (owner, 2026-11-03): the tabs over the paper, and one box per paper. */
+.odr-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.odr-tab { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 12px; border: 1px solid #E4DED7; border-radius: 999px; background: #FFFFFF; font: inherit; font-size: 13px; font-weight: 600; color: #4C5352; cursor: pointer; }
+.odr-tab[aria-pressed="true"] { background: #F8EAE4; border-color: #F1D5CB; color: #963B27; }
+.odr-tab svg { width: 14px; height: 14px; flex: none; }
+.odr-scan-list { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+.odr-scan { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 0 0 10px; padding: 12px 14px; border: 1.5px dashed #686D6C; border-radius: 10px; background: #FBFAF8; }
+.odr-scan-list .odr-scan { margin: 0; }
+.odr-scan-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none; border-radius: 10px; background: #F8EAE4; color: #963B27; }
+.odr-scan-icon svg { width: 22px; height: 22px; }
+.odr-scan-text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.odr-scan-text b { font-size: 14px; font-weight: 700; color: #303536; overflow-wrap: anywhere; }
+.odr-scan-text small { font-size: 12.5px; color: #4C5352; }
+.odr-scan-open { padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.odr-scan .boe-btn, .odr-optional-link { position: relative; }
+.odr-scan .boe-btn { flex: none; min-height: 38px; gap: 8px; }
+.odr-scan .boe-btn:focus-within, .odr-optional-link:focus-within { outline: 2px solid #B9472E; outline-offset: 2px; }
+.odr-scan .boe-btn svg { width: 16px; height: 16px; flex: none; }
+.odr-scan-camera { display: none; }
+.odr-scan--done { border-style: solid; border-color: #BCD8C8; background: #E8F2EC; }
+.odr-scan--done .odr-scan-icon { background: #FFFFFF; color: #276247; }
+.odr-scan--done .odr-scan-text small { font-weight: 600; color: #276247; }
+.odr-scan--busy { border-style: solid; border-color: #C3D3E6; background: #EAF0F8; }
+.odr-scan--busy .odr-scan-icon { background: #FFFFFF; color: #335A86; }
+.odr-scan--busy .odr-scan-text small { font-weight: 600; color: #335A86; }
+.odr-scan--problem { border-style: solid; border-color: #E6D2A0; background: #FAF0DA; }
+.odr-scan--problem .odr-scan-icon { background: #FFFFFF; color: #805B0D; }
+.odr-scan--problem .odr-scan-text small { font-weight: 600; color: #805B0D; }
+.odr-scan.is-on { box-shadow: 0 0 0 2px #F1D5CB; }
+.odr-optional { margin: 0; font-size: 13px; color: #4C5352; }
+.odr-optional-link { font-weight: 600; color: #963B27; text-decoration: underline; cursor: pointer; }
+.odr-scan-more { display: inline-flex; align-self: flex-start; font-size: 13px; }
+.odr-lr { margin-top: 12px; }
+.odr-or { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: 12px; color: #686D6C; }
+.odr-or::before, .odr-or::after { content: ''; flex: 1; height: 1px; background: #E4DED7; }
+.odr-step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-right: 8px; border-radius: 50%; background: #303536; color: #FFFFFF; font-size: 12px; font-weight: 700; }
+.odr-match { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: #276247; }
+.odr-match svg { width: 14px; height: 14px; flex: none; }
+.odr-match--differ { color: #805B0D; }
+.odr-willclose, .odr-willstay { display: inline-flex; align-items: center; margin-left: 8px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; }
+.odr-willclose { background: #E8F2EC; color: #276247; }
+.odr-willstay { background: #EAF0F8; color: #335A86; }
 .odr-preview { flex: 1 1 auto; display: flex; min-height: 420px; padding: 16px; background: #E9E5DF; }
 .odr-preview iframe, .odr-preview img { display: block; flex: 1 1 auto; width: 100%; min-height: 420px; border: 0; background: #FFFFFF; box-shadow: 0 1px 3px rgba(48, 53, 54, 0.18); object-fit: contain; }
 .odr-preview-empty { margin: auto; max-width: 300px; text-align: center; font-size: 14px; color: #4C5352; }
 .odr-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .odr-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 14px; border: 1px solid #C3D3E6; border-radius: 8px; background: #EAF0F8; font-size: 13px; color: #335A86; }
 .odr-notice svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.odr-notice--warn { border-color: #E6D2A0; background: #FAF0DA; color: #805B0D; }
 .odr-section { padding: 14px 16px 16px; }
 .odr-section + .odr-section { border-top: 1px solid #E4DED7; }
 .odr-section-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 10px; font-size: 14px; font-weight: 700; color: #303536; }
@@ -13716,8 +13741,9 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .od-filter { min-height: 44px; }
   .od-detail { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .odr-head h1 { font-size: 24px; }
-  .odr-add-btn--photo { display: inline-flex; }
-  .odr-preview { display: none; }
+  .odr-scan-camera { display: inline-flex; }
+  .odr-paper-card { display: none; }
+  .odr-scan .boe-btn { flex: 1 1 100%; }
   .odr-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .odr-hide-small { display: none; }
   .odr-goods col.odr-col-num, .odr-goods col.odr-col-pending, .odr-goods col.odr-col-after { display: none; }
@@ -13726,5 +13752,5 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .odr-savebar-actions, .odr-savebar-actions .boe-btn { flex: 1 1 auto; }
 }
 @media (hover: none) and (pointer: coarse) {
-  .odr-add-btn--photo { display: inline-flex; }
+  .odr-scan-camera { display: inline-flex; }
 }
