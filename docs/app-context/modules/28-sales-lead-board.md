@@ -12,7 +12,7 @@ Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Mi
 
 - **PR #594:** My day, the board, the lead panel, the stage checklist, No answer, WhatsApp quick messages, Undo, repeat enquiries, and who sees what in the database.
 - **PR #595 (972413c3, merged 2026-11-03; `20270526000000` and `20270526000100` APPLIED before the merge):** the ClickUp import, the Team page, Control Center's Sales team tab, the Sales inbox and alerts.
-- **Review fixes and ClickUp's full history (migration `20270527000000`, NOT APPLIED when written):** a full review of the flow as salesperson, manager and Admin found ten problems; all are fixed (rules 17 to 23). The import can now take every ClickUp comment with its own date and author.
+- **Review fixes and ClickUp's full history (migration `20270527000000`, APPLIED 2026-11-03):** a full review of the flow as salesperson, manager and Admin found ten problems; all are fixed (rules 17 to 23). The import can now take every ClickUp comment with its own date and author.
 - **Not built:** automatic capture and automatic allotment (section 11).
 - Checked by `tsc`, lint, the tests in section 10, and the real migrations in an in-memory Postgres (the whole journey: 50 checks). The live pages and bundle were checked after the #595 deploy. **Not yet seen signed in.**
 
