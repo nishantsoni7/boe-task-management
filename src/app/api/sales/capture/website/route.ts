@@ -1,10 +1,11 @@
 // POST /api/sales/capture/website
 //
-// New enquiries from the website form, sent every five minutes by the script in the "Website Leads" Google Sheet
-// (scripts/google/website-leads-to-boe.gs). The script sends `Authorization: Bearer $SALES_CAPTURE_SECRET` and
+// New enquiries from the website's Contact Form 7 forms, sent the moment a form is submitted by the WordPress snippet
+// (scripts/wordpress/boe-one-lead-capture.php). It sends `Authorization: Bearer $SALES_CAPTURE_SECRET` and
 // { rows: [{ key, form_type, name, email, phone, location, message }] }, up to 100 rows. All of the logic is in the
-// database function capture_sales_leads (20270531000100), executable by the service role only: a new number becomes a
-// lead waiting to be allotted, a known number a repeat enquiry, and a row sent twice counts once.
+// database function capture_sales_leads (20270602000000), executable by the service role only: a new number becomes a
+// lead, given by the allotment rule in working hours or else waiting to be allotted, a known number a repeat enquiry,
+// and a row sent twice counts once.
 //
 // With SALES_CAPTURE_SECRET unset the route answers 503 and does nothing.
 

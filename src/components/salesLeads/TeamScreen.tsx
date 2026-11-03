@@ -9,8 +9,8 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { istAddDays, istToday } from '@/lib/istDate'
 import {
-  allotLead, fetchPeople, fetchTeam, reassignDue, remindLead, SALES_KEY,
-  type Person, type TeamData, type TeamPersonRow, type TeamRisk,
+  allotLead, fetchPeople, fetchPremiumMisplaced, fetchTeam, reassignDue, remindLead, SALES_KEY,
+  type MisplacedPremium, type Person, type TeamData, type TeamPersonRow, type TeamRisk, type WorkLead,
 } from '@/lib/salesLeads/api'
 import { deadReasonLabel, MARKETS, valueLabel } from '@/lib/salesLeads/board'
 import { initialsOf, plural } from '@/lib/salesLeads/format'
@@ -66,6 +66,8 @@ export function TeamScreen() {
   })
   // Everybody with a Sales job: the filter lists them all whoever is picked, and Change holder offers them.
   const people = useQuery({ queryKey: [SALES_KEY, 'people'], queryFn: () => fetchPeople(supabase), staleTime: 300_000, enabled: ready && canSeeAll })
+  // Premium leads the allotment rule gave a Junior or Backup this week, because the Seniors were full or away.
+  const premium = useQuery({ queryKey: [SALES_KEY, 'premium-misplaced'], queryFn: () => fetchPremiumMisplaced(supabase), staleTime: 30_000, enabled: ready && canSeeAll })
   const refresh = () => queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
   const data = team.data
 
@@ -76,7 +78,7 @@ export function TeamScreen() {
     } catch (e) { toast.show((e as Error).message, true) }
   }
 
-  const changeHolder = (lead: TeamRisk) => setChoosing({
+  const changeHolder = (lead: WorkLead) => setChoosing({
     title: `Change who holds ${leadTitle(lead)}`, sub: `Now with ${lead.holder_name}`, exclude: lead.assigned_to,
     pick: async to => {
       await allotLead(supabase, lead.id, to.id, lead.assigned_to)
@@ -109,7 +111,7 @@ export function TeamScreen() {
     const t = data.tiles
     body = (
       <div className={s.team}>
-        <RiskCard data={data} today={today} now={now} canAssign={canAssign && !readOnly} readOnly={readOnly} onOpen={setOpen} onRemind={remind} onChange={changeHolder} onCover={coverFor} />
+        <RiskCard data={data} premium={premium.data ?? []} today={today} now={now} canAssign={canAssign && !readOnly} readOnly={readOnly} onOpen={setOpen} onRemind={remind} onChange={changeHolder} onCover={coverFor} />
 
         <div className={s.filters} role="group" aria-label="Filters">
           {PERIODS.map(p => <button key={p.key} type="button" className={b.view} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>)}
@@ -194,9 +196,9 @@ function Bar({ label, n, max }: { label: string; n: number; max: number }) {
   )
 }
 
-function RiskCard({ data, today, now, canAssign, readOnly, onOpen, onRemind, onChange, onCover }: {
-  data: TeamData; today: string; now: number; canAssign: boolean; readOnly: boolean
-  onOpen: (id: string) => void; onRemind: (lead: TeamRisk) => void; onChange: (lead: TeamRisk) => void
+function RiskCard({ data, premium, today, now, canAssign, readOnly, onOpen, onRemind, onChange, onCover }: {
+  data: TeamData; premium: MisplacedPremium[]; today: string; now: number; canAssign: boolean; readOnly: boolean
+  onOpen: (id: string) => void; onRemind: (lead: TeamRisk) => void; onChange: (lead: WorkLead) => void
   onCover: (who: { id: string; name: string; due: number }) => void
 }) {
   const shown = data.at_risk.length
@@ -208,6 +210,15 @@ function RiskCard({ data, today, now, canAssign, readOnly, onOpen, onRemind, onC
         <div key={a.id} className={s.absent}>
           <span><b>{a.name} has not punched in today.</b> {plural(a.due, 'lead')} due.</span>
           {canAssign && <button type="button" className="boe-btn boe-btn-secondary" onClick={() => onCover(a)}>Give to someone else</button>}
+        </div>
+      ))}
+      {premium.map(l => (
+        <div key={l.id} className={s.absent}>
+          <span>
+            <b>Premium lead with a {l.level === 'backup' ? 'Backup' : 'Junior'}.</b>{' '}
+            <button type="button" className={s.leadLink} onClick={() => onOpen(l.id)}>{leadTitle(l)}</button> ({l.premium}) is with {l.holder_name}. Hand it to a Senior?
+          </span>
+          {canAssign && <button type="button" className="boe-btn boe-btn-secondary" onClick={() => onChange(l)}><UserRoundPen aria-hidden="true" />Change holder</button>}
         </div>
       ))}
       {shown > 0 && (

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  checklistFor, countryOf, DEAD_REASONS, dueOf, flagOf, lastLabel, marketLabel, parseValue, quickMessages, rankMyDay, STAGES, valueLabel, whatsAppLink, whyFirst,
+  bigQuantity, checklistFor, countryOf, DEAD_REASONS, dueOf, flagOf, lastLabel, marketLabel, parseValue, quickMessages, rankMyDay, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
@@ -29,6 +29,15 @@ describe('the words stay in step with the database', () => {
   test('every stage and every dead reason is one the database accepts', () => {
     for (const s of STAGES) assert.ok(MIGRATION.includes(`'${s.key}'`), s.key)
     for (const r of DEAD_REASONS) assert.ok(MIGRATION.includes(`'${r.value}'`), r.value)
+  })
+})
+
+describe('the Big quantity tag', () => {
+  test('the website form\'s top quantity choice, as the capture writes it, and nothing else', () => {
+    assert.equal(bigQuantity({ requirement: 'Chairs\nQuantity: Above 100+\nForm: Contact (https://bestofexports.com/)' }), true)
+    assert.equal(bigQuantity({ requirement: 'Quantity: 50-100' }), false)
+    assert.equal(bigQuantity({ requirement: 'Above 100 chairs' }), false)
+    assert.equal(bigQuantity({ requirement: null }), false)
   })
 })
 

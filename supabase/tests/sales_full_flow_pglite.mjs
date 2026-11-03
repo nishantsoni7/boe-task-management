@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), and the website capture (20270531000000/100). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), and the automatic allotment (20270602000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -89,9 +89,11 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
-  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql']) {
+  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql']) {
   await db.exec(mig(f))
 }
+// Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
+await db.exec('update public.sales_auto_allot set is_on = false')
 
 let pass = 0, fail = 0
 const results = []
@@ -717,6 +719,158 @@ await step('Browser users cannot fire the alert job', () =>
     must((await page(U.ashok, 'new', -5, 0)).length === 1, 'a negative offset or a zero limit is not clamped')
     const anon = await scalar(`select has_function_privilege('anon', 'public.sales_board_page(text, integer, integer, text, text, text, text, text, text)', 'EXECUTE')`)
     must(anon === false, 'open to anon')
+  })
+}
+
+{
+  // ── The automatic allotment (20270602000000) ─────────────────────────────
+  const capture = async rows => {
+    await db.exec('reset role; set role service_role;')
+    try { return (await db.query('select public.capture_sales_leads($1::jsonb) as r', [JSON.stringify(rows)])).rows[0].r } finally { await db.exec('reset role;') }
+  }
+  const waiting = async () => Number(await scalar(`select count(*) from public.notifications where type::text = 'sales_lead_waiting'`))
+  const waitingFor = async phone => (await db.query(`select n.body from public.notifications n join public.sales_leads l on l.id = n.entity_id
+    where n.type::text = 'sales_lead_waiting' and l.phone_e164 = $1`, [phone])).rows
+  const lead = async phone => (await db.query(`select * from public.sales_leads where phone_e164 = $1`, [phone])).rows[0]
+  const lastAllot = async id => (await one(U.leadmgr, `select public.get_sales_lead($1)`, [id])).events.find(e => e.kind === 'allotted' || e.kind === 'reassigned')
+  const punch = async (...who) => {
+    await db.exec('delete from public.attendance_records')
+    for (const u of who) await db.query(`insert into public.attendance_records values ($1, (now() at time zone 'Asia/Kolkata')::date, now())`, [u])
+  }
+  // A limit of 200 by default: the paging checks above gave Ashok 130 leads and Mohit 20 today, past the real 25.
+  const person = (uid, level, exp = false, limit = 200) => one(U.admin, `select public.set_sales_allot_person($1, $2, $3, $4)`, [uid, level, exp, limit])
+  const hours = (on, days = '{1,2,3,4,5,6,7}') => one(U.admin, `select public.set_sales_auto_allot($1, $2::integer[], '00:00', '24:00')`, [on, days])
+
+  await step('Only Admin reads and sets the switch and the hours; a bad day or hour is refused', async () => {
+    await expectErr(U.leadmgr, `select public.get_sales_auto_allot()`, /SALES_FORBIDDEN/)
+    await expectErr(U.leadmgr, `select public.set_sales_auto_allot(true, '{1}', '09:30', '19:00')`, /SALES_FORBIDDEN/)
+    await expectErr(U.admin, `select public.set_sales_auto_allot(true, '{}', '09:30', '19:00')`, /at least one working day/)
+    await expectErr(U.admin, `select public.set_sales_auto_allot(true, '{1,8}', '09:30', '19:00')`, /at least one working day/)
+    await expectErr(U.admin, `select public.set_sales_auto_allot(true, '{1}', '19:00', '09:30')`, /start before it ends/)
+    const s = await hours(true, '{7,1,2,3,4,5,6,1}')
+    must(s.is_on && s.days.join() === '1,2,3,4,5,6,7' && s.open_now === true && s.ends === '24:00', JSON.stringify(s))
+  })
+  await step('The owner\'s levels arrive by first name, everybody else is Manual only, and only Admin changes them', async () => {
+    const team = await one(U.admin, `select public.list_sales_team()`)
+    const of = id => team.find(m => m.id === id)
+    must(of(U.ashok).level === 'senior' && of(U.mohit).level === 'senior' && of(U.manager).level === 'manual' && of(U.senior).level === 'manual'
+      && of(U.dummy).level === 'manual', JSON.stringify(team.map(m => [m.name, m.level])))
+    must(of(U.ashok).daily_limit === 25 && of(U.ashok).takes_export === false, 'defaults')
+    await expectErr(U.leadmgr, `select public.set_sales_allot_person($1, 'senior', false, 25)`, /SALES_FORBIDDEN/, [U.senior])
+    await expectErr(U.admin, `select public.set_sales_allot_person($1, 'boss', false, 25)`, /Choose a level/, [U.senior])
+    await expectErr(U.admin, `select public.set_sales_allot_person($1, 'junior', false, 500)`, /0 to 200/, [U.senior])
+    await person(U.ashok, 'senior')
+    await person(U.mohit, 'mid')
+    await person(U.senior, 'junior')
+    const again = await one(U.admin, `select public.list_sales_team()`)
+    must(again.find(m => m.id === U.mohit).level === 'mid' && again.find(m => m.id === U.senior).level === 'junior', 'not saved')
+  })
+  await step('Before anybody punches in, a Premium website lead goes to the Senior by itself, and its history says why', async () => {
+    await punch()
+    const waitBefore = await waiting()
+    const toldBefore = await notesFor(U.ashok, 'sales_lead_allotted')
+    const r = await capture([{ key: 'a1', name: 'Grand Restaurant', phone: '98111 00060', message: 'New restaurant, 250 seats' }])
+    must(r.created === 1 && r.allotted === 1, JSON.stringify(r))
+    const l = await lead('+919811100060')
+    must(l.assigned_to === U.ashok && l.next_step === 'First call' && l.next_due_on && !l.assigned_by, JSON.stringify({ to: l.assigned_to, step: l.next_step }))
+    const ev = await lastAllot(l.id)
+    must(ev.kind === 'allotted' && ev.actor_name === null && /^Premium \(250 seats\) to a Senior, before anyone punched in, \d+ fresh leads?$/.test(ev.detail), JSON.stringify(ev))
+    must(await notesFor(U.ashok, 'sales_lead_allotted') === toldBefore + 1, 'the Senior was not told')
+    must(await waiting() === waitBefore, 'the allotters were told about a lead that was given')
+    must((await one(U.leadmgr, `select public.get_sales_lead($1)`, [l.id])).lead.premium === '250 seats', 'Premium is not on the lead')
+  })
+  await step('Once somebody punches in, only people who are in are given leads, Premium or not', async () => {
+    await punch(U.mohit)
+    await capture([{ key: 'a2', phone: '98111 00061', message: 'Hotel, 40 rooms' }, { key: 'a3', phone: '98111 00062', message: 'Need 30 chairs' }])
+    const p = await lead('+919811100061'), q = await lead('+919811100062')
+    must(p.assigned_to === U.mohit && q.assigned_to === U.mohit, JSON.stringify([p.assigned_to, q.assigned_to]))
+    must(/^Premium \(40 rooms\) to a Mid, in today, /.test((await lastAllot(p.id)).detail), 'Premium line')
+    must(/^in today, \d+ fresh leads?$/.test((await lastAllot(q.id)).detail), 'plain line')
+  })
+  await step('Somebody at their daily limit takes no more; with nobody else in, the lead waits and the allotters hear why', async () => {
+    await person(U.mohit, 'mid', false, 0)
+    const r = await capture([{ key: 'a4', name: 'Late Cafe', phone: '98111 00063', message: 'Need 20 chairs' }])
+    must(r.created === 1 && r.allotted === 0 && !(await lead('+919811100063')).assigned_to, JSON.stringify(r))
+    const told = await waitingFor('+919811100063')
+    must(told.length === 2 && told[0].body.startsWith('Late Cafe. Nobody is free to take it now'), JSON.stringify(told))
+  })
+  await step('A Backup only when the others are full; Premium tries Senior, Mid, Junior in turn', async () => {
+    await punch()
+    await person(U.ashok, 'senior', false, 0)
+    await person(U.mohit, 'mid')
+    await person(U.senior, 'backup')
+    await capture([{ key: 'a5', phone: '98111 00064', message: 'Need 10 tables' }])
+    must((await lead('+919811100064')).assigned_to === U.mohit, 'a Mid before a Backup, however many fresh leads')
+    await person(U.mohit, 'mid', false, 0)
+    await capture([{ key: 'a6', phone: '98111 00065', message: 'Need 10 stools' }])
+    must((await lead('+919811100065')).assigned_to === U.senior, 'the Backup takes it once everybody else is full')
+    await person(U.senior, 'junior')
+    await capture([{ key: 'a7', phone: '98111 00069', message: 'Banquet for 300 guests' }])
+    const l = await lead('+919811100069')
+    must(l.assigned_to === U.senior && /^Premium \(300 guests\) to a Junior, /.test((await lastAllot(l.id)).detail), 'the Junior after a full Senior and Mid')
+  })
+  await step('An export number goes to somebody with the Export tick', async () => {
+    await person(U.ashok, 'senior')
+    await person(U.mohit, 'mid')
+    await person(U.senior, 'junior', true)
+    await capture([{ key: 'a8', phone: '+44 7700 900123', message: 'Chairs for a pub' }])
+    const l = await lead('+447700900123')
+    must(l.assigned_to === U.senior && /takes export leads/.test((await lastAllot(l.id)).detail), 'not the Export tick')
+  })
+  await step('Manual only people, and anybody who cannot be given leads, are never given one automatically', async () => {
+    const n = Number(await scalar(`select count(*) from public.sales_lead_events where actor is null and kind in ('allotted', 'reassigned')
+      and detail is not null and to_user in ('${U.manager}', '${U.dummy}', '${U.leadmgr}', '${U.admin}')`))
+    must(n === 0, n + ' given to Manual only people')
+  })
+  await step('Outside the working days a lead waits for the morning; switched off it waits for a person', async () => {
+    const today = Number(await scalar(`select extract(isodow from now() at time zone 'Asia/Kolkata')::int`))
+    await hours(true, `{${today === 1 ? 2 : 1}}`)
+    await capture([{ key: 'a9', name: 'Night Hotel', phone: '98111 00066', message: 'Need 50 chairs' }])
+    must(!(await lead('+919811100066')).assigned_to, 'given outside the working days')
+    must((await waitingFor('+919811100066'))[0].body.startsWith('Night Hotel. It will be allotted automatically next working morning.'), 'morning note')
+    await hours(false)
+    await capture([{ key: 'a10', name: 'Off Hotel', phone: '98111 00067' }])
+    must(!(await lead('+919811100067')).assigned_to && (await waitingFor('+919811100067'))[0].body === 'Off Hotel. Allot it in Lead Master.', 'switched-off note')
+  })
+  await step('"Allot waiting leads now" gives what waits, for whoever allots; old ClickUp and sheet leads stay put', async () => {
+    await expectErr(U.ashok, `select public.allot_waiting_sales_leads()`, /SALES_FORBIDDEN/)
+    const r = await one(U.leadmgr, `select public.allot_waiting_sales_leads()`)
+    must(r.allotted >= 3, JSON.stringify(r))
+    for (const p of ['+919811100063', '+919811100066', '+919811100067']) must((await lead(p)).assigned_to, p + ' still waiting')
+    const old = Number(await scalar(`select count(*) from public.sales_leads l where l.imported_at is not null
+      and (l.enquired_again_at is null or l.enquired_again_at <= l.imported_at)
+      and exists (select 1 from public.sales_lead_events e where e.lead_id = l.id and e.actor is null and e.kind = 'allotted' and e.detail is not null)`))
+    const sheetLead = await lead('+919811100043')
+    must(old === 0 && sheetLead.is_history && !sheetLead.assigned_to, `${old} old ClickUp leads given, or an old sheet lead`)
+  })
+  await step('The morning run gives what waits before its alerts (it rests on Sundays)', async () => {
+    await hours(false)
+    await capture([{ key: 'a11', phone: '98111 00068', message: 'Need 12 stools' }])
+    await hours(true)
+    await db.query(`select public.sales_lead_send_alerts('morning')`)
+    const sunday = Number(await scalar(`select extract(dow from (now() at time zone 'Asia/Kolkata')::date)::int`)) === 0
+    must(Boolean((await lead('+919811100068')).assigned_to) === !sunday, 'the morning run')
+    return sunday ? 'Sunday: the run rests' : ''
+  })
+  await step('A returning customer stays with their holder; once that holder can no longer be given leads, the rule picks again', async () => {
+    const id = (await lead('+919811100060')).id
+    await capture([{ key: 'a12', phone: '98111 00060', message: 'Any update?' }])
+    must((await lead('+919811100060')).assigned_to === U.ashok, 'moved while Ashok can still be given leads')
+    await one(U.admin, `select public.set_sales_lead_holding($1, false)`, [U.ashok])
+    const before = await notesFor(U.ashok, 'sales_lead_enquired_again')
+    const r = await capture([{ key: 'a13', phone: '98111 00060', message: 'Hello?' }])
+    const now_ = await lead('+919811100060')
+    must(r.repeat === 1 && r.allotted === 1 && now_.assigned_to && now_.assigned_to !== U.ashok, JSON.stringify(r))
+    const ev = await lastAllot(id)
+    must(ev.kind === 'reassigned' && ev.from_name === 'Ashok' && ev.actor_name === null && ev.detail.startsWith('Premium (250 seats)'), JSON.stringify(ev))
+    must(await notesFor(U.ashok, 'sales_lead_enquired_again') === before, 'Ashok was told although the lead left him')
+    await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [U.ashok])
+  })
+  await step('The Team page lists a Premium lead a Junior or Backup was given this week, for managers only', async () => {
+    await expectErr(U.ashok, `select public.sales_premium_misplaced()`, /SALES_FORBIDDEN/)
+    const rows = await one(U.manager, `select public.sales_premium_misplaced()`)
+    must(rows.some(r => r.phone === '+919811100069' && r.level === 'junior' && r.premium === '300 guests'), JSON.stringify(rows.map(r => [r.phone, r.level, r.premium])))
+    must(!rows.some(r => r.phone === '+919811100061'), 'a Mid holding a Premium lead is fine')
   })
 }
 

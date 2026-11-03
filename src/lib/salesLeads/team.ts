@@ -21,6 +21,41 @@ export type SalesTeamMember = {
   can_hold: boolean
   /** The choice made for them in Control Center; null follows their job. */
   hold_set: boolean | null
+  /** Automatic allotment (20270602000000). Nobody placed yet is Manual only. */
+  level: AllotLevel
+  takes_export: boolean
+  daily_limit: number
+}
+
+export const ALLOT_LEVELS = [
+  { value: 'senior', label: 'Senior', hint: 'First for Premium leads; shares the rest.' },
+  { value: 'mid', label: 'Mid', hint: 'Premium leads when the Seniors are full or away; shares the rest.' },
+  { value: 'junior', label: 'Junior', hint: 'Premium leads only after Senior and Mid; shares the rest.' },
+  { value: 'backup', label: 'Backup', hint: 'Only when everybody else is full or away.' },
+  { value: 'manual', label: 'Manual only', hint: 'Never given a lead automatically.' },
+] as const
+export type AllotLevel = typeof ALLOT_LEVELS[number]['value']
+
+export async function saveAllotPerson(s: Supabase, user: string, level: AllotLevel, takesExport: boolean, limit: number): Promise<void> {
+  const { error } = await s.rpc('set_sales_allot_person', { p_user: user, p_level: level, p_export: takesExport, p_limit: limit })
+  if (error) throw new Error('How leads are given to them could not be saved. Try again.')
+}
+
+/** The switch and the working days (1 Monday to 7 Sunday) and hours, in India, when website leads are given at once. */
+export type AutoAllot = { is_on: boolean; days: number[]; starts: string; ends: string; open_now: boolean }
+
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+
+export async function fetchAutoAllot(s: Supabase): Promise<AutoAllot> {
+  const { data, error } = await s.rpc('get_sales_auto_allot')
+  if (error || !data) throw new Error('The automatic allotment settings could not be loaded.')
+  return data as AutoAllot
+}
+
+export async function saveAutoAllot(s: Supabase, a: Omit<AutoAllot, 'open_now'>): Promise<AutoAllot> {
+  const { data, error } = await s.rpc('set_sales_auto_allot', { p_on: a.is_on, p_days: a.days, p_starts: a.starts, p_ends: a.ends })
+  if (error) throw new Error(error.message.startsWith('SALES_INVALID') ? error.message.replace(/^SALES_INVALID:\s*/, '') : 'The settings could not be saved. Try again.')
+  return data as AutoAllot
 }
 
 export const SALES_ROLES = [

@@ -32,6 +32,8 @@
 .phone:hover { text-decoration: underline; }
 .noName { color: #8F9392; }
 .tag { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px; background: #F1EEE9; color: #4C5352; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.tag + .tag { margin-left: 4px; }
+.tagPremium { background: #F3ECF7; color: #6B3F8C; font-weight: 600; }
 .mobNo { display: none; }
 .table .cReq { color: #4C5352; }
 @media (max-width: 1399px) { .table .cLoc, .table col.kLoc { display: none; } .table { min-width: 860px; } }

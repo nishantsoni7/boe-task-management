@@ -1,9 +1,9 @@
 'use client'
 
-import { Bell, CalendarDays, Clock, Flame, Hourglass, Mail, MessageCircle, Phone, Snowflake, Sun, TriangleAlert } from 'lucide-react'
+import { Bell, CalendarDays, Clock, Crown, Flame, Hourglass, Mail, MessageCircle, Phone, Snowflake, Sun, TriangleAlert } from 'lucide-react'
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import type { LeadEvent, WorkLead } from '@/lib/salesLeads/api'
-import { cameBack, dueOf, flagOf, marketLabel, stageLabel, type Temperature, TEMPERATURES, valueLabel } from '@/lib/salesLeads/board'
+import { bigQuantity, cameBack, dueOf, flagOf, marketLabel, stageLabel, type Temperature, TEMPERATURES, valueLabel } from '@/lib/salesLeads/board'
 import { editedFields } from '@/lib/salesLeads/format'
 import s from './leadBoard.module.css'
 
@@ -26,11 +26,18 @@ export function ValueChip({ paise }: { paise: number | null }) {
   return paise ? <span className={s.chip}>{valueLabel(paise)}</span> : null
 }
 
+/** Premium, with what made it so ("250 seats"): the client's own words, read by the database. */
+export function PremiumChip({ reason }: { reason: string | null | undefined }) {
+  return reason ? <span className={`${s.chip} ${s.chipPremium}`} title={`Premium: ${reason}`}><Crown aria-hidden="true" />Premium · {reason}</span> : null
+}
+
 export function LeadChips({ lead }: { lead: WorkLead }) {
   return (
     <div className={s.chips}>
+      <PremiumChip reason={lead.premium} />
       <TempChip value={lead.temperature} />
       <ValueChip paise={lead.expected_value_paise} />
+      {!lead.premium && bigQuantity(lead) && <span className={s.chip}>Big quantity</span>}
       {lead.market === 'export' && <span className={`${s.chip} ${s.chipExport}`}>{marketLabel(lead)}</span>}
       {cameBack(lead) && <span className={`${s.chip} ${s.chipAgain}`}><Bell aria-hidden="true" />Enquired again</span>}
     </div>
@@ -43,8 +50,8 @@ const who = (name: string | null) => <b>{name ?? 'a former colleague'}</b>
 export function eventLine(e: LeadEvent): React.ReactNode {
   switch (e.kind) {
     case 'added': return e.detail ? <>Came in from the <b>{e.detail}</b></> : 'Added in Lead Master'
-    case 'allotted': return <>Allotted to {who(e.to_name)}</>
-    case 'reassigned': return <>Moved from {who(e.from_name)} to {who(e.to_name)}</>
+    case 'allotted': return <>Allotted to {who(e.to_name)}{e.detail && <> automatically: {e.detail}</>}</>
+    case 'reassigned': return <>Moved from {who(e.from_name)} to {who(e.to_name)}{e.detail && <> automatically: {e.detail}</>}</>
     case 'edited': return `Changed ${editedFields(e.detail)}`
     case 'enquired_again': return 'Enquired again'
     case 'imported': return <>Brought over from ClickUp{e.detail ? <> as <b>{e.detail}</b></> : null}</>
@@ -57,9 +64,12 @@ export function eventLine(e: LeadEvent): React.ReactNode {
   }
 }
 
+// The website capture, and the allotment rule (whose allot lines alone carry a reason), act with nobody behind them.
+const byItself = (e: LeadEvent) => e.detail === 'website form' || (!!e.detail && (e.kind === 'allotted' || e.kind === 'reassigned'))
+
 /** Who did it. ClickUp's own entries say so instead of naming a former colleague. */
 export const eventBy = (e: LeadEvent) =>
-  e.kind === 'clickup_status' ? 'From ClickUp' : e.actor_name ?? (e.detail === 'website form' ? 'Automatically' : 'A former colleague')
+  e.kind === 'clickup_status' ? 'From ClickUp' : e.actor_name ?? (byItself(e) ? 'Automatically' : 'A former colleague')
 
 export function StepIcon({ step }: { step: string }) {
   if (/^WhatsApp/i.test(step)) return <MessageCircle aria-hidden="true" />

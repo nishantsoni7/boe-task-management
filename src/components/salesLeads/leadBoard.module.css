@@ -10,6 +10,7 @@
 .chip svg { width: 12px; height: 12px; }
 .chipExport { background: #E8F0F8; color: #2F5C8F; }
 .chipAgain { background: #FAF0DA; color: #805B0D; }
+.chipPremium { background: #F3ECF7; color: #6B3F8C; font-weight: 600; }
 .chipHot { background: #FCEEEF; color: #A12438; font-weight: 600; }
 .chipWarm { background: #FFF6E3; color: #805B0D; font-weight: 600; }
 .chipCold { background: #E8F0F8; color: #2F5C8F; font-weight: 600; }
