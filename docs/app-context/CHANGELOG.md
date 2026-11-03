@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Sales, going live: ClickUp import, Team page, Sales team tab, alerts (PR not yet opened) · 20270526000000 and 20270526000100 → NOT APPLIED
+## 2026-11-03 — Sales, going live: ClickUp import, Team page, Sales team tab, alerts (PR #595) · 20270526000000 and 20270526000100 → NOT APPLIED
 - **Owner request.** Make Sales live today: the ClickUp subscription has ended and will not be renewed. Build every remaining page without waiting for approval, and allow all the leads to be imported so they can be easily managed.
 - **Added.** `/sales/import` reads ClickUp CSV exports in the browser and shows the whole result before saving. `/sales/team` is the approved Team page. Control Center → Access → Sales team sets each person's job and a senior's juniors. `/sales/notifications` is the Sales inbox, with a Sales category for phone alerts.
 - **Alerts.** A new lead, a repeat enquiry and a manager's Remind tell the holder at once. Twice a day (`/api/sales/alerts`, two new Vercel crons): follow-ups in the morning, first calls missed in the evening, then manager level the next morning.
