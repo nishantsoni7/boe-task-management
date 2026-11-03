@@ -1217,6 +1217,9 @@ describe('the applied migrations are frozen', () => {
       '20270529000000_sales_can_be_given_leads.sql',
       // Sales, the two old Google Sheets: old leads kept for the record, existing leads filled in.
       '20270530000000_sales_sheet_import.sql',
+      // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
+      '20270531000000_sales_lead_waiting_type.sql',
+      '20270531000100_sales_website_capture.sql',
     ])
   })
 
@@ -1685,6 +1688,9 @@ describe('the applied migrations are frozen', () => {
       '20270529000000_sales_can_be_given_leads.sql',
       // Sales, the two old Google Sheets: old leads kept for the record, existing leads filled in.
       '20270530000000_sales_sheet_import.sql',
+      // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
+      '20270531000000_sales_lead_waiting_type.sql',
+      '20270531000100_sales_website_capture.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

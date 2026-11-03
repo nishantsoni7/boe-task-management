@@ -208,6 +208,7 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   sales_first_call_missed:      { label: 'First call',      color: colors.red,   bg: colors.redTint   },
   sales_lead_enquired_again:    { label: 'Came back',       color: colors.blue,  bg: colors.blueTint  },
   sales_lead_reminder:          { label: 'Reminder',        color: colors.amber, bg: colors.amberTint },
+  sales_lead_waiting:           { label: 'To allot',        color: colors.amber, bg: colors.amberTint },
   // Inventory bookings. Amber = waiting for an approver; blue = the decision, whose outcome is in the title.
   inventory_booking_requested:  { label: 'Needs a decision', color: colors.amber, bg: colors.amberTint },
   inventory_booking_decided:    { label: 'Booking update',   color: colors.blue,  bg: colors.blueTint  },
@@ -339,6 +340,11 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   // lead is about a whole day: a salesperson lands on My day, a manager on the Team page.
   if (type.startsWith('sales_')) {
     const toManager = type === 'sales_first_call_missed' && /first call/.test(n.title)
+    // A lead nobody holds yet is allotted in the Lead Master, on its Not allotted list.
+    if (type === 'sales_lead_waiting') {
+      return { category: 'other', heading: 'Sales', headingIsActor: false, badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+        href: '/sales/lead-master?period=all&holder=none', actionLabel: 'Allot it' }
+    }
     return {
       category: 'other',
       heading: 'Sales',

@@ -42,7 +42,7 @@ const who = (name: string | null) => <b>{name ?? 'a former colleague'}</b>
 /** One line of a lead's history, the same in the Lead Master and in the lead panel. */
 export function eventLine(e: LeadEvent): React.ReactNode {
   switch (e.kind) {
-    case 'added': return 'Added in Lead Master'
+    case 'added': return e.detail ? <>Came in from the <b>{e.detail}</b></> : 'Added in Lead Master'
     case 'allotted': return <>Allotted to {who(e.to_name)}</>
     case 'reassigned': return <>Moved from {who(e.from_name)} to {who(e.to_name)}</>
     case 'edited': return `Changed ${editedFields(e.detail)}`
@@ -58,7 +58,8 @@ export function eventLine(e: LeadEvent): React.ReactNode {
 }
 
 /** Who did it. ClickUp's own entries say so instead of naming a former colleague. */
-export const eventBy = (e: LeadEvent) => e.kind === 'clickup_status' ? 'From ClickUp' : e.actor_name ?? 'A former colleague'
+export const eventBy = (e: LeadEvent) =>
+  e.kind === 'clickup_status' ? 'From ClickUp' : e.actor_name ?? (e.detail === 'website form' ? 'Automatically' : 'A former colleague')
 
 export function StepIcon({ step }: { step: string }) {
   if (/^WhatsApp/i.test(step)) return <MessageCircle aria-hidden="true" />
