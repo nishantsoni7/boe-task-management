@@ -224,6 +224,12 @@
   color: #4C5352;
 }
 
+/* With no strip above it (someone with too little history to judge), the line
+   sits directly under the name. */
+.personTop + .line {
+  margin-top: 0;
+}
+
 .line b {
   font-weight: 600;
   color: #303536;

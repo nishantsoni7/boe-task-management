@@ -66,6 +66,42 @@ describe('Approve and Cancel on the row', () => {
   })
 })
 
+// Nov 2026. Approve and Cancel task were labelled buttons that needed about 250px in a
+// 216px column, so on an approval row they grew leftwards over Last update.
+describe('the row buttons fit their column', () => {
+  const CSS = read('src/app/tasks/assigned-by-me/assignedByMe.module.css')
+  // Three 32px squares, two 4px gaps, 8px + 10px of padding.
+  const ACTIONS_MIN_PX = 3 * 32 + 2 * 4 + 18
+
+  test('every width leaves the Actions column room for all three', () => {
+    const grids = [...CSS.matchAll(/grid-template-columns:\s*([^;]+);/g)].map(m => m[1].trim()).filter(g => g.includes('minmax'))
+    assert.ok(grids.length >= 4, 'the full row and each of the three narrower tiers')
+    for (const g of grids) {
+      const last = g.split(/\s+/).at(-1) ?? ''
+      assert.ok(/^\d+px$/.test(last) && parseInt(last, 10) >= ACTIONS_MIN_PX, `${g} ends in ${last}`)
+    }
+  })
+
+  test('Approve and Cancel are icon buttons: the words are the tooltip and the name', () => {
+    assert.ok(ROW.includes('title="Approve"'))
+    assert.ok(ROW.includes('title="Cancel task"'))
+    assert.ok(ROW.includes('aria-label={`Approve ${task.title}`}'))
+    assert.ok(ROW.includes('aria-label={`Cancel ${task.title}`}'))
+  })
+
+  test('and they wear the icons Task Detail uses for the same actions', () => {
+    for (const icon of ['CircleCheckBig', 'Ban']) {
+      assert.ok(DETAIL.includes(`<${icon} `), `Task Detail no longer draws ${icon}`)
+      assert.ok(ROW.includes(`<${icon} `), `the row does not draw ${icon}`)
+    }
+  })
+
+  test('someone with too little history gets no strip, only the line that says so', () => {
+    const BAR = codeOf(read('src/components/tasks/TeamResponseBar.tsx'))
+    assert.ok(BAR.includes("person.label !== 'too_early' && ("))
+  })
+})
+
 describe('Team response', () => {
   test('it does not run under View As, where RLS would give it the wrong person', () => {
     assert.ok(PAGE.includes('useTeamResponse(viewAsUserId ? null : loggedInId)'))

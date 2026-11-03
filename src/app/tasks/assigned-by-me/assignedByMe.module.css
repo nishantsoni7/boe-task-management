@@ -5,8 +5,12 @@
 
    A column goes before the Task column is squeezed. The first to go is Last
    update, because the Pending Update tab still answers that question. Then
-   Priority, because the filter still does. When Cancel task leaves the row it
-   is still in the ⋯ menu, where it is on every other row. */
+   Priority, because the filter still does. Approve and Cancel task are icon
+   buttons (the same icons as Task Detail), so the Actions column is three 32px
+   squares and holds them at every width. It was 216px for the labelled buttons
+   they replaced, which needed about 250: on an approval row they grew leftwards
+   over Last update. Cancel task is also in the ⋯ menu, where it is on every
+   other row. */
 .list {
   container-type: inline-size;
   background: var(--boe-surface);
@@ -17,7 +21,7 @@
 .headRow,
 .row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 104px 56px 112px 132px 84px 216px;
+  grid-template-columns: 28px minmax(0, 1fr) 104px 64px 128px 144px 92px 128px;
   align-items: center;
 }
 
@@ -115,8 +119,20 @@
 }
 
 .priority {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--boe-text-strong);
+}
+
+/* The colour is on the dot; the word beside it is what says the priority. */
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .due {
@@ -137,7 +153,7 @@
 
 .update {
   font-size: 13px;
-  color: var(--boe-text-strong);
+  color: var(--boe-text-muted);
   white-space: nowrap;
 }
 
@@ -155,16 +171,96 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  padding-right: 10px;
+  gap: 4px;
+  padding: 0 10px 0 8px;
 }
 
-.rowButton {
+/* The words are the button's title (its tooltip) and its aria-label. Two
+   classes, so these beat .boe-btn's own min-height, padding and svg size
+   whichever file the browser reads last. */
+.actions .iconButton {
+  width: 32px;
+  height: 32px;
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0;
+}
+
+.actions .iconButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Cancel task is the quieter of the two, so Approve is the one thing on the row
+   that is filled. */
+.actions .cancelButton {
+  background: transparent;
+  border-color: transparent;
+  color: var(--boe-text-muted);
+}
+
+.actions .cancelButton:hover:not(:disabled) {
+  background: var(--boe-blocked-bg);
+  border-color: transparent;
+  color: var(--boe-blocked-fg);
+}
+
+/* ── Search and filters: the shared .boe-input, so they match every form.
+   Two classes on each override, so they win over .boe-input whichever file the
+   browser reads last. A list toolbar is a size down from a form field. ── */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.toolbar .search {
+  display: flex;
+  flex: 2 1 220px;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
   font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
+  color: var(--boe-text-muted);
+  cursor: text;
+}
+
+.toolbar .search:focus-within {
+  border-color: var(--boe-brand);
+  box-shadow: 0 0 0 3px rgba(185, 71, 46, 0.22);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--boe-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.search input::placeholder {
+  color: var(--boe-text-placeholder);
+}
+
+.toolbar .filter {
+  flex: 1 1 150px;
+  width: auto;
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-right: 34px;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23686D6C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
 }
 
 .count {
@@ -193,11 +289,21 @@
   font-weight: 600;
 }
 
+/* A thumb is bigger than a pointer: on a phone the toolbar is a full touch
+   target, and 16px stops iOS zooming the page when a field is tapped. */
+@media (max-width: 767px) {
+  .toolbar .search,
+  .toolbar .filter {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
 /* ── Narrower lists ── */
-@container (max-width: 999px) {
+@container (max-width: 1119px) {
   .headRow,
   .row {
-    grid-template-columns: 28px minmax(0, 1fr) 104px 56px 112px 96px 216px;
+    grid-template-columns: 28px minmax(0, 1fr) 104px 64px 128px 100px 128px;
   }
 
   .colUpdate,
@@ -206,14 +312,20 @@
   }
 }
 
+@container (max-width: 959px) {
+  .headRow,
+  .row {
+    grid-template-columns: 28px minmax(0, 1fr) 104px 128px 100px 128px;
+  }
+
+  .colPriority {
+    display: none;
+  }
+}
+
 @container (max-width: 859px) {
   .headRow,
   .row {
-    grid-template-columns: 28px minmax(0, 1fr) 104px 112px 96px 130px;
-  }
-
-  .colPriority,
-  .cancelInline {
-    display: none;
+    grid-template-columns: 28px minmax(0, 1fr) 104px 112px 88px 128px;
   }
 }
