@@ -7,10 +7,21 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { holdChoice, holdsByDefault, rightsFor, roleOf, type SalesTeamMember } from './team'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { ALLOT_LEVELS, holdChoice, holdsByDefault, rightsFor, roleOf, type SalesTeamMember } from './team'
 
 const person = (over: Partial<SalesTeamMember> = {}): SalesTeamMember => ({
-  id: 'u1', name: 'Asha', is_admin: false, candidate: true, view: false, view_all: false, create: false, edit: false, assign: false, juniors: [], can_hold: false, hold_set: null, ...over,
+  id: 'u1', name: 'Asha', is_admin: false, candidate: true, view: false, view_all: false, create: false, edit: false, assign: false, juniors: [], can_hold: false, hold_set: null,
+  level: 'manual', takes_export: false, daily_limit: 25, ...over,
+})
+
+describe('how a person is given leads automatically', () => {
+  test('the levels are exactly the ones the database accepts, Manual only last', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270602000000_sales_auto_allot.sql'), 'utf8')
+    assert.ok(sql.includes(`level text not null check (level in (${ALLOT_LEVELS.map(l => `'${l.value}'`).join(', ')}))`))
+    assert.equal(ALLOT_LEVELS[ALLOT_LEVELS.length - 1].value, 'manual')
+  })
 })
 const changes = (m: SalesTeamMember, role: Parameters<typeof rightsFor>[1], adds = false) =>
   Object.fromEntries(rightsFor(m, role, adds).map(c => [c.actionKey, c.allowed]))

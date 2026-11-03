@@ -62,7 +62,11 @@ export function LeadTable({ rows, people, canAssign, today, saving, onOpen, onPi
                 {l.name ? <span className="fin-primary-text">{l.name}</span> : <span className={s.noName}>No name</span>}
                 {l.email && <span className="fin-sub">{l.email}</span>}
               </td>
-              <td className={s.cSrc}><span className={s.tag}>{sourceLabel(l.source)}</span>{l.is_history && <span className={s.tag}>Old lead</span>}</td>
+              <td className={s.cSrc}>
+                <span className={s.tag}>{sourceLabel(l.source)}</span>
+                {l.is_history && <span className={s.tag}>Old lead</span>}
+                {l.premium && <span className={`${s.tag} ${s.tagPremium}`} title={`Premium: ${l.premium}`}>Premium</span>}
+              </td>
               <td className={s.cLoc}>{l.location ?? <span className="fin-muted">–</span>}</td>
               <td className={s.cReq} title={l.requirement ?? undefined}>{l.requirement}</td>
               <td className={s.cWho} onClick={e => e.stopPropagation()}>

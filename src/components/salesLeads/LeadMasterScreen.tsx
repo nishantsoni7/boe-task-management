@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Upload, UserRoundCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { enumParam, idParam, optionParam, textParam, type ParamCodec } from '@/lib/listState'
 import {
-  allotLead, fetchLeadPage, fetchPeople, SALES_KEY, SalesRequestError,
+  allotLead, allotWaiting, fetchLeadPage, fetchPeople, SALES_KEY, SalesRequestError,
   type LeadPage, type SalesLead,
 } from '@/lib/salesLeads/api'
 import { allotStep } from '@/lib/salesLeads/allot'
@@ -69,6 +69,7 @@ export function LeadMasterScreen() {
   const [pending, setPending] = useState<{ lead: SalesLead; toId: string } | null>(null)
   /** Allotments being saved: lead id → the person it is being saved to. Several can run at once. */
   const [saving, setSaving] = useState<Record<string, string>>({})
+  const [allotting, setAllotting] = useState(false)
   const toast = useToast()
   const today = istToday()
   // A search looks through every day: a person looking for a number that came in last week must find it.
@@ -134,6 +135,22 @@ export function LeadMasterScreen() {
       setSaving(s => { const next = { ...s }; delete next[lead.id]; return next })
       // Only this lead's own question closes: another lead finishing must not take away one still being asked.
       setPending(p => (p && p.lead.id === lead.id ? null : p))
+    }
+  }
+
+  // The same rule the website leads follow (Control Center, Sales team), over everything waiting, at once.
+  async function allotAllWaiting() {
+    setAllotting(true)
+    try {
+      const r = await allotWaiting(supabase)
+      toast.show(r.allotted
+        ? `${plural(r.allotted, 'lead')} allotted by the rule`
+        : 'Nothing was allotted: nobody is in and under their daily limit, or these are old leads. Allot them by name.', !r.allotted)
+    } catch (e) {
+      toast.show(e instanceof SalesRequestError ? e.message : 'Something went wrong. Nothing was changed.', true)
+    } finally {
+      setAllotting(false)
+      void queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
     }
   }
 
@@ -213,6 +230,11 @@ export function LeadMasterScreen() {
             {chips.map(c => (
               <WhoChip key={c.id} kind="person" label={c.name} count={c.n} pressed={state.holder === c.id} onClick={() => setState({ holder: c.id })} />
             ))}
+            {canAssign && state.holder === 'none' && (first?.unallotted ?? 0) > 0 && (
+              <button type="button" className="boe-btn boe-btn-secondary" style={{ marginLeft: 'auto' }} disabled={allotting} onClick={() => void allotAllWaiting()}>
+                <UserRoundCheck aria-hidden="true" />{allotting ? 'Allotting...' : 'Allot waiting leads now'}
+              </button>
+            )}
           </div>
 
           {canAssign && people.isError && (

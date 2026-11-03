@@ -249,6 +249,9 @@ type Ranked = Clocked & { temperature: string; expected_value_paise: number | nu
 const TEMPERATURE_RANK: Record<string, number> = { hot: 0, warm: 1, cold: 2 }
 const notTried = (l: Ranked) => !l.first_attempt_at
 
+/** The website form's biggest quantity choice ("Quantity: Above 100+"): worth a tag, though not Premium on its own. */
+export const bigQuantity = (l: { requirement: string | null }) => /quantity:\s*above\s*100/i.test(l.requirement ?? '')
+
 /** Enquired again since anybody last worked the lead: the customer is waiting for a call. */
 export const cameBack = (l: { enquired_again_at: string | null; last_activity_at: string | null }) =>
   !!l.enquired_again_at && (!l.last_activity_at || l.enquired_again_at > l.last_activity_at)

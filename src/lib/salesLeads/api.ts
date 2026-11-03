@@ -30,6 +30,8 @@ export type SalesLead = {
   updated_at: string
   /** An old lead from the sheets, kept for the record: on nobody's board and not in the Not allotted queue. */
   is_history?: boolean
+  /** Why it is Premium, read from what the client wrote ("250 seats", "₹20 lakh"); null when it is not. */
+  premium?: string | null
 }
 
 export type LeadPage = {
@@ -332,6 +334,15 @@ export const remindLead = (s: Supabase, id: string) =>
 
 export const reassignDue = (s: Supabase, from: string, to: string) =>
   call<{ moved: number }>(() => s.rpc('reassign_due_sales_leads', { p_from: from, p_to: to }))
+
+/** Run the allotment rule now over every lead waiting to be allotted. */
+export const allotWaiting = (s: Supabase) =>
+  call<{ allotted: number }>(() => s.rpc('allot_waiting_sales_leads'))
+
+/** Premium leads a Junior or Backup was given this week (the Team page offers to hand them on). */
+export type MisplacedPremium = WorkLead & { level: 'junior' | 'backup' }
+export const fetchPremiumMisplaced = (s: Supabase) =>
+  call<MisplacedPremium[]>(() => s.rpc('sales_premium_misplaced'))
 
 /** Who can be given a lead: everybody with a Sales job in Control Center (list_sales_lead_holders). */
 export async function fetchPeople(s: Supabase): Promise<Person[]> {

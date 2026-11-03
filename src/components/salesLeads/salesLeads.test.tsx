@@ -12,9 +12,10 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { AllotPicker, ConfirmChange, Holder } from './AllotParts'
+import { eventBy, eventLine } from './LeadBits'
 import { DupCallout } from './LeadFields'
 import { LeadTable } from './LeadTable'
-import type { Person, SalesLead } from '@/lib/salesLeads/api'
+import type { LeadEvent, Person, SalesLead } from '@/lib/salesLeads/api'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 
@@ -88,6 +89,31 @@ describe('the name dropdown in the list', () => {
 
   test('a lead with no name says so', () => {
     assert.ok(table([lead({ name: null, email: null })], true).includes('No name'))
+  })
+
+  test('a Premium lead is tagged, with what made it Premium on hover', () => {
+    assert.ok(table([lead({ premium: '250 seats' })], true).includes('title="Premium: 250 seats">Premium</span>'))
+    assert.ok(!table([lead({ premium: null })], true).includes('Premium'))
+  })
+})
+
+describe('a lead\'s history', () => {
+  const ev = (over: Partial<LeadEvent>): LeadEvent => ({ kind: 'allotted', from_name: null, to_name: 'Ashok', detail: null, actor_name: null, at: '2026-11-03T05:00:00Z', ...over })
+  const line = (e: LeadEvent) => renderToStaticMarkup(<>{eventLine(e)}</>)
+
+  test('the allotment rule says it acted by itself, and why', () => {
+    const auto = ev({ detail: 'in today, 2 fresh leads' })
+    assert.equal(line(auto), 'Allotted to <b>Ashok</b> automatically: in today, 2 fresh leads')
+    assert.equal(eventBy(auto), 'Automatically')
+    const moved = ev({ kind: 'reassigned', from_name: 'Mohit', detail: 'Premium (40 rooms) to a Senior, in today, 0 fresh leads' })
+    assert.ok(line(moved).startsWith('Moved from <b>Mohit</b> to <b>Ashok</b> automatically: Premium (40 rooms)'))
+    assert.equal(eventBy(moved), 'Automatically')
+  })
+
+  test('a person\'s allotment names them, and one by a former colleague says so', () => {
+    assert.equal(line(ev({ actor_name: 'Nishant' })), 'Allotted to <b>Ashok</b>')
+    assert.equal(eventBy(ev({ actor_name: 'Nishant' })), 'Nishant')
+    assert.equal(eventBy(ev({})), 'A former colleague')
   })
 })
 
