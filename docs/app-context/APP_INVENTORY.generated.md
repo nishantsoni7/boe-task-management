@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f00bf274` — Orders: the Record dispatch screen is scan first (no SQL)
-- Commits on this branch: 1164
+- Commit: `e980e2da` — Orders: the Record dispatch screen is scan first (no SQL) (#600)
+- Commits on this branch: 1165
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 185
 - Migrations: 412 (first `20260530_create_positions.sql`, latest `20270528000000_order_dispatch_status_rollup.sql`)
 - Tables ever created: 221 (dropped at some point: 7)   SQL functions: 930   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `f00bf274` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL)
+- `e980e2da` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
+- `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
 - `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
 - `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
 - `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
@@ -38,7 +39,6 @@
 - `2f8777e3` 2026-11-02 Docs: PI Draft page change merged as PR #577 (cb89e58e), deployed (#578)
 - `cb89e58e` 2026-11-02 PI Draft page: Dimensions and Material columns, 108px picture, amount on one line, Sample tile only for editors (#577)
 - `d0c4d259` 2026-11-02 SEO: badges on the 6-month review keep sentence case; docs stamped for #575 (#576)
-- `4b5d9006` 2026-11-02 SEO module: the rolling 6-month review and the private discussion brief (#575)
 
 ## Pages by top-level area
 
