@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `594daf93` — Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
-- Commits on this branch: 1161
+- Commit: `13b8360c` — Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first)
+- Commits on this branch: 1162
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 185
 - Migrations: 412 (first `20260530_create_positions.sql`, latest `20270528000000_order_dispatch_status_rollup.sql`)
 - Tables ever created: 221 (dropped at some point: 7)   SQL functions: 930   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `13b8360c` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first)
 - `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 - `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
 - `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
@@ -38,7 +39,6 @@
 - `4b5d9006` 2026-11-02 SEO module: the rolling 6-month review and the private discussion brief (#575)
 - `9086a4af` 2026-11-02 Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
 - `a7981e45` 2026-11-02 Orders: Dispatch tab on the product list, papers read and checked (#573)
-- `ce769be0` 2026-11-02 Docs: SEO step 2 merged as PR #571 (af8476b4), 20270519000000 applied (#572)
 
 ## Pages by top-level area
 

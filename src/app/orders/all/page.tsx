@@ -875,26 +875,33 @@ export default function AllOrdersPage() {
                     2026-10-31); every other column is left-aligned, and the
                     markers sit at the right edge of the Project code cell.
 
-                    WIDTHS (owner, 2026-10-31): pixels for the columns whose
-                    content has a known size, percentages for the rest so a
-                    wide window spreads out evenly, and Client takes what is
-                    left. They fit .fin-table--orders' min-width with nothing
-                    cut; change one and measure at that width.
+                    WIDTHS (owner, 2026-11-03: "the spacing is not uniform,
+                    too much empty space in Client"): Project code is the only
+                    fixed width, and Due is the only column left to take what
+                    remains. Every other column is a percentage, so a wider
+                    window grows them together and the gaps between columns
+                    stay alike. Client used to take what was left, which
+                    gave it 344px of a 1408px table and the others 20 to 65px.
+                    They fit .fin-table--orders' min-width with nothing newly
+                    cut, and Client keeps 175px there (the longest name in use
+                    needs 174); change one and measure at that width, with the
+                    real font loaded.
 
-                    2026-11-03: Factory Status 136 -> 212px for "Part dispatched ·
-                    22 of 74 pcs", and the floor 1120 -> 1196. The percentages
-                    were scaled DOWN so each keeps the pixel width it was measured
-                    at on 2026-10-31 (11% of 1120 = 10.3% of 1196, 12.4% = 11.6%,
-                    9.6% = 9%): nothing else is narrower, and Client still has 170px+. */}
+                    2026-11-03, later: Factory Status now carries a line under
+                    its word ("Part dispatched · 120 of 480 pcs", about 187px), so
+                    it needs 56 + 187 + 12px; a longer one wraps. The floor went 1120 -> 1240 and
+                    every percentage above was scaled by 1120/1240, so each keeps
+                    the pixel width measured at 1120 (Client 177px, Due 122px);
+                    Factory Status is the one column that got wider. */}
                 <col style={{ width: '116px' }} />{/* Project code + markers, update note under it */}
-                <col />{/* Client, lead source under it */}
-                <col style={{ width: '10.3%' }} />{/* Product Value (the Subtotal) */}
-                <col style={{ width: '96px' }} />{/* Advance (owner, 2026-11-01) */}
-                <col style={{ width: '212px' }} />{/* Factory Status, 24px of it after the money; 212 so "Part dispatched · 22 of 74 pcs" is not cut (2026-11-03) */}
-                <col style={{ width: '116px' }} />{/* Pendencies (owner, 2026-10-27) */}
-                <col style={{ width: '11.6%' }} />{/* Sales person */}
+                <col style={{ width: '14.3%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '9.4%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '7.1%' }} />{/* Advance (owner, 2026-11-01) */}
+                <col style={{ width: '21%' }} />{/* Factory Status: 56px of it after the money, then the word and, under it, how much has left */}
+                <col style={{ width: '9.4%' }} />{/* Pendencies (owner, 2026-10-27) */}
+                <col style={{ width: '10.6%' }} />{/* Sales person */}
                 <col style={{ width: '9%' }} />{/* Confirmed */}
-                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
+                <col />{/* Due, "Overdue" under it: takes what is left */}
               </colgroup>
               <thead>
                 <tr>

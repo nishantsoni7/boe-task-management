@@ -11201,11 +11201,11 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 
 /* A wide table scrolls inside its board instead of crushing its columns. */
 .fin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-/* 1196: the 1020 measured on 2026-10-31, when 880 cut the status pills and the
-   dates, plus the Advance column (1120), plus the 76px Factory Status gained on
-   2026-11-03 for "Part dispatched · 22 of 74 pcs". Below this the table scrolls,
-   which cuts nothing. */
-.fin-table--orders { min-width: 1196px; }
+/* 1240: the 1020 measured on 2026-10-31, when 880 cut the status pills and the
+   dates, plus the Advance column (1120), plus the 120px Factory Status gained on
+   2026-11-03 for "Part dispatched · 22 of 74 pcs" under its word. Below this the
+   table scrolls, which cuts nothing. */
+.fin-table--orders { min-width: 1240px; }
 .fin-table--drafts { min-width: 920px; }
 
 /* An Order with unread updates: a tint and a left edge, as before. */
@@ -11522,8 +11522,10 @@ textarea.pi-form-input { height: auto; }
 .fin-table--orders th, .fin-table--orders td { padding-left: 10px; padding-right: 10px; }
 .fin-table--orders td { height: 48px; padding-top: 4px; padding-bottom: 4px; }
 .fin-table--orders th + th, .fin-table--orders td + td { border-left: 0; }
-/* Right-aligned money beside left-aligned text needs air, or they touch. */
-.fin-table--orders .orders-after-value { padding-left: 24px; }
+/* Right-aligned money beside left-aligned text needs air, or they touch. 56,
+   not 24 (owner, 2026-11-03): with the cell's own 10 the gap here is 66, which
+   is what the gaps between the other columns are at a 1408px table. */
+.fin-table--orders .orders-after-value { padding-left: 56px; }
 /* The shared grey is 3.1:1 on white; this one is 5.3:1. */
 .fin-table--orders .fin-sub:not(.fin-sub--alert) { color: #686D6C; }
 /* .fin-table td outweighs .fin-muted, so the Confirmed date was never muted. */
@@ -11539,7 +11541,7 @@ textarea.pi-form-input { height: auto; }
 /* The line under Factory Status: how much has left. Blue like "Part dispatched" on
    the Dispatch tab; plain text, so the row stays as tall as the Client cell. */
 .orders-dispatch { display: block; margin-top: 3px; }
-.orders-dispatch .fin-sub { margin-top: 0; font-size: 12px; font-weight: 500; color: #335A86; white-space: nowrap; overflow: visible; }
+.orders-dispatch .fin-sub { margin-top: 0; font-size: 12px; font-weight: 500; color: #335A86; white-space: normal; overflow: visible; }
 .orders-dispatch--done .fin-sub { font-weight: 400; color: #8F9392; }
 .orders-list-card .orders-dispatch { margin-top: 0; }
 /* The Running default gave way to a search. */

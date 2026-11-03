@@ -13,8 +13,11 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 
 const FILE = '20270528000000_order_dispatch_status_rollup.sql'
-const sql = readFileSync(`supabase/migrations/${FILE}`, 'utf8')
-const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+// CI checks files out with CRLF line endings and a Windows checkout may have LF: read both the same way,
+// or a multi-line search matches nothing on one of them (this test failed on CI only, 2026-11-03).
+const read = (path: string) => readFileSync(path, 'utf8').replace(/\r\n/g, '\n')
+const sql = read(`supabase/migrations/${FILE}`)
+const page = read('src/app/orders/[id]/page.tsx')
 
 /** The statuses one `when 'x' then array[...]` arm allows, from the migration's graph. */
 function sqlArm(status: string): string[] {

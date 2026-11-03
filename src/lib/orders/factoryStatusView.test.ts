@@ -134,10 +134,11 @@ describe('the Confirmed Orders list opens on Running (owner, 2026-11-03)', () =>
   })
 
   test('the column is wide enough that "Part dispatched · 22 of 74 pcs" is not cut', () => {
-    assert.ok(page.includes("<col style={{ width: '212px' }} />"))
+    assert.ok(page.includes("<col style={{ width: '21%' }} />{/* Factory Status:"))
     assert.equal((page.match(/<col /g) ?? []).length, 9)
     const css = readFileSync('src/app/globals.css', 'utf8')
-    assert.ok(css.includes('.fin-table--orders { min-width: 1196px; }'))
+    assert.ok(css.includes('.fin-table--orders { min-width: 1240px; }'))
+    assert.ok(css.includes('.fin-table--orders .orders-after-value { padding-left: 56px; }'), 'the air before Factory Status is the other session\'s 56px')
     assert.ok(css.includes('.orders-dispatch .fin-sub {'))
     assert.ok(css.includes('.orders-status-done {'))
     assert.ok(css.includes('.orders-search-note {'))
