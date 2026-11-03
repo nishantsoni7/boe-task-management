@@ -1,20 +1,24 @@
 'use client'
 
-// CONTROL CENTER → SALES TEAM. One row a person: what they are in Sales, and whose leads a senior may read.
+// CONTROL CENTER → SALES TEAM. One row a person: what they are in Sales, whether leads can be given to them, and whose
+// leads a senior may read.
 //
 // THE SCREEN GRANTS NOTHING ITSELF. The rights go through the same permission route as Access → People, so they carry
-// the same audit trail. Juniors go through set_sales_lead_juniors, which is Admin only in the database. Both are read
-// back afterwards, so what the row shows is what the database holds.
+// the same audit trail. Juniors and "Can be given leads" go through set_sales_lead_juniors and set_sales_lead_holding,
+// Admin only in the database. Everything is read back afterwards, so what the row shows is what the database holds.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { CcSection } from '@/components/controlCenter/CcPrimitives'
-import { fetchSalesTeam, rightsFor, roleOf, saveJuniors, SALES_ROLES, type SalesRole, type SalesTeamMember } from '@/lib/salesLeads/team'
+import {
+  fetchSalesTeam, holdChoice, holdsByDefault, rightsFor, roleOf, saveHolding, saveJuniors, SALES_ROLES, type SalesRole, type SalesTeamMember,
+} from '@/lib/salesLeads/team'
 
 const SELECT: React.CSSProperties = { height: 36, padding: '0 8px', border: '1px solid #CFC8BF', borderRadius: 8, background: '#fff', font: '500 13px var(--boe-font-body)', color: '#303536', width: '100%' }
 
-type Draft = { role: SalesRole; adds: boolean; juniors: string[] }
-const draftOf = (m: SalesTeamMember): Draft => ({ role: roleOf(m), adds: m.create, juniors: m.juniors })
+// hold: the choice made for this person, or null for what their job means (holdsByDefault).
+type Draft = { role: SalesRole; adds: boolean; juniors: string[]; hold: boolean | null }
+const draftOf = (m: SalesTeamMember): Draft => ({ role: roleOf(m), adds: m.create, juniors: m.juniors, hold: m.hold_set })
 
 export function SalesTeamTab() {
   const supabase = useMemo(() => createClient(), [])
@@ -63,6 +67,8 @@ export function SalesTeamTab() {
         if (!res.ok) throw new Error('The rights could not be saved. Try again.')
       }
       await saveJuniors(supabase, m.id, draft.role === 'sales' ? draft.juniors : [])
+      const hold = draft.role === 'none' ? null : draft.hold
+      if (hold !== m.hold_set) await saveHolding(supabase, m.id, hold)
       await load()
       setMessages(x => ({ ...x, [m.id]: { ok: true, text: 'Saved' } }))
     } catch (e) {
@@ -90,7 +96,10 @@ export function SalesTeamTab() {
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#303536', paddingTop: 7 }}>{m.name}</div>
                 {m.is_admin ? <div style={{ fontSize: 13, color: '#686D6C', paddingTop: 7 }}>Admin: everything</div> : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <select aria-label={`What ${m.name} is in Sales`} style={SELECT} value={d.role} onChange={e => set(m.id, { role: e.target.value as SalesRole })}>
+                    <select aria-label={`What ${m.name} is in Sales`} style={SELECT} value={d.role} onChange={e => {
+                      const role = e.target.value as SalesRole
+                      set(m.id, { role, hold: d.hold === null ? null : holdChoice(role, d.hold) })
+                    }}>
                       {SALES_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select>
                     <span style={{ fontSize: 12, color: '#686D6C' }}>{SALES_ROLES.find(r => r.value === d.role)?.hint}</span>
@@ -98,6 +107,12 @@ export function SalesTeamTab() {
                 )}
                 {m.is_admin ? <div /> : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                    {d.role !== 'none' && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#303536', minHeight: 28 }}>
+                        <input type="checkbox" checked={d.hold ?? holdsByDefault(d.role)} onChange={e => set(m.id, { hold: holdChoice(d.role, e.target.checked) })} />
+                        Can be given leads
+                      </label>
+                    )}
                     {d.role !== 'none' && d.role !== 'lead_manager' && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#303536', minHeight: 28 }}>
                         <input type="checkbox" checked={d.adds} onChange={e => set(m.id, { adds: e.target.checked })} />Can add leads

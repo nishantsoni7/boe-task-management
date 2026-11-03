@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000 and ClickUp's full history. Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, and "Can be given leads" (20270529000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -43,6 +43,7 @@ const U = {
   ashok:   '00000000-0000-0000-0000-0000000000b1', // job "Salesperson"
   mohit:   '00000000-0000-0000-0000-0000000000b2', // job "Salesperson"
   nobody:  '00000000-0000-0000-0000-0000000000c1', // job "No access"
+  dummy:   '00000000-0000-0000-0000-0000000000c2', // job "Salesperson", a test account the owner keeps out of the lists
 }
 
 const db = new PGlite()
@@ -75,11 +76,11 @@ await db.exec(`
     ('${U.admin}', 'Nishant', 'admin', null), ('${U.leadmgr}', 'LeadMgr', 'employee', null),
     ('${U.manager}', 'Dhruv', 'employee', 'sales'), ('${U.senior}', 'Senior', 'employee', 'sales'),
     ('${U.ashok}', 'Ashok', 'employee', 'sales'), ('${U.mohit}', 'Mohit', 'employee', 'sales'),
-    ('${U.nobody}', 'Accounts', 'employee', null);
+    ('${U.nobody}', 'Accounts', 'employee', null), ('${U.dummy}', 'Test Sales User (DUMMY)', 'employee', 'sales');
   insert into public.grants values
     ('${U.leadmgr}', 'sales', 'view'), ('${U.leadmgr}', 'sales', 'create'), ('${U.leadmgr}', 'sales', 'edit'), ('${U.leadmgr}', 'sales', 'assign'),
     ('${U.manager}', 'sales', 'view'), ('${U.manager}', 'sales', 'view_all'),
-    ('${U.senior}', 'sales', 'view'), ('${U.ashok}', 'sales', 'view'), ('${U.mohit}', 'sales', 'view');
+    ('${U.senior}', 'sales', 'view'), ('${U.ashok}', 'sales', 'view'), ('${U.mohit}', 'sales', 'view'), ('${U.dummy}', 'sales', 'view');
 `)
 await db.exec(extract(mig('20270305000000_exhibition_leads.sql'), 'normalize_lead_phone'))
 await db.exec(extract(mig('20260697000000_order_request_assignee_eligibility.sql'), 'is_eligible_order_assignee'))
@@ -87,7 +88,7 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
   public.module_entry_open(text), public.resolve_permission(uuid, text, text) to authenticated;`)
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
-  '20270527000000_sales_review_fixes.sql']) {
+  '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql']) {
   await db.exec(mig(f))
 }
 
@@ -120,10 +121,6 @@ const move = (uid, id, to, from, reason = null, note = null, step_ = null, due =
 const log = (uid, id, kind, outcome, note = null, step_ = 'Call back', due = day(1)) =>
   one(uid, `select public.log_sales_lead_activity($1, $2, $3, $4, $5, $6)`, [id, kind, outcome, note, step_, due])
 const facts = (uid, id, f) => one(uid, `select public.update_sales_lead_facts($1, $2::jsonb)`, [id, JSON.stringify(f)])
-const boardIds = async (uid, holder = 'all') => {
-  const b = await one(uid, `select public.sales_board($1)`, [holder])
-  return JSON.stringify(b)
-}
 
 // ── Admin side: a lead arrives ─────────────────────────────────────────────
 let L1
@@ -342,7 +339,10 @@ await step('Lead manager moves all of Ashok\'s due leads to Mohit; manager canno
   const r = await one(U.leadmgr, `select public.reassign_due_sales_leads($1, $2)`, [U.ashok, U.mohit])
   return JSON.stringify(r).slice(0, 80)
 })
-await step('Manager works his OWN leads (role hint says "Works none")', async () => {
+await step('A Manager is not given leads by default; ticked "Can be given leads", he is, and works his own', async () => {
+  await expectErr(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, /Sales job/,
+    [(await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 98111 00007'])).lead.id, U.manager])
+  await one(U.admin, `select public.set_sales_lead_holding($1, true)`, [U.manager])
   const L8 = await addAllot('+91 98111 00008', 'Own', U.manager)
   await one(U.manager, `select public.sales_lead_no_answer($1)`, [L8])
   return 'he can work his own'
@@ -371,11 +371,11 @@ await step('Browser users cannot fire the alert job', () =>
 
 {
   // ── The review fixes ──────────────────────────────────────────────────────
-  await step('FIX 1: the holder list is everybody with a Sales job, no Admin, no "No access"', async () => {
+  await step('FIX 1: the holder list: Salespeople and whoever is ticked; no Admin, no "No access", no Lead manager by default', async () => {
     const list = await one(U.ashok, `select public.list_sales_lead_holders()`)
     const ids = list.map(p => p.id)
-    must([U.leadmgr, U.manager, U.senior, U.ashok, U.mohit].every(id => ids.includes(id)), 'somebody with a job is missing')
-    must(!ids.includes(U.admin) && !ids.includes(U.nobody), 'admin or no-access is listed')
+    must([U.manager, U.senior, U.ashok, U.mohit, U.dummy].every(id => ids.includes(id)), 'somebody who can hold leads is missing')
+    must(!ids.includes(U.admin) && !ids.includes(U.nobody) && !ids.includes(U.leadmgr), 'admin, no-access or the lead manager is listed')
     await expectErr(U.nobody, `select public.list_sales_lead_holders()`, /SALES_FORBIDDEN/)
   })
   await step('FIX 1: a lead cannot be given to somebody without a Sales job', async () => {
@@ -467,6 +467,40 @@ await step('Browser users cannot fire the alert job', () =>
     must(iso(l.stage_changed_at) === iso('2025-01-11T11:05:00+05:30'), 'stage date not moved')
     await expectErr(U.ashok, `select public.import_sales_lead_history('[]'::jsonb)`, /SALES_FORBIDDEN/)
     return `entries: ${acts.join(' | ')}; statuses: ${st.join(' | ')}`
+  })
+}
+
+{
+  // ── Can be given leads (20270529000000) ───────────────────────────────────
+  await step('Unticking the dummy Salesperson takes it out of every list, and an allot to it is refused', async () => {
+    const r = await one(U.admin, `select public.set_sales_lead_holding($1, false)`, [U.dummy])
+    must(r.can_hold === false, JSON.stringify(r))
+    const ids = (await one(U.ashok, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(!ids.includes(U.dummy), 'the dummy is still listed')
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 98111 00030'])
+    await expectErr(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, /Sales job/, [L.lead.id, U.dummy])
+  })
+  await step('Only Admin sets it; Control Center sees the choice and the result', async () => {
+    await expectErr(U.leadmgr, `select public.set_sales_lead_holding($1, true)`, /SALES_FORBIDDEN/, [U.dummy])
+    const team = await one(U.admin, `select public.list_sales_team()`)
+    const by = id => team.find(m => m.id === id)
+    must(by(U.dummy).can_hold === false && by(U.dummy).hold_set === false, 'dummy row')
+    must(by(U.manager).can_hold === true && by(U.manager).hold_set === true, 'manager row')
+    must(by(U.leadmgr).can_hold === false && by(U.leadmgr).hold_set === null, 'lead manager row')
+    must(by(U.ashok).can_hold === true && by(U.ashok).hold_set === null, 'salesperson row')
+  })
+  await step('Back to what the job means: null removes the choice', async () => {
+    await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [U.dummy])
+    const ids = (await one(U.ashok, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(ids.includes(U.dummy), 'a Salesperson with no choice made should be listed again')
+    await one(U.admin, `select public.set_sales_lead_holding($1, false)`, [U.dummy])
+  })
+  await step('Leads already held stay with their holder when the tick is taken off', async () => {
+    const held = Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.manager]))
+    await one(U.admin, `select public.set_sales_lead_holding($1, false)`, [U.manager])
+    must(Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.manager])) === held && held > 0, 'leads moved')
+    const own = (await db.query(`select id from public.sales_leads where assigned_to = $1 and stage not in ('converted', 'dead') limit 1`, [U.manager])).rows[0]
+    if (own) await one(U.manager, `select public.sales_lead_no_answer($1)`, [own.id])
   })
 }
 
