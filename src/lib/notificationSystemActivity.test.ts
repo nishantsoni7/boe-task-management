@@ -396,6 +396,10 @@ describe('the read side excludes system types too', () => {
     // 20270516000000 re-creates complete_payment_entry (20270120000000): the SAME one information note, in
     // the transaction of the person's own entry, with one early return added before it. Nothing new is sent.
     const BANK_PROOF = '20270516000000_finance_bank_proof_before_verify.sql'
+    // 20270526000100, Sales going live: ONE helper insert, sales_lead_notify. A person's own action tells one person (a
+    // lead allotted, a repeat enquiry, a manager's Remind), and the two daily alerts the owner asked for go through it
+    // from a Vercel cron, as the cash handover reminder does. Sales types only. Nothing is scheduled in the database.
+    const SALES_GO_LIVE = '20270526000100_sales_go_live.sql'
     assertNamedSuccessors(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -571,7 +575,17 @@ describe('the read side excludes system types too', () => {
       assert.deepEqual([...new Set(types)].sort(), ['inventory_booking_decided', 'inventory_booking_requested'])
       for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${INVENTORY_BOOKINGS} must not write ${t}`)
     }
-    for (const f of inserters.filter(name => name !== BANK_PROOF && name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS && name !== OPERATIONS_DASHBOARD)) {
+    {
+      // Sales: one insert, in one helper, and every call names a Sales type.
+      const sql = read(join(dir, SALES_GO_LIVE))
+      assert.equal((sql.match(/insert\s+into\s+public\.notifications/gi) ?? []).length, 1, `${SALES_GO_LIVE}: one insert`)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${SALES_GO_LIVE}: nothing is scheduled in the database`)
+      const sent = [...sql.matchAll(/perform public\.sales_lead_notify\([^']*'(\w+)'/g)].map(m => m[1])
+      assert.ok(sent.length >= 5)
+      for (const type of sent) assert.ok(type.startsWith('sales_'), `${SALES_GO_LIVE} must write only Sales types, not ${type}`)
+    }
+    for (const f of inserters.filter(name => name !== SALES_GO_LIVE && name !== BANK_PROOF && name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS && name !== OPERATIONS_DASHBOARD)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

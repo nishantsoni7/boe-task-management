@@ -25,6 +25,14 @@
       "schedule": "40 0 * * *"
     },
     {
+      "path": "/api/sales/alerts?slot=morning",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/sales/alerts?slot=evening",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/integrations/meta/review",
       "schedule": "0 2 * * 1"
     }

@@ -1,0 +1,89 @@
+/* Sales: the Team page and the ClickUp import. Everything else is the shared BOE shell, fin-* and leadBoard.module.css. */
+
+.team, .import { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.import { max-width: 1040px; }
+
+.card { background: #fff; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); padding: 16px 18px; min-width: 0; }
+.card h2 { margin: 0; font: 600 15px var(--boe-font-heading); color: #303536; }
+.card > p { margin: 3px 0 14px; font-size: 12.5px; color: #686D6C; }
+.card summary { cursor: pointer; font: 600 14px var(--boe-font-heading); color: #303536; min-height: 24px; }
+.card details[open] summary, .card[open] summary { margin-bottom: 10px; }
+.none { font-size: 13px; color: #8F9392; }
+
+.filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.sep { width: 1px; height: 22px; background: #E4DED7; margin: 0 4px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar { display: grid; grid-template-columns: 190px minmax(0, 1fr) 52px; align-items: center; gap: 10px; font-size: 13px; color: #303536; }
+.barLabel { min-width: 0; overflow-wrap: anywhere; }
+.barTrack { display: block; height: 14px; }
+.barFill { display: block; height: 14px; background: #B9472E; border-radius: 0 4px 4px 0; }
+.barValue { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+.absent { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #FFFCF4; border: 1px solid #E6D2A0; font-size: 13.5px; color: #5F4709; }
+.absent :global(.boe-btn) { margin-left: auto; height: 34px; padding: 0 12px; font-size: 13px; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th { text-align: right; font-size: 12px; font-weight: 500; color: #686D6C; padding: 8px 10px; border-bottom: 1px solid #ECE7E0; white-space: nowrap; }
+.table td { text-align: right; padding: 10px; border-bottom: 1px solid #F1EEE9; color: #303536; font-variant-numeric: tabular-nums; }
+.table th:first-child, .table td:first-child { text-align: left; }
+.table tr:last-child td { border-bottom: 0; }
+.person { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; color: #303536; text-decoration: none; white-space: nowrap; }
+a.person:hover { text-decoration: underline; }
+.leadLink { border: 0; padding: 4px 0; background: none; font: 600 13.5px var(--boe-font-body); color: #303536; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.leadLink:hover { text-decoration: underline; }
+.risk td:nth-child(n+2), .risk th:nth-child(n+2) { text-align: left; }
+.risk th:nth-child(4), .risk td:nth-child(4) { text-align: right; }
+.riskActs { text-align: right !important; white-space: nowrap; }
+.riskActs :global(.boe-btn) { height: 32px; padding: 0 10px; font-size: 12.5px; margin-left: 6px; }
+.riskActs :global(.boe-btn) svg { width: 13px; height: 13px; }
+
+/* ── Import ─────────────────────────────────────────────────────────── */
+.drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 132px; padding: 18px; border: 1.5px dashed #CFC8BF; border-radius: 12px; background: #FBFAF8; color: #4C5352; font-size: 13px; text-align: center; cursor: pointer; }
+.drop:hover, .dropOver { border-color: #B9472E; background: #FDF6F3; }
+.drop:focus-within { outline: 2px solid #B9472E; outline-offset: 2px; }
+.drop svg { width: 24px; height: 24px; color: #B9472E; }
+.drop b { font-size: 14px; color: #303536; }
+.drop span { font-size: 12.5px; color: #686D6C; }
+.files { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 16px; }
+.files li { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: #303536; }
+.files li > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: none; color: #686D6C; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.files button:hover { background: #F3F0EB; }
+.files button svg { width: 14px; height: 14px; }
+.bad { margin: 10px 0 0; font-size: 13px; font-weight: 500; color: #A12438; }
+.perDay { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; color: #4C5352; }
+.pick { max-width: 210px; width: 100%; text-align: left; }
+.go { position: sticky; bottom: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; background: #fff; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); }
+.goRow { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.goRow :global(.boe-btn) { height: 42px; padding: 0 18px; font-size: 14px; }
+.goRow :global(.boe-btn) svg { width: 15px; height: 15px; }
+.progress { display: flex; align-items: center; gap: 12px; }
+.done { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.45; color: #303536; }
+.done svg { width: 18px; height: 18px; color: #2F7D4F; flex-shrink: 0; margin-top: 1px; }
+.done a { color: #963B27; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .bar { grid-template-columns: 140px minmax(0, 1fr) 48px; }
+}
+
+/* A phone reads each row as a small card with its labels. */
+@media (max-width: 700px) {
+  .card { padding: 14px; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .table, .table tbody, .table tr, .table td { display: block; width: 100%; box-sizing: border-box; }
+  .table tr { padding: 10px 0; border-bottom: 1px solid #ECE7E0; }
+  .table tr:last-child { border-bottom: 0; }
+  .table td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 3px 0; border: 0; text-align: right !important; }
+  .table td:first-child { padding-bottom: 6px; }
+  .table td[data-l]::before { content: attr(data-l); font-size: 12px; color: #686D6C; text-align: left; }
+  .riskActs { justify-content: flex-start !important; gap: 8px; padding-top: 8px !important; }
+  .riskActs :global(.boe-btn) { flex: 1; height: 44px; margin-left: 0; font-size: 13px; }
+  .filters :global(button), .filters select { min-height: 44px; }
+  .sep { display: none; }
+  .absent :global(.boe-btn) { height: 44px; width: 100%; margin-left: 0; }
+  .goRow :global(.boe-btn) { flex: 1; min-height: 44px; }
+  .go { bottom: 64px; }
+}

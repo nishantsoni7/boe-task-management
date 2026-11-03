@@ -173,6 +173,11 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
 .readOnly { font-size: 12.5px; color: #686D6C; padding: 10px 12px; background: #FBFAF8; border: 1px dashed #CFC8BF; border-radius: 10px; }
 
 /* Dialogs and sheets */
+.clickup summary { cursor: pointer; font-size: 13px; font-weight: 500; color: #4C5352; min-height: 24px; }
+.clickup dl { margin: 6px 0 0; font-size: 12.5px; }
+.clickup dl div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px; padding: 2px 0; }
+.clickup dt { color: #686D6C; }
+.clickup dd { margin: 0; color: #303536; overflow-wrap: anywhere; }
 .dialogTitle { margin: 0; font: 600 16px var(--boe-font-heading); color: #303536; }
 .dialogLead { font-size: 13px; color: #4C5352; }
 .dialogLead b { color: #303536; }

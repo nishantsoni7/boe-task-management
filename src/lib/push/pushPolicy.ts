@@ -17,6 +17,7 @@ import {
   INVENTORY_NOTIFICATION_TYPES,
   ORDER_NOTIFICATION_TYPES,
   REVIEW_NOTIFICATION_TYPES,
+  SALES_NOTIFICATION_TYPES,
   isSystemGeneratedNotificationType,
   type NotificationCategory,
 } from '@/lib/notifications'
@@ -40,7 +41,7 @@ export type PushPayload = {
 
 /** Every category a person can mute, in the order the settings card lists them. */
 export const PUSH_CATEGORIES: readonly NotificationCategory[] = [
-  'task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory',
+  'task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory', 'sales',
 ]
 
 export const PUSH_CATEGORY_LABELS: Record<NotificationCategory, string> = {
@@ -51,6 +52,7 @@ export const PUSH_CATEGORY_LABELS: Record<NotificationCategory, string> = {
   attendance_payroll: 'Attendance & Payroll',
   review: 'Review Workflow',
   inventory: 'Inventory',
+  sales: 'Sales',
 }
 
 /** Where each category's inbox lives - the fallback when a row has no record to open. */
@@ -62,6 +64,7 @@ const INBOX_PATH: Record<NotificationCategory, string> = {
   attendance_payroll: '/attendance/notifications',
   review: '/customer-reviews/notifications',
   inventory: '/inventory/notifications',
+  sales: '/sales/notifications',
 }
 
 /** Generic lock-screen headline per category. No names, no amounts. */
@@ -73,6 +76,7 @@ const HEADLINE: Record<NotificationCategory, string> = {
   attendance_payroll: 'Attendance & Payroll update',
   review: 'Review update',
   inventory: 'Inventory update',
+  sales: 'Sales update',
 }
 
 const GENERIC_BODY = 'Open BOE One to see what needs you.'
@@ -88,6 +92,7 @@ const TYPE_TO_CATEGORY: ReadonlyMap<string, NotificationCategory> = (() => {
   add('attendance_payroll', ATTENDANCE_PAYROLL_NOTIFICATION_TYPES)
   add('review', REVIEW_NOTIFICATION_TYPES)
   add('inventory', INVENTORY_NOTIFICATION_TYPES)
+  add('sales', SALES_NOTIFICATION_TYPES)
   return map
 })()
 

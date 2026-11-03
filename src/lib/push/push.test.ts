@@ -71,6 +71,7 @@ test('every mutable category has an inbox fallback and a label', () => {
         task: 'task_acknowledged', finance: 'finance_handover_requested', order: 'order_update_status',
         asset: 'asset_warranty_expiring', attendance_payroll: 'attendance_request_submitted',
         review: 'customer_review_submitted', inventory: 'inventory_booking_requested',
+        sales: 'sales_followups_due',
       } as const)[c] as PushSourceRow['type'],
     }))
     assert.ok(p.url.startsWith('/'), c)

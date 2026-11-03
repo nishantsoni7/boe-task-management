@@ -1,5 +1,6 @@
 import type { createClient } from '@/lib/supabase/client'
 import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
+import type { ImportRow } from './clickup'
 import type { LeadSource, Period } from './constants'
 
 // Thin typed wrappers over the database functions (20270524000000). There is no API route in between on purpose:
@@ -40,7 +41,7 @@ export type LeadPage = {
 }
 
 export type LeadEvent = {
-  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again'
+  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again' | 'imported'
   from_name: string | null
   to_name: string | null
   /** For an edit: which fields changed, never their values. */
@@ -211,6 +212,8 @@ export type Activity = {
 }
 
 export type WorkDetail = {
+  /** What ClickUp held for this lead, as exported. Empty for a lead added in BOE One. */
+  clickup: Record<string, string>[]
   lead: WorkLead
   /** What to show. The writes decide again for themselves. */
   can_work: boolean
@@ -279,6 +282,43 @@ export const updateFacts = (s: Supabase, id: string, facts: LeadFacts) =>
 
 export const recordEnquiry = (s: Supabase, id: string, source: string, note = '') =>
   call<SaveResult>(() => s.rpc('record_sales_lead_enquiry', { p_id: id, p_source: source, p_note: blankToNull(note) }))
+
+export type ImportOutcome = { created: number; merged: number; already: number; failed: { task_id: string | null; why: string }[] }
+
+export const importLeads = (s: Supabase, rows: ImportRow[]) =>
+  call<ImportOutcome>(() => s.rpc('import_sales_leads', { p_rows: rows }))
+
+export type TeamRisk = WorkLead & { problem: 'not_called' | 'stuck' | 'overdue' }
+export type TeamPersonRow = {
+  id: string
+  name: string
+  leads: number
+  open: number
+  first_call_on_time: number
+  first_call_total: number
+  followups_on_time: number
+  followups_total: number
+  stuck: number
+  converted: number
+}
+export type TeamData = {
+  tiles: { leads: number; converted: number; first_call_on_time: number; first_call_total: number; followups_on_time: number; followups_total: number }
+  funnel: { rank: number; n: number }[]
+  reasons: { reason: string; n: number }[]
+  people: TeamPersonRow[]
+  at_risk: TeamRisk[]
+  at_risk_total: number
+  absent: { id: string; name: string; due: number }[]
+}
+
+export const fetchTeam = (s: Supabase, from: string, market: string, holder: string) =>
+  call<TeamData>(() => s.rpc('sales_team_overview', { p_from: from, p_market: market || null, p_holder: holder || null }))
+
+export const remindLead = (s: Supabase, id: string) =>
+  call<{ status: 'sent' | 'already' }>(() => s.rpc('sales_lead_remind', { p_id: id }))
+
+export const reassignDue = (s: Supabase, from: string, to: string) =>
+  call<{ moved: number }>(() => s.rpc('reassign_due_sales_leads', { p_from: from, p_to: to }))
 
 /** Who can be given a lead: the same "sales candidate" rule Orders uses (active, in Sales or granted it). */
 export async function fetchPeople(s: Supabase): Promise<Person[]> {

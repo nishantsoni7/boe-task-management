@@ -14,13 +14,13 @@
 
 export type ControlCenterTab =
   'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
-  | 'operations-handoff' | 'order-visibility'
+  | 'operations-handoff' | 'order-visibility' | 'sales-team'
 
 export const MAIN_PATH = '/admin/control-center'
 
 const TABS: readonly ControlCenterTab[] = [
   'departments', 'people', 'modules', 'order-numbering', 'order-notifications',
-  'operations-handoff', 'order-visibility',
+  'operations-handoff', 'order-visibility', 'sales-team',
 ]
 
 /** The section the main page shows for a ?tab= value. Anything unknown is Home. */
@@ -101,6 +101,11 @@ export const NAV_HUBS: readonly NavHub[] = [
         description: 'One module across everyone: who can open it, at what level, and who holds its authorities.',
         keywords: ['who can open', 'who has access', 'by module', 'module access', 'module visibility', 'launcher',
           'hide module', 'team access', 'department access'],
+      },
+      {
+        id: 'sales-team', label: 'Sales team', href: tabHref('sales-team'), tab: 'sales-team',
+        description: 'Who uses Sales, who sees everyone, and whose leads a senior can read.',
+        keywords: ['sales', 'leads', 'senior', 'junior', 'manager', 'lead board', 'lead access', 'salesperson', 'view all leads'],
       },
       {
         id: 'authorities', label: 'Authorities', href: `${MAIN_PATH}/permissions/authorities`,

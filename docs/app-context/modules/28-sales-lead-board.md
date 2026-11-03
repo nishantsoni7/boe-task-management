@@ -1,6 +1,6 @@
 # 28. Sales — Lead Board
 
-Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR #594). Migration `20270525000000_sales_lead_board.sql` was **NOT APPLIED** when this was written. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
+Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Migration `20270525000000_sales_lead_board.sql` is applied. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
 
 ## 1. Purpose & users
 
@@ -10,10 +10,10 @@ Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR #594). 
 
 ## 2. Status
 
-- **This build:** My day, the board, the lead panel, the stage checklist, No answer, WhatsApp quick messages, Undo, repeat enquiries, and who sees what in the database.
-- **Not built yet, in the approved design:** the Team page (At risk now, the four answers per person), the screen that names a senior's juniors (`sales_lead_access` exists and is read, nothing fills it), and phone alerts for follow-ups.
-- **Owed by the owner:** the ClickUp CSV for the import.
-- Checked by `tsc`, lint, the tests in section 10, and the real migration in an in-memory Postgres (41 checks). **Never seen running against a real database or signed in.**
+- **PR #594:** My day, the board, the lead panel, the stage checklist, No answer, WhatsApp quick messages, Undo, repeat enquiries, and who sees what in the database.
+- **Go-live PR (migrations `20270526000000` and `20270526000100`, NOT APPLIED when written):** the ClickUp import, the Team page, Control Center's Sales team tab, the Sales inbox and alerts.
+- **Not built:** automatic capture and automatic allotment (section 11).
+- Checked by `tsc`, lint, the tests in section 10, and the real migration in an in-memory Postgres (41 checks). The live pages and bundle were checked after the deploy. **Not yet seen signed in.**
 
 ## 3. Pages and routes
 
@@ -23,6 +23,10 @@ Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR #594). 
 | `/sales/my-day` | `MyDayScreen`: progress, the lists (All, New, Overdue, Today, Hot), one Next lead, the rest in order | `view`; shows the signed-in person's own leads |
 | `/sales/board` | `BoardScreen`: four totals, filters, "Leads of" chips, five columns, the Converted and Dead strips. `?lead=<id>` opens a lead | `view` sees own; see section 5 |
 | `/sales/lead-master` | module 27, now limited as in section 5 | the Lead Master item shows for `create`, `assign` or `view_all` |
+| `/sales/team` | `TeamScreen`: At risk now, who has not punched in, filters, four totals, where leads drop off, why they die, who is keeping up | `view_all`, `assign`, Admin |
+| `/sales/import` | `ImportScreen`: files, who gets what, follow-ups a day, what each status becomes, Import | `assign`, Admin |
+| `/sales/notifications` | the shared `NotificationsView`, `category="sales"` | everyone in Sales |
+| Control Center → Access → Sales team | `SalesTeamTab`: each person's job, Can add leads, a senior's juniors | Admin |
 
 `SalesLayout` has three items and, on a phone, a bottom bar (`boe-mobile-bottom-nav`, its own items: `MobileBottomNav` is Task Management's). Board filters live in the URL.
 
@@ -36,6 +40,7 @@ Written 2026-11-03 from the build, on branch `feat/sales-lead-board` (PR #594). 
 - Browser functions: `sales_my_day`, `sales_board`, `log_sales_lead_activity`, `sales_lead_no_answer`, `sales_lead_message_sent`, `undo_sales_lead_activity`, `move_sales_lead`, `update_sales_lead_facts`, `record_sales_lead_enquiry`, `sales_lead_visible` (the read policies need it). Internal: `sales_lead_sees_all`, `sales_lead_stuck`, `sales_lead_row`, `sales_lead_for_work`, `sales_lead_record`.
 - Re-issued from 20270524: `sales_lead_json` (a lead the person may not see comes back as number, day, source and holder only), `sales_leads_page`, `get_sales_lead`, `allot_sales_lead` (gives the first step), and both read policies.
 - `move_sales_lead` answers `{status:'needs', missing:[...]}` instead of raising, so the screen asks for the fact.
+- **`20270526000100`:** `sales_leads` gains `imported_at` and `furthest_rank` (1 to 5, kept by trigger, for the funnel: a dead lead's stage no longer says how far it got). `sales_lead_imports` (one row per ClickUp task, with its non-empty fields in `raw`; no browser access). Dead reasons gain `no_requirement` and `not_relevant`. Activity kind and outcome `imported`, event kind `imported`. New functions: `import_sales_leads`, `sales_team_overview`, `sales_lead_remind`, `reassign_due_sales_leads`, `list_sales_team`, `set_sales_lead_juniors`, `sales_lead_send_alerts` (service role only), `sales_lead_notify` (internal). Re-issued: `sales_lead_stuck`, `sales_leads_page`, `get_sales_lead` (adds `clickup`), `sales_board`, `allot_sales_lead`, `record_sales_lead_enquiry`.
 
 ## 5. Permissions & access
 
@@ -49,6 +54,8 @@ Module `sales`, actions `view`, `view_all` (new), `create`, `edit`, `assign`.
 | `assign` | every lead, and the queue | every lead |
 | `create` | also the leads they added, until allotted | those it holds |
 | Admin | everything | everything |
+
+Control Center words: **Salesperson** is `view`, with Can add leads for `create`. **Manager** is `view` and `view_all`. **Lead manager** is `view`, `create`, `edit` and `assign`. A senior is a Salesperson with named juniors. The rights go through the existing permission route, so they carry the usual audit trail.
 
 Enforced in the functions and in RLS. **This reverses module 27's "view reads every lead".** The duplicate check still names a number's holder to anyone adding a lead, with no other detail. On the board, the "Leads of" chips and the avatars show for anyone who can see more than one person's leads, and a card can be moved only by those who may work it.
 
@@ -67,6 +74,9 @@ Enforced in the functions and in RLS. **This reverses module 27's "view reads ev
 11. A repeat enquiry goes on the existing lead: a closed lead reopens as New, an open one comes to the top of its holder's day. This replaces module 27's "blocked until Lead Management".
 12. Confirmed by the owner, 2026-11-03: expected value is required from Negotiation (this replaces their earlier "optional"), and the red limits stand as in rule 9. A newly allotted lead gets its first call the same working day; if it does not, the salesperson is told, then manager level. That alert is not built yet.
 13. WhatsApp quick messages open `wa.me` with the text filled in; the person presses send. No API, no cost. BOE One cannot see the send, so it logs an attempt, not a reply. WhatsApp screenshots on a log entry: no (owner).
+14. **ClickUp import.** Every folder goes to one person, matched by first name and changeable on the screen. An open lead beats a dead one on the same number, then the one touched last; the other tasks go on it as notes. One number, one lead still holds. Importing notifies nobody.
+15. **ClickUp mapping, chosen without asking as the owner instructed.** New leads is New. Under process, Transferred, Overseas, Important Bulk, Bulk and Important Residential are Under process. Important is Warm, plain Bulk is Cold, and URGENT, HIGH or a tag of imp or urgent is Hot. Potential clients and customers are Potential client; Planned visit too, with the step Meeting. Everything in a list with Dead in its name is Dead, whatever its status, including "live again". No reason recorded becomes Other, with that said in the note.
+16. **Catch-up.** A follow-up still ahead keeps its date. One overdue or undated gets a new date: nobody called first, then Hot, then furthest along, then latest touched, up to the chosen number a person on each working day (Monday to Saturday). An imported lead does not go red before that date.
 
 ## 7. Key components & lib files
 
@@ -88,17 +98,23 @@ Enforced in the functions and in RLS. **This reverses module 27's "view reads ev
 - A column loads 60 leads; the count and value are the whole stage. Moving a lead by hand between pages is not possible: search or filter finds the rest.
 - `sales_lead_stuck` takes a real `sales_leads` row: a CTE row is a plain record and will not resolve, which is why `sales_board` works it out in its first CTE.
 - `activities.at` and the move an entry causes share a transaction time; `undo_sales_lead_activity` relies on that with a strict `>`.
-- The Hobby plan runs a Vercel cron at most daily, anywhere in its hour. That can carry the same-working-day first-call alert if the day's run comes late enough; anything finer needs pg_cron, not `vercel.json`.
+- The Hobby plan runs a Vercel cron at most daily, anywhere in its hour. The two Sales crons are 04:00 and 12:00 UTC, so about 9:30 and 17:30 in India, up to an hour later. Anything finer needs pg_cron, not `vercel.json`.
+- **A ClickUp export holds only the latest comment.** `Comment Count` says how many there were; the rest are not in the file.
+- ClickUp's columns differ from list to list (45 to 51): `clickup.ts` reads by column name, never by position.
+- "Has not punched in" needs 11:00 India time and at least one punch from anybody today, so a stopped machine does not make everyone look absent. Staff with `payroll_active` off are never shown.
+- The Team page's first-call and follow-up numbers count only what happened in BOE One: ClickUp recorded neither.
+- Never export `NEXT_PUBLIC_SUPABASE_*` for `npm test`: `addPiPayment.dom.test.tsx` then passes but never exits, and the whole run hangs.
+- `next build` refuses a `node_modules` junction ("points out of the filesystem root"): a worktree that builds needs a real `npm ci`.
 - A new notification type needs its enum value in a migration applied before the code uses it.
 
 ## 10. Tests
 
-`src/lib/salesLeads/board.test.ts`; changed on purpose: `migration.test.ts`, `salesLeads.test.tsx`, `comingSoonModules.test.tsx`, `accessCatalog.test.ts`, the two ledgers in `participantAndOrderTotalSecurity.test.ts`. Database: `node supabase/tests/sales_lead_board_pglite.mjs <dir with @electric-sql/pglite>` (expected last line `all 41 checks passed`).
+`src/lib/salesLeads/board.test.ts`; changed on purpose: `migration.test.ts`, `salesLeads.test.tsx`, `comingSoonModules.test.tsx`, `accessCatalog.test.ts`, the two ledgers in `participantAndOrderTotalSecurity.test.ts`. Also `src/lib/salesLeads/clickup.test.ts` and `team.test.ts`, with made-up data only. Database: `node supabase/tests/sales_lead_board_pglite.mjs <dir with @electric-sql/pglite>` (expected last line `all 41 checks passed`) and `supabase/tests/sales_go_live_pglite.mjs` (`all 20 checks passed`).
 
 ## 11. Open items
 
-- Team page; the senior-access screen; phone alerts (first response, due follow-ups, repeat enquiry).
-- ClickUp import: format not seen. Status-to-stage mapping to agree (Important Bulk and Bulk say nothing about stage). A catch-up screen so nobody starts with a wall of red.
+- The owner's review of the mapping in rule 15, above all "live again" as Dead.
+- Older ClickUp comments, if they are wanted: only the ClickUp API has them.
 - Automatic capture: website form first. WhatsApp and Instagram chats need the WhatsApp Business Platform, a separate decision. Everything lands unallotted in the Lead Master.
 - Automatic allotment from attendance and lead load.
 

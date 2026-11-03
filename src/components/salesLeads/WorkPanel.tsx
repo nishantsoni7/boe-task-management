@@ -369,6 +369,7 @@ function eventLine(e: LeadEvent): React.ReactNode {
     case 'reassigned': return <>Moved from <b>{e.from_name ?? 'a former colleague'}</b> to <b>{e.to_name ?? 'a former colleague'}</b></>
     case 'edited': return `Changed ${editedFields(e.detail)}`
     case 'enquired_again': return 'Enquired again'
+    case 'imported': return <>Brought over from ClickUp{e.detail ? <> as <b>{e.detail}</b></> : null}</>
     case 'moved': {
       const [from, to] = (e.detail ?? '').split('>')
       return <>Moved from <b>{stageLabel(from)}</b> to <b>{stageLabel(to)}</b></>
@@ -377,6 +378,7 @@ function eventLine(e: LeadEvent): React.ReactNode {
 }
 
 function activityLine(a: Activity): React.ReactNode {
+  if (a.kind === 'imported') return <><span className={s.kindWord}>ClickUp</span><div className={s.note}>{a.note}</div></>
   return (
     <>
       <span className={s.kindWord}>{kindLabel(a.kind)}</span> · {outcomeLabel(a.outcome)}
@@ -387,12 +389,24 @@ function activityLine(a: Activity): React.ReactNode {
 
 function History({ detail }: { detail: WorkDetail }) {
   const entries: Entry[] = [
-    ...detail.activities.map(a => ({ key: a.id, at: a.at, body: activityLine(a), by: a.actor_name ?? 'A former colleague' })),
+    ...detail.activities.map(a => ({ key: a.id, at: a.at, body: activityLine(a), by: a.kind === 'imported' ? 'From ClickUp' : a.actor_name ?? 'A former colleague' })),
     ...detail.events.map((e, i) => ({ key: `e${i}`, at: e.at, body: eventLine(e), by: e.actor_name ?? 'A former colleague' })),
   ].sort((a, b) => b.at.localeCompare(a.at))
   return (
     <ul className={s.timeline}>
       {entries.map(e => <li key={e.key}>{e.body}<small>{e.by} · {whenLabel(e.at)}</small></li>)}
+      {detail.clickup.length > 0 && (
+        <li>
+          <details className={s.clickup}>
+            <summary>ClickUp record</summary>
+            {detail.clickup.map((task, i) => (
+              <dl key={i}>
+                {Object.entries(task).map(([field, value]) => <div key={field}><dt>{field}</dt><dd>{value}</dd></div>)}
+              </dl>
+            ))}
+          </details>
+        </li>
+      )}
     </ul>
   )
 }

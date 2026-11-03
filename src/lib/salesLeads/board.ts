@@ -105,6 +105,8 @@ export const DEAD_REASONS = [
   { value: 'delivery_time', label: 'Delivery time did not suit' },
   { value: 'retail_enquiry', label: 'Retail enquiry, not our business' },
   { value: 'wrong_number', label: 'Wrong number or spam' },
+  { value: 'no_requirement', label: 'No requirement' },
+  { value: 'not_relevant', label: 'Not relevant' },
   { value: 'other', label: 'Other (say why)' },
 ] as const
 export type DeadReason = typeof DEAD_REASONS[number]['value']

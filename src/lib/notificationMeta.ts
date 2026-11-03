@@ -202,6 +202,12 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   attendance_request_submitted: { label: 'Request',         color: colors.amber, bg: colors.amberTint },
   attendance_request_decided:   { label: 'Request decided', color: colors.blue,  bg: colors.blueTint  },
   attendance_machine_stopped:   { label: 'Machine',         color: colors.red,   bg: colors.redTint   },
+  // Sales. Red = a lead is slipping; amber = waiting on the person; blue = news about a lead.
+  sales_lead_allotted:          { label: 'New lead',        color: colors.blue,  bg: colors.blueTint  },
+  sales_followups_due:          { label: 'Follow-ups',      color: colors.amber, bg: colors.amberTint },
+  sales_first_call_missed:      { label: 'First call',      color: colors.red,   bg: colors.redTint   },
+  sales_lead_enquired_again:    { label: 'Came back',       color: colors.blue,  bg: colors.blueTint  },
+  sales_lead_reminder:          { label: 'Reminder',        color: colors.amber, bg: colors.amberTint },
   // Inventory bookings. Amber = waiting for an approver; blue = the decision, whose outcome is in the title.
   inventory_booking_requested:  { label: 'Needs a decision', color: colors.amber, bg: colors.amberTint },
   inventory_booking_decided:    { label: 'Booking update',   color: colors.blue,  bg: colors.blueTint  },
@@ -325,6 +331,21 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
       href: '/attendance/today',
       actionLabel: 'Open Today',
+    }
+  }
+
+  // ── Sales ──────────────────────────────────────────────────────────────────
+  // entity_id is the LEAD: the board opens it, and the database decides whether this person may see it. A row with no
+  // lead is about a whole day: a salesperson lands on My day, a manager on the Team page.
+  if (type.startsWith('sales_')) {
+    const toManager = type === 'sales_first_call_missed' && /first call/.test(n.title)
+    return {
+      category: 'other',
+      heading: 'Sales',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: n.entity_id ? `/sales/board?lead=${n.entity_id}` : toManager ? '/sales/team' : '/sales/my-day',
+      actionLabel: n.entity_id ? 'Open lead' : toManager ? 'Open Team' : 'Open My day',
     }
   }
 

@@ -259,10 +259,20 @@ export const INVENTORY_NOTIFICATION_TYPES = [
   'inventory_booking_decided',
 ] as const
 
-export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review' | 'inventory'
+// Sales (20270526000000). entity_id is the LEAD when the row is about one lead, and null when it is about a person's
+// whole day. Written by the database in the transaction of the change, or by the daily sales_lead_send_alerts.
+export const SALES_NOTIFICATION_TYPES = [
+  'sales_lead_allotted',
+  'sales_followups_due',
+  'sales_first_call_missed',
+  'sales_lead_enquired_again',
+  'sales_lead_reminder',
+] as const
+
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review' | 'inventory' | 'sales'
 
 const VALID_CATEGORIES: readonly NotificationCategory[] =
-  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory']
+  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory', 'sales']
 
 /**
  * Categories only an admin may read. Currently none.
@@ -312,6 +322,8 @@ export function getNotificationCategoryFilter(category: NotificationCategory): s
       return typeInList(REVIEW_NOTIFICATION_TYPES)
     case 'inventory':
       return typeInList(INVENTORY_NOTIFICATION_TYPES)
+    case 'sales':
+      return typeInList(SALES_NOTIFICATION_TYPES)
   }
 }
 
