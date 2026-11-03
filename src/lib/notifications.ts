@@ -267,6 +267,8 @@ export const SALES_NOTIFICATION_TYPES = [
   'sales_first_call_missed',
   'sales_lead_enquired_again',
   'sales_lead_reminder',
+  // A new lead waiting to be allotted, to whoever allots (20270531000000, the website capture).
+  'sales_lead_waiting',
 ] as const
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review' | 'inventory' | 'sales'

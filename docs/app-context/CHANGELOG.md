@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Sales: the old Google Sheets come into the Lead Master (PR pending) · 20270530000000 → NOT APPLIED
+## 2026-11-03 — Sales: website leads arrive by themselves (PR pending) · 20270531000000 and 20270531000100 → NOT APPLIED
+- **Owner request.** Phase 2 of the plan to automate lead capture and allotment: nobody copies a website lead by hand any more.
+- **Added.** `POST /api/sales/capture/website` (secret `SALES_CAPTURE_SECRET`) and `scripts/google/website-leads-to-boe.gs`, pasted once into the Website Leads sheet, which sends the form's new rows every five minutes. A new number becomes a lead waiting to be allotted, source Website or Google Ads, and Admin and `assign` get "New lead from the website". A known number is a repeat enquiry: the holder is told, a closed or old lead comes back. A row sent twice counts once.
+- **Rollout.** Apply both migrations (the notice type first), merge, set `SALES_CAPTURE_SECRET` in Vercel and redeploy, then paste the script, add the same secret as its CAPTURE_KEY, and run setup once.
+- **Proof.** `supabase/tests/sales_full_flow_pglite.mjs` (66 checks), the script run in Node with Google's services faked (6 tests), `capture.test.ts`. Not run against the real sheet or production.
+
+## 2026-11-03 — Sales: the old Google Sheets come into the Lead Master (PR #605, 3d4606b4) · 20270530000000 → APPLIED 2026-11-03, before the merge; imported the same day (3,874 old leads, 12,868 fills)
 - **Owner request.** Import the Leads Master sheet and the Website Leads sheet, as Phase 1 of the plan to automate lead capture and allotment (approved 2026-11-03).
 - **Added.** A card on `/sales/import` for the two sheets as Excel files, after the ClickUp import (the database refuses them before). A number already in BOE One keeps its ClickUp stage and salesperson and gains the sheet's name, email, location, message and a dated "Leads Master 2025, given to Ashok" line. A number only in the sheets becomes an **old lead**: in the register with an "Old lead" tag, known as a repeat, on nobody's board, out of the Not allotted queue; a repeat enquiry or allotting it brings it back. Sources BNI and Walk-in added.
 - **Dates.** Leads Master: day and month, the year from the tab; no day means the 1st. Website Leads: mostly undated, so a row takes the date of the nearest dated row around it, and its history says "date estimated".

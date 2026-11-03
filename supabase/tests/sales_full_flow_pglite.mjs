@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), and the two old Google Sheets (20270530000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), and the website capture (20270531000000/100). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -88,7 +88,8 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
   public.module_entry_open(text), public.resolve_permission(uuid, text, text) to authenticated;`)
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
-  '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql']) {
+  '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
+  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql']) {
   await db.exec(mig(f))
 }
 
@@ -557,6 +558,56 @@ await step('Browser users cannot fire the alert job', () =>
     await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [id, U.ashok])
     const l = await leadRow(id)
     must(!l.is_history && l.assigned_to === U.ashok && l.source === 'bni', JSON.stringify({ h: l.is_history, s: l.source }))
+  })
+}
+
+{
+  // ── The website capture (20270531000100) ─────────────────────────────────
+  const capture = async rows => {
+    await db.exec('reset role; set role service_role;')
+    try { return (await db.query('select public.capture_sales_leads($1::jsonb) as r', [JSON.stringify(rows)])).rows[0].r } finally { await db.exec('reset role;') }
+  }
+  const waiting = async () => Number(await scalar(`select count(*) from public.notifications where type::text = 'sales_lead_waiting'`))
+  await step('Only the service role can capture; a signed-in user cannot', async () => {
+    await expectErr(U.admin, `select public.capture_sales_leads('[]'::jsonb)`, /permission denied/)
+  })
+  await step('A new website number becomes a lead waiting to be allotted, and whoever allots is told', async () => {
+    const before = await waiting()
+    const r = await capture([{ key: 'w1', form_type: 'Google Ads', name: 'Web Hotel', email: 'Web@Hotel.test', phone: '98111 00050', location: 'Goa', message: 'Need 40 chairs' }])
+    must(r.created === 1, JSON.stringify(r))
+    const l = (await db.query(`select * from public.sales_leads where phone_e164 = '+919811100050'`)).rows[0]
+    must(!l.assigned_to && !l.is_history && l.source === 'google_ads' && l.requirement === 'Need 40 chairs' && l.email === 'web@hotel.test', 'lead row')
+    must(await waiting() === before + 2, 'Admin and the lead manager should both be told')
+    const q = await one(U.leadmgr, `select public.sales_leads_page('all', 'none', null, '98111 00050')`)
+    must(q.rows.length === 1, 'not in the Not allotted queue')
+  })
+  await step('The same form row sent twice counts once; a row without a valid number is reported', async () => {
+    const r = await capture([{ key: 'w1', phone: '98111 00050' }, { key: 'w2', phone: '12' }])
+    must(r.already === 1 && r.failed.length === 1 && r.failed[0].why === 'no valid number', JSON.stringify(r))
+  })
+  await step('A known number held by somebody: a repeat, the message added, the holder told to call today', async () => {
+    const id = (await db.query(`select id from public.sales_leads where phone_e164 = '+919811100026'`)).rows[0].id
+    const before = await notesFor(U.ashok, 'sales_lead_enquired_again')
+    const r = await capture([{ key: 'w3', phone: '+91 98111 00026', message: 'Price for 100 chairs?' }])
+    must(r.repeat === 1, JSON.stringify(r))
+    const l = await leadRow(id)
+    must(l.requirement.includes('Price for 100 chairs?') && l.enquired_again_at, 'message or enquiry not recorded')
+    must(await notesFor(U.ashok, 'sales_lead_enquired_again') === before + 1, 'holder not told')
+  })
+  await step('A dead lead that fills the form again comes back as New with its holder', async () => {
+    const id = (await db.query(`select id from public.sales_leads where stage = 'dead' and assigned_to is not null limit 1`)).rows[0].id
+    const phone = (await leadRow(id)).phone_e164
+    await capture([{ key: 'w4', phone, message: 'Back again' }])
+    const l = await leadRow(id)
+    must(l.stage === 'new' && !l.dead_reason && l.next_step && l.next_due_on, JSON.stringify({ s: l.stage, r: l.dead_reason }))
+  })
+  await step('An old lead from the sheets that fills the form again goes back to the Not allotted queue', async () => {
+    await importSheet([sheet({ phone: '+91 98111 00051', detail: 'Leads Master 2024, given to Monika' })])
+    const before = await waiting()
+    await capture([{ key: 'w5', phone: '98111 00051', message: 'Hello again' }])
+    const l = (await db.query(`select * from public.sales_leads where phone_e164 = '+919811100051'`)).rows[0]
+    must(!l.is_history && !l.assigned_to, 'still an old lead')
+    must(await waiting() === before + 2, 'allotters not told')
   })
 }
 
