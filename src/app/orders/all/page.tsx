@@ -830,20 +830,26 @@ export default function AllOrdersPage() {
                     2026-10-31); every other column is left-aligned, and the
                     markers sit at the right edge of the Project code cell.
 
-                    WIDTHS (owner, 2026-10-31): pixels for the columns whose
-                    content has a known size, percentages for the rest so a
-                    wide window spreads out evenly, and Client takes what is
-                    left. They fit .fin-table--orders' min-width with nothing
-                    cut; change one and measure at that width. */}
+                    WIDTHS (owner, 2026-11-03: "the spacing is not uniform,
+                    too much empty space in Client"): Project code is the only
+                    fixed width, and Due is the only column left to take what
+                    remains. Every other column is a percentage, so a wider
+                    window grows them together and the gaps between columns
+                    stay alike. Client used to take what was left, which
+                    gave it 344px of a 1408px table and the others 20 to 65px.
+                    They fit .fin-table--orders' min-width with nothing newly
+                    cut, and Client keeps 175px there (the longest name in use
+                    needs 174); change one and measure at that width, with the
+                    real font loaded. */}
                 <col style={{ width: '116px' }} />{/* Project code + markers, update note under it */}
-                <col />{/* Client, lead source under it */}
-                <col style={{ width: '11%' }} />{/* Product Value (the Subtotal) */}
-                <col style={{ width: '96px' }} />{/* Advance (owner, 2026-11-01) */}
-                <col style={{ width: '136px' }} />{/* Factory Status, 24px of it after the money */}
-                <col style={{ width: '116px' }} />{/* Pendencies (owner, 2026-10-27) */}
-                <col style={{ width: '12.4%' }} />{/* Sales person */}
-                <col style={{ width: '9.6%' }} />{/* Confirmed */}
-                <col style={{ width: '9.6%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '15.8%' }} />{/* Client, lead source under it */}
+                <col style={{ width: '10.4%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '7.9%' }} />{/* Advance (owner, 2026-11-01) */}
+                <col style={{ width: '14.1%' }} />{/* Factory Status, 56px of it after the money */}
+                <col style={{ width: '10.4%' }} />{/* Pendencies (owner, 2026-10-27) */}
+                <col style={{ width: '11.7%' }} />{/* Sales person */}
+                <col style={{ width: '9.9%' }} />{/* Confirmed */}
+                <col />{/* Due, "Overdue" under it: takes what is left */}
               </colgroup>
               <thead>
                 <tr>

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `972413c3` — Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- Commits on this branch: 1160
+- Commit: `594daf93` — Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
+- Commits on this branch: 1161
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 185
 - Migrations: 411 (first `20260530_create_positions.sql`, latest `20270527000000_sales_review_fixes.sql`)
 - Tables ever created: 221 (dropped at some point: 7)   SQL functions: 924   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 - `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
 - `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
 - `dfe7a3c3` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
@@ -38,7 +39,6 @@
 - `9086a4af` 2026-11-02 Docs: Dispatch tab merged as PR #573 (a7981e45), 20270520000000 applied (#574)
 - `a7981e45` 2026-11-02 Orders: Dispatch tab on the product list, papers read and checked (#573)
 - `ce769be0` 2026-11-02 Docs: SEO step 2 merged as PR #571 (af8476b4), 20270519000000 applied (#572)
-- `af8476b4` 2026-11-02 SEO module, step 2: Weekly review, Scheduled tasks, board updates, Keep or Change (#571)
 
 ## Pages by top-level area
 
