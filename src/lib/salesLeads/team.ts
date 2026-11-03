@@ -20,9 +20,9 @@ export type SalesTeamMember = {
 }
 
 export const SALES_ROLES = [
-  { value: 'none', label: 'No access', hint: 'Sales does not open for them.' },
-  { value: 'sales', label: 'Salesperson', hint: 'Sees and works their own leads.' },
-  { value: 'manager', label: 'Manager', hint: 'Reads everyone\'s leads and the Team page. Works none.' },
+  { value: 'none', label: 'No access', hint: 'Sales does not open for them, and no lead can be given to them.' },
+  { value: 'sales', label: 'Salesperson', hint: 'Can be given leads. Sees and works their own.' },
+  { value: 'manager', label: 'Manager', hint: 'Reads everyone\'s leads and the Team page. Works only their own.' },
   { value: 'lead_manager', label: 'Lead manager', hint: 'Adds, allots and works every lead, and runs imports.' },
 ] as const
 export type SalesRole = typeof SALES_ROLES[number]['value']

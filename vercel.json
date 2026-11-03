@@ -25,11 +25,11 @@
       "schedule": "40 0 * * *"
     },
     {
-      "path": "/api/sales/alerts?slot=morning",
+      "path": "/api/sales/alerts/morning",
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/sales/alerts?slot=evening",
+      "path": "/api/sales/alerts/evening",
       "schedule": "0 12 * * *"
     },
     {

@@ -80,8 +80,10 @@ export function useLeadWork() {
       toast.show(`${leadTitle(lead)} moved to ${stageLabel(to)}`, false, {
         label: 'Undo',
         run: () => void guarded(async () => {
-          await moveLead(supabase, lead.id, lead.stage, to, { nextStep: lead.next_step ?? undefined, nextDue: lead.next_due_on ?? undefined })
-          toast.show('Undone')
+          const back = await moveLead(supabase, lead.id, lead.stage, to, { nextStep: lead.next_step ?? undefined, nextDue: lead.next_due_on ?? undefined })
+          // Only say Undone when it moved back; if a fact is missing, ask for it the usual way.
+          if (back.status === 'needs') setDialog({ type: 'gate', lead: back.lead, to: lead.stage, missing: back.missing })
+          else toast.show('Undone')
         }),
       })
     }

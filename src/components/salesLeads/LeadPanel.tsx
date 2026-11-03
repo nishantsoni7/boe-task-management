@@ -7,13 +7,14 @@ import { Lock, X } from 'lucide-react'
 import { formatPhone, telHref, whatsappHref } from '@/lib/exhibitionLeads/phone'
 import {
   fetchLead, SALES_KEY, SalesRequestError, updateLead,
-  type LeadEvent, type Person, type SalesLead,
+  type Person, type SalesLead,
 } from '@/lib/salesLeads/api'
 import { sourceLabel } from '@/lib/salesLeads/constants'
-import { dayLabelLong, editedFields, whenLabel } from '@/lib/salesLeads/format'
+import { dayLabelLong, whenLabel } from '@/lib/salesLeads/format'
 import { formFromLead, toInput, validateLead, type LeadForm } from '@/lib/salesLeads/validation'
 import { createClient } from '@/lib/supabase/client'
 import { AllotPicker, Holder } from './AllotParts'
+import { eventBy, eventLine } from './LeadBits'
 import { DetailFields, DupCallout, phoneCanSave, PhoneField, SourceField, usePhoneStatus } from './LeadFields'
 import { useDialogFocus } from './useDialogFocus'
 import s from './salesLeads.module.css'
@@ -28,17 +29,6 @@ type Props = {
   onClose: () => void
   onPick: (lead: SalesLead, personId: string) => void
   onSaved: (text: string, isError?: boolean) => void
-}
-
-const who = (name: string | null) => <b>{name ?? 'a former colleague'}</b>
-
-function eventLine(e: LeadEvent): React.ReactNode {
-  switch (e.kind) {
-    case 'added': return 'Added'
-    case 'allotted': return <>Allotted to {who(e.to_name)}</>
-    case 'reassigned': return <>Reassigned from {who(e.from_name)} to {who(e.to_name)}</>
-    case 'edited': return <>Changed {editedFields(e.detail)}</>
-  }
 }
 
 export function LeadPanel({ leadId, people, canAssign, canEdit, saving, onClose, onPick, onSaved }: Props) {
@@ -123,7 +113,7 @@ export function LeadPanel({ leadId, people, canAssign, canEdit, saving, onClose,
                   {detail.data.events.map((e, i) => (
                     <li key={i}>
                       {eventLine(e)}
-                      <small>by {e.actor_name ?? 'a former colleague'} · {whenLabel(e.at)}</small>
+                      <small>{eventBy(e)} · {whenLabel(e.at)}</small>
                     </li>
                   ))}
                 </ul>

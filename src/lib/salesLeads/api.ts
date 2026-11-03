@@ -1,6 +1,6 @@
 import type { createClient } from '@/lib/supabase/client'
 import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
-import type { ImportRow } from './clickup'
+import type { HistoryRow, ImportRow } from './clickup'
 import type { LeadSource, Period } from './constants'
 
 // Thin typed wrappers over the database functions (20270524000000). There is no API route in between on purpose:
@@ -41,7 +41,7 @@ export type LeadPage = {
 }
 
 export type LeadEvent = {
-  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again' | 'imported'
+  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again' | 'imported' | 'clickup_status'
   from_name: string | null
   to_name: string | null
   /** For an edit: which fields changed, never their values. */
@@ -288,6 +288,11 @@ export type ImportOutcome = { created: number; merged: number; already: number; 
 export const importLeads = (s: Supabase, rows: ImportRow[]) =>
   call<ImportOutcome>(() => s.rpc('import_sales_leads', { p_rows: rows }))
 
+export type HistoryOutcome = { comments: number; statuses: number; already: number; not_imported: number; failed: { task_id: string | null; why: string }[] }
+
+export const importHistory = (s: Supabase, rows: HistoryRow[]) =>
+  call<HistoryOutcome>(() => s.rpc('import_sales_lead_history', { p_rows: rows }))
+
 export type TeamRisk = WorkLead & { problem: 'not_called' | 'stuck' | 'overdue' }
 export type TeamPersonRow = {
   id: string
@@ -320,8 +325,8 @@ export const remindLead = (s: Supabase, id: string) =>
 export const reassignDue = (s: Supabase, from: string, to: string) =>
   call<{ moved: number }>(() => s.rpc('reassign_due_sales_leads', { p_from: from, p_to: to }))
 
-/** Who can be given a lead: the same "sales candidate" rule Orders uses (active, in Sales or granted it). */
+/** Who can be given a lead: everybody with a Sales job in Control Center (list_sales_lead_holders). */
 export async function fetchPeople(s: Supabase): Promise<Person[]> {
-  const rows = await call<{ id: string; full_name: string }[]>(() => s.rpc('list_eligible_order_assignees'))
+  const rows = await call<{ id: string; full_name: string }[]>(() => s.rpc('list_sales_lead_holders'))
   return (rows ?? []).map(r => ({ id: r.id, full_name: r.full_name })).sort((a, b) => a.full_name.localeCompare(b.full_name))
 }

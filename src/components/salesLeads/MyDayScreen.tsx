@@ -58,8 +58,10 @@ export function MyDayScreen() {
   const [view, setView] = useState('all')
   const [open, setOpen] = useState<{ id: string; log: boolean } | null>(null)
   const today = work.today
-  // Read once per render pass: the clocks on the page only need to be right to the minute.
-  const [now] = useState(() => Date.now())
+  // The clocks move on with every refresh (once a minute), which is as exact as "Waiting 12 min" needs.
+  const [openedAt] = useState(() => Date.now())
+  // The lead on top stays on top until something is done to it, so a refresh never swaps it under a finger.
+  const [pinned, setPinned] = useState<string | null>(null)
 
   const day = useQuery({
     queryKey: [SALES_KEY, 'my-day'],
@@ -69,9 +71,12 @@ export function MyDayScreen() {
     enabled: ready,
   })
 
+  const now = Math.max(openedAt, day.dataUpdatedAt)
   const ranked = useMemo(() => rankMyDay(day.data?.rows ?? []), [day.data])
   const shown = ranked.filter(l => VIEWS.find(v => v.key === view)?.test(l, today))
-  const [first, ...rest] = shown
+  const held = pinned ? shown.findIndex(l => l.id === pinned) : -1
+  const [first, ...rest] = held > 0 ? [shown[held], ...shown.slice(0, held), ...shown.slice(held + 1)] : shown
+  if (first && first.id !== pinned && held < 0) setPinned(first.id)
   const done = day.data?.done_today ?? 0
   const total = done + ranked.length
 

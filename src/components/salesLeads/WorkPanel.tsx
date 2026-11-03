@@ -7,7 +7,7 @@ import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
   fetchWorkLead, logActivity, SALES_KEY, updateFacts,
-  type Activity, type LeadEvent, type LeadFacts, type WorkDetail, type WorkLead,
+  type Activity, type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
   BOARD_STAGES, checklistFor, CLIENT_TYPES, dueOf, FACT_HINTS, kindLabel, KINDS, lastLabel, marketLabel, NEXT_STEPS, OUTCOMES, outcomeLabel, parseValue,
@@ -15,8 +15,8 @@ import {
   type CheckItem, type NeededFact, type OutcomeChoice, type Stage,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
-import { dayLabel, dayLabelLong, editedFields, whenLabel } from '@/lib/salesLeads/format'
-import { leadTitle, StepIcon } from './LeadBits'
+import { dayLabel, dayLabelLong, whenLabel } from '@/lib/salesLeads/format'
+import { eventBy, eventLine, leadTitle, StepIcon } from './LeadBits'
 import { useDialogFocus } from './useDialogFocus'
 import type { LeadWork } from './useLeadWork'
 import s from './leadBoard.module.css'
@@ -145,9 +145,16 @@ function Composer({ ref, lead, work, onPosted }: { ref: React.Ref<HTMLElement>; 
   }
 
   async function post() {
-    if (notInterested) return work.moveTo(lead, 'dead', note)
     setSaving(true)
     try {
+      if (notInterested) {
+        // The call happened, so it is logged and the first call counts; then the lead asks why it is dead.
+        await logActivity(work.supabase, lead.id, { kind, outcome, note, nextStep: 'Close as dead', nextDue: work.today })
+        await work.refresh()
+        setNote('')
+        work.moveTo(lead, 'dead', note)
+        return
+      }
       const r = await logActivity(work.supabase, lead.id, { kind, outcome, note, nextStep: nextStep.trim(), nextDue })
       await work.refresh()
       work.said(`Saved. Next: ${nextStep.trim()}, ${dayLabel(nextDue)}.`, r.activity_id)
@@ -267,7 +274,7 @@ function CheckRow({ item, value, onChange }: { item: CheckItem; value: string; o
         ? <span className={s.checkValue}>{item.value}</span>
         : typedFact
           ? <input className={s.input} aria-label={item.label} placeholder={FACT_HINTS[item.fact]} value={value} onChange={e => onChange(e.target.value)} />
-          : <span className={s.checkTodo}>Log it on the left</span>}
+          : <span className={s.checkTodo}>Log it under Log what happened</span>}
     </li>
   )
 }
@@ -362,21 +369,6 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
 
 type Entry = { key: string; at: string; body: React.ReactNode; by: string }
 
-function eventLine(e: LeadEvent): React.ReactNode {
-  switch (e.kind) {
-    case 'added': return 'Added in Lead Master'
-    case 'allotted': return <>Allotted to <b>{e.to_name ?? 'a former colleague'}</b></>
-    case 'reassigned': return <>Moved from <b>{e.from_name ?? 'a former colleague'}</b> to <b>{e.to_name ?? 'a former colleague'}</b></>
-    case 'edited': return `Changed ${editedFields(e.detail)}`
-    case 'enquired_again': return 'Enquired again'
-    case 'imported': return <>Brought over from ClickUp{e.detail ? <> as <b>{e.detail}</b></> : null}</>
-    case 'moved': {
-      const [from, to] = (e.detail ?? '').split('>')
-      return <>Moved from <b>{stageLabel(from)}</b> to <b>{stageLabel(to)}</b></>
-    }
-  }
-}
-
 function activityLine(a: Activity): React.ReactNode {
   if (a.kind === 'imported') return <><span className={s.kindWord}>ClickUp</span><div className={s.note}>{a.note}</div></>
   return (
@@ -390,7 +382,7 @@ function activityLine(a: Activity): React.ReactNode {
 function History({ detail }: { detail: WorkDetail }) {
   const entries: Entry[] = [
     ...detail.activities.map(a => ({ key: a.id, at: a.at, body: activityLine(a), by: a.kind === 'imported' ? 'From ClickUp' : a.actor_name ?? 'A former colleague' })),
-    ...detail.events.map((e, i) => ({ key: `e${i}`, at: e.at, body: eventLine(e), by: e.actor_name ?? 'A former colleague' })),
+    ...detail.events.map((e, i) => ({ key: `e${i}`, at: e.at, body: eventLine(e), by: eventBy(e) })),
   ].sort((a, b) => b.at.localeCompare(a.at))
   return (
     <ul className={s.timeline}>

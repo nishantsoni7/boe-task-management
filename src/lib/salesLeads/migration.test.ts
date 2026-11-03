@@ -21,6 +21,7 @@ import { LEAD_SOURCE_VALUES, MAX_EMAIL, MAX_LOCATION, MAX_NAME, MAX_REQUIREMENT 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SQL = read('supabase/migrations/20270524000000_sales_lead_master.sql')
 const BOARD_SQL = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')
+  + read('supabase/migrations/20270527000000_sales_review_fixes.sql')
 const API = read('src/lib/salesLeads/api.ts')
 
 // The six functions a browser may call, and the two internals it may not.
@@ -172,15 +173,12 @@ describe('the doors', () => {
 })
 
 describe('the app calls what exists', () => {
-  test('every function the API wrapper calls is defined in the migration (or is the existing sales-candidate list)', () => {
+  test('every function the API wrapper calls is defined in a Sales migration', () => {
     const called = [...API.matchAll(/s\.rpc\('([a-z_]+)'/g)].map(m => m[1])
     assert.ok(called.length >= 7)
+    assert.ok(!called.includes('list_eligible_order_assignees'), 'who can hold a lead follows the Sales job, not the Orders rule')
     for (const fn of called) {
-      if (fn === 'list_eligible_order_assignees') {
-        assert.ok(read('supabase/migrations/20260697000000_order_request_assignee_eligibility.sql').includes('function public.list_eligible_order_assignees'))
-      } else {
-        assert.ok(SQL.includes(`create function public.${fn}(`) || BOARD_SQL.includes(`create function public.${fn}(`), `${fn} must exist in a migration`)
-      }
+      assert.ok(SQL.includes(`create function public.${fn}(`) || BOARD_SQL.includes(`create function public.${fn}(`), `${fn} must exist in a migration`)
     }
   })
 

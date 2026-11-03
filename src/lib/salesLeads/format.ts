@@ -46,6 +46,8 @@ export function whenLabel(iso: string): string {
 
 const FIELD_WORDS: Record<string, string> = {
   phone: 'the number', source: 'the source', name: 'the name', email: 'the email', location: 'the location', requirement: 'the requirement',
+  quantity: 'the quantity', timeline: 'the timeline', segment: 'the segment', client_type: 'the client type',
+  temperature: 'Hot, Warm or Cold', expected_value_paise: 'the expected value',
 }
 
 /** "phone, name" → "the number and the name". */

@@ -64,7 +64,8 @@ export function TeamScreen() {
     staleTime: 30_000,
     enabled: ready && canSeeAll,
   })
-  const people = useQuery({ queryKey: [SALES_KEY, 'people'], queryFn: () => fetchPeople(supabase), staleTime: 300_000, enabled: ready && canAssign })
+  // Everybody with a Sales job: the filter lists them all whoever is picked, and Change holder offers them.
+  const people = useQuery({ queryKey: [SALES_KEY, 'people'], queryFn: () => fetchPeople(supabase), staleTime: 300_000, enabled: ready && canSeeAll })
   const refresh = () => queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
   const data = team.data
 
@@ -118,7 +119,7 @@ export function TeamScreen() {
           <span className={s.sep} aria-hidden="true" />
           <select className={`${b.filter}${holder ? ` ${b.filterSet}` : ''}`} aria-label="Salesperson" value={holder} onChange={e => setHolder(e.target.value)}>
             <option value="">Everyone</option>
-            {data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {(people.data ?? data.people.map(p => ({ id: p.id, full_name: p.name }))).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </select>
         </div>
 

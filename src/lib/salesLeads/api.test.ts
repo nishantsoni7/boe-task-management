@@ -90,12 +90,12 @@ describe('the calls', () => {
     assert.equal(r.state, 'free')
     assert.deepEqual(calls[0], { fn: 'sales_lead_phone_check', args: { p_phone: '098765 43210' } })
   })
-  test('the people to choose from are the existing sales-candidate list, by name', async () => {
+  test('the people to choose from are everybody with a Sales job, by name', async () => {
     const { supabase, calls } = fake({ data: [
-      { id: 'b', full_name: 'Saksham', source: 'sales' }, { id: 'a', full_name: 'Ashok', source: 'sales' }, { id: 'c', full_name: 'Munmun', source: 'override' },
+      { id: 'b', full_name: 'Saksham' }, { id: 'a', full_name: 'Ashok' }, { id: 'c', full_name: 'Munmun' },
     ] })
     const people = await fetchPeople(supabase)
-    assert.equal(calls[0].fn, 'list_eligible_order_assignees')
+    assert.equal(calls[0].fn, 'list_sales_lead_holders')
     assert.deepEqual(people.map(p => p.full_name), ['Ashok', 'Munmun', 'Saksham'])
   })
   test('a refusal becomes a SalesRequestError of the right kind', async () => {

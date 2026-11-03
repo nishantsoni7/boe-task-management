@@ -345,3 +345,44 @@ export function toSave(plan: ImportPlan, holders: Readonly<Record<string, string
     return { ...row, holder_id: holder, next_step: holder ? row.next_step : null, next_due_on: holder ? row.next_due_on : null }
   })
 }
+
+/**
+ * One task's full history, as scripts/clickup-history.mjs reads it from ClickUp's API: every comment with its own date
+ * and author (the CSV export carries only the latest, undated), and the statuses ClickUp kept, each with the day it began.
+ */
+export type HistoryRow = {
+  task_id: string
+  comments: { id: string; at: string; author: string; text: string }[]
+  statuses?: { status: string; at: string; current?: boolean }[]
+}
+
+/** The history file: one JSON object a line. Null when it is not one; a task the script could not read is skipped. */
+export function readHistory(text: string): HistoryRow[] | null {
+  const rows: HistoryRow[] = []
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let o: Partial<HistoryRow>
+    try { o = JSON.parse(line) } catch { return null }
+    if (typeof o.task_id !== 'string' || !Array.isArray(o.comments)) continue
+    rows.push({ task_id: o.task_id, comments: o.comments, ...(Array.isArray(o.statuses) ? { statuses: o.statuses } : {}) })
+  }
+  return rows.length ? rows : null
+}
+
+/** Calls the database takes at once: up to 300 tasks and 3,000 comments. A task with more comments is split over calls. */
+export function historyBatches(rows: readonly HistoryRow[], maxTasks = 300, maxComments = 3000): HistoryRow[][] {
+  const batches: HistoryRow[][] = []
+  let batch: HistoryRow[] = []
+  let comments = 0
+  const close = () => { if (batch.length) batches.push(batch); batch = []; comments = 0 }
+  for (const row of rows) {
+    for (let i = 0; i === 0 || i < row.comments.length; i += maxComments) {
+      const part: HistoryRow = { ...row, comments: row.comments.slice(i, i + maxComments), ...(i > 0 ? { statuses: [] } : {}) }
+      if (batch.length >= maxTasks || comments + part.comments.length > maxComments) close()
+      batch.push(part)
+      comments += part.comments.length
+    }
+  }
+  close()
+  return batches
+}

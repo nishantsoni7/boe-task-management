@@ -1,4 +1,7 @@
-// GET /api/sales/alerts?slot=morning|evening
+// GET /api/sales/alerts/morning and /api/sales/alerts/evening
+//
+// The slot is part of the path, not a query string: Vercel's cron documentation shows literal paths and says nothing
+// about keeping a query string, and a dropped one would have failed every run with "Unknown slot".
 //
 // The two daily Sales alerts: each person's follow-ups in the morning with first calls missed yesterday going up to
 // manager level, and new leads not called yet in the evening. Driven by Vercel Cron (see `crons` in vercel.json), which
@@ -23,7 +26,7 @@ function secretMatches(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b)
 }
 
-export async function GET(req: Request) {
+export async function GET(req: Request, { params }: { params: Promise<{ slot: string }> }) {
   const expected = process.env.CRON_SECRET
   if (!expected) {
     console.error('[sales/alerts] CRON_SECRET is not set - refusing to run')
@@ -35,7 +38,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const slot = new URL(req.url).searchParams.get('slot')
+  const { slot } = await params
   if (slot !== 'morning' && slot !== 'evening') {
     return NextResponse.json({ error: 'Unknown slot.' }, { status: 400 })
   }
