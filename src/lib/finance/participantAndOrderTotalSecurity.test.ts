@@ -1220,6 +1220,8 @@ describe('the applied migrations are frozen', () => {
       // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
       '20270531000000_sales_lead_waiting_type.sql',
       '20270531000100_sales_website_capture.sql',
+      // Sales, the Lead Board loads a column page by page: one read-only function.
+      '20270601000000_sales_board_page.sql',
     ])
   })
 
@@ -1691,6 +1693,8 @@ describe('the applied migrations are frozen', () => {
       // Sales, website leads arrive by themselves: the new-lead notice type, then the capture.
       '20270531000000_sales_lead_waiting_type.sql',
       '20270531000100_sales_website_capture.sql',
+      // Sales, the Lead Board loads a column page by page: one read-only function.
+      '20270601000000_sales_board_page.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

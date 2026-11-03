@@ -3,6 +3,12 @@
 .bottomItem { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; font: 500 12px var(--boe-font-body); color: #686D6C; cursor: pointer; }
 .bottomItem[aria-current="page"] { color: #B9472E; font-weight: 600; }
 
+/* A page that fills the screen: the header stays put and the page body hands its height to whatever is inside. */
+:global(.boe-main-content).fill { height: 100dvh; min-height: 0; }
+:global(.boe-page-body).fillBody { min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 16px; }
+
 @media (max-width: 767px) {
   .pageBody { padding-bottom: 76px; }
+  /* The bottom bar is fixed, and a page that does not scroll must still end above it. */
+  :global(.boe-page-body).fillBody { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
 }
