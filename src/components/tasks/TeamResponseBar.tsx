@@ -39,16 +39,20 @@ function PersonCard({ person, expanded, onToggle }: {
             {text}
           </span>
         </span>
-        <span
-          className={styles.strip}
-          role="img"
-          aria-label={`Updated on ${person.updatedDays} of ${person.countedDays} counted days`}
-          style={{ gridTemplateColumns: `repeat(${STRIP_WORKING_DAYS}, minmax(0, 1fr))` }}
-        >
-          {person.days.map(day => (
-            <i key={day.date} className={DAY_CLASS[day.state]} title={`${formatStripDay(day.date)}: ${day.why}`} />
-          ))}
-        </span>
+        {/* Too little history to judge: the line below says so, and a strip of
+            mostly empty dashes would only say it again. */}
+        {person.label !== 'too_early' && (
+          <span
+            className={styles.strip}
+            role="img"
+            aria-label={`Updated on ${person.updatedDays} of ${person.countedDays} counted days`}
+            style={{ gridTemplateColumns: `repeat(${STRIP_WORKING_DAYS}, minmax(0, 1fr))` }}
+          >
+            {person.days.map(day => (
+              <i key={day.date} className={DAY_CLASS[day.state]} title={`${formatStripDay(day.date)}: ${day.why}`} />
+            ))}
+          </span>
+        )}
         <span className={styles.line}>
           {summary.days && <b>{summary.days} </b>}
           {summary.reply}

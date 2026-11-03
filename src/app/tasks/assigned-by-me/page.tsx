@@ -22,7 +22,7 @@ import { TaskRowMenu, type TaskRowMenuItem } from '@/components/tasks/TaskRowMen
 import { TeamResponseBar } from '@/components/tasks/TeamResponseBar'
 import { Toast, takeFlashToast, useToast } from '@/components/ui/toast'
 import {
-  Ban, Check, CheckCircle2, ClipboardCheck, ExternalLink, Star,
+  Ban, CheckCircle2, CircleCheckBig, ClipboardCheck, ExternalLink, Star,
   Search, Pencil, Trash2, Paperclip, X,
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
@@ -196,11 +196,14 @@ function TaskCard({
         {onApprove && (
           <div className={styles.cardActions} onClick={e => e.stopPropagation()}>
             <button type="button" className="boe-btn boe-btn-primary" onClick={onApprove}>
-              <Check size={14} strokeWidth={2.6} aria-hidden="true" />
+              <CircleCheckBig size={16} strokeWidth={2.4} aria-hidden="true" />
               Approve
             </button>
             {onCancel && (
-              <button type="button" className="boe-btn boe-btn-secondary" onClick={onCancel}>Cancel task</button>
+              <button type="button" className="boe-btn boe-btn-secondary" onClick={onCancel}>
+                <Ban size={16} strokeWidth={2.2} aria-hidden="true" />
+                Cancel task
+              </button>
             )}
           </div>
         )}
@@ -234,7 +237,8 @@ function TaskCard({
         {assigneeInactive && <span className={styles.inactive}>Inactive</span>}
       </div>
 
-      <div className={`${styles.priority} ${styles.colPriority}`} style={{ color: priority.color }}>
+      <div className={`${styles.priority} ${styles.colPriority}`}>
+        <span className={styles.dot} style={{ background: priority.color }} aria-hidden="true" />
         {priority.label}
       </div>
 
@@ -259,15 +263,28 @@ function TaskCard({
       </div>
 
       <div className={styles.actions} onClick={e => e.stopPropagation()}>
+        {/* Icon buttons: the title is the tooltip, the label names the task. The
+            icons are Task Detail's (CircleCheckBig completes, Ban cancels). */}
         {onApprove && (
-          <button type="button" className={`boe-btn boe-btn-primary ${styles.rowButton}`} onClick={onApprove}>
-            <Check size={14} strokeWidth={2.6} aria-hidden="true" />
-            Approve
+          <button
+            type="button"
+            className={`boe-btn boe-btn-primary ${styles.iconButton}`}
+            title="Approve"
+            aria-label={`Approve ${task.title}`}
+            onClick={onApprove}
+          >
+            <CircleCheckBig strokeWidth={2.4} aria-hidden="true" />
           </button>
         )}
         {onApprove && onCancel && (
-          <button type="button" className={`boe-btn boe-btn-secondary ${styles.rowButton} ${styles.cancelInline}`} onClick={onCancel}>
-            Cancel task
+          <button
+            type="button"
+            className={`boe-btn boe-btn-secondary ${styles.iconButton} ${styles.cancelButton}`}
+            title="Cancel task"
+            aria-label={`Cancel ${task.title}`}
+            onClick={onCancel}
+          >
+            <Ban strokeWidth={2.2} aria-hidden="true" />
           </button>
         )}
         <TaskRowMenu label={menuLabel} items={menuItems} size={32} />
@@ -1252,29 +1269,27 @@ function AssignedByMeContent() {
             </div>
 
             {/* Search + filter toolbar */}
-            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className={styles.toolbar}>
               {/* Search */}
-              <div style={{
-                flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.base, border: `1px solid ${colors.borderInput}`,
-                borderRadius: '6px', padding: '6px 10px',
-              }}>
-                <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
+              <label className={`boe-input ${styles.search}`}>
+                <Search size={14} color={colors.muted} style={{ flexShrink: 0 }} aria-hidden="true" />
                 <input
                   type="text"
                   placeholder="Find tasks…"
+                  aria-label="Find tasks"
                   value={searchInput}
                   onChange={e => setSearchInput(e.target.value)}
                   onBlur={flushSearch}
-                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
                 />
-              </div>
+              </label>
               {/* Assignee filter */}
               {assigneeOptions.length > 0 && (
                 <select
                   value={filterAssignee}
                   onChange={e => setState({ assignee: e.target.value })}
-                  style={{ flex: '1 1 120px', minWidth: '110px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
+                  aria-label="Filter by assignee"
+                  className={`boe-input ${styles.filter}`}
+                  style={{ color: filterAssignee ? colors.primary : colors.muted }}
                 >
                   <option value="">All Assignees</option>
                   {assigneeOptions.map(opt => (
@@ -1286,7 +1301,9 @@ function AssignedByMeContent() {
               <select
                 value={filterPriority}
                 onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
-                style={{ flex: '1 1 100px', minWidth: '95px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+                aria-label="Filter by priority"
+                className={`boe-input ${styles.filter}`}
+                style={{ color: filterPriority ? colors.primary : colors.muted }}
               >
                 <option value="">All Priority</option>
                 <option value="high">High</option>
