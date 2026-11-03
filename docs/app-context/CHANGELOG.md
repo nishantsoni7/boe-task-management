@@ -11,7 +11,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Rollout.** Apply before merging: the Sales team tab reads `can_hold` and `hold_set`. Then untick the dummy account; tick Dhruv if he also sells.
 - **Proof.** `supabase/tests/sales_full_flow_pglite.mjs` (54 checks), `team.test.ts`. Not seen signed in.
 
-## 2026-11-03 — Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (PR open) · no migration
+## 2026-11-03 — Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (PR #602 merged as 6db10ccd, 2026-11-03) · no migration
 - **Owner request.** Screenshot of the page: "slightly unpolished with some overlaps and cluttered". Then: reduce the text with icons and tooltips, and keep the icons the same across complete, cancel and the other actions. Before/after mock approved 2026-11-03.
 - **Cause.** The Actions column was 216px but Approve, Cancel task and the ⋯ menu needed about 250, so on an approval row they grew leftwards over Last update. The phone-width tier had the same fault (130px for about 157).
 - **Changed.** Approve and Cancel task are 32px icon buttons (`CircleCheckBig`, `Ban`: the Task Detail icons; the row's old plain tick was the one outlier) with a tooltip and an accessible name that includes the task; the Actions column is 128px at every width and the Task column grows (about 410 to 453px at a 1534px window). Priority is a coloured dot with a neutral word; Last update is muted; Cancel is grey until hovered. Search and both filters use the shared `.boe-input` (one look, with aria-labels, 44px and 16px on a phone). Team response shows no strip for "Too early" people. Phone cards keep their words and gain the same two icons. Breakpoints are 1120 / 960 / 860px of list width.
