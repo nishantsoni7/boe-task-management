@@ -81,7 +81,7 @@ export function LeadPanel({ leadId, people, canAssign, canEdit, saving, onClose,
                 <div className={`${s.holder}${lead.assigned_to ? '' : ` ${s.holderNone}`}`}>
                   <span className="fin-avatar" aria-hidden="true">{lead.holder_name ? lead.holder_name.trim()[0]?.toUpperCase() : '–'}</span>
                   <div>
-                    <div className={s.holderName}>{lead.holder_name ?? 'Not allotted yet'}</div>
+                    <div className={s.holderName}>{lead.holder_name ?? (lead.is_history ? 'Old lead from the sheets, not allotted' : 'Not allotted yet')}</div>
                     <div className={s.holderSub}>
                       {lead.assigned_to && lead.assigned_at ? `Since ${whenLabel(lead.assigned_at)}` : canAssign ? 'Choose a name to allot it' : 'Nobody holds it yet'}
                     </div>

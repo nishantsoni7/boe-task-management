@@ -14,8 +14,8 @@ import s from './salesLeads.module.css'
 // refused) simply shows the old name again. The screen decides what a pick means: a first allotment saves at once,
 // changing a name asks first.
 
-export function Holder({ name }: { name: string | null }) {
-  if (!name) return <span className={s.noName}>Not allotted yet</span>
+export function Holder({ name, old = false }: { name: string | null; old?: boolean }) {
+  if (!name) return <span className={s.noName}>{old ? 'Old lead, not allotted' : 'Not allotted yet'}</span>
   return (
     <span className="fin-person">
       <span className="fin-avatar" aria-hidden="true">{initialsOf(name)}</span>
@@ -38,7 +38,7 @@ type PickerProps = {
 export function AllotPicker({ lead, people, canAssign, saving, onPick, id }: PickerProps) {
   // When the last moving key was pressed on this dropdown (see changeCameFromKey).
   const keyAt = useRef<number | null>(null)
-  if (!canAssign) return <Holder name={lead.holder_name} />
+  if (!canAssign) return <Holder name={lead.holder_name} old={lead.is_history} />
   // A holder who no longer counts as a sales candidate must still read as themselves, not as a blank.
   const holderMissing = lead.assigned_to !== null && !people.some(p => p.id === lead.assigned_to)
   const busy = saving !== undefined

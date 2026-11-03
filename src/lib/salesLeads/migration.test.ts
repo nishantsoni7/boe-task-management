@@ -22,6 +22,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace
 const SQL = read('supabase/migrations/20270524000000_sales_lead_master.sql')
 const BOARD_SQL = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')
   + read('supabase/migrations/20270527000000_sales_review_fixes.sql')
+  + read('supabase/migrations/20270530000000_sales_sheet_import.sql')
 const API = read('src/lib/salesLeads/api.ts')
 
 // The six functions a browser may call, and the two internals it may not.
@@ -102,8 +103,8 @@ describe('the register', () => {
     assert.ok(SQL.includes('or (v_norm is not null and l.phone_e164 = v_norm)'))
   })
 
-  test('the source list in the database is the one the form offers', () => {
-    const list = /source text not null check \(source in \(([\s\S]*?)\)\)/.exec(SQL)
+  test('the source list in the database is the one the form offers (the latest list, 20270530000000)', () => {
+    const list = /sales_leads_source_check check \(source in \(([\s\S]*?)\)\)/.exec(read('supabase/migrations/20270530000000_sales_sheet_import.sql'))
     assert.ok(list)
     const inSql = [...list[1].matchAll(/'([a-z_]+)'/g)].map(m => m[1])
     assert.deepEqual(inSql, [...LEAD_SOURCE_VALUES])

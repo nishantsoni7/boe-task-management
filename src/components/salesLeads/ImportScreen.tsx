@@ -15,6 +15,7 @@ import {
 import { dayLabel, plural } from '@/lib/salesLeads/format'
 import { createClient } from '@/lib/supabase/client'
 import { SalesFrame } from './SalesFrame'
+import { SheetImport } from './SheetImport'
 import b from './leadBoard.module.css'
 import s from './salesPages.module.css'
 
@@ -287,6 +288,8 @@ export function ImportScreen() {
             </div>
           </>
         )}
+
+        <SheetImport supabase={supabase} />
       </div>
     </SalesFrame>
   )
