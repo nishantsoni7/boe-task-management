@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a574e82a` — Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
-- Commits on this branch: 1171
+- Commit: `88afd4f2` — Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
+- Commits on this branch: 1172
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 417 (first `20260530_create_positions.sql`, latest `20270601000000_sales_board_page.sql`)
 - Tables ever created: 222 (dropped at some point: 7)   SQL functions: 935   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `88afd4f2` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
 - `a574e82a` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
 - `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
 - `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
@@ -38,7 +39,6 @@
 - `cf79df54` 2026-11-02 Orders dashboard for approvers: Needs your decision, Revenue, Orders to watch (#585)
 - `e75a514e` 2026-11-02 Docs: SEO six pages merged as PR #579 (f828b988), deployed (#582)
 - `a6ce1bd6` 2026-11-02 Docs: Meta Ads PR A merged as PR #580 (d29f903f), deployed (#584)
-- `834e86c7` 2026-11-02 Docs: BDPI large-PI upload merged as PR #581 (6610af35) (#583)
 
 ## Pages by top-level area
 
