@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-03 — Sales, Lead Board: My day, the board, the lead panel (PR not yet opened) · 20270525000000 → NOT APPLIED
+- **Owner request.** Replace the ClickUp boards with a lead system on the level of Salesforce, Zoho and LeadSquared, with only the proven, practical features, easy enough to need no training. Mock-up approved 2026-11-03.
+- **Added.** `/sales/my-day` (one Next lead, then the rest in order), `/sales/board` (stages, drag on a desktop, Move on every card), a wide lead panel with a structured log, a stage checklist, No answer in one tap, WhatsApp quick messages, Undo, repeat enquiries. `/sales` now opens My day.
+- **Database.** Stage, temperature, segment, facts and the next step on `sales_leads`; `sales_lead_activities`; `sales_lead_access`; `view_all` on Sales. An allotted open lead cannot exist without a next step: a CHECK, not a screen rule.
+- **Reverses module 27.** `view` no longer reads every lead: everyone sees their own, and `view_all`, `assign` and Admin see all. The repeat-enquiry block is gone.
+- **Rollout.** The migration can go first: the live Lead Master keeps working on it. Rollback is in the migration header.
+- **Proof.** `tsc`, lint, the whole suite, a production build, and the real migration on PGlite (41 checks). **Never run against a real database or seen signed in.**
+- **Not in this change.** The Team page, the senior-access screen, phone alerts, the ClickUp import.
+
 ## 2026-11-02 — Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (PR #592) · 20270523000000 → APPLIED 2026-11-02, before the merge
 - **Owner request.** Learnings from old campaigns, a judgement of what works, and a needs list. The plan and the mock-up were agreed; PR D draws the screens.
 - **Added.** `GET /api/integrations/meta/review` (Mondays 02:00 UTC, `CRON_SECRET`). BOE One works out the week's figures in code, Claude writes the words through the existing `ANTHROPIC_API_KEY`, and the answer is checked before anything is saved: cited ad sets must exist and no figure may be added. A refused answer gets one more try; then the week is saved as failed and earlier reviews stay. A quiet week makes no call.

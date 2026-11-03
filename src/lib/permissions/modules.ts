@@ -486,14 +486,17 @@ registerModule({
 
 // Sales, Marketing and Pricing were registered together (20270515000000) and open a Coming soon page until the owner
 // sets out what each one does. Off for everybody until an administrator grants it.
-// Sales: the Lead Master first (20270524000000 adds create, edit and assign, and this description).
+// Sales: the Lead Master first (20270524000000 adds create, edit and assign), then the Lead Board (20270525000000 adds
+// view_all and this description).
 registerModule({
   moduleKey: 'sales',
   displayName: 'Sales',
-  description: 'Sales: the Lead Master, every lead and who holds it.',
+  description: 'Sales: My day, the Lead Board and the Lead Master.',
   actions: [
-    // view: open the module and read every lead.
+    // view: open the module and work your own leads.
     { actionKey: 'view', displayName: 'View' },
+    // view_all: read everyone's leads, a manager's sight. Protected (levels.ts), and it reads: it does not work a lead.
+    { actionKey: 'view_all', displayName: 'View All Leads' },
     // create: add a lead. edit: correct a lead's details (number, source, name, email, place, requirement).
     { actionKey: 'create', displayName: 'Create' },
     { actionKey: 'edit', displayName: 'Edit' },

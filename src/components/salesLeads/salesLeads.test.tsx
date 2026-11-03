@@ -141,16 +141,25 @@ describe('the confirmation when a name changes', () => {
 })
 
 describe('the duplicate warning', () => {
-  test('a lead that is allotted names the holder and the day, and its link goes nowhere yet', () => {
+  test('a lead this person may not open names the holder and the day, and offers no link', () => {
     const html = renderToStaticMarkup(<DupCallout lead={held} />)
     assert.ok(html.includes('This number is already in Lead Master'))
     assert.ok(html.includes('Lead #12401'))
     assert.ok(html.includes('2 Nov 2026'))
     assert.ok(html.includes('Allotted to'))
     assert.ok(html.includes('<b>Dhruv</b>'))
-    assert.ok(html.includes('aria-disabled="true"'))
-    assert.ok(!/<a [^>]*href/.test(html), 'there is no working link until Lead Management exists')
+    assert.ok(!/<a [^>]*href/.test(html), 'the database sends no stage for a lead this person may not open')
     assert.ok(html.includes('Nothing was saved.'))
+  })
+
+  test('a lead this person may open links to it on the board', () => {
+    const html = renderToStaticMarkup(<DupCallout lead={{ ...held, stage: 'new' } as SalesLead} />)
+    assert.ok(html.includes(`href="/sales/board?lead=${held.id}"`))
+  })
+
+  test('repeat enquiry is offered only where the screen can record one', () => {
+    assert.ok(!renderToStaticMarkup(<DupCallout lead={held} />).includes('repeat enquiry'))
+    assert.ok(renderToStaticMarkup(<DupCallout lead={held} onRepeat={async () => {}} />).includes('Same customer: record a repeat enquiry'))
   })
 
   test('a lead nobody holds yet says so', () => {
@@ -170,8 +179,11 @@ describe('the routes', () => {
     assert.ok(read('src/app/sales/layout.tsx').includes('<ModuleGuard moduleKey="sales" deniedRoute="/modules">'))
   })
 
-  test('/sales opens the Lead Master, and the list and the add page exist', () => {
-    assert.ok(read('src/app/sales/page.tsx').includes("redirect('/sales/lead-master')"))
+  test('/sales opens My day, and the board, the list and the add page exist', () => {
+    assert.ok(read('src/app/sales/page.tsx').includes("redirect('/sales/my-day')"))
+    assert.ok(read('src/app/sales/my-day/page.tsx').includes('<MyDayScreen />'))
+    assert.ok(read('src/app/sales/board/page.tsx').includes('<BoardScreen />'))
+    assert.ok(read('src/app/sales/board/page.tsx').includes('<Suspense'), 'the filters and the open lead live in the URL')
     assert.ok(read('src/app/sales/lead-master/page.tsx').includes('<LeadMasterScreen />'))
     assert.ok(read('src/app/sales/lead-master/page.tsx').includes('<Suspense'), 'the filters live in the URL, which needs a Suspense boundary')
     assert.ok(read('src/app/sales/lead-master/new/page.tsx').includes('<AddLeadScreen />'))

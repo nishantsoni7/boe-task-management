@@ -1,5 +1,7 @@
 # 27. Sales — Lead Master
 
+**Update 2026-11-03:** the Lead Board (module 28, `20270525000000`) changes three things here. `view` no longer reads every lead: a person sees their own, and `view_all`, `assign` and Admin see all. The duplicate warning links to the lead and can record a repeat enquiry, which replaces rule 8. `/sales` opens My day. The rest of this file describes the Lead Master as built.
+
 Written 2026-11-02 from the build, on branch `feat/sales-lead-master` (PR not yet opened). Migration `20270524000000_sales_lead_master.sql` was **NOT APPLIED** when this was written. Sales is module 24's second filled slot (Marketing was the first, module 26).
 
 ## 1. Purpose & users

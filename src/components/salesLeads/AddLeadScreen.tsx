@@ -8,7 +8,8 @@ import { Lock } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
-import { createLead, SALES_KEY, SalesRequestError, type SalesLead } from '@/lib/salesLeads/api'
+import { createLead, recordEnquiry, SALES_KEY, SalesRequestError, type SalesLead } from '@/lib/salesLeads/api'
+import { sourceLabel } from '@/lib/salesLeads/constants'
 import { dayLabelLong } from '@/lib/salesLeads/format'
 import { EMPTY_FORM, toInput, validateLead, type LeadForm } from '@/lib/salesLeads/validation'
 import { istToday } from '@/lib/istDate'
@@ -71,6 +72,12 @@ export function AddLeadScreen() {
     }
   }
 
+  // The same customer asked again: it goes on the lead they already are, and back to the top of its holder's day.
+  async function repeatEnquiry(lead: SalesLead) {
+    await recordEnquiry(supabase, lead.id, form.source ? sourceLabel(form.source) : 'Not said', form.requirement)
+    await queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
+  }
+
   const missing: string[] = []
   if (!phoneCanSave(phone)) missing.push('a valid mobile number')
   if (errors.source) missing.push('a lead source')
@@ -84,7 +91,7 @@ export function AddLeadScreen() {
   } else if (!canCreate) {
     body = (
       <div className="boe-empty">
-        <p className="boe-empty-title">You can read leads here but not add them</p>
+        <p className="boe-empty-title">You cannot add leads here</p>
         <p>Ask an administrator for the Create right on Sales.</p>
         <Link className="boe-btn boe-btn-secondary" href="/sales/lead-master">Back to the Lead Master</Link>
       </div>
@@ -114,8 +121,8 @@ export function AddLeadScreen() {
 
           <div className={s.panelBody}>
             <div ref={numberBox}>
-              <PhoneField form={form} onChange={change} status={phone} inputId="sales-add-phone" />
-              {raced && phone.kind !== 'taken' && <DupCallout lead={raced} />}
+              <PhoneField form={form} onChange={change} status={phone} inputId="sales-add-phone" onRepeat={repeatEnquiry} />
+              {raced && phone.kind !== 'taken' && <DupCallout lead={raced} onRepeat={repeatEnquiry} />}
             </div>
             <SourceField form={form} onChange={change} error={undefined} />
             <div className={s.divider}>Optional <span>· add what you know</span></div>

@@ -1,0 +1,8 @@
+/* The bar at the bottom of a phone. boe-mobile-bottom-nav decides when it shows (767 px and under). */
+.bottomNav { position: fixed; left: 0; right: 0; bottom: 0; height: 60px; background: #fff; border-top: 1px solid #F1EEE9; box-shadow: 0 -1px 8px rgba(0,0,0,.06); z-index: 50; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.bottomItem { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; font: 500 12px var(--boe-font-body); color: #686D6C; cursor: pointer; }
+.bottomItem[aria-current="page"] { color: #B9472E; font-weight: 600; }
+
+@media (max-width: 767px) {
+  .pageBody { padding-bottom: 76px; }
+}

@@ -20,6 +20,7 @@ import { LEAD_SOURCE_VALUES, MAX_EMAIL, MAX_LOCATION, MAX_NAME, MAX_REQUIREMENT 
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SQL = read('supabase/migrations/20270524000000_sales_lead_master.sql')
+const BOARD_SQL = read('supabase/migrations/20270525000000_sales_lead_board.sql')
 const API = read('src/lib/salesLeads/api.ts')
 
 // The six functions a browser may call, and the two internals it may not.
@@ -32,7 +33,8 @@ describe('registration', () => {
   test('Sales registers view, create, edit and assign, and the migration adds exactly the three new ones', () => {
     const sales = getRegisteredModule('sales')
     assert.ok(sales)
-    assert.deepEqual(sales.actions.map(a => a.actionKey), ['view', 'create', 'edit', 'assign'])
+    assert.deepEqual(sales.actions.map(a => a.actionKey), ['view', 'view_all', 'create', 'edit', 'assign'])
+    assert.ok(BOARD_SQL.includes("join public.permission_actions pa on pa.action_key = 'view_all'"), 'the Lead Board adds view_all')
     assert.ok(SQL.includes("pa.action_key in ('create', 'edit', 'assign')"))
     assert.equal((SQL.match(/pa\.action_key in \('create', 'edit', 'assign'\)/g) ?? []).length, 2, 'the action link and the Admin row')
   })
@@ -53,7 +55,7 @@ describe('registration', () => {
 
   test('the description is the one the code registers, in both tables', () => {
     const description = getRegisteredModule('sales')!.description
-    assert.equal(SQL.split(`set description = '${description}'`).length - 1, 2)
+    assert.equal(BOARD_SQL.split(`set description = '${description}'`).length - 1, 2)
   })
 })
 
@@ -177,7 +179,7 @@ describe('the app calls what exists', () => {
       if (fn === 'list_eligible_order_assignees') {
         assert.ok(read('supabase/migrations/20260697000000_order_request_assignee_eligibility.sql').includes('function public.list_eligible_order_assignees'))
       } else {
-        assert.ok(SQL.includes(`create function public.${fn}(`), `${fn} must exist in the migration`)
+        assert.ok(SQL.includes(`create function public.${fn}(`) || BOARD_SQL.includes(`create function public.${fn}(`), `${fn} must exist in a migration`)
       }
     }
   })

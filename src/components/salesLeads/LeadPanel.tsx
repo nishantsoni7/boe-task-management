@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, X } from 'lucide-react'
@@ -128,7 +129,9 @@ export function LeadPanel({ leadId, people, canAssign, canEdit, saving, onClose,
                 </ul>
               </div>
 
-              <div className={s.later}>Follow-ups and the status of the conversation will live in Lead Management, which is not built yet.</div>
+              {detail.data.lead.assigned_to && (
+                <Link className="boe-btn boe-btn-secondary" href={`/sales/board?lead=${detail.data.lead.id}`}>Open on the Lead Board</Link>
+              )}
             </div>
             {canEdit && (
               <div className={s.drawerFoot}>

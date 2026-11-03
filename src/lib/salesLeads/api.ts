@@ -1,4 +1,5 @@
 import type { createClient } from '@/lib/supabase/client'
+import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
 import type { LeadSource, Period } from './constants'
 
 // Thin typed wrappers over the database functions (20270524000000). There is no API route in between on purpose:
@@ -39,7 +40,7 @@ export type LeadPage = {
 }
 
 export type LeadEvent = {
-  kind: 'added' | 'allotted' | 'reassigned' | 'edited'
+  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again'
   from_name: string | null
   to_name: string | null
   /** For an edit: which fields changed, never their values. */
@@ -171,6 +172,113 @@ export const updateLead = (s: Supabase, id: string, i: LeadInput, expectedUpdate
 /** `expectedFrom` is who the screen showed as holding the lead (null = not allotted): the database refuses the change if that is stale. */
 export const allotLead = (s: Supabase, id: string, to: string, expectedFrom: string | null) =>
   call<SaveResult>(() => s.rpc('allot_sales_lead', { p_id: id, p_to: to, p_expected_from: expectedFrom }))
+
+// ── The Lead Board (20270525000000) ─────────────────────────────────────────
+
+/** A lead as My day, the board and the lead panel read it. */
+export type WorkLead = SalesLead & {
+  stage: Stage
+  temperature: Temperature
+  segment: Segment | null
+  client_type: ClientType | null
+  market: 'domestic' | 'export'
+  quantity: string | null
+  timeline: string | null
+  expected_value_paise: number | null
+  next_step: string | null
+  next_due_on: string | null
+  first_attempt_at: string | null
+  first_contact_at: string | null
+  last_activity_at: string | null
+  last_kind: string | null
+  no_answer_streak: number
+  enquired_again_at: string | null
+  dead_reason: string | null
+  dead_note: string | null
+  closed_at: string | null
+  stuck: boolean
+}
+
+export type Activity = {
+  id: string
+  kind: string
+  outcome: string
+  note: string | null
+  next_step: string | null
+  next_due_on: string | null
+  actor_name: string | null
+  at: string
+}
+
+export type WorkDetail = {
+  lead: WorkLead
+  /** What to show. The writes decide again for themselves. */
+  can_work: boolean
+  quotation_sent: boolean
+  events: LeadEvent[]
+  activities: Activity[]
+}
+
+export type MyDay = { rows: WorkLead[]; done_today: number; coming_up: number }
+
+export type BoardData = {
+  stats: { open: number; value_paise: number; overdue: number; due_today: number; stuck: number }
+  /** The real count and value of each stage, whatever is loaded. Closed stages cover the last 30 days. */
+  stages: Partial<Record<Stage, { n: number; value_paise: number }>>
+  rows: WorkLead[]
+  holders: { id: string; name: string; n: number }[]
+  /** Null unless this person can do something about the queue. */
+  waiting_allotment: number | null
+}
+
+export type BoardFilter = { holder: string; market: string; segment: string; temperature: string; source: string; q: string }
+
+export type WorkResult = { status: 'saved'; activity_id?: string; streak?: number; lead: WorkLead }
+export type MoveResult =
+  | { status: 'moved' | 'unchanged'; lead: WorkLead }
+  | { status: 'needs'; missing: NeededFact[]; lead: WorkLead }
+
+export type LeadFacts = Partial<{
+  name: string; email: string; location: string; requirement: string; quantity: string; timeline: string
+  segment: string; client_type: string; temperature: string; expected_value_paise: number | string
+}>
+
+export const fetchMyDay = (s: Supabase) => call<MyDay>(() => s.rpc('sales_my_day'))
+
+export const fetchBoard = (s: Supabase, f: BoardFilter) =>
+  call<BoardData>(() => s.rpc('sales_board', {
+    p_holder: f.holder || 'all', p_market: f.market || null, p_segment: f.segment || null,
+    p_temperature: f.temperature || null, p_source: f.source || null, p_q: f.q || null,
+  }))
+
+export const fetchWorkLead = (s: Supabase, id: string) =>
+  call<WorkDetail>(() => s.rpc('get_sales_lead', { p_id: id }))
+
+export const logActivity = (s: Supabase, id: string, a: { kind: string; outcome: string; note: string; nextStep: string; nextDue: string }) =>
+  call<WorkResult>(() => s.rpc('log_sales_lead_activity', {
+    p_id: id, p_kind: a.kind, p_outcome: a.outcome, p_note: blankToNull(a.note), p_next_step: a.nextStep, p_next_due: a.nextDue,
+  }))
+
+export const logNoAnswer = (s: Supabase, id: string) =>
+  call<WorkResult>(() => s.rpc('sales_lead_no_answer', { p_id: id }))
+
+export const logMessageSent = (s: Supabase, id: string, label: string) =>
+  call<WorkResult>(() => s.rpc('sales_lead_message_sent', { p_id: id, p_label: label }))
+
+export const undoActivity = (s: Supabase, activityId: string) =>
+  call<WorkResult>(() => s.rpc('undo_sales_lead_activity', { p_activity: activityId }))
+
+export const moveLead = (s: Supabase, id: string, to: Stage, from: Stage, extra: { reason?: string; note?: string; nextStep?: string; nextDue?: string } = {}) =>
+  call<MoveResult>(() => s.rpc('move_sales_lead', {
+    p_id: id, p_to: to, p_expected_from: from, p_reason: extra.reason ?? null, p_note: extra.note ? blankToNull(extra.note) : null,
+    p_next_step: extra.nextStep ?? null, p_next_due: extra.nextDue ?? null,
+  }))
+
+export const updateFacts = (s: Supabase, id: string, facts: LeadFacts) =>
+  call<WorkResult>(() => s.rpc('update_sales_lead_facts', { p_id: id, p_facts: facts }))
+
+export const recordEnquiry = (s: Supabase, id: string, source: string, note = '') =>
+  call<SaveResult>(() => s.rpc('record_sales_lead_enquiry', { p_id: id, p_source: source, p_note: blankToNull(note) }))
 
 /** Who can be given a lead: the same "sales candidate" rule Orders uses (active, in Sales or granted it). */
 export async function fetchPeople(s: Supabase): Promise<Person[]> {

@@ -6,6 +6,8 @@ Written 2026-10-31 from the build; merged 2026-11-01 as #557 (`3ac61f79`). Migra
 
 **Update 2026-11-02 (later):** Sales is now filled too, starting with the Lead Master: see `27-sales-lead-master.md`. From migration `20270524000000` Sales has `view`, `create`, `edit` and `assign` and its description reads "Sales: the Lead Master, every lead and who holds it." `/sales` redirects to `/sales/lead-master` (in `SalesLayout`), no longer Coming soon; the registration, the layout guard and the launcher card below still apply to it. Only Pricing is still Coming soon.
 
+**Update 2026-11-03:** the Lead Board follows: see `28-sales-lead-board.md`. From migration `20270525000000` Sales also has `view_all`, its description reads "Sales: My day, the Lead Board and the Lead Master.", and `/sales` redirects to `/sales/my-day`.
+
 ## 1. Purpose & users
 
 - The owner named three modules for future work (2026-10-31) and will say what goes in each later. Do not invent their features. Nothing in the app is known to belong to them yet.
