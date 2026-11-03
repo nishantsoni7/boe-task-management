@@ -33,9 +33,11 @@ import {
   COMMISSION_ICON_LABEL,
   cancelledOrderGapText,
   compareOrderNumber,
-  factoryStatus,
+  factoryView,
   orderListFlags,
   orderListSubtotal,
+  parseDispatchProgress,
+  type DispatchProgress,
 } from '@/lib/orders/orderListValue'
 import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
 import {
@@ -43,6 +45,7 @@ import {
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
 import { AdvanceCell } from './AdvanceCell'
+import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
 
@@ -139,8 +142,15 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 // be bookmarked or shared. A value the page does not recognise reads as the
 // default rather than breaking the page; a default is never written, so the
 // unfiltered list is a clean /orders/all.
+//
+// THE LIST OPENS ON RUNNING (owner, 2026-11-03): what is still being made is
+// what people come here for, and a Dispatched Order leaves it by itself
+// (20270528000000). "All orders" is a card away and is written to the URL as
+// ?status=all. A search or the operations queue looks at every status instead of
+// the default, so an Order somebody typed or was sent here for is never hidden
+// by it (see `widened` below).
 const ORDERS_LIST_PARAMS = {
-  status:   enumParam<StatusFilter>(['all', 'running', 'on_hold', 'ready_for_dispatch', 'dispatched', 'cancelled'], 'all'),
+  status:   enumParam<StatusFilter>(['all', 'running', 'on_hold', 'ready_for_dispatch', 'dispatched', 'cancelled'], 'running'),
   q:        textParam(),
   assignee: idParam(),
   source:   optionParam(Object.keys(LEAD_SOURCE_LABEL)),
@@ -195,16 +205,6 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
   if (a == null) return 1
   if (b == null) return -1
   return (a - b) * dir
-}
-
-/**
- * Factory Status: aligned for production by Operations (a green dot and the
- * word), or not yet (an amber pill). Only what still needs someone is loud
- * (owner, 2026-10-31).
- */
-function FactoryBadge({ alignment }: { alignment: string | null }) {
-  const f = factoryStatus(alignment)
-  return <span className={f.aligned ? 'orders-status-ok' : 'fin-pill fin-pill--zero'}>{f.label}</span>
 }
 
 /**
@@ -305,6 +305,13 @@ export default function AllOrdersPage() {
    * read. An Order only a visibility scope admits has no row here, so a dash too.
    */
   const [advance, setAdvance] = useState<Map<string, number | string | null>>(new Map())
+  /**
+   * HOW MUCH OF EACH ORDER HAS LEFT (owner, 2026-11-03; 20270528000000): one
+   * read beside the list, for the line under Factory Status. Until it lands, or
+   * if it fails — which is what happens before the migration is applied — no
+   * line is drawn and nothing is claimed.
+   */
+  const [dispatch, setDispatch] = useState<Map<string, DispatchProgress>>(new Map())
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -404,6 +411,11 @@ export default function AllOrdersPage() {
       .map(r => [r.order_id, r.advance_percent])))
   }
 
+  const loadDispatch = async () => {
+    const { data, error } = await supabase.rpc('orders_dispatch_progress')
+    setDispatch(error ? new Map() : parseDispatchProgress(data))
+  }
+
   const pendencyOverviews = useMemo(
     () => pendencyReads
       ? buildPendencyOverviews(orders.map(o => o.id), pendencyReads.approvals, pendencyReads.open)
@@ -434,6 +446,7 @@ export default function AllOrdersPage() {
         loadUnread(),
         loadPendencies(),
         loadAdvance(),
+        loadDispatch(),
         // The operations queue, only when it was asked for. Beside the
         // others, so the filtered list costs no extra wait.
         opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
@@ -478,8 +491,17 @@ export default function AllOrdersPage() {
     [orders],
   )
 
+  // THE RUNNING DEFAULT GIVES WAY (owner, 2026-11-03). Somebody who types 529, or
+  // arrives from the operations queue, is looking for an Order, not for the
+  // running ones: a Dispatched Order must not look as if it does not exist. The
+  // pressed card says "All orders" meanwhile, and the note below says why.
+  const widened = statusTab === 'running' && (search.trim() !== '' || opsFilter === 'awaiting')
+  const effectiveStatus: StatusFilter = widened ? 'all' : statusTab
+
+  // Running is the opening view and All orders is no filter at all, so neither
+  // counts as one; any other status card, person, source, date or word does.
   const filtersActive =
-    statusTab !== 'all' || assignee !== 'all' ||
+    (effectiveStatus !== 'all' && effectiveStatus !== 'running') || assignee !== 'all' ||
     source !== 'all' || dateFilter !== 'all' || search.trim() !== ''
 
   const clearFilters = () => {
@@ -533,9 +555,9 @@ export default function AllOrdersPage() {
   }, [baseFiltered])
 
   const visible = useMemo(() => {
-    const list = statusTab === 'all'
+    const list = effectiveStatus === 'all'
       ? baseFiltered
-      : baseFiltered.filter(o => o.status === statusTab)
+      : baseFiltered.filter(o => o.status === effectiveStatus)
 
     // Copy before sorting: `baseFiltered` may have been returned by reference.
     return [...list].sort((a, b) => {
@@ -546,7 +568,7 @@ export default function AllOrdersPage() {
         default:            return compareOrderNumber(b.display_number, a.display_number)
       }
     })
-  }, [baseFiltered, statusTab, sortKey])
+  }, [baseFiltered, effectiveStatus, sortKey])
 
   if (pageLoading) return <OrdersRouteFallback />
 
@@ -554,12 +576,14 @@ export default function AllOrdersPage() {
     <OrdersLayout
       profile={profile}
       title="Confirmed Orders"
-      subtitle="Complete order list across all statuses."
+      subtitle={effectiveStatus === 'running'
+        ? 'Orders still in production, including part dispatched. Choose All orders to see every status.'
+        : 'Complete order list across all statuses.'}
       onSignOut={handleSignOut}
       /* Refresh re-reads these: a reader who has just opened an Order in
          another tab expects its badge to be gone when they come back, and a
          payment verified meanwhile to count in its Advance. */
-      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance()]) }}
+      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch()]) }}
     >
       {deletedBanner && (
         <div style={{
@@ -611,7 +635,7 @@ export default function AllOrdersPage() {
       <FinanceStatusCards
         ariaLabel="Order status"
         noun="order"
-        active={statusTab}
+        active={effectiveStatus}
         onSelect={setStatusTab}
         cards={STATUS_CARDS.map(c => ({ ...c, count: listLoading && orders.length === 0 ? null : tabCounts[c.key] }))}
       />
@@ -706,6 +730,14 @@ export default function AllOrdersPage() {
           </div>
         </div>
 
+        {/* The Running default gave way to a search: said in words, with the way back. */}
+        {widened && opsFilter !== 'awaiting' && (
+          <div className="orders-search-note" role="status">
+            <span>Searching every status for “{search.trim()}”, so a finished order is never hidden.</span>
+            <button type="button" onClick={() => setSearchInput('')}>Back to Running</button>
+          </div>
+        )}
+
         {/* A REFRESH KEEPS THE ROWS. The table used to be swapped for
             "Loading…" on every re-read, which threw the reader back to the
             top; the rows stay on screen while a read is in flight. */}
@@ -738,6 +770,19 @@ export default function AllOrdersPage() {
               action={
                 <button type="button" onClick={clearFilters} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
                   Clear filters
+                </button>
+              }
+            />
+          ) : effectiveStatus === 'running' && orders.length > 0 ? (
+            // The opening view is empty but the business is not: every Order is
+            // finished, on hold or cancelled. Say that, and offer the rest.
+            <FinanceEmpty
+              icon="box"
+              title="No running orders right now."
+              body="Every order is finished, on hold or cancelled. Choose All orders to see them."
+              action={
+                <button type="button" onClick={() => setStatusTab('all')} className="boe-btn boe-btn-secondary" style={{ padding: '6px 14px', fontSize: '13px' }}>
+                  Show all orders
                 </button>
               }
             />
@@ -789,7 +834,7 @@ export default function AllOrdersPage() {
                   <div className="orders-list-card-client">{o.client_name}</div>
                   <div className="orders-list-card-meta">
                     <span className="orders-list-card-value">{fmtAmount(o.subtotal)}</span>
-                    <FactoryBadge alignment={o.production_alignment} />
+                    <span><FactoryCell view={factoryView(o, dispatch.get(o.id))} /></span>
                   </div>
                   <div className="orders-list-card-meta">
                     <span>Advance</span>
@@ -834,16 +879,22 @@ export default function AllOrdersPage() {
                     content has a known size, percentages for the rest so a
                     wide window spreads out evenly, and Client takes what is
                     left. They fit .fin-table--orders' min-width with nothing
-                    cut; change one and measure at that width. */}
+                    cut; change one and measure at that width.
+
+                    2026-11-03: Factory Status 136 -> 212px for "Part dispatched ·
+                    22 of 74 pcs", and the floor 1120 -> 1196. The percentages
+                    were scaled DOWN so each keeps the pixel width it was measured
+                    at on 2026-10-31 (11% of 1120 = 10.3% of 1196, 12.4% = 11.6%,
+                    9.6% = 9%): nothing else is narrower, and Client still has 170px+. */}
                 <col style={{ width: '116px' }} />{/* Project code + markers, update note under it */}
                 <col />{/* Client, lead source under it */}
-                <col style={{ width: '11%' }} />{/* Product Value (the Subtotal) */}
+                <col style={{ width: '10.3%' }} />{/* Product Value (the Subtotal) */}
                 <col style={{ width: '96px' }} />{/* Advance (owner, 2026-11-01) */}
-                <col style={{ width: '136px' }} />{/* Factory Status, 24px of it after the money */}
+                <col style={{ width: '212px' }} />{/* Factory Status, 24px of it after the money; 212 so "Part dispatched · 22 of 74 pcs" is not cut (2026-11-03) */}
                 <col style={{ width: '116px' }} />{/* Pendencies (owner, 2026-10-27) */}
-                <col style={{ width: '12.4%' }} />{/* Sales person */}
-                <col style={{ width: '9.6%' }} />{/* Confirmed */}
-                <col style={{ width: '9.6%' }} />{/* Due, "Overdue" under it */}
+                <col style={{ width: '11.6%' }} />{/* Sales person */}
+                <col style={{ width: '9%' }} />{/* Confirmed */}
+                <col style={{ width: '9%' }} />{/* Due, "Overdue" under it */}
               </colgroup>
               <thead>
                 <tr>
@@ -932,7 +983,7 @@ export default function AllOrdersPage() {
                             <AdvanceCell percent={advance.get(o.id)} />
                           </td>
                           <td className="orders-after-value">
-                            <FactoryBadge alignment={o.production_alignment} />
+                            <FactoryCell view={factoryView(o, dispatch.get(o.id))} />
                           </td>
                           <td>
                             <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />

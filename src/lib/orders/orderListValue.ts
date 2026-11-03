@@ -21,6 +21,7 @@
 // known at all — null, drawn as a dash and sorted last.
 
 import { STANDARD_ADVANCE_PERCENT } from './advanceFormula'
+import { piecesText } from './dispatch'
 import { effectiveSampleType, type SampleType } from './sampleType'
 
 export type SourcePiFigures = {
@@ -116,6 +117,86 @@ export const COMMISSION_ICON_LABEL = 'Middleman commission'
 export function factoryStatus(productionAlignment: string | null | undefined): { aligned: boolean; label: string } {
   const aligned = productionAlignment === 'aligned'
   return { aligned, label: aligned ? FACTORY_ALIGNED_LABEL : FACTORY_NOT_ALIGNED_LABEL }
+}
+
+// ── FACTORY STATUS SAYS WHERE THE ORDER IS AND HOW MUCH HAS LEFT (owner, 2026-11-03) ──
+//
+// What has gone out decides where an Order sits (20270528000000): every piece
+// sent = Dispatched, which leaves the Running list; part sent with the rest
+// still being made = Running; part sent with the rest fully ready = Ready for
+// Dispatch. Part dispatched is NOT a status of its own: it is a line under the
+// status, so the three lists stay the three the owner described.
+//
+// The words come from the Order's own status, and only a Running Order says
+// Aligned or Not Aligned (production alignment answers "may the factory start",
+// which is a question about Running). The line under it comes from
+// orders_dispatch_progress(), one read beside the list: until it lands, or if it
+// fails (before the migration is applied), there is no line and nothing is
+// claimed.
+
+export type DispatchProgress = { ordered: number; dispatched: number; lastDispatchedOn: string | null }
+
+/** orders_dispatch_progress()'s rows, made safe: a row that is not a pair of real numbers is dropped. */
+export function parseDispatchProgress(raw: unknown): Map<string, DispatchProgress> {
+  const out = new Map<string, DispatchProgress>()
+  if (!Array.isArray(raw)) return out
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue
+    const row = r as Record<string, unknown>
+    const id = typeof row.order_id === 'string' ? row.order_id : ''
+    const ordered = num(row.ordered)
+    const dispatched = num(row.dispatched)
+    if (!id || ordered === null || dispatched === null || dispatched <= 0) continue
+    const last = typeof row.last_dispatched_on === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.last_dispatched_on)
+      ? row.last_dispatched_on.slice(0, 10) : null
+    out.set(id, { ordered, dispatched, lastDispatchedOn: last })
+  }
+  return out
+}
+
+export type FactoryTone = 'not_aligned' | 'aligned' | 'on_hold' | 'ready' | 'dispatched'
+export type FactoryView = { tone: FactoryTone; label: string; note: string | null }
+
+export const FACTORY_ON_HOLD_LABEL = 'On hold'
+export const FACTORY_READY_LABEL = 'Ready for dispatch'
+export const FACTORY_DISPATCHED_LABEL = 'Dispatched'
+
+const pieces = (n: number): string => n.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+
+/** "28 Oct" from a plain YYYY-MM-DD: read as written, never shifted by a time zone. */
+function dayAndMonth(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
+
+export function factoryView(
+  o: { status: string; production_alignment: string | null | undefined },
+  progress?: DispatchProgress | null,
+): FactoryView {
+  const aligned = factoryStatus(o.production_alignment)
+  const base: Pick<FactoryView, 'tone' | 'label'> =
+    o.status === 'dispatched' ? { tone: 'dispatched', label: FACTORY_DISPATCHED_LABEL }
+    : o.status === 'ready_for_dispatch' ? { tone: 'ready', label: FACTORY_READY_LABEL }
+    : o.status === 'on_hold' ? { tone: 'on_hold', label: FACTORY_ON_HOLD_LABEL }
+    : { tone: aligned.aligned ? 'aligned' : 'not_aligned', label: aligned.label }
+
+  if (!progress || progress.dispatched <= 0) return { ...base, note: null }
+  const sent = progress.dispatched
+  const all = progress.ordered > 0 && sent >= progress.ordered
+  let note: string
+  if (o.status === 'dispatched') {
+    // Closed by the dispatches themselves: say what went and when. Closed by hand
+    // with pieces still unrecorded (an older Order): say how much is recorded.
+    note = all
+      ? `${piecesText(sent)}${progress.lastDispatchedOn ? ` · last ${dayAndMonth(progress.lastDispatchedOn)}` : ''}`
+      : `${pieces(sent)} of ${piecesText(progress.ordered)} recorded`
+  } else if (all) {
+    // Everything has gone but the Order has not closed yet (before the roll-up ran): say so, claim nothing else.
+    note = `All dispatched · ${piecesText(sent)}`
+  } else {
+    note = `Part dispatched · ${pieces(sent)} of ${piecesText(progress.ordered)}`
+  }
+  return { ...base, note }
 }
 
 // ── PROJECT CODE ORDER AND THE CANCELLED GAP (owner, 2026-10-31) ─────────────

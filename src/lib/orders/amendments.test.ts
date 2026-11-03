@@ -489,6 +489,7 @@ describe('amendmentErrorMessage', () => {
       ['ORDER_CLOSED: ...',                    'closed'],
       ['ORDER_ALREADY_CANCELLED: ...',         'already been cancelled'],
       ['ORDER_DISPATCHED: ...',                'already been dispatched'],
+      ['ORDER_PART_DISPATCHED: ...',           'revise the PI down to what was sent'],
       ['ORDER_VALUE_NEGATIVE: ...',            'cannot be negative'],
       ['ORDER_CHANGE_REQUEST_REVIEWED: ...',   'already been reviewed'],
       ['ORDER_CHANGE_REQUEST_STALE: ...',      'changed after the request was raised'],

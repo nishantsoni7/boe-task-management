@@ -373,10 +373,14 @@ type ActivityEntry = {
 // the value and every stored row was migrated to 'running'.
 type OrderStatus = 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
 
+// Mirrors orders_enforce_status_transition(). ready_for_dispatch -> running was
+// added with 20270528000000 ("more work appeared after Ready"); dispatched is
+// still terminal HERE, because the only way back out of an automatic close is an
+// administrator removing a dispatch, which the database undoes by itself.
 const TRANSITION_GRAPH: Record<OrderStatus, OrderStatus[]> = {
   running:            ['on_hold',   'ready_for_dispatch', 'cancelled'],
   on_hold:            ['running',   'cancelled'],
-  ready_for_dispatch: ['dispatched','cancelled'],
+  ready_for_dispatch: ['running',   'dispatched','cancelled'],
   dispatched:         [],
   cancelled:          [],
 }
@@ -611,9 +615,12 @@ function StatusControl({
   onStatusChanged,
   onOutOfDate,
   onRequestCancel,
+  hasDispatch = false,
 }: {
   order: Order
   profile: UserProfile
+  /** Something has already left: the database refuses to cancel (20270528000000), so the menu does not offer it. */
+  hasDispatch?: boolean
   /** The row AS THE DATABASE STORED IT, never the value that was asked for. */
   onStatusChanged: (updated: { status: string; updated_at: string }) => void
   /** The Order moved underneath this screen: re-read everything. */
@@ -624,7 +631,7 @@ function StatusControl({
   const [saving,         setSaving]         = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
-  const targets = allowedTransitions(profile, order.status)
+  const targets = allowedTransitions(profile, order.status).filter(s => !(hasDispatch && s === 'cancelled'))
   if (targets.length === 0) return null
 
   const doStatusChange = async (newStatus: OrderStatus) => {
@@ -3300,6 +3307,7 @@ export default function OrderDetailPage() {
                 order={order}
                 profile={profile}
                 onRequestCancel={() => setCancelOpen(true)}
+                hasDispatch={!!dispatchLedger && dispatchLedger.dispatched > 0}
                 onStatusChanged={updated => {
                   // Both values are the DATABASE's, read back by the update
                   // itself — `updated_at` is written by a trigger and is shown

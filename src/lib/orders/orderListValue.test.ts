@@ -157,7 +157,7 @@ describe('the Advance column (owner, 2026-11-01)', () => {
     assert.ok(page.includes("supabase.rpc('orders_advance_percent')"))
     assert.ok(page.includes('setAdvance(new Map(error ? [] :'), 'a failed read draws no old figure')
     assert.match(page, /loadPendencies\(\),\s+loadAdvance\(\),/)
-    assert.ok(page.includes('await Promise.all([loadOrders(), loadUnread(), loadAdvance()])'))
+    assert.ok(page.includes('await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch()])'))
   })
 
   test('the table and the phone card draw it, and a cancelled Order has none', () => {
@@ -181,10 +181,17 @@ describe('the table redesign (owner, 2026-10-31)', () => {
     const widths = [...page.matchAll(/<col(?: style=\{\{ width: '([\d.]+)(px|%)' \}\})? \/>/g)]
     assert.equal(widths.length, 9)
     assert.deepEqual(widths.map(m => m[1] ? `${m[1]}${m[2]}` : 'auto'),
-      ['116px', 'auto', '11%', '96px', '136px', '116px', '12.4%', '9.6%', '9.6%'])
+      ['116px', 'auto', '10.3%', '96px', '212px', '116px', '11.6%', '9%', '9%'])
 
     const floor = Number(/\.fin-table--orders \{ min-width: (\d+)px; \}/.exec(css)?.[1])
-    assert.equal(floor, 1120)
+    assert.equal(floor, 1196)
+    // 2026-11-03: Factory Status gained 76px for "Part dispatched · 22 of 74 pcs"; the percentages
+    // were scaled so each keeps the pixel width measured on 2026-10-31 at the old 1120 floor.
+    const wasPx = (pct: number) => Math.round(1120 * pct / 100)
+    const nowPx = (pct: number) => Math.round(floor * pct / 100)
+    for (const [was, now] of [[11, 10.3], [12.4, 11.6], [9.6, 9]] as const) {
+      assert.ok(nowPx(now) >= wasPx(was) - 1, `a column got narrower than measured: ${now}% is ${nowPx(now)}px, was ${wasPx(was)}px`)
+    }
     const taken = widths.reduce((sum, m) => sum + (m[2] === 'px' ? Number(m[1]) : m[2] === '%' ? floor * Number(m[1]) / 100 : 0), 0)
     // The longest client still has a column at the floor.
     assert.ok(floor - taken >= 170, `Client is left ${floor - taken}px`)
@@ -199,8 +206,11 @@ describe('the table redesign (owner, 2026-10-31)', () => {
   })
 
   test('a good state is a dot and a word, a problem is a pill', () => {
-    assert.ok(page.includes("className={f.aligned ? 'orders-status-ok' : 'fin-pill fin-pill--zero'}"))
-    assert.equal(page.includes('fin-pill--full'), false)
+    // Drawn by FactoryCell since 2026-11-03 (see factoryStatusView.test.ts and factoryCell.render.test.tsx).
+    const cell = readFileSync('src/app/orders/all/FactoryCell.tsx', 'utf8')
+    assert.ok(cell.includes("view.tone === 'aligned' ? <span className=\"orders-status-ok\">"))
+    assert.ok(cell.includes('<span className="fin-pill fin-pill--zero">'))
+    assert.equal(page.includes('fin-pill--full'), false, 'the page itself draws no pill')
     assert.ok(rule('.orders-status-ok::before').includes('background: #3F9B6E'))
   })
 

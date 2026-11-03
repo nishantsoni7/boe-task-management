@@ -1211,6 +1211,8 @@ describe('the applied migrations are frozen', () => {
       '20270526000100_sales_go_live.sql',
       // Sales, after the first full review: who can hold a lead, Converted checked, ClickUp's full history.
       '20270527000000_sales_review_fixes.sql',
+      // Orders, dispatch drives the status: the roll-up, Ready back to Running, no cancel after a dispatch, the list's read.
+      '20270528000000_order_dispatch_status_rollup.sql',
     ])
   })
 
@@ -1673,6 +1675,8 @@ describe('the applied migrations are frozen', () => {
       '20270526000100_sales_go_live.sql',
       // Sales, after the first full review: who can hold a lead, Converted checked, ClickUp's full history.
       '20270527000000_sales_review_fixes.sql',
+      // Orders, dispatch drives the status: the roll-up, Ready back to Running, no cancel after a dispatch, the list's read.
+      '20270528000000_order_dispatch_status_rollup.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

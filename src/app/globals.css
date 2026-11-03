@@ -11201,9 +11201,11 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 
 /* A wide table scrolls inside its board instead of crushing its columns. */
 .fin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-/* 1120: the 1020 measured on 2026-10-31, when 880 cut the status pills and the
-   dates, plus the Advance column. Below this the table scrolls, which cuts nothing. */
-.fin-table--orders { min-width: 1120px; }
+/* 1196: the 1020 measured on 2026-10-31, when 880 cut the status pills and the
+   dates, plus the Advance column (1120), plus the 76px Factory Status gained on
+   2026-11-03 for "Part dispatched · 22 of 74 pcs". Below this the table scrolls,
+   which cuts nothing. */
+.fin-table--orders { min-width: 1196px; }
 .fin-table--drafts { min-width: 920px; }
 
 /* An Order with unread updates: a tint and a left edge, as before. */
@@ -11531,6 +11533,18 @@ textarea.pi-form-input { height: auto; }
    The word carries the meaning, so colour is never the only signal. */
 .orders-status-ok { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #4C5352; white-space: nowrap; }
 .orders-status-ok::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #3F9B6E; flex-shrink: 0; }
+/* Dispatched: finished, so a grey dot and a quiet word. */
+.orders-status-done { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #686D6C; white-space: nowrap; }
+.orders-status-done::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #A8A39C; flex-shrink: 0; }
+/* The line under Factory Status: how much has left. Blue like "Part dispatched" on
+   the Dispatch tab; plain text, so the row stays as tall as the Client cell. */
+.orders-dispatch { display: block; margin-top: 3px; }
+.orders-dispatch .fin-sub { margin-top: 0; font-size: 12px; font-weight: 500; color: #335A86; white-space: nowrap; overflow: visible; }
+.orders-dispatch--done .fin-sub { font-weight: 400; color: #8F9392; }
+.orders-list-card .orders-dispatch { margin-top: 0; }
+/* The Running default gave way to a search. */
+.orders-search-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 14px; border-bottom: 1px solid #E4DED7; background: #EAF0F8; color: #335A86; font-size: 13px; }
+.orders-search-note button { font: inherit; font-weight: 600; color: #335A86; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; min-height: 32px; }
 
 /* Advance: every value has the padding, and the table pulls it back, so the
    digits line up under the heading with or without the red below 40%. */
