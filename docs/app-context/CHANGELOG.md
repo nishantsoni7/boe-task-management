@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-03 — Sales: Can be given leads, a tick per person (PR pending) · 20270529000000 → NOT APPLIED
+- **Owner request.** Nitish (a Manager, who reads every lead) and the dummy test account must not show in the lead allocation lists.
+- **Changed.** The Sales team tab has a **Can be given leads** tick per person. A Salesperson is ticked unless unticked; a Manager or a Lead manager is unticked unless ticked. The allot lists, Give to someone else, moving the due leads and the import all follow it. Leads already held stay with their holder.
+- **Database.** `sales_lead_holding` (only a tick that differs from the job is kept), `set_sales_lead_holding` (Admin only), `sales_lead_can_hold` and `list_sales_team` re-issued. Rollback in the header.
+- **Rollout.** Apply before merging: the Sales team tab reads `can_hold` and `hold_set`. Then untick the dummy account; tick Dhruv if he also sells.
+- **Proof.** `supabase/tests/sales_full_flow_pglite.mjs` (54 checks), `team.test.ts`. Not seen signed in.
+
 ## 2026-11-03 — Orders: the Record dispatch screen is scan first (PR #600 merged as e980e2da, 2026-11-03) · no migration
 - **Owner request.** Upload the invoice and the e-way bill, have them scanned and the details filled in, and keep every field for typing or correcting. Scan first, then manual, for both papers. Plan and mockups approved 2026-11-03.
 - **Changed.** Three steps, each paper in its own box with its fields under it: 1 Invoice, 2 E-way bill, 3 Dispatch and transport (LR / bilty optional). Choose file, drag a file onto the box, or take a photo on a phone; several papers per box; Remove. A paper in the wrong box moves to the right one. The paper being checked shows beside the details. The save bar says whether Save closes the Order as Dispatched or leaves it where it is.

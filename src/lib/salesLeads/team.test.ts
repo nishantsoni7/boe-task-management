@@ -7,10 +7,10 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { rightsFor, roleOf, type SalesTeamMember } from './team'
+import { holdChoice, holdsByDefault, rightsFor, roleOf, type SalesTeamMember } from './team'
 
 const person = (over: Partial<SalesTeamMember> = {}): SalesTeamMember => ({
-  id: 'u1', name: 'Asha', is_admin: false, candidate: true, view: false, view_all: false, create: false, edit: false, assign: false, juniors: [], ...over,
+  id: 'u1', name: 'Asha', is_admin: false, candidate: true, view: false, view_all: false, create: false, edit: false, assign: false, juniors: [], can_hold: false, hold_set: null, ...over,
 })
 const changes = (m: SalesTeamMember, role: Parameters<typeof rightsFor>[1], adds = false) =>
   Object.fromEntries(rightsFor(m, role, adds).map(c => [c.actionKey, c.allowed]))
@@ -42,5 +42,21 @@ describe('the rights a job means', () => {
   })
   test('nothing is sent when nothing changes', () => {
     assert.deepEqual(rightsFor(person({ view: true }), 'sales', false), [])
+  })
+})
+
+describe('Can be given leads', () => {
+  test('a Salesperson is, by their job; a Manager and a Lead manager are not', () => {
+    assert.equal(holdsByDefault('sales'), true)
+    assert.equal(holdsByDefault('manager'), false)
+    assert.equal(holdsByDefault('lead_manager'), false)
+    assert.equal(holdsByDefault('none'), false)
+  })
+  test('only a tick that differs from the job is kept as a choice', () => {
+    assert.equal(holdChoice('sales', false), false, 'a Salesperson kept out, like the dummy account')
+    assert.equal(holdChoice('manager', true), true, 'a Manager who also sells')
+    assert.equal(holdChoice('sales', true), null, 'what the job means anyway')
+    assert.equal(holdChoice('manager', false), null)
+    assert.equal(holdChoice('none', true), null, 'no job, no choice')
   })
 })

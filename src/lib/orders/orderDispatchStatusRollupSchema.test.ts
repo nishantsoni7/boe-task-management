@@ -48,9 +48,11 @@ describe('the status graph: the database and the Order page agree, as 2026081900
 })
 
 describe('what the migration does and does not do', () => {
-  test('it is later than every migration before it, so it applies last', () => {
-    const others = readdirSync('supabase/migrations').filter(f => f !== FILE && /^\d{14}_/.test(f)).map(f => f.slice(0, 14))
-    assert.ok(others.every(v => v < FILE.slice(0, 14)), 'a later migration exists: renumber this one above it')
+  test('it comes straight after the newest migration of its day, so it applied last', () => {
+    // Applied 2026-11-03, when 20270527000000 was the newest. Migrations written since are numbered above it, which is
+    // fine; one numbered below it, after it was applied, would never run in order.
+    const versions = readdirSync('supabase/migrations').filter(f => /^\d{14}_/.test(f)).map(f => f.slice(0, 14)).sort()
+    assert.equal(versions[versions.indexOf(FILE.slice(0, 14)) - 1], '20270527000000', 'a migration is numbered just below this one')
   })
 
   test('both roll-up triggers are DEFERRED constraint triggers, so they read the finished state', () => {

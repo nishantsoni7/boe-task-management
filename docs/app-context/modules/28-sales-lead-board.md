@@ -13,6 +13,7 @@ Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Mi
 - **PR #594:** My day, the board, the lead panel, the stage checklist, No answer, WhatsApp quick messages, Undo, repeat enquiries, and who sees what in the database.
 - **PR #595 (972413c3, merged 2026-11-03; `20270526000000` and `20270526000100` APPLIED before the merge):** the ClickUp import, the Team page, Control Center's Sales team tab, the Sales inbox and alerts.
 - **Review fixes and ClickUp's full history (migration `20270527000000`, APPLIED 2026-11-03):** a full review of the flow as salesperson, manager and Admin found ten problems; all are fixed (rules 17 to 23). The import can now take every ClickUp comment with its own date and author.
+- **Can be given leads (migration `20270529000000`, NOT APPLIED when written):** a per-person tick on the Sales team tab (rule 25).
 - **Not built:** automatic capture and automatic allotment (section 11).
 - Checked by `tsc`, lint, the tests in section 10, and the real migrations in an in-memory Postgres (the whole journey: 50 checks). The live pages and bundle were checked after the #595 deploy. **Not yet seen signed in.**
 
@@ -44,6 +45,7 @@ Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Mi
 - `move_sales_lead` answers `{status:'needs', missing:[...]}` instead of raising, so the screen asks for the fact.
 - **`20270526000100`:** `sales_leads` gains `imported_at` and `furthest_rank` (1 to 5, kept by trigger, for the funnel: a dead lead's stage no longer says how far it got). `sales_lead_imports` (one row per ClickUp task, with its non-empty fields in `raw`; no browser access). Dead reasons gain `no_requirement` and `not_relevant`. Activity kind and outcome `imported`, event kind `imported`. New functions: `import_sales_leads`, `sales_team_overview`, `sales_lead_remind`, `reassign_due_sales_leads`, `list_sales_team`, `set_sales_lead_juniors`, `sales_lead_send_alerts` (service role only), `sales_lead_notify` (internal). Re-issued: `sales_lead_stuck`, `sales_leads_page`, `get_sales_lead` (adds `clickup`), `sales_board`, `allot_sales_lead`, `record_sales_lead_enquiry`.
 - **`20270527000000`:** `sales_lead_import_refs` (one row per ClickUp comment, status and exported latest comment, so a history import never adds anything twice; no browser access). Outcome `not_interested`, event kind `clickup_status`. New: `sales_lead_can_hold` (internal), `list_sales_lead_holders`, `import_sales_lead_history`. Re-issued: `sales_lead_record`, `move_sales_lead`, `update_sales_lead_facts`, `sales_my_day`, `allot_sales_lead`, `reassign_due_sales_leads`, `import_sales_leads`, `sales_team_overview`, `sales_lead_send_alerts`. Rollback in the header.
+- **`20270529000000`:** `sales_lead_holding` (user, can_hold; no row = what the job means; no browser access), `set_sales_lead_holding` (Admin only; null removes the choice). Re-issued: `sales_lead_can_hold`, `list_sales_team` (adds `can_hold` and `hold_set`).
 
 ## 5. Permissions & access
 
@@ -60,7 +62,7 @@ Module `sales`, actions `view`, `view_all` (new), `create`, `edit`, `assign`.
 
 Control Center words: **Salesperson** is `view`, with Can add leads for `create`. **Manager** is `view` and `view_all`. **Lead manager** is `view`, `create`, `edit` and `assign`. A senior is a Salesperson with named juniors. The rights go through the existing permission route, so they carry the usual audit trail.
 
-**Who can be given a lead (since 20270527):** anybody active with a Sales job (Sales `view`), except Admin accounts. `sales_lead_can_hold` decides it for allotting, Give to someone else and the import; `list_sales_lead_holders` feeds every picker. Before, it was the Orders rule (Sales department, or the Orders assignee grant), so somebody given a Sales job outside the Sales department could not be allotted, and somebody in it with No access could.
+**Who can be given a lead (since 20270529):** active, not an Admin account, a Sales job (Sales `view`), and then the **Can be given leads** tick on the Sales team tab: ticked by default for a Salesperson, unticked by default for a Manager and a Lead manager (owner, 2026-11-03: Nitish, a Manager, and the dummy test account must not show in the allocation lists). From 20270527 to 20270529 it was anybody with a Sales job. `sales_lead_can_hold` decides it for allotting, Give to someone else and the import; `list_sales_lead_holders` feeds every picker. Before, it was the Orders rule (Sales department, or the Orders assignee grant), so somebody given a Sales job outside the Sales department could not be allotted, and somebody in it with No access could.
 
 Enforced in the functions and in RLS. **This reverses module 27's "view reads every lead".** The duplicate check still names a number's holder to anyone adding a lead, with no other detail. On the board, the "Leads of" chips and the avatars show for anyone who can see more than one person's leads, and a card can be moved only by those who may work it.
 
@@ -93,6 +95,7 @@ From the review of 2026-11-03 (owner: "fix all 10"), migration `20270527000000`:
 22. **The lead on top of My day stays on top** until something is done to it; the once-a-minute refresh no longer swaps it. The Waiting clocks move on with each refresh.
 23. **The evening "not called yet" reminder** looks only for its own earlier message that day, so a manager who also holds leads still gets it.
 24. **ClickUp's full history.** `scripts/clickup-history.mjs` reads every comment (date, author, replies) and, where ClickUp keeps it, each status's start date, from ClickUp's API with the owner's own token, into `history.jsonl`. The Import page takes it with the CSVs: each comment becomes a ClickUp history entry with its real date; each status a "In ClickUp: …" line; the copy of the latest comment that the export dated by "Date Updated" is hidden; and, until something is done in BOE One, the lead's first-contact, last-contact and stage dates move to ClickUp's real ones. Running it twice adds nothing.
+25. **Can be given leads** (owner, 2026-11-03), migration `20270529000000`: a tick per person on the Sales team tab, beside Can add leads. A Salesperson is ticked unless unticked (the dummy test account is); a Manager or a Lead manager is unticked unless ticked (Dhruv, if he also sells). Only a tick that differs from the job is stored, so a later change of job still counts. Every picker follows it; leads already held stay with their holder.
 
 ## 7. Key components & lib files
 

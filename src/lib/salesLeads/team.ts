@@ -17,13 +17,17 @@ export type SalesTeamMember = {
   edit: boolean
   assign: boolean
   juniors: string[]
+  /** Leads can be given to them now (sales_lead_can_hold). */
+  can_hold: boolean
+  /** The choice made for them in Control Center; null follows their job. */
+  hold_set: boolean | null
 }
 
 export const SALES_ROLES = [
   { value: 'none', label: 'No access', hint: 'Sales does not open for them, and no lead can be given to them.' },
-  { value: 'sales', label: 'Salesperson', hint: 'Can be given leads. Sees and works their own.' },
-  { value: 'manager', label: 'Manager', hint: 'Reads everyone\'s leads and the Team page. Works only their own.' },
-  { value: 'lead_manager', label: 'Lead manager', hint: 'Adds, allots and works every lead, and runs imports.' },
+  { value: 'sales', label: 'Salesperson', hint: 'Sees and works their own leads. Can be given leads unless unticked.' },
+  { value: 'manager', label: 'Manager', hint: 'Reads everyone\'s leads and the Team page. Works only their own. Given leads only if ticked.' },
+  { value: 'lead_manager', label: 'Lead manager', hint: 'Adds, allots and works every lead, and runs imports. Given leads only if ticked.' },
 ] as const
 export type SalesRole = typeof SALES_ROLES[number]['value']
 
@@ -48,6 +52,18 @@ export function rightsFor(m: SalesTeamMember, role: SalesRole, adds: boolean): R
   return (Object.keys(wanted) as (keyof typeof wanted)[])
     .filter(key => wanted[key] !== m[key])
     .map(key => ({ moduleKey: 'sales', actionKey: key, allowed: wanted[key] }))
+}
+
+/** What a job means for being given leads, when nobody has chosen otherwise: a Salesperson yes, everybody else no. */
+export const holdsByDefault = (role: SalesRole) => role === 'sales'
+
+/** The choice to keep: null when the tick says what the job means anyway, so a later job change still counts. */
+export const holdChoice = (role: SalesRole, ticked: boolean): boolean | null =>
+  role === 'none' || ticked === holdsByDefault(role) ? null : ticked
+
+export async function saveHolding(s: Supabase, user: string, canHold: boolean | null): Promise<void> {
+  const { error } = await s.rpc('set_sales_lead_holding', { p_user: user, p_can_hold: canHold })
+  if (error) throw new Error('Whether leads can be given to them could not be saved. Try again.')
 }
 
 export async function fetchSalesTeam(s: Supabase): Promise<SalesTeamMember[]> {
