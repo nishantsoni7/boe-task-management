@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-03 — Sales: website leads allotted by themselves (PR #608) · 20270602000000 → NOT APPLIED
+## 2026-11-03 — Sales: website leads allotted by themselves (PR #608) · 20270602000000 → APPLIED 2026-11-03, before the merge (seen in the migration list)
 - **Owner request.** Phase 3 of the plan ("Yes, build it"): Premium projects (200+ restaurant, 25+ room hotel, ₹15 lakh+) to the experienced first, Mohit and Ashok, then Prerna, Saksham, Shravi; Namrata only when everybody is overloaded; one universal rule for the rest.
 - **Added.** Control Center, Sales team: an on/off switch with working days and hours (Mon to Sat, 9:30 to 19:00), and per person a level (Senior, Mid, Junior, Backup, Manual only), a daily limit (25, Namrata 10) and an Export leads tick; levels seeded by first name. A website lead is given at once in working hours: Premium tries Senior, Mid, Junior, Backup; any other lead goes to Senior, Mid and Junior alike (Backup on overflow), to whoever is punched in, under their limit, with the fewest fresh leads. A lead nobody can take, or after hours, waits and the morning run gives it; Allot waiting leads now on the Lead Master. A Premium tag with its reason on cards and rows, a Big quantity tag, "Allotted to X automatically: …" in the history, and a Premium-with-a-Junior list on the Team page.
 - **Changed.** A returning customer whose holder can no longer be given leads is re-picked instead of telling that holder. The WordPress snippet is recorded in `scripts/wordpress/`; the unused Google Sheet script and its test are removed.
