@@ -147,13 +147,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View is enforced in the screen and in the database (products and own requests). Create, Edit and Delete are enforced in the save/delete functions; Approve is enforced in the decision/reversal functions and in the RLS that exposes every request. The overbooking guard is a CHECK on the product row.',
   },
 
-  // Sales, Lead Master: every read is RLS on the sales_lead* tables (module_entry_open('sales')) or a SECURITY DEFINER
-  // function that calls sales_leads_require(); browsers cannot write either table. `create` is checked in
-  // create_sales_lead, `edit` in update_sales_lead, `assign` in allot_sales_lead (which also asks the caller to say
-  // who they saw holding the lead). Entry: src/app/sales/layout.tsx via ModuleGuard.
+  // Sales: every read is RLS on the sales_lead* tables (module_entry_open('sales') and sales_lead_visible) or a SECURITY
+  // DEFINER function that calls sales_leads_require() and applies the same rule; browsers cannot write them. `create` is
+  // checked in create_sales_lead and record_sales_lead_enquiry, `edit` in update_sales_lead, `assign` in
+  // allot_sales_lead, `view_all` in sales_lead_sees_all. Working a lead needs the holder, Admin or `assign`
+  // (sales_lead_for_work). Entry: src/app/sales/layout.tsx via ModuleGuard.
   sales: {
     state: 'enforced',
-    detail: 'View is enforced in the screen and in the database. Create (add a lead), Edit (correct its details) and Assign (allot a lead and change who holds it) are enforced in the database functions.',
+    detail: 'View (your own leads) is enforced in the screen and in the database. View All (every lead, read only), Create (add a lead), Edit (correct its details) and Assign (allot a lead and step in on it) are enforced in the database functions.',
   },
 
   // Coming soon module: no table, function or API route yet, so `view` has only one thing to decide, and the

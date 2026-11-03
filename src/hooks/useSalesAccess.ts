@@ -14,5 +14,11 @@ export function useSalesAccess() {
     canCreate: !readOnly && holds('create'),
     canEdit: !readOnly && holds('edit'),
     canAssign: !readOnly && holds('assign'),
+    /** Sees every lead: the "Leads of" chips, and the queue waiting to be allotted. */
+    canSeeAll: holds('view_all') || holds('assign'),
+    /** The register is for whoever adds, allots or oversees leads. A salesperson lives on My day and the board. */
+    canOpenRegister: holds('create') || holds('assign') || holds('view_all'),
+    /** Nothing may be logged or moved while previewing somebody else. */
+    readOnly,
   }
 }

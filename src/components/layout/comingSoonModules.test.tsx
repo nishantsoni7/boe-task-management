@@ -27,13 +27,13 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace
 // Lead Master. Both keep the registration, the guard and the launcher card the three share, so they stay in every
 // list here; only their pages differ.
 const MODULES = [
-  { key: 'sales', title: 'Sales', actions: ['view', 'create', 'edit', 'assign'] },
+  { key: 'sales', title: 'Sales', actions: ['view', 'view_all', 'create', 'edit', 'assign'] },
   { key: 'marketing', title: 'Marketing', actions: ['view', 'edit'] },
   { key: 'pricing', title: 'Pricing', actions: ['view'] },
 ]
 const MIGRATION = read('supabase/migrations/20270515000000_register_sales_marketing_pricing_modules.sql')
 const MARKETING_MIGRATION = read('supabase/migrations/20270522000000_marketing_meta_edit_action.sql')
-const SALES_MIGRATION = read('supabase/migrations/20270524000000_sales_lead_master.sql')
+const SALES_MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql')
 const FIRST_MARKETING_DESCRIPTION = 'Marketing module. Coming soon.'
 const FIRST_SALES_DESCRIPTION = 'Sales module. Coming soon.'
 const LAUNCHER = read('src/app/modules/page.tsx')
@@ -95,13 +95,13 @@ describe('the routes and the launcher', () => {
       assert.ok(layout.includes(`<ModuleGuard moduleKey="${key}" deniedRoute="/modules">`))
     })
 
-    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'the Lead Master' : 'the Coming soon shell for this module'}`, () => {
+    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'My day' : 'the Coming soon shell for this module'}`, () => {
       const page = read(`src/app/${key}/page.tsx`)
       if (key === 'marketing') {
         assert.ok(page.includes('<MetaOverview />'))
         assert.ok(!page.includes('ComingSoonModule'))
       } else if (key === 'sales') {
-        assert.ok(page.includes("redirect('/sales/lead-master')"))
+        assert.ok(page.includes("redirect('/sales/my-day')"))
         assert.ok(!page.includes('ComingSoonModule'))
       } else {
         assert.ok(page.includes(`<ComingSoonModule moduleKey="${key}" title="${title}" />`))

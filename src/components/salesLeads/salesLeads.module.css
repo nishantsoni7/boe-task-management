@@ -95,7 +95,6 @@
 .timeline li::after { content: ''; position: absolute; left: 6.5px; top: 18px; bottom: -16px; width: 1px; background: #E4DED7; }
 .timeline li:last-child::after { display: none; }
 .timeline small { display: block; color: #686D6C; font-size: 12px; margin-top: 2px; }
-.later { font-size: 12.5px; color: #686D6C; padding: 10px 12px; background: #FBFAF8; border: 1px dashed #CFC8BF; border-radius: 10px; }
 .drawerFoot { padding: 12px 20px; border-top: 1px solid #ECE7E0; display: flex; gap: 8px; }
 
 /* ── Add lead ───────────────────────────────────────────────────────── */
@@ -127,9 +126,9 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .dup.dupOn { display: flex; }
 .dupLines { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
 .dupLines b { font-weight: 600; }
-.deadLink { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-weight: 600; text-decoration: underline dotted; text-underline-offset: 3px; cursor: not-allowed; opacity: .85; }
-.deadLink svg { width: 13px; height: 13px; }
-.deadNote { display: block; font-size: 12px; margin-top: 3px; opacity: .85; }
+.openLink { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-weight: 600; color: inherit; text-underline-offset: 3px; }
+.openLink svg { width: 13px; height: 13px; }
+.repeat { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; }
 .dupFoot { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(128,91,13,.22); font-size: 13px; }
 .choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .choice {
@@ -149,7 +148,8 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .actions :global(.boe-btn)[disabled] { opacity: .5; cursor: not-allowed; }
 .actionsWhy { margin-left: auto; font-size: 12.5px; color: #686D6C; text-align: right; }
 .toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 12px); background: #303536; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; pointer-events: none; transition: all .18s; z-index: 80; box-shadow: var(--boe-shadow-float); }
-.toast.toastOn { opacity: 1; transform: translate(-50%, 0); }
+.toast.toastOn { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toastAction { margin-left: 12px; border: 0; background: none; color: #F5C9B8; font: 600 13px var(--boe-font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; padding: 0; }
 
 @media (max-width: 700px) {
   .grid2 { grid-template-columns: 1fr; }

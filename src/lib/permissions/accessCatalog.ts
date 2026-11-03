@@ -200,13 +200,14 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
   },
   sales: {
     group: 'Sales',
-    blurb: 'The Lead Master: every lead, and who holds it.',
+    blurb: 'My day, the Lead Board and the Lead Master.',
     levels: {
-      viewer: 'Open Sales and read every lead.',
+      viewer: 'Open Sales and work your own leads.',
       contributor: 'Viewer, plus add a lead and correct its details.',
     },
     authorities: {
-      assign: { label: 'Allot leads', meaning: 'Choose who holds a lead and change it later. The screen asks before an existing name is changed.' },
+      assign: { label: 'Allot leads', meaning: 'Choose who holds a lead and change it later, and step in on any lead. Sees every lead. The screen asks before an existing name is changed.' },
+      view_all: { label: 'See all leads', meaning: 'A manager’s sight of everyone’s leads and the Lead Master. Reads only: it does not log or move a lead.' },
     },
   },
   marketing: {
