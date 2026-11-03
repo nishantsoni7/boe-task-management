@@ -32,7 +32,7 @@ import { createClient } from '@/lib/supabase/server'
 import { isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
 import { parseDispatchData } from '@/lib/orders/dispatch'
-import { isDispatchPaperPath, parsePaperReading, readingIsEmpty, type PaperReadingResponse } from '@/lib/orders/dispatchPaperReading'
+import { isDispatchPaperPath, normalizeProductCode, parsePaperReading, readingIsEmpty, type PaperReadingResponse } from '@/lib/orders/dispatchPaperReading'
 import { DISPATCH_PAPER_SYSTEM_PROMPT, DISPATCH_PAPER_TOOL, dispatchPaperInstruction } from '@/lib/orders/dispatchPaperPrompt'
 
 export const runtime = 'nodejs'
@@ -160,7 +160,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const m = /\{[\s\S]*\}/.exec(text)
     if (m) { try { rawReading = JSON.parse(m[0]) } catch { /* nothing usable */ } }
   }
-  const reading = parsePaperReading(rawReading, new Set(order.items.map(i => i.itemSequence)))
+  // The Order's own product codes ("536-BE0007"): a line carrying one is matched exactly, not by its name.
+  const codes = new Map(order.items.flatMap(i => {
+    const code = normalizeProductCode(i.code)
+    return code ? [[code, i.itemSequence] as const] : []
+  }))
+  const reading = parsePaperReading(rawReading, new Set(order.items.map(i => i.itemSequence)), codes)
   if (readingIsEmpty(reading)) {
     return reply({ ok: false, code: 'unreadable', error: 'Nothing could be read from this paper. The paper is kept; take it again or type the details.' })
   }

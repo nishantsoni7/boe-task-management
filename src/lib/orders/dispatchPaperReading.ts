@@ -47,6 +47,10 @@ export type PaperReading = {
   packages: string
   deliverTo: string
   goods: { itemSequence: string; quantity: number }[]
+  /** Every BOE product code printed on the paper, "395-BE0007", whether or not it is a line of this Order. */
+  printedCodes: string[]
+  /** How many times the same lines were read (an invoice is printed Original, Duplicate and Triplicate); 1 when once. */
+  copies: number
 }
 
 export type PaperReadingResponse =
@@ -67,17 +71,57 @@ function isoDate(v: unknown): string {
 const amount = (v: unknown): string =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? String(Math.round(v * 100) / 100) : ''
 
-/** The model's answer, made safe: wrong types are dropped, and goods must be lines of this Order. */
-export function parsePaperReading(raw: unknown, knownLines: ReadonlySet<string>): PaperReading {
+/**
+ * A BOE product code however it was printed ("395-BE0007", "395 - BE 7") as the one
+ * form the app uses ("395-BE0007"); null when the text holds none.
+ */
+export function normalizeProductCode(raw: unknown): string | null {
+  const m = /(\d{1,5})\s*-\s*BE\s*0*(\d{1,5})/i.exec(typeof raw === 'string' ? raw : '')
+  return m ? `${Number(m[1])}-BE${m[2].padStart(4, '0')}` : null
+}
+
+/** An e-way bill number is 12 digits: "7616 8509 0730" and "761685090730" are one number. Anything else stays as printed. */
+function ewayNumber(v: unknown): string {
+  const t = text(v, 40)
+  const digits = t.replace(/[\s-]/g, '')
+  return /^\d{12}$/.test(digits) ? digits : t
+}
+
+const sum2 = (xs: number[]): number => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100
+
+/**
+ * The model's answer, made safe: wrong types are dropped, and goods must be lines of this Order.
+ * A line is matched by the BOE product code printed beside it when this Order has that code
+ * (exact), else by the model's own match of its name (`knownLines`).
+ */
+export function parsePaperReading(
+  raw: unknown,
+  knownLines: ReadonlySet<string>,
+  codes: ReadonlyMap<string, string> = new Map(),
+): PaperReading {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const goods = new Map<string, number>()
+  const read = new Map<string, number[]>()
+  const printed = new Set<string>()
   for (const g of Array.isArray(o.goods) ? o.goods : []) {
     const line = (g && typeof g === 'object' ? g : {}) as Record<string, unknown>
-    const seq = typeof line.item_sequence === 'string' ? line.item_sequence.trim() : ''
+    const code = normalizeProductCode(line.code)
+    if (code) printed.add(code)
+    const named = typeof line.item_sequence === 'string' ? line.item_sequence.trim() : ''
+    const seq = (code ? codes.get(code) : undefined) ?? (knownLines.has(named) ? named : undefined)
     const quantity = line.quantity
-    if (!knownLines.has(seq) || typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) continue
-    goods.set(seq, Math.round(((goods.get(seq) ?? 0) + quantity) * 100) / 100)
+    if (!seq || typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) continue
+    read.set(seq, [...(read.get(seq) ?? []), quantity])
   }
+  // shortcut: a file that prints the same invoice 2-3 times (Original, Duplicate, Triplicate) can
+  // come back with every line read once per copy. When two or more products each repeat the same
+  // number of times with identical quantities it is copies, and counted once; a product on two
+  // lines of one invoice is still added up. One product repeated cannot be told from two lines,
+  // so it is added, and the pending check on the form catches a quantity above the Order.
+  const lists = [...read.values()]
+  const repeats = lists.length >= 2 && lists[0].length > 1
+    && lists.every(q => q.length === lists[0].length && q.every(x => x === q[0]))
+  const copies = repeats ? lists[0].length : 1
+  const goods = [...read].map(([itemSequence, q]) => ({ itemSequence, quantity: repeats ? q[0] : sum2(q) }))
   const packages = o.packages
   return {
     kind: DISPATCH_PAPER_KINDS.find(k => k === o.paper_type) ?? 'other',
@@ -86,7 +130,7 @@ export function parsePaperReading(raw: unknown, knownLines: ReadonlySet<string>)
     invoiceTaxable: amount(o.taxable_value),
     invoiceGst: amount(o.gst_amount),
     invoiceTotal: amount(o.invoice_total),
-    ewayBillNumber: text(o.eway_bill_number, 40),
+    ewayBillNumber: ewayNumber(o.eway_bill_number),
     ewayGeneratedOn: isoDate(o.eway_generated_on),
     ewayValidUntil: isoDate(o.eway_valid_until),
     vehicleNumber: text(o.vehicle_number, 40).toUpperCase(),
@@ -94,7 +138,9 @@ export function parsePaperReading(raw: unknown, knownLines: ReadonlySet<string>)
     lrNumber: text(o.lr_number, 60),
     packages: typeof packages === 'number' && Number.isInteger(packages) && packages >= 0 ? String(packages) : '',
     deliverTo: text(o.deliver_to, 200),
-    goods: [...goods].map(([itemSequence, quantity]) => ({ itemSequence, quantity })),
+    goods,
+    printedCodes: [...printed],
+    copies,
   }
 }
 
@@ -107,6 +153,51 @@ const READ_FIELDS = [
 /** True when the paper yielded nothing the form can use. */
 export const readingIsEmpty = (r: PaperReading): boolean =>
   r.goods.length === 0 && READ_FIELDS.every(f => r[f] === '')
+
+/** "Read 8 details · 10 products matched · printed 3 times, counted once": what the box says under a paper that was read. */
+export function readingSummary(r: PaperReading): string {
+  const details = READ_FIELDS.filter(f => r[f] !== '').length
+  const parts = [`Read ${details} ${details === 1 ? 'detail' : 'details'}`]
+  if (r.goods.length > 0) parts.push(`${r.goods.length} ${r.goods.length === 1 ? 'product' : 'products'} matched`)
+  if (r.copies > 1) parts.push(`printed ${r.copies} times, counted once`)
+  return parts.join(' · ')
+}
+
+/**
+ * The Order number the paper's product codes name, when it is NOT this Order ("395" on Order 536's screen);
+ * null when they name this Order, or the paper prints no code. `storedNumber` is the four-digit stored number
+ * ("0536"): compared as numbers, never as the zero-stripped display text.
+ */
+export function paperOrderMismatch(r: PaperReading, storedNumber: string | null | undefined): string | null {
+  const mine = storedNumber ? Number(storedNumber) : NaN // Number(null) is 0, which is not an Order
+  if (!Number.isFinite(mine) || r.printedCodes.length === 0) return null
+  const named = [...new Set(r.printedCodes.map(c => Number(c.split('-')[0])))]
+  return named.includes(mine) ? null : String(named[0])
+}
+
+/** The three boxes on the Record dispatch screen. Each is also a kind of paper. */
+export type PaperSlot = 'invoice' | 'eway_bill' | 'lr'
+
+/**
+ * Which box a paper belongs in, given what the reader says it is. The box the person chose is only a guess:
+ * a paper put in the wrong box moves to the right one (its details were filled in as what it is), and a paper
+ * the reader cannot name stays where the person put it.
+ */
+export function placePaper(said: DispatchPaperKind, chosen: PaperSlot): { slot: PaperSlot; kind: DispatchPaperKind; moved: boolean } {
+  const slot: PaperSlot = said === 'invoice' || said === 'eway_bill' ? said : said === 'lr' || said === 'packing_list' ? 'lr' : chosen
+  return { slot, kind: said === 'other' ? chosen : said, moved: slot !== chosen }
+}
+
+export type InvoiceWayCheck = { state: 'match' | 'differ'; invoice: string; eway: string }
+
+/** Does the e-way bill cover the invoice that was read? null until both papers named a document number. */
+export function invoiceVsEway(readings: readonly PaperReading[]): InvoiceWayCheck | null {
+  const invoice = readings.find(r => r.kind === 'invoice' && r.invoiceNumber)?.invoiceNumber
+  const eway = readings.find(r => r.kind === 'eway_bill' && r.invoiceNumber)?.invoiceNumber
+  if (!invoice || !eway) return null
+  const key = (s: string) => s.replace(/\s+/g, '').toUpperCase()
+  return { state: key(invoice) === key(eway) ? 'match' : 'differ', invoice, eway }
+}
 
 /** Which paper a field was filled from, to show under the field. */
 export type ReadSources = Partial<Record<keyof DispatchForm | 'goods', string>>
