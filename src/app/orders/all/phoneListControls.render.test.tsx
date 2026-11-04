@@ -99,7 +99,7 @@ describe('the page wires the phone controls to the desktop state', () => {
 
   test('CSS shows one set of controls: the desktop set is hidden on a phone, the phone set everywhere else', () => {
     assert.ok(css.includes('.orders-desktop-controls, .orders-desktop-viewbar { display: none; }'))
-    assert.ok(/\.orders-phone-chips,\n\.orders-phone-tools,\n\.orders-phone-summary \{ display: none; \}/.test(css))
+    assert.ok(/\.orders-phone-chips,\r?\n\.orders-phone-tools,\r?\n\.orders-phone-summary \{ display: none; \}/.test(css))
   })
 
   test('only this page asks for the compact header', () => {
