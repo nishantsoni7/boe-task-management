@@ -13754,3 +13754,153 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 @media (hover: none) and (pointer: coarse) {
   .odr-scan-camera { display: inline-flex; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONFIRMED ORDERS ON A PHONE (owner, 2026-11-04, "Option A: compact list")
+
+   Below 768px the six status cards and the four filter chips filled the first
+   screen and no Order showed. On a phone: a one-line header, one row of status
+   chips, the search box and ONE Filter button (a bottom sheet holds Sales
+   person, Order date, Source and Sort), a summary line, and each Order as three
+   tight lines. Pure CSS decides which set is on screen; the desktop is
+   unchanged. Components: app/orders/all/PhoneListControls.tsx.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.boe-page-phone-subtitle,
+.orders-phone-chips,
+.orders-phone-tools,
+.orders-phone-summary { display: none; }
+
+@media (max-width: 767px) {
+  /* The header: title and a short line, the Finance switch and refresh as icons. */
+  .boe-page-header--compact { flex-wrap: nowrap; align-items: center; gap: 4px; padding: 6px 6px 6px 4px; }
+  .boe-page-header--compact .boe-page-title-group { flex: 1 1 auto; min-width: 0; }
+  .boe-page-header--compact .boe-page-title { font-size: 18px; margin-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .boe-page-header--compact .boe-page-subtitle { display: none; }
+  .boe-page-header--compact .boe-page-phone-subtitle { display: block; font-size: 12px; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .boe-page-header--compact .boe-header-actions { flex-wrap: nowrap !important; gap: 0; }
+  .boe-page-header--compact .boe-module-switch { border: 0; background: none; padding: 0; justify-content: center; }
+  .boe-page-header--compact .boe-module-switch-long,
+  .boe-page-header--compact .boe-module-switch-short { display: none; }
+  .boe-page-header--compact .boe-module-switch svg,
+  .boe-page-header--compact .boe-shell-refresh svg { width: 18px; height: 18px; }
+
+  .orders-desktop-controls, .orders-desktop-viewbar { display: none; }
+
+  /* Status: one row that scrolls sideways, bleeding to the screen's edges. */
+  .orders-phone-chips {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: -4px -12px 10px; padding: 2px 12px;
+  }
+  .orders-phone-chips::-webkit-scrollbar { display: none; }
+  .orders-phone-chip {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    height: 36px; padding: 0 12px; border-radius: 999px;
+    border: 1px solid #E4DED7; background: #FFFFFF;
+    font: inherit; font-size: 13px; font-weight: 500; color: #4C5352; white-space: nowrap; cursor: pointer;
+  }
+  .orders-phone-chip-count { font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
+  .orders-phone-chip.is-zero { border-style: dashed; color: #686D6C; }
+  .orders-phone-chip.is-zero .orders-phone-chip-count { font-weight: 500; color: #686D6C; }
+  .orders-phone-chip[aria-pressed="true"] { background: #303536; border-color: #303536; color: #FFFFFF; }
+  .orders-phone-chip[aria-pressed="true"] .orders-phone-chip-count { color: #FFFFFF; }
+  .orders-phone-chip:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+
+  /* Search and the one Filter button. */
+  .orders-phone-tools { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #ECE7E0; }
+  .orders-phone-tools .boe-list-search { flex: 1 1 auto; max-width: none; height: 44px; }
+  .orders-phone-filter {
+    position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px;
+    height: 44px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--boe-border-input); background: #FFFFFF;
+    font: inherit; font-size: 13px; font-weight: 600; color: #303536; cursor: pointer;
+  }
+  .orders-phone-filter.is-set { border-color: #303536; }
+  .orders-phone-filter:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+  .orders-phone-filter-badge {
+    position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 9px; background: #B9472E; color: #FFFFFF;
+    font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  }
+
+  .orders-phone-summary {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 8px 14px; border-bottom: 1px solid #ECE7E0;
+    font-size: 12px; color: #686D6C; font-variant-numeric: tabular-nums;
+  }
+  .orders-phone-summary b { color: #303536; font-weight: 600; }
+
+  /* Each Order: three lines, the whole card opens it. */
+  .orders-list-card { position: relative; gap: 3px; padding: 11px 14px; }
+  .orders-list-card-link { font-size: 15px; font-weight: 800; font-family: var(--boe-font-heading); }
+  .orders-list-card-link::after { content: ''; position: absolute; inset: 0; }
+  .orders-list-card-top .orders-list-flags { margin-left: 0; }
+  .orders-list-card-top .orders-list-card-value { margin-left: auto; font-size: 15px; font-weight: 700; }
+  .orders-list-card-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .orders-list-card-line .orders-list-card-client { flex: 1 1 auto; min-width: 0; font-size: 13.5px; color: #4C5352; }
+  .orders-list-card-advance { flex: none; font-size: 12px; color: #686D6C; white-space: nowrap; }
+  .orders-list-card-advance .orders-advance { padding: 1px 6px; font-weight: 600; color: #4C5352; }
+  .orders-list-card-advance .orders-advance.fin-pill--over { color: inherit; }
+  .orders-list-card-status { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: 12px; }
+  .orders-list-card-factory { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+  .orders-list-card-factory .orders-status-ok,
+  .orders-list-card-factory .orders-status-done { font-size: 12px; }
+  .orders-list-card-due { color: #686D6C; white-space: nowrap; }
+  .orders-list-card-due.is-overdue { color: #B42332; font-weight: 600; }
+  /* Above the card's link, so they open their own thing. */
+  .orders-list-card-pending, .orders-list-card-status .order-update-badge { position: relative; z-index: 1; }
+  .orders-list-card-pending { margin-left: auto; }
+}
+
+/* The sheet. Fixed over the page and the bottom navigation. */
+.orders-sheet-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(30, 34, 35, 0.4); }
+.orders-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+  max-height: 85vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: #FFFFFF; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+}
+.orders-sheet:focus { outline: none; }
+.orders-sheet-head { display: flex; align-items: center; gap: 8px; }
+.orders-sheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
+.orders-sheet-clear { font: inherit; font-size: 13px; font-weight: 600; color: #963B27; background: none; border: 0; padding: 0 6px; min-height: 40px; cursor: pointer; }
+.orders-sheet-close { display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
+.orders-sheet-group { display: flex; flex-direction: column; gap: 8px; }
+.orders-sheet-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #686D6C; }
+.orders-sheet-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.orders-sheet-options button {
+  font: inherit; font-size: 13px; color: #4C5352; cursor: pointer;
+  min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #E4DED7; background: #FFFFFF;
+}
+.orders-sheet-options button[aria-pressed="true"] { background: #303536; border-color: #303536; color: #FFFFFF; }
+.orders-sheet-options button:focus-visible,
+.orders-sheet-clear:focus-visible,
+.orders-sheet-close:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+.orders-sheet-apply { width: 100%; min-height: 46px; font-size: 15px; }
+
+/* ── Login as member (LoginAsMemberWidget, admins only, every page) ──
+   A round button at the bottom right on a desktop. ON A PHONE (owner,
+   2026-11-04) it covered search boxes and rows, so it becomes a slim tab
+   against the right edge, about 24px wide; a tap opens the same list. While
+   acting as a member the "Acting as" pill stays full size on purpose. */
+.boe-viewas {
+  position: fixed; right: 16px; z-index: 9999;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+}
+.boe-viewas-trigger {
+  width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer; color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+}
+.boe-viewas-trigger:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .boe-viewas:not(.is-acting) { right: 0; }
+  .boe-viewas:not(.is-acting) .boe-viewas-trigger {
+    width: calc(24px + env(safe-area-inset-right, 0px)); height: 56px;
+    padding-right: env(safe-area-inset-right, 0px);
+    border-radius: 12px 0 0 12px; opacity: 0.85;
+    box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.2) !important;
+  }
+  .boe-viewas:not(.is-acting) .boe-viewas-trigger svg { width: 16px; height: 16px; }
+  .boe-viewas:not(.is-acting) [role="dialog"] { right: 8px !important; }
+}

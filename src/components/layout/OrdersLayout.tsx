@@ -36,6 +36,13 @@ type OrdersLayoutProps = {
   showRefresh?: boolean
   /** False on the one screen that answers its own Finance questions. */
   showModuleSwitch?: boolean
+  /**
+   * A one-line header on a phone (owner, 2026-11-04, Confirmed Orders): the
+   * title with this short line under it in place of the subtitle, and the
+   * Finance switch and refresh as icons on the same line. Unset, the header is
+   * exactly what it was on every screen.
+   */
+  phoneSubtitle?: string
   children: React.ReactNode
 }
 
@@ -48,6 +55,7 @@ export function OrdersLayout({
   onRefresh,
   showRefresh = true,
   showModuleSwitch = true,
+  phoneSubtitle,
   children,
 }: OrdersLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -267,7 +275,7 @@ export function OrdersLayout({
       <div className="boe-main-content">
 
         {/* Page header */}
-        <div className="boe-page-header">
+        <div className={phoneSubtitle ? 'boe-page-header boe-page-header--compact' : 'boe-page-header'}>
           <button
             className="boe-menu-toggle"
             onClick={() => setSidebarOpen(true)}
@@ -278,6 +286,7 @@ export function OrdersLayout({
           <div className="boe-page-title-group">
             <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
+            {phoneSubtitle && <div className="boe-page-phone-subtitle">{phoneSubtitle}</div>}
           </div>
           {/* flexWrap + flexShrink let the wider action row (switch + primary +
               refresh) wrap cleanly on narrow screens instead of being clipped

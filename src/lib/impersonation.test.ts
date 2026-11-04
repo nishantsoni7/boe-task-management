@@ -69,4 +69,15 @@ describe('the routes', () => {
     assert.equal(swap.includes('signOut'), true) // only the failure fallback
     assert.ok(swap.indexOf('writeStash({') < swap.indexOf('verifyOtp'), 'stash before the swap')
   })
+
+  test('on a phone the button is a slim tab on the right edge; the Acting as pill keeps its size', () => {
+    const w = read('src/components/layout/LoginAsMemberWidget.tsx')
+    assert.ok(w.includes("className={`boe-viewas${impersonating ? ' is-acting' : ''}`}"))
+    assert.ok(w.includes('className="boe-viewas-trigger"'))
+    assert.equal(w.includes("position: 'fixed', right: 16"), false, 'the position lives in CSS, so a phone can move it')
+    const css = read('src/app/globals.css')
+    const phone = css.slice(css.indexOf('.boe-viewas:not(.is-acting) { right: 0; }'))
+    assert.ok(phone.startsWith('.boe-viewas:not(.is-acting) { right: 0; }'))
+    assert.ok(phone.includes('border-radius: 12px 0 0 12px'))
+  })
 })
