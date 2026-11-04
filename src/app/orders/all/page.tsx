@@ -41,13 +41,14 @@ import {
 } from '@/lib/orders/orderListValue'
 import { SAMPLE_TYPE_LABEL, type SampleType } from '@/lib/orders/sampleType'
 import {
-  PENDENCY_COLUMN_LABEL, buildPendencyOverviews,
+  buildPendencyOverviews,
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
 import { AdvanceCell } from './AdvanceCell'
 import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
+import { PhoneFilterButton, PhoneStatusChips } from './PhoneListControls'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,17 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
   website:         'Website',
 }
 
+// ON A PHONE (owner, 2026-11-04) the same statuses are one row of chips, and
+// Running comes first because the list opens on it; All orders goes last.
+const PHONE_STATUS_ORDER: StatusFilter[] = ['running', 'on_hold', 'ready_for_dispatch', 'dispatched', 'cancelled', 'all']
+
+/** The phone's summary line: "₹67.5 L", "₹85,000" below a lakh. */
+function fmtLakh(n: number): string {
+  if (n < 100000) return '₹' + Math.round(n).toLocaleString('en-IN')
+  const lakh = n / 100000
+  return '₹' + (lakh >= 100 ? Math.round(lakh).toLocaleString('en-IN') : String(Number(lakh.toFixed(lakh >= 10 ? 1 : 2)))) + ' L'
+}
+
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'all',        label: 'Any date' },
   { key: '7d',         label: 'Last 7 days' },
@@ -171,6 +183,14 @@ function fmtAmount(n: number | null) {
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+/** The phone row's date: "12 Nov", with the year only when it is not this year. */
+function fmtShortDate(iso: string | null) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString('en-IN', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function isOverdue(due_date: string | null, status: string): boolean {
@@ -570,6 +590,19 @@ export default function AllOrdersPage() {
     })
   }, [baseFiltered, effectiveStatus, sortKey])
 
+  // The phone's controls and summary line (owner, 2026-11-04, Option A).
+  // Sort is not a filter: it is in the sheet but not in the badge's count.
+  const phoneFilterCount =
+    (assignee !== 'all' ? 1 : 0) + (dateFilter !== 'all' ? 1 : 0) + (source !== 'all' ? 1 : 0)
+  const statusCount = (key: StatusFilter) => (listLoading && orders.length === 0 ? null : tabCounts[key])
+  const effectiveLabel = STATUS_CARDS.find(c => c.key === effectiveStatus)?.label ?? 'All orders'
+  const phoneSubtitle = widened
+    ? 'Searching every status'
+    : statusCount(effectiveStatus) == null
+      ? effectiveLabel
+      : `${effectiveLabel} · ${statusCount(effectiveStatus)} order${statusCount(effectiveStatus) === 1 ? '' : 's'}`
+  const visibleValue = visible.reduce((sum, o) => sum + (o.status === 'cancelled' ? 0 : (o.subtotal ?? 0)), 0)
+
   if (pageLoading) return <OrdersRouteFallback />
 
   return (
@@ -579,6 +612,7 @@ export default function AllOrdersPage() {
       subtitle={effectiveStatus === 'running'
         ? 'Orders still in production, including part dispatched. Choose All orders to see every status.'
         : 'Complete order list across all statuses.'}
+      phoneSubtitle={phoneSubtitle}
       onSignOut={handleSignOut}
       /* Refresh re-reads these: a reader who has just opened an Order in
          another tab expects its badge to be gone when they come back, and a
@@ -632,12 +666,22 @@ export default function AllOrdersPage() {
       {/* ── The status cards ARE the filter (Finance lists, 2026-10) ──
           Each card counts what it would show under the view bar's filters, so
           a number never contradicts the list once the card is pressed. */}
-      <FinanceStatusCards
-        ariaLabel="Order status"
-        noun="order"
+      <div className="orders-desktop-controls">
+        <FinanceStatusCards
+          ariaLabel="Order status"
+          noun="order"
+          active={effectiveStatus}
+          onSelect={setStatusTab}
+          cards={STATUS_CARDS.map(c => ({ ...c, count: statusCount(c.key) }))}
+        />
+      </div>
+      <PhoneStatusChips
         active={effectiveStatus}
         onSelect={setStatusTab}
-        cards={STATUS_CARDS.map(c => ({ ...c, count: listLoading && orders.length === 0 ? null : tabCounts[c.key] }))}
+        chips={PHONE_STATUS_ORDER.map(key => {
+          const c = STATUS_CARDS.find(card => card.key === key)!
+          return { key, label: c.label, tone: c.tone, count: statusCount(key) }
+        })}
       />
 
       <div className="fin-board">
@@ -645,7 +689,51 @@ export default function AllOrdersPage() {
             Form controls only. Confirmed Orders is a review surface: no
             creation action belongs here — an Order begins as an uploaded PI and
             is confirmed at approval. */}
-        <div className="fin-viewbar">
+        {/* PHONE: the search box and ONE Filter button; the sheet holds the
+            four chips below. CSS shows this row or the view bar, never both. */}
+        <div className="orders-phone-tools" role="search" aria-label="Filter Confirmed Orders on a phone">
+          <label className="boe-list-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              aria-label="Search Confirmed Orders"
+              placeholder="Code, client or person"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onBlur={flushSearch}
+            />
+            {searchInput && (
+              <button type="button" onClick={() => setSearchInput('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+            )}
+          </label>
+          <PhoneFilterButton
+            activeCount={phoneFilterCount}
+            resultCount={visible.length}
+            onClearAll={() => setListState({ assignee: '', source: '', date: 'all', sort: 'number_desc' })}
+            groups={[
+              {
+                id: 'person', label: 'Sales person', value: assignee, onChange: setAssignee,
+                options: [{ value: 'all', label: 'Anyone' }, ...assigneeOptions.map(a => ({ value: a.id, label: a.name }))],
+              },
+              {
+                id: 'date', label: 'Order date', value: dateFilter, onChange: v => setDateFilter(v as DateFilter),
+                options: DATE_FILTERS.map(d => ({ value: d.key, label: d.label })),
+              },
+              ...(sourceOptions.length > 0 ? [{
+                id: 'source', label: 'Source', value: source, onChange: setSource,
+                options: [{ value: 'all', label: 'Any source' }, ...sourceOptions.map(v => ({ value: v, label: LEAD_SOURCE_LABEL[v] ?? v }))],
+              }] : []),
+              {
+                id: 'sort', label: 'Sort', value: sortKey, onChange: v => setSortKey(v as SortKey),
+                options: SORT_OPTIONS.map(o => ({ value: o.key, label: o.label })),
+              },
+            ]}
+          />
+        </div>
+
+        <div className="fin-viewbar orders-desktop-viewbar">
           <div className="fin-tools fin-tools--wrap" role="search" aria-label="Filter Confirmed Orders">
             <label className="boe-list-search">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -799,6 +887,10 @@ export default function AllOrdersPage() {
               scrolled sideways inside its card. The switch is CSS
               (.orders-list-table / .orders-list-cards), so there is no
               measure-then-swap flash. */}
+          <div className="orders-phone-summary" aria-live="polite">
+            <span><b>{visible.length}</b> order{visible.length === 1 ? '' : 's'}{visibleValue > 0 ? ` · ${fmtLakh(visibleValue)}` : ''}</span>
+            <span>{SORT_OPTIONS.find(s => s.key === sortKey)?.label}</span>
+          </div>
           <ul className="orders-list-cards" aria-label="Confirmed Orders">
             {visible.map(o => {
               const overdue = isOverdue(o.due_date, o.status)
@@ -825,41 +917,37 @@ export default function AllOrdersPage() {
               }
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
+                  {/* THREE LINES (owner, 2026-11-04): code and value; client
+                      and advance; where it is in the factory, when it is due,
+                      what is pending. The code's link covers the whole card. */}
                   <div className="orders-list-card-top">
                     <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
                       {number}
                     </Link>
                     <ProjectFlags sample={o.sample} commission={o.commission} />
-                  </div>
-                  <div className="orders-list-card-client">{o.client_name}</div>
-                  <div className="orders-list-card-meta">
                     <span className="orders-list-card-value">{fmtAmount(o.subtotal)}</span>
-                    <span><FactoryCell view={factoryView(o, dispatch.get(o.id))} /></span>
                   </div>
-                  <div className="orders-list-card-meta">
-                    <span>Advance</span>
-                    <AdvanceCell percent={advance.get(o.id)} />
+                  <div className="orders-list-card-line">
+                    <span className="orders-list-card-client">{o.client_name}</span>
+                    <span className="orders-list-card-advance">Adv <AdvanceCell percent={advance.get(o.id)} /></span>
                   </div>
-                  <div className="orders-list-card-meta">
-                    <span>{PENDENCY_COLUMN_LABEL}</span>
-                    <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
-                  </div>
-                  <div className="orders-list-card-meta">
-                    <span style={{ color: overdue ? colors.red : undefined, fontWeight: overdue ? 600 : undefined }}>
-                      Due {fmtDate(o.due_date)}{overdue ? ' · overdue' : ''}
+                  <div className="orders-list-card-status">
+                    <span className="orders-list-card-factory"><FactoryCell view={factoryView(o, dispatch.get(o.id))} /></span>
+                    <span className={overdue ? 'orders-list-card-due is-overdue' : 'orders-list-card-due'}>
+                      {overdue ? `Overdue · ${fmtShortDate(o.due_date)}` : `Due ${fmtShortDate(o.due_date)}`}
                     </span>
+                    {pendencyOverviews.get(o.id) && !pendencyOverviews.get(o.id)!.approved && (
+                      <span className="orders-list-card-pending">
+                        <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
+                      </span>
+                    )}
+                    {updateLabel && (
+                      <span className="order-update-badge">
+                        <span className="order-update-dot" aria-hidden="true" />
+                        {updateLabel}
+                      </span>
+                    )}
                   </div>
-                  {(o.assigned_to_name || updateLabel) && (
-                    <div className="orders-list-card-meta">
-                      <span>{o.assigned_to_name ? `Sales person: ${o.assigned_to_name}` : ''}</span>
-                      {updateLabel && (
-                        <span className="order-update-badge">
-                          <span className="order-update-dot" aria-hidden="true" />
-                          {updateLabel}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </li>
               )
             })}

@@ -5,40 +5,40 @@
 
 ## Snapshot
 
-- Commit: `d5be5d58` — Merge main (#609, the Pipeline board's migration applied) into feat/sales-auto-allot
-- Commits on this branch: 1176
+- Commit: `25d06f7` — Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
+- Commits on this branch: 50
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
-- Test files: 747   Next.js 16.2.6, React 19.2.4
+- Test files: 748   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `d5be5d58` 2026-11-03 Merge main (#609, the Pipeline board's migration applied) into feat/sales-auto-allot
-- `bed54928` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
-- `4b1d9d62` 2026-11-03 Merge main (#607, the Pipeline board) into feat/sales-auto-allot
-- `b969d466` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first)
-- `88afd4f2` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
-- `a574e82a` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
-- `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
-- `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
-- `6db10ccd` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
-- `a38b5a5a` 2026-11-03 Sales: Can be given leads, a tick per person (migration 20270529000000, apply first) (#603)
-- `3f145802` 2026-11-03 Docs: the scan-first Record dispatch screen merged (#600); the spacing change (#597) stamped (#601)
-- `e980e2da` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
-- `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
-- `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
-- `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
-- `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
-- `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
-- `dfe7a3c3` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
-- `9815f52b` 2026-11-02 Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (#592)
-- `45b1c2b1` 2026-11-02 Docs: Modules launcher A+ merged as PR #590 (02abdb2e), deployed (#591)
-- `02abdb2e` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet (#590)
-- `2f72c6bb` 2026-11-02 Confirmed Order Product details: Material gets the room (#589)
-- `1b018fff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
-- `d38bf3a9` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
+- `25d06f7` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
+- `bed5492` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
+- `88afd4f` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
+- `a574e82` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
+- `3d4606b` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
+- `b909e1f` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
+- `6db10cc` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
+- `a38b5a5` 2026-11-03 Sales: Can be given leads, a tick per person (migration 20270529000000, apply first) (#603)
+- `3f14580` 2026-11-03 Docs: the scan-first Record dispatch screen merged (#600); the spacing change (#597) stamped (#601)
+- `e980e2d` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
+- `c0edc50` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
+- `5b37b88` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
+- `10abb87` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
+- `594daf9` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
+- `972413c` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
+- `05e299e` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
+- `dfe7a3c` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
+- `9815f52` 2026-11-02 Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (#592)
+- `45b1c2b` 2026-11-02 Docs: Modules launcher A+ merged as PR #590 (02abdb2e), deployed (#591)
+- `02abdb2` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet (#590)
+- `2f72c6b` 2026-11-02 Confirmed Order Product details: Material gets the room (#589)
+- `1b018ff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
+- `d38bf3a` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
+- `173707d` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
+- `cf79df5` 2026-11-02 Orders dashboard for approvers: Needs your decision, Revenue, Orders to watch (#585)
 
 ## Pages by top-level area
 

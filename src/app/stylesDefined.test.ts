@@ -31,7 +31,7 @@ const read = (file: string) => readFileSync(join(SRC, file), 'utf8')
  */
 const NO_RULE_NEEDED: Record<string, readonly string[]> = {
   'the element carries its styling inline; the name only labels it': [
-    'available-money', 'available-money-row', 'boe-destination-card', 'boe-module-switch',
+    'available-money', 'available-money-row', 'boe-destination-card',
     'order-ff-pend-approve', 'order-highlight', 'payment-track', 'payment-track-step',
     'pi-amounts-toggle-label', 'pi-detail-quote', 'pi-detail-workflow-body', 'pi-note-money',
   ],
