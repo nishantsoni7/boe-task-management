@@ -226,7 +226,12 @@ export default function LoginAsMemberWidget() {
   const accentBg = impersonating ? '#FAF0DA' : '#303536'
 
   return (
-    <div style={{ position: 'fixed', right: 16, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)', zIndex: 9999 }}>
+    // ON A PHONE (owner, 2026-11-04) the round button is a slim tab against
+    // the right edge, so it no longer sits over a page's search box or rows.
+    // Position and the trigger's shape live in globals.css (.boe-viewas*); the
+    // "Acting as" pill keeps its full size on purpose: a member's session must
+    // never be easy to miss.
+    <div className={`boe-viewas${impersonating ? ' is-acting' : ''}`}>
       {open && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: -1 }} onClick={() => setOpen(false)} />
@@ -362,11 +367,8 @@ export default function LoginAsMemberWidget() {
         )}
         {!impersonating && (
           <button type="button" onClick={toggle} aria-label="Login as member" title="Login as member"
-            style={{
-              width: 48, height: 48, borderRadius: '50%', cursor: 'pointer', border: 'none',
-              background: accentBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: `0 6px 20px rgba(0,0,0,0.25), 0 0 0 2px ${accent}33`,
-            }}>
+            className="boe-viewas-trigger"
+            style={{ background: accentBg, boxShadow: `0 6px 20px rgba(0,0,0,0.25), 0 0 0 2px ${accent}33` }}>
             {open ? <X size={20} /> : <UserCog size={20} />}
           </button>
         )}

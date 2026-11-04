@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `25d06f7` — Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
-- Commits on this branch: 50
+- Commit: `9a92f18` — Confirmed Orders: a compact list on a phone (Option A, no SQL)
+- Commits on this branch: 51
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `9a92f18` 2026-11-04 Confirmed Orders: a compact list on a phone (Option A, no SQL)
 - `25d06f7` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
 - `bed5492` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
 - `88afd4f` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
@@ -38,7 +39,6 @@
 - `1b018ff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
 - `d38bf3a` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
 - `173707d` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
-- `cf79df5` 2026-11-02 Orders dashboard for approvers: Needs your decision, Revenue, Orders to watch (#585)
 
 ## Pages by top-level area
 

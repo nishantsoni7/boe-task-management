@@ -13878,3 +13878,29 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .orders-sheet-clear:focus-visible,
 .orders-sheet-close:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
 .orders-sheet-apply { width: 100%; min-height: 46px; font-size: 15px; }
+
+/* ── Login as member (LoginAsMemberWidget, admins only, every page) ──
+   A round button at the bottom right on a desktop. ON A PHONE (owner,
+   2026-11-04) it covered search boxes and rows, so it becomes a slim tab
+   against the right edge, about 24px wide; a tap opens the same list. While
+   acting as a member the "Acting as" pill stays full size on purpose. */
+.boe-viewas {
+  position: fixed; right: 16px; z-index: 9999;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+}
+.boe-viewas-trigger {
+  width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer; color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+}
+.boe-viewas-trigger:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .boe-viewas:not(.is-acting) { right: 0; }
+  .boe-viewas:not(.is-acting) .boe-viewas-trigger {
+    width: calc(24px + env(safe-area-inset-right, 0px)); height: 56px;
+    padding-right: env(safe-area-inset-right, 0px);
+    border-radius: 12px 0 0 12px; opacity: 0.85;
+    box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.2) !important;
+  }
+  .boe-viewas:not(.is-acting) .boe-viewas-trigger svg { width: 16px; height: 16px; }
+  .boe-viewas:not(.is-acting) [role="dialog"] { right: 8px !important; }
+}
