@@ -69,8 +69,8 @@ a.person:hover { text-decoration: underline; }
   .bar { grid-template-columns: 140px minmax(0, 1fr) 48px; }
 }
 
-/* A phone reads each row as a small card with its labels. */
-@media (max-width: 700px) {
+/* A phone reads each row as a small card with its labels (767px: the app's phone breakpoint). */
+@media (max-width: 767px) {
   .card { padding: 14px; }
   .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .table, .table tbody, .table tr, .table td { display: block; width: 100%; box-sizing: border-box; }
@@ -97,4 +97,19 @@ a.person:hover { text-decoration: underline; }
   .filters { display: none; }
   .phoneFilterRow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
   .phoneFilterText { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ── PHONES, CONTENT FIRST (Phase 4): Import. The file remove button is 44px,
+   the follow-ups-a-day choices are 40px pills, and the history explainer is
+   behind a tap. A desktop keeps the card (.historyPhone is not drawn there). */
+.historyPhone { display: none; }
+@media (max-width: 767px) {
+  .files li { min-height: 44px; }
+  .files button { width: 44px; height: 44px; flex: none; }
+  .perDay { gap: 8px; }
+  .perDay button { height: 40px; min-height: 40px; padding: 0 16px; border-radius: 999px; }
+  .historyDesk { display: none; }
+  .historyPhone { display: block; padding: 4px 14px; }
+  .historyPhone summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; font-size: 14px; color: #303536; }
+  .historyPhone p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; color: #4C5352; }
 }

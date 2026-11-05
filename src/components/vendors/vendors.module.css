@@ -479,4 +479,18 @@
   .actionBtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .statStrip { gap: 16px; justify-content: space-between; flex-wrap: nowrap; }
   .hero { gap: 12px; padding-bottom: 12px; }
+
+  /* Phase 4 (Log visit, Add vendor, Edit vendor): 44px fields and outcome
+     buttons, 44px link buttons, a 32px photo remove with a 44px hit area,
+     12px tile tags; the form sits on the page instead of a bordered card. */
+  .input, .select { min-height: 44px; }
+  .outcome { min-height: 44px; }
+  .linkBtn { min-height: 44px; padding: 0 8px; display: inline-flex; align-items: center; }
+  .tileX { width: 32px; height: 32px; border-radius: 16px; top: 4px; right: 4px; font-size: 16px; }
+  .tileX::after { content: ""; position: absolute; inset: -6px; }
+  .addProp, .propRemove { min-height: 40px; }
+  .propRemove { min-width: 40px; }
+  .tileTag { font-size: 12px; }
+  .wrap { background: transparent; border: 0; border-radius: 0; padding: 0; }
+  .wrap > .submitBar { margin: -10px 0 0; padding-left: 0; padding-right: 0; border-radius: 0; }
 }

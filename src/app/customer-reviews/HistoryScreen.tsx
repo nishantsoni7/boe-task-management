@@ -83,10 +83,10 @@ export function HistoryScreen() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 900, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
-            type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search reference or title" aria-label="Search history"
+            type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search reference or title" aria-label="Search history" className="crv-hist-field"
             style={{ flex: '1 1 200px', minWidth: 0, minHeight: 44, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.borderSoft}`, fontFamily: 'inherit', fontSize: 13 }}
           />
-          <select value={status} onChange={e => setStatus(e.target.value)} aria-label="Status"
+          <select value={status} onChange={e => setStatus(e.target.value)} aria-label="Status" className="crv-hist-field"
             style={{ minHeight: 44, padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.borderSoft}`, fontFamily: 'inherit', fontSize: 13, background: colors.base }}>
             <option value={ALL}>All statuses</option>
             {Object.entries(TEST_CARD_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}

@@ -225,3 +225,22 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
   .whoBar { padding: 8px 12px; gap: 8px; }
   .who { height: 40px; font-size: 13px; }
 }
+
+/* ── PHONES, CONTENT FIRST (Phase 4): Add lead ─────────────────────────────
+   The header already says "Add lead", so the panel's own title and sentence
+   go and the received date stays as one hint line. The Save buttons are a bar
+   fixed to the bottom of the screen: on a phone the shell's main column clips
+   sideways overflow, which stops position: sticky from ever sticking there.
+   The bar sits on the Sales bottom bar. */
+@media (max-width: 767px) {
+  .panelHead { padding: 10px 16px 0; border-bottom: 0; }
+  .panelHead > div:first-child { display: none; }
+  .received { height: auto; padding: 0; background: none; font-size: 12.5px; white-space: normal; }
+  .panelBody { padding-top: 12px; }
+  .wrapForm .panel { padding-bottom: 112px; }
+  /* Above the Sales bottom bar (60px, salesLayout.module.css). */
+  .wrapForm .actions {
+    position: fixed; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 30; border-radius: 0;
+    padding: 10px 16px; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
+  }
+}

@@ -251,6 +251,7 @@ export default function SamplesPage() {
         onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
         actions={
           <button
+            className="smp-new-btn"
             onClick={() => {
               if (inViewMode) {
                 alert('View Mode only. This shows what the selected user can see, but actions are disabled.')
@@ -275,8 +276,26 @@ export default function SamplesPage() {
         }
       >
         <div style={{ maxWidth: '900px', width: '100%' }}>
+          {/* Phone only: the status tabs as one sideways row of chips (the ☰
+              drawer keeps them too). Same onTabSelect the drawer uses. */}
+          <div className="smp-phone-tabs" role="tablist" aria-label="Request status">
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                className={`smp-phone-tab${activeTab === tab.key ? ' is-active' : ''}`}
+                onClick={() => selectTab(tab.key)}
+              >
+                {tab.label}
+                <span className="smp-phone-tab-count">{counts[tab.key] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+
           {/* Section heading */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <div className="smp-section-head" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
             <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>
               {activeTabMeta.label}
             </span>
@@ -536,15 +555,15 @@ function RequestCard({
         </div>
       )}
 
-      <div style={{ padding: '14px 16px' }}>
+      <div className="smp-card-body" style={{ padding: '14px 16px' }}>
 
         {/* Card info: left (identity + client/accountability grid) | right (dates) */}
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        <div className="smp-card-info" style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
 
           {/* Left column */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="smp-card-left" style={{ flex: 1, minWidth: 0 }}>
             {/* Identity */}
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <div className="smp-card-identity" style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
               <div style={{ width: 36, height: 36, borderRadius: '8px', flexShrink: 0, background: `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color }}>
                 <Package size={16} strokeWidth={1.8} />
               </div>
@@ -558,7 +577,7 @@ function RequestCard({
             </div>
 
             {/* Client + Accountability 2-column grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
+            <div className="smp-card-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
               <div>
                 <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Client</div>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{r.client_name}</div>
@@ -597,7 +616,7 @@ function RequestCard({
           </div>
 
           {/* Right column: dates */}
-          <div style={{ flexShrink: 0, fontSize: '12px', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '5px', minWidth: '130px', paddingTop: '2px' }}>
+          <div className="smp-card-dates" style={{ flexShrink: 0, fontSize: '12px', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '5px', minWidth: '130px', paddingTop: '2px' }}>
             <div>
               <div style={{ color: colors.muted, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Requested</div>
               <strong style={{ color: colors.secondary }}>{formatDate(r.created_at)}</strong>
@@ -968,7 +987,7 @@ function ActionBtn({ icon, label, busy, bg, color, border, onClick }: {
   bg: string; color: string; border: string; onClick: () => void
 }) {
   return (
-    <button onClick={onClick} disabled={busy}
+    <button className="smp-actbtn" onClick={onClick} disabled={busy}
       style={{ display: 'flex', alignItems: 'center', gap: '5px', background: bg, color, border: `1px solid ${border}`, borderRadius: '8px', padding: '6px 12px', fontSize: '12.5px', fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
       {icon}{busy ? 'Saving…' : label}
     </button>

@@ -355,3 +355,34 @@ label.accentChoice:has(input:checked) :global(.boe-choice-text) { font-weight: 6
 
   .phoneScope { display: inline; font-weight: 500; color: #4C5352; }
 }
+
+/* ── PHONES, CONTENT FIRST (Phase 4): Ranking and Exhibitions ──────────────
+   Ranking has its own scope class, so a phone keeps "How is this counted?"
+   (Phase 3 hides .scopeLine on the leads list). On a phone the exhibition
+   select sits under the header, and the per-day leaders are one row of
+   chips under the overall leader. A desktop draws .leaderDays as
+   display: contents, so its grid of cards is unchanged. */
+.rankScope { font-size: 12px; color: #4C5352; }
+.rankExPhone, .leaderDay { display: none; }
+.leaderDays { display: contents; }
+.exPhoneMore { display: none; }
+@media (max-width: 767px) {
+  .rankExPhone { display: block; width: 100%; min-height: 44px; font-size: 16px; }
+  .rankScopeText { display: none; }
+  .rankScope .scopeMore { margin-top: 0; }
+  .rankScope .scopeMore summary { min-height: 44px; }
+  .leaderGrid { display: flex; flex-direction: column; gap: 8px; }
+  .leaderDays {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 0 12px;
+  }
+  .leaderDays::-webkit-scrollbar { display: none; }
+  .leaderDays .leaderCard {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 40px; padding: 0 12px; border-radius: 999px; background: #fff; white-space: nowrap;
+  }
+  .leaderDays .leaderLabel { display: none; }
+  .leaderDays .leaderDay { display: inline; font-size: 13px; font-weight: 700; color: #303536; }
+  .leaderDays .leaderName { margin-top: 0; font-size: 13px; font-weight: 600; overflow-wrap: normal; }
+  .leaderDays .leaderMeta { margin-top: 0; font-size: 12px; opacity: 1; color: #4C5352; }
+}

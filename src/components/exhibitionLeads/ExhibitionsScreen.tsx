@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { ExhibitionLeadsLayout } from '@/components/layout/ExhibitionLeadsLayout'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { useExhibitionLeads } from '@/hooks/useExhibitionLeads'
@@ -56,10 +57,22 @@ export default function ExhibitionsScreen() {
       profile={profile} isAdmin={isAdmin} onSignOut={signOut}
       title="Exhibitions"
       subtitle="Add an exhibition, then capture and review its leads"
-      actions={<button className={`${s.btn} ${s.btnRed}`} onClick={() => setEditing('new')}><Plus size={16} aria-hidden="true" /> Add exhibition</button>}
+      actions={
+        <>
+          <button className={`${s.btn} ${s.btnRed} boe-desktop-only`} onClick={() => setEditing('new')}><Plus size={16} aria-hidden="true" /> Add exhibition</button>
+          {/* Phone: Add is a 40px "+", and Manage access moves into the header's ⋯ instead of a full-width button above the list. */}
+          <button type="button" className="boe-phone-only boe-header-icon boe-header-icon--add" aria-label="Add exhibition" title="Add exhibition" onClick={() => setEditing('new')}>
+            <Plus size={18} aria-hidden="true" />
+          </button>
+          <PhoneHeaderMenu
+            label="More actions"
+            items={[{ key: 'access', label: 'Who can use Exhibition Leads? Manage access', onSelect: () => router.push('/admin/control-center/permissions/modules?module=exhibition_leads') }]}
+          />
+        </>
+      }
     >
       <div className={s.wrapWide}>
-        <div className={s.noticeActions} style={{ marginTop: 0 }}>
+        <div className={`${s.noticeActions} boe-desktop-only`} style={{ marginTop: 0 }}>
           <Link className={s.btn} href="/admin/control-center/permissions/modules?module=exhibition_leads">
             Who can use Exhibition Leads? Manage access
           </Link>

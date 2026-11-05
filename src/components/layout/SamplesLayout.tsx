@@ -210,6 +210,7 @@ export function SamplesLayout({
           <div className="boe-header-actions">
             {actions}
             <button
+              className="smp-refresh"
               onClick={handleRefresh}
               disabled={refreshing}
               title="Refresh"

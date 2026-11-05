@@ -236,6 +236,7 @@ export default function ShowroomCategoriesPage() {
       {/* Add category form */}
       <form
         onSubmit={handleAdd}
+        className="sra-cat-add"
         style={{
           display: 'flex', gap: '10px', marginBottom: '24px',
           background: colors.base, border: `1.5px solid ${colors.border}`,
@@ -246,11 +247,15 @@ export default function ShowroomCategoriesPage() {
           value={newName}
           onChange={e => setNewName(e.target.value)}
           placeholder="New category name, e.g. Bar Chairs"
+          aria-label="New category name"
+          className="sra-cat-input"
           style={inputStyle}
         />
         <button
           type="submit"
           disabled={adding}
+          className="sra-cat-addbtn"
+          aria-label="Add Category"
           style={{
             display: 'flex', alignItems: 'center', gap: '7px',
             fontSize: '13px', fontWeight: 600,
@@ -261,7 +266,7 @@ export default function ShowroomCategoriesPage() {
           }}
         >
           <PlusCircle size={15} strokeWidth={2} />
-          {adding ? 'Adding…' : 'Add Category'}
+          <span className="sra-cat-label">{adding ? 'Adding…' : 'Add Category'}</span>
         </button>
       </form>
 
@@ -275,6 +280,7 @@ export default function ShowroomCategoriesPage() {
           {categories.map(cat => (
             <div
               key={cat.id}
+              className="sra-cat-row"
               style={{
                 display: 'flex', alignItems: 'center', gap: '14px',
                 background: colors.base,
@@ -284,7 +290,7 @@ export default function ShowroomCategoriesPage() {
                 opacity: cat.is_active ? 1 : 0.6,
               }}
             >
-              <div style={{
+              <div className="sra-cat-icon" style={{
                 width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
                 background: colors.raised, border: `1px solid ${colors.border}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -297,6 +303,8 @@ export default function ShowroomCategoriesPage() {
                   <input
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
+                    aria-label="Category name"
+                    className="sra-cat-input"
                     style={{ ...inputStyle, maxWidth: '320px' }}
                     autoFocus
                   />
@@ -320,19 +328,23 @@ export default function ShowroomCategoriesPage() {
                     onClick={() => saveEdit(cat)}
                     disabled={savingEdit}
                     title="Save"
+                    aria-label="Save"
+                    className="sra-cat-btn"
                     style={actionBtnStyle('green')}
                   >
                     <Check size={13} strokeWidth={2} />
-                    Save
+                    <span className="sra-cat-label">Save</span>
                   </button>
                   <button
                     onClick={cancelEdit}
                     disabled={savingEdit}
                     title="Cancel"
+                    aria-label="Cancel"
+                    className="sra-cat-btn"
                     style={actionBtnStyle('neutral')}
                   >
                     <X size={13} strokeWidth={2} />
-                    Cancel
+                    <span className="sra-cat-label">Cancel</span>
                   </button>
                 </>
               ) : (
@@ -340,18 +352,22 @@ export default function ShowroomCategoriesPage() {
                   <button
                     onClick={() => startEdit(cat)}
                     title="Edit category"
+                    aria-label="Edit category"
+                    className="sra-cat-btn"
                     style={actionBtnStyle('neutral')}
                   >
                     <Pencil size={13} strokeWidth={1.8} />
-                    Edit
+                    <span className="sra-cat-label">Edit</span>
                   </button>
                   <button
                     onClick={() => setDeleteTarget(cat)}
                     title="Delete category"
+                    aria-label="Delete category"
+                    className="sra-cat-btn"
                     style={actionBtnStyle('red')}
                   >
                     <Trash2 size={13} strokeWidth={1.8} />
-                    Delete
+                    <span className="sra-cat-label">Delete</span>
                   </button>
                 </>
               )}
@@ -450,11 +466,11 @@ function DeleteConfirmModal({
           <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px', marginBottom: '14px' }}>{error}</div>
         )}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} disabled={busy}
+          <button onClick={onCancel} disabled={busy} className="sra-cat-modalbtn"
             style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer' }}>
             Cancel
           </button>
-          <button onClick={onConfirm} disabled={busy}
+          <button onClick={onConfirm} disabled={busy} className="sra-cat-modalbtn"
             style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Trash2 size={13} strokeWidth={2.5} />
             {busy ? 'Deleting…' : 'Delete'}
