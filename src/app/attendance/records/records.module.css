@@ -1,0 +1,12 @@
+/* Records on a phone (owner, 2026-11-05, "phones: content first"): the
+ * three-field filter form (about 330px) becomes one line saying what is chosen
+ * and a Filter button whose sheet holds the fields and Search. */
+
+.phoneChosen {
+  min-width: 0;
+  font-size: 13px;
+  color: #4C5352;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

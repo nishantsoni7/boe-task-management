@@ -15,6 +15,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, StatusFilter, ui, type Tone } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { RefreshCw } from 'lucide-react'
 import styles from './sync.module.css'
 
@@ -229,14 +230,16 @@ export default function MinopDiagnosticsPage() {
       subtitle="Punches sent by the fingerprint system (Minop) and whether each one became attendance."
       onSignOut={handleSignOut}
       actions={
-        <button
-          type="button"
-          onClick={() => void load(token)}
-          disabled={fetching}
-          className={`boe-btn boe-btn-ghost ${ui.btnSm} ${styles.refreshBtn}`}
-        >
-          <RefreshCw size={13} className={fetching ? 'boe-spin' : undefined} /> Refresh
-        </button>
+        <HeaderActions items={[{ key: 'reload', label: 'Reload the sync data', onSelect: () => void load(token) }]}>
+          <button
+            type="button"
+            onClick={() => void load(token)}
+            disabled={fetching}
+            className={`boe-btn boe-btn-ghost ${ui.btnSm} ${styles.refreshBtn}`}
+          >
+            <RefreshCw size={13} className={fetching ? 'boe-spin' : undefined} /> Refresh
+          </button>
+        </HeaderActions>
       }
     >
       <div className={ui.stack}>

@@ -9,6 +9,9 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
+import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
+import { SlidersHorizontal } from 'lucide-react'
+import styles from './records.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,9 +185,53 @@ export default function AttendanceRecordsPage() {
       onSignOut={handleSignOut}
     >
       <div className={ui.stack}>
+        {/* ── Filters, on a phone ── one line saying what is chosen, and one
+            Filter button whose sheet holds the same three fields and Search. */}
+        <div className={`${ui.phoneOnly} ${ui.phoneTools}`}>
+          <span className={styles.phoneChosen}>
+            {(employeeId && employees.find(e => e.id === employeeId)?.full_name) || 'All employees'}
+            {' · '}
+            {fromDate || toDate ? `${fromDate || '…'} to ${toDate || '…'}` : 'any date'}
+          </span>
+          <PhoneSheet
+            label="Filter"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            badge={(employeeId ? 1 : 0) + (fromDate ? 1 : 0) + (toDate ? 1 : 0)}
+            title="Filter records"
+            doneLabel={fetching ? 'Loading…' : 'Search'}
+            onDone={() => { if (!fetching) void handleSearch() }}
+            onClear={() => { setEmployeeId(''); setFromDate(''); setToDate('') }}
+          >
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="rec-employee-phone">Employee</label>
+              <select
+                id="rec-employee-phone"
+                className={ui.input}
+                value={employeeId}
+                onChange={e => setEmployeeId(e.target.value)}
+              >
+                <option value="">All Employees</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.full_name}{emp.employee_code ? ` (${emp.employee_code})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="rec-from-phone">From date</label>
+              <input id="rec-from-phone" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="rec-to-phone">To date</label>
+              <input id="rec-to-phone" type="date" className={ui.input} value={toDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+          </PhoneSheet>
+        </div>
+
         {/* ── Filters ── */}
         <form
-          className={`${ui.surface} ${ui.surfaceBody}`}
+          className={`${ui.surface} ${ui.surfaceBody} ${ui.desktopOnly}`}
           onSubmit={e => { e.preventDefault(); if (!fetching) void handleSearch() }}
         >
           <div className={ui.fieldGrid} style={{ alignItems: 'end', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr)) auto' }}>

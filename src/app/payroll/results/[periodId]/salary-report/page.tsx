@@ -21,6 +21,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatRupees } from '@/lib/payroll/money'
+import phone from '../../payrollResultsPhone.module.css'
 import {
   buildSalaryReport,
   renderReportText,
@@ -145,7 +146,7 @@ export default function SalaryProcessingReportPage() {
       subtitle={period ? monthLabel(period.month, period.year) : undefined}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
     >
-      <div style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className={phone.report} style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {error  && <AlertBanner variant="red">{error}</AlertBanner>}
         {notice && <AlertBanner variant="green">{notice}</AlertBanner>}
@@ -159,7 +160,7 @@ export default function SalaryProcessingReportPage() {
           <>
             {/* Actions */}
             <section style={card}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+              <div className={phone.reportBar} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
                 <button onClick={toggleAll} style={secondaryButton}>
                   {allSelected ? 'Clear selection' : 'Select all'}
                 </button>
@@ -191,7 +192,7 @@ export default function SalaryProcessingReportPage() {
               <table className="salary-report-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                 <thead>
                   <tr style={{ background: colors.raised }}>
-                    <th style={{ ...th, width: 40 }}>
+                    <th className={phone.checkCell} style={{ ...th, width: 40 }}>
                       <input
                         type="checkbox"
                         checked={allSelected}
@@ -211,12 +212,17 @@ export default function SalaryProcessingReportPage() {
                     return (
                       <tr
                         key={r.employee_id}
-                        style={{ borderTop: `1px solid ${colors.border}`, opacity: isOn ? 1 : 0.45 }}
+                        // The whole row includes or leaves out the employee, so
+                        // a phone user is not aiming at a 13px box.
+                        onClick={() => toggleOne(r.employee_id)}
+                        className={phone.pickRow}
+                        style={{ borderTop: `1px solid ${colors.border}`, opacity: isOn ? 1 : 0.45, cursor: 'pointer' }}
                       >
-                        <td style={td}>
+                        <td className={phone.checkCell} style={td}>
                           <input
                             type="checkbox"
                             checked={isOn}
+                            onClick={e => e.stopPropagation()}
                             onChange={() => toggleOne(r.employee_id)}
                             aria-label={`Include ${r.employee_name}`}
                           />

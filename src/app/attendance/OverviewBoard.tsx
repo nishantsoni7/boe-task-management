@@ -126,7 +126,9 @@ function Tile({ label, total, children }: { label: string; total: OverviewTotal;
       <p className={styles.tileLabel}>{label}</p>
       <span className={styles.tileValue}>{total.total}</span>
       <p className={styles.tileSub}>
-        {total.top ? `${who}. Most: ${total.top.name}, ${total.top.count}` : 'Nobody this month'}
+        <span className={styles.tileSubText}>
+          {total.top ? `${who}. Most: ${total.top.name}, ${total.top.count}` : 'Nobody this month'}
+        </span>
         {children}
       </p>
     </section>
@@ -299,7 +301,7 @@ export function OverviewBoard({ data, today }: { data: OverviewData; today: Mach
         <Tile label="Late or left early" total={data.totals.late} />
         <Tile label="Absent days" total={data.totals.absent} />
         <Tile label="Missing punches" total={data.totals.miss}>
-          {data.totals.miss.total > 0 && <>. <Link href={decisions} className={ui.link}>Review them</Link></>}
+          {data.totals.miss.total > 0 && <><span className={styles.tileSubText}>. </span><Link href={decisions} className={ui.link}>Review them</Link></>}
         </Tile>
       </div>
 

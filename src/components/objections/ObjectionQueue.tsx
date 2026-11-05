@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { colors } from '@/lib/tokens'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
+import styles from './objectionQueue.module.css'
 import {
   employeeStatusLabel,
   statusTone,
@@ -112,6 +113,49 @@ export function ObjectionQueue({
   const historyChain = historyKey ? chains.get(historyKey) : undefined
   const employeeOfChain = historyChain?.[0]?.employee?.full_name ?? 'Employee'
 
+  /** Resolve / Reject while pending, and History always. Same on both layouts. */
+  const actions = (r: Row) => (
+    <>
+      {r.status === 'pending' && (
+        <>
+          <button
+            onClick={() => void review(r.id, 'approved')}
+            disabled={busyId === r.id}
+            className={`boe-btn boe-btn-ghost ${styles.action}`}
+            style={{ padding: '3px 10px', fontSize: 12 }}
+          >
+            Resolve
+          </button>
+          <button
+            onClick={() => void review(r.id, 'rejected')}
+            disabled={busyId === r.id}
+            className={`boe-btn boe-btn-ghost ${styles.action}`}
+            style={{ padding: '3px 10px', fontSize: 12 }}
+          >
+            Reject
+          </button>
+        </>
+      )}
+      <button
+        onClick={() => setHistoryKey(issueChainKey(r))}
+        className={`boe-btn boe-btn-ghost ${styles.action}`}
+        style={{ padding: '3px 10px', fontSize: 12 }}
+      >
+        History
+      </button>
+    </>
+  )
+
+  const statusBadge = (r: Row) => (
+    <span style={{
+      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+      fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+      background: statusTone(r.status).bg, color: statusTone(r.status).fg,
+    }}>
+      {employeeStatusLabel(r.status)}
+    </span>
+  )
+
   if (loading) return null
   // An unscoped queue disappears when there is nothing in it. A scoped one must
   // not: an admin looking at a payroll run has to be able to tell "no issues
@@ -150,7 +194,8 @@ export function ObjectionQueue({
       {rows.length === 0 ? (
         <div style={{ padding: '20px 16px', fontSize: 13, color: colors.muted }}>{emptyLabel}</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <>
+        <div className={styles.desktopOnly} style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -193,51 +238,40 @@ export function ObjectionQueue({
                   <td style={{ padding: '10px 16px', fontSize: 12, color: colors.muted, whiteSpace: 'nowrap' }}>
                     {new Date(r.created_at).toLocaleDateString('en-IN')}
                   </td>
-                  <td style={{ padding: '10px 16px' }}>
-                    <span style={{
-                      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                      fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
-                      background: statusTone(r.status).bg, color: statusTone(r.status).fg,
-                    }}>
-                      {employeeStatusLabel(r.status)}
-                    </span>
-                  </td>
+                  <td style={{ padding: '10px 16px' }}>{statusBadge(r)}</td>
                   <td style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {r.status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => void review(r.id, 'approved')}
-                            disabled={busyId === r.id}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 10px', fontSize: 12 }}
-                          >
-                            Resolve
-                          </button>
-                          <button
-                            onClick={() => void review(r.id, 'rejected')}
-                            disabled={busyId === r.id}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 10px', fontSize: 12 }}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => setHistoryKey(issueChainKey(r))}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 10px', fontSize: 12 }}
-                      >
-                        History
-                      </button>
-                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{actions(r)}</div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Phone: one card per issue — who and when, what they said, then
+            Resolve / Reject / History at full touch size. No sideways scroll. */}
+        <ul className={styles.cards} aria-label={title}>
+          {rows.map(r => (
+            <li key={r.id} className={styles.card}>
+              <div className={styles.cardHead}>
+                <span className={styles.who}>
+                  {r.employee?.full_name ?? '—'}
+                  {r.employee?.employee_code && <span className={styles.muted}> · {r.employee.employee_code}</span>}
+                </span>
+                {statusBadge(r)}
+              </div>
+              <div className={styles.meta}>
+                {r.attendance_date ?? r.subject_snapshot.split(' · ')[0]}
+                {' · raised '}{new Date(r.created_at).toLocaleDateString('en-IN')}
+              </div>
+              <div className={styles.reason}>{r.reason}</div>
+              <div className={styles.meta}>As recorded: {r.subject_snapshot}</div>
+              {r.review_note && <div className={styles.reply}>Reply: {r.review_note}</div>}
+              <div className={styles.actions}>{actions(r)}</div>
+            </li>
+          ))}
+        </ul>
+        </>
       )}
 
       {historyChain && (

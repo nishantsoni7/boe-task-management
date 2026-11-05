@@ -11,6 +11,8 @@ import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
 import type { ScoreDayKind } from '@/lib/attendance/attendanceScore'
+import { ui } from '@/components/attendancePayroll/ui'
+import styles from './employeeMonth.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,10 +170,11 @@ export default function EmployeeMonthlyDetailPage() {
       subtitle="Day-wise attendance records for the selected month"
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 960, padding: '24px 0' }}>
+      <div className={styles.page} style={{ maxWidth: 960, padding: '24px 0' }}>
 
         <Link
           href={backHref}
+          className={styles.back}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
           onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
           onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
@@ -184,32 +187,34 @@ export default function EmployeeMonthlyDetailPage() {
 
         {/* ── Employee info header ── */}
         {employee && (
-          <div style={{
+          <div className={styles.info} style={{
             background: colors.base, border: `1px solid ${colors.border}`,
             borderRadius: 8, padding: '16px 20px', marginBottom: 20,
             display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
           }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: colors.primary }}>{employee.full_name}</div>
+            {/* On a phone the title already names the person and the month, so
+                this card keeps one line: code · office timing · days recorded. */}
+            <div className={styles.infoWho}>
+              <div className={styles.infoName} style={{ fontSize: 15, fontWeight: 700, color: colors.primary }}>{employee.full_name}</div>
               {employee.employee_code && (
                 <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 2 }}>{employee.employee_code}</div>
               )}
             </div>
-            <div style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
-            <div>
+            <div className={styles.infoRule} style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
+            <div className={styles.infoPeriod}>
               <div style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Period</div>
               <div style={{ fontSize: 13, color: colors.primary, marginTop: 2 }}>{monthLabel}</div>
             </div>
             {employee.office_timing && (
               <>
-                <div style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Office Timing</div>
+                <div className={styles.infoRule} style={{ width: 1, height: 32, background: colors.border, flexShrink: 0 }} />
+                <div className={styles.infoField}>
+                  <div className={styles.infoLabel} style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Office Timing</div>
                   <div style={{ fontSize: 13, color: colors.primary, marginTop: 2 }}>{employee.office_timing}</div>
                 </div>
               </>
             )}
-            <div style={{ marginLeft: 'auto' }}>
+            <div className={styles.infoField} style={{ marginLeft: 'auto' }}>
               <div style={{ fontSize: 13, color: colors.secondary }}>{records.length} day{records.length !== 1 ? 's' : ''} recorded</div>
             </div>
           </div>
@@ -243,7 +248,7 @@ export default function EmployeeMonthlyDetailPage() {
           const hrs = Math.floor(totalHours); const mins = Math.round((totalHours - hrs) * 60)
           const hoursLabel = totalHours <= 0 ? '—' : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`
           return (
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+            <div className={styles.kpis} style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
               {[
                 { label: 'Present',        value: String(present),       color: '#335A86' },
                 { label: 'Half Day',       value: String(half_day),      color: '#595D5B' },
@@ -254,14 +259,14 @@ export default function EmployeeMonthlyDetailPage() {
                 { label: 'Productive Hrs', value: hoursLabel,            color: '#276247' },
                 { label: 'Attendance %',   value: total_records === 0 ? '—' : `${pct}%`, color: pctColor },
               ].map(k => (
-                <div key={k.label} style={{
+                <div key={k.label} className={styles.kpi} style={{
                   background: '#FFFFFF', border: '1px solid #E4DED7',
                   borderRadius: 8, padding: '14px 18px', minWidth: 90,
                 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: k.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  <div className={styles.kpiValue} style={{ fontSize: 20, fontWeight: 700, color: k.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                     {k.value}
                   </div>
-                  <div style={{ fontSize: 12, color: '#686D6C', marginTop: 5 }}>{k.label}</div>
+                  <div className={styles.kpiLabel} style={{ fontSize: 12, color: '#686D6C', marginTop: 5 }}>{k.label}</div>
                 </div>
               ))}
             </div>
@@ -278,7 +283,8 @@ export default function EmployeeMonthlyDetailPage() {
             Loading records…
           </div>
         ) : records.length > 0 ? (
-          <div style={{
+          <>
+          <div className={ui.desktopOnly} style={{
             background: colors.base, border: `1px solid ${colors.border}`,
             borderRadius: 8, overflow: 'hidden',
           }}>
@@ -340,6 +346,27 @@ export default function EmployeeMonthlyDetailPage() {
               </table>
             </div>
           </div>
+
+          {/* Phone: one card per day — date and status, then the punches, the
+              hours and anything late or penalised. Nothing scrolls sideways. */}
+          <ul className={`${ui.cards} ${styles.days}`} aria-label={`Days, ${monthLabel}`}>
+            {records.map(rec => (
+              <li key={rec.id} className={`${ui.surface} ${styles.day}`}>
+                <div className={styles.dayHead}>
+                  <span className={styles.dayDate}>{formatDate(rec.attendance_date)}</span>
+                  <StatusBadge status={rec.effective_status} />
+                </div>
+                <div className={styles.dayLine}>
+                  {formatTime(rec.check_in_at)} → {formatTime(rec.check_out_at)}
+                  {rec.hours_worked !== null && ` · ${rec.hours_worked}h`}
+                  {rec.is_late && <span className={styles.dayLate}> · late {fmtLateDuration(rec.late_minutes)}</span>}
+                  {rec.penalty && <span className={styles.dayPenalty}> · {rec.penalty}</span>}
+                </div>
+                <DayRequestChips items={requestsOnDate.get(rec.attendance_date)} />
+              </li>
+            ))}
+          </ul>
+          </>
         ) : !error && (
           <div style={{
             background: colors.base, border: `1px solid ${colors.border}`,

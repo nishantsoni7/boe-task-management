@@ -10,6 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import styles from './holidays.module.css'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 
 type HolidayType = 'full_day' | 'half_day'
 type HalfSession = 'first_half' | 'second_half'
@@ -36,6 +37,9 @@ export default function HolidaysPage() {
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<HolidayType>('full_day')
   const [newSession, setNewSession] = useState<HalfSession | ''>('')
+  // Phone only: the add form is folded until "+ Add holiday" is pressed, so
+  // the list is on the first screen. A desktop always shows the form.
+  const [phoneAddOpen, setPhoneAddOpen] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -176,6 +180,21 @@ export default function HolidaysPage() {
       title="Holidays"
       subtitle="Public holidays are left out of working days when attendance and pay are worked out."
       onSignOut={handleSignOut}
+      actions={
+        <HeaderActions
+          kind="add"
+          label="Add holiday"
+          items={[{
+            key: 'add', label: 'Add holiday', primary: true,
+            onSelect: () => {
+              setPhoneAddOpen(true)
+              requestAnimationFrame(() => document.getElementById('add-holiday')?.scrollIntoView({ block: 'start' }))
+            },
+          }]}
+        >
+          {null}
+        </HeaderActions>
+      }
     >
       <div className={ui.stack}>
         {error && (
@@ -191,9 +210,19 @@ export default function HolidaysPage() {
         {okMsg && <Notice kind="success">{okMsg}</Notice>}
 
         {/* ── Add Holiday Form ── */}
-        <section className={`${ui.surface} ${ui.readable}`} aria-labelledby="add-holiday">
+        <section
+          className={`${ui.surface} ${ui.readable}${phoneAddOpen ? '' : ` ${styles.phoneFolded}`}`}
+          aria-labelledby="add-holiday"
+        >
           <div className={ui.surfaceHead}>
             <h2 className={ui.surfaceTitle} id="add-holiday">Add a holiday</h2>
+            <button
+              type="button"
+              className={`boe-btn boe-btn-ghost ${ui.btnSm} ${ui.phoneOnly}`}
+              onClick={() => setPhoneAddOpen(false)}
+            >
+              Close
+            </button>
           </div>
           <form onSubmit={handleAdd} className={ui.surfaceBody}>
             <div className={ui.fieldGrid}>
@@ -309,15 +338,17 @@ export default function HolidaysPage() {
 
             <ul className={`${ui.cards} ${styles.cardList}`}>
               {rows.map(({ h, dateLabel, createdLabel, typeLabel }) => (
-                <li key={h.id} className={`${ui.surface} ${ui.card}`}>
-                  <div className={ui.cardHead}>
-                    <div className={ui.strong}>{h.holiday_name}</div>
-                    {h.holiday_type === 'half_day' && <Badge tone="warn">{typeLabel}</Badge>}
-                  </div>
-                  <div className={ui.sub}>
-                    {dateLabel}
-                    {h.holiday_type === 'full_day' && ' · Full Day'}
-                    {createdLabel && ` · Added ${createdLabel}`}
+                <li key={h.id} className={`${ui.surface} ${ui.card} ${styles.card}`}>
+                  <div className={styles.cardText}>
+                    <div className={ui.cardHead}>
+                      <div className={ui.strong}>{h.holiday_name}</div>
+                      {h.holiday_type === 'half_day' && <Badge tone="warn">{typeLabel}</Badge>}
+                    </div>
+                    <div className={ui.sub}>
+                      {dateLabel}
+                      {h.holiday_type === 'full_day' && ' · Full Day'}
+                      {createdLabel && ` · Added ${createdLabel}`}
+                    </div>
                   </div>
                   <div>{deleteButton(h.id, h.holiday_name)}</div>
                 </li>

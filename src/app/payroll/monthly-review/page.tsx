@@ -265,14 +265,16 @@ function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: nu
     >
       <div className={ui.stack}>
 
-        <Notice kind="info">
-          <strong>Preview only.</strong> These figures are calculated live and have not been saved.
-          Saved payroll is under <Link href="/payroll" className={ui.link}>Payroll Runs</Link>.
-        </Notice>
+        <div className={styles.desktopNotice}>
+          <Notice kind="info">
+            <strong>Preview only.</strong> These figures are calculated live and have not been saved.
+            Saved payroll is under <Link href="/payroll" className={ui.link}>Payroll Runs</Link>.
+          </Notice>
+        </div>
 
         {/* Month selector */}
-        <div className={ui.toolbar} style={{ marginBottom: 0 }}>
-          <div className={ui.row} role="group" aria-label="Month to preview">
+        <div className={`${ui.toolbar} ${styles.monthBar}`} style={{ marginBottom: 0 }}>
+          <div className={`${ui.row} ${styles.monthSelects}`} role="group" aria-label="Month to preview">
             <label className={ui.srOnly} htmlFor="preview-month">Month</label>
             <select
               id="preview-month" className={ui.input} style={{ width: 'auto', minWidth: 130 }}
@@ -302,11 +304,13 @@ function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: nu
 
         {/* A month still in progress: say what the figures cover. */}
         {calculatedThrough && shown && (
-          <Notice kind="warning">
-            This month is still in progress. The preview covers days up to {calculatedThrough} only; days after it
-            have not happened and are not counted or charged. Payroll for the month can be generated and locked
-            once it has ended.
-          </Notice>
+          <div className={styles.desktopNotice}>
+            <Notice kind="warning">
+              This month is still in progress. The preview covers days up to {calculatedThrough} only; days after it
+              have not happened and are not counted or charged. Payroll for the month can be generated and locked
+              once it has ended.
+            </Notice>
+          </div>
         )}
 
         {error && (
@@ -320,11 +324,40 @@ function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: nu
 
         {/* Zero-attendance warning */}
         {zeroAttendanceCount > 0 && (
-          <Notice kind="warning">
-            <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
-            Check that fingerprint import is complete before generating payroll.
-          </Notice>
+          <div className={styles.desktopNotice}>
+            <Notice kind="warning">
+              <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
+              Check that fingerprint import is complete before generating payroll.
+            </Notice>
+          </div>
         )}
+
+        {/* Phone: "preview only" and the two warnings as ONE line that opens
+            to the full text, so the employees start on the first screen. */}
+        <details className={styles.phoneNotes}>
+          <summary>
+            <span>Not saved</span>
+            {calculatedThrough && shown && <span className={styles.phoneNotesWarn}>· to {calculatedThrough}</span>}
+            {zeroAttendanceCount > 0 && <span className={styles.phoneNotesWarn}>· {zeroAttendanceCount} no attendance</span>}
+          </summary>
+          <p>
+            These figures are calculated live and have not been saved.
+            Saved payroll is under <Link href="/payroll" className={ui.link}>Payroll Runs</Link>.
+          </p>
+          {calculatedThrough && shown && (
+            <p className={styles.phoneNotesWarn}>
+              This month is still in progress. The preview covers days up to {calculatedThrough} only; days after it
+              have not happened and are not counted or charged. Payroll for the month can be generated and locked
+              once it has ended.
+            </p>
+          )}
+          {zeroAttendanceCount > 0 && (
+            <p className={styles.phoneNotesWarn}>
+              <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
+              Check that fingerprint import is complete before generating payroll.
+            </p>
+          )}
+        </details>
 
         {fetching && results === null && (
           <StateBlock kind="loading" title="Computing preview…">This can take a few seconds.</StateBlock>
@@ -409,7 +442,7 @@ function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: nu
                 {/* Phone: one card per employee. */}
                 <ul className={ui.cards} aria-label={`Payroll preview, ${MONTH_NAMES[context.month - 1]} ${context.year}`}>
                   {sorted.map(r => (
-                    <li key={r.employee_id} className={`${ui.surface} ${ui.card}`}>
+                    <li key={r.employee_id} className={`${ui.surface} ${ui.card} ${styles.card}`}>
                       <div className={ui.cardHead}>
                         <div>
                           <div className={ui.strong}>{r.employee_name}</div>
@@ -433,7 +466,12 @@ function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: nu
                         <div><dt>Deductions</dt><dd className={r.total_deductions > 0 ? styles.negBold : styles.dim}>{deductionText(r)}</dd></div>
                         <div><dt>Adjustments</dt><dd className={adjustmentClass(r)}>{adjustmentText(r)}</dd></div>
                       </dl>
-                      <Link href={detailHref(r.employee_id)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
+                      {/* The whole card opens the detail (the link's ::after covers it). */}
+                      <Link
+                        href={detailHref(r.employee_id)}
+                        className={`boe-btn boe-btn-ghost ${ui.btnSm} ${styles.cardLink}`}
+                        aria-label={`Detail for ${r.employee_name}`}
+                      >
                         Detail →
                       </Link>
                     </li>

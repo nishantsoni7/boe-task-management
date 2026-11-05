@@ -2,3 +2,36 @@
 .corrected { margin-left: 8px; font-size: 12px; color: #335A86; font-weight: 600; }
 .late { margin-left: 8px; font-size: 12px; color: #805B0D; font-weight: 400; }
 .refresh { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ON A PHONE (owner, 2026-11-05, "phones: content first"): the day list starts
+   on the first screen. The toolbar keeps only the month (the header's Refresh
+   reloads this page), the coverage and "today so far" notes fold into one
+   line, and each day is two lines with Raise Issue beside the times. */
+.phoneNotes { display: none; }
+
+@media (max-width: 767px) {
+  .page { gap: 10px; }
+  .refresh, .monthEcho { display: none !important; }
+  .desktopNotice { display: none; }
+  .phoneNotes {
+    display: block; font-size: 12.5px; line-height: 1.45; color: #335A86;
+    background: rgba(51, 90, 134, 0.07); border: 1px solid rgba(51, 90, 134, 0.22); border-radius: 8px;
+  }
+  .phoneNotes summary {
+    min-height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    cursor: pointer; list-style: none; font-weight: 600;
+  }
+  .phoneNotes summary::-webkit-details-marker { display: none; }
+  .phoneNotes summary::after { content: '▾'; margin-left: auto; font-size: 11px; }
+  .phoneNotes[open] summary::after { content: '▴'; }
+  .phoneNotes p { margin: 0; padding: 0 12px 10px; }
+
+  .dayCard {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px; row-gap: 2px; padding: 10px 12px;
+  }
+  .dayCard > * { grid-column: 1 / -1; }
+  .dayCard > .dayTimes { grid-column: 1; align-self: center; margin-top: 0; }
+  .dayCard > .issueControls:not(.issueControlsWide) { grid-column: 2; grid-row: 2; justify-content: flex-end; }
+  .dayCard > .issueControlsWide { justify-content: flex-end; }
+}

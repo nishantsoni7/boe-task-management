@@ -11,6 +11,8 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import { CreditsSummaryCard } from '@/components/boeCredits/CreditsSummaryCard'
+import { ui } from '@/components/attendancePayroll/ui'
+import styles from './myPayroll.module.css'
 import {
   employeeStatusLabel,
   statusTone as objectionTone,
@@ -166,6 +168,55 @@ export default function MyPayrollPage() {
 
   if (loading) return <LoadingScreen />
 
+  /**
+   * Reporting a problem, not editing one. No amount on this row is touchable
+   * from here.
+   *
+   * Status, history and the action sit side by side: a resolved or rejected
+   * issue must not take away the employee's ability to raise the matter again.
+   */
+  const issueControls = (r: MyResultRow) => {
+    const objection = objectionByResult.get(r.id)
+    return (
+      <>
+        {objection && (
+          <>
+            <span
+              title={objection.review_note ?? undefined}
+              style={{
+                display: 'inline-block', padding: '2px 10px', borderRadius: 12,
+                fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+                background: objectionTone(objection.status).bg,
+                color: objectionTone(objection.status).fg,
+              }}
+            >
+              {employeeStatusLabel(objection.status)}
+            </span>
+            <button
+              onClick={() => setHistoryResultId(r.id)}
+              className={`boe-btn boe-btn-ghost ${styles.issueBtn}`}
+              style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+            >
+              History
+            </button>
+          </>
+        )}
+        {canRaiseIssue(objection) && (
+          <button
+            onClick={() => setIssueResult(r)}
+            className={`boe-btn boe-btn-ghost ${styles.issueBtn}`}
+            style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            {raiseActionLabel(objection)}
+          </button>
+        )}
+      </>
+    )
+  }
+
+  const monthLabel = (r: MyResultRow) =>
+    `${r.payroll_month ? MONTHS[r.payroll_month - 1] : '—'} ${r.payroll_year ?? ''}`.trim()
+
   return (
     <AttendancePayrollLayout
       profile={profile}
@@ -185,9 +236,11 @@ export default function MyPayrollPage() {
 
       {/* BOE Credits: a compact read-only item. Employees see credits, never
           rupees, and the route pins them to their own ledger. */}
-      <CreditsSummaryCard token={token} />
+      <div className={styles.credits}>
+        <CreditsSummaryCard token={token} />
+      </div>
 
-      <div style={{
+      <div className={styles.results} style={{
         background: '#fff', borderRadius: 12,
         border: '1px solid #E4DED7',
         overflow: 'hidden',
@@ -200,7 +253,8 @@ export default function MyPayrollPage() {
             No payroll results available yet. Check back after your admin generates payroll.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <>
+          <div className={ui.desktopOnly} style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #E4DED7' }}>
@@ -254,50 +308,7 @@ export default function MyPayrollPage() {
                         >
                           View &amp; Review
                         </button>
-                        {/* Reporting a problem, not editing one. No amount on
-                            this row is touchable from here.
-
-                            Status, history and the action sit side by side: a
-                            resolved or rejected issue must not take away the
-                            employee's ability to raise the matter again. */}
-                        {(() => {
-                          const objection = objectionByResult.get(r.id)
-                          return (
-                            <>
-                              {objection && (
-                                <>
-                                  <span
-                                    title={objection.review_note ?? undefined}
-                                    style={{
-                                      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                                      fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
-                                      background: objectionTone(objection.status).bg,
-                                      color: objectionTone(objection.status).fg,
-                                    }}
-                                  >
-                                    {employeeStatusLabel(objection.status)}
-                                  </span>
-                                  <button
-                                    onClick={() => setHistoryResultId(r.id)}
-                                    className="boe-btn boe-btn-ghost"
-                                    style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
-                                  >
-                                    History
-                                  </button>
-                                </>
-                              )}
-                              {canRaiseIssue(objection) && (
-                                <button
-                                  onClick={() => setIssueResult(r)}
-                                  className="boe-btn boe-btn-ghost"
-                                  style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
-                                >
-                                  {raiseActionLabel(objection)}
-                                </button>
-                              )}
-                            </>
-                          )
-                        })()}
+                        {issueControls(r)}
                       </div>
                     </td>
                   </tr>
@@ -305,6 +316,38 @@ export default function MyPayrollPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Phone: one row per month — month, net payable, review status.
+              The whole row opens the payslip; an issue already raised shows
+              under it with its History and Raise again. */}
+          <ul className={`${ui.cards} ${styles.payCards}`} aria-label="Your payroll months">
+            {results.map(r => (
+              <li key={r.id} className={styles.payCard}>
+                <button
+                  type="button"
+                  className={styles.payRow}
+                  onClick={() => router.push(`/my-payroll/${r.period_id}`)}
+                  aria-label={`View and review ${monthLabel(r)}, net payable ${fmt(r.net_salary)}`}
+                >
+                  <span className={styles.payMonth}>
+                    {monthLabel(r)}
+                    <span className={styles.payGross}>
+                      Gross {fmt(r.gross_salary)}{r.total_deductions ? ` · −${fmt(r.total_deductions)}` : ''}
+                    </span>
+                  </span>
+                  <span className={styles.payNet}>
+                    {fmt(r.net_salary)}
+                    <ReviewBadge reviewedAt={r.employee_reviewed_at} />
+                  </span>
+                  <span aria-hidden="true" className={styles.payChevron}>›</span>
+                </button>
+                {objectionByResult.has(r.id) && (
+                  <div className={styles.payIssue}>{issueControls(r)}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+          </>
         )}
       </div>
 

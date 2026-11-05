@@ -24,6 +24,7 @@ import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Badge, Notice, ui, type Tone } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './credits.module.css'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
@@ -110,6 +111,8 @@ export default function BoeCreditsPage() {
   const [usingDefaults, setUsingDefaults] = useState(false)
   const [settingsHistory, setSettingsHistory] = useState<SettingsHistoryRow[]>([])
   const [showSettingsHistory, setShowSettingsHistory] = useState(false)
+  // Phone only: the settings form is folded until asked for.
+  const [phoneSettingsOpen, setPhoneSettingsOpen] = useState(false)
 
   const [monthParam, setMonthParam] = useState<string>(() => monthOptions()[0].value)
   const [monthClose, setMonthClose] = useState<MonthClose | null>(null)
@@ -337,9 +340,11 @@ export default function BoeCreditsPage() {
       subtitle="Credit settings, month close and every employee's balance."
       onSignOut={handleSignOut}
       actions={
-        <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }}>
-          How credits work
-        </Link>
+        <HeaderActions items={[{ key: 'guide', label: 'How credits work', onSelect: () => router.push(CREDITS_GUIDE_PATH) }]}>
+          <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }}>
+            How credits work
+          </Link>
+        </HeaderActions>
       }
     >
       <div className={ui.stack}>
@@ -364,16 +369,35 @@ export default function BoeCreditsPage() {
         )}
 
         {/* ── 1. Settings ─────────────────────────────────────────────────── */}
-        <CreditSettingsForm
-          key={`${settingsLoaded}-${settingsUpdatedAt ?? ''}`}
-          current={settings}
-          loading={!settingsLoaded}
-          updatedAt={settingsUpdatedAt}
-          onSubmit={submitSettings}
-        />
+        {/* On a phone the balances come first and the settings form (about
+            700px) is folded behind this one row; a desktop never sees it. */}
+        <button
+          type="button"
+          className={`${ui.surface} ${styles.phoneSettingsToggle}`}
+          aria-expanded={phoneSettingsOpen}
+          aria-controls="credit-settings"
+          onClick={() => setPhoneSettingsOpen(v => !v)}
+        >
+          <span className={ui.surfaceTitle}>Credit settings</span>
+          <span className={ui.surfaceSub} style={{ margin: 0 }}>
+            1 credit = {formatCreditValue(settings.credit_value)} · {phoneSettingsOpen ? 'Hide' : 'Show'}
+          </span>
+        </button>
+        <div
+          id="credit-settings"
+          className={`${styles.settings}${phoneSettingsOpen ? '' : ` ${styles.phoneFolded}`}`}
+        >
+          <CreditSettingsForm
+            key={`${settingsLoaded}-${settingsUpdatedAt ?? ''}`}
+            current={settings}
+            loading={!settingsLoaded}
+            updatedAt={settingsUpdatedAt}
+            onSubmit={submitSettings}
+          />
+        </div>
 
         {/* ── 2. Month close ──────────────────────────────────────────────── */}
-        <section aria-labelledby="month-close-heading" className={ui.surface}>
+        <section aria-labelledby="month-close-heading" className={`${ui.surface} ${styles.monthClose}`}>
           <div className={ui.surfaceHead}>
             <div>
               <h2 id="month-close-heading" className={ui.surfaceTitle}>Month close</h2>
@@ -506,7 +530,7 @@ export default function BoeCreditsPage() {
         </section>
 
         {/* ── 3. Balances ─────────────────────────────────────────────────── */}
-        <section aria-labelledby="balances-heading" className={ui.surface}>
+        <section aria-labelledby="balances-heading" className={`${ui.surface} ${styles.balances}`}>
           <div className={ui.surfaceHead}>
             <div>
               <h2 id="balances-heading" className={ui.surfaceTitle}>Employee credits</h2>
@@ -606,7 +630,7 @@ export default function BoeCreditsPage() {
 
         {/* ── 4. Settings history ─────────────────────────────────────────── */}
         {settingsHistory.length > 0 && (
-          <section className={ui.surface}>
+          <section className={`${ui.surface} ${styles.settingsHistory}`}>
             <button
               type="button"
               onClick={() => setShowSettingsHistory(v => !v)}

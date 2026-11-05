@@ -23,6 +23,7 @@ import {
 import { AttendanceRequestFlow, MY_REQUESTS_ANCHOR } from './AttendanceRequestFlow'
 import { RequestHistoryModal } from './RequestHistoryModal'
 import { formatIstDateTime, statusTone } from './format'
+import styles from './attendanceRequests.module.css'
 
 type Row = AttendanceRequestRow & { decider?: { full_name: string | null } | null }
 
@@ -36,6 +37,9 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
   const [historyId, setHistoryId] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // ON A PHONE (owner, 2026-11-05) the list is folded behind a one-line
+  // summary so the day list starts on the first screen. Desktop ignores it.
+  const [phoneOpen, setPhoneOpen] = useState(false)
 
   const load = useCallback(async () => {
     const token = await getToken()
@@ -55,8 +59,11 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
   // "View my requests" from another page arrives with #my-requests; the section
   // only exists once this component has mounted, so scroll to it here.
   useEffect(() => {
-    if (window.location.hash === `#${MY_REQUESTS_ANCHOR}`)
+    if (window.location.hash === `#${MY_REQUESTS_ANCHOR}`) {
+      // Arriving to see the requests: open them on a phone too.
+      queueMicrotask(() => setPhoneOpen(true))
       document.getElementById(MY_REQUESTS_ANCHOR)?.scrollIntoView({ block: 'start' })
+    }
   }, [])
 
   const cancel = async (r: Row) => {
@@ -76,14 +83,21 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
 
   const now = new Date().toISOString()
   const visible = showAll ? rows : rows.slice(0, COLLAPSED)
+  const pending = rows.filter(r => r.status === 'pending').length
+  const phoneSummary = !loaded
+    ? 'Loading…'
+    : rows.length === 0
+      ? 'None yet'
+      : `${rows.length} · ${pending > 0 ? `${pending} pending` : 'none pending'}`
+  const foldClass = phoneOpen ? '' : ` ${styles.phoneFolded}`
 
   return (
-    <section id={MY_REQUESTS_ANCHOR} aria-labelledby="my-requests-heading" style={{
+    <section id={MY_REQUESTS_ANCHOR} aria-labelledby="my-requests-heading" className={styles.myRequests} style={{
       border: `1px solid ${colors.border}`, borderRadius: 12, background: colors.base,
       padding: 14, marginBottom: 16,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div>
+      <div className={styles.myRequestsHead} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div className={styles.myRequestsTitle}>
           <div id="my-requests-heading" style={{ fontSize: 14, fontWeight: 700, color: colors.primary }}>
             My requests
           </div>
@@ -91,13 +105,26 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
             Leave, coming late, leaving early or going out
           </div>
         </div>
+        {/* Phone only: the one-line summary that opens the list. */}
+        <button
+          type="button"
+          className={styles.myRequestsToggle}
+          aria-expanded={phoneOpen}
+          aria-controls="my-requests-list"
+          onClick={() => setPhoneOpen(v => !v)}
+        >
+          <span className={styles.myRequestsToggleLabel}>My requests</span>
+          <span className={styles.myRequestsToggleCount}>{phoneSummary}</span>
+          <span aria-hidden="true" className={styles.myRequestsChevron}>{phoneOpen ? '▴' : '▾'}</span>
+        </button>
         <button
           type="button"
           onClick={() => setFormFor('new')}
-          className="boe-btn boe-btn-primary"
+          className={`boe-btn boe-btn-primary ${styles.myRequestsNew}`}
           style={{ padding: '10px 16px', fontSize: 14, fontWeight: 600, minHeight: 44 }}
         >
-          Attendance request
+          <span className="boe-desktop-only">Attendance request</span>
+          <span className="boe-phone-only">New request</span>
         </button>
       </div>
 
@@ -106,11 +133,11 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       )}
 
       {loaded && rows.length === 0 && !error && (
-        <div style={{ marginTop: 10, fontSize: 12.5, color: colors.muted }}>No requests yet.</div>
+        <div className={styles.phoneHidden} style={{ marginTop: 10, fontSize: 12.5, color: colors.muted }}>No requests yet.</div>
       )}
 
       {visible.length > 0 && (
-        <ul style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul id="my-requests-list" className={foldClass.trim() || undefined} style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visible.map(r => {
             const tone = statusTone(r.status)
             return (
@@ -148,14 +175,14 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
                   {canEmployeeCorrect(r, now) && (
-                    <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                    <button type="button" className={`boe-btn boe-btn-ghost ${styles.myRequestsAction}`} style={{ padding: '6px 12px', fontSize: 12.5 }}
                       onClick={() => setFormFor(r)}>Correct</button>
                   )}
                   {canEmployeeCancel(r, now) && (
-                    <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                    <button type="button" className={`boe-btn boe-btn-ghost ${styles.myRequestsAction}`} style={{ padding: '6px 12px', fontSize: 12.5 }}
                       disabled={busyId === r.id} onClick={() => void cancel(r)}>Withdraw</button>
                   )}
-                  <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                  <button type="button" className={`boe-btn boe-btn-ghost ${styles.myRequestsAction}`} style={{ padding: '6px 12px', fontSize: 12.5 }}
                     onClick={() => setHistoryId(r.id)}>History</button>
                 </div>
               </li>
@@ -165,7 +192,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       )}
 
       {rows.length > COLLAPSED && (
-        <button type="button" className="boe-btn boe-btn-ghost" style={{ marginTop: 8, padding: '6px 12px', fontSize: 12.5 }}
+        <button type="button" className={`boe-btn boe-btn-ghost ${styles.myRequestsAction}${foldClass}`} style={{ marginTop: 8, padding: '6px 12px', fontSize: 12.5 }}
           onClick={() => setShowAll(v => !v)}>
           {showAll ? 'Show fewer' : `Show all ${rows.length}`}
         </button>

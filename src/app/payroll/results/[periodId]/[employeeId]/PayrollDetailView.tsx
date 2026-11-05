@@ -32,6 +32,7 @@ import React from 'react'
 import { formatRupees } from '@/lib/payroll/money'
 import { periodLabel, formatGeneratedAt } from '@/lib/payroll/months'
 import { Avatar } from '@/components/ui/atoms'
+import phone from '../../payrollResultsPhone.module.css'
 import type { DayTreatment } from '@/lib/attendance/corrections'
 import {
   PAYMENT_NOT_RECORDED_LABEL,
@@ -1502,7 +1503,7 @@ export function PayrollDetailWorkspace({
   const generatedAt = formatGeneratedAt(result.generated_at)
 
   return (
-    <div className="payroll-detail-page">
+    <div className={`payroll-detail-page ${phone.detail}`}>
 
       {/* Who this payslip belongs to, and which run produced it. */}
       <div className="payroll-identity-card">

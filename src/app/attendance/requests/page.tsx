@@ -21,6 +21,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RequestQueue } from '@/components/attendanceRequests/RequestQueue'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 
 // useSearchParams needs a Suspense boundary; same shape as /payroll.
 export default function AttendanceRequestsPage() {
@@ -69,13 +70,15 @@ function AttendanceRequestsScreen() {
       actions={
         // Salary treatment of an approved request is decided against the month's
         // attendance, not here — one contextual link rather than a second copy.
-        <Link
-          href="/attendance/monthly-review?view=decisions"
-          className="boe-btn boe-btn-ghost"
-          style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}
-        >
-          Salary decisions
-        </Link>
+        <HeaderActions items={[{ key: 'decisions', label: 'Salary decisions', onSelect: () => router.push('/attendance/monthly-review?view=decisions') }]}>
+          <Link
+            href="/attendance/monthly-review?view=decisions"
+            className="boe-btn boe-btn-ghost"
+            style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}
+          >
+            Salary decisions
+          </Link>
+        </HeaderActions>
       }
     >
       {/* ?request=<id> is what a notification or the salary review links to. */}

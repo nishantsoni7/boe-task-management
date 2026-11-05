@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, StatusFilter, ui } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './employees.module.css'
 
 type EmployeeRow = Pick<
@@ -559,7 +560,11 @@ export default function EmployeeMasterPage() {
       onSignOut={handleSignOut}
       actions={
         showEdit
-          ? <button type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }} onClick={() => setShowAdd(true)}>+ Add employee</button>
+          ? (
+            <HeaderActions kind="add" label="Add employee" items={[{ key: 'add', label: 'Add employee', primary: true, onSelect: () => setShowAdd(true) }]}>
+              <button type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }} onClick={() => setShowAdd(true)}>+ Add employee</button>
+            </HeaderActions>
+          )
           : undefined
       }
     >

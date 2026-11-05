@@ -25,6 +25,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './page.module.css'
 import { isPayrollMonthComplete, payrollMonthOpensOn } from '@/lib/payroll/periodCompletion'
 
@@ -584,6 +585,12 @@ function PayrollPeriodsPage() {
         : 'Saved payroll results for each month.'}
       onSignOut={handleSignOut}
       actions={isPayrollAdmin ? (
+        <HeaderActions
+          items={[
+            { key: 'create', label: 'Create Payroll Period', primary: true, onSelect: () => { setCreateError(null); setCreateInfo(null); setCreateOpen(true) } },
+            { key: 'participation', label: 'Participation', onSelect: openParticipation },
+          ]}
+        >
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="boe-btn boe-btn-ghost"
@@ -600,6 +607,7 @@ function PayrollPeriodsPage() {
             Create Payroll Period
           </button>
         </div>
+        </HeaderActions>
       ) : undefined}
     >
       <div className={ui.stack}>

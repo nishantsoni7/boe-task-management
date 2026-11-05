@@ -167,3 +167,26 @@
   .legendItem { white-space: normal; }
   .linksRow a { min-height: 40px; font-size: 14px; }
 }
+
+/* ON A PHONE (owner, 2026-11-05, "phones: content first"): the four number
+   tiles were about 330px tall and pushed the two lists below the first screen.
+   They become one row of chips ("Company score 82", "Absent days 6") that
+   scrolls sideways inside itself; Missing punches keeps its "Review them"
+   link. The lists ("Needs attention" first) follow straight after. */
+@media (max-width: 767px) {
+  .tiles {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 2px 12px;
+  }
+  .tiles::-webkit-scrollbar { display: none; }
+  .tile {
+    flex: none; flex-direction: row; align-items: center; gap: 6px;
+    min-height: 40px; padding: 0 14px; border-radius: 999px; white-space: nowrap;
+  }
+  .tileLabel { font-size: 12.5px; font-weight: 500; }
+  .tileMain { gap: 0; }
+  .tileValue, .tileHero { font-size: 16px; line-height: 1; letter-spacing: 0; }
+  .spark, .tileSubText { display: none; }
+  .tileSub:not(:has(a)) { display: none; }
+  .tileSub a { display: inline-flex; align-items: center; min-height: 40px; }
+}

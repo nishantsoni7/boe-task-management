@@ -28,6 +28,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { PayrollAttendanceReview } from '@/components/attendanceRequests/PayrollAttendanceReview'
 import { Badge, MONTH_NAMES, MonthPicker, Notice, StateBlock, StatusFilter, istCurrentYearMonth, ui } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { isFutureMonth, selectableYears } from '@/lib/attendance/monthAvailability'
 
 type View = 'summary' | 'decisions'
@@ -138,9 +139,15 @@ function MonthlyReviewScreen() {
       subtitle={`${MONTH_NAMES[month - 1]} ${year} — check the month's attendance, then settle what affects pay.`}
       onSignOut={handleSignOut}
       actions={
-        view === 'decisions'
-          ? <Link href="/attendance/requests" className="boe-btn boe-btn-ghost" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}>Attendance requests</Link>
-          : <Link href={`/payroll/monthly-review?year=${year}&month=${month}`} className="boe-btn boe-btn-ghost" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}>Payroll preview</Link>
+        <HeaderActions
+          items={view === 'decisions'
+            ? [{ key: 'requests', label: 'Attendance requests', onSelect: () => router.push('/attendance/requests') }]
+            : [{ key: 'preview', label: 'Payroll preview', onSelect: () => router.push(`/payroll/monthly-review?year=${year}&month=${month}`) }]}
+        >
+          {view === 'decisions'
+            ? <Link href="/attendance/requests" className="boe-btn boe-btn-ghost" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}>Attendance requests</Link>
+            : <Link href={`/payroll/monthly-review?year=${year}&month=${month}`} className="boe-btn boe-btn-ghost" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}>Payroll preview</Link>}
+        </HeaderActions>
       }
     >
       <div className={ui.toolbar}>
