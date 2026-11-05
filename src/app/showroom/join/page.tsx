@@ -131,7 +131,7 @@ function JoinForm() {
       {/* Salesperson context. Assigned by the QR that was scanned — never
           chosen from a list — so the inquiry, and later the quotation, is owned
           by the person actually standing with the customer. */}
-      <div style={{
+      <div className="shw-join-sp" style={{
         background: 'rgba(48,53,54,0.05)',
         border: '1px solid rgba(48,53,54,0.10)',
         borderRadius: '8px',
@@ -154,11 +154,12 @@ function JoinForm() {
         </div>
       </div>
 
-      {/* Instruction */}
-      <div style={{
+      {/* Instruction. On a phone it also names the salesperson (the box above is hidden there). */}
+      <div className="shw-join-intro" style={{
         fontSize: '13px', color: colors.secondary, lineHeight: 1.6,
         marginBottom: '24px',
       }}>
+        <span className="shw-join-sp-line">With <strong>{salespersonName}</strong>. </span>
         Please enter your details before selecting showroom products.
       </div>
 
@@ -179,6 +180,7 @@ function JoinForm() {
             autoComplete="name"
             inputMode="text"
             aria-invalid={invalidField === 'name'}
+            className="shw-join-input"
             style={invalidField === 'name' ? invalidInputStyle : inputStyle}
           />
         </Field>
@@ -192,6 +194,7 @@ function JoinForm() {
             autoComplete="tel"
             inputMode="tel"
             aria-invalid={invalidField === 'mobile'}
+            className="shw-join-input"
             style={invalidField === 'mobile' ? invalidInputStyle : inputStyle}
           />
         </Field>
@@ -203,6 +206,7 @@ function JoinForm() {
             onChange={e => setCompany(e.target.value)}
             placeholder="Company or organisation (optional)"
             autoComplete="organization"
+            className="shw-join-input"
             style={inputStyle}
           />
         </Field>
@@ -214,6 +218,7 @@ function JoinForm() {
             onChange={e => setCity(e.target.value)}
             placeholder="City (optional)"
             autoComplete="address-level2"
+            className="shw-join-input"
             style={inputStyle}
           />
         </Field>
@@ -224,6 +229,7 @@ function JoinForm() {
             value={projectName}
             onChange={e => setProjectName(e.target.value)}
             placeholder="e.g. Hotel lobby, Office redesign (optional)"
+            className="shw-join-input"
             style={inputStyle}
           />
         </Field>
@@ -231,6 +237,7 @@ function JoinForm() {
         <button
           type="submit"
           disabled={submitting}
+          className="shw-join-submit"
           style={{
             marginTop: '8px',
             width: '100%', padding: '14px',
@@ -255,7 +262,7 @@ function JoinForm() {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
+    <div className="shw-join-shell" style={{
       minHeight: '100vh',
       background: colors.void,
       display: 'flex',
@@ -266,7 +273,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       <div style={{ width: '100%', maxWidth: '420px' }}>
 
         {/* BOE header */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+        <div className="shw-join-brand" style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '8px',
             marginBottom: '8px',
@@ -285,7 +292,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
               BOE Showroom
             </span>
           </div>
-          <h1 style={{
+          <h1 className="shw-join-h1" style={{
             fontFamily: font.display,
             fontSize: '22px', fontWeight: 700,
             color: colors.primary,
@@ -296,7 +303,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Card */}
-        <div style={{
+        <div className="shw-join-card" style={{
           background: colors.base,
           border: `1.5px solid ${colors.border}`,
           borderRadius: '12px',

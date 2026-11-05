@@ -212,12 +212,13 @@ export default function SampleNotificationsPage() {
       onTabSelect={(_tab: TabKey) => router.push('/samples')}
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
       actions={
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="boe-notif-tools" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {/* Delete selected — only shown when something is selected */}
           {selected.size > 0 && (
             <button
               onClick={handleDeleteSelected}
               disabled={deletingBulk}
+              className="boe-notif-tool"
               style={{
                 ...toolBtn(true, true),
                 opacity: deletingBulk ? 0.6 : 1,
@@ -231,22 +232,29 @@ export default function SampleNotificationsPage() {
           <button
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0 || markingAll}
+            className="boe-notif-tool"
+            aria-label="Mark all read"
+            title="Mark all read"
             style={{ ...toolBtn(unreadCount > 0 && !markingAll), opacity: markingAll ? 0.6 : 1 }}
           >
             <CheckCheck size={14} strokeWidth={2.2} />
-            {markingAll ? 'Marking…' : 'Mark all read'}
+            {/* On a phone the two tools are icons, as in NotificationsView. */}
+            <span className="boe-desktop-only">{markingAll ? 'Marking…' : 'Mark all read'}</span>
           </button>
 
           <button
             onClick={handleDeleteAll}
             disabled={deletingAll || rows.length === 0}
+            className="boe-notif-tool"
+            aria-label="Delete all"
+            title="Delete all"
             style={{
               ...toolBtn(rows.length > 0 && !deletingAll, true),
               opacity: deletingAll ? 0.6 : 1,
             }}
           >
             <Trash2 size={13} strokeWidth={2.2} />
-            {deletingAll ? 'Deleting…' : 'Delete all'}
+            <span className="boe-desktop-only">{deletingAll ? 'Deleting…' : 'Delete all'}</span>
           </button>
         </div>
       }
@@ -401,6 +409,8 @@ export default function SampleNotificationsPage() {
                       onClick={e => { e.stopPropagation(); handleDeleteSingle(n.id) }}
                       disabled={isPending}
                       title="Delete notification"
+                      aria-label="Delete notification"
+                      className="smp-notif-del"
                       style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         width: '28px', height: '28px', borderRadius: '6px',

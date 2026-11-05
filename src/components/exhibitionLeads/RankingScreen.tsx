@@ -50,15 +50,24 @@ export default function RankingScreen() {
       title="Ranking"
       subtitle={data ? `${data.exhibition.name} · ${exhibitionDates(data.exhibition)}` : undefined}
       actions={exhibitions.length > 1 ? (
-        <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setState({ ex: e.target.value })}>
+        <select className={`${s.select} boe-desktop-only`} style={{ width: 'auto' }} aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setState({ ex: e.target.value })}>
           {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
         </select>
       ) : undefined}
     >
       <div className={s.wrapWide}>
-        <div className={s.scopeLine}>
-          Scope: every active lead collected for {data?.exhibition.name ?? 'the exhibition'} on its own days
-          {data ? ` (${shortDate(data.exhibition.starts_on)} – ${shortDate(data.exhibition.ends_on)}, India time)` : ''}.
+        {/* Phone: the exhibition choice sits under the header instead of wrapping it. */}
+        {exhibitions.length > 1 && (
+          <select className={`${s.select} ${s.rankExPhone}`} aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setState({ ex: e.target.value })}>
+            {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
+          </select>
+        )}
+        {/* Its own class (not .scopeLine, which a phone hides on the leads list), so "How is this counted?" shows on a phone. */}
+        <div className={s.rankScope}>
+          <span className={s.rankScopeText}>
+            Scope: every active lead collected for {data?.exhibition.name ?? 'the exhibition'} on its own days
+            {data ? ` (${shortDate(data.exhibition.starts_on)} – ${shortDate(data.exhibition.ends_on)}, India time)` : ''}.
+          </span>
           <details className={s.scopeMore}>
             <summary>How is this counted?</summary>
             Credit goes to the person who collected the lead — reassigning or editing it does not move it. Archived leads and
@@ -89,18 +98,22 @@ export default function RankingScreen() {
                     : 'Nobody has collected a lead yet'}
                 </div>
               </div>
-              {data.days.map(d => {
-                const l = sum.perDay[d]
-                return (
-                  <div key={d} className={s.leaderCard}>
-                    <div className={s.leaderLabel}>Top collector · {longDate(d)}</div>
-                    <div className={s.leaderName}>{l ? joinNames(l.names) : 'No leads'}</div>
-                    <div className={s.leaderMeta}>
-                      {l ? `${l.count} lead${l.count === 1 ? '' : 's'}${l.names.length > 1 ? ' each — joint leaders' : ''}` : '—'}
+              {/* A desktop draws the days as cards in the grid (display: contents); a phone as one row of chips. */}
+              <div className={s.leaderDays} role="group" aria-label="Top collector each day">
+                {data.days.map(d => {
+                  const l = sum.perDay[d]
+                  return (
+                    <div key={d} className={s.leaderCard}>
+                      <div className={s.leaderLabel}>Top collector · {longDate(d)}</div>
+                      <div className={s.leaderDay}>{shortDate(d)}</div>
+                      <div className={s.leaderName}>{l ? joinNames(l.names) : 'No leads'}</div>
+                      <div className={s.leaderMeta}>
+                        {l ? `${l.count} lead${l.count === 1 ? '' : 's'}${l.names.length > 1 ? ' each — joint leaders' : ''}` : '—'}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
 
             <div className={s.rankScroll}>

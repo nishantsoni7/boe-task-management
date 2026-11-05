@@ -72,7 +72,9 @@ describe('what the review of the board screen found', () => {
 
   test('on a phone a folded column is shown, and the menus stay inside the bar', () => {
     assert.ok(board.includes('folded.includes(stage) && !narrow'))
-    const phone = boardCss.slice(boardCss.indexOf('@media (max-width: 700px)'))
+    // Phase 4: the board's phone rules start at the app's phone breakpoint (767px), as useNarrow does.
+    assert.ok(board.includes("matchMedia('(max-width: 767px)')"))
+    const phone = boardCss.slice(boardCss.indexOf('@media (max-width: 767px)'))
     assert.ok(phone.includes('.menu { left: 0; right: 0;'))
   })
 })

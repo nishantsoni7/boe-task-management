@@ -14873,3 +14873,119 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-p3-cr-activity ol { padding: 2px 14px !important; }
   .boe-p3-cr-month > div { padding: 12px 14px !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 4 — SALES, LEADS, SHOWROOM, SAMPLES
+   (owner, 2026-11-05, "phones: content first"). Below 768px only, so a desktop
+   and a tablet are drawn exactly as before. These pages are mostly inline
+   styles, so a rule that has to beat one carries !important. Module pages
+   (Vendors, Lead Board, Import, Add lead, Ranking, Exhibitions, Inventory) keep
+   their Phase 4 rules in their own CSS modules.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.smp-phone-tabs, .shw-join-sp-line, .sra-qr-copy { display: none; }
+
+@media (max-width: 767px) {
+  /* ── Samples: the status tabs are one sideways row of 40px chips above the
+     list (the ☰ drawer keeps them too); the section heading row goes. */
+  .smp-phone-tabs {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px 12px; padding: 0 12px;
+  }
+  .smp-phone-tabs::-webkit-scrollbar { display: none; }
+  .smp-phone-tab {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
+    border-radius: 999px; border: 1px solid #CFC8BF; background: #FFFFFF; color: #4C5352;
+    font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+  }
+  .smp-phone-tab.is-active { background: #303536; border-color: #303536; color: #FFFFFF; font-weight: 600; }
+  .smp-phone-tab-count { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.8; }
+  .smp-section-head { display: none !important; }
+  /* A request card is one column: who and what, the dates on one line, then
+     Client and Accountability one under the other. */
+  .smp-card-info { flex-direction: column; align-items: stretch !important; gap: 8px !important; }
+  .smp-card-left { display: contents; }
+  .smp-card-identity { order: 0; }
+  .smp-card-dates {
+    order: 1; flex-direction: row !important; flex-wrap: wrap; gap: 2px 14px !important;
+    min-width: 0 !important; text-align: left !important; padding: 0 !important;
+  }
+  .smp-card-dates > div { display: inline-flex; align-items: baseline; gap: 5px; margin-top: 0 !important; }
+  .smp-card-grid { order: 2; grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; margin-top: 0 !important; }
+  .smp-card-grid > div { min-width: 0; overflow-wrap: anywhere; }
+  /* Every button and field on a card is 44px; fields are 16px, so iOS does not zoom. */
+  .smp-card-body button { min-height: 44px; }
+  .smp-actbtn { padding: 0 14px !important; }
+  .smp-card-body input, .smp-card-body select { min-height: 44px; font-size: 16px !important; }
+  .smp-card-body textarea { font-size: 16px !important; }
+  .smp-refresh { width: 44px !important; height: 44px !important; }
+  .smp-new-btn { min-height: 44px; }
+  /* Sample notifications: the per-row delete is 44px (the header tools use .boe-notif-tool). */
+  .smp-notif-del { width: 44px !important; height: 44px !important; }
+
+  /* ── Showroom Admin · Categories: a 44px field and a 44px "+"; Edit,
+     Delete, Save and Cancel are 44px icons; the tag picture goes. */
+  .sra-cat-add { gap: 8px !important; padding: 10px !important; margin-bottom: 16px !important; }
+  .sra-cat-input { height: 44px !important; font-size: 16px !important; max-width: none !important; }
+  .sra-cat-addbtn { width: 44px; height: 44px; padding: 0 !important; justify-content: center; }
+  .sra-cat-addbtn .sra-cat-label, .sra-cat-btn .sra-cat-label { display: none; }
+  .sra-cat-row { gap: 8px !important; padding: 6px 6px 6px 14px !important; }
+  .sra-cat-icon { display: none !important; }
+  .sra-cat-btn { width: 44px; height: 44px; padding: 0 !important; justify-content: center; }
+  .sra-cat-modalbtn { min-height: 44px; }
+
+  /* ── Showroom Admin · Inquiry: 12px labels, a 44px remove, a 44px back, a 44px quantity. */
+  .sra-inq-label { font-size: 12px !important; letter-spacing: 0.04em !important; }
+  .sra-inq-remove { width: 44px; height: 44px; justify-content: center; padding: 0 !important; margin: -10px -10px -10px 0; }
+  .sra-inq-back { min-height: 44px; padding: 0 !important; margin-bottom: 8px; }
+  .sra-inq-qty { height: 44px !important; font-size: 16px !important; }
+
+  /* ── Reviews · History: the search and status are 16px (no iOS zoom). */
+  .crv-hist-field { font-size: 16px !important; }
+
+  /* ── Showroom Admin · Product new / edit: hints are 12px. */
+  .field-helper { font-size: 12px !important; }
+
+  /* ── Public showroom · Join: 16px fields (iOS zooms below that), less above
+     the form, the salesperson named in the sentence instead of a box, and
+     Start always in reach at the bottom of the screen. */
+  .shw-join-shell { padding: 16px 12px 24px !important; }
+  .shw-join-brand { margin-bottom: 12px !important; }
+  .shw-join-h1 { display: none; }
+  .shw-join-card { padding: 16px 16px 12px !important; }
+  .shw-join-sp { display: none !important; }
+  .shw-join-sp-line { display: inline; }
+  .shw-join-intro { margin-bottom: 14px !important; }
+  .shw-join-input { font-size: 16px !important; }
+  .shw-join-submit {
+    position: sticky; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 5;
+    min-height: 48px; box-shadow: 0 6px 16px rgba(185, 71, 46, 0.32);
+  }
+
+  /* ── Public showroom · Scan: a 44px back. Product: Add is a bar fixed to the
+     bottom of the screen, as on the project list. */
+  .shw-back { width: 44px; height: 44px; align-items: center; justify-content: center; margin-left: -10px; }
+  .shw-add-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: #FFFFFF; border-top: 1px solid #ECE7E0; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .shw-add-btn { min-height: 48px; }
+  .shw-product-shell:has(.shw-add-bar) { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* ── Showroom Admin · My QR on a phone screen: less padding, no kicker and
+   heading (the header says it), 12px text, full-width 44px buttons, the link
+   behind "Copy link". Screen only, so a printed QR (about 720px wide on A4)
+   keeps its heading and link. */
+@media (max-width: 767px) {
+  @media screen {
+    .sra-qr-card { padding: 20px 16px !important; }
+    .sra-qr-kicker, .sra-qr-h1, .sra-qr-url { display: none !important; }
+    .sra-qr-actions { flex-direction: column; gap: 8px !important; }
+    .sra-qr-btn { width: 100%; min-height: 44px; justify-content: center; }
+    .sra-qr-copy {
+      display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 600;
+      color: #303536; background: #FFFFFF; border: 1.5px solid #CFC8BF; border-radius: 8px; padding: 0 22px; cursor: pointer;
+    }
+  }
+}

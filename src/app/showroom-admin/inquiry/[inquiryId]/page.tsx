@@ -619,6 +619,7 @@ export default function InquiryDetailPage() {
 
       {/* Back */}
       <button
+        className="sra-inq-back"
         onClick={() => router.push('/showroom-admin')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '6px',
@@ -730,6 +731,8 @@ export default function InquiryDetailPage() {
                           onClick={() => handleRemove(item.id)}
                           disabled={isRemoving}
                           title="Remove item"
+                          aria-label="Remove item"
+                          className="sra-inq-remove"
                           style={{
                             background: 'none', border: 'none',
                             color: '#686D6C', cursor: isRemoving ? 'default' : 'pointer',
@@ -821,7 +824,7 @@ export default function InquiryDetailPage() {
                                 }}>
                                   <Box size={10} color="#686D6C" strokeWidth={1.8} style={{ flexShrink: 0, marginTop: '2px' }} />
                                   <div style={{ minWidth: 0 }}>
-                                    <div style={{
+                                    <div className="sra-inq-label" style={{
                                       fontSize: '8px', fontWeight: 700, color: '#686D6C',
                                       textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
                                     }}>
@@ -839,7 +842,7 @@ export default function InquiryDetailPage() {
                                 </div>
                               ) : (
                                 <div style={{ padding: '6px 0' }}>
-                                  <div style={{
+                                  <div className="sra-inq-label" style={{
                                     fontSize: '8px', fontWeight: 700, color: '#686D6C',
                                     textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
                                   }}>
@@ -890,6 +893,8 @@ export default function InquiryDetailPage() {
                                 value={pendingQty[item.id] ?? item.quantity}
                                 onChange={e => setPendingQty(p => ({ ...p, [item.id]: e.target.value }))}
                                 onBlur={() => handleQtyBlur(item)}
+                                className="sra-inq-qty"
+                                aria-label="Quantity"
                                 style={{
                                   width: '76px', height: '36px',
                                   padding: '0 6px',

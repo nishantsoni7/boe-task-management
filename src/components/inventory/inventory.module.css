@@ -489,3 +489,16 @@
   .statValue { font-size: 15px; font-weight: 700; }
   .statNote { display: none; }
 }
+
+/* ── PHONES, CONTENT FIRST (Phase 4) ─────────────────────────────────────
+   Product page: the header already shows the name and the code, so the Back
+   row, the repeated name and the repeated code go (the category stays); the
+   price labels are 12px. Requests: the links are 44px. */
+@media (max-width: 767px) {
+  .detailPad .back { display: none; }
+  .titleRepeat { display: none; }
+  .codeLineTop .code { display: none; }
+  .codeLineBare { display: none; }
+  .priceLabel { font-size: 12px; }
+  .reqLink { min-height: 44px; }
+}

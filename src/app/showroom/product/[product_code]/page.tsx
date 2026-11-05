@@ -340,9 +340,13 @@ export default function ProductPage() {
           </div>
         </div>
 
+        {/* On a phone the Add button is a bar fixed to the bottom of the screen, as on
+            the project list, so it is always in reach. A desktop keeps it here. */}
+        <div className="shw-add-bar">
         <button
           onClick={handleAdd}
           disabled={added}
+          className="shw-add-btn"
           style={{
             width: '100%', padding: '15px',
             background: added ? '#276247' : '#303536',
@@ -357,6 +361,7 @@ export default function ProductPage() {
         >
           {added ? '✓ Added — going to list…' : 'Add To Project List'}
         </button>
+        </div>
 
         {/* The outcome in words. A merge in particular has to be said out loud:
             a customer who scans the same chair twice needs to know their list
@@ -423,7 +428,7 @@ function formatDimensions(dim: { width?: number | null; depth?: number | null; h
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
+    <div className="shw-product-shell" style={{
       minHeight: '100vh',
       background: colors.void,
       display: 'flex', flexDirection: 'column', alignItems: 'center',

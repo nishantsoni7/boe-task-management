@@ -8,7 +8,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { colors, font } from '@/lib/tokens'
-import { Printer, Download } from 'lucide-react'
+import { Printer, Download, Link2 } from 'lucide-react'
 import { useToast, Toast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
@@ -30,6 +30,8 @@ export default function MyQRPage() {
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const [downloading, setDownloading] = useState(false)
+  /** Phone only: the link is behind "Copy link" instead of a box of text. */
+  const [copied, setCopied] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -102,6 +104,18 @@ export default function MyQRPage() {
     }
   }
 
+  const handleCopyLink = async () => {
+    if (!qrUrl) return
+    try {
+      await navigator.clipboard.writeText(qrUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // No clipboard (an old browser, or permission refused): show the link so it can be copied by hand.
+      window.prompt('Copy this link', qrUrl)
+    }
+  }
+
   if (loading) return <LoadingScreen />
 
   return (
@@ -124,7 +138,7 @@ export default function MyQRPage() {
 
         {/* QR Card */}
         <div
-          className="print-card"
+          className="print-card sra-qr-card"
           style={{
             background: colors.base,
             border: `1.5px solid ${colors.border}`,
@@ -134,13 +148,13 @@ export default function MyQRPage() {
             boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
           }}
         >
-          <div style={{
+          <div className="sra-qr-kicker" style={{
             fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em',
             textTransform: 'uppercase', color: colors.muted, marginBottom: '6px',
           }}>
             BOE Showroom
           </div>
-          <h1 style={{
+          <h1 className="sra-qr-h1" style={{
             fontFamily: font.display, fontSize: '22px', fontWeight: 700,
             color: colors.primary, margin: '0 0 4px', letterSpacing: '-0.02em',
           }}>
@@ -180,7 +194,7 @@ export default function MyQRPage() {
             Ask customer to scan this QR before entering showroom.
           </div>
 
-          <div style={{
+          <div className="sra-qr-url" style={{
             fontSize: '11px', color: colors.muted,
             fontFamily: font.mono,
             background: colors.raised,
@@ -193,10 +207,11 @@ export default function MyQRPage() {
             {qrUrl}
           </div>
 
-          <div className="no-print" style={{
+          <div className="no-print sra-qr-actions" style={{
             display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px',
           }}>
             <button
+              className="sra-qr-btn"
               onClick={handleDownloadPng}
               disabled={downloading || !qrUrl}
               style={{
@@ -216,6 +231,7 @@ export default function MyQRPage() {
             </button>
 
             <button
+              className="sra-qr-btn"
               onClick={() => window.print()}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '7px',
@@ -230,6 +246,17 @@ export default function MyQRPage() {
             >
               <Printer size={15} strokeWidth={2} />
               Print QR
+            </button>
+
+            {/* Phone only (the link box above is hidden there). */}
+            <button
+              type="button"
+              className="sra-qr-btn sra-qr-copy"
+              onClick={handleCopyLink}
+              disabled={!qrUrl}
+            >
+              <Link2 size={15} strokeWidth={2} />
+              {copied ? 'Link copied' : 'Copy link'}
             </button>
           </div>
         </div>
