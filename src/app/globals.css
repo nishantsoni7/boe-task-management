@@ -4976,9 +4976,16 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
   }
 
   /* ── Main content ── */
+  /* CLIP, NOT HIDDEN (owner, 2026-11-05, phones Phase 4). `hidden` made this
+     element a scroll container, so every position: sticky inside it (the page
+     header, the Edit PI and payment-plan save bars) bound to it instead of the
+     window and never stuck on a phone. `clip` cuts sideways overflow the same
+     way without becoming a scroll container. `hidden` stays first as the
+     fallback for a browser without `clip`. */
   .boe-main-content {
     margin-left: 0;
     overflow-x: hidden;
+    overflow-x: clip;
   }
 
   /* ── Menu toggle ── */
