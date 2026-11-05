@@ -14873,3 +14873,142 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-p3-cr-activity ol { padding: 2px 14px !important; }
   .boe-p3-cr-month > div { padding: 12px 14px !important; }
 }
+
+/* PHONE PHASE 4 — TASKS, CORE, ADMIN
+   (owner, 2026-11-05, "phones: content first"). Below 768px the Quick Start
+   Guide, Notifications, task and quotation forms, Account, the Meetings guide,
+   Control Center pages, Announcements, Coming Soon, the auth screens and a few
+   lists get 44px targets (pills 40px), 16px inputs (no iOS zoom), 14px card
+   padding and the content on the first screen. Desktop and tablet are
+   untouched. */
+@media (max-width: 767px) {
+  /* Quick Start Guide: one-row bar (no badge, icon Back), tight padding, the
+     hero is just the title. */
+  .boe-p4-qsg-bar { padding: 0 8px 0 12px !important; }
+  .boe-p4-qsg-badge { display: none !important; }
+  .boe-p4-qsg-back { width: 44px; height: 44px; padding: 0 !important; justify-content: center; }
+  .boe-p4-qsg-backlabel { display: none; }
+  .boe-p4-qsg-body { padding: 12px 12px 0 !important; }
+  .boe-p4-qsg-hero { margin-bottom: 12px !important; }
+  .boe-p4-qsg-eyebrow, .boe-p4-qsg-lede { display: none; }
+  .boe-p4-qsg-h1 { font-size: 20px !important; margin: 0 !important; }
+  .boe-p4-qsg-card { padding: 14px !important; margin-bottom: 12px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Notification rows: 44px checkbox column, automatic right column, a 44px
+     Open and a 44×44 trash; Load older is 44px. */
+  .boe-p4-nrow-check { width: 44px !important; }
+  .boe-p4-nrow-box { width: 20px !important; height: 20px !important; }
+  .boe-p4-nrow-right { width: auto !important; gap: 8px !important; padding: 0 8px 0 4px !important; }
+  .boe-p4-nrow-spacer { display: none !important; }
+  .boe-p4-nrow-open { min-height: 44px; padding: 0 12px !important; }
+  .boe-p4-nrow-trash { width: 44px !important; height: 44px !important; }
+  .boe-p4-load-older { min-height: 44px; padding: 0 16px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Task and quotation forms: 14px card, Priority and Date stacked, 44px
+     priority / Mark Important / Add files / Submit, 44×44 × and remove. */
+  .boe-p4-formcard { padding: 14px !important; }
+  .boe-p4-stack2 { grid-template-columns: minmax(0, 1fr) !important; }
+  div:has(> .boe-p4-prio) { gap: 8px !important; }
+  .boe-p4-prio { min-height: 44px; }
+  .boe-p4-toggle { height: auto !important; min-height: 44px; }
+  .boe-p4-addfiles { height: 44px !important; }
+  .boe-p4-submit { min-height: 44px; }
+  .boe-p4-x {
+    min-width: 44px; min-height: 44px; display: inline-flex !important;
+    align-items: center; justify-content: center; margin: -10px -10px -10px 0 !important;
+  }
+  /* Quotation form: the hint on one line. */
+  .boe-p4-hint { align-items: center !important; margin-bottom: 14px !important; }
+  .boe-p4-hint p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  /* Quotation Requests: 44px tabs sharing the row, then search + Filter. */
+  .boe-qtn-toolbar { align-items: stretch !important; gap: 10px !important; }
+  .boe-qtn-toolbar-tabs { width: auto !important; }
+  .boe-p4-qtn-tab { flex: 1 1 0; justify-content: center; min-height: 44px; padding: 0 8px !important; }
+  .boe-p4-qtn-phone { padding-bottom: 0 !important; }
+}
+
+@media (max-width: 767px) {
+  /* Account: 14px cards, 16px / 44px password fields, a 44px eye, a
+     full-width 44px Update Password. */
+  .boe-p4-acct-card { padding: 14px !important; }
+  .boe-p4-acct-pw { font-size: 16px !important; min-height: 44px; padding-right: 48px !important; }
+  .boe-p4-acct-eye { width: 44px !important; }
+  .boe-p4-acct-submit { width: 100%; min-height: 44px; }
+}
+
+@media (max-width: 767px) {
+  /* How Meetings Work: one Back (the hero's), the nine jump links as one row
+     of 40px pills that scrolls sideways, the hero's second note dropped. */
+  .boe-p4-mg-aside { display: none; }
+  .boe-p4-mg-jumps {
+    flex-wrap: nowrap !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 12px -12px 0 !important; padding: 2px 12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
+  .boe-p4-mg-jumps::-webkit-scrollbar { display: none; }
+  .boe-p4-mg-jumps .meeting-guide-jump { flex: none; min-height: 40px; padding: 0 14px; border-radius: 999px; white-space: nowrap; }
+}
+@media (max-width: 767px) {
+  /* Control Center › Operations handoff: the reviewer select takes the row
+     at 16px (no iOS zoom); Save sits under it. */
+  .boe-p4-cc-select { width: 100%; min-width: 0 !important; min-height: 44px; font-size: 16px !important; }
+
+  /* Coming Soon: less frame around the card, a 44px Back. */
+  .boe-p4-soon { padding: 12px !important; }
+  .boe-p4-soon-card { padding: 28px 20px !important; }
+  .boe-p4-soon-btn { min-height: 44px; }
+
+  /* Announcements (the 560px rules stay; these cover every phone): a 44px
+     Back, 44px Open PDF / I have read this, 40px tabs, a 44px Readers link. */
+  .boe-announce-back { min-height: 44px; padding-right: 8px; }
+  .boe-announce-btn { min-height: 44px; }
+  .boe-announce-tabs button { min-height: 40px; padding: 0 14px; }
+  .boe-announce-linkbtn { min-height: 44px; margin-top: 0; display: inline-flex; align-items: center; }
+}
+@media (max-width: 767px) {
+  /* System Roles: the two Control Center places are 44px links. */
+  .boe-p4-roles-link {
+    display: inline-flex; align-items: center; min-height: 44px;
+    color: #B9472E !important; font-weight: 600;
+    text-decoration: underline !important; text-underline-offset: 2px;
+  }
+  .boe-p4-roles-note { line-height: 1.6; }
+
+  /* How BOE Credits Work: the live numbers as one row of chips. */
+  .boe-p4-cr-stats {
+    display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none;
+    margin-left: -18px; margin-right: -18px; padding: 2px 18px;
+  }
+  .boe-p4-cr-stats::-webkit-scrollbar { display: none; }
+  .boe-p4-cr-stat {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 40px; padding: 0 12px !important; border-radius: 999px !important; white-space: nowrap;
+  }
+  .boe-p4-cr-statlabel { font-size: 12.5px !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; }
+  .boe-p4-cr-statvalue { font-size: 15px !important; margin-top: 0 !important; }
+  .boe-p4-cr-statnote { display: none; }
+
+  /* All Tasks: "Clear filter ✕" is a 44px target. */
+  .boe-p4-clearlink { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; margin: -12px -4px; flex: none; }
+
+  /* Sign in, Forgot and Reset password: 12px footer, a 44px link under the
+     button, a 44px eye. */
+  .boe-p4-authfoot { font-size: 12px !important; }
+  .boe-p4-authlink { display: flex !important; align-items: center; justify-content: center; min-height: 44px; margin-top: 4px !important; }
+  .boe-p4-eye { width: 44px !important; }
+  div:has(> .boe-p4-eye) > input { padding-right: 48px !important; }
+
+  /* A select or input that must be 16px on a phone (iOS zoom). */
+  .boe-p4-16 { font-size: 16px !important; }
+}
+
+@media (max-width: 639px) {
+  /* How BOE Credits Work: in the one-column flow the arrow hung off the card. */
+  .boe-p4-flow-arrow { display: none; }
+}

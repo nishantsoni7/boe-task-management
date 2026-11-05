@@ -53,7 +53,7 @@ export function MeetingGuide({ onBack }: { onBack: () => void }) {
 
       <Hero onBack={onBack} />
 
-      <nav aria-label="Sections of this guide" style={{
+      <nav aria-label="Sections of this guide" className="boe-p4-mg-jumps" style={{
         display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '14px',
       }}>
         {SECTIONS.map(section => (
@@ -244,7 +244,7 @@ function Hero({ onBack }: { onBack: () => void }) {
         doing to Tasks. Anything you do not finish comes back on its own next time — you do not have
         to remember it, and it cannot quietly disappear.
       </p>
-      <p style={{ margin: '10px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.6, maxWidth: 780 }}>
+      <p className="boe-p4-mg-aside" style={{ margin: '10px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.6, maxWidth: 780 }}>
         This page explains the whole module. It shows no meeting and no order of its own, so
         everybody who can open Meetings can read it.
       </p>

@@ -316,8 +316,8 @@ function OperationsReviewerTab({ members }: { members: UserProfile[] }) {
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 14 }}>
         <select
-          className="boe-input"
           aria-label="Operations reviewer"
+          className="boe-input boe-p4-cc-select"
           value={choice}
           disabled={saving}
           onChange={e => { setChoice(e.target.value); setSaved(''); setError('') }}

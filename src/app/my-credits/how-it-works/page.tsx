@@ -53,10 +53,10 @@ function SectionHeading({ id, title, note }: { id: string; title: string; note?:
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div style={{ borderRadius: 8, padding: '10px 12px', background: 'rgba(51,90,134,0.06)', border: '1px solid rgba(51,90,134,0.18)', minWidth: 0 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 700, color: colors.primary, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {note && <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{note}</div>}
+    <div className="boe-p4-cr-stat" style={{ borderRadius: 8, padding: '10px 12px', background: 'rgba(51,90,134,0.06)', border: '1px solid rgba(51,90,134,0.18)', minWidth: 0 }}>
+      <div className="boe-p4-cr-statlabel" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>{label}</div>
+      <div className="boe-p4-cr-statvalue" style={{ fontSize: 17, fontWeight: 700, color: colors.primary, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {note && <div className="boe-p4-cr-statnote" style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{note}</div>}
     </div>
   )
 }
@@ -157,7 +157,7 @@ export default function HowCreditsWorkPage() {
             A verified review earns credits. Once your month reaches its target, those credits are yours to spend —
             {attendanceOn ? ` on ${halfDayOn && fullDayOn ? 'a Half Day or Absent' : halfDayOn ? 'a Half Day' : 'an Absent'} deduction, or as extra money on your salary.` : ' as extra money on your salary.'} Unused credits never expire.
           </p>
-          <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 10 }}>
+          <div className="boe-p4-cr-stats" style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 10 }}>
             <Stat label="1 verified review" value={reward} />
             <Stat label="1 credit" value={value} note="on your salary" />
             {halfDayOn && <Stat label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />}
@@ -188,7 +188,7 @@ export default function HowCreditsWorkPage() {
               </div>
               <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{step.text}</div>
               {i < all.length - 1 && (
-                <ArrowRight size={14} color="#686D6C" aria-hidden="true" style={{ position: 'absolute', right: -13, top: 18 }} />
+                <ArrowRight size={14} color="#686D6C" aria-hidden="true" className="boe-p4-flow-arrow" style={{ position: 'absolute', right: -13, top: 18 }} />
               )}
             </div>
           ))}

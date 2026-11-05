@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
         >
           Send again
         </button>
-        <Link href="/login" style={authLinkStyle}>Back to sign in</Link>
+        <Link href="/login" className="boe-p4-authlink" style={authLinkStyle}>Back to sign in</Link>
       </AuthShell>
     )
   }
@@ -107,7 +107,7 @@ export default function ForgotPasswordPage() {
         </button>
       </form>
 
-      <Link href="/login" style={authLinkStyle}>Back to sign in</Link>
+      <Link href="/login" className="boe-p4-authlink" style={authLinkStyle}>Back to sign in</Link>
     </AuthShell>
   )
 }

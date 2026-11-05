@@ -143,3 +143,77 @@ describe('phone rules stay on phones', () => {
     }
   })
 })
+
+// Phone phase 4 (owner, 2026-11-05): the remaining Tasks, core and admin pages
+// under 8.5/10 on a 390px phone. Presentation only: each page names a phase 4
+// class and every phase 4 rule sits inside a phone media query.
+describe('phone phase 4', () => {
+  const css = read('src/app/globals.css')
+  const block = css.slice(css.indexOf('/* PHONE PHASE 4 — TASKS, CORE, ADMIN'))
+
+  test('the phase 4 globals block exists and has no rule outside a phone query', () => {
+    assert.ok(block.length > 100)
+    const outside = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media \(max-width: (767|639)px\) \{[\s\S]*?\n\}/g, '').trim()
+    assert.equal(outside, '')
+  })
+
+  test('the 44px targets and 16px fields are pinned', () => {
+    for (const rule of [
+      '.boe-p4-qsg-back { width: 44px; height: 44px;',
+      '.boe-p4-nrow-trash { width: 44px !important; height: 44px !important; }',
+      '.boe-p4-nrow-check { width: 44px !important; }',
+      '.boe-p4-nrow-right { width: auto !important;',
+      '.boe-p4-load-older { min-height: 44px;',
+      '.boe-p4-stack2 { grid-template-columns: minmax(0, 1fr) !important; }',
+      '.boe-p4-prio { min-height: 44px; }',
+      '.boe-p4-formcard { padding: 14px !important; }',
+      '.boe-p4-acct-pw { font-size: 16px !important; min-height: 44px;',
+      '.boe-p4-cc-select { width: 100%; min-width: 0 !important; min-height: 44px; font-size: 16px !important; }',
+      '.boe-announce-btn { min-height: 44px; }',
+      '.boe-announce-tabs button { min-height: 40px;',
+      '.boe-p4-authlink { display: flex !important; align-items: center; justify-content: center; min-height: 44px;',
+      '.boe-p4-eye { width: 44px !important; }',
+      '.boe-p4-mg-jumps .meeting-guide-jump { flex: none; min-height: 40px;',
+    ]) assert.ok(block.includes(rule), rule)
+  })
+
+  test('the pages carry the phase 4 classes', () => {
+    const has = (file: string, ...names: string[]) => {
+      const src = read(file)
+      for (const n of names) assert.ok(src.includes(n), `${file}: ${n}`)
+    }
+    has('src/app/quick-start-guide/page.tsx', 'boe-p4-qsg-bar', 'boe-p4-qsg-badge', 'boe-p4-qsg-back', 'boe-p4-qsg-card', 'boe-p4-qsg-h1')
+    has('src/components/notifications/NotificationRow.tsx', 'boe-p4-nrow-check', 'boe-p4-nrow-right', 'boe-p4-nrow-open', 'boe-p4-nrow-trash')
+    has('src/components/notifications/NotificationsView.tsx', 'boe-p4-load-older')
+    for (const f of ['src/app/tasks/create/page.tsx', 'src/app/tasks/create-self/page.tsx', 'src/app/tasks/quotation-requests/new/page.tsx']) {
+      has(f, 'boe-p4-formcard', 'boe-p4-stack2', 'boe-p4-prio', 'boe-p4-addfiles', 'boe-p4-submit', 'aria-label="Remove file"', 'aria-label="Dismiss"')
+    }
+    has('src/app/tasks/quotation-requests/new/page.tsx', 'type="tel"', 'inputMode="tel"', 'boe-p4-hint')
+    has('src/app/tasks/quotation-requests/page.tsx', '<PhoneSearchFilter', 'boe-qtn-toolbar-controls boe-p3-desk', 'boe-p4-qtn-tab')
+    has('src/app/account/page.tsx', 'boe-p4-acct-card', 'boe-p4-acct-pw', 'boe-p4-acct-eye', 'boe-p4-acct-submit')
+    has('src/app/meetings/guide/page.tsx', 'boe-btn boe-btn-ghost boe-desktop-only')
+    has('src/app/meetings/guide/MeetingGuide.tsx', 'boe-p4-mg-jumps', 'boe-p4-mg-aside')
+    has('src/components/controlCenter/ForYouSettings.tsx', 'What the three settings mean', 'styles.phoneLegend')
+    has('src/app/admin/control-center/data-management/page.tsx', 'cc.bulletsPhone', 'cc.bulletsDesk')
+    has('src/app/admin/control-center/test-data-cleanup/page.tsx', 'className={cc.radio}')
+    has('src/app/admin/control-center/page.tsx', 'boe-p4-cc-select')
+    has('src/app/coming-soon/page.tsx', 'boe-p4-soon-card', 'boe-p4-soon-btn')
+    has('src/app/settings/roles/page.tsx', 'boe-p3-settings', 'href="/admin/control-center/people"', 'href="/admin/control-center/permissions"')
+    has('src/app/my-credits/how-it-works/page.tsx', 'boe-p4-flow-arrow', 'boe-p4-cr-stats')
+    has('src/app/tasks/all/page.tsx', 'boe-p3-pager-btn', 'boe-p4-clearlink')
+    has('src/app/login/page.tsx', 'autoComplete="username"', 'autoComplete="current-password"', 'boe-p4-authlink')
+    has('src/components/auth/AuthShell.tsx', 'boe-p4-authfoot')
+    has('src/app/reset-password/page.tsx', 'boe-p4-eye')
+    has('src/components/customerReviews/ReviewLeaderboardScreen.tsx', 'boe-p4-16')
+  })
+
+  test('the module CSS phase 4 rules are phone-only', () => {
+    for (const file of ['src/components/controlCenter/controlCenter.module.css', 'src/components/controlCenter/forYouSettings.module.css']) {
+      const tail = read(file).slice(read(file).lastIndexOf('phone phase 4'))
+      assert.ok(tail.includes('@media (max-width: 767px)'), file)
+    }
+    const cc = read('src/components/controlCenter/controlCenter.module.css')
+    assert.ok(cc.includes('.rowActions { gap: 8px; flex-wrap: wrap; }'))
+    assert.ok(cc.includes('.listRow { flex-wrap: wrap; row-gap: 8px; }'))
+  })
+})
