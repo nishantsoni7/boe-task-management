@@ -1224,6 +1224,8 @@ describe('the applied migrations are frozen', () => {
       '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
+      // Finance, a private note on a payment that only an admin can see: one table, two functions.
+      '20270603000000_finance_payment_admin_notes.sql',
     ])
   })
 
@@ -1699,6 +1701,8 @@ describe('the applied migrations are frozen', () => {
       '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
+      // Finance, a private note on a payment that only an admin can see: one table, two functions.
+      '20270603000000_finance_payment_admin_notes.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
