@@ -1038,7 +1038,7 @@ function NewOrderPiImportPageInner() {
           allocate an order number, and the success state says so. */}
       {preview.groups.readyToSubmit && (
         <Card style={{ borderColor: saveSuccess ? 'rgba(39,98,71,0.4)' : 'rgba(39,98,71,0.3)' }}>
-          <div style={{ padding: `16px ${padX}`, display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+          <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
             <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
