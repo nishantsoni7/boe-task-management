@@ -469,10 +469,11 @@ function ShowroomProductsContent() {
       {/* Header row — title/subtitle already sit above in ShowroomAdminLayout's
           sticky header, and the category now lives in the sidebar, so this row
           is just the primary action, right-aligned. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '10px' }}>
+      {/* On a phone this row goes: the button floats at the bottom right (globals.css, .sra-add-product). */}
+      <div className="sra-add-product-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '10px' }}>
         <button
           onClick={() => router.push('/showroom-admin/products/new')}
-          className="boe-btn boe-btn-primary"
+          className="boe-btn boe-btn-primary sra-add-product"
         >
           <PlusCircle size={15} strokeWidth={2} />
           Add Product
@@ -510,7 +511,7 @@ function ShowroomProductsContent() {
             onClear={() => updateParams({ q: null, status: null, sort: null, page: null })}
           />
 
-          <div ref={resultsRef} style={{ scrollMarginTop: '16px' }}>
+          <div ref={resultsRef} className="sra-presults" style={{ scrollMarginTop: '16px' }}>
             {total === 0 ? (
               // An empty category and a search that missed are different
               // situations; productListEmptyState() decides which this is.

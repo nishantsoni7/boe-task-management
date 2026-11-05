@@ -211,3 +211,17 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
 .sourceSelect { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px dashed #CFC8BF; background: #fff; font: 500 12px var(--boe-font-body); color: #4C5352; cursor: pointer; max-width: 160px; }
 .sourceSelect:hover { background: #FAF8F5; }
 .sourceSet { border-style: solid; border-color: #303536; background: #F3F0EB; color: #303536; }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   Lead Master on a phone: the toolbar is the search box and one Filter button
+   (Source is in its sheet); the count, the Source select and the Import / Add
+   buttons are hidden (Add and Import are behind the header's +). The
+   "Allotted to" chips stay one row that scrolls sideways, 40px tall. */
+@media (max-width: 767px) {
+  .phoneHide { display: none !important; }
+  /* The search box and the Filter button share one row (Phase 1 gives the search the whole row). */
+  .wrap :global(.fin-tools) { flex-wrap: nowrap; }
+  .wrap :global(.fin-tools .boe-list-search) { flex: 1 1 0; min-width: 0; }
+  .whoBar { padding: 8px 12px; gap: 8px; }
+  .who { height: 40px; font-size: 13px; }
+}

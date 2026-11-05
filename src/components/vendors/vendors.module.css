@@ -439,3 +439,44 @@
 .spin { animation: vendorSpin 0.9s linear infinite; }
 @keyframes vendorSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* ══ PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ═════════════════
+   Vendors list: the search box and ONE Filter button share a row; the six
+   filter pills and the sort (three wrapping rows of 32px) are in its sheet.
+   Visit Activity: the eight figures are one line of chips; By person is a
+   card per person. Vendor page: the name is in the header already, so the
+   hero drops its copy; actions and buttons are 44px. Desktop unchanged
+   (.searchRow is display: contents there). */
+.searchRow { display: contents; }
+@media (max-width: 767px) {
+  .searchRow { display: flex; align-items: center; gap: 8px; }
+  .searchRow .input.searchInput { min-height: 44px; }
+  .searchRow .filterBar { flex: none; }
+  .searchRow .filterBar > *:not(:global(.p3-filter)) { display: none; }
+  .wrapWide { gap: 12px; }
+  .tab { min-height: 44px; }
+
+  .kpiChips {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -16px; padding: 0 16px;
+  }
+  .kpiChips::-webkit-scrollbar { display: none; }
+  .kpiChips .kpi {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px;
+  }
+  .kpiChips .kpiValue { order: 2; font-size: 15px; font-weight: 600; }
+  .kpiChips .kpiLabel { font-size: 13px; white-space: nowrap; color: #5E5B55; }
+  .periodRow { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .periodRow .chip { flex: none; min-height: 40px; }
+
+  .primary, .secondary, .danger { min-height: 44px; }
+  .backLink { min-height: 44px; }
+  .heroId { display: none; }
+  .heroTop { justify-content: flex-start; }
+  .statusSelect { min-height: 44px; font-size: 16px; }
+  .actionRow { flex-wrap: nowrap; }
+  .actionBtn { flex: 1 1 0; min-width: 0; min-height: 44px; justify-content: center; padding: 0 6px; }
+  .actionBtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .statStrip { gap: 16px; justify-content: space-between; flex-wrap: nowrap; }
+  .hero { gap: 12px; padding-bottom: 12px; }
+}

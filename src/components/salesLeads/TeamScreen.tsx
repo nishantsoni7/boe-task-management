@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing, UserRoundPen } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { istAddDays, istToday } from '@/lib/istDate'
@@ -109,10 +110,27 @@ export function TeamScreen() {
     )
   } else if (data) {
     const t = data.tiles
+    const peopleOptions = people.data ?? data.people.map(p => ({ id: p.id, full_name: p.name }))
     body = (
       <div className={s.team}>
         <RiskCard data={data} premium={premium.data ?? []} today={today} now={now} canAssign={canAssign && !readOnly} readOnly={readOnly} onOpen={setOpen} onRemind={remind} onChange={changeHolder} onCover={coverFor} />
 
+        {/* A phone: one line saying what is shown, and one Filter button for period, market and salesperson. */}
+        <div className={s.phoneFilterRow}>
+          <span className={s.phoneFilterText}>
+            {PERIODS.find(p => p.key === period)?.label} · {market ? (MARKETS.find(m => m.value === market)?.label ?? market) : 'All markets'} · {holder ? (peopleOptions.find(p => p.id === holder)?.full_name ?? 'One person') : 'Everyone'}
+          </span>
+          <PhoneFilterSheet
+            activeCount={(period !== 'quarter' ? 1 : 0) + (market ? 1 : 0) + (holder ? 1 : 0)}
+            groups={[
+              { id: 'period', label: 'Period', value: period, options: PERIODS.map(p => ({ value: p.key, label: p.label })), onChange: v => setPeriod(v as PeriodKey) },
+              { id: 'market', label: 'Market', value: market, options: [{ value: '', label: 'All markets' }, ...MARKETS.map(m => ({ value: m.value, label: m.label }))], onChange: setMarket },
+              { id: 'holder', label: 'Salesperson', value: holder, options: [{ value: '', label: 'Everyone' }, ...peopleOptions.map(p => ({ value: p.id, label: p.full_name }))], onChange: setHolder },
+            ]}
+            resultLabel="Show"
+            onClearAll={() => { setPeriod('quarter'); setMarket(''); setHolder('') }}
+          />
+        </div>
         <div className={s.filters} role="group" aria-label="Filters">
           {PERIODS.map(p => <button key={p.key} type="button" className={b.view} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>)}
           <span className={s.sep} aria-hidden="true" />
@@ -121,7 +139,7 @@ export function TeamScreen() {
           <span className={s.sep} aria-hidden="true" />
           <select className={`${b.filter}${holder ? ` ${b.filterSet}` : ''}`} aria-label="Salesperson" value={holder} onChange={e => setHolder(e.target.value)}>
             <option value="">Everyone</option>
-            {(people.data ?? data.people.map(p => ({ id: p.id, full_name: p.name }))).map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            {peopleOptions.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </select>
         </div>
 

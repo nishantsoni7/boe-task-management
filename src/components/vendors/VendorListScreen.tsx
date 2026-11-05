@@ -17,6 +17,7 @@ import {
 import { vendorsCsv } from '@/lib/vendors/csv'
 import { telHref, formatPhone } from '@/lib/exhibitionLeads/phone'
 import FilterMenu from './FilterMenu'
+import { PhoneFilterSheet, PhoneMultiGroup } from '@/components/phoneFilters/PhoneFilterSheet'
 import { Highlight, StatusBadge, daysAgoText } from './VendorBits'
 import s from './vendors.module.css'
 
@@ -196,6 +197,8 @@ export default function VendorListScreen() {
           ))}
         </div>
 
+        {/* display: contents on a desktop; on a phone the search box and the one Filter button share a row. */}
+        <div className={s.searchRow}>
         <div className={s.searchWrap}>
           <Search size={16} className={s.searchIcon} aria-hidden="true" />
           <input ref={searchRef} className={`${s.input} ${s.searchInput}`} value={input} type="search" enterKeyHint="search"
@@ -229,6 +232,28 @@ export default function VendorListScreen() {
               {SORTS.map(k => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
             </select>
           </span>
+          {/* A phone: the six filters and the sort above are hidden; this one button holds them all. */}
+          <PhoneFilterSheet
+            title="Filter and sort"
+            activeCount={state.can.length + state.type.length + state.team.length + state.area.length + state.status.length + (state.waiting === '1' ? 1 : 0)}
+            groups={[{ id: 'sort', label: 'Sort', value: state.sort, options: SORTS.map(k => ({ value: k, label: SORT_LABELS[k] })), onChange: v => setState({ sort: v as Sort }) }]}
+            resultLabel={`Show ${total} vendor${total === 1 ? '' : 's'}`}
+            onClearAll={() => setState({ can: [], type: [], team: [], area: [], status: [], waiting: '0' })}
+          >
+            <PhoneMultiGroup id="v-can" label="Expertise" options={CAPABILITIES} value={state.can} onChange={v => setState({ can: v as typeof state.can })} />
+            <PhoneMultiGroup id="v-type" label="Products" options={PRODUCT_FOCUS} value={state.type} onChange={v => setState({ type: v as typeof state.type })} />
+            <PhoneMultiGroup id="v-team" label="Team size" options={TEAM_SIZES} value={state.team} onChange={v => setState({ team: v as typeof state.team })} />
+            <PhoneMultiGroup id="v-area" label="Area" options={areas.map(a => ({ value: a, label: a }))} value={state.area}
+                             onChange={v => setState({ area: v })} emptyText="No areas yet: add one on a vendor" />
+            <PhoneMultiGroup id="v-status" label="Status" options={VENDOR_STATUSES} value={state.status} onChange={v => setState({ status: v as typeof state.status })} />
+            <div className="orders-sheet-group">
+              <div className="orders-sheet-label">Visit</div>
+              <div className="orders-sheet-options">
+                <button type="button" aria-pressed={state.waiting === '1'} onClick={() => setState({ waiting: state.waiting === '1' ? '0' : '1' })}>Met us, not visited</button>
+              </div>
+            </div>
+          </PhoneFilterSheet>
+        </div>
         </div>
 
         {awaiting > 0 && state.waiting !== '1' && !archived && (

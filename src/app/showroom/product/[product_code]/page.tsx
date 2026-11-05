@@ -318,7 +318,7 @@ export default function ProductPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
             <button
               onClick={() => setQuantity(q => Math.max(1, q - 1))}
-              style={qtyBtnStyle}
+              className="shw-qty" style={qtyBtnStyle}
               aria-label="Decrease quantity"
             >
               −
@@ -332,7 +332,7 @@ export default function ProductPage() {
             </div>
             <button
               onClick={() => setQuantity(q => q + 1)}
-              style={qtyBtnStyle}
+              className="shw-qty" style={qtyBtnStyle}
               aria-label="Increase quantity"
             >
               +

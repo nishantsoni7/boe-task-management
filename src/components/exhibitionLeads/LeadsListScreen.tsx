@@ -191,6 +191,38 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     </>
   )
 
+  // The date window and the exhibition: in the toolbar on a desktop, inside the Filters sheet on a phone.
+  function whenControls() {
+    return (
+      <>
+        <div className={s.segmented} role="group" aria-label="Added date">
+          {([['today', 'Today'], ['date', 'Date'], ['range', 'Range'], ['all', 'Entire exhibition']] as const).map(([v, label]) => (
+            <button
+              key={v} type="button" className={`${s.seg}${state.when === v ? ` ${s.segOn}` : ''}`} aria-pressed={state.when === v}
+              onClick={() => setFilters({ when: v, ...(v === 'date' && !state.day ? { day: today } : {}) })}
+            >{label}</button>
+          ))}
+        </div>
+        {state.when === 'date' && (
+          <input type="date" className={s.input} aria-label="Added on" value={state.day || today} onChange={e => setFilters({ day: e.target.value })} />
+        )}
+        {state.when === 'range' && (
+          <div className={s.dateRow}>
+            <input type="date" className={s.input} aria-label="Added from" value={state.from} onChange={e => setFilters({ from: e.target.value })} />
+            <span aria-hidden="true">to</span>
+            <input type="date" className={s.input} aria-label="Added to" value={state.to} onChange={e => setFilters({ to: e.target.value })} />
+          </div>
+        )}
+        {exhibitions.length > 1 && (
+          <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={allExhibitions ? 'all' : (exhibitionId ?? '')} onChange={e => setFilters({ ex: e.target.value })}>
+            <option value="all">All exhibitions</option>
+            {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
+          </select>
+        )}
+      </>
+    )
+  }
+
   function renderGroupHead(lead: Lead, idx: number, list: Lead[]) {
     const d = istDateOf(lead.created_at)
     if (!multiDate) return null
@@ -251,31 +283,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
               onChange={e => setSearchText(e.target.value)} onBlur={flushSearch}
             />
           </div>
-          <div className={s.segmented} role="group" aria-label="Added date">
-            {([['today', 'Today'], ['date', 'Date'], ['range', 'Range'], ['all', 'Entire exhibition']] as const).map(([v, label]) => (
-              <button
-                key={v} type="button" className={`${s.seg}${state.when === v ? ` ${s.segOn}` : ''}`} aria-pressed={state.when === v}
-                onClick={() => setFilters({ when: v, ...(v === 'date' && !state.day ? { day: today } : {}) })}
-              >{label}</button>
-            ))}
-          </div>
-          {state.when === 'date' && (
-            <input type="date" className={s.input} aria-label="Added on" value={state.day || today} onChange={e => setFilters({ day: e.target.value })} />
-          )}
-          {state.when === 'range' && (
-            <div className={s.dateRow}>
-              <input type="date" className={s.input} aria-label="Added from" value={state.from} onChange={e => setFilters({ from: e.target.value })} />
-              <span aria-hidden="true">to</span>
-              <input type="date" className={s.input} aria-label="Added to" value={state.to} onChange={e => setFilters({ to: e.target.value })} />
-            </div>
-          )}
-          {exhibitions.length > 1 && (
-            <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={allExhibitions ? 'all' : (exhibitionId ?? '')} onChange={e => setFilters({ ex: e.target.value })}>
-              <option value="all">All exhibitions</option>
-              {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
-            </select>
-          )}
-          <button type="button" className={s.btn} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(o => !o)}>
+          {/* On a phone these move into the Filters sheet (display: contents on a desktop, so nothing changes there). */}
+          <div className={s.whenTools}>{whenControls()}</div>
+          <button type="button" className={`${s.btn} ${s.filtersBtn}`} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(o => !o)}>
             <Filter size={16} aria-hidden="true" /> Filters{filterCount ? ` (${filterCount})` : ''}
           </button>
         </div>
@@ -296,6 +306,10 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             }
           >
           <div className={s.filterSheetBody}>
+            <div className={s.sheetWhen} role="group" aria-label="Added date and exhibition">
+              <div className={s.filterTitle}>Added date</div>
+              {whenControls()}
+            </div>
             <Chips title="Client type" options={CLIENT_TYPES} selected={state.type} onToggle={v => setFilters({ type: toggleIn(state.type, v) })} />
             <Chips title="Requirement" options={REQUIREMENTS} selected={state.req} onToggle={v => setFilters({ req: toggleIn(state.req, v) })} />
             {(data?.cities.length ?? 0) > 0 && (
@@ -329,7 +343,11 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
         )}
 
         <div className={s.matchRow} aria-live="polite">
-          <div className={s.matchCount}>{waiting ? 'Loading…' : `${total} matching lead${total === 1 ? '' : 's'}`}</div>
+          <div className={s.matchCount}>
+            {waiting ? 'Loading…' : `${total} matching lead${total === 1 ? '' : 's'}`}
+            {/* A phone hides the date buttons in the sheet, so the list says which days it shows. */}
+            <span className={s.phoneScope}>{window_ ? (window_.from === window_.to ? ` · ${shortDate(window_.from)}` : ` · ${shortDate(window_.from)} – ${shortDate(window_.to)}`) : ' · Whole exhibition'}</span>
+          </div>
           {(filterCount > 0 || state.q) && (
             <button
               type="button" className={s.linkBtn}

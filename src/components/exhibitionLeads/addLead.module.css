@@ -205,3 +205,24 @@ a.tile:hover, button.tile:hover { border-color: #303536; }
 @media (max-width: 767px) {
   .hideOnPhone { display: none; }
 }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   My Leads: the three scoreboard tiles are one 56px row (label above the
+   number, the line under it dropped), and the Add Lead bar is a compact pill
+   at the bottom right instead of a full-width 58px bar, so it covers less of
+   the list. It stays one tap away on every page. */
+@media (max-width: 767px) {
+  .stats { gap: 6px; }
+  .tile { min-height: 56px; padding: 6px 10px; gap: 0; }
+  .tile .tileLabel { font-size: 11px; }
+  .tile .tileValue { font-size: 22px; margin-top: 0; }
+  .tile .tileSub { display: none; }
+  .tile .tileGo { top: 8px; right: 8px; }
+  .boardHead { min-height: 48px; padding: 6px 12px; }
+
+  .fab {
+    left: auto; right: 16px; min-height: 52px; padding: 0 20px; border-radius: 999px;
+    font-size: 16px; font-weight: 700; gap: 8px;
+  }
+  .fabPad { padding-bottom: 76px; }
+}

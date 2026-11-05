@@ -116,6 +116,7 @@ export function QueueList({
             <StatusPill status={item.status} />
 
             <button
+              className="ie-remove"
               onClick={() => onRemove(item.id)}
               disabled={locked}
               aria-label={`Remove ${item.name}`}
