@@ -14110,3 +14110,194 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .qtn-row > :nth-child(5) { grid-column: 1 / -1; grid-row: 3; padding-top: 4px !important; }
   .qtn-row > :nth-child(6) { display: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — FINANCE (owner, 2026-11-05, "phones: content first")
+
+   Below 768px the Finance lists start on the first screen. Desktop and tablet
+   are unchanged: every rule that moves anything is inside max-width: 767px,
+   and the few outside it only hide a phone-only piece.
+
+   ROW CARDS (.fph-list). A Finance table whose cells carry slot classes is
+   drawn as a card of three lines on a phone, the same shape as Confirmed
+   Orders: the title and the amount; a detail and the status; the small facts
+   and the row's buttons. The row stays the <tr> it was, so a tap opens what it
+   opened and every button acts as before.
+     fph-title  line 1, left (grows)      fph-end1  line 1, right
+     fph-l2     line 2, left              fph-end2  line 2, right
+     fph-l3     line 3, left              fph-end3  line 3, right (actions)
+     fph-grow   this one takes the room left on its line, and cuts with …
+     fph-hide   not drawn on a phone (the opened record shows it)
+   Two zero-height breaks (the row's ::before and ::after) end lines 1 and 2.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.bank-sync-short { display: none; }
+.reimb-filters { display: contents; }
+.reimb-sheet-backdrop { display: none; }
+
+@media (max-width: 767px) {
+  .fph-list, .fph-list[style] { overflow: visible !important; }
+  .fph-list table { display: block; width: 100%; min-width: 0 !important; table-layout: auto; }
+  .fph-list thead, .fph-list colgroup { display: none; }
+  .fph-list tbody { display: block; }
+  .fph-list tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    column-gap: 10px; row-gap: 3px;
+    padding: 10px 14px; border-bottom: 1px solid #ECE7E0;
+  }
+  .fph-list tbody tr:last-child { border-bottom: 0; }
+  .fph-list tbody tr::before,
+  .fph-list tbody tr::after { content: ''; flex: 0 0 100%; height: 0; }
+  .fph-list tbody tr::before { order: 3; }
+  .fph-list tbody tr::after { order: 6; }
+  .fph-list tbody tr.is-highlighted { background: #FDF6E7; }
+  .fph-list tbody tr:active { background: #FAF8F5; }
+  .fph-list tbody td {
+    display: block; width: auto !important; height: auto !important; min-width: 0;
+    padding: 0 !important; border: 0 !important; background: none !important;
+    border-radius: 0 !important; text-align: left !important;
+    white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12.5px !important; line-height: 1.35; color: #686D6C;
+  }
+  .fph-list td > div[title] { max-width: none !important; }
+
+  .fph-list td.fph-title { order: 1; flex: 1 1 0; font-size: 15px !important; font-weight: 600; color: #303536; }
+  .fph-list td.fph-title > div[title],
+  .fph-list td.fph-title .fin-primary-text { font-size: 15px !important; font-weight: 600; }
+  .fph-list td.fph-end1 { order: 2; flex: none; overflow: visible; text-align: right !important; }
+  .fph-list td.fph-end1, .fph-list td.fph-end1 .fin-amount { font-size: 15px !important; font-weight: 700; color: #303536; }
+  .fph-list td.fph-l2 { order: 4; flex: 0 1 auto; }
+  .fph-list td.fph-end2 { order: 5; flex: none; margin-left: auto; overflow: visible; text-align: right !important; }
+  .fph-list td.fph-end2 > div { display: inline-block; margin-left: 4px; }
+  .fph-list td.fph-l3 { order: 7; flex: 0 1 auto; }
+  .fph-list td.fph-end3 { order: 8; flex: none; margin-left: auto; overflow: visible; }
+  .fph-list td.fph-grow { flex: 1 1 0; }
+  .fph-list .fph-hide { display: none !important; }
+  /* Two-part cells (a name and a line under it) read as one line. */
+  .fph-list td.fph-l2 > span, .fph-list td.fph-l3 > span { display: inline; margin-right: 6px; }
+  .fph-list td .fin-primary-text { display: inline; }
+  .fph-list td.fph-title .fin-sub { white-space: normal; }
+
+  /* The row's own buttons are 44px. */
+  .fph-list .boe-row-actions { gap: 0 !important; }
+  .fph-list .boe-row-icon, .fph-list .boe-row-icon-slot { width: 44px; height: 44px; }
+  .fph-list .boe-row-icon-slot { display: none; }
+  .fph-list td.fph-end3 .boe-btn { min-height: 44px; padding: 0 14px; }
+  .fph-list td:has(> .boe-payment-id) { flex: none; overflow: visible; }
+  .fph-list .boe-payment-id { padding: 0; background: none; border: 0; gap: 0; }
+  .fph-list .boe-payment-id-text { font-size: 12.5px; }
+  .fph-list .boe-payment-id-copy {
+    position: static; transform: none; width: 36px; height: 40px; margin: -10px -6px -10px 0;
+    background: none; opacity: 1;
+  }
+  .fph-list .fin-person .fin-avatar { display: none; }
+
+  /* Payment Requests, the salesperson's list: the PI or Order total. */
+  .fph-list td.fph-total::before { content: 'Before GST '; color: #8F9392; font-style: normal; }
+  /* Reimbursements: the number of expenses. */
+  .fph-list td.reimb-count::before { content: 'Expenses '; }
+
+  /* The pager under a list: 44px buttons (inline paddings lose). */
+  .fin-board > nav[aria-label] .boe-btn { min-height: 44px; padding: 0 16px !important; font-size: 13px !important; }
+
+  /* ── Bank Statements ── */
+  .bank-sync-check { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .bank-sync-card { gap: 1px; min-height: 44px; padding: 7px 10px; justify-content: center; }
+  .bank-sync-card > span:not(.bank-sync-short):not(.fin-muted) { display: none; }
+  .bank-sync-card .bank-sync-short { display: block; font-size: 12px; line-height: 1.3; }
+  .bank-sync-card .fin-muted { font-size: 12px; }
+  .bank-controls { flex-wrap: wrap; gap: 4px 8px; margin-bottom: 10px; }
+  .bank-month { flex: 1 1 0; min-width: 0; }
+  .bank-month:first-child { flex-grow: 1.5; }
+  .bank-month > span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .bank-month select { width: 100%; height: 44px; min-height: 44px; font-size: 14px; }
+  .bank-controls > span { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bank-unlinked-note { margin: 0 2px 10px; font-size: 12.5px; line-height: 1.4; }
+  .bank-gap-note { margin-bottom: 8px; }
+
+  /* ── Reimbursements: search and one Filter button; the rest in a sheet ── */
+  .boe-list-toolbar:has(.reimb-filters) { flex-wrap: nowrap; gap: 8px; margin-bottom: 8px; }
+  .boe-list-toolbar:has(.reimb-filters) .boe-list-search { flex: 1 1 auto; height: 44px; max-width: none; }
+  .boe-list-toolbar:has(.reimb-filters) .boe-list-search input { font-size: 15px; }
+  .reimb-filters { display: none; }
+  .reimb-filters.is-open {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: 85vh; overflow-y: auto;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #FFFFFF; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .reimb-sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(30, 34, 35, 0.4); }
+  .reimb-sheet-head { display: flex !important; align-items: center; gap: 8px; }
+  .reimb-sheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
+  .reimb-sheet-head .orders-sheet-close { width: 44px; height: 44px; }
+  .reimb-filters .boe-list-daterange { flex-direction: column; align-items: stretch; gap: 8px; }
+  .reimb-filters .boe-list-date { flex: none; font-size: 13px; }
+  .reimb-filters .boe-list-date span { min-width: 48px; }
+  .reimb-filters .boe-list-date input,
+  .reimb-filters .expense-filter-select { flex: 1 1 auto; width: 100%; height: 44px; min-height: 44px; font-size: 15px; }
+  .reimb-filters .boe-list-clear { height: 44px; }
+  .reimb-sheet-done { display: flex !important; justify-content: center; width: 100%; min-height: 46px; font-size: 15px; }
+  [data-testid="reimbursements-total"] { margin: 0 0 8px !important; font-size: 12.5px !important; color: #686D6C; }
+
+  /* ── The Finance notices strip: one line that opens on tap ── */
+  .boe-unclosed, .boe-unclosed[style] {
+    min-height: 44px !important; padding: 0 0 0 12px !important;
+    flex-wrap: wrap !important; gap: 0 8px !important;
+  }
+  .boe-unclosed .boe-unclosed-title {
+    flex: 1 1 0; min-width: 0; font-size: 13.5px !important;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .boe-unclosed .boe-unclosed-more { display: none !important; }
+  /* Closed: the words, Hand over (if any), the chevron. Open: the words and
+     the chevron, then the detail, then the buttons. */
+  .boe-unclosed-actions { order: 1; flex-wrap: nowrap !important; }
+  .boe-unclosed-toggle { order: 2; }
+  .boe-unclosed-more { order: 3; }
+  .boe-unclosed.is-open { padding-bottom: 8px !important; }
+  .boe-unclosed.is-open .boe-unclosed-title { white-space: normal; padding: 12px 0 2px; }
+  .boe-unclosed.is-open > .boe-unclosed-more { display: block !important; flex: 1 1 100%; margin-left: 24px !important; font-size: 12.5px; line-height: 1.5; }
+  .boe-unclosed.is-open > a.boe-unclosed-more { display: inline-flex !important; align-items: center; min-height: 44px; }
+  .boe-unclosed.is-open .boe-unclosed-actions { order: 4; flex: 1 1 100%; justify-content: flex-start; margin: 6px 0 0 24px !important; }
+  .boe-unclosed.is-open .boe-unclosed-actions .boe-unclosed-more { display: inline-flex !important; }
+  .boe-unclosed-actions .boe-btn { min-height: 44px !important; padding: 0 14px !important; }
+  .boe-unclosed-toggle {
+    align-items: center; justify-content: center; flex: none;
+    width: 44px; height: 44px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px;
+  }
+  .boe-unclosed-toggle svg { transition: transform 0.15s; }
+  .boe-unclosed-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .boe-unclosed-toggle:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
+  .boe-finance-notices { margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  /* The money line keeps its own row, so its words are never cut short. */
+  .boe-finance-notices > section.boe-unclosed { flex: 1 1 100%; min-width: 0; }
+  .boe-finance-notices > .boe-handover-stack > details:not([open]) { flex: 1 1 100%; }
+  .boe-finance-notices .boe-handover-observers-title { display: flex; align-items: center; min-height: 44px; }
+}
+
+/* Cash journeys on a phone: each payment is four lines, not five (Finance's
+   check sits beside where the cash is), the view's rule is two lines at most,
+   and the row's buttons are 44px. */
+@media (max-width: 767px) {
+  .boe-cj-main {
+    grid-template-areas:
+      "id amount"
+      "route recorded"
+      "where verify"
+      "actions actions";
+    gap: 6px 12px; padding: 10px 14px;
+  }
+  .boe-cj-verify { align-items: flex-end; align-self: start; }
+  .boe-cj-actions .boe-btn, .boe-cj-actions .boe-btn[style] { min-height: 44px !important; padding: 0 14px !important; }
+  .boe-cj-toggle { height: 44px; }
+  .boe-cj-id .boe-payment-id-copy { width: 36px; height: 40px; margin: -9px 0; }
+  .boe-cj-viewhead { padding: 8px 14px; }
+  .boe-cj-viewhead > span:not([class]) {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .boe-cj-seg button { min-height: 40px; }
+  .boe-cj-pager .boe-btn { min-height: 44px; }
+}

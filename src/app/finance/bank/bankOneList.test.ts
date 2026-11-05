@@ -113,8 +113,9 @@ describe('the page', () => {
   test('the account tabs are gone, and every list says which account', () => {
     assert.ok(!view.includes('aria-label="Account"'))
     assert.equal(view.split('<th style={{ width: 96 }}>Account</th>').length - 1, 3)
-    assert.equal(view.split('<td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>').length - 1, 2)
-    assert.ok(view.includes('<td>{BANK_ACCOUNT_LABEL[p.payment_mode as BankAccountKey]}</td>'))
+    // The cells carry the phone card slot classes (fph-*) since the phone redesign.
+    assert.equal(view.split('<td className="fph-l2 fph-grow">{BANK_ACCOUNT_LABEL[a.line.account]}</td>').length - 1, 2)
+    assert.ok(view.includes('<td className="fph-l2 fph-grow">{BANK_ACCOUNT_LABEL[p.payment_mode as BankAccountKey]}</td>'))
   })
 
   test('the filter narrows all three lists and starts on both', () => {

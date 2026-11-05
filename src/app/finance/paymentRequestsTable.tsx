@@ -139,7 +139,10 @@ export function PaymentsTable({
   return (
     // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
     // width the compact 9-column set fits without scrolling (no forced minWidth).
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    // ON A PHONE (owner, 2026-11-05, "phones: content first") each row is a
+    // three-line card instead: `.fph-list` and the fph-* slot classes on the
+    // cells (globals.css, PHONE PHASE 3 — FINANCE). Same markup, same clicks.
+    <div className="fph-list" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table className="fin-table" style={{ tableLayout: 'auto' }}>
         {/* ── WHY A COLGROUP, AND WHY PERCENTAGES ──────────────────────────
             Every cell in this table is `whiteSpace: nowrap`, so with nothing
@@ -238,7 +241,7 @@ export function PaymentsTable({
             const againstLink = againstHref(destination)
 
             const idCell = (
-              <td style={TD}>
+              <td style={TD} className="fph-l3">
                 <PaymentIdChip>{r.human_payment_id}</PaymentIdChip>
               </td>
             )
@@ -246,7 +249,7 @@ export function PaymentsTable({
             // chip beside it). Truncates instead of widening the table; the full
             // name is in the title.
             const clientCell = (
-              <td style={TD}>
+              <td style={TD} className="fph-title">
                 <div
                   title={customerDisplayName(r.client_name)}
                   style={{
@@ -265,15 +268,17 @@ export function PaymentsTable({
               </td>
             )
             const dateCell = (
-              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }} className="fph-l3">
                 {fmtDate(r.payment_date)}
               </td>
             )
             // PAYMENT MODE — the value the row already carries (payment_mode is in
             // the bounded list select), through the one formatter every payment
             // surface reads. NOT derived from the destination.
+            // On a phone the mode sits beside Against (line 2) in the review
+            // list, leaving line 3 room for the ID, the date and Added by.
             const modeCell = (
-              <td style={{ ...TD, fontSize: '12px', color: r.payment_mode ? colors.secondary : colors.muted }}>
+              <td style={{ ...TD, fontSize: '12px', color: r.payment_mode ? colors.secondary : colors.muted }} className={salesView ? 'fph-l3' : 'fph-l2'}>
                 {paymentModeLabel(r.payment_mode)}
               </td>
             )
@@ -281,7 +286,7 @@ export function PaymentsTable({
             // ledger and the pending intent, linked to the PI Draft or Order when
             // the reader may open it.
             const againstCell = (
-              <td style={TD}>
+              <td style={TD} className="fph-l2 fph-grow">
                 <div
                   title={against}
                   style={{ maxWidth: salesView ? '270px' : '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
@@ -345,7 +350,7 @@ export function PaymentsTable({
                 ) : <span className="boe-row-icon-slot" aria-hidden="true" />}
               </div>
             )
-            const actionCell = <td style={{ ...TD, textAlign: 'right' }}>{actionButtons}</td>
+            const actionCell = <td style={{ ...TD, textAlign: 'right' }} className="fph-end3">{actionButtons}</td>
 
             // TOTAL BEFORE GST. Until the page's one batched read settles it says
             // so; once settled, a PI/Order that cannot be resolved (mixed or
@@ -354,6 +359,7 @@ export function PaymentsTable({
             const total = totals === null ? undefined : (totals.get(r.id) ?? null)
             const totalCell = (
               <td
+                className="fph-end2 fph-total"
                 style={{ ...TD_MONEY, color: total === null ? colors.muted : colors.secondary, fontStyle: total === null ? 'italic' : 'normal' }}
                 title={total === null
                   ? 'The total before GST of the linked PI or Order could not be resolved'
@@ -391,7 +397,7 @@ export function PaymentsTable({
                     {againstCell}
                     {totalCell}
                     {/* ONLY the amount requested in THIS row — never cumulative. */}
-                    <td style={{ ...TD_MONEY, fontWeight: 700, color: colors.primary }}>{fmtAmount(r.amount)}</td>
+                    <td style={{ ...TD_MONEY, fontWeight: 700, color: colors.primary }} className="fph-end1">{fmtAmount(r.amount)}</td>
                     {dateCell}
                     {modeCell}
                     {actionCell}
@@ -399,17 +405,17 @@ export function PaymentsTable({
                 ) : (
                   <>
                     {idCell}
-                    <td style={TD} className="fin-num">
+                    <td style={TD} className="fin-num fph-end1">
                       <span className="fin-amount">{fmtAmount(r.amount)}</span>
                     </td>
                     {clientCell}
                     {dateCell}
                     {modeCell}
                     {againstCell}
-                    <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                    <td style={{ ...TD, fontSize: '12px', color: colors.secondary }} className="fph-l3 fph-grow">
                       <FinancePerson name={r.submitted_by_name} />
                     </td>
-                    <td style={TD}>
+                    <td style={TD} className="fph-end2">
                       <StatusBadge status={r.status} destination={destination} />
                       {isStaleClarification(r, cutoff) && <StaleBadge />}
                       {bankMarks && <div><BankMarkChip mark={bankMarks.get(r.id)} /></div>}
