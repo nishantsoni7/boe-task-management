@@ -3,6 +3,7 @@
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { parseListState } from '@/lib/listState'
 import { useMirrorToUrl } from '@/hooks/useMirrorToUrl'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
@@ -1130,14 +1131,24 @@ function ReceivedPaymentsViewInner(
       // which is what record_payment_with_allocations() requires alongside
       // Finance module entry; the RPC re-derives both, so this is a drawing
       // rule only.
-      actions={caps.canAllocatePayment && (
+      actions={caps.canAllocatePayment && (<>
         <button
           onClick={() => { setRecordNotice(null); setRecording(true) }}
-          className="boe-btn boe-btn-primary"
+          className="boe-btn boe-btn-primary boe-desktop-only"
         >
           {RECORD_PAYMENT_ACTION_LABEL}
         </button>
-      )}
+        {/* On a phone the header keeps one row: the same action as the + icon. */}
+        <button
+          type="button"
+          onClick={() => { setRecordNotice(null); setRecording(true) }}
+          className="boe-phone-only boe-header-icon boe-header-icon--add"
+          aria-label={RECORD_PAYMENT_ACTION_LABEL}
+          title={RECORD_PAYMENT_ACTION_LABEL}
+        >
+          <Plus size={18} strokeWidth={2.2} aria-hidden="true" />
+        </button>
+      </>)}
     >
       {/* ── The summary cards (Confirmed Payments) ──
           How much confirmed money there is and where it stands, at a glance.

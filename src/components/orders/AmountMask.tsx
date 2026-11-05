@@ -48,13 +48,14 @@ export function AmountsToggle({ hidden, onChange }: { hidden: boolean; onChange:
     <>
       <button
         type="button"
-        className="boe-btn boe-btn-ghost pi-amounts-toggle"
+        className="boe-btn boe-btn-ghost pi-amounts-toggle orders-hdr-iconbtn"
         aria-pressed={hidden}
         onClick={() => onChange(!hidden)}
         title={hidden ? 'Amounts are hidden. Show them again.' : 'Hide every amount on this page, for sharing your screen.'}
       >
         <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
-        <span className="pi-amounts-toggle-label">{hidden ? SHOW_AMOUNTS_LABEL : HIDE_AMOUNTS_LABEL}</span>
+        {/* On a phone the words leave the screen (the header is one row) and stay the button's name. */}
+        <span className="pi-amounts-toggle-label orders-hdr-label">{hidden ? SHOW_AMOUNTS_LABEL : HIDE_AMOUNTS_LABEL}</span>
       </button>
       {/* Said aloud when the state changes, for somebody who cannot see the figures go. */}
       <span role="status" aria-live="polite" style={{

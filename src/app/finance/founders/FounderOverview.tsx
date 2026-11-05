@@ -214,9 +214,36 @@ function MonthGrid({ year, todayIso }: { year: FounderYear; todayIso: string }) 
     <section className={`fin-board ${styles.panel}`} aria-label="Month by month">
       <div className={styles.panelHead}>
         <h3>Month by month</h3>
-        <p>April to March. The darker the cell, the more was paid.</p>
+        <p className={styles.monthsNote}>April to March. The darker the cell, the more was paid.</p>
       </div>
-      <div className="fin-table-wrap">
+      {/* On a phone the twelve columns would scroll sideways: each side is a short
+          list of the months something was paid in, and its total. */}
+      <div className={styles.monthCards}>
+        {year.sides.map(s => {
+          const paid = months.filter(m => (year.months.get(m)?.get(s.side) ?? 0) > 0)
+          return (
+            <div key={s.side} className={styles.monthCard}>
+              <div className={styles.monthCardHead}>
+                <span className={styles.sideLabel}><SideDot sides={year.sides} side={s.side} /> {s.side}</span>
+                <b className={styles.num}>{formatLakh(s.totalPaise)}</b>
+              </div>
+              {paid.length === 0
+                ? <p className={styles.monthNone}>Nothing paid this year</p>
+                : (
+                  <ul className={styles.monthList}>
+                    {paid.map(m => (
+                      <li key={m} title={`${s.side}’s side, ${monthName(m, 'long')}: ${formatRupees(year.months.get(m)?.get(s.side) ?? 0)}`}>
+                        <span>{monthName(m)}</span>
+                        <span className={styles.num}>{formatLakh(year.months.get(m)?.get(s.side) ?? 0)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            </div>
+          )
+        })}
+      </div>
+      <div className={`fin-table-wrap ${styles.monthsWrap}`}>
         <table className={`fin-table ${styles.table} ${styles.months}`}>
           <colgroup>
             <col style={{ width: 132 }} />
