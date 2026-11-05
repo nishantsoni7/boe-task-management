@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-05 — Platform: one phone filter set (PR pending) · no SQL
+## 2026-11-05 — Platform: one phone filter set (PR #616 squash-merged as f6d855a2, 2026-11-05) · no SQL
 - **Owner request.** Fold the near-identical phone filter sheets Phases 3-4 left (Orders, Tasks, Sales/Vendors/Reviews, Attendance) into one shared set in `components/ui`, move every caller onto it, delete the copies; phones only, desktop unchanged. Plan agreed ("yes, go ahead").
 - **Changed.** New `src/components/ui/PhoneFilters.tsx` (`PhoneChips`, `PhoneSearchBox`, `PhoneSearchFilter`, `PhoneFilterSheet`, `PhoneOptionGroup`, `PhoneMultiGroup`, `PhoneSheetField`, `showResultsLabel`) and `src/components/ui/useIsPhone.ts`. Removed `app/orders/all/PhoneListControls.tsx`, `components/tasks/PhoneListTools.tsx`, `components/phoneFilters/*`, `components/attendancePayroll/PhoneSheet.tsx`. Every caller passes the classes it had, so the phone markup is the same (sheet group ids are now `p3-sheet-*` everywhere). No CSS rule changed.
 - **Database.** None. Rollback: revert the PR.

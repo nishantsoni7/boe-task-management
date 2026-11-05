@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `626e37b` — Phones: one shared filter set in components/ui (no SQL)
-- Commits on this branch: 50
+- Commit: `f6d855a` — Phones: one shared filter set in components/ui (no SQL) (#616)
+- Commits on this branch: 51
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `626e37b` 2026-11-05 Phones: one shared filter set in components/ui (no SQL)
+- `f6d855a` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
+- `331ac7e` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
 - `5a66c28` 2026-11-05 Phones, content first (Phase 4): sticky works on phones; every remaining page lifted to 8.5+ (no SQL) (#614)
 - `b5dc116` 2026-11-05 Phones, content first (Phase 3): every module's lowest-scoring pages redesigned for phones (no SQL) (#613)
 - `cf3591b` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
@@ -38,7 +39,6 @@
 - `05e299e` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
 - `dfe7a3c` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
 - `9815f52` 2026-11-02 Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (#592)
-- `45b1c2b` 2026-11-02 Docs: Modules launcher A+ merged as PR #590 (02abdb2e), deployed (#591)
 
 ## Pages by top-level area
 
