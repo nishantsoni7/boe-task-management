@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `6ef831a` — Merge the merged #611 branch history (already in main) so this push is a fast-forward
-- Commits on this branch: 59
+- Commit: `7d62a7b` — Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
+- Commits on this branch: 60
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7d62a7b` 2026-11-05 Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
 - `6ef831a` 2026-11-05 Merge the merged #611 branch history (already in main) so this push is a fast-forward
 - `5df4002` 2026-11-05 Tools: add the UI/UX Pro Max design skill for cloud sessions
 - `344f081` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
@@ -38,7 +39,6 @@
 - `10abb87` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
 - `594daf9` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 - `972413c` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- `05e299e` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
 
 ## Pages by top-level area
 

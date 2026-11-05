@@ -630,8 +630,8 @@ export default function InquiryDetailPage() {
         <ArrowLeft size={14} strokeWidth={2} /> Back to Inquiries
       </button>
 
-      {/* Two-column layout */}
-      <div style={{
+      {/* Two-column layout; one column on a phone (sra-inq-grid, owner 2026-11-05) */}
+      <div className="sra-inq-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) 340px',
         gap: '24px',
@@ -744,7 +744,7 @@ export default function InquiryDetailPage() {
                       </div>
 
                       {/* Body: image | right content */}
-                      <div style={{
+                      <div className="sra-inq-item" style={{
                         display: 'grid',
                         gridTemplateColumns: '170px minmax(0, 1fr)',
                         gap: '16px',
@@ -805,7 +805,7 @@ export default function InquiryDetailPage() {
                           </div>
 
                           {/* Info row: all 4 in one line */}
-                          <div style={{
+                          <div className="sra-inq-info" style={{
                             display: 'grid',
                             gridTemplateColumns: '190px 1px 1fr 1px 1fr 1px 1fr',
                             alignItems: 'center',

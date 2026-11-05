@@ -106,6 +106,9 @@ function RequestCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
+      // A card of three lines on a phone (qtn-row, owner 2026-11-05): the
+      // six columns needed ~700px and the last two were cut off.
+      className="qtn-row"
       style={{
         display: 'grid',
         gridTemplateColumns: GRID_COLUMNS,
@@ -500,7 +503,7 @@ function QuotationRequestsContent() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         }}>
           {/* Header */}
-          <div style={{
+          <div className="qtn-head" style={{
             display: 'grid',
             gridTemplateColumns: GRID_COLUMNS,
             columnGap: '12px',

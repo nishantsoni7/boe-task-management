@@ -117,3 +117,29 @@ describe('cards, filters and tables on a phone', () => {
     assert.ok(css.includes('.boe-status-tab { min-height: 44px; }'))
   })
 })
+
+describe('Phase 2: the pages that were broken on a phone', () => {
+  test('Showroom inquiry detail stacks to one column', () => {
+    const p = read('src/app/showroom-admin/inquiry/[inquiryId]/page.tsx')
+    for (const c of ['className="sra-inq-grid"', 'className="sra-inq-item"', 'className="sra-inq-info"']) assert.ok(p.includes(c), c)
+    assert.ok(css.includes('.sra-inq-grid { grid-template-columns: minmax(0, 1fr) !important;'))
+  })
+
+  test('Quotation Requests: a three-line card, nothing cut off', () => {
+    const p = read('src/app/tasks/quotation-requests/page.tsx')
+    assert.ok(p.includes('className="qtn-row"'))
+    assert.ok(p.includes('className="qtn-head"'))
+    assert.ok(css.includes('.qtn-row > :nth-child(6) { display: none !important; }'))
+  })
+
+  test('Sales Notifications shows Mark all read and Delete all', () => {
+    assert.ok(read('src/app/sales/notifications/page.tsx').includes('actions={actions}'))
+    assert.ok(read('src/components/layout/SalesLayout.tsx').includes('{actions && <div className="boe-header-actions">{actions}</div>}'))
+  })
+
+  test('Manager and All Tasks keep the header one row', () => {
+    const m = read('src/app/manager/page.tsx')
+    assert.equal((m.match(/boe-desktop-only/g) ?? []).length, 2)
+    assert.ok(read('src/app/tasks/all/page.tsx').includes('<span className="boe-desktop-only">Team Performance</span>'))
+  })
+})

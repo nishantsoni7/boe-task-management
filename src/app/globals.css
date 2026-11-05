@@ -14083,3 +14083,30 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 @media (max-width: 767px) {
   .boe-status-tab { min-height: 44px; }
 }
+
+/* SHOWROOM INQUIRY DETAIL ON A PHONE (owner, 2026-11-05). Its grids are inline
+   styles sized for a desktop ("1fr 340px" left the main column almost no room
+   at 390px), so these rules win with !important: one column, a smaller
+   picture beside each item, and the dimension/price row in three columns. */
+@media (max-width: 767px) {
+  .sra-inq-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .sra-inq-item { grid-template-columns: 84px minmax(0, 1fr) !important; gap: 12px !important; }
+  .sra-inq-item > div:first-child { width: 84px !important; height: 84px !important; }
+  .sra-inq-info { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .sra-inq-info > div:nth-child(2), .sra-inq-info > div:nth-child(4), .sra-inq-info > div:nth-child(6) { display: none !important; }
+  .sra-inq-info > div:first-child { grid-column: 1 / -1; width: auto !important; }
+}
+
+/* QUOTATION REQUESTS ON A PHONE (owner, 2026-11-05): each request is a card
+   of three lines (customer and priority; who raised it and when; the note);
+   the whole card opens it, so the small View button goes. */
+@media (max-width: 767px) {
+  .qtn-head { display: none !important; }
+  .qtn-row { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 2px; padding: 4px 10px 10px 4px !important; }
+  .qtn-row > :nth-child(1) { grid-column: 1; grid-row: 1; }
+  .qtn-row > :nth-child(3) { grid-column: 2; grid-row: 1; }
+  .qtn-row > :nth-child(2) { grid-column: 1; grid-row: 2; }
+  .qtn-row > :nth-child(4) { grid-column: 2; grid-row: 2; text-align: right; }
+  .qtn-row > :nth-child(5) { grid-column: 1 / -1; grid-row: 3; padding-top: 4px !important; }
+  .qtn-row > :nth-child(6) { display: none !important; }
+}

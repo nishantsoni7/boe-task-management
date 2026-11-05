@@ -30,13 +30,15 @@ type Props = {
   profile: UserProfile | null
   title: string
   subtitle?: string
+  /** Header buttons (Notifications' Mark all read and Delete all). */
+  actions?: React.ReactNode
   onSignOut: () => void
   /** The page fills the screen and scrolls inside itself, so the header stays and nothing else moves (the Lead Board). */
   fill?: boolean
   children: React.ReactNode
 }
 
-export function SalesLayout({ profile, title, subtitle, onSignOut, fill = false, children }: Props) {
+export function SalesLayout({ profile, title, subtitle, actions, onSignOut, fill = false, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
@@ -110,6 +112,7 @@ export function SalesLayout({ profile, title, subtitle, onSignOut, fill = false,
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
+          {actions && <div className="boe-header-actions">{actions}</div>}
         </div>
         <div className={`boe-page-body ${s.pageBody}${fill ? ` ${s.fillBody}` : ''}`}>
           <ViewModeBanner />
