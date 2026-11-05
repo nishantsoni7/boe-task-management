@@ -13,8 +13,8 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
-import { Download, RefreshCw, SlidersHorizontal } from 'lucide-react'
-import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
+import { Download, RefreshCw } from 'lucide-react'
+import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { formatDelay, type IncomingRegisterRow } from '@/lib/minop/incomingRegister'
 import styles from './incoming.module.css'
@@ -274,13 +274,14 @@ export default function IncomingMinopDataPage() {
               onChange={e => { setQ(e.target.value); setPage(1) }}
             />
           </label>
-          <PhoneSheet
+          <PhoneFilterSheet
+            triggerClassName={`${ui.phoneOnly} ${ui.sheetTrigger}`} sheetClassName={ui.sheet}
             label="Filter"
-            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
-            badge={(from ? 1 : 0) + (to ? 1 : 0)}
+            ariaLabel="Filter"
+            activeCount={(from ? 1 : 0) + (to ? 1 : 0)}
             title="Filter and sort"
-            doneLabel={result ? `Show ${total} ${total === 1 ? 'record' : 'records'}` : 'Done'}
-            onClear={() => { setQ(''); setFrom(''); setTo(''); setPage(1) }}
+            applyLabel={result ? `Show ${total} ${total === 1 ? 'record' : 'records'}` : 'Done'}
+            onClearAll={() => { setQ(''); setFrom(''); setTo(''); setPage(1) }}
           >
             <label className={ui.field}>
               <span className={ui.label}>Received from</span>
@@ -299,12 +300,13 @@ export default function IncomingMinopDataPage() {
                 {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </label>
-          </PhoneSheet>
-          <PhoneSheet
+          </PhoneFilterSheet>
+          <PhoneFilterSheet
+            triggerClassName={`${ui.phoneOnly} ${ui.sheetTrigger}`} sheetClassName={ui.sheet}
             label="Download"
             icon={<Download size={16} strokeWidth={2} aria-hidden="true" />}
             title="Download"
-            doneLabel="Close"
+            applyLabel="Close"
           >
             <p className={ui.hint} style={{ margin: 0 }}>
               Downloads include every matching record, not only this page. Times are Asia/Kolkata.
@@ -319,7 +321,7 @@ export default function IncomingMinopDataPage() {
                 <Download size={14} /> {exporting === 'raw' ? 'Preparing…' : 'Download raw payloads'}
               </button>
             </div>
-          </PhoneSheet>
+          </PhoneFilterSheet>
         </div>
 
         <div className={styles.controls}>

@@ -1,7 +1,7 @@
 'use client'
 
 import { colors } from '@/lib/tokens'
-import { useIsPhone } from '@/components/phoneFilters/useIsPhone'
+import { useIsPhone } from '@/components/ui/useIsPhone'
 import { axisMax, barSegments } from '@/lib/customerReviews/reviewReport'
 
 // A small stacked-bar chart, drawn as inline SVG like BOE's other charts (there is

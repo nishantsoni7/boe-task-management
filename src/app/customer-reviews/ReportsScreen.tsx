@@ -11,7 +11,7 @@ import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewBadge } from '@/components/customerReviews/ReviewPieces'
 import { StackedBarChart } from '@/components/customerReviews/ReviewCharts'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import styles from './reports.module.css'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
@@ -214,7 +214,7 @@ function Filters({
         <span className="crv-phone-filter-text">
           {monthText}{activeCount - (filters.month ? 1 : 0) > 0 ? ` · ${activeCount - (filters.month ? 1 : 0)} more filter${activeCount - (filters.month ? 1 : 0) === 1 ? '' : 's'}` : ' · everyone'}
         </span>
-        <PhoneFilterSheet activeCount={activeCount} resultLabel="Show the report" onClearAll={active ? onReset : undefined}>
+        <PhoneFilterSheet triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet" activeCount={activeCount} applyLabel="Show the report" onClearAll={active ? onReset : undefined}>
           <div className="crv-sheet-fields">{fields}</div>
         </PhoneFilterSheet>
       </div>

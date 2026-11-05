@@ -10,7 +10,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PhoneChips, PhoneSearchFilter, showResultsLabel } from '@/components/tasks/PhoneListTools'
+import { PhoneChips, PhoneSearchFilter, showResultsLabel } from '@/components/ui/PhoneFilters'
 import { ArchiveToolbar, ArchiveSelect } from '@/components/tasks/CancelledArchive'
 import { isTaskCreateActionsHiddenRoute } from '@/lib/tasks/taskCreateActions'
 

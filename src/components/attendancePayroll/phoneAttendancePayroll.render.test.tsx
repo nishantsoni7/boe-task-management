@@ -12,14 +12,13 @@ import { readFileSync } from 'node:fs'
 import Module from 'node:module'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { PhoneSheet as Sheet } from './PhoneSheet'
+import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import type { HeaderActions as Actions } from './HeaderActions'
 import type { MyAttendanceRequests as Requests } from '@/components/attendanceRequests/MyAttendanceRequests'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
 
-let PhoneSheet: typeof Sheet
 let HeaderActions: typeof Actions
 let MyAttendanceRequests: typeof Requests
 
@@ -29,7 +28,6 @@ before(async () => {
   loaders['.css'] = mod => {
     mod.exports = { __esModule: true, default: new Proxy({}, { get: (_, name) => String(name) }) }
   }
-  PhoneSheet = (await import('./PhoneSheet')).PhoneSheet
   HeaderActions = (await import('./HeaderActions')).HeaderActions
   MyAttendanceRequests = (await import('@/components/attendanceRequests/MyAttendanceRequests')).MyAttendanceRequests
 })
@@ -48,23 +46,36 @@ function phoneRules(css: string): string {
 }
 
 describe('the shared phone pieces', () => {
-  test('PhoneSheet: a phone-only trigger with its count, and a sheet holding the page controls', () => {
+  // The sheet is the shared one (components/ui/PhoneFilters.tsx); the
+  // attendance pages give it this module's phone-only classes.
+  const trigger = '${ui.phoneOnly} ${ui.sheetTrigger}'
+  test('the Filter sheet: a phone-only trigger with its count, and a sheet holding the page controls', () => {
     const closed = renderToStaticMarkup(
-      <PhoneSheet label="Filter" badge={2} title="Filter and sort"><input aria-label="From" /></PhoneSheet>,
+      <PhoneFilterSheet triggerClassName="phoneOnly sheetTrigger" sheetClassName="sheet" ariaLabel="Filter" activeCount={2} title="Filter and sort"><input aria-label="From" /></PhoneFilterSheet>,
     )
     assert.match(closed, /class="orders-phone-filter phoneOnly sheetTrigger is-set"/)
     assert.match(closed, /aria-label="Filter, 2 set"/)
     assert.equal(closed.includes('role="dialog"'), false, 'closed until pressed')
 
     const open = renderToStaticMarkup(
-      <PhoneSheet label="Filter" title="Filter records" doneLabel="Search" onClear={() => {}} initiallyOpen>
+      <PhoneFilterSheet triggerClassName="phoneOnly sheetTrigger" sheetClassName="sheet" title="Filter records" applyLabel="Search" onClearAll={() => {}} initiallyOpen>
         <input aria-label="From" />
-      </PhoneSheet>,
+      </PhoneFilterSheet>,
     )
-    assert.match(open, /role="dialog" aria-modal="true" aria-label="Filter records"/)
+    assert.match(open, /class="orders-sheet sheet" role="dialog" aria-modal="true" aria-label="Filter records"/)
     assert.match(open, />Clear all</)
     assert.match(open, /aria-label="From"/)
     assert.match(open, /orders-sheet-apply">Search</)
+  })
+
+  test('every attendance sheet is phone-only and keeps the "Filter" name on its button', () => {
+    for (const file of ['src/app/attendance/records/page.tsx', 'src/app/attendance/employees/[id]/page.tsx', 'src/app/attendance/minop/incoming/page.tsx']) {
+      const src = read(file)
+      const sheets = src.split('<PhoneFilterSheet').length - 1
+      assert.ok(sheets > 0, file)
+      assert.equal(src.split(`triggerClassName={\`${trigger}\`} sheetClassName={ui.sheet}`).length - 1, sheets, file)
+      assert.equal((src.match(/label="Filter"/g) ?? []).length, (src.match(/ariaLabel="Filter"/g) ?? []).length, file)
+    }
   })
 
   test('HeaderActions: the desktop buttons unchanged, the same actions in the phone menu', () => {
@@ -160,7 +171,7 @@ describe('admin pages', () => {
     assert.ok(incoming.includes('label="Filter"') && incoming.includes('label="Download"'))
     assert.match(phoneRules(read('src/app/attendance/minop/incoming/incoming.module.css')), /\.controls \{ display: none; \}/)
     const records = read('src/app/attendance/records/page.tsx')
-    assert.ok(records.includes("onDone={() => { if (!fetching) void handleSearch() }}"))
+    assert.ok(records.includes("onApply={() => { if (!fetching) void handleSearch() }}"))
     assert.ok(records.includes('${ui.desktopOnly}`}'), 'the desktop form is untouched, hidden on a phone')
     const holidays = read('src/app/attendance/holidays/page.tsx')
     assert.ok(holidays.includes('styles.phoneFolded') && holidays.includes('kind="add"'))
@@ -187,7 +198,7 @@ describe('Phase 4: attendance pages', () => {
     const src = read('src/app/attendance/employees/[id]/page.tsx')
     assert.ok(src.includes('aria-controls="employee-sections"'))
     assert.ok(src.includes("${detailsOpen ? '' : ` ${styles.phoneFolded}`}"))
-    assert.ok(src.includes('<PhoneSheet') && src.includes('id="from-date-phone"') && src.includes('id="to-date-phone"'))
+    assert.ok(src.includes('<PhoneFilterSheet') && src.includes('id="from-date-phone"') && src.includes('id="to-date-phone"'))
     assert.ok(src.includes('${ui.surface} ${ui.surfaceBody} ${ui.desktopOnly}'), 'the desktop date row is unchanged, hidden on a phone')
     const css = phoneRules(read('src/app/attendance/employees/[id]/detail.module.css'))
     assert.match(css, /\.back \{ min-height: 44px; \}/)

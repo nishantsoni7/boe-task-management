@@ -48,7 +48,7 @@ import { AdvanceCell } from './AdvanceCell'
 import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
-import { PhoneFilterButton, PhoneStatusChips } from './PhoneListControls'
+import { PhoneChips, PhoneFilterSheet, PhoneSearchBox, showResultsLabel } from '@/components/ui/PhoneFilters'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -675,7 +675,9 @@ export default function AllOrdersPage() {
           cards={STATUS_CARDS.map(c => ({ ...c, count: statusCount(c.key) }))}
         />
       </div>
-      <PhoneStatusChips
+      <PhoneChips
+        label="Order status"
+        rowClassName="orders-phone-chips"
         active={effectiveStatus}
         onSelect={setStatusTab}
         chips={PHONE_STATUS_ORDER.map(key => {
@@ -692,25 +694,17 @@ export default function AllOrdersPage() {
         {/* PHONE: the search box and ONE Filter button; the sheet holds the
             four chips below. CSS shows this row or the view bar, never both. */}
         <div className="orders-phone-tools" role="search" aria-label="Filter Confirmed Orders on a phone">
-          <label className="boe-list-search">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="search"
-              aria-label="Search Confirmed Orders"
-              placeholder="Code, client or person"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              onBlur={flushSearch}
-            />
-            {searchInput && (
-              <button type="button" onClick={() => setSearchInput('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
-            )}
-          </label>
-          <PhoneFilterButton
+          <PhoneSearchBox
+            label="Search Confirmed Orders"
+            placeholder="Code, client or person"
+            value={searchInput}
+            onChange={setSearchInput}
+            onBlur={flushSearch}
+          />
+          <PhoneFilterSheet
+            title="Filter and sort"
             activeCount={phoneFilterCount}
-            resultCount={visible.length}
+            applyLabel={showResultsLabel(visible.length, ['order', 'orders'])}
             onClearAll={() => setListState({ assignee: '', source: '', date: 'all', sort: 'number_desc' })}
             groups={[
               {

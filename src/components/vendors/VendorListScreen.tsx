@@ -17,7 +17,7 @@ import {
 import { vendorsCsv } from '@/lib/vendors/csv'
 import { telHref, formatPhone } from '@/lib/exhibitionLeads/phone'
 import FilterMenu from './FilterMenu'
-import { PhoneFilterSheet, PhoneMultiGroup } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneFilterSheet, PhoneMultiGroup } from '@/components/ui/PhoneFilters'
 import { Highlight, StatusBadge, daysAgoText } from './VendorBits'
 import s from './vendors.module.css'
 
@@ -234,10 +234,11 @@ export default function VendorListScreen() {
           </span>
           {/* A phone: the six filters and the sort above are hidden; this one button holds them all. */}
           <PhoneFilterSheet
+            triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"
             title="Filter and sort"
             activeCount={state.can.length + state.type.length + state.team.length + state.area.length + state.status.length + (state.waiting === '1' ? 1 : 0)}
             groups={[{ id: 'sort', label: 'Sort', value: state.sort, options: SORTS.map(k => ({ value: k, label: SORT_LABELS[k] })), onChange: v => setState({ sort: v as Sort }) }]}
-            resultLabel={`Show ${total} vendor${total === 1 ? '' : 's'}`}
+            applyLabel={`Show ${total} vendor${total === 1 ? '' : 's'}`}
             onClearAll={() => setState({ can: [], type: [], team: [], area: [], status: [], waiting: '0' })}
           >
             <PhoneMultiGroup id="v-can" label="Expertise" options={CAPABILITIES} value={state.can} onChange={v => setState({ can: v as typeof state.can })} />

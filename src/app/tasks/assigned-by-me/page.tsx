@@ -20,7 +20,7 @@ import { ApproveTaskDialog } from '@/components/tasks/ApproveTaskDialog'
 import { CancelTaskModal } from '@/components/tasks/CancelTaskModal'
 import { TaskRowMenu, type TaskRowMenuItem } from '@/components/tasks/TaskRowMenu'
 import { TeamResponseBar } from '@/components/tasks/TeamResponseBar'
-import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
+import { PhoneChips, PhoneSearchFilter } from '@/components/ui/PhoneFilters'
 import { Toast, takeFlashToast, useToast } from '@/components/ui/toast'
 import {
   Ban, CheckCircle2, CircleCheckBig, ClipboardCheck, ExternalLink, Star,
