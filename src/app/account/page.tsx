@@ -138,7 +138,7 @@ function AccountPageInner() {
 
         {/* Account identity */}
         {profile && (
-          <section aria-labelledby="account-profile-heading" style={card}>
+          <section aria-labelledby="account-profile-heading" className="boe-p4-acct-card" style={card}>
             <h2 id="account-profile-heading" style={sectionTitle}>Profile</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
               <div style={{
@@ -173,7 +173,7 @@ function AccountPageInner() {
         )}
 
         {/* Change password */}
-        <section aria-labelledby="account-password-heading" style={card}>
+        <section aria-labelledby="account-password-heading" className="boe-p4-acct-card" style={card}>
           <h2 id="account-password-heading" style={sectionTitle}>Change Password</h2>
           <p style={{ margin: '4px 0 18px', fontSize: 13, color: colors.tertiary, lineHeight: 1.5 }}>
             Choose a new password for signing in to BOE.
@@ -224,6 +224,7 @@ function AccountPageInner() {
                 type="submit"
                 disabled={pwLoading}
                 aria-busy={pwLoading}
+                className="boe-p4-acct-submit"
                 style={{
                   padding: '9px 20px', fontSize: 13.5, fontWeight: 600,
                   background: colors.brand, color: '#fff',
@@ -303,6 +304,7 @@ function PasswordField({
           placeholder={placeholder}
           aria-invalid={invalid || undefined}
           aria-describedby={hint ? `${id}-hint` : undefined}
+          className="boe-p4-acct-pw"
           style={{
             width: '100%', boxSizing: 'border-box',
             fontSize: 13.5, padding: '8px 40px 8px 12px',
@@ -316,6 +318,7 @@ function PasswordField({
           onClick={onToggleVisible}
           aria-label={visible ? 'Hide passwords' : 'Show passwords'}
           aria-pressed={visible}
+          className="boe-p4-acct-eye"
           style={{
             position: 'absolute', top: 0, right: 0, bottom: 0, width: 38,
             display: 'flex', alignItems: 'center', justifyContent: 'center',

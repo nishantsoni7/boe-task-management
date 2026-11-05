@@ -108,6 +108,7 @@ export function ReviewLeaderboardScreen() {
           <select
             value={month ?? ''}
             onChange={e => { setMonth(e.target.value === '' ? null : e.target.value); setShowAll(false) }}
+            className="boe-p4-16"
             style={{ minHeight: 44, padding: '8px 10px', borderRadius: 8, fontSize: 13, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.primary, fontFamily: 'inherit' }}
           >
             <option value="">{data ? `${reviewMonthLabel(data.current_month)} (current)` : 'Current month'}</option>

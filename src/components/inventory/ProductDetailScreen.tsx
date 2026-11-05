@@ -136,8 +136,9 @@ export default function ProductDetailScreen() {
 
           <div className={s.info}>
             <div className={s.panel}>
-              <div className={s.codeLine}><span className={s.code}>{item.product_code}</span>{item.category && <span className={s.hint}>{item.category}</span>}</div>
-              <h2 className={s.title}>{item.name}</h2>
+              {/* The header already shows the name and the code; a phone keeps only the category here (Phase 4). */}
+              <div className={`${s.codeLine} ${s.codeLineTop}${item.category ? '' : ` ${s.codeLineBare}`}`}><span className={s.code}>{item.product_code}</span>{item.category && <span className={s.hint}>{item.category}</span>}</div>
+              <h2 className={`${s.title} ${s.titleRepeat}`}>{item.name}</h2>
               <div className={s.codeLine}><StageBadge stage={item.stage} /><ConditionBadge condition={item.condition} /><StockBadge item={item} /></div>
               <div>
                 <div className={s.priceBox}>

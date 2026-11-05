@@ -144,6 +144,8 @@ export function FounderPayments({ year, lines, filters, setFilters, sides, book,
                     <button type="button" className={styles.link} onClick={() => setFilters(prev => ({ ...NO_FILTERS, search: prev.search }))}>Clear filters</button>
                   </div>
                 )}
+                {/* Drawn on a phone only, where the panel is a sheet that covers the list. */}
+                <button type="button" className={`boe-btn boe-btn-primary ${styles.filterDone}`} onClick={() => setFiltersOpen(false)}>Done</button>
               </div>
             </>
           )}

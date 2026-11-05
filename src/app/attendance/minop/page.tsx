@@ -198,7 +198,8 @@ export default function MinopDiagnosticsPage() {
     return (
       <div className={styles.resultCell}>
         <Badge tone={info.tone}>{info.label}</Badge>
-        <p className={styles.explain}>{info.meaning}</p>
+        {/* On a phone the meaning shows only where something needs doing. */}
+        <p className={`${styles.explain}${needsAttention(d) ? '' : ` ${styles.calm}`}`}>{info.meaning}</p>
         <details className={styles.tech}>
           <summary>Technical details</summary>
           <dl className={styles.techBody}>
@@ -254,12 +255,20 @@ export default function MinopDiagnosticsPage() {
           </Notice>
         )}
         <Notice kind="info">
-          The machine is the attendance source from 1 November 2026. Its punches from that date become attendance
-          for linked employees. This list shows each message as it arrived.
+          <span className={styles.noticeFull}>
+            The machine is the attendance source from 1 November 2026. Its punches from that date become attendance
+            for linked employees. This list shows each message as it arrived.
+          </span>
+          {/* Phone: the same notice on one line. */}
+          <details className={styles.noticeFold}>
+            <summary>Machine is the attendance source from 1 Nov 2026</summary>
+            Its punches from that date become attendance for linked employees. This list shows each message as it arrived.
+          </details>
         </Notice>
 
-        {/* Plain-language key, closed by default so the list stays the focus. */}
-        <section className={ui.surface}>
+        {/* Plain-language key, closed by default so the list stays the focus.
+            On a phone it sits below the list. */}
+        <section className={`${ui.surface} ${styles.legend}`}>
           <details className={styles.disclosure}>
             <summary>What do these results mean?</summary>
             <ul className={styles.legendList}>

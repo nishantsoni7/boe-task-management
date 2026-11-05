@@ -62,6 +62,7 @@ export function NotificationRow({
       <div
         onClick={e => { e.stopPropagation(); onToggleSelect(n.id) }}
         title={isSelected ? 'Deselect' : 'Select'}
+        className="boe-p4-nrow-check"
         style={{
           flexShrink: 0,
           width: '40px',
@@ -70,7 +71,7 @@ export function NotificationRow({
           cursor: 'pointer',
         }}
       >
-        <span style={{
+        <span className="boe-p4-nrow-box" style={{
           width: '16px', height: '16px', borderRadius: '6px',
           border: `1.5px solid ${isSelected ? colors.brand : colors.borderSoft}`,
           background: isSelected ? colors.brand : 'transparent',
@@ -140,8 +141,9 @@ export function NotificationRow({
         </div>
       </div>
 
-      {/* ── Right: View action + trash — fixed width so all rows align ── */}
-      <div style={{
+      {/* ── Right: View action + trash — fixed width so all rows align
+          (on a phone the width is automatic: 148px took ~40% of 390px). ── */}
+      <div className="boe-p4-nrow-right" style={{
         width: '148px',
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         gap: '6px',
@@ -151,6 +153,7 @@ export function NotificationRow({
           <button
             onClick={e => { e.stopPropagation(); onOpen(n) }}
             title={meta.actionLabel}
+            className="boe-p4-nrow-open"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '5px 12px', borderRadius: '6px',
@@ -165,7 +168,7 @@ export function NotificationRow({
             {meta.actionLabel}
           </button>
         ) : (
-          <span style={{ display: 'inline-block', width: '82px' }} />
+          <span className="boe-p4-nrow-spacer" style={{ display: 'inline-block', width: '82px' }} />
         )}
 
         {/* Per-row trash — disabled while THIS row's DELETE is in
@@ -174,6 +177,8 @@ export function NotificationRow({
           onClick={e => { e.stopPropagation(); onDelete(n.id) }}
           disabled={pending}
           title="Delete notification"
+          aria-label="Delete notification"
+          className="boe-p4-nrow-trash"
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: '28px', height: '28px', borderRadius: '6px',

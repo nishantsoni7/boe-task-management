@@ -121,3 +121,96 @@ describe('the markup the phone rules hang on', () => {
     }
   })
 })
+
+// ── PHONE PHASE 4 (owner, 2026-11-05): the Orders pages Phase 3 left below 8.5 ──
+const p4Start = css.indexOf('PHONE PHASE 4 — ORDERS & FINANCE (owner')
+const p4Next = css.indexOf('PHONE PHASE 4 —', p4Start + 20)
+const phase4 = css.slice(p4Start, p4Next < 0 ? undefined : css.lastIndexOf('/* ═', p4Next))
+const editor = read('src/components/orders/PiEditor.tsx')
+const amountMask = read('src/components/orders/AmountMask.tsx')
+const draft = read('src/app/orders/drafts/[submissionId]/page.tsx')
+const importPage = read('src/app/orders/import/page.tsx')
+
+/** The declarations of the first Phase 4 rule whose selector list is exactly `selector`. */
+function rule4(selector: string): string {
+  const at = phase4.indexOf(`\n  ${selector} {`)
+  assert.ok(at > -1, `${selector} has a Phase 4 phone rule`)
+  return phase4.slice(at, phase4.indexOf('}', at))
+}
+
+describe('Phase 4 on a phone', () => {
+  test('is one media block: nothing reaches a desktop or a tablet', () => {
+    assert.ok(p4Start > -1)
+    const body = phase4.slice(phase4.indexOf('*/') + 2).trim()
+    assert.ok(body.startsWith('@media (max-width: 767px) {'))
+    let depth = 0
+    let closedAt = -1
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] === '{') depth++
+      if (body[i] === '}') { depth--; if (depth === 0) { closedAt = i; break } }
+    }
+    assert.ok(closedAt > 0)
+    assert.equal(body.slice(closedAt + 1).trim(), '', 'nothing after the media block')
+  })
+
+  test('Edit PI: a 44px back, 40px section links, the intro note gone, Save sticky at the bottom', () => {
+    assert.match(rule4('.pi-edit-back'), /min-height: 44px/)
+    assert.match(rule4('.pi-edit-nav a'), /display: inline-flex;[^}]*min-height: 40px/)
+    assert.match(rule4('.pi-edit-note'), /display: none/)
+    assert.match(rule4('.pi-edit-note.pi-edit-note--propose'), /-webkit-line-clamp: 2/, 'a new version keeps its warning')
+    const bar = rule4('.pi-edit-bar')
+    assert.match(bar, /position: sticky; bottom: 0/)
+    assert.match(bar, /env\(safe-area-inset-bottom/)
+    assert.doesNotMatch(bar, /position: fixed/)
+    assert.match(rule4('.pi-edit-bar > .boe-btn'), /min-height: 44px/)
+    assert.ok(editor.includes("className={mode === 'propose' ? 'pi-edit-note pi-edit-note--propose' : 'pi-edit-note'}"))
+  })
+
+  test('Record dispatch: no eyebrow, the number and the order on one line, Save sticky', () => {
+    assert.match(rule4('.odr-eyebrow'), /display: none/)
+    assert.match(rule4('.odr-head h1'), /font-size: 14px/)
+    assert.match(rule4('.odr-savebar'), /position: sticky; bottom: 0/)
+  })
+
+  test('the Operations view: 40px chips, 44px buttons, no text under 12px', () => {
+    assert.match(rule4('.ops-na-chip'), /min-height: 40px/)
+    assert.match(rule4('.ops-bulk-btn'), /height: 44px/)
+    assert.match(rule4('.ops-seg-btn'), /height: 44px/)
+    assert.match(rule4('.ops-chip, .ops-status, .ops-late'), /font-size: 12px/)
+    assert.match(rule4('.ops-na-table th'), /font-size: 12px/)
+  })
+
+  test('the Payment plan: 12px labels, the bar on the bottom edge (Orders draws no bottom navigation)', () => {
+    assert.match(rule4('.opp-grid td[data-label]::before'), /font-size: 12px/)
+    const bar = rule4('.opp-bar')
+    assert.match(bar, /position: sticky; bottom: 0/)
+    assert.match(bar, /env\(safe-area-inset-bottom/)
+  })
+
+  test('Customize image learning: 88px thumbnails beside the words, nothing under 12px', () => {
+    assert.match(rule4('.cil-card-body'), /grid-template-columns: 88px minmax\(0, 1fr\)/)
+    assert.match(rule4('.cil-pic'), /font-size: 12px/)
+    assert.match(rule4('.cil-text p > span:first-child, .cil-text .pi-regen-note'), /font-size: 12px/)
+  })
+
+  test('the Confirmed Orders filter sheet: 40px options, 12px group names', () => {
+    assert.match(rule4('.orders-sheet-options button'), /min-height: 40px/)
+    assert.match(rule4('.orders-sheet-label'), /font-size: 12px/)
+  })
+
+  test('a PI draft: Hide amounts and Edit PI are header icons, their words kept for a screen reader', () => {
+    assert.ok(amountMask.includes('className="boe-btn boe-btn-ghost pi-amounts-toggle orders-hdr-iconbtn"'))
+    assert.ok(amountMask.includes('<span className="pi-amounts-toggle-label orders-hdr-label">'))
+    assert.ok(draft.includes('className="boe-btn boe-btn-primary orders-hdr-iconbtn orders-hdr-primary" onClick={() => router.push(draftEditPiPageHref(submissionId))}'))
+    assert.ok(draft.includes('<span className="orders-hdr-label">{EDIT_PI_LABEL}</span>'))
+    assert.ok(draft.includes('<span className="orders-hdr-label">{EDIT_PI_LABEL} on the Order</span>'))
+  })
+
+  test('Upload PI: the Products counts take their own line on a phone, in fewer words', () => {
+    assert.ok(importPage.includes("style={isMobile ? { flexWrap: 'wrap', rowGap: '6px', padding: '12px 14px' } : undefined}"))
+    assert.ok(importPage.includes('`${preview.coverage.matched}/${preview.coverage.total} images`'))
+    // The notice cards keep their 20px sides: finalApprovalScope.test.ts holds
+    // the import screen's cards byte-for-byte against its base.
+    assert.equal(importPage.includes('padX'), false)
+  })
+})

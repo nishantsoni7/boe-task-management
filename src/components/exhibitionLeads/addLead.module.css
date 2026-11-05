@@ -214,7 +214,7 @@ a.tile:hover, button.tile:hover { border-color: #303536; }
 @media (max-width: 767px) {
   .stats { gap: 6px; }
   .tile { min-height: 56px; padding: 6px 10px; gap: 0; }
-  .tile .tileLabel { font-size: 11px; }
+  .tile .tileLabel { font-size: 12px; }
   .tile .tileValue { font-size: 22px; margin-top: 0; }
   .tile .tileSub { display: none; }
   .tile .tileGo { top: 8px; right: 8px; }

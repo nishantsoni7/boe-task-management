@@ -519,12 +519,12 @@ function TestDataCleanupInner() {
                       <legend style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
                         What should happen to Order {preview.to_delete.find(r => r.type === 'order')?.number}&apos;s number?
                       </legend>
-                      <label style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+                      <label className={cc.radio} style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
                         <input type="radio" name="order-number-choice" checked={orderNumberChoice === 'keep'}
                           onChange={() => setOrderNumberChoice('keep')} />{' '}
                         Keep the number used. The next Order gets the next number.
                       </label>
-                      <label style={{ display: 'block', fontSize: 13 }}>
+                      <label className={cc.radio} style={{ display: 'block', fontSize: 13 }}>
                         <input type="radio" name="order-number-choice" checked={orderNumberChoice === 'reuse'}
                           onChange={() => setOrderNumberChoice('reuse')} />{' '}
                         Reuse this number for the next Order. Available only for the latest unreserved number.

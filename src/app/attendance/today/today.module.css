@@ -71,3 +71,30 @@
   .dayLabel { text-align: center; }
   .filterEnd { width: 100%; margin-left: 0; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   A stopped machine is one line plus "What to check ▾"; "See every message"
+   and "Back to today" are 44px; Back to today shares the date-picker row.
+   Desktop is unchanged. */
+.stripMore { display: none; }
+
+@media (max-width: 767px) {
+  /* Dot and sentence on one row; "See every message" and "What to check" share the next. */
+  .strip { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 18px; padding: 8px 14px; }
+  .stripHead { display: contents; }
+  .dot { margin-right: -8px; }
+  .stripText { flex: 1 1 calc(100% - 28px); }
+  .stripMore[open] { flex-basis: 100%; }
+  .stripLink, .backToday { min-height: 44px; display: inline-flex; align-items: center; }
+  .stripFull { display: none; }
+  .stripMore { display: block; }
+  .stripMore > summary {
+    min-height: 44px; display: flex; align-items: center; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  .stripMore .steps { padding-left: 22px; }
+  .stripMore .reassure { padding-left: 0; margin-top: 6px; }
+  .dayBar { gap: 8px 10px; }
+  .dayPicker { width: auto; flex: 1 1 auto; min-width: 0; }
+  .dayHint, .backToday { flex: none; }
+}

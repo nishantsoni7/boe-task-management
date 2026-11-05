@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
@@ -16,6 +17,8 @@ import {
   PayrollAttentionIndicator,
   PayrollAttentionModal,
   PayrollRowActionBar,
+  PayrollRowPhoneMenu,
+  PayrollRowPhonePrimary,
 } from './PayrollRowActions'
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
@@ -548,21 +551,24 @@ function PayrollPeriodsPage() {
 
   if (loading) return <LoadingScreen />
 
+  // The same handlers for the desktop row and the phone card.
+  const rowProps = (p: PayrollPeriodRow) => ({
+    status: p.status,
+    isBusy: !!busy[p.id],
+    canManage: isPayrollAdmin,
+    onGenerate: () => handleGenerate(p),
+    onLock: () => handleLock(p),
+    onUnlock: () => { setUnlockError(null); setUnlockTarget(p) },
+    onViewResults: () => router.push(`/payroll/results/${p.id}`),
+    // Admins only. PayrollRowActionBar drops the control
+    // when no handler is given, so a Control Center member
+    // with Payroll visibility never sees it.
+    onDelete: isPayrollAdmin ? () => openDelete(p) : undefined,
+  })
+
   const rowActions = (p: PayrollPeriodRow) => (
     <>
-      <PayrollRowActionBar
-        status={p.status}
-        isBusy={!!busy[p.id]}
-        canManage={isPayrollAdmin}
-        onGenerate={() => handleGenerate(p)}
-        onLock={() => handleLock(p)}
-        onUnlock={() => { setUnlockError(null); setUnlockTarget(p) }}
-        onViewResults={() => router.push(`/payroll/results/${p.id}`)}
-        // Admins only. PayrollRowActionBar drops the control
-        // when no handler is given, so a Control Center member
-        // with Payroll visibility never sees it.
-        onDelete={isPayrollAdmin ? () => openDelete(p) : undefined}
-      />
+      <PayrollRowActionBar {...rowProps(p)} />
       {/* The server refuses to generate or lock a month that has
           not ended (src/lib/payroll/periodCompletion.ts); say
           so before anyone presses the button. */}
@@ -643,7 +649,7 @@ function PayrollPeriodsPage() {
         <style>{PAYROLL_ROW_CSS}</style>
 
         {periods.length > 0 && (
-          <p className={styles.totals}>
+          <p className={`${styles.totals} ${styles.totalsFull}`}>
             <strong>{periods.length}</strong> saved run{periods.length === 1 ? '' : 's'}
             {summary.latestGenerated && (
               <>
@@ -657,6 +663,19 @@ function PayrollPeriodsPage() {
             {summary.attention === 0
               ? 'no run is out of date'
               : <strong className={styles.warnText}>{summary.attention} run{summary.attention === 1 ? '' : 's'} need regeneration</strong>}
+          </p>
+        )}
+        {/* Phone: the same totals on one line. */}
+        {periods.length > 0 && (
+          <p className={`${styles.totals} ${styles.totalsPhone}`}>
+            <strong>{periods.length}</strong> run{periods.length === 1 ? '' : 's'}
+            {summary.latestGenerated && (
+              <> · latest <strong>{periodLabel(summary.latestGenerated.payroll_month, summary.latestGenerated.payroll_year)}</strong></>
+            )}
+            {' · '}
+            {summary.attention === 0
+              ? 'none out of date'
+              : <strong className={styles.warnText}>{summary.attention} out of date</strong>}
           </p>
         )}
 
@@ -743,12 +762,22 @@ function PayrollPeriodsPage() {
                 return (
                   <li
                     key={p.id}
-                    className={`${ui.surface} ${ui.card}`}
+                    className={`${ui.surface} ${ui.card} ${styles.runCard}`}
                     style={p.id === highlightedPeriodId ? { background: 'rgba(196,138,26,0.14)' } : undefined}
                   >
-                    <div className={ui.cardHead}>
-                      <span className={ui.strong}>{periodLabel(p.payroll_month, p.payroll_year)}</span>
-                      <StatusBadges p={p} />
+                    {/* The card opens the results; a draft has none to open. */}
+                    <div className={`${ui.cardHead} ${styles.runHead}`}>
+                      {p.status === 'draft'
+                        ? <span className={ui.strong}>{periodLabel(p.payroll_month, p.payroll_year)}</span>
+                        : (
+                          <Link href={`/payroll/results/${p.id}`} className={`${ui.strong} ${styles.runLink}`}>
+                            {periodLabel(p.payroll_month, p.payroll_year)}
+                          </Link>
+                        )}
+                      <span className={styles.runEnd}>
+                        <StatusBadges p={p} />
+                        <PayrollRowPhoneMenu {...rowProps(p)} periodLabel={periodLabel(p.payroll_month, p.payroll_year)} />
+                      </span>
                     </div>
                     <div className={ui.sub}>
                       {p.employee_count > 0 ? `${p.employee_count} employee${p.employee_count === 1 ? '' : 's'}` : 'No results yet'}
@@ -763,7 +792,12 @@ function PayrollPeriodsPage() {
                         <span className={ui.sub} style={{ margin: 0 }}>{attentionOf(p)!.title}</span>
                       </div>
                     )}
-                    <div className={styles.cardActions}>{rowActions(p)}</div>
+                    <PayrollRowPhonePrimary {...rowProps(p)} />
+                    {inProgress(p) && (
+                      <div className={`${styles.progressNote} ${styles.progressLine}`}>
+                        Month in progress · payroll opens {formatOpensOn(payrollMonthOpensOn(p.payroll_year, p.payroll_month))} (IST)
+                      </div>
+                    )}
                   </li>
                 )
               })}

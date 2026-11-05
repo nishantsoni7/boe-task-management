@@ -39,6 +39,7 @@ function LoginForm() {
         <label className="boe-input-label">Email</label>
         <input
           type="email"
+          autoComplete="username"
           value={email}
           onChange={e => setEmail(e.target.value)}
           placeholder="you@bestofexports.com"
@@ -50,6 +51,7 @@ function LoginForm() {
         <label className="boe-input-label">Password</label>
         <input
           type="password"
+          autoComplete="current-password"
           value={password}
           onChange={e => setPassword(e.target.value)}
           placeholder="••••••••"
@@ -75,7 +77,7 @@ function LoginForm() {
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
 
-      <Link href="/forgot-password" style={authLinkStyle}>
+      <Link href="/forgot-password" className="boe-p4-authlink" style={authLinkStyle}>
         Forgot password?
       </Link>
     </AuthShell>

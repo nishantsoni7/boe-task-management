@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import Link from 'next/link'
+import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
 import styles from './detail.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -74,6 +75,8 @@ export default function EmployeeDetailPage() {
   const [fromDate,  setFromDate]  = useState('')
   const [toDate,    setToDate]    = useState('')
   const [page,      setPage]      = useState(1)
+  // Phone only: the four detail sections fold behind one "Details" row.
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -194,8 +197,29 @@ export default function EmployeeDetailPage() {
 
         {backLink}
 
+        {/* Phone: one identity line; the four sections fold behind Details. */}
+        <div className={`${ui.phoneOnly} ${styles.identity}`}>
+          <p className={styles.identityLine}>
+            {[
+              emp.employee_code?.trim() || null,
+              emp.team ? <span key="t" className={styles.cap}>{emp.team}</span> : null,
+              emp.monthly_salary != null ? '₹' + Number(emp.monthly_salary).toLocaleString('en-IN') : null,
+            ].filter(Boolean).map((part, i) => <span key={i}>{i > 0 && ' · '}{part}</span>)}
+            {' '}<Badge tone={emp.is_active ? 'good' : 'neutral'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
+          </p>
+          <button
+            type="button"
+            className={styles.detailsToggle}
+            aria-expanded={detailsOpen}
+            aria-controls="employee-sections"
+            onClick={() => setDetailsOpen(o => !o)}
+          >
+            Details <span aria-hidden="true">{detailsOpen ? '▴' : '▾'}</span>
+          </button>
+        </div>
+
         {/* ── Details, grouped ── */}
-        <div className={styles.sections}>
+        <div id="employee-sections" className={`${styles.sections}${detailsOpen ? '' : ` ${styles.phoneFolded}`}`}>
           <section className={ui.surface} aria-labelledby="sec-profile">
             <div className={ui.surfaceHead}><h2 id="sec-profile" className={ui.surfaceTitle}>Profile</h2></div>
             <div className={ui.surfaceBody}>
@@ -259,7 +283,7 @@ export default function EmployeeDetailPage() {
             </Notice>
           )}
 
-          <div className={`${ui.surface} ${ui.surfaceBody}`}>
+          <div className={`${ui.surface} ${ui.surfaceBody} ${ui.desktopOnly}`}>
             <div className={styles.dates}>
               <div className={`${ui.field} ${styles.dateField}`}>
                 <label className={ui.label} htmlFor="from-date">From date</label>
@@ -277,12 +301,30 @@ export default function EmployeeDetailPage() {
             </div>
           </div>
 
-          <p className={styles.total} aria-live="polite">
-            {summary.total} record{summary.total !== 1 ? 's' : ''} · {summary.present} present
-            {summary.earliest && (
-              <> · {formatDate(summary.earliest)}{summary.latest && summary.latest !== summary.earliest ? ` to ${formatDate(summary.latest)}` : ''}</>
-            )}
-          </p>
+          <div className={styles.historyBar}>
+            <p className={styles.total} aria-live="polite">
+              {summary.total} record{summary.total !== 1 ? 's' : ''} · {summary.present} present
+              {summary.earliest && (
+                <> · {formatDate(summary.earliest)}{summary.latest && summary.latest !== summary.earliest ? ` to ${formatDate(summary.latest)}` : ''}</>
+              )}
+            </p>
+            {/* Phone: the From / To dates live in a sheet beside the count. */}
+            <PhoneSheet
+              label="Filter"
+              title="Filter by date"
+              badge={(fromDate ? 1 : 0) + (toDate ? 1 : 0)}
+              onClear={hasFilter ? () => { setFromDate(''); setToDate('') } : undefined}
+            >
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="from-date-phone">From date</label>
+                <input id="from-date-phone" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              </div>
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="to-date-phone">To date</label>
+                <input id="to-date-phone" type="date" className={ui.input} value={toDate} onChange={e => setToDate(e.target.value)} />
+              </div>
+            </PhoneSheet>
+          </div>
 
           {filtered.length > 0 ? (
             <div className={ui.surface}>
@@ -309,9 +351,9 @@ export default function EmployeeDetailPage() {
                 </table>
               </div>
 
-              <ul className={ui.cards} style={{ padding: 10 }}>
+              <ul className={`${ui.cards} ${styles.dayRows}`}>
                 {pageRecords.map(rec => (
-                  <li key={rec.id} className={`${ui.surface} ${ui.card}`}>
+                  <li key={rec.id} className={`${ui.card} ${styles.dayRow}`}>
                     <div className={ui.cardHead}>
                       <div className={ui.strong}>{formatDate(rec.attendance_date)}</div>
                       {statusBadge(rec.status)}

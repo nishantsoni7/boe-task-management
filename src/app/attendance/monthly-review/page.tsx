@@ -38,6 +38,12 @@ const VIEWS = [
   { key: 'decisions', label: 'Salary decisions' },
 ] as const
 
+/** The same two views with phone-length names, so they share the month's row. */
+const PHONE_VIEWS = [
+  { key: 'summary',   label: 'Summary' },
+  { key: 'decisions', label: 'Decisions' },
+] as const
+
 type EmployeeSummary = {
   employee_id:   string
   employee_name: string
@@ -150,14 +156,24 @@ function MonthlyReviewScreen() {
         </HeaderActions>
       }
     >
-      <div className={ui.toolbar}>
+      <div className={`${ui.toolbar} ap4-review-toolbar`}>
         <MonthPicker year={year} month={month} onChange={(y, m) => go({ year: y, month: m })} idPrefix="review-month" />
-        <StatusFilter
-          label="Choose a view of this month"
-          value={view}
-          options={VIEWS}
-          onChange={v => go({ view: v })}
-        />
+        <div className={ui.desktopOnly}>
+          <StatusFilter
+            label="Choose a view of this month"
+            value={view}
+            options={VIEWS}
+            onChange={v => go({ view: v })}
+          />
+        </div>
+        <div className={`${ui.phoneOnly} ap4-review-views`}>
+          <StatusFilter
+            label="Choose a view of this month"
+            value={view}
+            options={PHONE_VIEWS}
+            onChange={v => go({ view: v })}
+          />
+        </div>
       </div>
 
       {view === 'summary'
@@ -242,7 +258,7 @@ function AttendanceSummary({
   return (
     <div className={ui.stack} aria-busy={loading}>
       {/* One line of totals, not seven tiles: the table below is the content. */}
-      <p style={{ margin: 0, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
+      <p className="ap4-desktop-block" style={{ margin: 0, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
         <strong style={{ color: '#303536' }}>{totals.employees}</strong> employees ·{' '}
         <strong style={{ color: '#303536' }}>{totals.present}</strong> present days ·{' '}
         <strong style={{ color: '#303536' }}>{totals.halfDays}</strong> half days ·{' '}
@@ -252,6 +268,17 @@ function AttendanceSummary({
         <strong style={{ color: '#303536' }}>{totals.late}</strong> late marks ·{' '}
         <strong style={{ color: '#303536' }}>{fmtHours(totals.hours)}</strong> worked
       </p>
+      {/* Phone: the same totals as one row of chips. */}
+      <ul className="ap4-chips" aria-label="Month totals">
+        <li><strong>{totals.employees}</strong> employees</li>
+        <li><strong>{totals.present}</strong> present</li>
+        <li><strong>{totals.halfDays}</strong> half</li>
+        <li className={totals.absent > 0 ? 'is-bad' : undefined}><strong>{totals.absent}</strong> absent</li>
+        <li><strong>{totals.leave}</strong> leave</li>
+        <li className={totals.missingPunch > 0 ? 'is-warn' : undefined}><strong>{totals.missingPunch}</strong> missing punch</li>
+        <li><strong>{totals.late}</strong> late</li>
+        <li><strong>{fmtHours(totals.hours)}</strong> worked</li>
+      </ul>
 
       {/* Desktop and tablet: the table, full width. */}
       <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }}>
@@ -301,16 +328,18 @@ function AttendanceSummary({
         </div>
       </div>
 
-      {/* Phone: one card per person. */}
+      {/* Phone: one card per person; the whole card opens their days. */}
       <ul className={ui.cards}>
         {sorted.map(s => {
           const pct = attendancePct(s)
           return (
-            <li key={s.employee_id} className={`${ui.surface} ${ui.card}`}>
+            <li key={s.employee_id} className={`${ui.surface} ${ui.card} ap4-tap-card`}>
               <div className={ui.cardHead}>
-                <div>
-                  <div className={ui.strong}>{s.employee_name}</div>
-                  {s.employee_code && <div className={ui.sub}>{s.employee_code}</div>}
+                <div style={{ minWidth: 0 }}>
+                  <Link href={detail(s.employee_id)} className={`${ui.strong} ap4-card-link`} aria-label={`Open ${s.employee_name}'s days`}>
+                    {s.employee_name}
+                  </Link>
+                  {s.employee_code && <span className={ui.muted} style={{ fontSize: 12, marginLeft: 6 }}>{s.employee_code}</span>}
                 </div>
                 {s.total_records > 0 && <Badge tone={pctTone(pct)}>{pct}%</Badge>}
               </div>
@@ -318,19 +347,31 @@ function AttendanceSummary({
                 {s.present} present · {s.half_day} half · <span style={{ color: s.absent > 0 ? '#B42332' : undefined }}>{s.absent} absent</span> · {s.leave} leave ·{' '}
                 <span style={{ color: s.missing_punch > 0 ? '#805B0D' : undefined }}>{s.missing_punch} missing punch</span> · {s.late} late · {fmtHours(s.hours_worked)}
               </div>
-              <Link href={detail(s.employee_id)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>Open days</Link>
             </li>
           )
         })}
       </ul>
 
-      <Notice kind="info">
-        <strong>Attendance</strong> = (Present + Half day × 0.5) ÷ working days, leaving out approved leave. Each
-        day is read the way payroll reads it, so corrections and waivers apply. Late means in after 10:15. Present
-        includes days with only one punch, which are also counted under Missing punch and carry a 2h penalty.
-        Absent days give no credit. Sorted highest to lowest. Use <strong>Salary decisions</strong> above to settle
-        what affects pay.
-      </Notice>
+      <div className="ap4-desktop-block">
+        <Notice kind="info">
+          <strong>Attendance</strong> = (Present + Half day × 0.5) ÷ working days, leaving out approved leave. Each
+          day is read the way payroll reads it, so corrections and waivers apply. Late means in after 10:15. Present
+          includes days with only one punch, which are also counted under Missing punch and carry a 2h penalty.
+          Absent days give no credit. Sorted highest to lowest. Use <strong>Salary decisions</strong> above to settle
+          what affects pay.
+        </Notice>
+      </div>
+      {/* Phone: the same formula behind one row. */}
+      <details className="ap4-phone-fold">
+        <summary>How attendance is counted</summary>
+        <p>
+          <strong>Attendance</strong> = (Present + Half day × 0.5) ÷ working days, leaving out approved leave. Each
+          day is read the way payroll reads it, so corrections and waivers apply. Late means in after 10:15. Present
+          includes days with only one punch, which are also counted under Missing punch and carry a 2h penalty.
+          Absent days give no credit. Sorted highest to lowest. Use <strong>Decisions</strong> above to settle
+          what affects pay.
+        </p>
+      </details>
     </div>
   )
 }

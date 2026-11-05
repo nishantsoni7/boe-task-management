@@ -17,6 +17,7 @@
 import { AlertTriangle, Eye, History, Lock, RefreshCw, Trash2, Unlock } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { PayrollModal } from '@/components/payroll/PayrollModal'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import {
   PAYROLL_ACTION_LABELS,
   PAYROLL_ATTENTION_ARIA_LABEL,
@@ -78,7 +79,9 @@ export const PAYROLL_ROW_CSS = `
     /* Touch: the row keeps all of its controls, at a size a thumb can hit. */
     .boe-payroll-actions .boe-btn { min-height: 44px; }
     .boe-payroll-actions .boe-record-action--icon { width: 40px; min-width: 40px; min-height: 40px; }
-    .boe-payroll-attention { width: 38px; height: 38px; }
+    .boe-payroll-attention { width: 44px; height: 44px; }
+    /* A run card on a phone: the one text action at full width. */
+    .boe-payroll-phone-primary { display: flex; width: 100%; min-height: 44px; justify-content: center; }
   }
 `
 
@@ -213,6 +216,57 @@ export function PayrollRowActionBar({
       {secondary.map(a => control(a, 'secondary'))}
     </div>
   )
+}
+
+// ─── Phone card ───────────────────────────────────────────────────────────────
+// On a phone a run is a card: the card itself opens the results (View), the
+// one other primary action (Generate on a draft) is a full-width button, and
+// the secondary actions (Regenerate, Lock, Unlock, Delete) sit in one ⋯ sheet.
+// The same payrollRowActions() decides what is offered, with the same
+// canManage / onDelete rules as the row above, so the two cannot disagree.
+
+function phoneActions({ status, canManage = true, onDelete }: Pick<PayrollRowActionBarProps, 'status' | 'canManage' | 'onDelete'>) {
+  const resolved = payrollRowActions(status)
+  const primary: PayrollPeriodAction = canManage ? resolved.primary : 'view'
+  const secondary = canManage ? resolved.secondary.filter(a => a !== 'delete' || onDelete != null) : []
+  return { primary, secondary }
+}
+
+function runOf(p: PayrollRowActionBarProps): Record<PayrollPeriodAction, () => void> {
+  return {
+    view: p.onViewResults, generate: p.onGenerate, regenerate: p.onGenerate,
+    lock: p.onLock, unlock: p.onUnlock, delete: p.onDelete ?? (() => {}),
+  }
+}
+
+/** Phone: the run's primary action as a full-width button, unless it is View (the card opens the results). */
+export function PayrollRowPhonePrimary(props: PayrollRowActionBarProps) {
+  const { primary } = phoneActions(props)
+  if (primary === 'view') return null
+  const busy = props.isBusy && (primary === 'generate' || primary === 'regenerate')
+  const Icon = ACTION_ICON[primary]
+  return (
+    <button
+      type="button"
+      onClick={runOf(props)[primary]}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      className="boe-btn boe-btn-primary boe-payroll-phone-primary"
+    >
+      <Icon size={14} strokeWidth={2} aria-hidden="true" />
+      {busy ? 'Working…' : PAYROLL_ACTION_LABELS[primary]}
+    </button>
+  )
+}
+
+/** Phone: the run's secondary actions in one ⋯ sheet. Nothing when there are none. */
+export function PayrollRowPhoneMenu(props: PayrollRowActionBarProps & { periodLabel: string }) {
+  const { secondary } = phoneActions(props)
+  const run = runOf(props)
+  const items = secondary
+    .filter(a => !(props.isBusy && (a === 'generate' || a === 'regenerate')))
+    .map(a => ({ key: a, label: PAYROLL_ACTION_LABELS[a], onSelect: run[a] }))
+  return <PhoneHeaderMenu label={`${props.periodLabel} actions`} items={items} />
 }
 
 // ─── Attention ────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -75,7 +76,7 @@ export default function RolesPage() {
       subtitle="Settings · System Roles"
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 560, padding: '24px 0' }}>
+      <div className="boe-p3-settings" style={{ maxWidth: 560, padding: '24px 0' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {ROLES.map(role => (
             <div
@@ -112,10 +113,17 @@ export default function RolesPage() {
           ))}
         </div>
 
-        <p style={{ marginTop: 24, fontSize: 12, color: colors.muted }}>
-          A system role is set on the employee record in Control Center › People › Employees,
-          under Access. What each person can open, module by module, is decided in
-          Control Center › Access. The employee&apos;s Designation Level — Super Admin,
+        {/* The two Control Center places are links (they read as plain text on
+            a desktop, as before; a phone underlines them as 44px targets). */}
+        <p className="boe-p4-roles-note" style={{ marginTop: 24, fontSize: 12, color: colors.muted }}>
+          A system role is set on the employee record in{' '}
+          <Link href="/admin/control-center/people" className="boe-p4-roles-link" style={{ color: 'inherit', textDecoration: 'none' }}>
+            Control Center › People › Employees
+          </Link>,
+          under Access. What each person can open, module by module, is decided in{' '}
+          <Link href="/admin/control-center/permissions" className="boe-p4-roles-link" style={{ color: 'inherit', textDecoration: 'none' }}>
+            Control Center › Access
+          </Link>. The employee&apos;s Designation Level — Super Admin,
           Administrator, Manager, Executive, Assistant or Trainee — is a separate,
           organisational fact and grants no access on its own.
         </p>

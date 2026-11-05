@@ -500,13 +500,24 @@ function Bullets({ title, items, muted }: {
   items: readonly string[]
   muted: boolean
 }) {
+  const list = (
+    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: muted ? '#686D6C' : '#303536', lineHeight: 1.65 }}>
+      {items.map(item => <li key={item}>{item}</li>)}
+    </ul>
+  )
   return (
-    <div>
-      <span className={cc.fieldLabel} style={{ marginBottom: 4 }}>{title}</span>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: muted ? '#686D6C' : '#303536', lineHeight: 1.65 }}>
-        {items.map(item => <li key={item}>{item}</li>)}
-      </ul>
-    </div>
+    <>
+      <div className={cc.bulletsDesk}>
+        <span className={cc.fieldLabel} style={{ marginBottom: 4 }}>{title}</span>
+        {list}
+      </div>
+      {/* Phone (owner, 2026-11-05, phone phase 4): the same list behind one
+          44px line, so both cards and their buttons reach the first screens. */}
+      <details className={cc.bulletsPhone}>
+        <summary>{title} ({items.length})</summary>
+        {list}
+      </details>
+    </>
   )
 }
 

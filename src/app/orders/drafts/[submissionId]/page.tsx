@@ -2482,19 +2482,20 @@ function PiDraftDetailPageInner() {
    * approved PI that is an Order, the way to propose a new version from it.
    */
   const editPiAction = mayEditPi ? (
-    <button type="button" className="boe-btn boe-btn-primary" onClick={() => router.push(draftEditPiPageHref(submissionId))}>
+    <button type="button" className="boe-btn boe-btn-primary orders-hdr-iconbtn orders-hdr-primary" onClick={() => router.push(draftEditPiPageHref(submissionId))}>
       <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
-      {EDIT_PI_LABEL}
+      {/* On a phone the header is one row: the pencil alone, the words its name. */}
+      <span className="orders-hdr-label">{EDIT_PI_LABEL}</span>
     </button>
   ) : piIsOrder && submission.status === 'approved' && mayEditOnOrder && approvedOrder ? (
     <button
       type="button"
-      className="boe-btn boe-btn-ghost"
+      className="boe-btn boe-btn-ghost orders-hdr-iconbtn"
       title="This PI is approved and in force. It changes only as a new version, proposed from its Order."
       onClick={() => router.push(orderHref(approvedOrder.orderId))}
     >
       <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
-      {EDIT_PI_LABEL} on the Order
+      <span className="orders-hdr-label">{EDIT_PI_LABEL} on the Order</span>
     </button>
   ) : null
 

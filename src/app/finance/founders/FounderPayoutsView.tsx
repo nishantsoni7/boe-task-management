@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Download, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -169,13 +170,23 @@ export function FounderPayoutsView() {
       onSignOut={handleSignOut}
       onRefresh={load}
       actions={
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="boe-btn boe-btn-ghost" disabled={downloading || loading || year.lines.length === 0} onClick={() => void download()}>
+        <div className="fin-hdr-icons" style={{ display: 'flex', gap: 8 }}>
+          <button className="boe-btn boe-btn-ghost boe-desktop-only" disabled={downloading || loading || year.lines.length === 0} onClick={() => void download()}>
             {downloading ? 'Preparing…' : 'Download Excel'}
           </button>
-          <button className="boe-btn boe-btn-primary" data-testid="new-founder-payout" disabled={loading || !!error}
+          <button className="boe-btn boe-btn-primary boe-desktop-only" data-testid="new-founder-payout" disabled={loading || !!error}
             onClick={() => (book.accounts.length === 0 ? setTab('accounts') : setModal({ editing: null }))}>
             + New payout
+          </button>
+          {/* On a phone the header keeps one row: the same two actions as icons. */}
+          <button type="button" className="boe-phone-only boe-header-icon" disabled={downloading || loading || year.lines.length === 0}
+            aria-label={downloading ? 'Preparing the Excel file' : 'Download Excel'} title="Download Excel" onClick={() => void download()}>
+            <Download size={18} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button type="button" className="boe-phone-only boe-header-icon boe-header-icon--add" data-testid="new-founder-payout-phone" disabled={loading || !!error}
+            aria-label="New payout" title="New payout"
+            onClick={() => (book.accounts.length === 0 ? setTab('accounts') : setModal({ editing: null }))}>
+            <Plus size={18} strokeWidth={2.2} aria-hidden="true" />
           </button>
         </div>
       }

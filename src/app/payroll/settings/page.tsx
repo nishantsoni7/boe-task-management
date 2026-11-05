@@ -105,6 +105,8 @@ export default function PayrollSettingsPage() {
   const [issues,  setIssues]  = useState<SettingsValidationIssue[]>([])
   const [error,   setError]   = useState('')
   const [okMsg,   setOkMsg]   = useState('')
+  // Phone only: the change history is folded until asked for.
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [note,    setNote]    = useState('')
   const [usingDefaults, setUsingDefaults] = useState(false)
   const [history, setHistory] = useState<HistoryRow[]>([])
@@ -266,8 +268,16 @@ export default function PayrollSettingsPage() {
 
         {/* The one thing an admin must understand before changing anything. */}
         <Notice kind="warning">
-          Changes apply to newly generated payroll and periods intentionally recalculated
-          after unlocking. Existing generated payroll remains unchanged.
+          <span className={styles.fullText}>
+            Changes apply to newly generated payroll and periods intentionally recalculated
+            after unlocking. Existing generated payroll remains unchanged.
+          </span>
+          {/* Phone: the same warning on one line. */}
+          <details className={styles.fold}>
+            <summary>Changes apply to new payroll only</summary>
+            They apply to newly generated payroll and periods intentionally recalculated
+            after unlocking. Existing generated payroll remains unchanged.
+          </details>
         </Notice>
 
         {usingDefaults && (
@@ -383,8 +393,18 @@ export default function PayrollSettingsPage() {
           <section className={ui.surface}>
             <div className={ui.surfaceHead}>
               <h2 className={ui.surfaceTitle}>Change history</h2>
+              {/* Phone: the history folds until asked for. */}
+              <button
+                type="button"
+                className={`${ui.phoneOnly} ${styles.historyToggle}`}
+                aria-expanded={historyOpen}
+                aria-controls="settings-history"
+                onClick={() => setHistoryOpen(o => !o)}
+              >
+                {historyOpen ? 'Hide' : `Show ${history.length}`} <span aria-hidden="true">{historyOpen ? '▴' : '▾'}</span>
+              </button>
             </div>
-            <div className={ui.surfaceBody}>
+            <div id="settings-history" className={`${ui.surfaceBody}${historyOpen ? '' : ` ${styles.phoneFolded}`}`}>
               <ul className={styles.historyList}>
                 {history.map(h => (
                   <li key={h.id}>
@@ -400,7 +420,7 @@ export default function PayrollSettingsPage() {
         )}
 
         {/* Save: always at hand, and says what happened. */}
-        <div className={styles.saveBar}>
+        <div className={`${styles.saveBar}${!dirty && !error && !okMsg && !saving ? ` ${styles.saveBarIdle}` : ''}${dirty ? ` ${styles.saveBarDirty}` : ''}${dirty && !error ? ` ${styles.saveBarQuiet}` : ''}`}>
           <div className={styles.saveStatus} role="status" aria-live="polite">
             {error ? (
               <span className={styles.problem}>Not saved. {error}</span>
@@ -498,13 +518,22 @@ function PaidLeaveTiers({
       <h3 className={styles.tiersTitle}>Paid leave earned by attendance</h3>
 
       {/* Plain language, next to the editor rather than in a help page. */}
-      <p className={styles.tiersHelp}>
+      <p className={`${styles.tiersHelp} ${styles.fullText}`}>
         Each band says: an employee present at least this many days in the month earns
         this much paid leave. Payroll checks the bands from the highest days-present
         downwards and uses the <strong>first one the employee reaches</strong>, so the
         band with the largest threshold wins. The last band must start at 0 days so
         everybody falls into one. More days present can never earn less leave.
       </p>
+      {/* Phone: the same explanation behind one row. */}
+      <details className={`${styles.fold} ${styles.tiersFold}`}>
+        <summary>How the bands work</summary>
+        Each band says: an employee present at least this many days in the month earns
+        this much paid leave. Payroll checks the bands from the highest days-present
+        downwards and uses the <strong>first one the employee reaches</strong>, so the
+        band with the largest threshold wins. The last band must start at 0 days so
+        everybody falls into one. More days present can never earn less leave.
+      </details>
 
       <div className={styles.bands}>
         {ordered.map((tier, i) => (

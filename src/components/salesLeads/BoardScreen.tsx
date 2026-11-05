@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { ArrowRight, Ban, Bell, Check, ChevronDown, ChevronsLeft, MessageCircle, Phone, PhoneMissed, SlidersHorizontal, UserPlus } from 'lucide-react'
+import { ArrowRight, Ban, Bell, Check, ChevronDown, ChevronsLeft, MessageCircle, MoreHorizontal, Phone, PhoneMissed, SlidersHorizontal, UserPlus } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
@@ -60,11 +60,12 @@ function useRemembered<T>(key: string, fallback: T): [T, (next: T) => void] {
   return [value, set]
 }
 
-/** A phone-sized screen: one column at a time, so only that column is read, and a folded column is shown anyway. */
+/** A phone-sized screen (below 768px, the app's phone breakpoint): one column at a time, so only that column is read,
+ *  and a folded column is shown anyway. */
 function useNarrow(): boolean {
   return useSyncExternalStore(
-    notify => { const m = window.matchMedia('(max-width: 700px)'); m.addEventListener('change', notify); return () => m.removeEventListener('change', notify) },
-    () => window.matchMedia('(max-width: 700px)').matches,
+    notify => { const m = window.matchMedia('(max-width: 767px)'); m.addEventListener('change', notify); return () => m.removeEventListener('change', notify) },
+    () => window.matchMedia('(max-width: 767px)').matches,
     () => false,
   )
 }
@@ -219,20 +220,25 @@ export function BoardScreen() {
             </button>
           )}
           {!!data?.waiting_allotment && (
-            <Link className={s.queue} href="/sales/lead-master?holder=none&period=all"><UserPlus aria-hidden="true" />{data.waiting_allotment.toLocaleString('en-IN')} waiting to be allotted</Link>
+            <Link className={`${s.queue} ${s.queueBar}`} href="/sales/lead-master?holder=none&period=all"><UserPlus aria-hidden="true" />{data.waiting_allotment.toLocaleString('en-IN')} waiting to be allotted</Link>
           )}
         </div>
 
-        {totals && data && (
+        {/* On a phone the totals are always one row of chips (the pulse button is hidden there). */}
+        {(totals || narrow) && data && (
           <div className={s.totals} role="group" aria-label="The board at a glance">
-            <div className={s.stat}><span className={s.statValue}>{data.stats.open.toLocaleString('en-IN')}</span><span className={s.statLabel}>Open leads · {data.stats.value_paise > 0 ? `${valueLabel(data.stats.value_paise)} expected` : 'on the board'}</span></div>
-            <div className={s.stat}><span className={`${s.statValue} ${s.red}`}>{data.stats.overdue.toLocaleString('en-IN')}</span><span className={s.statLabel}>Overdue · follow-ups missed</span></div>
-            <div className={s.stat}><span className={`${s.statValue} ${s.amber}`}>{data.stats.due_today.toLocaleString('en-IN')}</span><span className={s.statLabel}>Due today · to call today</span></div>
-            <div className={s.stat}><span className={`${s.statValue} ${s.red}`}>{data.stats.stuck.toLocaleString('en-IN')}</span><span className={s.statLabel}>Stuck · no update for too long</span></div>
+            <div className={s.stat}><span className={s.statValue}>{data.stats.open.toLocaleString('en-IN')}</span><span className={s.statLabel}>Open<span className={s.statMore}> leads · {data.stats.value_paise > 0 ? `${valueLabel(data.stats.value_paise)} expected` : 'on the board'}</span></span></div>
+            <div className={s.stat}><span className={`${s.statValue} ${s.red}`}>{data.stats.overdue.toLocaleString('en-IN')}</span><span className={s.statLabel}>Overdue<span className={s.statMore}> · follow-ups missed</span></span></div>
+            <div className={s.stat}><span className={`${s.statValue} ${s.amber}`}>{data.stats.due_today.toLocaleString('en-IN')}</span><span className={s.statLabel}>Due today<span className={s.statMore}> · to call today</span></span></div>
+            <div className={s.stat}><span className={`${s.statValue} ${s.red}`}>{data.stats.stuck.toLocaleString('en-IN')}</span><span className={s.statLabel}>Stuck<span className={s.statMore}> · no update for too long</span></span></div>
           </div>
         )}
 
         <div className={s.tabs} role="group" aria-label="Stage">
+          {/* Phone: the allotment queue is a chip in this row instead of its own row in the toolbar. */}
+          {!!data?.waiting_allotment && (
+            <Link className={`${s.queue} ${s.queueChip}`} href="/sales/lead-master?holder=none&period=all"><UserPlus aria-hidden="true" />{data.waiting_allotment.toLocaleString('en-IN')} to allot</Link>
+          )}
           {allTabs.map(stage => (
             <button key={stage} type="button" className={s.tab} aria-pressed={current === stage} onClick={() => setState({ stage })}>
               {stageLabel(stage)} <span className={s.count}>{count(stage)}</span>
@@ -390,6 +396,8 @@ function Card({ lead, today, now, work, canWork, showHolder, open, dragged, onOp
   onOpen: () => void; onDrag: (lead: WorkLead) => void; onDragEnd: () => void
 }) {
   const stop = (run: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); run() }
+  /** Phone only: the ⋯ button shows WhatsApp, No answer and Move under Call. */
+  const [more, setMore] = useState(false)
   const cls = [s.card, open && s.cardOpen, lead.stuck && s.cardStuck, dragged && s.cardDragging].filter(Boolean).join(' ')
   const heat = { hot: s.heatHot, warm: s.heatWarm, cold: s.heatCold }[lead.temperature]
   const hasNote = lead.market === 'export' || !!lead.expected_value_paise || cameBack(lead) || !!flagOf(lead, now)
@@ -424,8 +432,9 @@ function Card({ lead, today, now, work, canWork, showHolder, open, dragged, onOp
         </div>
       )}
       {canWork && (
-        <div className={s.acts}>
-          <a className={s.act} href={telHref(lead.phone)} aria-label={`Call ${leadTitle(lead)}`} title="Call" onClick={e => e.stopPropagation()}><Phone aria-hidden="true" /><span className={s.actLabel}>Call</span></a>
+        <div className={`${s.acts}${more ? ` ${s.actsOpen}` : ''}`}>
+          <a className={`${s.act} ${s.actCall}`} href={telHref(lead.phone)} aria-label={`Call ${leadTitle(lead)}`} title="Call" onClick={e => e.stopPropagation()}><Phone aria-hidden="true" /><span className={s.actLabel}>Call</span></a>
+          <button type="button" className={`${s.act} ${s.actMore}`} aria-label={`More for ${leadTitle(lead)}`} aria-expanded={more} title="More" onClick={stop(() => setMore(m => !m))}><MoreHorizontal aria-hidden="true" /></button>
           <button type="button" className={s.act} aria-label={`WhatsApp ${leadTitle(lead)}`} title="WhatsApp" onClick={stop(() => work.openWhatsApp(lead))}><MessageCircle aria-hidden="true" /><span className={s.actLabel}>WhatsApp</span></button>
           <button type="button" className={s.act} aria-label={`No answer from ${leadTitle(lead)}`} title="No answer" disabled={work.busy} onClick={stop(() => work.noAnswer(lead))}><PhoneMissed aria-hidden="true" /><span className={s.actLabel}>No answer</span></button>
           <button type="button" className={s.act} aria-label={`Move ${leadTitle(lead)}`} title="Move" onClick={stop(() => work.openMove(lead))}><ArrowRight aria-hidden="true" /><span className={s.actLabel}>Move</span></button>

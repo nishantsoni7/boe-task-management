@@ -313,3 +313,41 @@ input.lineAmount { text-align: right; font-variant-numeric: tabular-nums; }
   .howBody ul { padding-left: 16px; }
   :global(.boe-list-search).search:focus-within, :global(.boe-list-search).searchFilled { width: min(220px, calc(100vw - 150px)); }
 }
+
+/* ── A phone, Phase 4 (owner, 2026-11-05, "phones: content first") ──
+   Month by month is a list per side, never a grid that scrolls sideways;
+   Filters opens as a sheet from the bottom; everything tapped is 40-44px and
+   no text is under 12px. */
+.monthCards { display: none; }
+.filterPanel .filterDone { display: none; }
+@media (max-width: 767px) {
+  .panel .monthsWrap, .panel .monthsNote { display: none; }
+  .monthCards { display: flex; flex-direction: column; }
+  .monthCard { padding: 10px 16px 12px; border-bottom: 1px solid var(--fp-line); }
+  .monthCard:last-child { border-bottom: 0; }
+  .monthCardHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 600; color: var(--boe-text); }
+  .monthCardHead b { font-size: 15px; font-weight: 700; }
+  .monthList { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
+  .monthList li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--boe-text-strong); border-bottom: 1px solid var(--fp-line-soft); }
+  .monthList li > span:last-child { font-weight: 600; color: var(--boe-text); }
+  .monthNone { margin: 4px 0 0; font-size: 12.5px; color: var(--boe-text-muted); }
+
+  .filterAway { z-index: 1000; background: rgba(30, 34, 35, 0.4); }
+  .filterPanel {
+    position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 1001; width: auto;
+    max-height: 85vh; overflow-y: auto; gap: 12px;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    border: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .filterRow { grid-template-columns: 96px minmax(0, 1fr); font-size: 13px; }
+  .filterFoot { justify-content: flex-start; }
+  .filterPanel .filterDone { display: flex; justify-content: center; width: 100%; min-height: 46px; font-size: 15px; }
+  .toolCount { font-size: 12px; }
+
+  .roleChip { height: 40px; padding: 0 14px; font-size: 13px; }
+  .link { display: inline-flex; align-items: center; min-height: 44px; }
+  .sideSwitch { height: 44px; }
+  .pickGroup { font-size: 12px; }
+  .tableCards td[data-l]::before { font-size: 12px; }
+  .root .lineHint :global(.fin-pill) { font-size: 12px; }
+}

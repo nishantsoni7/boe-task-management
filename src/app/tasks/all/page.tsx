@@ -200,7 +200,7 @@ function ViewAllTasksContent() {
           <span style={{ fontSize: 12, color: '#335A86', fontWeight: 500 }}>
             Filtered — {filterContext}
           </span>
-          <Link href="/tasks/all" style={{ fontSize: 12, color: '#686D6C', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/tasks/all" className="boe-p4-clearlink" style={{ fontSize: 12, color: '#686D6C', textDecoration: 'none', fontWeight: 500 }}>
             Clear filter ✕
           </Link>
         </div>
@@ -382,6 +382,7 @@ function ViewAllTasksContent() {
           <button
             onClick={() => setState({ page: page - 1 })}
             disabled={page <= 1 || fetching}
+            className="boe-p3-pager-btn"
             style={{
               padding: '6px 14px', borderRadius: '8px', fontSize: '13px',
               border: `1px solid ${colors.border}`, background: colors.base,
@@ -397,6 +398,7 @@ function ViewAllTasksContent() {
           <button
             onClick={() => setState({ page: page + 1 })}
             disabled={page >= Math.ceil(total / PAGE_SIZE) || fetching}
+            className="boe-p3-pager-btn"
             style={{
               padding: '6px 14px', borderRadius: '8px', fontSize: '13px',
               border: `1px solid ${colors.border}`, background: colors.base,

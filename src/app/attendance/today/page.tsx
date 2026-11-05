@@ -88,15 +88,28 @@ function MachineStrip({ health }: { health: MachineHealth }) {
           </p>
           {syncLink}
         </div>
-        <ol className={styles.steps}>
+        <ol className={`${styles.steps} ${styles.stripFull}`}>
           <li>Check the machine has power and shows Wi-Fi.</li>
           <li>Check the Minop subscription is still active.</li>
           <li>Ask someone to punch, then look here again in 15 minutes.</li>
         </ol>
-        <p className={styles.reassure}>
+        <p className={`${styles.reassure} ${styles.stripFull}`}>
           Punches usually arrive late rather than get lost: the longest delay so far is 6 days.
           Those days fill in by themselves.
         </p>
+        {/* Phone: the same checks behind one row, so the staff list starts on the first screen. */}
+        <details className={styles.stripMore}>
+          <summary>What to check</summary>
+          <ol className={styles.steps}>
+            <li>Check the machine has power and shows Wi-Fi.</li>
+            <li>Check the Minop subscription is still active.</li>
+            <li>Ask someone to punch, then look here again in 15 minutes.</li>
+          </ol>
+          <p className={styles.reassure}>
+            Punches usually arrive late rather than get lost: the longest delay so far is 6 days.
+            Those days fill in by themselves.
+          </p>
+        </details>
       </section>
     )
   }

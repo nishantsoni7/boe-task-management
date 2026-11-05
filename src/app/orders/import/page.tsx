@@ -1242,11 +1242,16 @@ function NewOrderPiImportPageInner() {
       <Card>
         <CardHeader
           title="Products"
+          // On a phone the counts take their own line under the title: side by
+          // side they ran past the card's edge, which cuts them off.
+          style={isMobile ? { flexWrap: 'wrap', rowGap: '6px', padding: '12px 14px' } : undefined}
           right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={isMobile
+              ? { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 10px', flex: '1 1 100%', minWidth: 0 }
+              : { display: 'flex', alignItems: 'center', gap: '10px' }}>
               {/* Counted per product ROW. A picture shared by four chairs is
                   four matched products, not one. */}
-              <span style={{
+              <span title={preview.coverage.label} style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 padding: '2px 8px', borderRadius: '6px',
                 fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
@@ -1257,7 +1262,8 @@ function NewOrderPiImportPageInner() {
                 {preview.coverage.complete
                   ? <CheckCircle2 size={11} strokeWidth={2.2} />
                   : <ImageOff size={11} strokeWidth={2.2} />}
-                {preview.coverage.label}
+                {/* The same count, in fewer words on a phone ("12/12 images"). */}
+                {isMobile ? `${preview.coverage.matched}/${preview.coverage.total} images` : preview.coverage.label}
               </span>
               {/* A PLAIN TOTAL, never "4 of 12". Customization images are
                   optional, and an "of" would report eight missing files that

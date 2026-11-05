@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-05 — All modules: phones, content first, Phase 3 (PR pending) · no SQL
+## 2026-11-05 — All modules: phones, content first, Phase 4 (PR pending) · no SQL
+- **Owner request.** "ok merge it and start phase 4": score every page on a phone and bring each one to 8.5 or more. Phase 3 merged as #613 (b5dc116f).
+- **Changed (below 768px only).** Sticky now works on phones (`.boe-main-content` clips instead of hiding sideways overflow), so the page header and save bars stay in view. Every page the second scoring pass found below 8.5 was fixed: Attendance & Payroll (14 pages), Tasks/core/Admin (about 20, including the Notifications row used by every module, the task and quotation forms, login), Sales/Showroom/Samples (about 18, including Samples, the Sales board and the public Showroom pages), Orders & Finance (11, including Edit PI, Founders, Expenses, dispatch). Small desktop-visible changes: the login fields carry `autoComplete`, the quotation phone field is `type="tel"`, two Settings references became links.
+- **Database.** None. Rollback: revert the PR.
+- **Proof.** Phone test files extended with Phase 4 pins, type check and lint clean, full suite (see the PR), static 390px harness renders per module. Not seen signed in or on a phone.
+
+## 2026-11-05 — All modules: phones, content first, Phase 3 (PR #613 squash-merged as b5dc116f, deployed) · no SQL
 - **Owner request.** Phase 3 of the approved plan ("ok merge it and start phase 3"): redesign the lowest-scoring pages of every module for phones, aiming at 8.5-9 of 10. Phases 1-2 merged as #612 (cf3591be).
 - **Changed (below 768px only).** Finance: Payment Requests, Bank and Reimbursements rows as cards, filters in a sheet, the notices strip one expandable line. Orders: dashboard tiles, Drafts and BDPI cards, payment plan cards, Confirmed Order header. Attendance & Payroll: My Attendance, My Payroll and payslip, monthly reviews, credits, ObjectionQueue, Minop incoming, records, holidays. Tasks/Meetings/Admin: every task list with search + one Filter sheet, task and meeting detail, Manager, Control Center, Permissions, Team Performance, Assets, Super Admin, Settings, My Issues, My Credits, Dashboard. Sales/Leads/Vendors/Showroom/Reviews/SEO/Marketing: Exhibition Leads, Lead Master, Team, Vendors and activity, Product Master, inquiries, Customer Reviews and reports, the SEO verdict panel and tables, Meta campaigns, Image Editor, public Showroom buttons. Desktop and tablet unchanged. One behaviour change: Super Admin no longer shows the task-create "+".
 - **Database.** None. Rollback: revert the PR.

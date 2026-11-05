@@ -17,3 +17,25 @@
 .cardActions { margin-top: 4px; }
 .cardActions :global(.boe-payroll-actions) { flex-wrap: wrap; }
 .cardActions .progressNote { max-width: none; }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   Totals on one line; a run card opens its results from anywhere on it,
+   shows its one primary action (Generate on a draft) and keeps Regenerate,
+   Lock, Unlock and Delete in one ⋯ sheet; the in-progress note is one line;
+   Dismiss and Attention are 44px. Desktop is unchanged. */
+.totalsPhone { display: none; }
+
+@media (max-width: 767px) {
+  .totalsFull { display: none; }
+  .totalsPhone { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .dismiss { min-width: 44px; min-height: 44px; margin: -8px -8px -8px 0; }
+  .runCard { position: relative; gap: 4px; }
+  .runHead { align-items: center; }
+  .runLink { color: #303536; text-decoration: none; }
+  .runLink::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+  .runLink:focus-visible { outline: none; }
+  .runLink:focus-visible::after { outline: 2px solid #B9472E; outline-offset: 2px; }
+  .runCard button { position: relative; z-index: 1; }
+  .runEnd { display: inline-flex; align-items: center; gap: 2px; margin: -6px -8px -6px 0; }
+  .progressLine { margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

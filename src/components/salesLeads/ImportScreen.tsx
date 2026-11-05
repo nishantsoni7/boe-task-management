@@ -45,6 +45,12 @@ function downloadRefused(rows: { task: string; name: string; folder: string; sta
   URL.revokeObjectURL(url)
 }
 
+/** Why a history file is worth adding. A desktop shows it as a card, a phone behind a tap. */
+const HISTORY_EXPLAINER =
+  'A ClickUp export carries each task\'s latest comment, without its date. To bring every comment with its date and ' +
+  'who wrote it, run the history download on this computer (Sales dossier, "ClickUp history") and add the ' +
+  'history.jsonl file it makes. You can also import now and add the history file later: nothing is saved twice.'
+
 export function ImportScreen() {
   const { ready } = usePermissionContext()
   const { canAssign } = useSalesAccess()
@@ -195,14 +201,17 @@ export function ImportScreen() {
             </div>
 
             {!history && (
-              <section className={s.card} aria-labelledby="import-history">
+              <section className={`${s.card} ${s.historyDesk}`} aria-labelledby="import-history">
                 <h2 id="import-history">Only the latest comment is in these files</h2>
-                <p>
-                  A ClickUp export carries each task&apos;s latest comment, without its date. To bring every comment with its date and
-                  who wrote it, run the history download on this computer (Sales dossier, &quot;ClickUp history&quot;) and add the
-                  history.jsonl file it makes. You can also import now and add the history file later: nothing is saved twice.
-                </p>
+                <p>{HISTORY_EXPLAINER}</p>
               </section>
+            )}
+            {/* A phone keeps the same explanation behind a tap, so the people and the Import button come up sooner. */}
+            {!history && (
+              <details className={`${s.card} ${s.historyPhone}`}>
+                <summary>Only the latest comment is in these files</summary>
+                <p>{HISTORY_EXPLAINER}</p>
+              </details>
             )}
 
             <section className={s.card} aria-labelledby="import-people">

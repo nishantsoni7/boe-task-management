@@ -73,6 +73,7 @@ export default function ScanPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
           <button
             onClick={() => router.push('/showroom/project-list')}
+            className="shw-back"
             style={{
               background: 'none', border: 'none', padding: '4px',
               cursor: 'pointer', color: colors.tertiary, display: 'flex',

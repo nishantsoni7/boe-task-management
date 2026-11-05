@@ -246,6 +246,8 @@ export default function NewQuotationRequestPage() {
           </div>
           <button
             onClick={() => setSuccess(false)}
+            className="boe-p4-x"
+            aria-label="Dismiss"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px' }}
           >×</button>
         </div>
@@ -259,19 +261,19 @@ export default function NewQuotationRequestPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         }}>
           <p style={{ fontSize: '13px', fontWeight: 500, color: colors.red }}>{submitError}</p>
-          <button onClick={() => setSubmitError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px' }}>×</button>
+          <button onClick={() => setSubmitError(null)} className="boe-p4-x" aria-label="Dismiss" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px' }}>×</button>
         </div>
       )}
 
       <div style={{ maxWidth: '520px' }}>
-        <div style={{
+        <div className="boe-p4-formcard" style={{
           background: colors.base, border: `1px solid ${colors.border}`,
           borderRadius: '12px', padding: '24px',
           boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
         }}>
 
           {/* Header hint */}
-          <div style={{
+          <div className="boe-p4-hint" style={{
             display: 'flex', alignItems: 'flex-start', gap: '8px',
             padding: '10px 12px', marginBottom: '20px',
             borderRadius: '8px', background: 'rgba(155,111,212,0.05)',
@@ -302,13 +304,14 @@ export default function NewQuotationRequestPage() {
           </div>
 
           {/* 2. Phone + Priority */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+          <div className="boe-p4-stack2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
               <label className="boe-form-section-label">
                 Phone Number <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
               </label>
               <input
-                type="text"
+                type="tel"
+                inputMode="tel"
                 value={contactNumber}
                 onChange={e => setContactNumber(e.target.value)}
                 placeholder="e.g. 98765 43210"
@@ -326,6 +329,7 @@ export default function NewQuotationRequestPage() {
                       key={p}
                       type="button"
                       onClick={() => setPriority(p)}
+                      className="boe-p4-prio"
                       style={{
                         flex: 1, padding: '6px 4px', borderRadius: '6px', cursor: 'pointer',
                         fontSize: '12px', fontWeight: selected ? 700 : 500,
@@ -371,6 +375,8 @@ export default function NewQuotationRequestPage() {
                     <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                     <button
                       onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
+                      className="boe-p4-x"
+                      aria-label="Remove file"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                     >
                       <X size={13} color={colors.muted} strokeWidth={2} />
@@ -389,6 +395,7 @@ export default function NewQuotationRequestPage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+                className="boe-p4-addfiles"
                 style={{
                   width: '100%', height: '42px', boxSizing: 'border-box',
                   borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? '#B9472E' : 'rgba(155,111,212,0.30)'}`,
@@ -446,6 +453,7 @@ export default function NewQuotationRequestPage() {
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}
+            className="boe-p4-submit"
             style={{
               width: '100%', padding: '12px 0', borderRadius: '8px', border: 'none',
               background: canSubmit ? '#B9472E' : colors.float,

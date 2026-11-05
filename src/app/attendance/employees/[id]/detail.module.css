@@ -49,3 +49,33 @@
   .pagerBtns { width: 100%; }
   .pagerBtns > * { flex: 1; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   One identity line and a 44px "Details" row instead of four sections; the
+   From / To dates move into a Filter sheet beside the count; day rows are flat
+   lines, not cards inside a card. Desktop is unchanged. */
+.historyBar { min-width: 0; }
+
+@media (max-width: 767px) {
+  .back { min-height: 44px; }
+  .identity { flex-direction: column; gap: 2px; }
+  .identityLine { margin: 0; font-size: 13.5px; color: #303536; line-height: 1.5; overflow-wrap: anywhere; }
+  .detailsToggle {
+    align-self: flex-start;
+    min-height: 44px;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #335A86;
+    cursor: pointer;
+  }
+  .phoneFolded { display: none; }
+  .historyBar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .historyBar .total { flex: 1 1 auto; min-width: 0; }
+  .dayRows { gap: 0; padding: 0 14px; }
+  .dayRow { padding: 10px 0; border-bottom: 1px solid #E4DED7; gap: 2px; }
+  .dayRow:last-child { border-bottom: 0; }
+}
