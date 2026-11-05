@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CircleCheck, Clock, Download, Eye, Paperclip, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { CircleCheck, Clock, Download, Eye, Mic, Paperclip, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -644,12 +644,21 @@ export function ExpensesView() {
         await loadPendingSummary()
       }}
       actions={caps.canCreatePaymentRecord && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={() => setCapturing(true)} className="boe-btn boe-btn-ghost">
+        <div className="fin-hdr-icons" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => setCapturing(true)} className="boe-btn boe-btn-ghost boe-desktop-only">
             {QUICK_CAPTURE_LABEL}
           </button>
-          <button onClick={() => setAdding(true)} className="boe-btn boe-btn-primary">
+          <button onClick={() => setAdding(true)} className="boe-btn boe-btn-primary boe-desktop-only">
             Add Expense
+          </button>
+          {/* On a phone the header keeps one row: the same two actions as icons. */}
+          <button type="button" onClick={() => setCapturing(true)} className="boe-phone-only boe-header-icon"
+            aria-label={QUICK_CAPTURE_LABEL} title={QUICK_CAPTURE_LABEL}>
+            <Mic size={18} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button type="button" onClick={() => setAdding(true)} className="boe-phone-only boe-header-icon boe-header-icon--add"
+            aria-label="Add Expense" title="Add Expense">
+            <Plus size={18} strokeWidth={2.2} aria-hidden="true" />
           </button>
         </div>
       )}
@@ -786,8 +795,9 @@ export function ExpensesView() {
               </button>
               {filtersOpen && (
                 <>
-                  <div aria-hidden="true" onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div aria-hidden="true" className="expense-filter-away" onClick={() => setFiltersOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                   <div
+                    className="expense-filter-panel"
                     role="dialog"
                     aria-label="More filters"
                     onKeyDown={e => { if (e.key === 'Escape') setFiltersOpen(false) }}

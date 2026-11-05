@@ -14873,3 +14873,115 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-p3-cr-activity ol { padding: 2px 14px !important; }
   .boe-p3-cr-month > div { padding: 12px 14px !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 4 — ORDERS & FINANCE (owner, 2026-11-05, "phones: content first")
+
+   The pages Phase 3 left below 8.5/10 on a 390px phone: Edit PI, Record
+   dispatch, the Operations view, the Payment plan, Customize image learning,
+   the Confirmed Orders filter sheet and the Expenses filter panel. Desktop and
+   tablet are untouched: every rule is inside the phone media query, and inline
+   styles are beaten with !important. The bars stay sticky, not fixed: below
+   768px .boe-main-content clips (overflow-x: clip), so sticky binds to the
+   window. Pinned by src/app/orders/phoneOrders.render.test.tsx and
+   src/app/finance/phoneFinance.render.test.tsx.
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── Finance headers whose text buttons are icons on a phone (Expenses,
+     Founders' payouts): one row, the title gives way (ellipsis) ── */
+  .boe-page-header:has(.fin-hdr-icons) { flex-wrap: nowrap; }
+  .boe-page-header:has(.fin-hdr-icons) .boe-page-title-group { flex: 1 1 0; min-width: 0; }
+  .boe-page-header:has(.fin-hdr-icons) .boe-header-actions { flex: none !important; flex-wrap: nowrap !important; }
+  .boe-header-actions .fin-hdr-icons { flex-wrap: nowrap !important; gap: 2px !important; }
+
+  /* ── Edit PI: a 44px back beside one line of context, 40px section links,
+     Save in reach at the bottom of the screen ── */
+  .pi-edit-page { gap: 10px; padding-bottom: 16px; }
+  .pi-edit-intro { flex-wrap: nowrap; align-items: center; gap: 10px; }
+  .pi-edit-back { flex: none; min-height: 44px; padding: 0 12px; font-size: 13px; }
+  .pi-edit-intro-text { flex: 1 1 0; }
+  .pi-edit-context { font-size: 14px; line-height: 1.3; }
+  .pi-edit-note { display: none; }
+  /* A new version of an approved PI keeps its warning, two lines at most. */
+  .pi-edit-note.pi-edit-note--propose {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    font-size: 12px; line-height: 1.4;
+  }
+  /* The section links scroll away with the page: the header is already sticky above them. */
+  .pi-edit-nav { position: static; padding: 2px; gap: 2px; }
+  .pi-edit-nav a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; font-size: 13px; }
+  .pi-edit-bar {
+    position: sticky; bottom: 0; gap: 6px 8px; margin: 0 -4px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-radius: 12px 12px 0 0;
+  }
+  .pi-edit-bar-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .pi-edit-bar > .boe-btn { min-height: 44px; padding: 0 12px; }
+
+  /* ── Record dispatch: the number and the order on one line, Save in reach ── */
+  .odr-page { gap: 12px; }
+  .odr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; }
+  .odr-eyebrow { display: none; }
+  .odr-head h1 { font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1.35; letter-spacing: 0; }
+  .odr-head p { margin: 0; font-size: 14px; line-height: 1.35; }
+  .odr-head p::before { content: '·\00a0'; color: #8F9392; }
+  .odr-savebar {
+    position: sticky; bottom: 0; margin: 0 -4px; gap: 6px 12px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-radius: 12px 12px 0 0; box-shadow: 0 -6px 18px rgba(48, 53, 54, 0.12);
+  }
+  .odr-savebar-actions .boe-btn { min-height: 44px; }
+
+  /* ── /orders, Operations view: 44px buttons and tabs, 40px chips, nothing under 12px ── */
+  .ops-tab { min-height: 44px; }
+  .ops-na-filters { gap: 8px; padding: 10px 14px; }
+  .ops-na-chip { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; font-size: 13px; }
+  .ops-bulk { flex-wrap: wrap; }
+  .ops-bulk-btn { height: 44px; padding: 0 14px; }
+  .ops-bulk-note, .ops-line-note { height: 44px; font-size: 16px; }
+  .ops-seg { gap: 4px; justify-self: start; }
+  .ops-seg-btn { width: 48px; height: 44px; }
+  .ops-chip, .ops-status, .ops-late { font-size: 12px; }
+  .ops-na-table th { font-size: 12px; }
+  .ops-na-table td:nth-child(3)::before, .ops-na-table td:nth-child(4)::before, .ops-na-table td:nth-child(5)::before,
+  .ops-na-table td:nth-child(6)::before { font-size: 12px; }
+
+  /* ── Payment plan and an old order (BDPI): 12px labels; the bar sits on the
+     bottom edge (Orders draws no bottom navigation) ── */
+  .opp-grid td[data-label]::before { font-size: 12px; }
+  .opp-bar {
+    position: sticky; bottom: 0; gap: 8px 12px; margin: 0 -4px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 12px 12px 0 0;
+  }
+
+  /* ── Customize image learning: two 88px thumbnails beside the words ── */
+  .cil-card { padding: 12px; gap: 8px; }
+  .cil-card-body { grid-template-columns: 88px minmax(0, 1fr); gap: 6px 12px; }
+  .cil-pic { grid-column: 1; font-size: 12px; }
+  .cil-text { grid-column: 2; grid-row: 1 / span 3; }
+  .cil-text p > span:first-child, .cil-text .pi-regen-note { font-size: 12px; }
+  .cil-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; font-size: 12px; }
+
+  /* ── Confirmed Orders' filter sheet: 40px options, 12px group names ── */
+  .orders-sheet-label { font-size: 12px; }
+  .orders-sheet-options { gap: 8px; }
+  .orders-sheet-options button { min-height: 40px; padding: 0 14px; }
+
+  /* ── Expenses: Filters opens as a sheet from the bottom, 44px controls ── */
+  .expense-filter-away { z-index: 1000 !important; background: rgba(30, 34, 35, 0.4); }
+  .expense-filter-panel {
+    position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
+    z-index: 1001 !important; width: auto !important; max-height: 85vh; overflow-y: auto;
+    gap: 12px !important; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    border: 0 !important; border-radius: 16px 16px 0 0 !important;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35) !important;
+  }
+  .expense-filter-panel .expense-filter-row { grid-template-columns: 104px minmax(0, 1fr); font-size: 13px; }
+  .expense-filter-panel .expense-filter-dates { flex-wrap: wrap; gap: 8px; }
+  .expense-filter-panel .expense-filter-dates input { flex: 1 1 100%; height: 44px; font-size: 16px; }
+  .expense-filter-panel .expense-filter-dates > span { display: none; }
+  .expense-filter-panel .expense-filter-select { height: 44px !important; font-size: 16px !important; }
+  .expense-filter-panel .expense-filter-check { min-height: 44px; font-size: 14px; }
+  .expense-filter-panel .boe-btn { flex: 1 1 0; justify-content: center; min-height: 46px !important; font-size: 15px !important; }
+}

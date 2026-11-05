@@ -357,7 +357,7 @@ export function PiEditor({
         </Link>
         <div className="pi-edit-intro-text">
           <p className="pi-edit-context">{context}</p>
-          <p className="pi-edit-note">{mode === 'propose' ? EDIT_PI_PROPOSE_NOTE : 'Changes are saved to this PI draft.'}</p>
+          <p className={mode === 'propose' ? 'pi-edit-note pi-edit-note--propose' : 'pi-edit-note'}>{mode === 'propose' ? EDIT_PI_PROPOSE_NOTE : 'Changes are saved to this PI draft.'}</p>
         </div>
       </div>
 

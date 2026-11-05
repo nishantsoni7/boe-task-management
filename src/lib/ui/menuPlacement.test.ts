@@ -1447,7 +1447,10 @@ describe('the page has one hierarchy: header action, summary, then the list with
     assert.ok(header.includes('actions={caps.canAllocatePayment && ('),
       'unchanged: Finance module entry plus finance.allocate')
     assert.ok(header.includes('{RECORD_PAYMENT_ACTION_LABEL}'))
-    assert.ok(header.includes('className="boe-btn boe-btn-primary"'), 'drawn as the page\'s primary action')
+    assert.ok(header.includes('className="boe-btn boe-btn-primary boe-desktop-only"'), 'drawn as the page\'s primary action')
+    // On a phone (Phase 4) the same action is the header's + icon, named for a screen reader.
+    assert.ok(header.includes('className="boe-phone-only boe-header-icon boe-header-icon--add"'))
+    assert.ok(header.includes('aria-label={RECORD_PAYMENT_ACTION_LABEL}'))
   })
 
   test('no tabs and no result count in the view bar (owner, 2026-10-19)', () => {

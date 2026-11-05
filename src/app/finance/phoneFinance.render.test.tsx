@@ -139,3 +139,78 @@ describe('the desktop is untouched', () => {
     ])
   })
 })
+
+// ── PHONE PHASE 4 (owner, 2026-11-05): the Finance pages Phase 3 left below 8.5 ──
+const PHASE4_AT = CSS.indexOf('PHONE PHASE 4 — ORDERS & FINANCE (owner')
+const PHASE4_NEXT = CSS.indexOf('PHONE PHASE 4 —', PHASE4_AT + 20)
+const PHASE4 = CSS.slice(PHASE4_AT, PHASE4_NEXT < 0 ? undefined : CSS.lastIndexOf('/* ═', PHASE4_NEXT))
+const FOUNDERS_CSS = read('src/app/finance/founders/founders.module.css')
+const FOUNDERS_PHONE = FOUNDERS_CSS.slice(FOUNDERS_CSS.indexOf('A phone, Phase 4'))
+
+describe('Phase 4: header text buttons are icons on a phone, the words stay on a desktop', () => {
+  test('a header holding them stays one row: the title gives way, never the icons', () => {
+    assert.match(PHASE4, /\.boe-page-header:has\(\.fin-hdr-icons\) \{ flex-wrap: nowrap; \}/)
+    assert.match(PHASE4, /\.boe-page-header:has\(\.fin-hdr-icons\) \.boe-header-actions \{ flex: none !important; flex-wrap: nowrap !important; \}/)
+    for (const file of ['src/app/finance/expenses/ExpensesView.tsx', 'src/app/finance/founders/FounderPayoutsView.tsx']) {
+      assert.ok(read(file).includes('<div className="fin-hdr-icons" style={{ display: \'flex\''), file)
+    }
+  })
+
+  test('Expenses: Quick Capture is the mic, Add Expense the +', () => {
+    const view = read('src/app/finance/expenses/ExpensesView.tsx')
+    assert.match(view, /className="boe-btn boe-btn-ghost boe-desktop-only">\s*\{QUICK_CAPTURE_LABEL\}/)
+    assert.match(view, /className="boe-btn boe-btn-primary boe-desktop-only">\s*Add Expense/)
+    assert.match(view, /className="boe-phone-only boe-header-icon"\s*aria-label=\{QUICK_CAPTURE_LABEL\}/)
+    assert.match(view, /className="boe-phone-only boe-header-icon boe-header-icon--add"\s*aria-label="Add Expense"/)
+  })
+
+  test('Payments to verify and Confirmed Payments: Record Payment is the +', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    assert.ok(view.includes('className="boe-btn boe-btn-primary boe-desktop-only"'))
+    assert.match(view, /className="boe-phone-only boe-header-icon boe-header-icon--add"\s*aria-label=\{RECORD_PAYMENT_ACTION_LABEL\}/)
+  })
+
+  test("Founders' payouts: Download is an icon, New payout the +", () => {
+    const view = read('src/app/finance/founders/FounderPayoutsView.tsx')
+    assert.ok(view.includes('className="boe-btn boe-btn-ghost boe-desktop-only"'))
+    assert.ok(view.includes('className="boe-btn boe-btn-primary boe-desktop-only" data-testid="new-founder-payout"'))
+    assert.match(view, /className="boe-phone-only boe-header-icon"[^>]*aria-label=\{downloading \? 'Preparing the Excel file' : 'Download Excel'\}/)
+    assert.match(view, /className="boe-phone-only boe-header-icon boe-header-icon--add"[^>]*aria-label="New payout"/)
+  })
+})
+
+describe('Phase 4: filters open as a sheet from the bottom on a phone', () => {
+  test('Expenses: the panel is fixed to the bottom edge, its dates and dropdowns 44px', () => {
+    const view = read('src/app/finance/expenses/ExpensesView.tsx')
+    assert.ok(view.includes('className="expense-filter-panel"'))
+    assert.ok(view.includes('className="expense-filter-away"'))
+    assert.match(PHASE4, /\.expense-filter-panel \{\s*position: fixed !important;[^}]*bottom: 0 !important;/)
+    assert.match(PHASE4, /\.expense-filter-panel \.expense-filter-dates input \{[^}]*height: 44px; font-size: 16px;/)
+    assert.match(PHASE4, /\.expense-filter-panel \.expense-filter-select \{ height: 44px !important; font-size: 16px !important; \}/)
+  })
+
+  test("Founders' payouts: the same sheet, with a Done that is drawn on a phone only", () => {
+    const payments = read('src/app/finance/founders/FounderPayments.tsx')
+    assert.ok(payments.includes('className={`boe-btn boe-btn-primary ${styles.filterDone}`} onClick={() => setFiltersOpen(false)}'))
+    assert.match(FOUNDERS_CSS, /\n\.filterPanel \.filterDone \{ display: none; \}/)
+    assert.match(FOUNDERS_PHONE, /\.filterPanel \{\s*position: fixed;[^}]*bottom: 0;/)
+  })
+})
+
+describe("Phase 4: Founders' payouts never scrolls sideways on a phone", () => {
+  test('Month by month is a list per side; the twelve-column grid is not drawn', () => {
+    const overview = read('src/app/finance/founders/FounderOverview.tsx')
+    assert.ok(overview.includes('<div className={styles.monthCards}>'))
+    assert.ok(overview.includes('const paid = months.filter(m => (year.months.get(m)?.get(s.side) ?? 0) > 0)'))
+    assert.ok(overview.includes('className={`fin-table-wrap ${styles.monthsWrap}`}'))
+    assert.match(FOUNDERS_CSS, /\n\.monthCards \{ display: none; \}/, 'the desktop keeps the grid')
+    assert.match(FOUNDERS_PHONE, /\.panel \.monthsWrap, \.panel \.monthsNote \{ display: none; \}/)
+  })
+
+  test('chips, links and the side switch are touch-sized, and no text is under 12px', () => {
+    assert.match(FOUNDERS_PHONE, /\.roleChip \{ height: 40px;/)
+    assert.match(FOUNDERS_PHONE, /\.link \{ display: inline-flex; align-items: center; min-height: 44px; \}/)
+    assert.match(FOUNDERS_PHONE, /\.sideSwitch \{ height: 44px; \}/)
+    assert.match(FOUNDERS_PHONE, /\.pickGroup \{ font-size: 12px; \}/)
+  })
+})
