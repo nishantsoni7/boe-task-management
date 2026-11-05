@@ -3,7 +3,7 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import React from 'react'
-import { Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { Pencil, RotateCcw, StickyNote, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { colors } from '@/lib/tokens'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
@@ -16,6 +16,7 @@ import { PaymentIdChip } from './components/PaymentIdChip'
 import { FinancePerson } from './components/FinanceListParts'
 import { BankMarkChip, PiWaitingChip } from './bankMarkUi'
 import type { BankMark } from '@/lib/finance/bankMarks'
+import { paymentAdminNotePreview, type PaymentAdminNote } from '@/lib/finance/paymentAdminNotes'
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
 //
@@ -68,7 +69,19 @@ export function PaymentsTable({
   totals = null,
   bankMarks = null,
   piWaiting = null,
+  adminNotes,
+  onAdminNote,
 }: {
+  /**
+   * The admin's private notes, by payment id — passed ONLY to an admin (with
+   * onAdminNote); for everybody else both stay undefined and no note control is
+   * drawn. 'loading' / 'failed' draw the icon switched off with its reason, never
+   * as "no note": an icon that looked empty while the read had failed would invite
+   * a second note over the first. The database refuses everybody but an admin.
+   */
+  adminNotes?: ReadonlyMap<string, PaymentAdminNote> | 'loading' | 'failed'
+  /** Opens the small note popup for a row. */
+  onAdminNote?: (r: PaymentRequest) => void
   /** Payments whose PI cannot be approved until they are decided. Only with bankMarks. */
   piWaiting?: ReadonlySet<string> | null
   /**
@@ -316,6 +329,28 @@ export function PaymentsTable({
                 style={{ gap: '4px', justifyContent: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
+                {/* THE ADMIN'S PRIVATE NOTE, first slot, admins only. Grey = no note, amber = it holds one
+                    (the hover title carries its first words). Opens a small popup; the row does not open. */}
+                {adminNotes !== undefined && onAdminNote && (() => {
+                  const ready = typeof adminNotes !== 'string'
+                  const adminNote = ready ? adminNotes.get(r.id) : undefined
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onAdminNote(r)}
+                      disabled={!ready}
+                      className={`boe-row-icon boe-row-icon--note${adminNote ? ' boe-row-icon--note-has' : ''}`}
+                      aria-label={adminNote
+                        ? `Admin note for ${r.human_payment_id}: ${paymentAdminNotePreview(adminNote.note)}`
+                        : `Add admin note for ${r.human_payment_id}`}
+                      title={!ready
+                        ? (adminNotes === 'failed' ? 'Admin notes could not be read. Press refresh.' : 'Reading admin notes…')
+                        : adminNote ? `Admin note: ${paymentAdminNotePreview(adminNote.note)}` : 'Add admin note'}
+                    >
+                      <StickyNote size={15} aria-hidden="true" />
+                    </button>
+                  )
+                })()}
                 {showEdit ? (
                   <button
                     type="button"

@@ -96,7 +96,8 @@ describe('the window it belongs to', () => {
   })
 
   test('nothing is lost: proof, custody and activity are all behind Details', () => {
-    assert.ok(details.includes('left={bankWindow ? <>{proofBlock}{custodyBlock}</> : left}'))
+    // (An admin's private note box, when the page hands one over, sits behind Details with them.)
+    assert.ok(details.includes('left={bankWindow ? <>{proofBlock}{custodyBlock}{adminNotePanel}</> : left}'))
     assert.ok(details.includes('right={bankWindow ? activityBlock : right}'))
   })
 

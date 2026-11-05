@@ -69,6 +69,7 @@ export function DetailsModal({
   onEdit,
   onDelete,
   bankPanel,
+  adminNotePanel,
 }: {
   request: PaymentRequest
   onClose: () => void
@@ -113,6 +114,12 @@ export function DetailsModal({
    * decides nothing with it.
    */
   bankPanel?: React.ReactNode
+  /**
+   * The admin's private note box, passed ready-made and ONLY to an admin (the page
+   * decides; the database refuses everybody else). Not the Finance decision note
+   * above, which the salesperson reads. This modal does not know what it contains.
+   */
+  adminNotePanel?: React.ReactNode
 }) {
   // Order-linkage states are out of this control's jurisdiction entirely —
   // neither entering nor leaving approved_unlinked/approved_linked may happen
@@ -410,6 +417,9 @@ export function DetailsModal({
           things; this is a grouping, not a merge. */}
       {proofBlock}
 
+      {/* F2. THE ADMIN'S PRIVATE NOTE — admins only (the page decides). */}
+      {adminNotePanel}
+
       {/* G. BANK STATEMENT — only for a holder of finance.reconcile (the page
           decides). Information for the verifier; linking never verifies. */}
       {!bankWindow && bankPanel}
@@ -662,7 +672,7 @@ export function DetailsModal({
       ) : submittedLine}
       statusBadge={<StatusBadge status={r.status} />}
       onClose={onClose}
-      left={bankWindow ? <>{proofBlock}{custodyBlock}</> : left}
+      left={bankWindow ? <>{proofBlock}{custodyBlock}{adminNotePanel}</> : left}
       right={bankWindow ? activityBlock : right}
       body={bankWindow && !showDetails ? bankPanel : undefined}
       width={bankWindow ? '1040px' : undefined}

@@ -18,6 +18,8 @@ import type { UserProfile } from '@/lib/types'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
 import { deleteOwnPaymentRequest } from '@/lib/finance/ownPaymentRequestDeletion'
 import { DeleteOwnPaymentRequestModal } from '@/components/finance/DeleteOwnPaymentRequestModal'
+import { PaymentAdminNoteDialog, PaymentAdminNoteSlot } from '@/components/finance/PaymentAdminNote'
+import { loadPaymentAdminNotes, type PaymentAdminNote } from '@/lib/finance/paymentAdminNotes'
 import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView'
 import { loadPaymentTotals, loadPaymentsHoldingPi } from '@/lib/finance/paymentCommercialTotals'
 import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
@@ -145,6 +147,12 @@ function FinancePageInner() {
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
   // The submitter's own soft delete — a different dialog from the admin's.
   const [deleteOwnRequest, setDeleteOwnRequest] = useState<PaymentRequest | null>(null)
+  // THE ADMIN'S PRIVATE NOTES (20270603000000) — read only for an admin, tagged with
+  // the payments they were read for (see the effect below), and the row whose note
+  // popup is open.
+  const [notesState, setNotesState] = useState<{ key: string; notes: Map<string, PaymentAdminNote> | 'failed' } | null>(null)
+  const [notesReload, setNotesReload] = useState(0)
+  const [noteFor, setNoteFor] = useState<PaymentRequest | null>(null)
   // Total Before GST per payment on the loaded page; see the effect below.
   const [totalsState, setTotalsState] = useState<{
     forDestinations: Map<string, PaymentDestination>
@@ -731,6 +739,37 @@ function FinancePageInner() {
   // person who can decide a payment keeps the review columns.
   const salesView = isSalespersonPaymentView(isAdmin, caps)
 
+  // ── The admin's private notes ────────────────────────────────────────────────
+  // ONE batched read for the payments on screen (and the open one, which a deep link
+  // may have fetched on its own), ONLY for an admin: everybody else makes no request
+  // and sees no control. The result is tagged with the payments it was read for, so a
+  // slow answer for the previous page is never drawn against this one; until the
+  // right one lands the icons say so (and are switched off) rather than read "empty".
+  // A save updates this map in place, so nothing is re-read and the list does not move.
+  const noteIdsKey = useMemo(() => {
+    if (!isAdmin) return ''
+    const ids = visible.map(r => r.id)
+    if (detailRequest && !ids.includes(detailRequest.id)) ids.push(detailRequest.id)
+    return ids.join(',')
+  }, [isAdmin, visible, detailRequest])
+  useEffect(() => {
+    if (!noteIdsKey) return
+    let current = true
+    loadPaymentAdminNotes(supabase, noteIdsKey.split(','))
+      .then(notes => { if (current) setNotesState({ key: noteIdsKey, notes }) })
+      .catch(() => { if (current) setNotesState({ key: noteIdsKey, notes: 'failed' }) })
+    return () => { current = false }
+  }, [noteIdsKey, notesReload, supabase])
+  const adminNotes: ReadonlyMap<string, PaymentAdminNote> | 'loading' | 'failed' | undefined =
+    !isAdmin ? undefined : notesState && notesState.key === noteIdsKey ? notesState.notes : 'loading'
+  const handleNoteSaved = (paymentId: string, note: PaymentAdminNote | null) =>
+    setNotesState(prev => {
+      if (!prev || prev.notes === 'failed') return prev
+      const next = new Map(prev.notes)
+      if (note) next.set(paymentId, note); else next.delete(paymentId)
+      return { ...prev, notes: next }
+    })
+
   // ── Total Before GST ─────────────────────────────────────────────────────────
   // Two batched reads for the whole page (never per row), started when this
   // page's destinations land and only for the list that shows the column. The
@@ -869,7 +908,7 @@ function FinancePageInner() {
       title="Payment Requests"
       subtitle="Sales can submit customer payment details here for admin approval."
       onSignOut={handleSignOut}
-      onRefresh={async () => { setBankReload(n => n + 1); await reload() }}
+      onRefresh={async () => { setBankReload(n => n + 1); setNotesReload(n => n + 1); await reload() }}
       actions={
         <>
           {/* On a phone the header keeps one row: Bank Statements is in the menu (☰). */}
@@ -1007,6 +1046,8 @@ function FinancePageInner() {
             totals={totals}
             bankMarks={bankMarks}
             piWaiting={piWaiting}
+            adminNotes={adminNotes}
+            onAdminNote={isAdmin ? setNoteFor : undefined}
             onDelete={openDelete}
           />
         )}
@@ -1091,6 +1132,10 @@ function FinancePageInner() {
               }}
             />
           ) : undefined}
+          // The admin's private note box: ONLY for an admin, saved in place (the popup stays open).
+          adminNotePanel={adminNotes !== undefined ? (
+            <PaymentAdminNoteSlot supabase={supabase} paymentId={detailRequest.id} notes={adminNotes} onSaved={handleNoteSaved} />
+          ) : undefined}
           // A decision, a correction or a custody entry closes the popup and reloads
           // the list; a verification also moves the Confirmed Payments count.
           onCorrected={() => {
@@ -1102,6 +1147,16 @@ function FinancePageInner() {
           // Finance modal is open at a time, so it closes as they open.
           onEdit={r => { setDetailRequest(null); setEditRequest(r) }}
           onDelete={r => { setDetailRequest(null); openDelete(r) }}
+        />
+      )}
+      {/* THE NOTE POPUP from the list's note icon: opens only once the notes are read (the icon is off until then). */}
+      {isAdmin && noteFor && adminNotes !== undefined && typeof adminNotes !== 'string' && (
+        <PaymentAdminNoteDialog
+          supabase={supabase}
+          payment={noteFor}
+          initial={adminNotes.get(noteFor.id)?.note ?? ''}
+          onSaved={handleNoteSaved}
+          onClose={() => setNoteFor(null)}
         />
       )}
       {editRequest && (
