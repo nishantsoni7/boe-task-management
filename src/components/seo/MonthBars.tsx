@@ -1,17 +1,26 @@
+'use client'
+
 import { formatCount } from '@/lib/seo/report'
+import { useIsPhone } from '@/components/phoneFilters/useIsPhone'
 import s from './seo.module.css'
 
 // One month's value per bar, as inline SVG like BOE's other charts (the project has no charting library). The
 // drawing is a viewBox scaled to its container, so it never widens the page. The figures are also stated in text
 // for screen readers, and a hover on a bar shows its value.
 
-const WIDTH = 480
+const DESKTOP_WIDTH = 480
+// On a phone (owner, 2026-11-05) the 480-unit drawing came out at ~70%, so its 12-unit labels were ~8px.
+// Below 768px it is 340 units wide (about 1:1 with the screen) and the labels are 13 units.
+const PHONE_WIDTH = 340
 const HEIGHT = 180
 const LEFT = 8
 const BASE = 150
 const TOP = 22
 
 export function MonthBars({ title, bars }: { title: string; bars: { label: string; value: number | null }[] }) {
+  const phone = useIsPhone()
+  const WIDTH = phone ? PHONE_WIDTH : DESKTOP_WIDTH
+  const FS = phone ? 13 : 12
   const known = bars.map(b => b.value ?? 0)
   const max = Math.max(...known, 1)
   const peak = known.indexOf(max)
@@ -34,9 +43,9 @@ export function MonthBars({ title, bars }: { title: string; bars: { label: strin
               <rect x={x} y={BASE - height} width={width} height={height} rx={3} fill="#335A86">
                 <title>{`${bar.label}: ${bar.value === null ? 'no figure' : formatCount(bar.value)}`}</title>
               </rect>
-              <text x={middle} y={BASE + 18} textAnchor="middle" fontSize={12} fill="#686D6C">{bar.label}</text>
+              <text x={middle} y={BASE + 18} textAnchor="middle" fontSize={FS} fill="#686D6C">{bar.label}</text>
               {named && bar.value !== null && (
-                <text x={middle} y={BASE - height - 6} textAnchor="middle" fontSize={12} fontWeight={600} fill="#303536">
+                <text x={middle} y={BASE - height - 6} textAnchor="middle" fontSize={FS} fontWeight={600} fill="#303536">
                   {formatCount(bar.value)}
                 </text>
               )}

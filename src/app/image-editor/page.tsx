@@ -656,7 +656,7 @@ export default function ImageEditorPage() {
                 </label>
                 <select
                   id="download-format"
-                  className="boe-input"
+                  className="boe-input ie-format"
                   value={format}
                   onChange={e => setFormat(e.target.value as DownloadFormat)}
                   style={{ width: 'auto', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}

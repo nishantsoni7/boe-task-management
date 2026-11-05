@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { useQuery } from '@tanstack/react-query'
 import { useSeoAccess } from '@/hooks/useSeoAccess'
 import { fetchLatestBrief } from '@/lib/seo/api'
@@ -106,12 +107,12 @@ export function BriefBody({ brief }: { brief: DiscussionBrief }) {
             </div>
             <div className={s.proofAxis}>{proof.axis.map(label => <span key={label}>{label}</span>)}</div>
           </div>
-          <div className={s.tableWrapFlat}>
+          <PhoneTableCards className={s.tableWrapFlat}>
             <table className={s.table}>
               <thead><tr>{proof.table.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>{proof.table.rows.map(row => <tr key={row[0]}>{row.map((cell, i) => <td key={`${i}-${cell}`}>{cell}</td>)}</tr>)}</tbody>
             </table>
-          </div>
+          </PhoneTableCards>
         </div>
       </section>
 

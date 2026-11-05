@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
@@ -73,7 +74,7 @@ export default function ActivityScreen() {
             {isLoading && <div className={s.empty}>Loading…</div>}
             {data && (
               <>
-                <div className={s.kpis}>
+                <div className={`${s.kpis} ${s.kpiChips}`}>
                   <div className={s.kpi}><div className={s.kpiValue}>{data.totals.visits}</div><div className={s.kpiLabel}>Site visits to vendors</div></div>
                   <div className={s.kpi}><div className={s.kpiValue}>{data.totals.vendors_visited}</div><div className={s.kpiLabel}>Different vendors visited</div></div>
                   <div className={s.kpi}><div className={s.kpiValue}>{data.totals.at_site}</div><div className={s.kpiLabel}>Confirmed at the vendor</div></div>
@@ -103,7 +104,7 @@ export default function ActivityScreen() {
                 <section className={s.card} aria-labelledby="h-people">
                   <h2 id="h-people" className={s.cardTitle}>By person</h2>
                   {data.by_person.length === 0 ? <div className={s.empty}>No meetings in this period.</div> : (
-                    <div className={s.tableScroll}>
+                    <PhoneTableCards className={`${s.tableScroll} p3-cardgrid`}>
                       <table className={s.table}>
                         <thead><tr>
                           <th>Person</th><th className={s.num}>Site visits</th><th className={s.num}>Vendors</th><th className={s.num}>Repeat</th>
@@ -123,7 +124,7 @@ export default function ActivityScreen() {
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                    </PhoneTableCards>
                   )}
                 </section>
 

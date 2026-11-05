@@ -5,6 +5,7 @@ import { Package, Pencil, QrCode, Trash2 } from 'lucide-react'
 import type { ShowroomProduct } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { thumbSource } from '@/lib/imageHosts'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 
 // The Product Master results table, lifted out of the page so its rendering
 // contract — every row still offering Print QR, Edit, Delete and the status
@@ -40,7 +41,8 @@ export function ProductTable({
         transition: 'opacity 120ms ease',
       }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          {/* A phone draws each row as a card (globals.css, .sra-ptable): picture, name, code, MRP and a ⋯ menu. */}
+          <table className="sra-ptable" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                 {['Image', 'Product Code', 'Product Name', 'Category', 'MRP', 'Status', 'Actions'].map(h => (
@@ -159,17 +161,17 @@ export function ProductRow({
   onDelete: () => void
 }) {
   return (
-    <tr style={{
+    <tr className="sra-prow" style={{
       borderBottom: `1px solid ${colors.border}`,
       opacity: product.is_active ? 1 : 0.6,
     }}>
       {/* Image */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
+      <td className="sra-p-img" style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
         <ProductThumb src={product.images?.[0] ?? product.image_url ?? null} alt={product.name} />
       </td>
 
       {/* Product Code */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+      <td className="sra-p-code" style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
         <span style={{
           fontSize: '12px', fontWeight: 600,
           color: '#303536',
@@ -182,28 +184,28 @@ export function ProductRow({
       </td>
 
       {/* Product Name */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', minWidth: '160px' }}>
+      <td className="sra-p-name" style={{ padding: '10px 16px', verticalAlign: 'middle', minWidth: '160px' }}>
         <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary }}>
           {product.name}
         </span>
       </td>
 
       {/* Category */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+      <td className="sra-p-cat" style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
         <span style={{ fontSize: '12px', color: colors.tertiary }}>
           {product.category}
         </span>
       </td>
 
       {/* MRP */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+      <td className="sra-p-mrp" style={{ padding: '10px 16px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
         <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary, fontFamily: font.body }}>
           ₹{Number(product.mrp).toLocaleString('en-IN')}
         </span>
       </td>
 
       {/* Status */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+      <td className="sra-p-status" style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
         <button
           onClick={onToggle}
           disabled={toggling}
@@ -224,8 +226,18 @@ export function ProductRow({
       </td>
 
       {/* Actions */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <td className="sra-p-acts" style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
+        {/* A phone: one ⋯ button opens the same four actions as a sheet (the small buttons are hidden there). */}
+        <PhoneHeaderMenu
+          label={`Actions for ${product.product_code}`}
+          items={[
+            { key: 'qr', label: 'Print QR label', icon: <QrCode size={18} />, onSelect: onPrintQr },
+            { key: 'edit', label: 'Edit product', icon: <Pencil size={18} />, onSelect: onEdit },
+            { key: 'toggle', label: product.is_active ? 'Mark inactive' : 'Mark active', onSelect: () => { if (!toggling) onToggle() } },
+            { key: 'delete', label: 'Delete product', icon: <Trash2 size={18} />, onSelect: onDelete },
+          ]}
+        />
+        <div className="sra-p-iconbtns" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <IconButton onClick={onPrintQr} title="Print QR label" variant="neutral">
             <QrCode size={14} strokeWidth={1.8} />
           </IconButton>

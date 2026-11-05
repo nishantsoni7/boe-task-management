@@ -14110,3 +14110,144 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .qtn-row > :nth-child(5) { grid-column: 1 / -1; grid-row: 3; padding-top: 4px !important; }
   .qtn-row > :nth-child(6) { display: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — SALES, LEADS, SHOWROOM, REVIEWS, SEO, MARKETING
+   (owner, 2026-11-05, "phones: content first"). Below 768px only: every rule
+   that changes a page sits in a max-width: 767px block, so a desktop and a
+   tablet are drawn exactly as before. Many of these pages use inline styles,
+   so a rule that has to beat one carries !important.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* The shared Filter sheet (components/phoneFilters/PhoneFilterSheet.tsx) reuses
+   Confirmed Orders' sheet; its options are 40px, a page's own selects 44px.
+   The sheet only ever opens on a phone (its button is phone-only). */
+.p3-sheet .orders-sheet-options button { min-height: 40px; padding: 0 14px; border-radius: 999px; }
+.p3-sheet select, .p3-sheet input[type="date"],
+.p3-sheet-field select, .p3-sheet-field input { width: 100%; min-height: 44px; font-size: 16px; }
+.p3-sheet-empty { font-size: 13px; color: #686D6C; }
+.sra-qr-short { display: none; }
+.crv-lb-compact, .crv-phone-filter-row, .crv-info-phone { display: none; }
+
+@media (max-width: 767px) {
+  /* Table cards with two "label value" columns (Visit Activity, By person). */
+  .p3-cardgrid.boe-cardtable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; row-gap: 4px; }
+  .p3-cardgrid.boe-cardtable tbody td:first-child { grid-column: 1 / -1; }
+  .p3-cardgrid.boe-cardtable tbody td[data-label]::before { max-width: none; white-space: nowrap; }
+  .p3-cardgrid.boe-cardtable tbody td { gap: 8px; }
+
+  /* ── Showroom Admin · Product Master: one card per product ──
+     Picture on the left; name; code and category; status and MRP; ⋯ opens
+     Print QR, Edit, Mark active / inactive and Delete. */
+  .sra-ptable, .sra-ptable tbody { display: block; }
+  .sra-ptable thead { display: none; }
+  .sra-ptable .sra-prow {
+    display: grid !important; align-items: center;
+    grid-template-columns: 56px auto minmax(0, 1fr) auto;
+    grid-template-areas: "img name name more" "img code cat more" "img status . mrp";
+    column-gap: 10px; row-gap: 3px; padding: 10px 6px 10px 12px;
+  }
+  .sra-ptable .sra-prow > td { display: block; padding: 0 !important; min-width: 0 !important; white-space: normal !important; }
+  .sra-ptable .sra-p-img { grid-area: img; align-self: start; }
+  .sra-ptable .sra-p-name { grid-area: name; line-height: 1.3; }
+  .sra-ptable .sra-p-code { grid-area: code; }
+  .sra-ptable .sra-p-cat { grid-area: cat; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
+  .sra-ptable .sra-p-mrp { grid-area: mrp; text-align: right !important; }
+  .sra-ptable .sra-p-status { grid-area: status; }
+  .sra-ptable .sra-p-status button { pointer-events: none; padding: 2px 10px !important; }
+  .sra-ptable .sra-p-acts { grid-area: more; justify-self: end; }
+  .sra-ptable .sra-p-iconbtns { display: none !important; }
+  /* The search, status and sort controls above it are 44px. */
+  .product-toolbar-grid input, .product-toolbar-grid select { height: 44px !important; font-size: 16px !important; }
+  .product-toolbar-grid .product-toolbar-clear { min-height: 44px !important; }
+  /* Add Product floats at the bottom right instead of taking its own row. */
+  .sra-add-product-row { margin: 0 !important; height: 0; }
+  .sra-add-product {
+    position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+    min-height: 48px; padding: 0 18px; border-radius: 999px; box-shadow: 0 6px 16px rgba(185, 71, 46, 0.32);
+  }
+  .sra-presults { padding-bottom: 64px; }
+
+  /* ── Showroom Admin · Inquiries: the two totals and a short QR button share
+     one row; the stage buttons are one row of chips that scrolls sideways. */
+  .sra-summary { flex-wrap: nowrap !important; gap: 6px !important; margin-bottom: 10px !important; }
+  .sra-sumchip { flex: 1 1 0; min-width: 0; padding: 6px 10px !important; }
+  .sra-sumchip-sub { display: none; }
+  .sra-qrbtn { margin-left: 0 !important; flex: none; min-height: 44px !important; padding: 0 12px !important; }
+  .sra-qr-long { display: none; }
+  .sra-qr-short { display: inline; }
+  .sra-stage-tabs {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+    gap: 6px !important; margin: 0 -12px 12px !important; padding: 0 12px;
+  }
+  .sra-stage-tabs::-webkit-scrollbar { display: none; }
+  .sra-stage-tab { flex: none; min-height: 40px; border-radius: 999px !important; }
+
+  /* ── Showroom Admin · New / Edit product: dimensions 2 × 2, 44px controls. */
+  .sra-dims { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .sra-urlrow { grid-template-columns: minmax(0, 1fr) 44px !important; }
+  .sra-remove-btn { width: 44px !important; height: 44px !important; }
+  .sra-add-btn { min-height: 44px; }
+  .product-field input, .product-field select { height: 44px !important; font-size: 16px !important; }
+
+  /* ── Public showroom (QR) pages: quantity and remove buttons are 44px. */
+  .shw-qty { width: 44px !important; height: 44px !important; }
+  .shw-remove { min-width: 44px; min-height: 44px; justify-content: center; }
+
+  /* ── Samples · dispatch: every button and field 44px. */
+  .smp-dispatch button { min-height: 44px; }
+  .smp-dispatch input, .smp-dispatch select, .smp-dispatch textarea { min-height: 44px; font-size: 16px !important; }
+
+  /* ── Image Editor: the queue's remove button and the format select. */
+  .ie-remove { width: 44px !important; height: 44px !important; }
+  .ie-format { min-height: 44px; font-size: 16px !important; padding: 0 10px !important; }
+
+  /* ── Reviews · My Reviews: the leaderboard is one compact card (See all
+     opens the full board), one Submit (the header's), and the reviews come
+     before the reward rules and the month panels. */
+  .crv-lb-compact { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-color: rgba(196, 138, 26, 0.35) !important; background: #FFFBF2 !important; }
+  .crv-lb-compact-main { font-size: 14px; font-weight: 700; color: #303536; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-lb-compact-sub { font-size: 12.5px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-lb-compact-btn {
+    flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff;
+    font: inherit; font-size: 13px; font-weight: 600; color: #303536; cursor: pointer;
+  }
+  .crv-lb-full { display: none !important; }
+  .crv-lb-full.is-open { display: flex !important; }
+  .crv-submit-inline { display: none !important; }
+  .crv-later { order: 1; }
+  .crv-later ul[aria-label="Review reward rules"] { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+  .crv-later ul[aria-label="Review reward rules"] > li { flex: none; }
+  #header-submit-reason { display: none; }
+
+  /* ── Reviews · Reports: one Filter button, the metric cards as chips, the
+     long explanation behind a toggle, charts drawn for the phone. */
+  .crv-rfilters { display: none !important; }
+  .crv-phone-filter-row { display: flex; align-items: center; gap: 8px; }
+  .crv-phone-filter-text { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-sheet-fields { display: flex; flex-direction: column; gap: 12px; }
+  .crv-sheet-fields select { min-height: 44px; font-size: 16px !important; }
+  .crv-metrics {
+    display: flex !important; gap: 6px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 0 12px;
+  }
+  .crv-metrics::-webkit-scrollbar { display: none; }
+  .crv-metric {
+    flex: none; display: inline-flex !important; align-items: center; gap: 6px;
+    min-height: 40px !important; padding: 0 12px !important; border-radius: 999px !important;
+  }
+  .crv-metric-label { white-space: nowrap; font-size: 13px !important; }
+  .crv-metric-value { order: 2; font-size: 15px !important; }
+  .crv-metric-note { display: none; }
+  .crv-eligible { gap: 4px 16px !important; padding: 8px 12px !important; }
+  .crv-info-desk { display: none; }
+  .crv-info-phone { display: block; flex: 1 1 100%; font-size: 12.5px; color: #4C5352; }
+  .crv-info-phone summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: #335A86; }
+  .crv-info-phone p { margin: 0 0 4px; line-height: 1.5; }
+  .crv-chart-summary { min-height: 40px; display: flex; align-items: center; }
+
+  /* ── Reviews · Custom Submissions: the status pills are one sideways row. */
+  .crv-status-tabs { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; }
+  .crv-status-tabs::-webkit-scrollbar { display: none; }
+  .crv-status-tabs > button { flex: none; white-space: nowrap; }
+}

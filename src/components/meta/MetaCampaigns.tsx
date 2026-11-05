@@ -1,5 +1,6 @@
 'use client'
 
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { plural, rupees, type Line } from '@/lib/meta/report'
@@ -74,7 +75,8 @@ export function CampaignsBody({ ctx, initiallyOpen = [] }: { ctx: MetaCtx; initi
       </div>
 
       <div className="boe-table-wrap">
-        <div className={s.tableScroll}>
+        {/* A phone: one card per campaign (and per ad set when it is opened); nothing scrolls sideways. */}
+        <PhoneTableCards className={`${s.tableScroll} ${s.campaignCards} p3-cardgrid`}>
           <table className="boe-table">
             <thead>
               <tr>
@@ -118,7 +120,7 @@ export function CampaignsBody({ ctx, initiallyOpen = [] }: { ctx: MetaCtx; initi
               {shown.length === 0 && <tr><td colSpan={8}><div className="boe-empty">No campaigns match.</div></td></tr>}
             </tbody>
           </table>
-        </div>
+        </PhoneTableCards>
         <div className={s.footNote}>
           <span>{shown.length} of {plural(matches.length, 'campaign')}. Running first, then by spend.</span>
           {matches.length > shown.length && <button type="button" className="boe-btn boe-btn-text" onClick={() => setLimit(l => l + PAGE)}>Load more</button>}

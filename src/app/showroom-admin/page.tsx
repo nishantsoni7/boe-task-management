@@ -194,7 +194,7 @@ export default function ShowroomInboxPage() {
       {/* Pipeline summary, and the one action this screen is missing.
           A showroom day starts by showing a customer your QR code, and the
           landing page had no way to do it — the only route was the sidebar. */}
-      <div style={{
+      <div className="sra-summary" style={{
         display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
         marginBottom: '16px',
       }}>
@@ -205,6 +205,8 @@ export default function ShowroomInboxPage() {
           </>
         )}
         <button
+          className="sra-qrbtn"
+          aria-label="New Inquiry — Show My QR"
           onClick={() => router.push('/showroom-admin/qr')}
           style={{
             marginLeft: 'auto',
@@ -223,13 +225,14 @@ export default function ShowroomInboxPage() {
             <rect x="3" y="14" width="7" height="7" rx="1" />
             <path d="M14 14h3v3h-3zM19 19h2v2h-2z" />
           </svg>
-          New Inquiry — Show My QR
+          <span className="sra-qr-long">New Inquiry — Show My QR</span>
+          <span className="sra-qr-short" aria-hidden="true">My QR</span>
         </button>
       </div>
 
       {/* Filter tabs */}
       {inquiries.length > 0 && (
-        <div style={{
+        <div className="sra-stage-tabs" role="group" aria-label="Stage" style={{
           display: 'flex', gap: '4px', marginBottom: '20px', flexWrap: 'wrap',
         }}>
           {FILTER_TABS.map(tab => {
@@ -240,6 +243,8 @@ export default function ShowroomInboxPage() {
             return (
               <button
                 key={tab.value}
+                className="sra-stage-tab"
+                aria-pressed={active}
                 onClick={() => setQuotationFilter(tab.value)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
@@ -306,7 +311,7 @@ function SummaryChip({ label, value, sub, accent = '#303536' }: {
   label: string; value: string; sub: string; accent?: string
 }) {
   return (
-    <div style={{
+    <div className="sra-sumchip" style={{
       display: 'flex', alignItems: 'center', gap: '10px',
       background: '#ffffff',
       border: '1px solid #E4DED7',
@@ -331,7 +336,7 @@ function SummaryChip({ label, value, sub, accent = '#303536' }: {
           {value}
         </div>
       </div>
-      <div style={{ fontSize: '12px', color: '#686D6C', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
+      <div className="sra-sumchip-sub" style={{ fontSize: '12px', color: '#686D6C', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
         {sub}
       </div>
     </div>

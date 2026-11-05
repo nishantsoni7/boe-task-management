@@ -1,10 +1,13 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Upload, UserRoundCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
+import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -63,6 +66,7 @@ export function LeadMasterScreen() {
   const { canCreate, canEdit, canAssign } = useSalesAccess()
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
+  const router = useRouter()
   const { state, setState } = useListUrlState(LIST_PARAMS)
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(state.q, next => setState({ q: next }))
   const [openId, setOpenId] = useState<string | null>(null)
@@ -204,8 +208,19 @@ export function LeadMasterScreen() {
                 />
                 {searchInput && <button type="button" className="boe-list-search-clear" aria-label="Clear search" onClick={() => { setSearchInput(''); setState({ q: '' }) }}>✕</button>}
               </label>
+              {/* A phone: one Filter button holds Source (the select and the count are hidden there). */}
+              <PhoneFilterSheet
+                activeCount={state.source ? 1 : 0}
+                groups={[{
+                  id: 'source', label: 'Source', value: state.source,
+                  options: [{ value: '', label: 'All sources' }, ...LEAD_SOURCES.map(o => ({ value: o.value, label: o.label }))],
+                  onChange: v => setState({ source: v as typeof state.source }),
+                }]}
+                resultLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
+                onClearAll={() => setState({ source: '' })}
+              />
               <select
-                className={`${s.sourceSelect}${state.source ? ` ${s.sourceSet}` : ''}`}
+                className={`${s.sourceSelect} ${s.phoneHide}${state.source ? ` ${s.sourceSet}` : ''}`}
                 aria-label="Source"
                 value={state.source}
                 onChange={e => setState({ source: e.target.value as typeof state.source })}
@@ -213,9 +228,9 @@ export function LeadMasterScreen() {
                 <option value="">All sources</option>
                 {LEAD_SOURCES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <span className="fin-count">{first ? plural(first.total, 'lead') : ''}</span>
+              <span className={`fin-count ${s.phoneHide}`}>{first ? plural(first.total, 'lead') : ''}</span>
               {(canCreate || canAssign) && (
-                <div className={s.headActions}>
+                <div className={`${s.headActions} ${s.phoneHide}`}>
                   {canAssign && <Link className={`boe-btn boe-btn-secondary ${s.add}`} href="/sales/import"><Upload aria-hidden="true" />Import from ClickUp</Link>}
                   {canCreate && <Link className={`boe-btn boe-btn-primary ${s.add}`} href="/sales/lead-master/new"><Plus aria-hidden="true" />Add lead</Link>}
                 </div>
@@ -224,7 +239,7 @@ export function LeadMasterScreen() {
           </div>
 
           <div className={s.whoBar} role="group" aria-label="Allotted to">
-            <span className={s.whoLabel}>Allotted to</span>
+            <span className={`${s.whoLabel} ${s.phoneHide}`}>Allotted to</span>
             <WhoChip kind="all" label="Everyone" count={first?.everyone ?? null} pressed={state.holder === ''} onClick={() => setState({ holder: '' })} />
             <WhoChip kind="none" label="Not allotted" count={first?.unallotted ?? null} pressed={state.holder === 'none'} onClick={() => setState({ holder: 'none' })} />
             {chips.map(c => (
@@ -276,7 +291,21 @@ export function LeadMasterScreen() {
   }
 
   return (
-    <SalesFrame title="Lead Master" subtitle="Every lead, and who holds it">
+    <SalesFrame
+      title="Lead Master"
+      subtitle="Every lead, and who holds it"
+      // A phone: Add lead and Import sit behind the header's + (the toolbar keeps the search and one Filter button).
+      actions={(canCreate || canAssign) ? (
+        <PhoneHeaderMenu
+          label="Add leads"
+          kind="add"
+          items={[
+            ...(canCreate ? [{ key: 'add', label: 'Add lead', icon: <Plus size={18} />, primary: true, onSelect: () => router.push('/sales/lead-master/new') }] : []),
+            ...(canAssign ? [{ key: 'import', label: 'Import from ClickUp', icon: <Upload size={18} />, onSelect: () => router.push('/sales/import') }] : []),
+          ]}
+        />
+      ) : undefined}
+    >
       {body}
       {openId && (
         <LeadPanel
