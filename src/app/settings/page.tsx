@@ -111,11 +111,13 @@ export default function SettingsPage() {
       subtitle="App configuration"
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 600, padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Phone (phase 3, .boe-p3-settings): no extra 24px band, the setting
+          cards one per row as compact links, 44px fields and button. */}
+      <div className="boe-p3-settings" style={{ maxWidth: 600, padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* Admin-only setting cards */}
         {isAdmin && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="boe-p3-settings-cards" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {ADMIN_SETTING_CARDS.map(card => (
               <button
                 key={card.href}
@@ -150,7 +152,7 @@ export default function SettingsPage() {
         )}
 
         {/* Change Password card — available to all users */}
-        <div style={{
+        <div className="boe-p3-settings-pw" style={{
           background: colors.base,
           border: `1px solid ${colors.border}`,
           borderRadius: 8,

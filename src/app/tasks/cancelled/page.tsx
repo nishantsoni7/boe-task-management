@@ -181,7 +181,10 @@ function MyCancelledTasksContent() {
           Open one to restore it to active work.
         </ArchiveNote>
 
-        <ArchiveToolbar searchInput={searchInput} onSearch={setSearchInput} onSearchBlur={flushSearch}>
+        <ArchiveToolbar
+          searchInput={searchInput} onSearch={setSearchInput} onSearchBlur={flushSearch}
+          phone={{ activeCount: (filterAssignedBy ? 1 : 0) + (filterPriority ? 1 : 0), resultCount: visibleTasks.length, onClearAll: () => setState({ assignedBy: '', priority: '' }) }}
+        >
           {assignerOptions.length > 1 && (
             <ArchiveSelect value={filterAssignedBy} label="Assigned by" onChange={v => setState({ assignedBy: v })}>
               <option value="">All assigners</option>

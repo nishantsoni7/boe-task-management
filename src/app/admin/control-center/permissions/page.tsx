@@ -176,8 +176,9 @@ function EmployeePanel({
   onSelect: (id: string) => void
   deptLabel: (key: string | null | undefined) => string
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel}${selectedEmployeeId ? ` ${styles.panelChosen}` : ''}${pickerOpen ? ` ${styles.panelOpen}` : ''}`}>
       <div className={styles.panelHead}>
         <span>Employees</span>
         {/* A plain count, so an administrator can see the list is the whole
@@ -189,7 +190,16 @@ function EmployeePanel({
         )}
       </div>
 
-      <div className={cc.search}>
+      {/* PHONE (owner, 2026-11-05, phone phase 3): once someone is chosen the
+          300px list folds to that one row, so their access is on the first
+          screen; Change opens the list again. Desktop never shows this. */}
+      {selectedEmployeeId && (
+        <button type="button" className={styles.panelChange} aria-expanded={pickerOpen} onClick={() => setPickerOpen(v => !v)}>
+          {pickerOpen ? 'Done' : 'Change'}
+        </button>
+      )}
+
+      <div className={`${cc.search} ${styles.panelSearch}`}>
         <Search size={13} strokeWidth={2} />
         <input
           className={cc.control}
@@ -213,7 +223,7 @@ function EmployeePanel({
               type="button"
               className={`${styles.row}${selected ? ` ${styles.rowSelected}` : ''}${m.is_active ? '' : ` ${styles.rowMuted}`}`}
               aria-pressed={selected}
-              onClick={() => onSelect(m.id)}
+              onClick={() => { setPickerOpen(false); onSelect(m.id) }}
             >
               <Avatar name={m.full_name} size={28} />
               <div className={styles.rowText}>

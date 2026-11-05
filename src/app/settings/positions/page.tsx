@@ -51,7 +51,7 @@ export default function PositionsPage() {
       subtitle="Settings · Designations"
       onSignOut={handleSignOut}
     >
-      <div style={{ padding: '24px 0' }}>
+      <div className="boe-p3-settings" style={{ padding: '24px 0' }}>
         <PositionsManager />
       </div>
     </DashboardLayout>

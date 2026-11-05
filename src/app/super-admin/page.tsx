@@ -178,7 +178,9 @@ export default function SuperAdminPage() {
       )}
 
       {/* Filter card */}
-      <div className="boe-card" style={{ padding: '20px 24px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+      {/* Phone (phase 3): .boe-p3-sa-* stack the filters, the summary row and
+          each record into one column; the 6-column grid could not fit 390px. */}
+      <div className="boe-card boe-p3-sa-filter" style={{ padding: '20px 24px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
             Member
@@ -202,7 +204,7 @@ export default function SuperAdminPage() {
           </select>
         </div>
 
-        <div style={{ marginLeft: 'auto' }}>
+        <div className="boe-p3-sa-load" style={{ marginLeft: 'auto' }}>
           <button onClick={fetchTasks} disabled={fetching} className="boe-btn boe-btn-primary" style={{ padding: '10px 24px', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
             {fetching ? 'Loading…' : 'Load Tasks'}
           </button>
@@ -211,9 +213,9 @@ export default function SuperAdminPage() {
 
       {/* Summary row */}
       {hasLoaded && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', gap: '12px' }}>
+        <div className="boe-p3-sa-summary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
+            <div className="boe-desktop-only" style={{
               width: '36px', height: '36px', borderRadius: '8px',
               background: colors.float,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -268,7 +270,7 @@ export default function SuperAdminPage() {
       ) : (
         <div className="boe-card" style={{ padding: 0, overflow: 'hidden' }}>
           {/* Table header */}
-          <div style={{
+          <div className="boe-p3-sa-head" style={{
             display: 'grid',
             gridTemplateColumns: COL,
             padding: '10px 20px',
@@ -300,6 +302,7 @@ export default function SuperAdminPage() {
             return (
               <div
                 key={task.id}
+                className="boe-p3-sa-row"
                 onClick={() => toggleSelect(task.id)}
                 style={{
                   display: 'grid',

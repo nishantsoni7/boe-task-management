@@ -328,3 +328,40 @@
 @media (max-width: 767px) {
   .eyebrow { display: none; }
 }
+
+/* PHONES (owner, 2026-11-05, phone phase 3): touch targets are 44px (pills
+   40px); the section tabs are one row that scrolls sideways; stat tiles are
+   one row of chips; quiet link buttons keep their look but get a 44px target. */
+@media (max-width: 767px) {
+  .sectionTabs {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 12px; padding: 0 12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
+  .sectionTabs::-webkit-scrollbar { display: none; }
+  .sectionTab { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; flex: none; }
+
+  .control { height: 44px; font-size: 16px; }
+  .fieldControl { height: 44px; font-size: 16px; }
+  .inlineSelect { height: 44px; }
+  .linkBtn, .countBtn { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 6px; }
+  .rowActions { gap: 4px; flex-wrap: wrap; }
+  .quickLink { min-height: 44px; }
+  .quickLinks { gap: 0 14px; }
+  .record { min-height: 44px; }
+  .findRow { min-height: 44px; }
+  .navFind { height: 44px; }
+
+  .stats {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 14px; padding: 2px 12px;
+  }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex: none; display: inline-flex; align-items: baseline; gap: 6px; padding: 0 12px; min-height: 40px; align-items: center; border-radius: 999px; }
+  .statValue { font-size: 15px; order: 2; }
+  .statLabel { margin-top: 0; font-weight: 500; white-space: nowrap; }
+  .statMeta { display: none; }
+
+  .toolbar { gap: 8px; }
+  .section { margin-bottom: 20px; }
+  .dialogFoot :global(.boe-btn) { min-height: 44px; }
+}

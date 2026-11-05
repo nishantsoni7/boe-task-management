@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
 import { Toast, useToast } from '@/components/ui/toast'
 import { colors } from '@/lib/tokens'
+import { PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import { MeetingsLayout } from '@/components/layout/MeetingsLayout'
 import { MeetingBadge } from '@/components/meetings/MeetingModal'
 import { ItemUpdateModal } from '@/components/meetings/ItemUpdateModal'
@@ -307,7 +308,24 @@ export function FollowUpsScreen() {
       subtitle="Everything committed to in a review and not yet resolved."
       onSignOut={signOut}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+      {/* PHONE (owner, 2026-11-05, phone phase 3): search and ONE Filter
+          button; Meeting, Department and Status sit in its sheet. */}
+      <PhoneSearchFilter
+        search={{ value: searchInput, onChange: setSearchInput, onBlur: flushSearch, placeholder: 'Order, SKU, product…', label: 'Search follow-ups' }}
+        activeCount={(filters.meetingType ? 1 : 0) + (filters.department ? 1 : 0) + (filters.status ? 1 : 0)}
+        resultCount={visible.length}
+        noun={['follow-up', 'follow-ups']}
+        onClearAll={() => setState({ type: '', dept: '', status: '' })}
+        groups={[
+          { id: 'type', label: 'Meeting', value: filters.meetingType, onChange: v => setState({ type: v as MeetingType | '' }),
+            options: [{ value: '', label: 'All meetings' }, ...MEETING_TYPES.map(t => ({ value: t, label: `${MEETING_TYPE_META[t].label}s` }))] },
+          { id: 'dept', label: 'Responsible department', value: filters.department, onChange: v => setState({ dept: v }),
+            options: [{ value: '', label: 'All departments' }, ...departments.map(d => ({ value: d.key, label: d.name }))] },
+          { id: 'status', label: 'Status', value: filters.status, onChange: v => setState({ status: v as ItemStatus | '' }),
+            options: [{ value: '', label: 'Open and waiting' }, ...ITEM_STATUSES.filter(s => s !== 'resolved').map(s => ({ value: s, label: ITEM_STATUS_META[s].label }))] },
+        ]}
+      />
+      <div className="boe-p3-desk" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
         <input
           className="boe-input"
           aria-label="Search follow-ups"
@@ -570,6 +588,7 @@ function FollowUpCard({
 
       <button
         onClick={onOpenMeeting}
+        className="boe-p3-tap"
         style={{
           background: 'none', border: 'none', padding: 0, marginTop: '6px',
           cursor: 'pointer', textAlign: 'left', display: 'block',
@@ -598,6 +617,7 @@ function FollowUpCard({
         {row.linkedTaskId && (
           <button
             onClick={() => onOpenTask(row.linkedTaskId!)}
+            className="boe-p3-tap"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
           >
             <span className={`boe-badge boe-badge-${row.linkedTaskStatus ?? 'pending'}`} style={{ textTransform: 'capitalize' }}>

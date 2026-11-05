@@ -190,6 +190,10 @@ export default function ManagerPage() {
       }
       onSignOut={handleLogout}
     >
+      {/* On a phone (owner, 2026-11-05, phone phase 3) the KPI cards are one
+          row of chips and the Live Task Feed comes first (CSS, .boe-p3-manager);
+          its filter tabs already reach Overdue, Silent, Stale and Blocked. */}
+      <div className="boe-p3-manager">
       {/* KPI row */}
       <KpiGrid>
         <KpiCard label="Overdue"         value={overdueTasks.length}  meta="Past deadline"       accent="red"   />
@@ -467,7 +471,8 @@ export default function ManagerPage() {
               <select
                 value={selectedMember}
                 onChange={e => setSelectedMember(e.target.value)}
-                className="boe-input"
+                className="boe-input boe-p3-select"
+                aria-label="Team member"
                 style={{ fontSize: '12px', padding: '6px 10px' }}
               >
                 <option value="all">All team members</option>
@@ -502,6 +507,7 @@ export default function ManagerPage() {
           </div>
 
         </div>
+      </div>
       </div>
 
     </DashboardLayout>

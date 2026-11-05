@@ -7,6 +7,7 @@ import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
 import { Avatar } from '@/components/ui/atoms'
+import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import {
   cc, CcSection, CcToolbar, CcTable, CcBadge, CcEmpty, CcDialog, CcField,
 } from '@/components/controlCenter/CcPrimitives'
@@ -231,6 +232,37 @@ export function MembersWorkspace() {
     <CcSection>
       {banner && <div className={cc.note} style={{ marginBottom: 12 }}>{banner}</div>}
 
+      {/* PHONE (owner, 2026-11-05, phone phase 3): status as chips with their
+          counts, then search, ONE Filter button (Department, Level) and Add.
+          The desktop toolbar below is hidden on a phone (.boe-p3-desk). */}
+      <PhoneChips
+        label="Employee status"
+        active={statusFilter || 'all'}
+        onSelect={key => setStatusFilter(key === 'all' ? '' : key as StatusFilter)}
+        chips={[
+          { key: 'all', label: 'All', count: everyone.length },
+          { key: 'active', label: 'Active', count: activeCount },
+          { key: 'inactive', label: 'Inactive', count: inactiveCount },
+          { key: 'deleted', label: 'Deleted', count: deleted.length },
+        ]}
+      />
+      <PhoneSearchFilter
+        search={{ value: search, onChange: setSearch, placeholder: 'Name or email', label: 'Search employees' }}
+        activeCount={(deptFilter ? 1 : 0) + (levelFilter ? 1 : 0)}
+        resultCount={filtered.length}
+        noun={['employee', 'employees']}
+        onClearAll={() => { setDeptFilter(''); setLevelFilter('') }}
+        groups={[
+          { id: 'dept', label: 'Department', value: deptFilter, onChange: setDeptFilter,
+            options: [{ value: '', label: 'All' }, ...depts.map(d => ({ value: d.department_key, label: d.department_name }))] },
+          { id: 'level', label: 'Designation level', value: levelFilter, onChange: setLevelFilter,
+            options: [{ value: '', label: 'All' }, ...DESIGNATION_LEVELS.map(l => ({ value: l, label: DESIGNATION_LEVEL_LABELS[l] }))] },
+        ]}
+      >
+        <button className="boe-btn boe-btn-primary" onClick={() => setAdding(true)}>Add</button>
+      </PhoneSearchFilter>
+
+      <div className="boe-p3-desk">
       <CcToolbar>
         <div className={cc.search}>
           <Search size={13} strokeWidth={2} />
@@ -271,6 +303,7 @@ export function MembersWorkspace() {
         <span className={cc.toolbarGrow} />
         <button className="boe-btn boe-btn-primary" onClick={() => setAdding(true)}>Add Member</button>
       </CcToolbar>
+      </div>
 
       {filtered.length === 0 ? (
         <CcEmpty message="No employees match these filters." />

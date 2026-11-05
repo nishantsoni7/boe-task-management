@@ -13,6 +13,7 @@ import React, { useState } from 'react'
 import { ChevronRight, Ban, Search, Star } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { PhoneSearchFilter } from './PhoneListTools'
 
 const PRIORITY: Record<string, { label: string; dot: string }> = {
   high:   { label: 'High', dot: '#A12438'    },
@@ -38,7 +39,9 @@ const FIELD_HEIGHT = 40
 // ─── Heading, note, toolbar ───────────────────────────────────────────────────
 export function ArchiveHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div style={{ marginBottom: '12px' }}>
+    // On a phone the header already names the page: this heading is hidden
+    // there (CSS, .boe-p3-archive-heading) so the list starts sooner.
+    <div className="boe-p3-archive-heading" style={{ marginBottom: '12px' }}>
       <div style={{ fontSize: '20px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.02em', lineHeight: 1.25 }}>{title}</div>
       <div style={{ fontSize: '13px', color: colors.muted, marginTop: '2px' }}>{subtitle}</div>
     </div>
@@ -47,7 +50,7 @@ export function ArchiveHeading({ title, subtitle }: { title: string; subtitle: s
 
 export function ArchiveNote({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
+    <div className="boe-p3-archive-note" style={{
       display: 'flex', alignItems: 'flex-start', gap: '10px',
       background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
       padding: '10px 14px', marginBottom: '12px', fontSize: '13px', lineHeight: 1.5, color: colors.secondary,
@@ -58,15 +61,29 @@ export function ArchiveNote({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function ArchiveToolbar({ searchInput, onSearch, onSearchBlur, children }: {
+export function ArchiveToolbar({ searchInput, onSearch, onSearchBlur, children, phone }: {
   searchInput: string
   onSearch: (value: string) => void
   onSearchBlur: () => void
   children: React.ReactNode
+  /** On a phone (owner, 2026-11-05, phone phase 3) the selects move into ONE
+   *  Filter button's sheet beside the search box. */
+  phone?: { activeCount: number; resultCount: number; onClearAll: () => void }
 }) {
   const [focused, setFocused] = useState(false)
   return (
-    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+    <>
+    {phone && (
+      <PhoneSearchFilter
+        search={{ value: searchInput, onChange: onSearch, onBlur: onSearchBlur, placeholder: 'Task name or reason', label: 'Search cancelled tasks' }}
+        activeCount={phone.activeCount}
+        resultCount={phone.resultCount}
+        noun={['task', 'tasks']}
+        onClearAll={phone.onClearAll}
+        groups={[{ id: 'archive-filters', label: 'Filters', content: <div className="boe-p3-sheet-fields">{children}</div> }]}
+      />
+    )}
+    <div className={phone ? 'boe-p3-desk' : undefined} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
       <label style={{
         flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '8px',
         minHeight: FIELD_HEIGHT, padding: '0 12px', background: colors.base, cursor: 'text',
@@ -87,6 +104,7 @@ export function ArchiveToolbar({ searchInput, onSearch, onSearchBlur, children }
       </label>
       {children}
     </div>
+    </>
   )
 }
 

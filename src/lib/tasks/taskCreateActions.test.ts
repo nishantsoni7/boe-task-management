@@ -27,6 +27,8 @@ describe('hidden on Notifications and Quotation routes', () => {
     '/tasks/quotation-requests/',
     '/tasks/quotation-requests?status=open',
     '/tasks/quotation-requests/new',
+    '/super-admin',
+    '/super-admin/view-user/aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
   ]) {
     test(path, () => {
       assert.equal(isTaskCreateActionsHiddenRoute(path), true)

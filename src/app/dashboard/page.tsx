@@ -893,6 +893,10 @@ function TodaysFocusPanel({
           const task = tasks[idx]
 
           /* ── Empty slot ── */
+          // On a phone (phase 3) the empty slots are ONE dashed card that says
+          // how many are free, instead of up to three stacked placeholders.
+          if (!task && isMobile && idx > tasks.length) return null
+          const freeSlots = 3 - tasks.length
           if (!task) {
             return (
               <div
@@ -923,7 +927,7 @@ function TodaysFocusPanel({
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
                   <RankBadge index={idx} muted />
                   <div style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', lineHeight: 1.35 }}>
-                    Focus slot available
+                    {isMobile && freeSlots > 1 ? `${freeSlots} focus slots available` : 'Focus slot available'}
                   </div>
                 </div>
                 <div style={{ fontSize: '12px', color: '#686D6C', lineHeight: 1.35, marginLeft: '29px' }}>
@@ -1062,7 +1066,7 @@ function TodaysFocusPanel({
                           ? <ChevronUp size={15} strokeWidth={2} />
                           : <ChevronLeft size={15} strokeWidth={2} />}
                         disabled={reordering}
-                        size={isMobile ? 32 : 24}
+                        size={isMobile ? 44 : 24}
                         onActivate={() => onReorder(idx, -1)}
                       />
                     )}
@@ -1073,7 +1077,7 @@ function TodaysFocusPanel({
                           ? <ChevronDown size={15} strokeWidth={2} />
                           : <ChevronRight size={15} strokeWidth={2} />}
                         disabled={reordering}
-                        size={isMobile ? 32 : 24}
+                        size={isMobile ? 44 : 24}
                         onActivate={() => onReorder(idx, 1)}
                       />
                     )}

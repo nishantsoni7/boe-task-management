@@ -24,6 +24,7 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatRupees } from '@/lib/payroll/money'
 import { istToday, istMonthStart } from '@/lib/istDate'
@@ -128,19 +129,30 @@ export default function MyCreditsPage() {
       onSignOut={handleSignOut}
       actions={
         <>
-          <Link href="/my-credits/leaderboard" className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {/* On a phone (phase 3) both links sit in one ⋯ menu so the header
+              stays one row; on a desktop they stay buttons. */}
+          <PhoneHeaderMenu
+            label="More"
+            items={[
+              { key: 'leaderboard', label: 'Review leaderboard', icon: <Trophy size={18} strokeWidth={1.9} />, onSelect: () => router.push('/my-credits/leaderboard') },
+              { key: 'guide', label: 'How credits work', icon: <BookOpen size={18} strokeWidth={1.9} />, onSelect: () => router.push(CREDITS_GUIDE_PATH) },
+            ]}
+          />
+          <Link href="/my-credits/leaderboard" className="boe-btn boe-btn-ghost boe-desktop-only" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Trophy size={14} strokeWidth={1.9} /> Review leaderboard
           </Link>
-          <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost boe-desktop-only" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <BookOpen size={14} strokeWidth={1.9} /> How credits work
           </Link>
         </>
       }
     >
-      <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Phone (phase 3, .boe-p3-credits): a compact balance, then Recent
+          activity, then the target and the uses. Desktop order unchanged. */}
+      <div className="boe-p3-credits" style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ── 1. Balance ─────────────────────────────────────────────────── */}
-        <section aria-labelledby="credits-balance" style={{ ...card, border: '1px solid rgba(51,90,134,0.28)' }}>
+        <section aria-labelledby="credits-balance" className="boe-p3-cr-balance" style={{ ...card, border: '1px solid rgba(51,90,134,0.28)' }}>
           <div style={{ padding: '16px 18px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ minWidth: 160 }}>
               <div id="credits-balance" style={eyebrow}>Spendable now</div>
@@ -174,7 +186,7 @@ export default function MyCreditsPage() {
         </section>
 
         {/* ── 2. What you can use them for ───────────────────────────────── */}
-        <section aria-labelledby="credits-uses">
+        <section aria-labelledby="credits-uses" className="boe-p3-cr-uses">
           <h2 id="credits-uses" style={{ ...eyebrow, margin: '0 0 8px' }}>What you can use them for</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12 }}>
             {/*
@@ -210,7 +222,7 @@ export default function MyCreditsPage() {
         </section>
 
         {/* ── 3. This month's review target ──────────────────────────────── */}
-        <section aria-labelledby="credits-month" style={card}>
+        <section aria-labelledby="credits-month" className="boe-p3-cr-month" style={card}>
           <div style={{ padding: '14px 18px', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 220 }}>
               <div id="credits-month" style={eyebrow}>{reviewMonthLabel(thisMonth)} · review target</div>
@@ -257,11 +269,11 @@ export default function MyCreditsPage() {
         </section>
 
         {/* ── 4. Recent activity ─────────────────────────────────────────── */}
-        <section aria-labelledby="credits-activity" style={card}>
+        <section aria-labelledby="credits-activity" className="boe-p3-cr-activity" style={card}>
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
             <h2 id="credits-activity" style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Recent activity</h2>
             {rows.length > 6 && (
-              <button type="button" onClick={() => setShowAll(v => !v)} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              <button type="button" className="boe-p3-tap" onClick={() => setShowAll(v => !v)} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                 {showAll ? 'Show fewer' : `Show all ${rows.length}`}
               </button>
             )}
@@ -312,6 +324,7 @@ export default function MyCreditsPage() {
         {/* ── 5. How it works ────────────────────────────────────────────── */}
         <Link
           href={CREDITS_GUIDE_PATH}
+          className="boe-p3-cr-guide"
           style={{
             ...card, padding: '14px 18px', textDecoration: 'none',
             display: 'flex', alignItems: 'center', gap: 12,

@@ -15,6 +15,7 @@ import type {
 import {
   istToday, istDateRange, istMonthStart, istMonthEnd, istMonthStartOffset,
 } from '@/lib/istDate'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
 function PerformanceProgressLoader({ progress }: { progress: number }) {
@@ -864,7 +865,8 @@ function MonthlyView({ token, which, viewAsUserId }: {
           <div style={{ fontSize: 13, fontWeight: 600, color: '#303536' }}>Monthly Log History</div>
         </div>
 
-        {/* Table */}
+        {/* Table — each log a card on a phone (phone phase 3). */}
+        <PhoneTableCards className="boe-p3-plaincards">
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -974,6 +976,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
             </tbody>
           </table>
         </div>
+        </PhoneTableCards>
       </div>
 
       {selectedDay && <DayScoreModal day={selectedDay} onClose={() => setSelectedDay(null)} />}
@@ -1231,7 +1234,7 @@ export default function PerformancePage() {
         }}>Team View →</a>
       ) : undefined}
     >
-      <div style={{ maxWidth: 1040, margin: '0 auto', padding: '8px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="boe-p3-perfwrap" style={{ maxWidth: 1040, margin: '0 auto', padding: '8px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* Excluded from team reporting. Shown above everything else, because the
             reader needs to know it before they read a single figure below. The
@@ -1247,7 +1250,7 @@ export default function PerformancePage() {
         )}
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 4, background: '#F7F5F1', borderRadius: 8, padding: 4, alignSelf: 'flex-start' }}>
+        <div className="boe-p3-segtabs" style={{ display: 'flex', gap: 4, background: '#F7F5F1', borderRadius: 8, padding: 4, alignSelf: 'flex-start' }}>
           {(['today', 'current_month', 'last_month'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               fontSize: 12.5, fontWeight: 600,
