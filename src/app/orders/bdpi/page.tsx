@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plus, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -47,6 +48,17 @@ export default function BdpiListPage() {
   const [client, setClient] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string; openId?: string } | null>(null)
+  // ON A PHONE (owner, 2026-11-05) the list comes first and "New BDPI" opens
+  // from the header's + as a sheet from the bottom of the screen. On a desktop
+  // the form is drawn above the list as it always was, whatever this says.
+  const [uploadOpen, setUploadOpen] = useState(false)
+
+  useEffect(() => {
+    if (!uploadOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setUploadOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [uploadOpen])
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('bdpi_list')
@@ -128,21 +140,35 @@ export default function BdpiListPage() {
     || [r.bdpi_no, r.old_order_no, r.client_name].some(v => v.toLowerCase().includes(needle)))
 
   return (
-    <OrdersLayout profile={profile} title="Old orders (BDPI)" onSignOut={handleSignOut} showRefresh={false}>
+    <OrdersLayout profile={profile} title="Old orders (BDPI)" onSignOut={handleSignOut} showRefresh={false}
+      phoneSubtitle={rows ? `${rows.length} old order${rows.length === 1 ? '' : 's'}` : undefined}
+      actions={caps?.canEditPaymentPlan ? (
+        <button type="button" className="boe-phone-only boe-header-icon boe-header-icon--add" aria-label="New BDPI" title="New BDPI"
+          aria-haspopup="dialog" aria-expanded={uploadOpen} onClick={() => setUploadOpen(true)}>
+          <Plus size={20} strokeWidth={2} aria-hidden="true" />
+        </button>
+      ) : undefined}>
       <div className="opp-page">
         {caps && !caps.canViewPaymentPlan && (
           <p className="opp-warn" role="alert">You do not have access to old orders. An Admin can grant &quot;View Payment plan&quot; in Control Center.</p>
         )}
         {caps?.canViewPaymentPlan && (
           <>
-            <p className="opp-sub">
+            <p className="opp-sub bdpi-intro">
               Orders that were never uploaded into the app. Upload the old PI (the usual PI format) to get the same
               Payment plan: dispatch lots, what is paid in account and in cash, and what is still due.
             </p>
 
             {caps.canEditPaymentPlan && (
-              <section className="opp" aria-label="New BDPI">
-                <h2 className="opp-title">New BDPI</h2>
+              <>
+              {uploadOpen && <div className="boe-phone-only boe-psheet-backdrop" aria-hidden="true" onClick={() => setUploadOpen(false)} />}
+              <section className={`opp bdpi-upload${uploadOpen ? ' is-open' : ''}`} aria-label="New BDPI">
+                <div className="bdpi-upload-head">
+                  <h2 className="opp-title">New BDPI</h2>
+                  <button type="button" className="boe-phone-only boe-psheet-close" aria-label="Close" onClick={() => setUploadOpen(false)}>
+                    <X size={18} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </div>
                 <div className="opp-inputs">
                   <label className="opp-field">
                     <span>PI file (.xlsx)</span>
@@ -172,9 +198,10 @@ export default function BdpiListPage() {
                   </p>
                 )}
               </section>
+              </>
             )}
 
-            <section className="opp" aria-label="Old orders">
+            <section className="opp bdpi-list" aria-label="Old orders">
               <div className="opp-head">
                 <h2 className="opp-title">Old orders{rows ? ` (${rows.length})` : ''}</h2>
                 <input className="boe-input boe-list-search" placeholder="Search BDPI, old order or client" value={q}
@@ -182,9 +209,9 @@ export default function BdpiListPage() {
               </div>
               {unreadable && <p className="opp-warn" role="alert">The list could not be read. Please reload.</p>}
               {rows === null && !unreadable && <p className="opp-note" role="status">Loading…</p>}
-              {rows && shown.length === 0 && <p className="opp-note">{rows.length === 0 ? 'No old orders yet. Upload the first PI above.' : 'Nothing matches.'}</p>}
+              {rows && shown.length === 0 && <p className="opp-note">{rows.length === 0 ? 'No old orders yet. Upload the first PI under New BDPI.' : 'Nothing matches.'}</p>}
               {shown.length > 0 && (
-                <div className="opp-scroll">
+                <div className="opp-scroll bdpi-scroll">
                   <table className="opp-table opp-bdpi-table">
                     <thead>
                       <tr>

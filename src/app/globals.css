@@ -14301,3 +14301,211 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-cj-seg button { min-height: 40px; }
   .boe-cj-pager .boe-btn { min-height: 44px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — ORDERS (owner, 2026-11-05, "phones: content first")
+
+   Below 768px every Orders page puts its list, table or record on the first
+   screen. Desktop and tablet are untouched: every rule is inside the media
+   query. Inline styles are beaten with !important, as elsewhere in this file.
+   Pinned by src/app/orders/phoneOrders.render.test.tsx.
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── Header text buttons that are an icon on a phone (Select an order, Download PI Format) ── */
+  .boe-page-header .orders-hdr-iconbtn {
+    position: relative; width: 44px; min-width: 44px; height: 44px; padding: 0 !important;
+    justify-content: center; border-color: transparent; background: none; color: #4C5352;
+  }
+  /* The words leave the screen but stay the button's name for a screen reader. */
+  .boe-page-header .orders-hdr-iconbtn .orders-hdr-label {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .boe-page-header .orders-hdr-iconbtn svg { width: 18px; height: 18px; }
+  /* With them the header is one row: the title gives way (ellipsis), never wraps the icons below. */
+  .boe-page-header:has(.orders-hdr-iconbtn) { flex-wrap: nowrap; }
+  .boe-page-header:has(.orders-hdr-iconbtn) .boe-page-title-group { flex: 1 1 0; min-width: 0; }
+  .boe-page-header:has(.orders-hdr-iconbtn) .boe-header-actions { flex: none !important; flex-wrap: nowrap !important; }
+  /* Upload PI: the filled 40px square, as the + of other modules. */
+  .boe-page-header .orders-hdr-primary {
+    width: 40px; min-width: 40px; height: 40px; min-height: 40px; margin: 2px;
+    border-radius: 10px; background: #B9472E; border-color: #B9472E; color: #FFFFFF;
+  }
+
+  /* ── /orders: six figures in two rows of three tiles, the board right under them ── */
+  .od-stack { gap: 12px; }
+  .od-ov-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .od-ov-card { gap: 1px; min-height: 64px; padding: 8px 10px 9px 11px; border-left-width: 3px; border-radius: 10px; }
+  .od-ov-count { order: -1; font-size: 22px; line-height: 1.15; }
+  .od-ov-label { font-size: 12px; font-weight: 500; line-height: 1.25; }
+  .od-ov-sub, .od-ov-detail { display: none; }
+  .od-ov .od-note { margin-top: 8px; }
+  /* The board's six tabs: one row that scrolls sideways, 44px tall. */
+  .od-board-tabs { flex-wrap: nowrap; gap: 0; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  .od-board-tabs::-webkit-scrollbar { display: none; }
+  .od-board-tab { flex: none; min-height: 44px; padding: 0 12px; white-space: nowrap; }
+  .od-board-panel { padding: 0 14px 4px; }
+  .od-board-row { gap: 2px 12px; padding: 10px 0; }
+  /* Three lines a row: number and figure; client; what is wrong and why. */
+  .od-board-id { gap: 0; }
+  .od-board-what { flex-direction: row; flex-wrap: wrap; column-gap: 8px; }
+  .od-board-figure-label { display: none; }
+  .od-board .od-show-all { width: 100%; }
+  .od-queue-link { min-height: 44px; align-items: center; }
+  /* The salesperson's dashboard: its jump chips and Open PI are touch-sized. */
+  .spd-chip { height: 40px; }
+  .spd-open { height: 40px; }
+
+  /* ── /orders/drafts: each card is three lines (the cards are also drawn on a tablet, unchanged there) ── */
+  .drafts-card {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "client pill" "ref value" "facts actions";
+    align-items: baseline; gap: 2px 10px !important; padding: 11px 14px !important;
+  }
+  /* client · status / reference · value / who, advance and dates · Open and Delete */
+  .drafts-card-head, .drafts-card-head > div:first-child { display: contents !important; }
+  .drafts-card-client { grid-area: client; min-width: 0; font-size: 15px !important; }
+  .drafts-card-head > div:first-child > div:last-child { grid-area: ref; min-width: 0; margin-top: 0 !important; }
+  .drafts-card-head > .fin-pill { grid-area: pill; justify-self: end; }
+  .drafts-card-value { grid-area: value; justify-self: end; }
+  .drafts-card-value > span:first-child { display: none; }
+  .drafts-card-value > span:last-child { font-size: 13.5px !important; font-weight: 600; color: #303536 !important; }
+  .drafts-card-facts { grid-area: facts; align-self: center; flex-direction: row !important; flex-wrap: wrap; margin-top: 4px; }
+  .drafts-card-facts > span:nth-child(1) > span:first-child { display: none; }
+  .drafts-card-facts > span:nth-child(3)::before { content: '\00a0·\00a0'; color: #686D6C; }
+  .drafts-card-facts > span:nth-child(2) { order: 3; flex-basis: 100%; }
+  .drafts-card-actions { grid-area: actions; align-self: end; }
+  .drafts-card .boe-row-actions { gap: 8px !important; }
+  .drafts-card .boe-row-icon { width: 44px; height: 44px; }
+  .drafts-card .boe-row-icon-slot { display: none; }
+
+  /* ── Old orders (BDPI) and the Payment plan pages ── */
+  .opp-page { padding: 0; gap: 10px; }
+  .opp-back { display: inline-flex; align-items: center; align-self: flex-start; min-height: 44px; margin: -10px 0 -8px; }
+  .opp-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .opp input.boe-input, .opp-page input.boe-input { min-height: 44px; font-size: 16px; }
+  /* The list first: the intro goes, and New BDPI opens from the header's + as a sheet. */
+  .bdpi-intro { display: none; }
+  .bdpi-upload { display: none; }
+  .bdpi-upload.is-open {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+    max-height: 85vh; overflow-y: auto; margin: 0; gap: 12px;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #FFFFFF; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .bdpi-upload-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bdpi-upload .opp-inputs { grid-template-columns: minmax(0, 1fr); }
+  .bdpi-upload input[type="file"] { min-height: 44px; }
+  .bdpi-upload .opp-actions .boe-btn { flex: 1 1 100%; }
+  .bdpi-list { gap: 8px; margin-top: 0; }
+  .bdpi-list .opp-head .opp-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .bdpi-list .opp-head .boe-list-search { flex: 1 1 100%; max-width: none; height: 44px; font-size: 16px; }
+  /* Each old order is three lines: BDPI and its total; the client; old number · pieces · status. */
+  .bdpi-scroll { overflow: visible; }
+  .opp-bdpi-table, .opp-bdpi-table tbody { display: block; }
+  .opp-bdpi-table thead { display: none; }
+  .opp-bdpi-table tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px;
+    padding: 10px 4px; border-bottom: 1px solid var(--boe-border);
+  }
+  .opp-bdpi-table td {
+    display: block; padding: 0; border: 0; white-space: normal;
+    font-size: 12px; color: var(--boe-text-muted); text-align: left !important;
+  }
+  .opp-bdpi-table td:nth-child(1) { order: 1; flex: 1 1 auto; font-size: 15px; color: var(--boe-text); }
+  .opp-bdpi-table td:nth-child(4) { order: 2; font-size: 15px; font-weight: 700; color: var(--boe-text-strong); }
+  .opp-bdpi-table td:nth-child(3) { order: 3; flex: 0 0 100%; font-size: 13.5px; color: var(--boe-text); }
+  .opp-bdpi-table td:nth-child(2) { order: 4; }
+  .opp-bdpi-table td:nth-child(2)::before { content: 'Old order '; }
+  .opp-bdpi-table td:nth-child(5) { order: 5; }
+  .opp-bdpi-table td:nth-child(5)::before { content: '\00a0·\00a0 Sent\00a0'; }
+  .opp-bdpi-table td:nth-child(6) { order: 6; }
+  .opp-bdpi-table td:nth-child(6)::before { content: '\00a0·\00a0'; }
+  .opp-bdpi-table tr:hover td, .opp-bdpi-table tr:focus td { background: none; }
+
+  /* The four sums: two to a row, the balance across the full width. */
+  .opp-tile, .opp-tile-bal { flex-basis: 50%; padding: 10px 12px; }
+  .opp-tiles > .opp-tile:nth-child(4n+3) { border-left: 1px solid var(--boe-border); }
+  .opp-tiles > .opp-tile:nth-last-child(-n+3) { border-bottom: 0; }
+  .opp-tile-v { font-size: 18px; }
+  .opp-tile-bal .opp-tile-v { font-size: 22px; }
+  .opp-settings { padding: 12px 14px 14px; }
+  .opp-card-head { padding: 12px 14px 8px; }
+  /* Goods in this lot: each line is a card (picture and name; Ordered, Sent,
+     This lot, Left; Items, Packing, Fabric, Total), nothing scrolls sideways. */
+  .opp-card .opp-scroll { overflow: visible; }
+  .opp-grid { display: block; min-width: 0; table-layout: auto; }
+  .opp-grid colgroup, .opp-grid thead { display: none; }
+  .opp-grid tbody, .opp-grid tfoot { display: block; }
+  .opp-grid tr {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    padding: 12px 14px; border-top: 1px solid var(--boe-border);
+  }
+  .opp-grid tbody tr { grid-template-areas: "pic code code code" "pic name name name" "ord sent lot left" "items pack fab total"; }
+  .opp-grid tfoot tr { grid-template-areas: "foot foot foot foot" "ord sent lot left" "items pack fab total"; }
+  .opp-grid th, .opp-grid td {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    padding: 0; border: 0; text-align: left; font-size: 13px; min-width: 0;
+  }
+  .opp-grid td[data-label]::before { content: attr(data-label); font-size: 11px; font-weight: 500; color: var(--boe-text-muted); }
+  .opp-grid tbody td:nth-child(1) { grid-area: pic; }
+  .opp-grid tbody td:nth-child(2) { grid-area: code; flex-direction: row; gap: 4px; align-items: baseline; }
+  .opp-grid tbody td:nth-child(3) { grid-area: name; }
+  .opp-grid tbody td:nth-child(4), .opp-grid tfoot td:nth-child(2) { grid-area: ord; }
+  .opp-grid tbody td:nth-child(5), .opp-grid tfoot td:nth-child(3) { grid-area: sent; }
+  .opp-grid tbody td:nth-child(6), .opp-grid tfoot td:nth-child(4) { grid-area: lot; }
+  .opp-grid tbody td:nth-child(7), .opp-grid tfoot td:nth-child(5) { grid-area: left; }
+  .opp-grid tbody td:nth-child(8), .opp-grid tfoot td:nth-child(6) { grid-area: items; }
+  .opp-grid tbody td:nth-child(9), .opp-grid tfoot td:nth-child(7) { grid-area: pack; }
+  .opp-grid tbody td:nth-child(10), .opp-grid tfoot td:nth-child(8) { grid-area: fab; }
+  .opp-grid tbody td:nth-child(11), .opp-grid tfoot td:nth-child(9) { grid-area: total; }
+  .opp-grid tfoot td:nth-child(1) { grid-area: foot; }
+  .opp-grid .opp-gs { border-left: 0; }
+  .opp-grid td.opp-lot { padding: 4px 6px; margin: -4px -6px; border-radius: 8px; }
+  .opp-grid .opp-qty { max-width: none; min-height: 44px; font-size: 16px; text-align: left; }
+  .opp-grid .opp-thumb { width: 52px; height: 52px; }
+  .opp-grid .opp-name { font-size: 14px; }
+  .opp-grid tfoot td { background: none; }
+  .opp-grid tfoot tr { background: var(--boe-surface-quiet); }
+  /* How the amount is worked out: five narrow columns that fit the screen. */
+  .opp-fold > summary { min-height: 44px; padding: 12px 14px; }
+  .opp-fold-body { padding: 0 12px 14px; }
+  .opp-calc th, .opp-calc td { padding: 7px 5px; font-size: 12px; }
+  .opp-calc .l { width: 32%; }
+
+  /* ── The Confirmed Order: the back arrow folds beside the order number ── */
+  .order-detail-page { position: relative; gap: 12px; }
+  .order-detail-page > .order-back {
+    position: absolute; top: 0; left: -6px; z-index: 1;
+    width: 44px; height: 44px; margin: 0; padding: 0; justify-content: center;
+    font-size: 0; color: #4C5352; border-radius: 10px;
+  }
+  .order-detail-page > .order-back svg { width: 20px; height: 20px; }
+  .order-detail-page .order-command-identity { padding-left: 40px; min-height: 44px; align-items: center; }
+  .order-detail-page .order-command-heading { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .order-detail-page .order-command-eyebrow { display: none; }
+  .order-detail-page .order-command-number { font-size: 24px; line-height: 1.15; }
+  .order-detail-page .order-command-client { margin: 0; padding: 0; border: 0; font-size: 14px; line-height: 1.3; }
+  .order-detail-page .order-command-header { gap: 10px; }
+
+  /* ── A PI draft: the back link and the notices above the record as one tight strip ── */
+  .pi-detail-stack { gap: 10px; }
+  .pi-detail-stack > .order-back { min-height: 44px; margin: -10px 0 -8px; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] {
+    display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+    gap: 4px 10px !important; padding: 10px 12px !important;
+  }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div { display: contents; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div > div:first-child { grid-column: 2; grid-row: 1; font-size: 13.5px !important; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div > div:last-child { grid-column: 1 / -1; grid-row: 2; margin-top: 0 !important; font-size: 12px !important; line-height: 1.4 !important; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > .boe-btn { grid-column: 3; grid-row: 1; min-height: 40px; padding: 0 12px; }
+  .pi-detail-stack > .pi-refresh-failed { flex-wrap: nowrap; padding: 6px 6px 6px 12px; line-height: 1.35; }
+  .pi-detail-stack > .pi-refresh-failed .boe-btn { flex: none; }
+
+  /* ── Customize image learning: 44px tabs, 40px filter pills ── */
+  .cil-tabs { overflow-x: auto; scrollbar-width: none; }
+  .cil-tab { flex: 1 0 auto; min-height: 44px; padding: 0 12px; font-size: 14px; }
+  .cil-filters { gap: 8px; }
+  .cil-filters .pi-regen-chip { min-height: 40px; padding: 0 14px; font-size: 13px; }
+}
