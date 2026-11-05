@@ -32,6 +32,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { Upload } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -381,7 +382,15 @@ export function BankStatementsView() {
       subtitle="Every credit that reaches the bank, matched to a verified payment"
       onSignOut={handleSignOut}
       onRefresh={async () => { await loadRange(); await loadMonth() }}
-      actions={<button className="boe-btn boe-btn-primary" onClick={() => setUploading(true)}>Upload statement</button>}
+      actions={
+        <>
+          <button className="boe-btn boe-btn-primary boe-desktop-only" onClick={() => setUploading(true)}>Upload statement</button>
+          {/* On a phone the header keeps one row: the same action as an icon. */}
+          <button type="button" className="boe-phone-only boe-header-icon boe-header-icon--add" aria-label="Upload statement" title="Upload statement" onClick={() => setUploading(true)}>
+            <Upload size={18} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        </>
+      }
     >
       <BankSyncCheck overview={overview} account={accountFilter} onOpen={openProblem} />
 
@@ -501,7 +510,8 @@ export function BankStatementsView() {
                 body={tab === 'payments' ? 'Payments recorded for this month that no bank line is linked to would appear here.' : 'Try another filter or month.'}
               />
             ) : (
-              <div className="fin-table-wrap">
+              // ON A PHONE each row is a three-line card (.fph-list, globals.css).
+              <div className="fin-table-wrap fph-list">
                 {tab === 'in' && (
                   <table className="fin-table bank-table">
                     <thead><tr>
@@ -518,17 +528,17 @@ export function BankStatementsView() {
                       {shownIn.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0}
                           onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
-                          <td>{formatBankDate(a.line.line_date)}</td>
-                          <td className="fin-muted">{bankLineId(a.line.statement_no)}</td>
-                          <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
-                          <td>
+                          <td className="fph-l2">{formatBankDate(a.line.line_date)}</td>
+                          <td className="fin-muted fph-l2">{bankLineId(a.line.statement_no)}</td>
+                          <td className="fph-l2 fph-grow">{BANK_ACCOUNT_LABEL[a.line.account]}</td>
+                          <td className="fph-title">
                             <span className="fin-primary-text">{payerFromNarration(a.line.narration) ?? a.line.narration}</span>
-                            <span className="fin-sub">{a.line.narration}</span>
+                            <span className="fin-sub fph-hide">{a.line.narration}</span>
                           </td>
-                          <td className="fin-num"><span className="fin-amount">{formatMoney(a.line.deposit)}</span></td>
-                          <td><span className={`fin-pill fin-pill--${SYNC_PILL[syncState(a)].tone}`}>{SYNC_PILL[syncState(a)].label}</span></td>
-                          <td><LinkedCell a={a} payments={payments} /></td>
-                          <td onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                          <td className="fin-num fph-end1"><span className="fin-amount">{formatMoney(a.line.deposit)}</span></td>
+                          <td className="fph-end2"><span className={`fin-pill fin-pill--${SYNC_PILL[syncState(a)].tone}`}>{SYNC_PILL[syncState(a)].label}</span></td>
+                          <td className="fph-l3 fph-grow"><LinkedCell a={a} payments={payments} /></td>
+                          <td className="fph-end3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
                             <RowButton a={a} canRecord={caps.canCreatePaymentRecord} onReview={() => setOpened(a.line.id)} />
                           </td>
                         </tr>
@@ -551,16 +561,16 @@ export function BankStatementsView() {
                     <tbody>
                       {shownOut.slice(pageStart, pageStart + PAGE_SIZE).map(a => (
                         <tr key={a.line.id} onClick={() => setOpened(a.line.id)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setOpened(a.line.id) }}>
-                          <td>{formatBankDate(a.line.line_date)}</td>
-                          <td className="fin-muted">{bankLineId(a.line.statement_no)}</td>
-                          <td>{BANK_ACCOUNT_LABEL[a.line.account]}</td>
-                          <td>
+                          <td className="fph-l2">{formatBankDate(a.line.line_date)}</td>
+                          <td className="fin-muted fph-l2">{bankLineId(a.line.statement_no)}</td>
+                          <td className="fph-l2 fph-grow">{BANK_ACCOUNT_LABEL[a.line.account]}</td>
+                          <td className="fph-title">
                             <span className="fin-primary-text">{a.line.debit_payee ?? payeeFromDebitNarration(a.line.narration) ?? a.line.narration}</span>
-                            <span className="fin-sub">{a.line.narration}</span>
+                            <span className="fin-sub fph-hide">{a.line.narration}</span>
                           </td>
-                          <td className="fin-num"><span className="fin-amount">{formatMoney(a.line.withdrawal)}</span></td>
-                          <td><span className={`fin-pill fin-pill--${STATUS_TONE[a.status]}`}>{statusLabelFor(a.line, a.status)}</span></td>
-                          <td><DebitCell a={a} expenses={expenses} /></td>
+                          <td className="fin-num fph-end1"><span className="fin-amount">{formatMoney(a.line.withdrawal)}</span></td>
+                          <td className="fph-end2"><span className={`fin-pill fin-pill--${STATUS_TONE[a.status]}`}>{statusLabelFor(a.line, a.status)}</span></td>
+                          <td className="fph-l3 fph-grow"><DebitCell a={a} expenses={expenses} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -583,9 +593,9 @@ export function BankStatementsView() {
                         const twin = lookAlikeCredit(p, analysed, payments)
                         return (
                           <tr key={p.id}>
-                            <td>{formatBankDate(p.payment_date)}</td>
-                            <td>{BANK_ACCOUNT_LABEL[p.payment_mode as BankAccountKey]}</td>
-                            <td>
+                            <td className="fph-l2">{formatBankDate(p.payment_date)}</td>
+                            <td className="fph-l2 fph-grow">{BANK_ACCOUNT_LABEL[p.payment_mode as BankAccountKey]}</td>
+                            <td className="fph-title">
                               <span className="fin-primary-text">{p.client_name ?? 'Suspense payment'}</span>
                               {twin && (
                                 <span className="fin-sub" style={{ color: '#A12438', whiteSpace: 'normal' }}>
@@ -593,10 +603,10 @@ export function BankStatementsView() {
                                 </span>
                               )}
                             </td>
-                            <td className="fin-muted">{p.human_payment_id}</td>
-                            <td className="fin-num"><span className="fin-amount">{formatMoney(p.remaining)}</span></td>
-                            <td className="fin-muted">{p.status === 'pending_approval' ? 'Waiting for Finance' : p.status === 'needs_clarification' ? 'Needs Clarification' : 'Verified'}</td>
-                            <td>
+                            <td className="fin-muted fph-l2">{p.human_payment_id}</td>
+                            <td className="fin-num fph-end1"><span className="fin-amount">{formatMoney(p.remaining)}</span></td>
+                            <td className="fin-muted fph-end2">{p.status === 'pending_approval' ? 'Waiting for Finance' : p.status === 'needs_clarification' ? 'Needs Clarification' : 'Verified'}</td>
+                            <td className="fph-end3">
                               {twin
                                 ? <button className="boe-btn boe-btn-ghost" onClick={() => setOpened(twin.line.id)}>Review</button>
                                 : <Link className="boe-btn boe-btn-ghost" href={paymentHref(p.id, p.status)}>Open</Link>}

@@ -48,6 +48,10 @@ export function BankSyncCheck({ overview, account, onOpen }: {
                   <span className={notInBank > 0 ? 'bank-sync-bad' : 'bank-sync-good'}>
                     {notInBank > 0 ? `${plural(notInBank, 'payment', 'payments')} not in the bank` : '✓ Every payment found in the bank'}
                   </span>
+                  {/* ON A PHONE the two cards sit side by side, each one short line. */}
+                  <span className={`bank-sync-short ${notSynced > 0 || notInBank > 0 ? 'bank-sync-bad' : 'bank-sync-good'}`}>
+                    {notSynced > 0 || notInBank > 0 ? `${notSynced} unmatched · ${notInBank} not in bank` : '✓ All matched'}
+                  </span>
                 </>
               )}
             </button>

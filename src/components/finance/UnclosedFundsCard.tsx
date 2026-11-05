@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { Landmark } from 'lucide-react'
+import { ChevronDown, Landmark } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
 import { HandoverModal } from '@/components/finance/HandoverModal'
@@ -26,9 +26,20 @@ export function UnclosedFundsCard() {
   const q = useUnclosedFunds(true)
   const pathname = usePathname()
   const [handOverOpen, setHandOverOpen] = useState(false)
+  // ON A PHONE (owner, 2026-11-05) the card is one line, the amount; the rest
+  // opens under it with the chevron. A desktop always shows everything.
+  const [phoneOpen, setPhoneOpen] = useState(false)
   const data = q.data
   // The Cash journeys page IS this list; repeating it above itself is noise.
   if (!data || data.scope === 'none' || pathname === CASH_JOURNEYS_PATH) return null
+
+  const sectionClass = `boe-unclosed${phoneOpen ? ' is-open' : ''}`
+  const phoneToggle = (
+    <button type="button" className="boe-phone-only boe-unclosed-toggle" aria-expanded={phoneOpen}
+      aria-label={phoneOpen ? 'Show less' : 'Show the details'} onClick={() => setPhoneOpen(v => !v)}>
+      <ChevronDown size={18} strokeWidth={2} aria-hidden="true" />
+    </button>
+  )
 
   // One quiet line, not a block: the page the link opens has the detail.
   const card: React.CSSProperties = {
@@ -41,12 +52,13 @@ export function UnclosedFundsCard() {
     const total = sumAmounts(data.payments)
     const holders = totalsByHolder(data.payments)
     return (
-      <section style={card} aria-label="Money not yet with the company">
+      <section style={card} className={sectionClass} aria-label="Money not yet with the company">
         <Landmark size={16} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
+        <h2 className="boe-unclosed-title" style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatINR(total)}</span> not yet with the company
         </h2>
-        <span>
+        {phoneToggle}
+        <span className="boe-unclosed-more">
           {data.payments.length} {data.payments.length === 1 ? 'payment' : 'payments'} with {holders.length} {holders.length === 1 ? 'person' : 'people'}
           {holders.slice(0, 3).map(h => (
             <span key={h.holderId}>
@@ -59,7 +71,7 @@ export function UnclosedFundsCard() {
           ))}
           {holders.length > 3 ? ` · +${holders.length - 3} more` : ''}
         </span>
-        <Link href={CASH_JOURNEYS_PATH} style={{ marginLeft: 'auto', fontWeight: 600, color: '#963B27' }}>See every payment →</Link>
+        <Link href={CASH_JOURNEYS_PATH} className="boe-unclosed-more" style={{ marginLeft: 'auto', fontWeight: 600, color: '#963B27' }}>See every payment →</Link>
       </section>
     )
   }
@@ -71,21 +83,22 @@ export function UnclosedFundsCard() {
   const total = sumAmounts(holding)
   const oldest = Math.max(...holding.map(p => p.ageHours))
   return (
-    <section style={card} aria-label="Money you are holding">
+    <section style={card} className={sectionClass} aria-label="Money you are holding">
       <div style={{ display: 'contents' }}>
         <Landmark size={16} strokeWidth={1.8} aria-hidden="true" color="#6A3208" />
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
+        <h2 className="boe-unclosed-title" style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#303536' }}>
           You are holding {formatINR(total)} that has not reached the company
         </h2>
       </div>
-      <div style={{ color: AGE_COLOUR(oldest) }}>
+      <div className="boe-unclosed-more" style={{ color: AGE_COLOUR(oldest) }}>
         {holding.length} {holding.length === 1 ? 'payment' : 'payments'} · oldest {waitingAge(oldest)}.
         {data.custodians.length > 0 ? ` Hand it to ${data.custodians.map(c => c.fullName).join(' or ')}, or to a senior.` : ''}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
+      <div className="boe-unclosed-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
         <button type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 32, padding: '4px 12px' }} onClick={() => setHandOverOpen(true)}>Hand over</button>
-        <Link href={CASH_JOURNEYS_PATH} className="boe-btn boe-btn-secondary" style={{ textDecoration: 'none', minHeight: 32, padding: '4px 12px' }}>See the payments</Link>
+        <Link href={CASH_JOURNEYS_PATH} className="boe-btn boe-btn-secondary boe-unclosed-more" style={{ textDecoration: 'none', minHeight: 32, padding: '4px 12px' }}>See the payments</Link>
       </div>
+      {phoneToggle}
       {handOverOpen && <HandoverModal onClose={() => setHandOverOpen(false)} />}
     </section>
   )

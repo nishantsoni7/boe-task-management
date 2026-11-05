@@ -222,7 +222,8 @@ describe('3. Amount reads right, header and value together', () => {
   test('3b. and so is the value cell', () => {
     const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
     const td = [...body.matchAll(/<td[^>]*>/g)][1][0]
-    assert.match(td, /class="fin-num"/, 'Amount cell carries the right-aligned numeric class')
+    // fin-num, plus the phone card slot (fph-end1) since the phone redesign.
+    assert.match(td, /class="fin-num\b/, 'Amount cell carries the right-aligned numeric class')
   })
 
   test('3c. Amount and Action are the only right-aligned headers', () => {
