@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-05 — Backups: only one backup-all at a time (lock file) · no SQL
+- **Why.** On 2026-11-05 a hand run and a second `backup-all` (older tools) overlapped; the second failed on 6 tables but finished 1 s later and overwrote `status/database.json` with ok:false, so `verify-backups` said FAIL right after a good backup.
+- **Changed (`scripts/backup`, no app code).** New `lock.mjs`; `backup-all.mjs` takes `status/backup-all.lock` first and releases it on any exit. A live holder makes the second run exit 2 with who and since when, touching nothing. A dead or over-6-hours-old holder is replaced. New `lock.test.mjs` (stale, live, released after success / throw / exit 1, status files byte-identical when refused). Quick hook runs deliberately not locked (details in `03_BACKUP_AND_RECOVERY.md`).
+- **Database.** None. Rollback: revert the PR. **Apply step:** run `node scripts/backup/install-backup-system.mjs` from the main checkout after the merge (owner's yes first).
+
 ## 2026-11-05 — Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (PR #621) · no SQL
 - **Owner request.** Make `backup-all.mjs` end `{"code":true,"database":true}` every time, and find why the 9:30 pm task had no complete backup for 2 days. Three faults came from the hand run of 2026-11-05.
 - **Why the nightly "failed".** The task ran; its database step did not. 3 Nov 21:30: `order_submission_fabric_finish_lines: terminated`. 4 Nov 21:30: laptop off, Task Scheduler's catch-up ran at 09:06 on 5 Nov: `sales_lead_activities: terminated`. A run that does not finish cleanly writes no `covered.json`, so the "no complete backup" reminder kept firing. Task Scheduler said 0 every time because the `.cmd` returned the reminder pop-up's exit code. The 2 Nov run never finished (no end line in the log, cause not recorded). Sleep was ruled out: no standby event inside any failing window.

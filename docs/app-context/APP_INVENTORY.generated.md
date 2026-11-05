@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `44ea2a70` — Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied
+- Commit: `5e948814` — Backups: only one backup-all at a time, via status/backup-all.lock (no SQL)
 - Commits on this branch: 1185
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 419 (first `20260530_create_positions.sql`, latest `20270603000000_finance_payment_admin_notes.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
-- Test files: 759   Next.js 16.2.6, React 19.2.4
+- Test files: 760   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `44ea2a70` 2026-11-05 Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied
+- `5e948814` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL)
 - `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
 - `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)

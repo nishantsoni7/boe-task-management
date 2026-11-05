@@ -8,6 +8,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BACKUP_ROOT, assertNotDesktop, ensureDir, log, readStatus, writeStatus } from './lib.mjs'
+import { holdLockUntilExit } from './lock.mjs'
+
+// Only one backup-all at a time (status/backup-all.lock). A refused run touches no status file. Quick git-hook runs are not locked.
+const lock = holdLockUntilExit(path.join(BACKUP_ROOT, 'status', 'backup-all.lock'))
+if (!lock.ok) {
+  console.error(`backup-all is already running (process ${lock.holder?.pid}, since ${lock.holder?.startedAt}). Not starting a second one; wait for it to finish.`)
+  process.exit(2)
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
