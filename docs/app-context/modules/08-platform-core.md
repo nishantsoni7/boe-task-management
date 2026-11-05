@@ -264,7 +264,7 @@ View As (`src/lib/viewAs.ts`, `src/contexts/ViewAsContext.tsx`, `src/hooks/queri
   (`src/components/layout/LoginAsMemberWidget.tsx`, rules in `src/lib/impersonation.ts`) performs a REAL session swap via
   `/api/impersonation/{members,start,end}` and audits to `admin_impersonation_sessions`. The sidebar Switch User dropdown
   is gone. See CHANGELOG 2026-10-23 for traps (no signOut during swap; stash before verifyOtp; single-use refresh tokens).
-  ON A PHONE (owner, 2026-11-04, PR #610): below 768px the round button is a slim tab (24px) flush with the right edge,
+  ON A PHONE (owner, 2026-11-04, PR #610 squash-merged as d3c61d98, deployed): below 768px the round button is a slim tab (24px) flush with the right edge,
   because it covered search boxes and rows (Confirmed Orders). Position and trigger shape are CSS (`.boe-viewas`,
   `.boe-viewas-trigger` in globals.css), not inline styles, so the phone rule can win. While acting as a member the
   "Acting as" pill and the return button keep their full size on purpose (`.is-acting`). Pinned in `impersonation.test.ts`.

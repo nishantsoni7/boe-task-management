@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-04 — Orders: Confirmed Orders on a phone, compact list; the Login as member button is an edge tab on phones (PR #610) · no SQL
+## 2026-11-04 — Orders: Confirmed Orders on a phone, compact list; the Login as member button is an edge tab on phones (PR #610 squash-merged as d3c61d98, 2026-11-04, deployed) · no SQL
 - **Owner request.** "Redesign this page in mobile... only important details and use the space to the fullest." Two mockups; the owner chose Option A (compact list) with the suggested defaults.
 - **Changed (below 768px only).** One-line header with "Running · 13 orders"; the six status cards become one sideways row of chips (Running first, All orders last); the four filter chips become one Filter button with a count and a bottom sheet (Sales person, Order date, Source, Sort); a summary line with the count and value; each Order is three lines (code and value; client and advance; factory status, due or overdue, pendencies, update) and the whole card opens it. Desktop unchanged. `OrdersLayout` gains an optional `phoneSubtitle`, used only here.
 - **Also (platform, every page).** The admin-only Login as member button covered the search box. On a phone it is now a slim tab against the right edge; a tap opens the same list. Desktop and the "Acting as" pill are unchanged.
