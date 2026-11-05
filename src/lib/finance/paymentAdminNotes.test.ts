@@ -118,9 +118,10 @@ describe('the hover preview', () => {
 })
 
 describe('the migration', () => {
-  test('is the latest one, and adds one table and two doors', () => {
+  test('is in the folder, and adds one table and two doors', () => {
     const names = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(names[names.length - 1], '20270603000000_finance_payment_admin_notes.sql')
+    // Not "is the last file": any later migration would break that without touching this one.
+    assert.ok(names.includes('20270603000000_finance_payment_admin_notes.sql'))
     assert.equal((MIGRATION.match(/^create table /gm) ?? []).length, 1)
     assert.match(MIGRATION, /create or replace function public\.get_payment_admin_notes\(/)
     assert.match(MIGRATION, /create or replace function public\.set_payment_admin_note\(/)
