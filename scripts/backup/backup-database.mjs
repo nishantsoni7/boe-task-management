@@ -9,9 +9,9 @@
 //   BOE_ENV_FILE=<path> overrides the .env.local location
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import zlib from 'node:zlib'
-import { BACKUP_ROOT, MAIN_REPO, countCopyRows, encryptFile, ensureDir, loadEnvFile, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, MAIN_REPO, countCopyRows, encryptFile, ensureDir, loadEnvFile, log, prune, readWithShrink, sha256File, stamp, waitForDocker, writeStatus } from './lib.mjs'
 
 const noStorage = process.argv.includes('--no-storage')
 const plain = process.argv.includes('--plain')
@@ -62,18 +62,29 @@ function save(name, buf) {
   if (!plain) { encryptFile(gz, gz + '.enc'); fs.rmSync(gz) }
   return sha
 }
+// A big table is 15 to 160 pages and a page can be cut off on the way ("terminated"; seen on notifications, sales_leads, sales_lead_activities and
+// others, a different one each night). So one page is read again, smaller, rather than losing the whole table. The body is read INSIDE the retry:
+// the old code retried only fetch(), and res.json() came after it, outside any retry.
+const PAGE_SIZES = [1000, 1000, 250, 250, 100, 100]
+const PAGE_TIMEOUT_MS = 120000
+const retried = {}
+// A refusal (HTTP 4xx, e.g. the 403/42501 of a table the service role may not read) will not change on a retry; 429 will.
+const transient = (e) => !/^HTTP 4(?!29)\d\d/.test(e.message)
 for (const t of tables) {
   try {
     const pk = pkOf(t); const order = pk.length ? `&order=${pk.map((c) => c + '.asc').join(',')}` : ''
-    const PAGE = 1000; let from = 0; let total = null; const lines = []
+    let from = 0; let total = null; let start = 0; const lines = []
     for (;;) {
-      const res = await api(`${base}/rest/v1/${encodeURIComponent(t)}?select=*${order}`, { headers: { Range: `${from}-${from + PAGE - 1}`, 'Range-Unit': 'items', Prefer: 'count=exact' } })
-      if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`)
-      const rows = await res.json()
-      total = Number((res.headers.get('content-range') || '').split('/')[1])
-      for (const r of rows) lines.push(JSON.stringify(r))
-      if (rows.length < PAGE) break
-      from += PAGE
+      const { size, value } = await readWithShrink(PAGE_SIZES.slice(start), async (size) => {
+        const res = await api(`${base}/rest/v1/${encodeURIComponent(t)}?select=*${order}`, { signal: AbortSignal.timeout(PAGE_TIMEOUT_MS), headers: { Range: `${from}-${from + size - 1}`, 'Range-Unit': 'items', Prefer: 'count=exact' } }, 1)
+        if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`)
+        return { rows: await res.json(), total: Number((res.headers.get('content-range') || '').split('/')[1]) }
+      }, { isTransient: transient, baseWaitMs: Number(process.env.BACKUP_RETRY_WAIT_MS || 5000), onRetry: (r) => { retried[t] = (retried[t] ?? 0) + 1; log(`RETRY ${t} from row ${from}: try ${r.attempt}/${r.of} at ${r.size} rows failed (${r.reason}); next try ${r.next} rows`) } })
+      start += PAGE_SIZES.slice(start).indexOf(size) // a size that had to be used stays the starting size for the rest of this table
+      for (const r of value.rows) lines.push(JSON.stringify(r))
+      total = value.total
+      if (value.rows.length < size) break
+      from += value.rows.length
     }
     const sha = save(t, Buffer.from(lines.join('\n') + (lines.length ? '\n' : '')))
     manifest.tables[t] = { rows: lines.length, reportedCount: Number.isFinite(total) ? total : null, sha256OfGz: sha, hasPk: pk.length > 0 }
@@ -84,6 +95,13 @@ for (const t of tables) {
     else { manifest.errors.push(`${t}: ${e.message}`); manifest.tables[t] = { error: e.message } }
   }
 }
+
+if (Object.keys(retried).length) {
+  manifest.retried = retried
+  log(`pages read again after a dropped connection: ${Object.entries(retried).map(([t, n]) => `${t} x${n}`).join(', ')}`)
+}
+const notExported = Object.entries(manifest.tables).filter(([, t]) => t.error).map(([n]) => n)
+if (notExported.length) log(`!!! TABLES NOT EXPORTED (${notExported.length}): ${notExported.join(', ')} - this database backup is INCOMPLETE, run it again`)
 
 // 2b ── tables the service role is deliberately denied: direct pg_dump ───────────
 // Needs BACKUP_DATABASE_URL (Supabase session-pooler URI) in the env file and Docker running.
@@ -96,6 +114,15 @@ for (const t of tables) {
 // finance_payment_allocation_intents), so they are rebuilt from those, not dumped. A view fed to pg_dump -t
 // has no CREATE TABLE, which would make the whole step look failed. Checked against production 2026-10-28.
 const VIEWS = new Set(['finance_received_payments', 'finance_payment_destinations'])
+// Docker Desktop is in the sign-in list but is not always running at 21:30, and the catch-up run after a sign-in can beat its start-up.
+const dockerIsUp = () => spawnSync('docker', ['info'], { stdio: 'ignore', timeout: 30000 }).status === 0
+function startDockerDesktop() {
+  const exe = [env.BACKUP_DOCKER_EXE, path.join(process.env.LOCALAPPDATA || '', 'Programs', 'DockerDesktop', 'Docker Desktop.exe'), path.join(process.env.ProgramFiles || '', 'Docker', 'Docker', 'Docker Desktop.exe')].find((p) => p && fs.existsSync(p))
+  if (!exe) { log('Docker Desktop was not found (set BACKUP_DOCKER_EXE in the env file to its path)'); return false }
+  log(`Docker is not running: starting ${exe} and waiting for it`)
+  spawn(exe, [], { detached: true, stdio: 'ignore' }).unref()
+  return true
+}
 // The views are not "uncovered": their data lives in the exported tables above. Say so instead of crying wolf.
 const viewsHere = (manifest.unreadable ?? []).filter((t) => VIEWS.has(t))
 if (viewsHere.length) {
@@ -107,7 +134,10 @@ const toDump = (manifest.unreadable ?? []).filter((t) => !VIEWS.has(t))
 if (toDump.length) {
   const dbUrl = env.BACKUP_DATABASE_URL
   if (!dbUrl) log(`pg_dump skipped: BACKUP_DATABASE_URL is not set in ${envFile}`)
-  else {
+  else if (!(await waitForDocker({ isUp: dockerIsUp, start: startDockerDesktop, timeoutMs: Number(env.BACKUP_DOCKER_WAIT_SECONDS || 240) * 1000 }))) {
+    manifest.pgDump = { skipped: 'Docker Desktop is not running and could not be started' }
+    log(`!!! pg_dump SKIPPED: Docker Desktop is not running and did not start in time. ${toDump.join(', ')} are NOT in this backup (Supabase's own daily backup still holds them). Start Docker Desktop and run backup-all again.`)
+  } else {
     const image = env.BACKUP_PG_IMAGE || 'postgres:17'
     const args = ['run', '--rm', '-e', 'BACKUP_DATABASE_URL', '--entrypoint', 'sh', image, '-c',
       `pg_dump --no-owner --no-privileges ${toDump.map((t) => `-t public.${t}`).join(' ')} "$BACKUP_DATABASE_URL"`]
