@@ -1224,6 +1224,8 @@ describe('the applied migrations are frozen', () => {
       '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
+      // Finance, a private note on a payment that only an admin can see: one table, two functions.
+      '20270603000000_finance_payment_admin_notes.sql',
       // Payroll, a payslip can hold half a paid leave: two columns become numeric(3,1).
       '20270604000000_payroll_results_half_paid_leave.sql',
     ])
@@ -1701,6 +1703,8 @@ describe('the applied migrations are frozen', () => {
       '20270601000000_sales_board_page.sql',
       // Sales, website leads allotted by themselves: levels, Premium, presence and daily limits.
       '20270602000000_sales_auto_allot.sql',
+      // Finance, a private note on a payment that only an admin can see: one table, two functions.
+      '20270603000000_finance_payment_admin_notes.sql',
       // Payroll, a payslip can hold half a paid leave: two columns become numeric(3,1).
       '20270604000000_payroll_results_half_paid_leave.sql',
     ])

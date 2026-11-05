@@ -11227,6 +11227,11 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 /* Review PI: the one row action that is a decision, drawn in the review blue. */
 .boe-row-icon--review { color: #335A86; border-color: rgba(51,90,134,0.35); }
 .boe-row-icon--review:hover, .boe-row-icon--review:focus-visible { background: #EAF0F8; color: #335A86; border-color: #335A86; }
+
+/* The admin's private note on a payment request: grey while there is none, amber once it holds one. */
+.boe-row-icon--note:disabled { opacity: 0.45; cursor: default; }
+.boe-row-icon--note-has { color: #805B0D; background: #FAF0DA; border-color: rgba(196,138,26,0.45); }
+.boe-row-icon--note-has:hover, .boe-row-icon--note-has:focus-visible { background: #F6E4B8; color: #6B4A08; border-color: #C48A1A; }
 .fin-chip-panel select { height: 32px; }
 .fin-table .order-update-badge { font-size: 11px; letter-spacing: 0.02em; padding: 1px 7px; }
 
