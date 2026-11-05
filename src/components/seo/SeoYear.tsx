@@ -1,5 +1,6 @@
 'use client'
 
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { dayLabel, formatCount, halfOnHalf, months, pageGroups, workCounts, workLog, type SeoData } from '@/lib/seo/report'
 import { MonthBars } from './MonthBars'
 import { SeoScreen } from './SeoScreen'
@@ -38,7 +39,7 @@ export function YearBody({ data }: { data: SeoData }) {
       {groups.length > 0 && (
         <section className={s.tight}>
           <h2 className={s.heading}>Where the clicks go</h2>
-          <div className={`boe-table-wrap ${s.tableScroll}`}>
+          <PhoneTableCards className={`boe-table-wrap ${s.tableScroll}`}>
             <table className="boe-table">
               <thead><tr><th>Pages</th><th className="num">Last 6 months</th><th className="num">6 months before</th><th className="num">Change</th></tr></thead>
               <tbody>
@@ -52,7 +53,7 @@ export function YearBody({ data }: { data: SeoData }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </PhoneTableCards>
         </section>
       )}
 

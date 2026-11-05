@@ -5,15 +5,29 @@
 
 ## Snapshot
 
-- Commit: `7d62a7b` — Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
-- Commits on this branch: 60
+- Commit: `f38d5d8` — Merge Phase 3 work: Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
+- Commits on this branch: 74
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
-- Test files: 749   Next.js 16.2.6, React 19.2.4
+- Test files: 754   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f38d5d8` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
+- `640a028` 2026-11-05 Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
+- `cc703f1` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Sales, Leads, Vendors, Showroom, Reviews, SEO, Marketing (no SQL)
+- `8c220d1` 2026-11-05 Phones, content first (Phase 3): Sales, Leads, Vendors, Showroom, Reviews, SEO, Marketing (no SQL)
+- `97d70d8` 2026-11-05 Phones: four shared fixes the Phase 3 work turned up
+- `aaf0b99` 2026-11-05 Merge Phase 3 work: Attendance & Payroll on phones: content first (Phase 3, no SQL)
+- `db5df1f` 2026-11-05 Merge Phase 3 work: Orders on a phone, content first (Phase 3): list or record on the first screen
+- `b491fde` 2026-11-05 Merge Phase 3 work: Finance on a phone: lists start on the first screen (Phase 3)
+- `c181879` 2026-11-05 Attendance & Payroll on phones: content first (Phase 3, no SQL)
+- `6c6bc29` 2026-11-05 Orders on a phone, content first (Phase 3): list or record on the first screen
+- `099b048` 2026-11-05 Finance on a phone: lists start on the first screen (Phase 3)
+- `8444ff7` 2026-11-05 Merge the merged #612 branch history (already in main) so later pushes fast-forward
+- `cf3591b` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
+- `6b4ee18` 2026-11-05 Phones, Phase 2: fix the pages that were broken on a phone
 - `7d62a7b` 2026-11-05 Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
 - `6ef831a` 2026-11-05 Merge the merged #611 branch history (already in main) so this push is a fast-forward
 - `5df4002` 2026-11-05 Tools: add the UI/UX Pro Max design skill for cloud sessions
@@ -25,20 +39,6 @@
 - `2e2769e` 2026-11-04 Login as member: a slim edge tab on phones, so it no longer covers the page
 - `9a92f18` 2026-11-04 Confirmed Orders: a compact list on a phone (Option A, no SQL)
 - `25d06f7` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
-- `bed5492` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
-- `88afd4f` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
-- `a574e82` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
-- `3d4606b` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
-- `b909e1f` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
-- `6db10cc` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
-- `a38b5a5` 2026-11-03 Sales: Can be given leads, a tick per person (migration 20270529000000, apply first) (#603)
-- `3f14580` 2026-11-03 Docs: the scan-first Record dispatch screen merged (#600); the spacing change (#597) stamped (#601)
-- `e980e2d` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
-- `c0edc50` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
-- `5b37b88` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
-- `10abb87` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
-- `594daf9` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
-- `972413c` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
 
 ## Pages by top-level area
 

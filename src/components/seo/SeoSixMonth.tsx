@@ -5,6 +5,8 @@ import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import type { SeoFinding, SeoMover, SeoTag, SeoTone, SixMonthReview } from '@/lib/seo/sixMonth'
 import { SeoScreen } from './SeoScreen'
+import { VerdictPanel } from './seoParts'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import s from './sixMonth.module.css'
 
 const BADGE: Record<SeoTone, string> = {
@@ -91,7 +93,7 @@ function Timeline({ data }: { data: SixMonthReview['timeline'] }) {
       </div>
       <details className={s.figures}>
         <summary>See the monthly figures</summary>
-        <div className={s.tableWrap}><Table head={data.table.head} rows={data.table.rows} /></div>
+        <PhoneTableCards className={s.tableWrap}><Table head={data.table.head} rows={data.table.rows} /></PhoneTableCards>
       </details>
     </section>
   )
@@ -146,25 +148,14 @@ export function ReviewBody({ review }: { review: SixMonthReview }) {
 
   return (
     <div className={s.page}>
-      <section className={`boe-panel ${s.hero}`} aria-label="Verdict">
-        <div className={s.heroMain}>
-          <div className={s.kicker}>{review.period} in one line</div>
-          <h1 className={s.verdict}>{verdict.title}</h1>
-          <p className={s.verdictText}>{verdict.text}</p>
-          <div className={s.lenses}>
-            {verdict.lenses.map(lens => <span key={lens.label} className={s.lens}>{lens.label} <Tag tag={lens.tag} /></span>)}
-          </div>
-        </div>
-        <div className={s.heroSide}>
-          <div className={s.sideTitle}>{headline.title}</div>
-          {headline.items.map(item => (
-            <div key={item.label} className={s.headline}>
-              <span>{item.label}<small>{item.note}</small></span>
-              <b className={item.tone ? TEXT[item.tone] : undefined}>{item.value}</b>
-            </div>
-          ))}
-        </div>
-      </section>
+      <VerdictPanel
+        kicker={`${review.period} in one line`}
+        title={verdict.title}
+        text={verdict.text}
+        lenses={verdict.lenses}
+        sideTitle={headline.title}
+        side={headline.items.map(item => ({ label: item.label, note: item.note, value: item.value, valueClass: item.tone ? TEXT[item.tone] : undefined }))}
+      />
 
       <section className="boe-panel" aria-label={causes.title}>
         <Head title={causes.title} note={causes.note} />
@@ -298,12 +289,12 @@ export function ReviewBody({ review }: { review: SixMonthReview }) {
 
       <section className="boe-panel" aria-label={gaps.title}>
         <Head title={gaps.title} note={gaps.note} />
-        <div className={s.tableWrap}>
+        <PhoneTableCards className={s.tableWrap}>
           <table className={`${s.table} ${s.gaps}`}>
             <thead><tr>{gaps.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>{gaps.rows.map(row => <tr key={row[0]}>{row.map((cell, i) => <td key={`${i}-${cell}`} data-label={gaps.head[i]}>{cell}</td>)}</tr>)}</tbody>
           </table>
-        </div>
+        </PhoneTableCards>
       </section>
 
       <p className={s.foot}>{review.foot} <Link href="/seo/year">See the last 12 months</Link></p>

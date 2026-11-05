@@ -14,6 +14,7 @@ import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './results.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -214,13 +215,17 @@ export default function PayrollResultsPage() {
       actions={
         // The processing report reads the same stored results this page shows,
         // so it is reachable from here rather than from a separate nav entry.
-        <Link
-          href={`/payroll/results/${periodId}/salary-report`}
-          className="boe-btn boe-btn-ghost"
-          style={{ whiteSpace: 'nowrap' }}
+        <HeaderActions
+          items={[{ key: 'report', label: 'Salary Processing Report', onSelect: () => router.push(`/payroll/results/${periodId}/salary-report`) }]}
         >
-          Salary Processing Report
-        </Link>
+          <Link
+            href={`/payroll/results/${periodId}/salary-report`}
+            className="boe-btn boe-btn-ghost"
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Salary Processing Report
+          </Link>
+        </HeaderActions>
       }
     >
       <div className={ui.stack}>

@@ -231,7 +231,8 @@ export function CustomReviewSubmissions({
         {canSubmit && (
           <button
             type="button"
-            className="boe-btn boe-btn-primary"
+            // A phone has the header's Submit review: one Submit, not two.
+            className="boe-btn boe-btn-primary crv-submit-inline"
             disabled={availability.status !== 'ready'}
             onClick={openNew}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', minHeight: '44px' }}
@@ -242,7 +243,8 @@ export function CustomReviewSubmissions({
         )}
       </header>
 
-      <ReviewRewardRules settings={settings} />
+      {/* A phone puts the rules and the month panels after the list (CSS order), so the reviews come first. */}
+      <div className="crv-later"><ReviewRewardRules settings={settings} /></div>
 
       {canSubmit && loaded && allowance.limitMessage && (
         <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#805B0D', fontWeight: 600 }}>{allowance.limitMessage}</p>
@@ -255,7 +257,7 @@ export function CustomReviewSubmissions({
       )}
 
       {loaded && !loadError && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+        <div className="crv-later" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
           <CurrentMonthPanel summary={currentSummary} allowance={allowance} settings={settings} />
           <LastMonthPanel summary={lastSummary} />
         </div>

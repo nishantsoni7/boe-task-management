@@ -61,3 +61,13 @@
   .filters label { flex: 1 1 140px; }
   .filters select { width: 100%; }
 }
+
+/* PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3): the two selects become
+   one line saying what is shown and one Filter button (its sheet holds them). */
+.phoneFilterRow { display: none; }
+@media (max-width: 767px) {
+  .filters { display: none; }
+  .phoneFilterRow { display: flex; align-items: center; gap: 8px; }
+  .phoneFilterText { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cardActions > button, .cardActions > a { min-height: 44px; }
+}

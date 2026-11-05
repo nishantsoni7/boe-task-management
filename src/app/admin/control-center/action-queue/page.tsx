@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { formatINR } from '@/lib/currency'
 import {
   CATEGORY_META, loadActionQueue, pendingAgeLabel, type ActionQueueItem,
@@ -82,7 +83,10 @@ function ActionQueueTable({ items }: { items: ActionQueueItem[] }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
   return (
-    <div className="boe-card" style={{ padding: 0, overflow: 'hidden' }}>
+    // On a phone each row is a card (phone phase 3), the action needed as its
+    // title (CSS, .boe-p3-aq); the 860px table no longer scrolls sideways.
+    <div className="boe-card boe-p3-aq-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <PhoneTableCards className="boe-p3-aq">
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
           <thead>
@@ -138,6 +142,7 @@ function ActionQueueTable({ items }: { items: ActionQueueItem[] }) {
           </tbody>
         </table>
       </div>
+      </PhoneTableCards>
     </div>
   )
 }

@@ -402,3 +402,45 @@
   .gaps td { border: 0; padding: 2px 0; }
   .gaps td:nth-child(n+3)::before { content: attr(data-label) ": "; font-weight: 600; }
 }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   The verdict panel took 280-500px before anything else. Below 768px: a
+   smaller verdict, its paragraph cut to two lines with More, the lenses and
+   the side numbers one line of chips each (scrolling sideways). The timeline's
+   9.5px dots and 10px letters are 12px. Tables are cards (PhoneTableCards).
+   A desktop is unchanged: .moreBtn is hidden there, nothing is cut. */
+.moreBtn { display: none; }
+@media (max-width: 767px) {
+  .heroMain { padding: 12px 14px; }
+  .kicker { font-size: 12px; }
+  .verdict { margin: 2px 0 6px; font-size: 20px; line-height: 1.22; }
+  .verdictText {
+    font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .verdictText.verdictOpen { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .moreBtn {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 0 2px; margin-top: 2px;
+    border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--boe-brand-ink); cursor: pointer;
+  }
+  .lenses { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 6px -14px 0; padding: 0 14px; gap: 10px; }
+  .lenses::-webkit-scrollbar { display: none; }
+  .lens { flex: none; white-space: nowrap; }
+
+  .heroSide {
+    flex-direction: row; align-items: center; gap: 6px; padding: 10px 14px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .heroSide::-webkit-scrollbar { display: none; }
+  .sideTitle { display: none; }
+  .headline {
+    flex: none; gap: 6px; padding: 0 12px; min-height: 40px; border: 1px solid var(--boe-border); border-radius: 999px; background: var(--boe-surface, #fff);
+  }
+  .headline > span { font-size: 13px; white-space: nowrap; }
+  .headline small { display: none; }
+  .headline b { font-size: 15px; font-weight: 700; }
+
+  .time .dot { width: 20px; height: 20px; font-size: 12px; line-height: 18px; }
+  .monthLetter { font-size: 12px; }
+  .band { font-size: 12px; }
+  .cell { font-size: 12px; height: 26px; }
+}

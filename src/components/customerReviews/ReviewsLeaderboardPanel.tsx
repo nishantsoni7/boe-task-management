@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy } from 'lucide-react'
@@ -80,6 +80,8 @@ export function ReviewsLeaderboardPanel() {
 
 function Body({ data, label }: { data: Leaderboard; label: string }) {
   const view = arrangeLanding(data)
+  // A phone shows one compact line ("You: 3rd · Leader X"); See all opens the full board below it.
+  const [phoneOpen, setPhoneOpen] = useState(false)
 
   if (view.kind === 'empty') {
     return (
@@ -91,8 +93,27 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
     )
   }
 
+  const leader = view.leaders[0]
+  const meRow = data.rows.find(r => r.is_me)
   return (
     <>
+      <div className="crv-lb-compact" style={{ ...CARD }}>
+        <Trophy size={18} strokeWidth={1.9} aria-hidden="true" style={{ color: GOLD, flexShrink: 0 }} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="crv-lb-compact-main">
+            {data.me ? <>You: {meRow?.tied ? 'joint ' : ''}{ordinal(data.me.rank)} · {data.me.reviews} eligible</> : <>Leader: {leader?.name ?? '—'}</>}
+          </div>
+          <div className="crv-lb-compact-sub">
+            {data.me
+              ? (view.joint ? `Joint leaders (${view.leaders.length})` : `Leader: ${leader?.name ?? '—'}${leader?.is_me ? ' (you)' : ''}`)
+              : leader ? count(leader.reviews) : ''}
+          </div>
+        </div>
+        <button type="button" className="crv-lb-compact-btn" aria-expanded={phoneOpen} onClick={() => setPhoneOpen(v => !v)}>
+          {phoneOpen ? 'Hide' : 'See all'}
+        </button>
+      </div>
+      <div className={`crv-lb-full${phoneOpen ? ' is-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: view.runnersUp.length ? 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))' : '1fr' }}>
         <div style={{ ...CARD, padding: '16px 16px 14px', borderColor: 'rgba(196,138,26,0.35)', background: 'linear-gradient(180deg, #FFFBF2 0%, #FFFFFF 70%)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: GOLD }}>
@@ -135,6 +156,7 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
           </li>
         ))}
       </ol>
+      </div>
     </>
   )
 }

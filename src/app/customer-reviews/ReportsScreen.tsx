@@ -11,6 +11,7 @@ import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewBadge } from '@/components/customerReviews/ReviewPieces'
 import { StackedBarChart } from '@/components/customerReviews/ReviewCharts'
+import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
 import styles from './reports.module.css'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
@@ -167,10 +168,10 @@ function Filters({
   const current = report?.current_month ?? null
   const months = current ? monthChoices(current) : []
   const active = filters.employee != null || filters.type != null || filters.status != null || filters.month != null
-  return (
-    <section aria-label="Filters" style={{
-      display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', alignItems: 'end',
-    }}>
+  const activeCount = [filters.employee, filters.type, filters.status, filters.month].filter(v => v != null).length
+  const monthText = filters.month ? reviewMonthLabel(filters.month) : 'Current month'
+  const fields = (
+    <>
       <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
         Month
         <select
@@ -204,12 +205,30 @@ function Filters({
           {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
-      {active && (
-        <button type="button" className="boe-btn boe-btn-ghost" onClick={onReset} style={{ minHeight: '44px', padding: '8px 14px', fontSize: '12.5px' }}>
-          Clear filters
-        </button>
-      )}
-    </section>
+    </>
+  )
+  return (
+    <>
+      {/* A phone: one line saying what is shown, and one Filter button whose sheet holds the same four selects. */}
+      <div className="crv-phone-filter-row">
+        <span className="crv-phone-filter-text">
+          {monthText}{activeCount - (filters.month ? 1 : 0) > 0 ? ` · ${activeCount - (filters.month ? 1 : 0)} more filter${activeCount - (filters.month ? 1 : 0) === 1 ? '' : 's'}` : ' · everyone'}
+        </span>
+        <PhoneFilterSheet activeCount={activeCount} resultLabel="Show the report" onClearAll={active ? onReset : undefined}>
+          <div className="crv-sheet-fields">{fields}</div>
+        </PhoneFilterSheet>
+      </div>
+      <section aria-label="Filters" className="crv-rfilters" style={{
+        display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', alignItems: 'end',
+      }}>
+        {fields}
+        {active && (
+          <button type="button" className="boe-btn boe-btn-ghost" onClick={onReset} style={{ minHeight: '44px', padding: '8px 14px', fontSize: '12.5px' }}>
+            Clear filters
+          </button>
+        )}
+      </section>
+    </>
   )
 }
 
@@ -233,7 +252,7 @@ function ReportBody({
 
   return (
     <>
-      <section aria-label={`${monthLabel} summary`} style={{
+      <section aria-label={`${monthLabel} summary`} className="crv-metrics" style={{
         display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
       }}>
         <MetricCard label="Total submitted" value={s.submitted} note={`${monthLabel} · not deleted`} onClick={() => onOpen('all')} />
@@ -248,7 +267,7 @@ function ReportBody({
         />
       </section>
 
-      <section aria-label="Reward-eligible" style={{ ...card, display: 'flex', flexWrap: 'wrap', gap: '8px 24px', alignItems: 'center' }}>
+      <section aria-label="Reward-eligible" className="crv-eligible" style={{ ...card, display: 'flex', flexWrap: 'wrap', gap: '8px 24px', alignItems: 'center' }}>
         <button
           type="button"
           onClick={() => onOpen('eligible')}
@@ -261,12 +280,17 @@ function ReportBody({
         </button>
         <Figure label="Review credits earned" value={formatCredits(s.credits)} />
         <Figure label={`Review points (credits ÷ ${report.credits_per_point})`} value={formatPoints(s.points)} />
-        <p style={{ margin: 0, flex: '1 1 260px', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
-          Eligible means approved, with a credit the ledger has not reversed, and not a confirmed duplicate. Deleted, rejected and pending reviews are not eligible. Points are for {monthLabel} only and start again next month.
+        <p className="crv-info-desk" style={{ margin: 0, flex: '1 1 260px', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+          {eligibleNote(monthLabel)}
         </p>
+        {/* A phone: the same sentence behind a small toggle. */}
+        <details className="crv-info-phone">
+          <summary>What counts as eligible?</summary>
+          <p>{eligibleNote(monthLabel)}</p>
+        </details>
       </section>
 
-      <section aria-label="What happened to the credits" style={{
+      <section aria-label="What happened to the credits" className="crv-metrics" style={{
         display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
       }}>
         <MetricCard label="Expired with a closed month" value={s.expired_reviews}
@@ -472,6 +496,10 @@ function td(left: boolean): React.CSSProperties {
   }
 }
 
+function eligibleNote(monthLabel: string): string {
+  return `Eligible means approved, with a credit the ledger has not reversed, and not a confirmed duplicate. Deleted, rejected and pending reviews are not eligible. Points are for ${monthLabel} only and start again next month.`
+}
+
 function MetricCard({
   label, value, note, tone, onClick,
 }: { label: string; value: number; note: string; tone?: 'amber'; onClick: () => void }) {
@@ -481,14 +509,15 @@ function MetricCard({
       type="button"
       onClick={onClick}
       aria-label={`${label}: ${value}. Open the list.`}
+      className="crv-metric"
       style={{
         ...card, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minHeight: '44px',
         borderColor: amber ? '#E6D2A0' : colors.borderSoft, background: amber ? '#FAF0DA' : colors.base,
       }}
     >
-      <div style={{ fontSize: '12px', fontWeight: 600, color: amber ? '#805B0D' : colors.secondary, lineHeight: 1.35 }}>{label}</div>
-      <div style={{ fontSize: '26px', fontWeight: 700, color: amber ? '#805B0D' : colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{value}</div>
-      <div style={{ fontSize: '12px', color: colors.muted }}>{note}</div>
+      <div className="crv-metric-label" style={{ fontSize: '12px', fontWeight: 600, color: amber ? '#805B0D' : colors.secondary, lineHeight: 1.35 }}>{label}</div>
+      <div className="crv-metric-value" style={{ fontSize: '26px', fontWeight: 700, color: amber ? '#805B0D' : colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{value}</div>
+      <div className="crv-metric-note" style={{ fontSize: '12px', color: colors.muted }}>{note}</div>
     </button>
   )
 }

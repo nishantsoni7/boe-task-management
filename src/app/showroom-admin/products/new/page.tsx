@@ -394,7 +394,7 @@ function SpecsEditor({ specs, onChange }: { specs: SpecRow[]; onChange: (rows: S
           <button
             type="button"
             onClick={() => remove(i)}
-            style={removeBtnStyle}
+            className="sra-remove-btn" style={removeBtnStyle}
           >
             ×
           </button>
@@ -404,7 +404,7 @@ function SpecsEditor({ specs, onChange }: { specs: SpecRow[]; onChange: (rows: S
         <button
           type="button"
           onClick={add}
-          style={addSpecBtnStyle}
+          className="sra-add-btn" style={addSpecBtnStyle}
         >
           + Add Specification
         </button>
@@ -420,7 +420,7 @@ function ImagesEditor({ images, onChange }: { images: string[]; onChange: (imgs:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       {images.map((url, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 40px', gap: '8px', alignItems: 'center' }}>
+        <div key={i} className="sra-urlrow" style={{ display: 'grid', gridTemplateColumns: '1fr 40px', gap: '8px', alignItems: 'center' }}>
           <input
             value={url}
             onChange={e => update(i, e.target.value)}
@@ -428,12 +428,12 @@ function ImagesEditor({ images, onChange }: { images: string[]; onChange: (imgs:
             style={inputStyle}
           />
           {images.length > 1 && (
-            <button type="button" onClick={() => remove(i)} style={removeBtnStyle}>×</button>
+            <button type="button" onClick={() => remove(i)} className="sra-remove-btn" style={removeBtnStyle}>×</button>
           )}
         </div>
       ))}
       <div>
-        <button type="button" onClick={add} style={addSpecBtnStyle}>+ Add Image URL</button>
+        <button type="button" onClick={add} className="sra-add-btn" style={addSpecBtnStyle}>+ Add Image URL</button>
       </div>
       <span style={{ fontSize: '12px', color: '#686D6C' }}>First URL is the primary display image</span>
     </div>
@@ -446,7 +446,7 @@ function DimsEditor({ dims, onChange }: { dims: DimState; onChange: (d: DimState
   const set = (field: keyof DimState, val: string) => onChange({ ...dims, [field]: val })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: '12px', alignItems: 'end' }}>
+      <div className="sra-dims" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: '12px', alignItems: 'end' }}>
         <div className="product-field">
           <span className="field-label" style={{ color: '#4C5352' }}>Width</span>
           <input value={dims.width} onChange={e => set('width', e.target.value)} placeholder="e.g. 24" type="number" min="0" step="0.1" style={inputStyle} />

@@ -141,7 +141,7 @@ export default function DispatchPage() {
   if (loading) return <LoadingScreen />
 
   if (unauthorized) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
+    <div className="smp-dispatch" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
       <div style={{ textAlign: 'center', color: colors.muted }}>
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Not authorized</div>
@@ -154,7 +154,7 @@ export default function DispatchPage() {
   )
 
   if (notFound) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
+    <div className="smp-dispatch" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
       <div style={{ textAlign: 'center', color: colors.muted }}>
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Request not found</div>
@@ -169,7 +169,7 @@ export default function DispatchPage() {
   const r = request!
 
   if (done) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
+    <div className="smp-dispatch" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
       <div style={{ background: '#fff', borderRadius: '12px', maxWidth: 480, width: '100%', padding: '32px 28px', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
         <div style={{ width: 56, height: 56, borderRadius: '50%', background: colors.greenTint, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: colors.green }}>
           <CheckCircle2 size={28} strokeWidth={2} />
@@ -191,7 +191,7 @@ export default function DispatchPage() {
   const alreadyDispatched = r.status === 'dispatched'
 
   return (
-    <div style={{ minHeight: '100vh', background: colors.raised, padding: '24px 16px' }}>
+    <div className="smp-dispatch" style={{ minHeight: '100vh', background: colors.raised, padding: '24px 16px' }}>
       <div style={{ maxWidth: 520, margin: '0 auto' }}>
 
         {/* Back link */}

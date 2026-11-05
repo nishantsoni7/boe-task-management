@@ -38,7 +38,8 @@ export function OverviewCounts({ summary, onOpen, isMobile }: {
     { key: 'attention', label: 'Needs attention', value: summary.needsAttention, alert: summary.needsAttention > 0 },
   ]
   return (
-    <div style={{
+    // On a phone (phase 3) the four tiles are one row of chips (CSS).
+    <div className="boe-p3-countchips" style={{
       display: 'grid',
       gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
       gap: '10px',
@@ -46,7 +47,7 @@ export function OverviewCounts({ summary, onOpen, isMobile }: {
       {tiles.map(t => (
         <button
           key={t.key}
-          className="boe-card"
+          className="boe-card boe-p3-countchip"
           onClick={() => onOpen(t.key)}
           style={{
             padding: isMobile ? '10px 12px' : '12px 16px', textAlign: 'left', cursor: 'pointer',
@@ -54,13 +55,13 @@ export function OverviewCounts({ summary, onOpen, isMobile }: {
             display: 'flex', flexDirection: 'column', gap: '2px', font: 'inherit',
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span className="boe-p3-countlabel" style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {t.label}
           </span>
-          <span style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#B42332' : colors.primary, lineHeight: 1.2 }}>
+          <span className="boe-p3-countvalue" style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#B42332' : colors.primary, lineHeight: 1.2 }}>
             {t.value}
           </span>
-          {t.hint && <span style={{ fontSize: '12px', color: colors.muted }}>{t.hint}</span>}
+          {t.hint && <span className="boe-p3-counthint" style={{ fontSize: '12px', color: colors.muted }}>{t.hint}</span>}
         </button>
       ))}
     </div>
@@ -82,7 +83,7 @@ export function LensTabs({ lens, onChange, attentionCount, peopleCount }: {
     { key: 'categories', label: 'By category' },
   ]
   return (
-    <div role="tablist" aria-label="Asset views" style={{
+    <div role="tablist" aria-label="Asset views" className="boe-p3-lens" style={{
       display: 'flex', gap: '4px', overflowX: 'auto', borderBottom: `1px solid ${colors.border}`,
       scrollbarWidth: 'none',
     }}>

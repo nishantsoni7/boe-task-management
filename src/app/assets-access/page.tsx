@@ -88,6 +88,7 @@ import { AssetsAreaTabs } from '@/components/assets/AssetsAreaTabs'
 import {
   areaForView, defaultViewForArea, resolveInitialView, type AssetsArea,
 } from '@/lib/assets/viewRouting'
+import { PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -731,10 +732,48 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
 
   const catalogueLine = (row: AssetRow) => row.productName ? `${row.categoryName} · ${row.productName}` : row.categoryName
 
+  const sheetGroup = (id: string, label: string, key: keyof AssetFilters, options: { value: string; label: string }[], anyLabel = 'Any') => ({
+    id, label, value: filters[key], onChange: setFilter(key),
+    options: [{ value: '', label: anyLabel }, ...options],
+  })
+
   const renderList = () => (
     <>
+      {/* PHONE (owner, 2026-11-05, phone phase 3): the search box and ONE
+          Filter button; all ten filters sit in its sheet. The desktop's 2×2
+          grid of 12px selects and "More filters" card are hidden on a phone. */}
+      <PhoneSearchFilter
+        search={{ value: filters.search, onChange: setFilter('search'), placeholder: 'Name, code, serial or holder', label: 'Search assets' }}
+        activeCount={(['category', 'productId', 'status', 'employeeId', 'department', 'location', 'condition', 'warranty', 'purchasedFrom', 'purchasedTo'] as const)
+          .filter(k => filters[k].trim() !== '').length}
+        resultCount={visible.length}
+        noun={['asset', 'assets']}
+        onClearAll={() => setFilters({ ...EMPTY_ASSET_FILTERS, search: filters.search })}
+        groups={[
+          sheetGroup('category', 'Category', 'category', categoryChoices, 'All'),
+          ...(productChoices.length ? [sheetGroup('product', 'Product', 'productId', productChoices, 'All')] : []),
+          sheetGroup('status', 'Status', 'status', [
+            { value: ACTIVE_STATUS_FILTER, label: 'Active (not retired / disposed)' },
+            ...ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })),
+          ]),
+          sheetGroup('held-by', 'Held by', 'employeeId', personChoices, 'Anyone'),
+          ...(departments.length ? [sheetGroup('department', 'Department', 'department', departments.map(d => ({ value: d, label: d })))] : []),
+          ...(locations.length ? [sheetGroup('location', 'Location', 'location', locations.map(l => ({ value: l, label: l })))] : []),
+          sheetGroup('condition', 'Condition', 'condition', ASSET_CONDITION_OPTIONS.map(c => ({ value: c, label: ASSET_CONDITION_LABEL[c] }))),
+          sheetGroup('warranty', 'Warranty', 'warranty', WARRANTY_STATUS_OPTIONS.map(w => ({ value: w, label: WARRANTY_STATUS_LABEL[w] }))),
+          { id: 'purchased', label: 'Purchased between', content: (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input type="date" className="boe-input" aria-label="Purchased from"
+                value={filters.purchasedFrom} onChange={e => setFilter('purchasedFrom')(e.target.value)} />
+              <input type="date" className="boe-input" aria-label="Purchased to"
+                value={filters.purchasedTo} onChange={e => setFilter('purchasedTo')(e.target.value)} />
+            </div>
+          ) },
+        ]}
+      />
+
       {/* ── Search + the four filters an owner uses ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="boe-p3-desk" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <input
           className="boe-input"
           type="search"
@@ -785,7 +824,7 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
       </div>
 
       {showFilters && (
-        <div className="boe-card" style={{
+        <div className="boe-card boe-p3-desk" style={{
           padding: '14px 16px',
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',

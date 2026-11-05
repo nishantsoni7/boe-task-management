@@ -29,6 +29,8 @@ import {
 } from '@/lib/performanceAdoption'
 import { formatMinutesOfDay } from '@/lib/istDate'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
 function TeamProgressLoader({ progress }: { progress: number }) {
@@ -481,8 +483,10 @@ function AdoptionSection({ data, rows, onOpen }: {
 
 function FilterBar({
   periodKey, onPeriod, customFrom, customTo, onCustom,
-  teams, team, onTeam, search, onSearch, sort, onSort, rangeError,
+  teams, team, onTeam, search, onSearch, sort, onSort, rangeError, resultCount,
 }: {
+  /** The employees listed now, for the phone sheet's "Show 12 employees". */
+  resultCount: number
   periodKey: PeriodKey
   onPeriod: (k: PeriodKey) => void
   customFrom: string
@@ -501,8 +505,44 @@ function FilterBar({
     fontSize: 12, padding: '6px 10px', borderRadius: 8,
     border: '1px solid ' + C.line, background: '#fff', color: C.ink, outline: 'none',
   }
+  const customRange = periodKey === 'custom' && (
+    <div className="boe-p3-range" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input type="date" value={customFrom} max={istToday()} aria-label="From"
+             onChange={e => onCustom(e.target.value, customTo)} style={control} />
+      <span style={{ fontSize: 12, color: C.faint }}>to</span>
+      <input type="date" value={customTo} max={istToday()} aria-label="To"
+             onChange={e => onCustom(customFrom, e.target.value)} style={control} />
+      {rangeError && <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
+    </div>
+  )
   return (
-    <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <>
+    {/* PHONE (owner, 2026-11-05, phone phase 3): the period as one row of
+        chips, then search and ONE Filter button (Department, Sort). The
+        ~200px desktop panel below is hidden on a phone (.boe-p3-desk). */}
+    <div className="boe-p3-perf-phone">
+      <PhoneChips
+        label="Period"
+        active={periodKey}
+        onSelect={onPeriod}
+        chips={PERIOD_KEYS.map(k => ({ key: k, label: PERIOD_LABEL[k] }))}
+      />
+      {customRange}
+      <PhoneSearchFilter
+        search={{ value: search, onChange: onSearch, placeholder: 'Search employee…', label: 'Search employee' }}
+        activeCount={team ? 1 : 0}
+        resultCount={resultCount}
+        noun={['employee', 'employees']}
+        onClearAll={() => onTeam('')}
+        groups={[
+          { id: 'team', label: 'Department', value: team, onChange: onTeam,
+            options: [{ value: '', label: 'All' }, ...teams.map(t => ({ value: t, label: t }))] },
+          { id: 'sort', label: 'Sort', value: sort, onChange: v => onSort(v as SortKey),
+            options: SORT_KEYS.map(k => ({ value: k, label: SORT_LABEL[k] })) },
+        ]}
+      />
+    </div>
+    <div className="boe-p3-desk" style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {PERIOD_KEYS.map(k => (
           <button
@@ -519,16 +559,7 @@ function FilterBar({
         ))}
       </div>
 
-      {periodKey === 'custom' && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input type="date" value={customFrom} max={istToday()}
-                 onChange={e => onCustom(e.target.value, customTo)} style={control} />
-          <span style={{ fontSize: 12, color: C.faint }}>to</span>
-          <input type="date" value={customTo} max={istToday()}
-                 onChange={e => onCustom(customFrom, e.target.value)} style={control} />
-          {rangeError && <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
-        </div>
-      )}
+      {customRange}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <select value={team} onChange={e => onTeam(e.target.value)} style={{ ...control, cursor: 'pointer' }}>
@@ -547,6 +578,7 @@ function FilterBar({
         </select>
       </div>
     </div>
+    </>
   )
 }
 
@@ -568,23 +600,24 @@ function SummaryCard({ label, value, context, reason, delta, flag, onClick }: {
     <button
       onClick={onClick}
       disabled={!onClick}
+      className="boe-p3-sumcard"
       style={{
         ...panel, textAlign: 'left', cursor: onClick ? 'pointer' : 'default',
         display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, font: 'inherit',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div className="boe-p3-sumhead" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div className="boe-p3-sumlabel" style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {label}
         </div>
         {flag}
       </div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, lineHeight: 1.15, overflowWrap: 'anywhere' }}>
+      <div className="boe-p3-sumvalue" style={{ fontSize: 20, fontWeight: 700, color: C.ink, lineHeight: 1.15, overflowWrap: 'anywhere' }}>
         {value}
       </div>
-      {context && <div style={{ fontSize: 12, color: C.muted, overflowWrap: 'anywhere' }}>{context}</div>}
-      {reason  && <div style={{ fontSize: 12, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
-      {delta}
+      {context && <div className="boe-p3-sumextra" style={{ fontSize: 12, color: C.muted, overflowWrap: 'anywhere' }}>{context}</div>}
+      {reason  && <div className="boe-p3-sumextra" style={{ fontSize: 12, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
+      {delta && <div className="boe-p3-sumextra">{delta}</div>}
     </button>
   )
 }
@@ -677,7 +710,9 @@ function MemberTable({ rows, data, onOpen }: {
   }
 
   return (
-    <div style={{ ...panel, padding: 0, overflow: 'hidden' }}>
+    // On a phone each employee is a card titled by their name (phone phase 3).
+    <div className="boe-p3-cardshell" style={{ ...panel, padding: 0, overflow: 'hidden' }}>
+      <PhoneTableCards className="boe-p3-title2">
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
           <thead>
@@ -758,6 +793,7 @@ function MemberTable({ rows, data, onOpen }: {
           </tbody>
         </table>
       </div>
+      </PhoneTableCards>
     </div>
   )
 }
@@ -1653,7 +1689,7 @@ export default function TeamPerformancePage() {
         }}>← My Report</a>
       }
     >
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="boe-p3-perfwrap" style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         <FilterBar
           periodKey={periodKey} onPeriod={setPeriodKey}
@@ -1663,6 +1699,7 @@ export default function TeamPerformancePage() {
           search={search} onSearch={setSearch}
           sort={sort} onSort={setSort}
           rangeError={rangeError}
+          resultCount={visible.length}
         />
 
         {state.phase === 'error' && (
@@ -1707,7 +1744,7 @@ export default function TeamPerformancePage() {
           <>
             {/* Management summary. Each card carries the confidence flag whenever
                 the calendar limits how much these conclusions can be trusted. */}
-            <div style={cardGrid}>
+            <div className="boe-p3-sumgrid" style={cardGrid}>
               <SummaryCard
                 label="Best Performer"
                 value={summary.best?.userName ?? 'Insufficient Data'}

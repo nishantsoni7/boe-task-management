@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -121,12 +122,13 @@ function CompletedTaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onRestore() }}
               onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(39,98,71,0.15)' : 'rgba(39,98,71,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(39,98,71,0.45)' : 'rgba(39,98,71,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#276247' : '#276247', fontSize: '12px', fontWeight: 600 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 12px', minHeight: '44px', borderRadius: '8px', background: hoveredRestore ? 'rgba(39,98,71,0.15)' : 'rgba(39,98,71,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(39,98,71,0.45)' : 'rgba(39,98,71,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#276247' : '#276247', fontSize: '12px', fontWeight: 600 }}>
               <RotateCcw size={11} />
             </button>
             <button onClick={e => { e.stopPropagation(); onClick() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(39,98,71,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(39,98,71,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#276247' : colors.muted }}>
+              aria-label="View task details"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '8px', background: hoveredView ? 'rgba(39,98,71,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(39,98,71,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#276247' : colors.muted }}>
               <ExternalLink size={12} />
             </button>
           </div>
@@ -370,19 +372,44 @@ function AssignedByMeCompletedContent() {
     <>
       <DashboardLayout profile={profile} title="Assigned By Me" onSignOut={handleLogout}>
 
-        <div style={{ marginBottom: '14px' }}>
+        <div style={{ marginBottom: isMobile ? '6px' : '14px' }}>
           <div style={{ fontSize: '13px', fontWeight: 600, color: '#276247' }}>
             {`Completed · ${total}`}
           </div>
-          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+          <div className="boe-desktop-only" style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
             {hasFilters ? 'Delegated tasks matching the current filters' : 'Delegated tasks that have been completed'}
           </div>
         </div>
 
         {isMobile && <CompletionSummaryCard summary={summary} compact />}
 
+        {/* PHONE (owner, 2026-11-05, phone phase 3): search and ONE Filter
+            button; Assignee, Priority and Completed on sit in its sheet. */}
+        {isMobile && (
+          <PhoneSearchFilter
+            search={{ value: searchInput, onChange: setSearchInput, onBlur: flushSearch, placeholder: 'Find tasks…', label: 'Find tasks' }}
+            activeCount={(filterAssignee ? 1 : 0) + (filterPriority ? 1 : 0) + (state.completedOn ? 1 : 0)}
+            resultCount={total}
+            noun={['task', 'tasks']}
+            onClearAll={() => setState({ assignee: '', priority: '', completedOn: '' })}
+            groups={[
+              ...(assigneeOptions.length > 1 ? [{
+                id: 'assignee', label: 'Assigned to', value: filterAssignee,
+                onChange: (v: string) => setState({ assignee: v }),
+                options: [{ value: '', label: 'All' }, ...assigneeOptions],
+              }] : []),
+              {
+                id: 'priority', label: 'Priority', value: filterPriority,
+                onChange: (v: string) => setState({ priority: v as typeof filterPriority }),
+                options: [{ value: '', label: 'All' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }],
+              },
+              { id: 'completed-on', label: 'Completed on', content: <CompletedOnFilter value={state.completedOn} onChange={next => setState({ completedOn: next })} /> },
+            ]}
+          />
+        )}
+
         {/* Search + filter toolbar */}
-        <div style={{
+        {!isMobile && <div style={{
           background: colors.raised, border: `1.5px solid ${colors.borderInput}`,
           borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
           display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
@@ -419,7 +446,7 @@ function AssignedByMeCompletedContent() {
             <option value="low">Low</option>
           </select>
           <CompletedOnFilter value={state.completedOn} onChange={next => setState({ completedOn: next })} />
-        </div>
+        </div>}
 
         {/* Two-column: task list + summary and info */}
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>

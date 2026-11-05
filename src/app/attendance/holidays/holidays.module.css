@@ -6,3 +6,13 @@ ul.cardList { padding: 12px; }
 @media (max-width: 767px) {
   .formActions > button { width: 100%; }
 }
+
+/* ON A PHONE (owner, 2026-11-05, "phones: content first"): the list comes
+   first. "+ Add holiday" (the header's + button) opens the form above it;
+   Close folds it again. Each holiday is one row with Delete beside it. */
+@media (max-width: 767px) {
+  .phoneFolded { display: none; }
+  ul.cardList { padding: 8px; gap: 6px; }
+  .card { flex-direction: row; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; }
+  .cardText { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+}

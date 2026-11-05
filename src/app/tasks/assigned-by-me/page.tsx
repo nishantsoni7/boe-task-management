@@ -20,6 +20,7 @@ import { ApproveTaskDialog } from '@/components/tasks/ApproveTaskDialog'
 import { CancelTaskModal } from '@/components/tasks/CancelTaskModal'
 import { TaskRowMenu, type TaskRowMenuItem } from '@/components/tasks/TaskRowMenu'
 import { TeamResponseBar } from '@/components/tasks/TeamResponseBar'
+import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import { Toast, takeFlashToast, useToast } from '@/components/ui/toast'
 import {
   Ban, CheckCircle2, CircleCheckBig, ClipboardCheck, ExternalLink, Star,
@@ -1213,14 +1214,44 @@ function AssignedByMeContent() {
         onSignOut={handleLogout}
       >
 
-        <div style={{ minWidth: 0 }}>
+        <div className={styles.page} style={{ minWidth: 0 }}>
+
+            {/* PHONE (owner, 2026-11-05, phone phase 3): the view tabs as one
+                row of 40px chips, then search and ONE Filter button (Assignee,
+                Priority). The tab strip and the three-field toolbar are the
+                desktop's; CSS (styles.desktopOnly) hides them on a phone. */}
+            <PhoneChips
+              label="Task view"
+              active={activeTab}
+              onSelect={handleTabChange}
+              chips={TABS.map(t => ({ key: t.key, label: t.label, count: counts[t.key] }))}
+            />
+            <PhoneSearchFilter
+              search={{ value: searchInput, onChange: setSearchInput, onBlur: flushSearch, placeholder: 'Find tasks…', label: 'Find tasks' }}
+              activeCount={(filterAssignee ? 1 : 0) + (filterPriority ? 1 : 0)}
+              resultCount={visibleTasks.length}
+              noun={['task', 'tasks']}
+              onClearAll={() => setState({ assignee: '', priority: '' })}
+              groups={[
+                ...(assigneeOptions.length > 0 ? [{
+                  id: 'assignee', label: 'Assigned to', value: filterAssignee,
+                  onChange: (v: string) => setState({ assignee: v }),
+                  options: [{ value: '', label: 'All' }, ...assigneeOptions],
+                }] : []),
+                {
+                  id: 'priority', label: 'Priority', value: filterPriority,
+                  onChange: (v: string) => setState({ priority: v as typeof filterPriority }),
+                  options: [{ value: '', label: 'All' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }],
+                },
+              ]}
+            />
 
             {/* View tabs — relocated from the former right sidebar */}
             {/* The 20px that used to hang off each tab as `marginRight` is now
                 the row's `gap`, so the strip ends at the last tab instead of
                 trailing an empty gap. Widths stay content-sized and the row
                 still scrolls sideways on a narrow screen. */}
-            <div style={{
+            <div className={styles.desktopOnly} style={{
               display: 'flex', gap: '20px',
               borderBottom: `1px solid ${colors.border}`,
               marginBottom: '12px', overflowX: 'auto',
@@ -1269,7 +1300,7 @@ function AssignedByMeContent() {
             </div>
 
             {/* Search + filter toolbar */}
-            <div className={styles.toolbar}>
+            <div className={`${styles.toolbar} ${styles.desktopOnly}`}>
               {/* Search */}
               <label className={`boe-input ${styles.search}`}>
                 <Search size={14} color={colors.muted} style={{ flexShrink: 0 }} aria-hidden="true" />

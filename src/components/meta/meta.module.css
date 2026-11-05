@@ -105,3 +105,29 @@
   .toolbarLeft .search { width: 100%; }
   .toolbarLeft { width: 100%; }
 }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   Overview: the five figures are one line of chips ("Spent ₹12,400").
+   Campaigns: the 8-column table is one card per campaign (PhoneTableCards);
+   an opened campaign's ad sets are indented cards under it. Chips are 40px. */
+@media (max-width: 767px) {
+  .statChips {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px;
+  }
+  .statChips::-webkit-scrollbar { display: none; }
+  .statChips .stat {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px;
+  }
+  .statChips .statValue { order: 2; font-size: 15px; }
+  .statChips .statLabel { white-space: nowrap; }
+  .statChips .note { display: none; }
+  .stack { gap: 16px; }
+
+  .chip { min-height: 40px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .toolbarLeft .search { width: 100%; min-height: 44px; }
+  .campaignCards .expand { min-height: 44px; }
+  .campaignCards .child td:first-child { padding-left: 0 !important; }
+  .campaignCards .child td:first-child::before, .campaignCards .childMore td:first-child::after { display: none; }
+  .campaignCards tbody tr.child { margin-left: 16px; background: var(--boe-surface-quiet); }
+}

@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-05 — Platform: phones, content first, Phase 1 (PR pending) · no SQL
+## 2026-11-05 — All modules: phones, content first, Phase 3 (PR pending) · no SQL
+- **Owner request.** Phase 3 of the approved plan ("ok merge it and start phase 3"): redesign the lowest-scoring pages of every module for phones, aiming at 8.5-9 of 10. Phases 1-2 merged as #612 (cf3591be).
+- **Changed (below 768px only).** Finance: Payment Requests, Bank and Reimbursements rows as cards, filters in a sheet, the notices strip one expandable line. Orders: dashboard tiles, Drafts and BDPI cards, payment plan cards, Confirmed Order header. Attendance & Payroll: My Attendance, My Payroll and payslip, monthly reviews, credits, ObjectionQueue, Minop incoming, records, holidays. Tasks/Meetings/Admin: every task list with search + one Filter sheet, task and meeting detail, Manager, Control Center, Permissions, Team Performance, Assets, Super Admin, Settings, My Issues, My Credits, Dashboard. Sales/Leads/Vendors/Showroom/Reviews/SEO/Marketing: Exhibition Leads, Lead Master, Team, Vendors and activity, Product Master, inquiries, Customer Reviews and reports, the SEO verdict panel and tables, Meta campaigns, Image Editor, public Showroom buttons. Desktop and tablet unchanged. One behaviour change: Super Admin no longer shows the task-create "+".
+- **Database.** None. Rollback: revert the PR.
+- **Proof.** Five new phone test files plus the existing suites (full suite 19,879 tests; the only failure is the Linux-only CRLF test that passes on the Windows CI), type check and lint clean; static 390px harness renders per module. Not seen signed in or on a phone.
+
+## 2026-11-05 — Platform: phones, content first, Phases 1-2 (PR #612 squash-merged as cf3591be, deployed) · no SQL
 - **Owner request.** Every page on a phone should put the content first, with only the essential options, and reach 8.5 to 9 of 10, using the UI/UX Pro Max skill. Plan approved ("yes to all"): a ⋯ menu for secondary header actions, number cards as chips, build directly, merge after the owner's OK on each preview.
 - **Changed (below 768px only).** One-row page header on every module (title and subtitle one line each; Hand over cash, the Orders/Finance switch and Self/Delegate Task in a ⋯ or + menu); number cards as a sideways chip row; filter chips open as bottom sheets; Control Center tables as cards; 44px Notifications tools and status tabs; Samples gained its menu button. Phase 2 in the same PR: Showroom inquiry detail stacks to one column, Quotation Requests rows are three-line cards, Sales Notifications shows Mark all read and Delete all, Manager and All Tasks keep a one-row header. Also adds the UI/UX Pro Max skill to `.claude/skills` for cloud sessions.
 - **Database.** None. Rollback: revert the PR.

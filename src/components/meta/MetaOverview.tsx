@@ -127,7 +127,7 @@ export function OverviewBody({ ctx }: { ctx: MetaCtx }) {
       </div>
       <p className={s.text}>Cost per chat is the only quality signal until you tell us which chats became real enquiries.</p>
 
-      <div className={s.stats}>
+      <div className={`${s.stats} ${s.statChips}`}>
         <div className={`boe-panel ${s.stat}`}><span className={s.statValue}>{rupeesWhole(totals.spendPaise)}</span><span className={s.statLabel}>Spent</span><span className={s.note}>{range.short}</span></div>
         <div className={`boe-panel ${s.stat}`}><span className={s.statValue}>{totals.chats === null ? '—' : totals.chats.toLocaleString('en-IN')}</span><span className={s.statLabel}>Chats started</span><span className={s.note}>Messaging conversations</span></div>
         <div className={`boe-panel ${s.stat}`}><span className={s.statValue}>{average === null ? '—' : rupees(average)}</span><span className={s.statLabel}>Cost per chat</span><span className={s.note}>{target === null ? 'No target set' : `Target ${money(target)}`}</span></div>

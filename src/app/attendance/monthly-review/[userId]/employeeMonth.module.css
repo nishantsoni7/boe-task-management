@@ -1,0 +1,37 @@
+/* One employee's month (/attendance/monthly-review/[userId]) on a phone
+ * (owner, 2026-11-05, "phones: content first"). The title already names the
+ * person and the month, so the info card is one line; the eight KPI tiles are
+ * one row of chips that scrolls sideways inside itself; the seven-column table
+ * that scrolled sideways becomes one two-line card per day. Desktop unchanged.
+ */
+
+@media (max-width: 767px) {
+  .page { padding: 4px 0 12px !important; }
+  .back { min-height: 44px; margin-bottom: 4px !important; font-size: 14px !important; font-weight: 600; }
+
+  .info { padding: 8px 12px !important; gap: 4px 12px !important; margin-bottom: 10px !important; }
+  .infoName, .infoRule, .infoPeriod, .infoLabel { display: none !important; }
+  .infoWho, .infoField { font-size: 12.5px; }
+  .infoWho > div, .infoField > div { font-size: 12.5px !important; margin-top: 0 !important; }
+  .infoField { margin-left: 0 !important; }
+
+  .kpis {
+    flex-wrap: nowrap !important; gap: 6px !important; margin: 0 -12px 10px !important; padding: 2px 12px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .kpis::-webkit-scrollbar { display: none; }
+  .kpi {
+    flex: none; display: flex; align-items: baseline; gap: 5px;
+    min-width: 0 !important; padding: 7px 11px !important; border-radius: 999px !important;
+  }
+  .kpiValue { font-size: 14px !important; }
+  .kpiLabel { margin-top: 0 !important; white-space: nowrap; }
+
+  .days { gap: 6px; }
+  .day { display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; }
+  .dayHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .dayDate { font-size: 14px; font-weight: 600; color: #303536; }
+  .dayLine { font-size: 12.5px; color: #4C5352; font-variant-numeric: tabular-nums; }
+  .dayLate { color: #B4540C; font-weight: 600; }
+  .dayPenalty { color: #335A86; font-weight: 600; }
+}

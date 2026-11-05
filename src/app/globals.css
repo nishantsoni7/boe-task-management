@@ -13794,7 +13794,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .orders-phone-chips::-webkit-scrollbar { display: none; }
   .orders-phone-chip {
     flex: none; display: inline-flex; align-items: center; gap: 6px;
-    height: 36px; padding: 0 12px; border-radius: 999px;
+    height: 40px; padding: 0 12px; border-radius: 999px;
     border: 1px solid #E4DED7; background: #FFFFFF;
     font: inherit; font-size: 13px; font-weight: 500; color: #4C5352; white-space: nowrap; cursor: pointer;
   }
@@ -13864,8 +13864,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .orders-sheet:focus { outline: none; }
 .orders-sheet-head { display: flex; align-items: center; gap: 8px; }
 .orders-sheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
-.orders-sheet-clear { font: inherit; font-size: 13px; font-weight: 600; color: #963B27; background: none; border: 0; padding: 0 6px; min-height: 40px; cursor: pointer; }
-.orders-sheet-close { display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
+.orders-sheet-clear { font: inherit; font-size: 13px; font-weight: 600; color: #963B27; background: none; border: 0; padding: 0 6px; min-height: 44px; cursor: pointer; }
+.orders-sheet-close { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
 .orders-sheet-group { display: flex; flex-direction: column; gap: 8px; }
 .orders-sheet-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #686D6C; }
 .orders-sheet-options { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -13948,6 +13948,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-page-header .boe-header-refresh { border: 0 !important; background: none !important; }
   /* Text buttons a page passes stay, a little tighter. */
   .boe-header-actions .boe-btn { padding-left: 12px; padding-right: 12px; }
+  /* Confirmed Orders' compact header (phoneSubtitle) stays one line: the
+     generic rule above is later in the file, so this states it again. */
+  .boe-page-header.boe-page-header--compact { flex-wrap: nowrap; }
+  .boe-page-header.boe-page-header--compact .boe-page-title-group { flex: 1 1 auto; }
 }
 
 /* The ⋯ / + button in the header. */
@@ -14109,4 +14113,763 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .qtn-row > :nth-child(4) { grid-column: 2; grid-row: 2; text-align: right; }
   .qtn-row > :nth-child(5) { grid-column: 1 / -1; grid-row: 3; padding-top: 4px !important; }
   .qtn-row > :nth-child(6) { display: none !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — FINANCE (owner, 2026-11-05, "phones: content first")
+
+   Below 768px the Finance lists start on the first screen. Desktop and tablet
+   are unchanged: every rule that moves anything is inside max-width: 767px,
+   and the few outside it only hide a phone-only piece.
+
+   ROW CARDS (.fph-list). A Finance table whose cells carry slot classes is
+   drawn as a card of three lines on a phone, the same shape as Confirmed
+   Orders: the title and the amount; a detail and the status; the small facts
+   and the row's buttons. The row stays the <tr> it was, so a tap opens what it
+   opened and every button acts as before.
+     fph-title  line 1, left (grows)      fph-end1  line 1, right
+     fph-l2     line 2, left              fph-end2  line 2, right
+     fph-l3     line 3, left              fph-end3  line 3, right (actions)
+     fph-grow   this one takes the room left on its line, and cuts with …
+     fph-hide   not drawn on a phone (the opened record shows it)
+   Two zero-height breaks (the row's ::before and ::after) end lines 1 and 2.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.bank-sync-short { display: none; }
+.reimb-filters { display: contents; }
+.reimb-sheet-backdrop { display: none; }
+
+@media (max-width: 767px) {
+  .fph-list, .fph-list[style] { overflow: visible !important; }
+  .fph-list table { display: block; width: 100%; min-width: 0 !important; table-layout: auto; }
+  .fph-list thead, .fph-list colgroup { display: none; }
+  .fph-list tbody { display: block; }
+  .fph-list tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center;
+    column-gap: 10px; row-gap: 3px;
+    padding: 10px 14px; border-bottom: 1px solid #ECE7E0;
+  }
+  .fph-list tbody tr:last-child { border-bottom: 0; }
+  .fph-list tbody tr::before,
+  .fph-list tbody tr::after { content: ''; flex: 0 0 100%; height: 0; }
+  .fph-list tbody tr::before { order: 3; }
+  .fph-list tbody tr::after { order: 6; }
+  .fph-list tbody tr.is-highlighted { background: #FDF6E7; }
+  .fph-list tbody tr:active { background: #FAF8F5; }
+  .fph-list tbody td {
+    display: block; width: auto !important; height: auto !important; min-width: 0;
+    padding: 0 !important; border: 0 !important; background: none !important;
+    border-radius: 0 !important; text-align: left !important;
+    white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12.5px !important; line-height: 1.35; color: #686D6C;
+  }
+  .fph-list td > div[title] { max-width: none !important; }
+
+  .fph-list td.fph-title { order: 1; flex: 1 1 0; font-size: 15px !important; font-weight: 600; color: #303536; }
+  .fph-list td.fph-title > div[title],
+  .fph-list td.fph-title .fin-primary-text { font-size: 15px !important; font-weight: 600; }
+  .fph-list td.fph-end1 { order: 2; flex: none; overflow: visible; text-align: right !important; }
+  .fph-list td.fph-end1, .fph-list td.fph-end1 .fin-amount { font-size: 15px !important; font-weight: 700; color: #303536; }
+  .fph-list td.fph-l2 { order: 4; flex: 0 1 auto; }
+  .fph-list td.fph-end2 { order: 5; flex: none; margin-left: auto; overflow: visible; text-align: right !important; }
+  .fph-list td.fph-end2 > div { display: inline-block; margin-left: 4px; }
+  .fph-list td.fph-l3 { order: 7; flex: 0 1 auto; }
+  .fph-list td.fph-end3 { order: 8; flex: none; margin-left: auto; overflow: visible; }
+  .fph-list td.fph-grow { flex: 1 1 0; }
+  .fph-list .fph-hide { display: none !important; }
+  /* Two-part cells (a name and a line under it) read as one line. */
+  .fph-list td.fph-l2 > span, .fph-list td.fph-l3 > span { display: inline; margin-right: 6px; }
+  .fph-list td .fin-primary-text { display: inline; }
+  .fph-list td.fph-title .fin-sub { white-space: normal; }
+
+  /* The row's own buttons are 44px. */
+  .fph-list .boe-row-actions { gap: 0 !important; }
+  .fph-list .boe-row-icon, .fph-list .boe-row-icon-slot { width: 44px; height: 44px; }
+  .fph-list .boe-row-icon-slot { display: none; }
+  .fph-list td.fph-end3 .boe-btn { min-height: 44px; padding: 0 14px; }
+  .fph-list td:has(> .boe-payment-id) { flex: none; overflow: visible; }
+  .fph-list .boe-payment-id { padding: 0; background: none; border: 0; gap: 0; }
+  .fph-list .boe-payment-id-text { font-size: 12.5px; }
+  .fph-list .boe-payment-id-copy {
+    position: static; transform: none; width: 36px; height: 40px; margin: -10px -6px -10px 0;
+    background: none; opacity: 1;
+  }
+  .fph-list .fin-person .fin-avatar { display: none; }
+
+  /* Payment Requests, the salesperson's list: the PI or Order total. */
+  .fph-list td.fph-total::before { content: 'Before GST '; color: #8F9392; font-style: normal; }
+  /* Reimbursements: the number of expenses. */
+  .fph-list td.reimb-count::before { content: 'Expenses '; }
+
+  /* The pager under a list: 44px buttons (inline paddings lose). */
+  .fin-board > nav[aria-label] .boe-btn { min-height: 44px; padding: 0 16px !important; font-size: 13px !important; }
+
+  /* ── Bank Statements ── */
+  .bank-sync-check { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .bank-sync-card { gap: 1px; min-height: 44px; padding: 7px 10px; justify-content: center; }
+  .bank-sync-card > span:not(.bank-sync-short):not(.fin-muted) { display: none; }
+  .bank-sync-card .bank-sync-short { display: block; font-size: 12px; line-height: 1.3; }
+  .bank-sync-card .fin-muted { font-size: 12px; }
+  .bank-controls { flex-wrap: wrap; gap: 4px 8px; margin-bottom: 10px; }
+  .bank-month { flex: 1 1 0; min-width: 0; }
+  .bank-month:first-child { flex-grow: 1.5; }
+  .bank-month > span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .bank-month select { width: 100%; height: 44px; min-height: 44px; font-size: 14px; }
+  .bank-controls > span { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bank-unlinked-note { margin: 0 2px 10px; font-size: 12.5px; line-height: 1.4; }
+  .bank-gap-note { margin-bottom: 8px; }
+
+  /* ── Reimbursements: search and one Filter button; the rest in a sheet ── */
+  .boe-list-toolbar:has(.reimb-filters) { flex-wrap: nowrap; gap: 8px; margin-bottom: 8px; }
+  .boe-list-toolbar:has(.reimb-filters) .boe-list-search { flex: 1 1 auto; height: 44px; max-width: none; }
+  .boe-list-toolbar:has(.reimb-filters) .boe-list-search input { font-size: 15px; }
+  .reimb-filters { display: none; }
+  .reimb-filters.is-open {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+    display: flex; flex-direction: column; gap: 12px;
+    max-height: 85vh; overflow-y: auto;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #FFFFFF; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .reimb-sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(30, 34, 35, 0.4); }
+  .reimb-sheet-head { display: flex !important; align-items: center; gap: 8px; }
+  .reimb-sheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
+  .reimb-sheet-head .orders-sheet-close { width: 44px; height: 44px; }
+  .reimb-filters .boe-list-daterange { flex-direction: column; align-items: stretch; gap: 8px; }
+  .reimb-filters .boe-list-date { flex: none; font-size: 13px; }
+  .reimb-filters .boe-list-date span { min-width: 48px; }
+  .reimb-filters .boe-list-date input,
+  .reimb-filters .expense-filter-select { flex: 1 1 auto; width: 100%; height: 44px; min-height: 44px; font-size: 15px; }
+  .reimb-filters .boe-list-clear { height: 44px; }
+  .reimb-sheet-done { display: flex !important; justify-content: center; width: 100%; min-height: 46px; font-size: 15px; }
+  [data-testid="reimbursements-total"] { margin: 0 0 8px !important; font-size: 12.5px !important; color: #686D6C; }
+
+  /* ── The Finance notices strip: one line that opens on tap ── */
+  .boe-unclosed, .boe-unclosed[style] {
+    min-height: 44px !important; padding: 0 0 0 12px !important;
+    flex-wrap: wrap !important; gap: 0 8px !important;
+  }
+  .boe-unclosed .boe-unclosed-title {
+    flex: 1 1 0; min-width: 0; font-size: 13.5px !important;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .boe-unclosed .boe-unclosed-more { display: none !important; }
+  /* Closed: the words, Hand over (if any), the chevron. Open: the words and
+     the chevron, then the detail, then the buttons. */
+  .boe-unclosed-actions { order: 1; flex-wrap: nowrap !important; }
+  .boe-unclosed-toggle { order: 2; }
+  .boe-unclosed-more { order: 3; }
+  .boe-unclosed.is-open { padding-bottom: 8px !important; }
+  .boe-unclosed.is-open .boe-unclosed-title { white-space: normal; padding: 12px 0 2px; }
+  .boe-unclosed.is-open > .boe-unclosed-more { display: block !important; flex: 1 1 100%; margin-left: 24px !important; font-size: 12.5px; line-height: 1.5; }
+  .boe-unclosed.is-open > a.boe-unclosed-more { display: inline-flex !important; align-items: center; min-height: 44px; }
+  .boe-unclosed.is-open .boe-unclosed-actions { order: 4; flex: 1 1 100%; justify-content: flex-start; margin: 6px 0 0 24px !important; }
+  .boe-unclosed.is-open .boe-unclosed-actions .boe-unclosed-more { display: inline-flex !important; }
+  .boe-unclosed-actions .boe-btn { min-height: 44px !important; padding: 0 14px !important; }
+  .boe-unclosed-toggle {
+    align-items: center; justify-content: center; flex: none;
+    width: 44px; height: 44px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px;
+  }
+  .boe-unclosed-toggle svg { transition: transform 0.15s; }
+  .boe-unclosed-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .boe-unclosed-toggle:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
+  .boe-finance-notices { margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  /* The money line keeps its own row, so its words are never cut short. */
+  .boe-finance-notices > section.boe-unclosed { flex: 1 1 100%; min-width: 0; }
+  .boe-finance-notices > .boe-handover-stack > details:not([open]) { flex: 1 1 100%; }
+  .boe-finance-notices .boe-handover-observers-title { display: flex; align-items: center; min-height: 44px; }
+}
+
+/* Cash journeys on a phone: each payment is four lines, not five (Finance's
+   check sits beside where the cash is), the view's rule is two lines at most,
+   and the row's buttons are 44px. */
+@media (max-width: 767px) {
+  .boe-cj-main {
+    grid-template-areas:
+      "id amount"
+      "route recorded"
+      "where verify"
+      "actions actions";
+    gap: 6px 12px; padding: 10px 14px;
+  }
+  .boe-cj-verify { align-items: flex-end; align-self: start; }
+  .boe-cj-actions .boe-btn, .boe-cj-actions .boe-btn[style] { min-height: 44px !important; padding: 0 14px !important; }
+  .boe-cj-toggle { height: 44px; }
+  .boe-cj-id .boe-payment-id-copy { width: 36px; height: 40px; margin: -9px 0; }
+  .boe-cj-viewhead { padding: 8px 14px; }
+  .boe-cj-viewhead > span:not([class]) {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .boe-cj-seg button { min-height: 40px; }
+  .boe-cj-pager .boe-btn { min-height: 44px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — ORDERS (owner, 2026-11-05, "phones: content first")
+
+   Below 768px every Orders page puts its list, table or record on the first
+   screen. Desktop and tablet are untouched: every rule is inside the media
+   query. Inline styles are beaten with !important, as elsewhere in this file.
+   Pinned by src/app/orders/phoneOrders.render.test.tsx.
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── Header text buttons that are an icon on a phone (Select an order, Download PI Format) ── */
+  .boe-page-header .orders-hdr-iconbtn {
+    position: relative; width: 44px; min-width: 44px; height: 44px; padding: 0 !important;
+    justify-content: center; border-color: transparent; background: none; color: #4C5352;
+  }
+  /* The words leave the screen but stay the button's name for a screen reader. */
+  .boe-page-header .orders-hdr-iconbtn .orders-hdr-label {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .boe-page-header .orders-hdr-iconbtn svg { width: 18px; height: 18px; }
+  /* With them the header is one row: the title gives way (ellipsis), never wraps the icons below. */
+  .boe-page-header:has(.orders-hdr-iconbtn) { flex-wrap: nowrap; }
+  .boe-page-header:has(.orders-hdr-iconbtn) .boe-page-title-group { flex: 1 1 0; min-width: 0; }
+  .boe-page-header:has(.orders-hdr-iconbtn) .boe-header-actions { flex: none !important; flex-wrap: nowrap !important; }
+  /* Upload PI: the filled 40px square, as the + of other modules. */
+  .boe-page-header .orders-hdr-primary {
+    width: 40px; min-width: 40px; height: 40px; min-height: 40px; margin: 2px;
+    border-radius: 10px; background: #B9472E; border-color: #B9472E; color: #FFFFFF;
+  }
+
+  /* ── /orders: six figures in two rows of three tiles, the board right under them ── */
+  .od-stack { gap: 12px; }
+  .od-ov-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .od-ov-card { gap: 1px; min-height: 64px; padding: 8px 10px 9px 11px; border-left-width: 3px; border-radius: 10px; }
+  .od-ov-count { order: -1; font-size: 22px; line-height: 1.15; }
+  .od-ov-label { font-size: 12px; font-weight: 500; line-height: 1.25; }
+  .od-ov-sub, .od-ov-detail { display: none; }
+  .od-ov .od-note { margin-top: 8px; }
+  /* The board's six tabs: one row that scrolls sideways, 44px tall. */
+  .od-board-tabs { flex-wrap: nowrap; gap: 0; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  .od-board-tabs::-webkit-scrollbar { display: none; }
+  .od-board-tab { flex: none; min-height: 44px; padding: 0 12px; white-space: nowrap; }
+  .od-board-panel { padding: 0 14px 4px; }
+  .od-board-row { gap: 2px 12px; padding: 10px 0; }
+  /* Three lines a row: number and figure; client; what is wrong and why. */
+  .od-board-id { gap: 0; }
+  .od-board-what { flex-direction: row; flex-wrap: wrap; column-gap: 8px; }
+  .od-board-figure-label { display: none; }
+  .od-board .od-show-all { width: 100%; }
+  .od-queue-link { min-height: 44px; align-items: center; }
+  /* The salesperson's dashboard: its jump chips and Open PI are touch-sized. */
+  .spd-chip { height: 40px; }
+  .spd-open { height: 40px; }
+
+  /* ── /orders/drafts: each card is three lines (the cards are also drawn on a tablet, unchanged there) ── */
+  .drafts-card {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "client pill" "ref value" "facts actions";
+    align-items: baseline; gap: 2px 10px !important; padding: 11px 14px !important;
+  }
+  /* client · status / reference · value / who, advance and dates · Open and Delete */
+  .drafts-card-head, .drafts-card-head > div:first-child { display: contents !important; }
+  .drafts-card-client { grid-area: client; min-width: 0; font-size: 15px !important; }
+  .drafts-card-head > div:first-child > div:last-child { grid-area: ref; min-width: 0; margin-top: 0 !important; }
+  .drafts-card-head > .fin-pill { grid-area: pill; justify-self: end; }
+  .drafts-card-value { grid-area: value; justify-self: end; }
+  .drafts-card-value > span:first-child { display: none; }
+  .drafts-card-value > span:last-child { font-size: 13.5px !important; font-weight: 600; color: #303536 !important; }
+  .drafts-card-facts { grid-area: facts; align-self: center; flex-direction: row !important; flex-wrap: wrap; margin-top: 4px; }
+  .drafts-card-facts > span:nth-child(1) > span:first-child { display: none; }
+  .drafts-card-facts > span:nth-child(3)::before { content: '\00a0·\00a0'; color: #686D6C; }
+  .drafts-card-facts > span:nth-child(2) { order: 3; flex-basis: 100%; }
+  .drafts-card-actions { grid-area: actions; align-self: end; }
+  .drafts-card .boe-row-actions { gap: 8px !important; }
+  .drafts-card .boe-row-icon { width: 44px; height: 44px; }
+  .drafts-card .boe-row-icon-slot { display: none; }
+
+  /* ── Old orders (BDPI) and the Payment plan pages ── */
+  .opp-page { padding: 0; gap: 10px; }
+  .opp-back { display: inline-flex; align-items: center; align-self: flex-start; min-height: 44px; margin: -10px 0 -8px; }
+  .opp-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .opp input.boe-input, .opp-page input.boe-input { min-height: 44px; font-size: 16px; }
+  /* The list first: the intro goes, and New BDPI opens from the header's + as a sheet. */
+  .bdpi-intro { display: none; }
+  .bdpi-upload { display: none; }
+  .bdpi-upload.is-open {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+    max-height: 85vh; overflow-y: auto; margin: 0; gap: 12px;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #FFFFFF; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .bdpi-upload-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bdpi-upload .opp-inputs { grid-template-columns: minmax(0, 1fr); }
+  .bdpi-upload input[type="file"] { min-height: 44px; }
+  .bdpi-upload .opp-actions .boe-btn { flex: 1 1 100%; }
+  .bdpi-list { gap: 8px; margin-top: 0; }
+  .bdpi-list .opp-head .opp-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .bdpi-list .opp-head .boe-list-search { flex: 1 1 100%; max-width: none; height: 44px; font-size: 16px; }
+  /* Each old order is three lines: BDPI and its total; the client; old number · pieces · status. */
+  .bdpi-scroll { overflow: visible; }
+  .opp-bdpi-table, .opp-bdpi-table tbody { display: block; }
+  .opp-bdpi-table thead { display: none; }
+  .opp-bdpi-table tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px;
+    padding: 10px 4px; border-bottom: 1px solid var(--boe-border);
+  }
+  .opp-bdpi-table td {
+    display: block; padding: 0; border: 0; white-space: normal;
+    font-size: 12px; color: var(--boe-text-muted); text-align: left !important;
+  }
+  .opp-bdpi-table td:nth-child(1) { order: 1; flex: 1 1 auto; font-size: 15px; color: var(--boe-text); }
+  .opp-bdpi-table td:nth-child(4) { order: 2; font-size: 15px; font-weight: 700; color: var(--boe-text-strong); }
+  .opp-bdpi-table td:nth-child(3) { order: 3; flex: 0 0 100%; font-size: 13.5px; color: var(--boe-text); }
+  .opp-bdpi-table td:nth-child(2) { order: 4; }
+  .opp-bdpi-table td:nth-child(2)::before { content: 'Old order '; }
+  .opp-bdpi-table td:nth-child(5) { order: 5; }
+  .opp-bdpi-table td:nth-child(5)::before { content: '\00a0·\00a0 Sent\00a0'; }
+  .opp-bdpi-table td:nth-child(6) { order: 6; }
+  .opp-bdpi-table td:nth-child(6)::before { content: '\00a0·\00a0'; }
+  .opp-bdpi-table tr:hover td, .opp-bdpi-table tr:focus td { background: none; }
+
+  /* The four sums: two to a row, the balance across the full width. */
+  .opp-tile, .opp-tile-bal { flex-basis: 50%; padding: 10px 12px; }
+  .opp-tiles > .opp-tile:nth-child(4n+3) { border-left: 1px solid var(--boe-border); }
+  .opp-tiles > .opp-tile:nth-last-child(-n+3) { border-bottom: 0; }
+  .opp-tile-v { font-size: 18px; }
+  .opp-tile-bal .opp-tile-v { font-size: 22px; }
+  .opp-settings { padding: 12px 14px 14px; }
+  .opp-card-head { padding: 12px 14px 8px; }
+  /* Goods in this lot: each line is a card (picture and name; Ordered, Sent,
+     This lot, Left; Items, Packing, Fabric, Total), nothing scrolls sideways. */
+  .opp-card .opp-scroll { overflow: visible; }
+  .opp-grid { display: block; min-width: 0; table-layout: auto; }
+  .opp-grid colgroup, .opp-grid thead { display: none; }
+  .opp-grid tbody, .opp-grid tfoot { display: block; }
+  .opp-grid tr {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    padding: 12px 14px; border-top: 1px solid var(--boe-border);
+  }
+  .opp-grid tbody tr { grid-template-areas: "pic code code code" "pic name name name" "ord sent lot left" "items pack fab total"; }
+  .opp-grid tfoot tr { grid-template-areas: "foot foot foot foot" "ord sent lot left" "items pack fab total"; }
+  .opp-grid th, .opp-grid td {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    padding: 0; border: 0; text-align: left; font-size: 13px; min-width: 0;
+  }
+  .opp-grid td[data-label]::before { content: attr(data-label); font-size: 11px; font-weight: 500; color: var(--boe-text-muted); }
+  .opp-grid tbody td:nth-child(1) { grid-area: pic; }
+  .opp-grid tbody td:nth-child(2) { grid-area: code; flex-direction: row; gap: 4px; align-items: baseline; }
+  .opp-grid tbody td:nth-child(3) { grid-area: name; }
+  .opp-grid tbody td:nth-child(4), .opp-grid tfoot td:nth-child(2) { grid-area: ord; }
+  .opp-grid tbody td:nth-child(5), .opp-grid tfoot td:nth-child(3) { grid-area: sent; }
+  .opp-grid tbody td:nth-child(6), .opp-grid tfoot td:nth-child(4) { grid-area: lot; }
+  .opp-grid tbody td:nth-child(7), .opp-grid tfoot td:nth-child(5) { grid-area: left; }
+  .opp-grid tbody td:nth-child(8), .opp-grid tfoot td:nth-child(6) { grid-area: items; }
+  .opp-grid tbody td:nth-child(9), .opp-grid tfoot td:nth-child(7) { grid-area: pack; }
+  .opp-grid tbody td:nth-child(10), .opp-grid tfoot td:nth-child(8) { grid-area: fab; }
+  .opp-grid tbody td:nth-child(11), .opp-grid tfoot td:nth-child(9) { grid-area: total; }
+  .opp-grid tfoot td:nth-child(1) { grid-area: foot; }
+  .opp-grid .opp-gs { border-left: 0; }
+  .opp-grid td.opp-lot { padding: 4px 6px; margin: -4px -6px; border-radius: 8px; }
+  .opp-grid .opp-qty { max-width: none; min-height: 44px; font-size: 16px; text-align: left; }
+  .opp-grid .opp-thumb { width: 52px; height: 52px; }
+  .opp-grid .opp-name { font-size: 14px; }
+  .opp-grid tfoot td { background: none; }
+  .opp-grid tfoot tr { background: var(--boe-surface-quiet); }
+  /* How the amount is worked out: five narrow columns that fit the screen. */
+  .opp-fold > summary { min-height: 44px; padding: 12px 14px; }
+  .opp-fold-body { padding: 0 12px 14px; }
+  .opp-calc th, .opp-calc td { padding: 7px 5px; font-size: 12px; }
+  .opp-calc .l { width: 32%; }
+
+  /* ── The Confirmed Order: the back arrow folds beside the order number ── */
+  .order-detail-page { position: relative; gap: 12px; }
+  .order-detail-page > .order-back {
+    position: absolute; top: 0; left: -6px; z-index: 1;
+    width: 44px; height: 44px; margin: 0; padding: 0; justify-content: center;
+    font-size: 0; color: #4C5352; border-radius: 10px;
+  }
+  .order-detail-page > .order-back svg { width: 20px; height: 20px; }
+  .order-detail-page .order-command-identity { padding-left: 40px; min-height: 44px; align-items: center; }
+  .order-detail-page .order-command-heading { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .order-detail-page .order-command-eyebrow { display: none; }
+  .order-detail-page .order-command-number { font-size: 24px; line-height: 1.15; }
+  .order-detail-page .order-command-client { margin: 0; padding: 0; border: 0; font-size: 14px; line-height: 1.3; }
+  .order-detail-page .order-command-header { gap: 10px; }
+
+  /* ── A PI draft: the back link and the notices above the record as one tight strip ── */
+  .pi-detail-stack { gap: 10px; }
+  .pi-detail-stack > .order-back { min-height: 44px; margin: -10px 0 -8px; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] {
+    display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+    gap: 4px 10px !important; padding: 10px 12px !important;
+  }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div { display: contents; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div > div:first-child { grid-column: 2; grid-row: 1; font-size: 13.5px !important; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > div > div:last-child { grid-column: 1 / -1; grid-row: 2; margin-top: 0 !important; font-size: 12px !important; line-height: 1.4 !important; }
+  .pi-detail-stack > [data-testid="pi-locked-notice"] > .boe-btn { grid-column: 3; grid-row: 1; min-height: 40px; padding: 0 12px; }
+  .pi-detail-stack > .pi-refresh-failed { flex-wrap: nowrap; padding: 6px 6px 6px 12px; line-height: 1.35; }
+  .pi-detail-stack > .pi-refresh-failed .boe-btn { flex: none; }
+
+  /* ── Customize image learning: 44px tabs, 40px filter pills ── */
+  .cil-tabs { overflow-x: auto; scrollbar-width: none; }
+  .cil-tab { flex: 1 0 auto; min-height: 44px; padding: 0 12px; font-size: 14px; }
+  .cil-filters { gap: 8px; }
+  .cil-filters .pi-regen-chip { min-height: 40px; padding: 0 14px; font-size: 13px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 3 — SALES, LEADS, SHOWROOM, REVIEWS, SEO, MARKETING
+   (owner, 2026-11-05, "phones: content first"). Below 768px only: every rule
+   that changes a page sits in a max-width: 767px block, so a desktop and a
+   tablet are drawn exactly as before. Many of these pages use inline styles,
+   so a rule that has to beat one carries !important.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* The shared Filter sheet (components/phoneFilters/PhoneFilterSheet.tsx) reuses
+   Confirmed Orders' sheet; its options are 40px, a page's own selects 44px.
+   The sheet only ever opens on a phone (its button is phone-only). */
+.p3-sheet .orders-sheet-options button { min-height: 40px; padding: 0 14px; border-radius: 999px; }
+.p3-sheet select, .p3-sheet input[type="date"],
+.p3-sheet-field select, .p3-sheet-field input { width: 100%; min-height: 44px; font-size: 16px; }
+.p3-sheet-empty { font-size: 13px; color: #686D6C; }
+.sra-qr-short { display: none; }
+.crv-lb-compact, .crv-phone-filter-row, .crv-info-phone { display: none; }
+
+@media (max-width: 767px) {
+  /* Table cards with two "label value" columns (Visit Activity, By person). */
+  .p3-cardgrid.boe-cardtable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; row-gap: 4px; }
+  .p3-cardgrid.boe-cardtable tbody td:first-child { grid-column: 1 / -1; }
+  .p3-cardgrid.boe-cardtable tbody td[data-label]::before { max-width: none; white-space: nowrap; }
+  .p3-cardgrid.boe-cardtable tbody td { gap: 8px; }
+
+  /* ── Showroom Admin · Product Master: one card per product ──
+     Picture on the left; name; code and category; status and MRP; ⋯ opens
+     Print QR, Edit, Mark active / inactive and Delete. */
+  .sra-ptable, .sra-ptable tbody { display: block; }
+  .sra-ptable thead { display: none; }
+  .sra-ptable .sra-prow {
+    display: grid !important; align-items: center;
+    grid-template-columns: 56px auto minmax(0, 1fr) auto;
+    grid-template-areas: "img name name more" "img code cat more" "img status . mrp";
+    column-gap: 10px; row-gap: 3px; padding: 10px 6px 10px 12px;
+  }
+  .sra-ptable .sra-prow > td { display: block; padding: 0 !important; min-width: 0 !important; white-space: normal !important; }
+  .sra-ptable .sra-p-img { grid-area: img; align-self: start; }
+  .sra-ptable .sra-p-name { grid-area: name; line-height: 1.3; }
+  .sra-ptable .sra-p-code { grid-area: code; }
+  .sra-ptable .sra-p-cat { grid-area: cat; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
+  .sra-ptable .sra-p-mrp { grid-area: mrp; text-align: right !important; }
+  .sra-ptable .sra-p-status { grid-area: status; }
+  .sra-ptable .sra-p-status button { pointer-events: none; padding: 2px 10px !important; }
+  .sra-ptable .sra-p-acts { grid-area: more; justify-self: end; }
+  .sra-ptable .sra-p-iconbtns { display: none !important; }
+  /* The search, status and sort controls above it are 44px. */
+  .product-toolbar-grid input, .product-toolbar-grid select { height: 44px !important; font-size: 16px !important; }
+  .product-toolbar-grid .product-toolbar-clear { min-height: 44px !important; }
+  /* Add Product floats at the bottom right instead of taking its own row. */
+  .sra-add-product-row { margin: 0 !important; height: 0; }
+  .sra-add-product {
+    position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+    min-height: 48px; padding: 0 18px; border-radius: 999px; box-shadow: 0 6px 16px rgba(185, 71, 46, 0.32);
+  }
+  .sra-presults { padding-bottom: 64px; }
+
+  /* ── Showroom Admin · Inquiries: the two totals and a short QR button share
+     one row; the stage buttons are one row of chips that scrolls sideways. */
+  .sra-summary { flex-wrap: nowrap !important; gap: 6px !important; margin-bottom: 10px !important; }
+  .sra-sumchip { flex: 1 1 0; min-width: 0; padding: 6px 10px !important; }
+  .sra-sumchip-sub { display: none; }
+  .sra-qrbtn { margin-left: 0 !important; flex: none; min-height: 44px !important; padding: 0 12px !important; }
+  .sra-qr-long { display: none; }
+  .sra-qr-short { display: inline; }
+  .sra-stage-tabs {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+    gap: 6px !important; margin: 0 -12px 12px !important; padding: 0 12px;
+  }
+  .sra-stage-tabs::-webkit-scrollbar { display: none; }
+  .sra-stage-tab { flex: none; min-height: 40px; border-radius: 999px !important; }
+
+  /* ── Showroom Admin · New / Edit product: dimensions 2 × 2, 44px controls. */
+  .sra-dims { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .sra-urlrow { grid-template-columns: minmax(0, 1fr) 44px !important; }
+  .sra-remove-btn { width: 44px !important; height: 44px !important; }
+  .sra-add-btn { min-height: 44px; }
+  .product-field input, .product-field select { height: 44px !important; font-size: 16px !important; }
+
+  /* ── Public showroom (QR) pages: quantity and remove buttons are 44px. */
+  .shw-qty { width: 44px !important; height: 44px !important; }
+  .shw-remove { min-width: 44px; min-height: 44px; justify-content: center; }
+
+  /* ── Samples · dispatch: every button and field 44px. */
+  .smp-dispatch button { min-height: 44px; }
+  .smp-dispatch input, .smp-dispatch select, .smp-dispatch textarea { min-height: 44px; font-size: 16px !important; }
+
+  /* ── Image Editor: the queue's remove button and the format select. */
+  .ie-remove { width: 44px !important; height: 44px !important; }
+  .ie-format { min-height: 44px; font-size: 16px !important; padding: 0 10px !important; }
+
+  /* ── Reviews · My Reviews: the leaderboard is one compact card (See all
+     opens the full board), one Submit (the header's), and the reviews come
+     before the reward rules and the month panels. */
+  .crv-lb-compact { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-color: rgba(196, 138, 26, 0.35) !important; background: #FFFBF2 !important; }
+  .crv-lb-compact-main { font-size: 14px; font-weight: 700; color: #303536; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-lb-compact-sub { font-size: 12.5px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-lb-compact-btn {
+    flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff;
+    font: inherit; font-size: 13px; font-weight: 600; color: #303536; cursor: pointer;
+  }
+  .crv-lb-full { display: none !important; }
+  .crv-lb-full.is-open { display: flex !important; }
+  .crv-submit-inline { display: none !important; }
+  .crv-later { order: 1; }
+  .crv-later ul[aria-label="Review reward rules"] { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+  .crv-later ul[aria-label="Review reward rules"] > li { flex: none; }
+  #header-submit-reason { display: none; }
+
+  /* ── Reviews · Reports: one Filter button, the metric cards as chips, the
+     long explanation behind a toggle, charts drawn for the phone. */
+  .crv-rfilters { display: none !important; }
+  .crv-phone-filter-row { display: flex; align-items: center; gap: 8px; }
+  .crv-phone-filter-text { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crv-sheet-fields { display: flex; flex-direction: column; gap: 12px; }
+  .crv-sheet-fields select { min-height: 44px; font-size: 16px !important; }
+  .crv-metrics {
+    display: flex !important; gap: 6px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 0 12px;
+  }
+  .crv-metrics::-webkit-scrollbar { display: none; }
+  .crv-metric {
+    flex: none; display: inline-flex !important; align-items: center; gap: 6px;
+    min-height: 40px !important; padding: 0 12px !important; border-radius: 999px !important;
+  }
+  .crv-metric-label { white-space: nowrap; font-size: 13px !important; }
+  .crv-metric-value { order: 2; font-size: 15px !important; }
+  .crv-metric-note { display: none; }
+  .crv-eligible { gap: 4px 16px !important; padding: 8px 12px !important; }
+  .crv-info-desk { display: none; }
+  .crv-info-phone { display: block; flex: 1 1 100%; font-size: 12.5px; color: #4C5352; }
+  .crv-info-phone summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: #335A86; }
+  .crv-info-phone p { margin: 0 0 4px; line-height: 1.5; }
+  .crv-chart-summary { min-height: 40px; display: flex; align-items: center; }
+
+  /* ── Reviews · Custom Submissions: the status pills are one sideways row. */
+  .crv-status-tabs { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; }
+  .crv-status-tabs::-webkit-scrollbar { display: none; }
+  .crv-status-tabs > button { flex: none; white-space: nowrap; }
+}
+
+/* PHONE PHASE 3 — TASKS, MEETINGS, ADMIN
+   (owner, 2026-11-05, "phones: content first"). Below 768px the Task lists,
+   Meetings, Control Center, Settings, Super Admin, Performance, Assets, My
+   Issues, My Credits, Manager and Dashboard pages put their content on the
+   first screen: chips that scroll sideways, a search box and ONE Filter
+   button (components/tasks/PhoneListTools.tsx), tables as cards, and every
+   control at least 44px (pills 40px). Desktop and tablet are untouched. */
+.boe-p3-chips, .boe-p3-tools { display: none; }
+
+@media (max-width: 767px) {
+  .boe-p3-chips {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    padding: 2px 12px; margin: 0 -12px 8px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  }
+  .boe-p3-chips::-webkit-scrollbar { display: none; }
+  .boe-p3-chips .orders-phone-chip { height: 40px; }
+  .boe-p3-tools { display: flex; align-items: center; gap: 8px; padding: 0 0 10px; }
+  /* Inside a card that has no padding of its own (My Tasks). */
+  .boe-p3-inset.boe-p3-chips { margin: 0 0 8px; }
+  .boe-p3-inset.boe-p3-tools { padding: 0 12px 10px; }
+  .boe-p3-tools .boe-list-search { flex: 1 1 auto; max-width: none; height: 44px; min-width: 0; }
+  .boe-p3-tools .boe-list-search input { font-size: 16px; }
+  .boe-p3-tools > .boe-p3-filter { margin-left: auto; }
+  .orders-sheet-options button { min-height: 40px; }
+  .orders-sheet-clear, .orders-sheet-close { min-height: 44px; min-width: 44px; }
+  .orders-sheet-group .boe-input, .orders-sheet-group select, .orders-sheet-group input:not([type="checkbox"]) { min-height: 44px; font-size: 16px; width: 100%; }
+  /* A 44px square icon button for phone rows. */
+  .boe-p3-icon { min-width: 44px !important; min-height: 44px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Completed archives: the pager, the date filter and its Clear are 44px. */
+  .boe-p3-pager-btn { min-height: 44px; padding-left: 16px !important; padding-right: 16px !important; font-size: 13px !important; }
+  .boe-p3-datefilter { flex-wrap: wrap; width: 100%; }
+  .boe-p3-datefilter label { display: none; }
+  .boe-p3-date { flex: 1 1 auto; min-height: 44px; font-size: 16px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Cancelled archives: the header names the page, the note is one short
+     block, the selects live in the Filter sheet. */
+  .boe-p3-archive-heading { display: none !important; }
+  .boe-p3-archive-note { padding: 8px 12px !important; margin-bottom: 10px !important; font-size: 12.5px !important; line-height: 1.4 !important; }
+  .boe-p3-desk { display: none !important; }
+  .boe-p3-sheet-fields { display: flex; flex-direction: column; gap: 8px; }
+  .boe-p3-sheet-fields select { width: 100%; min-height: 44px !important; font-size: 16px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Task Detail: a 44px Back, cards 14px from their edge (22px left the text
+     ~300px), and the underlined Edit links as 44px targets. */
+  .boe-p3-back { min-height: 44px; padding: 0 10px 0 6px !important; margin-left: -6px; }
+  .boe-task-2col .boe-card { padding-left: 14px !important; padding-right: 14px !important; }
+  .boe-p3-task-card { padding-top: 12px !important; padding-bottom: 12px !important; }
+  .boe-p3-textbtn { min-height: 44px; min-width: 44px; padding: 0 8px !important; margin: -10px -8px -10px 0 !important; }
+}
+
+@media (max-width: 767px) {
+  /* Manager View: KPI chips, then the Live Task Feed, then the panels. */
+  .boe-p3-manager .boe-kpi-grid {
+    display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px 10px; padding: 2px 12px;
+  }
+  .boe-p3-manager .boe-kpi-grid::-webkit-scrollbar { display: none; }
+  .boe-p3-manager .boe-kpi {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 40px; padding: 0 12px; border-radius: 999px; box-shadow: none;
+  }
+  .boe-p3-manager .boe-kpi::before { display: none; }
+  .boe-p3-manager .boe-kpi-label { margin: 0; font-size: 12.5px; text-transform: none; letter-spacing: 0; font-weight: 500; white-space: nowrap; }
+  .boe-p3-manager .boe-kpi-value { font-size: 15px; display: inline; }
+  .boe-p3-manager .boe-kpi-meta { display: none; }
+  .boe-p3-manager .boe-manager-layout { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  .boe-p3-manager .boe-manager-right { order: -1; }
+  .boe-p3-manager .boe-manager-right > .boe-panel-card:last-child { order: -1; }
+  .boe-p3-manager .boe-filter-tab { min-height: 40px; padding: 0 12px; border-radius: 999px; font-size: 13px; }
+  .boe-p3-select { min-height: 44px !important; font-size: 16px !important; }
+  .boe-p3-manager .boe-panel-scroll { max-height: 60vh; }
+}
+
+@media (max-width: 767px) {
+  /* A text link inside a card, grown to a 44px target without a box. */
+  .boe-p3-tap { min-height: 44px; display: inline-flex !important; align-items: center; margin-top: 0 !important; margin-bottom: -6px !important; }
+}
+
+@media (max-width: 767px) {
+  /* Action Queue: each pending item is a card titled by the action needed. */
+  .boe-p3-aq-card { background: none !important; border: 0 !important; box-shadow: none !important; overflow: visible !important; }
+  .boe-p3-aq > div { overflow: visible !important; }
+  .boe-p3-aq tbody td:nth-child(2) { order: -1; display: block; text-align: left; font-size: 15px !important; }
+  .boe-p3-aq tbody td:nth-child(2)::before { display: none; }
+  .boe-cardtable.boe-p3-aq tbody td:first-child { display: flex; text-align: right; font-size: 13.5px !important; font-weight: 400; margin: 0; }
+  .boe-cardtable.boe-p3-aq tbody td:first-child::before { display: block; }
+  .boe-p3-aq tbody td:last-child { justify-content: flex-start !important; margin-top: 6px; }
+}
+
+.boe-p3-perf-phone { display: contents; }
+@media (max-width: 767px) {
+  /* A card table whose SECOND column is the title (the first is a rank). */
+  .boe-p3-cardshell { padding: 0 !important; border: 0 !important; background: none !important; overflow: visible !important; }
+  .boe-p3-title2 > div { overflow: visible !important; }
+  .boe-p3-title2 tbody td:nth-child(2) { order: -1; display: block; text-align: left !important; font-size: 15px !important; font-weight: 600; }
+  .boe-p3-title2 tbody td:nth-child(2)::before { display: none; }
+  .boe-cardtable.boe-p3-title2 tbody td:first-child { display: flex; text-align: right; font-size: 13.5px; margin: 0; }
+  .boe-cardtable.boe-p3-title2 tbody td:first-child::before { display: block; }
+
+  /* Team Performance: no doubled padding, the summary cards as chips. */
+  .boe-p3-perfwrap { padding: 0 !important; gap: 12px !important; }
+  .boe-p3-perf-phone .boe-p3-chips { margin-bottom: 0; }
+  .boe-p3-perf-phone .boe-p3-tools { padding-bottom: 0; }
+  .boe-p3-range input { min-height: 44px; font-size: 16px !important; flex: 1 1 130px; }
+  .boe-p3-sumgrid {
+    display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 2px 12px;
+  }
+  .boe-p3-sumgrid::-webkit-scrollbar { display: none; }
+  .boe-p3-sumcard {
+    flex: none; flex-direction: row !important; align-items: center !important; gap: 6px !important;
+    min-height: 40px; padding: 0 12px !important; border-radius: 999px !important; white-space: nowrap;
+  }
+  .boe-p3-sumlabel { font-size: 12.5px !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: 500 !important; }
+  .boe-p3-sumhead { flex-wrap: nowrap !important; }
+  .boe-p3-sumvalue { font-size: 15px !important; }
+  .boe-p3-sumextra { display: none !important; }
+}
+
+@media (max-width: 767px) {
+  /* My Performance: 44px tabs that share the row, 14px card padding, and the
+     log history as cards. */
+  .boe-p3-segtabs { align-self: stretch !important; }
+  .boe-p3-segtabs > button { flex: 1 1 0; min-height: 44px; padding: 0 6px !important; }
+  .boe-p3-perfwrap [style*="padding: 20px 20px"],
+  .boe-p3-perfwrap [style*="padding: 22px 24px"] { padding: 14px !important; }
+  .boe-p3-plaincards tbody { padding: 10px; }
+  .boe-p3-plaincards tbody td { max-width: none !important; overflow: visible !important; }
+}
+
+@media (max-width: 767px) {
+  /* Assets: the four counts as one row of chips, 44px view tabs. */
+  .boe-p3-countchips {
+    display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px; padding: 2px 12px;
+  }
+  .boe-p3-countchips::-webkit-scrollbar { display: none; }
+  .boe-p3-countchip {
+    flex: none; flex-direction: row !important; align-items: center; gap: 6px !important;
+    min-height: 40px; padding: 0 12px !important; border-radius: 999px !important; white-space: nowrap;
+  }
+  .boe-p3-countlabel { font-size: 12.5px !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: 500 !important; }
+  .boe-p3-countvalue { font-size: 15px !important; }
+  .boe-p3-counthint { display: none; }
+  .boe-p3-lens > button { min-height: 44px; }
+}
+
+@media (max-width: 767px) {
+  /* Super Admin Task Records: filters stacked with a full-width Load, the
+     summary over a full-width Delete, each record as checkbox + one column. */
+  .boe-p3-sa-filter { padding: 12px !important; gap: 10px !important; margin-bottom: 12px !important; }
+  .boe-p3-sa-filter > div { flex: 1 1 100% !important; }
+  .boe-p3-sa-filter select { min-height: 44px; font-size: 16px !important; }
+  .boe-p3-sa-load { margin-left: 0 !important; }
+  .boe-p3-sa-load button { width: 100%; }
+  .boe-p3-sa-summary { flex-wrap: wrap; }
+  .boe-p3-sa-summary > button { width: 100%; justify-content: center; min-height: 44px; }
+  .boe-p3-sa-head { grid-template-columns: 44px 1fr !important; padding: 6px 12px !important; }
+  .boe-p3-sa-head > div:nth-child(n+3) { display: none; }
+  .boe-p3-sa-row { grid-template-columns: 44px minmax(0, 1fr) !important; row-gap: 3px; padding: 12px !important; }
+  .boe-p3-sa-row > div:nth-child(n+3) { grid-column: 2; padding-right: 0 !important; font-size: 12.5px; }
+  .boe-p3-sa-row > div:nth-child(2) { padding-right: 0 !important; }
+  .boe-p3-sa-head input[type="checkbox"], .boe-p3-sa-row input[type="checkbox"] { width: 20px; height: 20px; }
+}
+
+@media (max-width: 767px) {
+  /* Super Admin view-user: banner tight, summary cards as chips, the bottom
+     bar as a 2×2 grid (four columns could not fit 390px). */
+  .boe-p3-va-banner { padding: 8px 12px !important; margin-bottom: 12px !important; }
+  .boe-p3-va-banner > button { width: 100%; justify-content: center; }
+  .boe-p3-va-cards {
+    display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px 12px !important; padding: 2px 12px;
+  }
+  .boe-p3-va-cards::-webkit-scrollbar { display: none; }
+  .boe-p3-va-card { flex: none; min-height: 40px; padding: 0 12px !important; border-radius: 999px !important; gap: 8px !important; white-space: nowrap; box-shadow: none !important; }
+  .boe-p3-va-icon, .boe-p3-va-sub { display: none !important; }
+  .boe-p3-va-count { font-size: 15px !important; }
+  .boe-p3-va-bar { display: grid !important; grid-template-columns: 1fr 1fr; }
+  .boe-p3-va-bar > div[style*="width: 1px"] { display: none; }
+  .boe-p3-va-bar > div[role="button"] { min-height: 56px; border-top: 1px solid #F1EEE9; }
+}
+
+@media (max-width: 767px) {
+  /* Settings and Designations: no doubled top padding, one card per row. */
+  .boe-p3-settings { padding: 0 !important; gap: 12px !important; }
+  .boe-p3-settings-cards { grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; }
+  .boe-p3-settings-cards > button { padding: 12px 14px !important; min-height: 56px; }
+  .boe-p3-settings-cards > button > div { margin-bottom: 2px !important; }
+  .boe-p3-settings-cards > button > p { font-size: 12.5px !important; }
+  .boe-p3-settings-pw { padding: 14px !important; }
+  .boe-p3-settings-pw input { min-height: 44px; font-size: 16px !important; }
+  .boe-p3-settings-pw button[type="submit"] { min-height: 44px; width: 100%; }
+}
+
+@media (max-width: 767px) {
+  /* BOE Credits: compact balance, Recent activity next, then the rest. */
+  .boe-p3-credits { gap: 12px !important; }
+  .boe-p3-cr-balance > div { padding: 12px 14px !important; gap: 8px 18px !important; }
+  .boe-p3-cr-balance > div > div:first-child > div:last-child { font-size: 28px !important; }
+  .boe-p3-cr-balance > div > div:last-child { margin-left: 0 !important; max-width: none !important; flex: 1 1 100%; }
+  .boe-p3-cr-activity { order: 1; }
+  .boe-p3-cr-month { order: 2; }
+  .boe-p3-cr-uses { order: 3; }
+  .boe-p3-cr-guide { order: 4; min-height: 56px; }
+  .boe-p3-cr-activity > div:first-child { padding: 4px 14px !important; align-items: center !important; }
+  .boe-p3-cr-activity ol { padding: 2px 14px !important; }
+  .boe-p3-cr-month > div { padding: 12px 14px !important; }
 }

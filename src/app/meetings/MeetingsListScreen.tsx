@@ -7,6 +7,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
 import { Toast, useToast } from '@/components/ui/toast'
 import { colors } from '@/lib/tokens'
+import { PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import { MeetingsLayout } from '@/components/layout/MeetingsLayout'
 import { MeetingBadge } from '@/components/meetings/MeetingModal'
 import { MeetingFormModal } from '@/components/meetings/MeetingFormModal'
@@ -286,7 +287,18 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
     >
       {/* Toolbar — form controls only. Status navigation belongs to the table
           card below, so the two never read as the same kind of control. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+      {/* PHONE (owner, 2026-11-05, phone phase 3): a 44px search box and ONE
+          Filter button holding the meeting type. */}
+      <PhoneSearchFilter
+        search={{ value: searchInput, onChange: setSearchInput, onBlur: flushSearch, placeholder: 'Meeting, lead or order…', label: 'Search meetings' }}
+        activeCount={type ? 1 : 0}
+        resultCount={visible.length}
+        noun={['meeting', 'meetings']}
+        onClearAll={() => setState({ type: '' })}
+        groups={[{ id: 'type', label: 'Meeting type', value: type, onChange: v => setState({ type: v as MeetingType | '' }),
+          options: [{ value: '', label: 'All types' }, ...MEETING_TYPES.map(t => ({ value: t, label: MEETING_TYPE_META[t].label }))] }]}
+      />
+      <div className="boe-p3-desk" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
         <input
           className="boe-input"
           aria-label="Search meetings"

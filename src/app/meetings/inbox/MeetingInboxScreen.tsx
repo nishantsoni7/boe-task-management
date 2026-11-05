@@ -182,9 +182,14 @@ export function MeetingInboxBody({
           <p style={{ margin: 0, fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
             {items.length === 0
               ? 'Nothing is waiting. Every issue raised so far is on a meeting agenda.'
-              : `${items.length} issue${items.length === 1 ? '' : 's'} waiting for a meeting. `
-                + 'Each one is brought into the next review of its kind as soon as that meeting is '
-                + 'created — or you can add it to a live meeting now.'}
+              : <>
+                  {`${items.length} issue${items.length === 1 ? '' : 's'} waiting for a meeting. `}
+                  {/* One line on a phone (phone phase 3); each card repeats it. */}
+                  <span className="boe-desktop-only">
+                    {'Each one is brought into the next review of its kind as soon as that meeting is '
+                      + 'created — or you can add it to a live meeting now.'}
+                  </span>
+                </>}
           </p>
         </div>
 

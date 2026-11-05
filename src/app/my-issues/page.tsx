@@ -54,6 +54,7 @@ import {
   statusTone,
   type ObjectionRow,
 } from '@/lib/objections'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -253,9 +254,12 @@ function MyIssues() {
           type="button"
           onClick={() => setRaising('picking')}
           className="boe-btn boe-btn-primary"
+          aria-label="Raise Issue"
           style={{ padding: '7px 14px', fontSize: 12.5, whiteSpace: 'nowrap' }}
         >
-          Raise Issue
+          {/* One short word on a phone (phase 3), so the header stays one row. */}
+          <span className="boe-desktop-only">Raise Issue</span>
+          <span className="boe-phone-only">+ Raise</span>
         </button>
       }
     >
@@ -294,7 +298,9 @@ function MyIssues() {
           </div>
         </div>
       ) : (
-        /* Wide content scrolls inside its own box, so the page never does. */
+        /* Wide content scrolls inside its own box, so the page never does.
+           On a phone each issue is a card instead (PhoneTableCards). */
+        <PhoneTableCards>
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: 12,
           background: colors.base, overflowX: 'auto',
@@ -382,6 +388,7 @@ function MyIssues() {
             </tbody>
           </table>
         </div>
+        </PhoneTableCards>
       )}
 
       {raising && (

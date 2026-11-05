@@ -87,3 +87,14 @@ a.person:hover { text-decoration: underline; }
   .goRow :global(.boe-btn) { flex: 1; min-height: 44px; }
   .go { bottom: 64px; }
 }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   Team on a phone: the period / market / salesperson buttons (about 160px of
+   wrapping rows) become one line saying what is shown and one Filter button
+   whose sheet holds the same choices. */
+.phoneFilterRow { display: none; }
+@media (max-width: 767px) {
+  .filters { display: none; }
+  .phoneFilterRow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .phoneFilterText { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #4C5352; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

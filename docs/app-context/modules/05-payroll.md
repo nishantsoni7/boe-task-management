@@ -179,3 +179,13 @@ Run all: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"`; payroll only: 
 4. `docs/Module Docs/PAYROLL_ATTENDANCE_RULES.md`, `ATTENDANCE_REQUESTS.md` (sections 3, 3b).
 5. Live-state queries (read-only): `supabase migration list --linked`; periods with NULL `settings_snapshot`; probe actual columns after any migration.
 6. Run the section 10 suites; for DB-touching work also `supabase/tests` runners (bare postgres:16-alpine recipe per memory) because text tests can pass while an apply aborts.
+
+## Phones: content first, Phase 3 (2026-11-05, owner; no SQL; PR pending)
+Below 768px only; desktop and tablet unchanged. Shared pieces in `src/components/attendancePayroll/`: `PhoneSheet.tsx` (a Filter / Download button that opens a bottom sheet holding the page's own controls, styled with the Orders `.orders-sheet*` rules) and `HeaderActions.tsx` (a page's header buttons stay on a desktop and move into the shared `PhoneHeaderMenu` ⋯ / + on a phone); `ui.module.css` gained `.phoneOnly`, `.phoneTools`, `.sheetActions`. Pinned by `src/components/attendancePayroll/phoneAttendancePayroll.render.test.tsx`.
+- `/my-payroll`: a card per month (month, gross and deductions, net, review status; the whole row opens the payslip; an issue already raised shows its status, History and Raise again); the BOE Credits card is one row.
+- `/my-payroll/[periodId]` and `/payroll/results/[periodId]/[employeeId]`: 44px Back; the identity card is one line (month · status · generated; the employee's own view drops the name); every button in the payslip workspace is 44px (`payroll/results/payrollResultsPhone.module.css`, imported by `PayrollDetailView`).
+- `/payroll/results/[periodId]/salary-report`: 44px toolbar, larger boxes, and tapping a row includes or leaves out the employee (on every screen size; the checkbox stops the row's click so it does not toggle twice).
+- `/payroll/monthly-review`: "Preview only" and both warnings fold into one line; month and Preview on one row; shorter employee cards that open the detail.
+- `/payroll/credits`: balances first, then month close, then the settings form folded behind one row.
+- `/payroll/how-it-works`: the two guide tables stack ("Column: value") instead of a 620px sideways scroll.
+- Header text buttons (Payroll Runs, Results, Credits) are in the ⋯ / + menu on a phone.

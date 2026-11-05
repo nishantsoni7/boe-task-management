@@ -1016,6 +1016,7 @@ export default function AssetDetailPage() {
         <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
           <button
             onClick={backToInventory}
+            className="boe-p3-back"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '3px',
               background: 'none', border: 'none', padding: '2px 4px 2px 0',

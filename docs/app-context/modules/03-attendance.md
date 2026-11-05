@@ -207,3 +207,12 @@ Read first:
 6. `docs/Module Docs/ATTENDANCE_REQUESTS.md`, `PAYROLL_ATTENDANCE_RULES.md`, `ATTENDANCE_PAYROLL_MODULE.md` (treat as maintained prose; code wins).
 Queries/commands: `npx supabase migration list --linked` (non-empty `remote` per version, then probe columns); `git cherry -v` before trusting ahead/behind counts; MAX(`attendance_date`) per month for coverage.
 Tests to run: all of section 10 (attendance + payroll + security), plus `src/lib/boeCredits/*` and `src/lib/payroll/creditCoverage.test.ts` if corrections change (corrections reconcile credit coverage).
+
+## Phones: content first, Phase 3 (2026-11-05, owner; no SQL; PR pending)
+Below 768px only; desktop and tablet unchanged. Shared pieces in `src/components/attendancePayroll/`: `PhoneSheet.tsx` (a Filter / Download button that opens a bottom sheet holding the page's own controls, styled with the Orders `.orders-sheet*` rules) and `HeaderActions.tsx` (a page's header buttons stay on a desktop and move into the shared `PhoneHeaderMenu` ⋯ / + on a phone); `ui.module.css` gained `.phoneOnly`, `.phoneTools`, `.sheetActions`. Pinned by `src/components/attendancePayroll/phoneAttendancePayroll.render.test.tsx`.
+- `/my-attendance`: My requests is one row ("My requests · 6 · 1 pending ▾" and New request; the list opens on tap or on `#my-requests`); the toolbar keeps only the month (the header's Refresh now reloads the month through `refreshKey`); the coverage and "today so far" notices fold into one line; a day card is two lines with Raise Issue beside the times.
+- `/attendance` Overview: the four tiles are one sideways chip row (Missing punches keeps "Review them"); the month moves from the header into the page.
+- `/attendance/monthly-review/[userId]`: info card one line, KPIs as chips, a two-line card per day instead of the 7-column table.
+- `/attendance/records`: one line saying what is chosen plus a Filter sheet (employee, dates, Search). `/attendance/minop/incoming`: search + Filter sheet (dates, sort) + Download sheet (both exports). `/attendance/holidays`: the list first; the header + opens the add form.
+- `ObjectionQueue` (correction log, payroll monthly review, payroll results): a card per issue, 44px Resolve / Reject / History.
+- Header text buttons (Monthly review, Requests, Employee directory, Attendance sync, Incoming) are in the ⋯ / + menu on a phone.

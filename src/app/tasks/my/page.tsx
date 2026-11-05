@@ -10,7 +10,8 @@ import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import { MyTaskViewTabs, MyTaskViewSelect } from '@/components/tasks/MyTaskViewTabs'
+import { MyTaskViewTabs, MyTaskViewSelect, MY_TASK_VIEW_TABS, ALL_ACTIVE_TASKS_LABEL } from '@/components/tasks/MyTaskViewTabs'
+import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -253,7 +254,7 @@ function TaskCard({
                   title={onComplete ? 'Complete Task' : 'Submit for Approval'}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: '36px', height: '36px', borderRadius: '6px',
+                    width: '44px', height: '44px', borderRadius: '8px',
                     background: 'transparent', border: 'none',
                     cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
                     color: onComplete ? colors.green : colors.brand,
@@ -267,7 +268,7 @@ function TaskCard({
                 <button
                   onClick={e => { e.stopPropagation(); onEdit() }}
                   aria-label="Edit task" title="Edit"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '8px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
                 >
                   <Pencil size={14} />
                 </button>
@@ -276,7 +277,7 @@ function TaskCard({
                 <button
                   onClick={e => { e.stopPropagation(); onDelete() }}
                   aria-label="Delete task" title="Delete"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '8px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -1742,9 +1743,8 @@ function MyTasksContent() {
             if (isMobile) {
               return (
                 <div style={{
-                  display: 'flex', gap: '6px',
-                  padding: '10px 12px',
-                  borderBottom: `1px solid ${colors.border}`,
+                  display: 'flex', gap: '8px',
+                  padding: '8px 12px',
                 }}>
                   {TYPE_TABS.map(item => {
                     const isActive = taskType === item.key
@@ -1755,7 +1755,7 @@ function MyTasksContent() {
                         onClick={() => handleTypeChange(item.key)}
                         style={{
                           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                          padding: '7px 6px',
+                          padding: '0 6px', minHeight: '44px',
                           background: isActive ? item.accent : 'transparent',
                           border: `1.5px solid ${isActive ? item.accent : colors.border}`,
                           borderRadius: '12px', cursor: 'pointer', outline: 'none',
@@ -1864,6 +1864,45 @@ function MyTasksContent() {
                 phone they cost a row each and the workflow view already
                 answers most of what they were reached for.
                 DESKTOP is unchanged: assignee, priority, search right-aligned. */}
+            {/* PHONE (owner, 2026-11-05, phone phase 3): the workflow view as
+                one row of chips, then the search box and ONE Filter button
+                (Assigned by, Priority). The same URL state as the desktop. */}
+            {isMobile && (
+              <>
+                <PhoneChips
+                  className="boe-p3-inset"
+                  label="Task view"
+                  active={(activeTab ?? 'all') as MyTaskTabKey | 'all'}
+                  onSelect={key => handleTabChange(key === 'all' ? null : key)}
+                  chips={[
+                    { key: 'all' as const, label: ALL_ACTIVE_TASKS_LABEL.replace(' Tasks', ''), count: counts.all },
+                    ...MY_TASK_VIEW_TABS.map(t => ({ key: t.key, label: t.label.replace(' Actionable', ''), count: counts[t.key] })),
+                  ]}
+                />
+                <PhoneSearchFilter
+                  className="boe-p3-inset"
+                  search={{ value: searchInput, onChange: setSearchInput, onBlur: flushSearch, placeholder: 'Find tasks…', label: 'Find tasks' }}
+                  activeCount={(filterAssignedBy ? 1 : 0) + (filterPriority ? 1 : 0)}
+                  resultCount={visibleTasks.length}
+                  noun={['task', 'tasks']}
+                  onClearAll={() => setState({ assignedBy: '', priority: '' })}
+                  groups={[
+                    ...(taskType !== 'self' && assignerOptions.length > 0 ? [{
+                      id: 'assigned-by', label: 'Assigned by', value: filterAssignedBy,
+                      onChange: (v: string) => setState({ assignedBy: v }),
+                      options: [{ value: '', label: 'All' }, ...assignerOptions.map(o => ({ value: o.value, label: o.value === userId ? 'Self' : o.label }))],
+                    }] : []),
+                    {
+                      id: 'priority', label: 'Priority', value: filterPriority,
+                      onChange: (v: string) => setState({ priority: v as typeof filterPriority }),
+                      options: [{ value: '', label: 'All' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }],
+                    },
+                  ]}
+                />
+              </>
+            )}
+
+            {!isMobile && (
             <div style={{
               padding: isMobile ? '10px 14px' : '14px 24px 12px',
               ...(isMobile
@@ -1949,6 +1988,7 @@ function MyTasksContent() {
               </div>
               )}
             </div>
+            )}
 
             {/* Table header — desktop only */}
             {!isMobile && (
@@ -1985,7 +2025,7 @@ function MyTasksContent() {
             ) : visibleTasks.length === 0 ? (
               <EmptyState label={activeTab ? TAB_LABELS[activeTab] : 'active'} />
             ) : (
-              <div id="my-tasks-list" style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div id="my-tasks-list" style={{ padding: isMobile ? '0 12px 12px' : '10px 24px', display: 'flex', flexDirection: 'column', gap: isMobile ? '8px' : '6px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}

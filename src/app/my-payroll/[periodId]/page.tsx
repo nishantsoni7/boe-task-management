@@ -34,6 +34,7 @@ import {
   type ExplanationDayContext,
 } from '@/app/payroll/results/[periodId]/[employeeId]/DeductionExplanationModal'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
+import styles from '../myPayroll.module.css'
 import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
 import { RedeemCreditsModal } from '@/components/boeCredits/RedeemCreditsModal'
 import { PayrollCreditsPanel, type PayrollCreditsPanelData } from '@/components/boeCredits/PayrollCreditsPanel'
@@ -294,9 +295,10 @@ export default function MyPayrollDetailPage() {
       subtitle="Your salary for this month, and how it was worked out"
       onSignOut={handleSignOut}
     >
-      <div style={{ marginBottom: 16 }}>
+      <div className={styles.backRow} style={{ marginBottom: 16 }}>
         <button
           onClick={() => router.push('/my-payroll')}
+          className={styles.back}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
@@ -317,6 +319,7 @@ export default function MyPayrollDetailPage() {
       )}
 
       {result && data && (
+        <div className={styles.detail}>
         <PayrollDetailWorkspace
           result={result}
           data={data}
@@ -355,7 +358,7 @@ export default function MyPayrollDetailPage() {
           // boundary is /api/payroll/settlement, which is admin-only, and the
           // RLS on payroll_settlements, which grants employees SELECT alone.
           issuePanel={
-            <div style={{
+            <div className={styles.panel} style={{
               marginBottom: 16, padding: '12px 16px', borderRadius: 8,
               background: '#FBFAF8', border: '1px solid #ECE7E0',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -379,7 +382,7 @@ export default function MyPayrollDetailPage() {
                 ) : (
                   <button
                     onClick={() => setIssueOpen(true)}
-                    className="boe-btn boe-btn-ghost"
+                    className={`boe-btn boe-btn-ghost ${styles.panelBtn}`}
                     style={{ padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}
                   >
                     Raise Issue
@@ -388,7 +391,7 @@ export default function MyPayrollDetailPage() {
                 <button
                   onClick={handleMarkReviewed}
                   disabled={reviewed || reviewing}
-                  className={reviewed ? 'boe-btn boe-btn-ghost' : 'boe-btn boe-btn-primary'}
+                  className={`${reviewed ? 'boe-btn boe-btn-ghost' : 'boe-btn boe-btn-primary'} ${styles.panelBtn}`}
                   style={{ padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap', opacity: reviewed ? 0.7 : 1 }}
                 >
                   {reviewed ? 'Reviewed' : reviewing ? 'Saving…' : 'Mark as reviewed'}
@@ -397,6 +400,7 @@ export default function MyPayrollDetailPage() {
             </div>
           }
         />
+        </div>
       )}
 
       {/* Read-only, and available whatever the period's lock state: a locked

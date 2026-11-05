@@ -180,7 +180,10 @@ function AssignedByMeCancelledContent() {
           Open one to restore it to active work.
         </ArchiveNote>
 
-        <ArchiveToolbar searchInput={searchInput} onSearch={setSearchInput} onSearchBlur={flushSearch}>
+        <ArchiveToolbar
+          searchInput={searchInput} onSearch={setSearchInput} onSearchBlur={flushSearch}
+          phone={{ activeCount: (filterAssignee ? 1 : 0) + (filterPriority ? 1 : 0), resultCount: visibleTasks.length, onClearAll: () => setState({ assignee: '', priority: '' }) }}
+        >
           {assigneeOptions.length > 1 && (
             <ArchiveSelect value={filterAssignee} label="Assigned to" onChange={v => setState({ assignee: v })}>
               <option value="">All assignees</option>

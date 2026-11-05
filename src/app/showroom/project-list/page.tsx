@@ -332,6 +332,8 @@ function CartRow({
         <button
           onClick={onRemove}
           title="Remove"
+          aria-label="Remove"
+          className="shw-remove"
           style={{
             background: 'none', border: 'none',
             color: colors.muted, cursor: 'pointer',
@@ -346,14 +348,14 @@ function CartRow({
       {/* Bottom row: qty controls + line total */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-          <button onClick={onDecrease} style={qtyBtn}>−</button>
+          <button onClick={onDecrease} className="shw-qty" style={qtyBtn}>−</button>
           <span style={{
             minWidth: '36px', textAlign: 'center',
             fontSize: '14px', fontWeight: 600, color: colors.primary,
           }}>
             {item.quantity}
           </span>
-          <button onClick={onIncrease} style={qtyBtn}>+</button>
+          <button onClick={onIncrease} className="shw-qty" style={qtyBtn}>+</button>
         </div>
         <span style={{
           fontSize: '14px', fontWeight: 700, color: colors.primary,

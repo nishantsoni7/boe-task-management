@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Download, SlidersHorizontal, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -64,6 +65,8 @@ export function ReimbursementsView() {
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
+  // ON A PHONE the dates and the two dropdowns sit in a sheet behind one Filter button.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   // The page number is keyed by the filters it was chosen under: change any of
   // them and the page is 0 again, with no reset in an effect.
   const pageKey = JSON.stringify(filters)
@@ -140,6 +143,15 @@ export function ReimbursementsView() {
   const pages = Math.max(1, Math.ceil(batches.length / PAGE_SIZE))
   const shown = batches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const narrowed = JSON.stringify(filters) !== JSON.stringify(EMPTY_BATCH_FILTERS)
+  const filtersSet = [filters.dateFrom, filters.dateTo, filters.payerId, filters.status].filter(Boolean).length
+
+  // Escape closes the phone filter sheet.
+  useEffect(() => {
+    if (!filtersOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFiltersOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [filtersOpen])
 
   const download = async () => {
     if (downloading || batches.length === 0) return
@@ -182,10 +194,17 @@ export function ReimbursementsView() {
       onSignOut={handleSignOut}
       onRefresh={load}
       actions={
-        <button className="boe-btn boe-btn-primary" data-testid="download-all-reimbursements"
-          disabled={downloading || loading || batches.length === 0} onClick={() => void download()}>
-          {downloading ? 'Preparing…' : 'Download Excel'}
-        </button>
+        <>
+          <button className="boe-btn boe-btn-primary boe-desktop-only" data-testid="download-all-reimbursements"
+            disabled={downloading || loading || batches.length === 0} onClick={() => void download()}>
+            {downloading ? 'Preparing…' : 'Download Excel'}
+          </button>
+          {/* On a phone the header keeps one row: the same download as an icon. */}
+          <button type="button" className="boe-phone-only boe-header-icon" aria-label={downloading ? 'Preparing the Excel file' : 'Download Excel'} title="Download Excel"
+            disabled={downloading || loading || batches.length === 0} onClick={() => void download()}>
+            <Download size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </>
       }
     >
       <div className="boe-list-toolbar" role="search" aria-label="Filter reimbursements">
@@ -198,6 +217,29 @@ export function ReimbursementsView() {
             onChange={e => setSearchTerm(e.target.value)}
           />
         </label>
+        <button
+          type="button"
+          className={`boe-phone-only orders-phone-filter${filtersSet > 0 ? ' is-set' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={filtersOpen}
+          aria-label={filtersSet > 0 ? `Filter, ${filtersSet} set` : 'Filter'}
+          onClick={() => setFiltersOpen(true)}
+        >
+          <SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />
+          Filter
+          {filtersSet > 0 && <span className="orders-phone-filter-badge" aria-hidden="true">{filtersSet}</span>}
+        </button>
+        {/* The same controls on every screen. On a desktop this wrapper is
+            display: contents, so the toolbar is unchanged; on a phone it is a
+            sheet from the bottom of the screen, open only after Filter. */}
+        {filtersOpen && <div className="reimb-sheet-backdrop" onClick={() => setFiltersOpen(false)} />}
+        <div className={`reimb-filters${filtersOpen ? ' is-open' : ''}`} role={filtersOpen ? 'dialog' : undefined} aria-label={filtersOpen ? 'Filter reimbursements' : undefined}>
+        <div className="boe-phone-only reimb-sheet-head">
+          <h2>Filter</h2>
+          <button type="button" className="orders-sheet-close" aria-label="Close" onClick={() => setFiltersOpen(false)}>
+            <X size={18} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
         <div className="boe-list-daterange" role="group" aria-label="Reimbursement date">
           <label className="boe-list-date">
             <span>From</span>
@@ -227,6 +269,10 @@ export function ReimbursementsView() {
             Clear filters
           </button>
         )}
+        <button type="button" className="boe-phone-only boe-btn boe-btn-primary reimb-sheet-done" onClick={() => setFiltersOpen(false)}>
+          {loading ? 'Done' : `Show ${batches.length} ${batches.length === 1 ? 'reimbursement' : 'reimbursements'}`}
+        </button>
+        </div>
       </div>
 
       <div data-testid="reimbursements-total" style={{ margin: '10px 0', fontSize: '13px' }}>
@@ -240,7 +286,8 @@ export function ReimbursementsView() {
         )}
       </div>
 
-      <div className="boe-card" style={{ overflowX: 'auto' }}>
+      {/* ON A PHONE each reimbursement is a three-line card (.fph-list, globals.css). */}
+      <div className="boe-card fph-list" style={{ overflowX: 'auto' }}>
         {error ? (
           <FinanceEmpty icon="file" role="alert" title="Reimbursements could not be loaded" body={error} />
         ) : loading ? (
@@ -269,13 +316,13 @@ export function ReimbursementsView() {
                 <tr key={b.id} tabIndex={0} style={{ cursor: 'pointer' }}
                   onClick={() => setOpened(b.id)}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpened(b.id) } }}>
-                  <td>{fmtDate(b.reimbursed_on)}</td>
-                  <td><span className="fin-primary-text">{b.reference}</span></td>
-                  <td>{nameOf(b.payer_id)}</td>
-                  <td className="fin-num">{b.expense_count}</td>
-                  <td className="fin-num"><span className="fin-amount">{formatMoney(b.total_amount)}</span></td>
-                  <td><span className={`fin-pill fin-pill--${b.status === 'reversed' ? 'over' : 'full'}`}>{b.status === 'reversed' ? 'Reversed' : 'Reimbursed'}</span></td>
-                  <td className="fin-muted">{nameOf(b.recorded_by)} · {fmtDate(b.recorded_at)}</td>
+                  <td className="fph-l3">{fmtDate(b.reimbursed_on)}</td>
+                  <td className="fph-title"><span className="fin-primary-text">{b.reference}</span></td>
+                  <td className="fph-l2 fph-grow">{nameOf(b.payer_id)}</td>
+                  <td className="fin-num fph-l3 reimb-count">{b.expense_count}</td>
+                  <td className="fin-num fph-end1"><span className="fin-amount">{formatMoney(b.total_amount)}</span></td>
+                  <td className="fph-end2"><span className={`fin-pill fin-pill--${b.status === 'reversed' ? 'over' : 'full'}`}>{b.status === 'reversed' ? 'Reversed' : 'Reimbursed'}</span></td>
+                  <td className="fin-muted fph-l3 fph-grow">{nameOf(b.recorded_by)} · {fmtDate(b.recorded_at)}</td>
                 </tr>
               ))}
             </tbody>

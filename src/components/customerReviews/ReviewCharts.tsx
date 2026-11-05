@@ -1,6 +1,7 @@
 'use client'
 
 import { colors } from '@/lib/tokens'
+import { useIsPhone } from '@/components/phoneFilters/useIsPhone'
 import { axisMax, barSegments } from '@/lib/customerReviews/reviewReport'
 
 // A small stacked-bar chart, drawn as inline SVG like BOE's other charts (there is
@@ -19,6 +20,18 @@ import { axisMax, barSegments } from '@/lib/customerReviews/reviewReport'
 
 export const TYPE_FILL = { text: '#686D6C', image: '#335A86' } as const
 
+// ON A PHONE (owner, 2026-11-05, Phase 3) the daily chart's 31 bars made a
+// ~680-unit drawing squeezed into ~330px, so its 9-unit labels came out about
+// 4px tall. Below 768px the drawing is 320 units wide (about 1:1 with the
+// screen), labels are 11 units and at most ~6 day labels show. The server and
+// a desktop draw exactly what they drew before.
+/** The chart's drawing size and label rules: the desktop's, or the phone's. */
+export function chartGeometry(barCount: number, tickEvery: number, phone: boolean) {
+  return phone
+    ? { W: 320, fontSize: 11, padL: 28, padB: 24, tickEvery: Math.max(tickEvery, Math.ceil(barCount / 6)) }
+    : { W: Math.max(barCount * 22, 320), fontSize: 9, padL: 26, padB: 22, tickEvery }
+}
+
 export type BarDatum = { key: string; label: string; text: number; image: number }
 
 export function StackedBarChart({
@@ -31,11 +44,15 @@ export function StackedBarChart({
   tickEvery: number
   unitLabel?: string
 }) {
-  const W = Math.max(bars.length * 22, 320)
-  const H = 150
+  const phone = useIsPhone()
+  const geo = chartGeometry(bars.length, tickEvery, phone)
+  const W = geo.W
+  const H = phone ? 170 : 150
   const PAD_T = 8
-  const PAD_B = 22
-  const PAD_L = 26
+  const PAD_B = geo.padB
+  const PAD_L = geo.padL
+  const FS = geo.fontSize
+  const every = geo.tickEvery
   const plotH = H - PAD_T - PAD_B
   const highest = Math.max(0, ...bars.map(b => b.text + b.image))
   const max = axisMax(highest)
@@ -62,7 +79,7 @@ export function StackedBarChart({
           return (
             <g key={t}>
               <line x1={PAD_L} x2={W} y1={y} y2={y} stroke={colors.borderSoft} strokeWidth={1} />
-              <text x={PAD_L - 5} y={y + 3} textAnchor="end" fontSize={9} fill={colors.muted}>{t}</text>
+              <text x={PAD_L - 5} y={y + 3} textAnchor="end" fontSize={FS} fill={colors.muted}>{t}</text>
             </g>
           )
         })}
@@ -76,8 +93,8 @@ export function StackedBarChart({
               <title>{`${b.label}: ${b.text + b.image} ${unitLabel} (${b.text} text, ${b.image} image)`}</title>
               {b.text > 0 && <rect x={x} y={baseY - textH} width={barW} height={textH} fill={TYPE_FILL.text} rx={1} />}
               {b.image > 0 && <rect x={x} y={baseY - textH - imageH} width={barW} height={imageH} fill={TYPE_FILL.image} rx={1} />}
-              {i % tickEvery === 0 && (
-                <text x={x + barW / 2} y={H - 7} textAnchor="middle" fontSize={9} fill={colors.muted}>{b.label}</text>
+              {i % every === 0 && (
+                <text x={x + barW / 2} y={H - 7} textAnchor="middle" fontSize={FS} fill={colors.muted}>{b.label}</text>
               )}
             </g>
           )
@@ -95,7 +112,7 @@ export function StackedBarChart({
       </figcaption>
 
       <details style={{ marginTop: '6px', fontSize: '12px' }}>
-        <summary style={{ cursor: 'pointer', color: colors.secondary }}>Show as a table</summary>
+        <summary className="crv-chart-summary" style={{ cursor: 'pointer', color: colors.secondary }}>Show as a table</summary>
         <div style={{ overflowX: 'auto', marginTop: '6px' }}>
           <table style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: '260px' }}>
             <caption style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{title}</caption>

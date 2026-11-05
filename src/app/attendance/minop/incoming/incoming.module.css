@@ -78,3 +78,16 @@
   .pre { max-width: 100%; }
   .meta { grid-template-columns: 96px minmax(0, 1fr); }
 }
+
+/* ON A PHONE (owner, 2026-11-05, "phones: content first"): the search box,
+   the date fields, Sort and the two downloads took about 320px. A phone gets
+   the search with one Filter and one Download button (each opens a sheet);
+   each record is a three-line card. Desktop unchanged. */
+@media (max-width: 767px) {
+  .controls { display: none; }
+  .summaryNote { display: none; }
+  .card { gap: 3px; padding: 10px 12px; }
+  .cardPunch { margin-top: 0; font-size: 13px; }
+  .cardLine { margin-top: 0; }
+  .payload > summary { min-height: 44px; }
+}

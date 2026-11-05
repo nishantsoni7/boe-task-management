@@ -477,3 +477,15 @@
   .priceBox { grid-template-columns: 1fr; }
   .priceSide { border-left: 0; border-top: 1px solid #E4E2DC; }
 }
+
+/* ── PHONES, CONTENT FIRST (owner, 2026-11-05, Phase 3) ───────────────────
+   The four figures are one line of chips that scrolls sideways
+   ("Available 42 · Waiting 3 · Sold 9 · Products 120") instead of a 2×2 grid. */
+@media (max-width: 767px) {
+  .stats { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex: none; flex-direction: row; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; }
+  .statLabel { font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; white-space: nowrap; color: #4C5352; }
+  .statValue { font-size: 15px; font-weight: 700; }
+  .statNote { display: none; }
+}

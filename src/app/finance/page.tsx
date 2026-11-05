@@ -872,7 +872,8 @@ function FinancePageInner() {
       onRefresh={async () => { setBankReload(n => n + 1); await reload() }}
       actions={
         <>
-          {caps.canReconcileBank && <Link href="/finance/bank" className="boe-btn boe-btn-ghost">Upload statements</Link>}
+          {/* On a phone the header keeps one row: Bank Statements is in the menu (☰). */}
+          {caps.canReconcileBank && <Link href="/finance/bank" className="boe-btn boe-btn-ghost boe-desktop-only">Upload statements</Link>}
           <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary">
             + New
           </button>

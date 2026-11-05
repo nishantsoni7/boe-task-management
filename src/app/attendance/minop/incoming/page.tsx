@@ -13,7 +13,9 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
-import { Download, RefreshCw } from 'lucide-react'
+import { Download, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
+import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { formatDelay, type IncomingRegisterRow } from '@/lib/minop/incomingRegister'
 import styles from './incoming.module.css'
 
@@ -238,14 +240,16 @@ export default function IncomingMinopDataPage() {
       subtitle="Everything received from the machine, exactly as it arrived. Punches from 1 November 2026 become attendance for linked employees."
       onSignOut={handleSignOut}
       actions={
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={fetching}
-          className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
-        >
-          <RefreshCw size={13} className={fetching ? 'boe-spin' : undefined} /> Refresh
-        </button>
+        <HeaderActions items={[{ key: 'reload', label: 'Reload the incoming data', onSelect: () => void load() }]}>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={fetching}
+            className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
+          >
+            <RefreshCw size={13} className={fetching ? 'boe-spin' : undefined} /> Refresh
+          </button>
+        </HeaderActions>
       }
     >
       <div className={ui.stack}>
@@ -255,6 +259,68 @@ export default function IncomingMinopDataPage() {
             More messages are retained than this view can read at once. Only the newest are shown and exported.
           </Notice>
         )}
+
+        {/* Phone: the search box, one Filter button (dates and sort in a
+            sheet) and one Download button (both exports in a sheet). The
+            same state as the desktop controls below, which a phone hides. */}
+        <div className={`${ui.phoneOnly} ${ui.phoneTools}`}>
+          <label>
+            <span className={ui.srOnly}>Search by name, punch ID or transaction ID</span>
+            <input
+              type="search"
+              className={ui.input}
+              placeholder="Search name, punch or transaction ID"
+              value={q}
+              onChange={e => { setQ(e.target.value); setPage(1) }}
+            />
+          </label>
+          <PhoneSheet
+            label="Filter"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            badge={(from ? 1 : 0) + (to ? 1 : 0)}
+            title="Filter and sort"
+            doneLabel={result ? `Show ${total} ${total === 1 ? 'record' : 'records'}` : 'Done'}
+            onClear={() => { setQ(''); setFrom(''); setTo(''); setPage(1) }}
+          >
+            <label className={ui.field}>
+              <span className={ui.label}>Received from</span>
+              <input type="date" className={ui.input} value={from} max={to || undefined}
+                onChange={e => { setFrom(e.target.value); setPage(1) }} />
+            </label>
+            <label className={ui.field}>
+              <span className={ui.label}>Received to</span>
+              <input type="date" className={ui.input} value={to} min={from || undefined}
+                onChange={e => { setTo(e.target.value); setPage(1) }} />
+            </label>
+            <label className={ui.field}>
+              <span className={ui.label}>Sort by</span>
+              <select className={ui.input} value={sort}
+                onChange={e => { setSort(e.target.value as SortChoice); setPage(1) }}>
+                {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </PhoneSheet>
+          <PhoneSheet
+            label="Download"
+            icon={<Download size={16} strokeWidth={2} aria-hidden="true" />}
+            title="Download"
+            doneLabel="Close"
+          >
+            <p className={ui.hint} style={{ margin: 0 }}>
+              Downloads include every matching record, not only this page. Times are Asia/Kolkata.
+            </p>
+            <div className={ui.sheetActions}>
+              <button type="button" className={`boe-btn boe-btn-ghost ${ui.btn}`}
+                disabled={exporting !== null} onClick={() => void download('csv')}>
+                <Download size={14} /> {exporting === 'csv' ? 'Preparing…' : 'Download CSV'}
+              </button>
+              <button type="button" className={`boe-btn boe-btn-ghost ${ui.btn}`}
+                disabled={exporting !== null} onClick={() => void download('raw')}>
+                <Download size={14} /> {exporting === 'raw' ? 'Preparing…' : 'Download raw payloads'}
+              </button>
+            </div>
+          </PhoneSheet>
+        </div>
 
         <div className={styles.controls}>
           <label className={styles.search}>
@@ -310,7 +376,7 @@ export default function IncomingMinopDataPage() {
                 {' · '}Latest received: <strong>{ist(result.latestReceivedAt)}</strong> IST
               </>
             : 'Loading…'}
-          {' '}Downloads include every matching record, not only this page. Times are Asia/Kolkata.
+          <span className={styles.summaryNote}>{' '}Downloads include every matching record, not only this page. Times are Asia/Kolkata.</span>
         </p>
 
         {!result && fetching ? (
@@ -354,16 +420,15 @@ export default function IncomingMinopDataPage() {
 
             <ul className={ui.cards} aria-label="Incoming Minop records">
               {rows.map(row => (
-                <li key={row.rowId} className={`${ui.surface} ${ui.card}`}>
+                <li key={row.rowId} className={`${ui.surface} ${ui.card} ${styles.card}`}>
                   <div className={ui.cardHead}>
                     <div className={ui.strong}>{who(row)}</div>
-                    <div className={`${ui.sub} ${ui.nowrap}`} style={{ marginTop: 0 }}>Txn {row.eventId ?? '—'}</div>
+                    <div className={`${ui.strong} ${ui.nowrap} ${styles.cardPunch}`}>{punchTime(row)}</div>
                   </div>
-                  <div className={`${ui.strong} ${styles.cardPunch}`}>{punchTime(row)}</div>
-                  <dl className={styles.cardFacts}>
-                    <dt>Received</dt><dd>{ist(row.receivedAt)}</dd>
-                    <dt>Delay</dt><dd className={styles.mono}>{formatDelay(row.delayMs)}</dd>
-                  </dl>
+                  <div className={`${ui.sub} ${styles.cardLine}`}>
+                    Received {ist(row.receivedAt)} · <span className={styles.mono}>{formatDelay(row.delayMs)}</span> delay
+                    {' · '}Txn {row.eventId ?? '—'}
+                  </div>
                   <PayloadDetails row={row} token={token} />
                 </li>
               ))}

@@ -38,6 +38,7 @@ import {
   type TabKey,
 } from './PayrollDetailView'
 import { CarryForwardModal, PaymentModal } from './SettlementModal'
+import phone from '../../payrollResultsPhone.module.css'
 
 // ─── Busy overlay ─────────────────────────────────────────────────────────────
 
@@ -465,9 +466,10 @@ export default function PayrollResultDetailPage() {
       onSignOut={handleSignOut}
     >
       {/* Back link — secondary, and kept to a single tight line. */}
-      <div style={{ marginBottom: 16 }}>
+      <div className={phone.backRow} style={{ marginBottom: 16 }}>
         <button
           onClick={() => router.push(`/payroll/results/${periodId}`)}
+          className={phone.back}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
@@ -523,6 +525,7 @@ export default function PayrollResultDetailPage() {
               <span>{savedNotice}</span>
               <button
                 onClick={() => setSavedNotice(null)}
+                className={phone.dismiss}
                 aria-label="Dismiss"
                 style={{ background: 'none', border: 'none', color: '#276247', cursor: 'pointer', fontSize: 14 }}
               >✕</button>
