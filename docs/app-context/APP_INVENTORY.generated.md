@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `50b5517` — Merge Phase 4 work: Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
-- Commits on this branch: 84
+- Commit: `a4efc8f` — Merge the merged #614 branch history (already in main) so this push is a fast-forward
+- Commits on this branch: 92
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
@@ -14,6 +14,14 @@
 
 ## Latest 25 commits
 
+- `a4efc8f` 2026-11-05 Merge the merged #614 branch history (already in main) so this push is a fast-forward
+- `5a66c28` 2026-11-05 Phones, content first (Phase 4): sticky works on phones; every remaining page lifted to 8.5+ (no SQL) (#614)
+- `8c72d0d` 2026-11-05 Orders import: keep every pinned card exactly as it was
+- `e980dfa` 2026-11-05 Orders import: keep the Ready-to-save card exactly as it was
+- `c4aa1be` 2026-11-05 Phones, Phase 4: scope a phone test to its own CSS block; dossier traps
+- `c7b5819` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Attendance & Payroll pages list first
+- `af91aef` 2026-11-05 Phones, content first (Phase 4): Attendance & Payroll pages list first
+- `d6d406f` 2026-11-05 Phones, Phase 4: docs
 - `50b5517` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
 - `a2ca74d` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Sales, Leads, Showroom and Samples pages reach the phone rubric (no SQL)
 - `07d0389` 2026-11-05 Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
@@ -31,14 +39,6 @@
 - `97d70d8` 2026-11-05 Phones: four shared fixes the Phase 3 work turned up
 - `aaf0b99` 2026-11-05 Merge Phase 3 work: Attendance & Payroll on phones: content first (Phase 3, no SQL)
 - `db5df1f` 2026-11-05 Merge Phase 3 work: Orders on a phone, content first (Phase 3): list or record on the first screen
-- `b491fde` 2026-11-05 Merge Phase 3 work: Finance on a phone: lists start on the first screen (Phase 3)
-- `c181879` 2026-11-05 Attendance & Payroll on phones: content first (Phase 3, no SQL)
-- `6c6bc29` 2026-11-05 Orders on a phone, content first (Phase 3): list or record on the first screen
-- `099b048` 2026-11-05 Finance on a phone: lists start on the first screen (Phase 3)
-- `8444ff7` 2026-11-05 Merge the merged #612 branch history (already in main) so later pushes fast-forward
-- `cf3591b` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
-- `6b4ee18` 2026-11-05 Phones, Phase 2: fix the pages that were broken on a phone
-- `7d62a7b` 2026-11-05 Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
 
 ## Pages by top-level area
 
