@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1ff6b7b8` — Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL)
-- Commits on this branch: 1183
+- Commit: `44ea2a70` — Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied
+- Commits on this branch: 1185
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 419 (first `20260530_create_positions.sql`, latest `20270603000000_finance_payment_admin_notes.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `1ff6b7b8` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL)
+- `44ea2a70` 2026-11-05 Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied
+- `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
+- `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
 - `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
@@ -37,8 +39,6 @@
 - `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
 - `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
 - `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
-- `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
 
 ## Pages by top-level area
 
