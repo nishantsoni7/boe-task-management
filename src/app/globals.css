@@ -13794,7 +13794,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .orders-phone-chips::-webkit-scrollbar { display: none; }
   .orders-phone-chip {
     flex: none; display: inline-flex; align-items: center; gap: 6px;
-    height: 36px; padding: 0 12px; border-radius: 999px;
+    height: 40px; padding: 0 12px; border-radius: 999px;
     border: 1px solid #E4DED7; background: #FFFFFF;
     font: inherit; font-size: 13px; font-weight: 500; color: #4C5352; white-space: nowrap; cursor: pointer;
   }
@@ -13864,8 +13864,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .orders-sheet:focus { outline: none; }
 .orders-sheet-head { display: flex; align-items: center; gap: 8px; }
 .orders-sheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
-.orders-sheet-clear { font: inherit; font-size: 13px; font-weight: 600; color: #963B27; background: none; border: 0; padding: 0 6px; min-height: 40px; cursor: pointer; }
-.orders-sheet-close { display: grid; place-items: center; width: 40px; height: 40px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
+.orders-sheet-clear { font: inherit; font-size: 13px; font-weight: 600; color: #963B27; background: none; border: 0; padding: 0 6px; min-height: 44px; cursor: pointer; }
+.orders-sheet-close { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
 .orders-sheet-group { display: flex; flex-direction: column; gap: 8px; }
 .orders-sheet-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #686D6C; }
 .orders-sheet-options { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -13948,6 +13948,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-page-header .boe-header-refresh { border: 0 !important; background: none !important; }
   /* Text buttons a page passes stay, a little tighter. */
   .boe-header-actions .boe-btn { padding-left: 12px; padding-right: 12px; }
+  /* Confirmed Orders' compact header (phoneSubtitle) stays one line: the
+     generic rule above is later in the file, so this states it again. */
+  .boe-page-header.boe-page-header--compact { flex-wrap: nowrap; }
+  .boe-page-header.boe-page-header--compact .boe-page-title-group { flex: 1 1 auto; }
 }
 
 /* The ⋯ / + button in the header. */
