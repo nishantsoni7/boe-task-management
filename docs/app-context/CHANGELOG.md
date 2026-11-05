@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-05 — Payroll: a payslip can hold half a paid leave (this PR) · 20270604000000 → NOT APPLIED
+- **Owner report.** One employee's salary was missing from the October 2026 payroll after generating it. Found: the October run saved 8 of 11 payslips; two employees (15 and 14 days present) crashed on save. The rules award 0.5 paid leave for 11-15 days present, and `payroll_results.paid_leave_available` / `paid_leave_used` were `smallint` (Postgres `22P02` on 0.5). No earlier month had anyone in that band. Each attendance correction regenerates the payslip too, so those two could not have been corrected one day at a time through the band either.
+- **Changed.** Nothing in the app. The two columns become `numeric(3,1)`; existing 0 and 1 are kept; the file ends with a check that aborts the apply if either column is not `numeric(3,1)`.
+- **Database.** `20270604000000_payroll_results_half_paid_leave.sql`. Rollback in its header (safe only before a half has been stored). Rehearsed in PGlite, 8 checks, including the exact October error before the apply and the apply twice; the linked-database rehearsal is refused by the permission check, so none was run on production.
+- **Proof.** `halfPaidLeaveColumns.test.ts` (fails without the migration), `supabase/tests/payroll_half_paid_leave_pglite.mjs`, full suite, type check, lint (see the PR).
+- **Still to do (owner, in order).** Back up, apply the migration, re-run Generate for October 2026 (fills the two missing payslips), then the October exhibition-day corrections (separate step, agreed with the owner, dry run first).
+
 ## 2026-11-05 — Platform: one phone filter set (PR #616 squash-merged as f6d855a2, 2026-11-05) · no SQL
 - **Owner request.** Fold the near-identical phone filter sheets Phases 3-4 left (Orders, Tasks, Sales/Vendors/Reviews, Attendance) into one shared set in `components/ui`, move every caller onto it, delete the copies; phones only, desktop unchanged. Plan agreed ("yes, go ahead").
 - **Changed.** New `src/components/ui/PhoneFilters.tsx` (`PhoneChips`, `PhoneSearchBox`, `PhoneSearchFilter`, `PhoneFilterSheet`, `PhoneOptionGroup`, `PhoneMultiGroup`, `PhoneSheetField`, `showResultsLabel`) and `src/components/ui/useIsPhone.ts`. Removed `app/orders/all/PhoneListControls.tsx`, `components/tasks/PhoneListTools.tsx`, `components/phoneFilters/*`, `components/attendancePayroll/PhoneSheet.tsx`. Every caller passes the classes it had, so the phone markup is the same (sheet group ids are now `p3-sheet-*` everywhere). No CSS rule changed.
