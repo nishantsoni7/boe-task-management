@@ -2,10 +2,10 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet, PiggyBank } from 'lucide-react'
+import { ArrowLeftRight, CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet, PiggyBank } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
-import { ModuleSwitchButton } from './ModuleSwitchButton'
+import { ModuleSwitchButton, useModuleSwitch } from './ModuleSwitchButton'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
@@ -24,6 +24,7 @@ import { HandoverBanner } from '@/components/finance/HandoverBanner'
 import { UnclosedFundsCard } from '@/components/finance/UnclosedFundsCard'
 import { HandoverModal } from '@/components/finance/HandoverModal'
 import { useOpenHandovers } from '@/hooks/queries/useHandovers'
+import { PhoneHeaderMenu } from './PhoneHeaderMenu'
 
 /**
  * The one Received Payments list — now ONE nav entry, no `?view=` sub-items.
@@ -106,6 +107,7 @@ export function FinanceLayout({
   // the page on hover, unless pinned. Elsewhere this changes nothing.
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router  = useRouter()
+  const toOrders = useModuleSwitch('orders')
   const pathname = usePathname()
   // While a page is still loading it has no profile of its own yet; the
   // session-scoped context already holds the same row (it is the one the module
@@ -361,10 +363,19 @@ export function FinanceLayout({
           <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
             <ModuleSwitchButton target="orders" />
             {actions}
-            <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setHandoverOpen(true)}>
+            <button type="button" className="boe-btn boe-btn-secondary boe-desktop-only" onClick={() => setHandoverOpen(true)}>
               <Wallet size={15} strokeWidth={1.8} /> Hand over cash
             </button>
             <ShellRefreshButton refreshing={refreshing} onRefresh={handleRefresh} />
+            {/* ON A PHONE (owner, 2026-11-05) Hand over cash sits in the ⋯ menu,
+                so the header stays one row. */}
+            <PhoneHeaderMenu
+              label="More actions"
+              items={[
+                { key: 'handover', label: 'Hand over cash', icon: <Wallet size={18} strokeWidth={1.8} />, onSelect: () => setHandoverOpen(true) },
+                ...(toOrders.visible ? [{ key: 'switch', label: toOrders.label, icon: <ArrowLeftRight size={18} strokeWidth={1.8} />, onSelect: () => router.push(toOrders.route) }] : []),
+              ]}
+            />
           </div>
         </div>
 

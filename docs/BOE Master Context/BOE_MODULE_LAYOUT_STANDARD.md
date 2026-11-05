@@ -168,7 +168,16 @@ All future modules must comply with this layout.
 
 ---
 
-# Design Principle
+# Phones: content first (owner, 2026-11-05)
+
+Below 768px the page's content must start on the first screen. Every module layout follows these rules; the shared pieces enforce most of them.
+
+- **Header: one row.** ☰, the title (one line), one short line under it (the subtitle, cut to one line), and icon buttons. Actions a layout adds to every page (Hand over cash, the Orders/Finance switch, Self Task and Delegate Task) go into `PhoneHeaderMenu` (⋯ or +) on a phone; on a desktop they stay as buttons (`.boe-desktop-only` / `.boe-phone-only`).
+- **Number cards: one chip row.** `.fin-stats` scrolls sideways as chips ("● Running 13"); the line under the number is dropped.
+- **Filters: search on its own row, chips under it.** A `FilterChip` opens as a sheet from the bottom of the screen. Confirmed Orders uses one Filter button (`PhoneListControls`).
+- **Tables: cards.** Wrap a table in `PhoneTableCards`; each row becomes a card with "Column  value" lines. Nothing scrolls sideways.
+- **Touch: 44px.** Buttons, tabs (`StatusTabs`), back links and pills are at least 44px tall (pills 40px), with 8px between them.
+
 
 Consistency over experimentation.
 

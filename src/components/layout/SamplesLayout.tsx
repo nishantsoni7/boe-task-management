@@ -61,6 +61,10 @@ export function SamplesLayout({
 }: SamplesLayoutProps) {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
+  // A phone has no visible sidebar: this opens it as a drawer (owner,
+  // 2026-11-05). Without it the status tabs and Notifications could not be
+  // reached on a phone at all.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
   // the page on hover, unless pinned. Elsewhere this changes nothing.
   const [railPinned, toggleRailPinned] = useSidebarPinned()
@@ -84,8 +88,10 @@ export function SamplesLayout({
   return (
     <div className={railShellClass(railPinned)}>
 
+      <div className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`} onClick={() => setSidebarOpen(false)} />
+
       {/* ── Sidebar ── */}
-      <aside className="boe-sidebar">
+      <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
         {/* Brand */}
         <div className="boe-sidebar-brand">
@@ -122,7 +128,7 @@ export function SamplesLayout({
               <button
                 key={tab.key}
                 className={`boe-nav-item${isActive ? ' active' : ''}`}
-                onClick={() => onTabSelect(tab.key)}
+                onClick={() => { setSidebarOpen(false); onTabSelect(tab.key) }}
                 title={tab.label}
                 style={{ fontWeight: isActive ? 600 : 400, marginBottom: i < TABS.length - 1 ? '2px' : 0 }}
               >
@@ -149,7 +155,7 @@ export function SamplesLayout({
         {unreadCount > 0 ? (
           <div className="boe-rail-hide" style={{ padding: '0 10px 14px' }}>
             <button
-              onClick={() => router.push('/samples/notifications')}
+              onClick={() => { setSidebarOpen(false); router.push('/samples/notifications') }}
               className="boe-notif-alert"
             >
               <div className="boe-notif-alert-bell">
@@ -169,7 +175,7 @@ export function SamplesLayout({
         ) : (
           <div style={{ padding: '0 10px 8px' }}>
             <button
-              onClick={() => router.push('/samples/notifications')}
+              onClick={() => { setSidebarOpen(false); router.push('/samples/notifications') }}
               className={`boe-nav-item${activeSection === 'notifications' ? ' active' : ''}`}
               title="Notifications"
               style={{ color: activeSection === 'notifications' ? '#303536' : '#686D6C', fontSize: '12.5px', gap: '8px' }}
@@ -196,6 +202,7 @@ export function SamplesLayout({
 
         {/* Page header */}
         <div className="boe-page-header">
+          <button className="boe-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

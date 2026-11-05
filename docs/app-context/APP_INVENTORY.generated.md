@@ -5,16 +5,25 @@
 
 ## Snapshot
 
-- Commit: `d3c61d9` — Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
-- Commits on this branch: 51
+- Commit: `7d62a7b` — Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
+- Commits on this branch: 60
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
-- Test files: 748   Next.js 16.2.6, React 19.2.4
+- Test files: 749   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `7d62a7b` 2026-11-05 Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
+- `6ef831a` 2026-11-05 Merge the merged #611 branch history (already in main) so this push is a fast-forward
+- `5df4002` 2026-11-05 Tools: add the UI/UX Pro Max design skill for cloud sessions
+- `344f081` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
+- `2ee2543` 2026-11-05 Merge the merged PR #610 branch history (already in main) so the docs push is a fast-forward
+- `0dba74a` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed)
 - `d3c61d9` 2026-11-04 Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
+- `bc30d86` 2026-11-04 Test: accept Windows line endings in the phone-controls CSS check
+- `2e2769e` 2026-11-04 Login as member: a slim edge tab on phones, so it no longer covers the page
+- `9a92f18` 2026-11-04 Confirmed Orders: a compact list on a phone (Option A, no SQL)
 - `25d06f7` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
 - `bed5492` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
 - `88afd4f` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
@@ -30,15 +39,6 @@
 - `10abb87` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
 - `594daf9` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 - `972413c` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- `05e299e` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
-- `dfe7a3c` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
-- `9815f52` 2026-11-02 Marketing, Meta Ads, phase 2 PR C: the Monday review, no screens yet (#592)
-- `45b1c2b` 2026-11-02 Docs: Modules launcher A+ merged as PR #590 (02abdb2e), deployed (#591)
-- `02abdb2` 2026-11-02 Modules launcher: A+ refinement on desktop and tablet (#590)
-- `2f72c6b` 2026-11-02 Confirmed Order Product details: Material gets the room (#589)
-- `1b018ff` 2026-11-02 Docs: Meta Ads PR B merged as PR #587 (d38bf3a9), deployed (#588)
-- `d38bf3a` 2026-11-02 Marketing, Meta Ads, PR B: the Overview, Campaigns and Settings screens (#587)
-- `173707d` 2026-11-02 Docs: Orders dashboard for approvers merged as PR #585 (cf79df54), deployed (#586)
 
 ## Pages by top-level area
 

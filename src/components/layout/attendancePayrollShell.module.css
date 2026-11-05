@@ -132,6 +132,8 @@
    on their own line beneath it on a phone instead of pushing the title around. */
 .titleGroup { flex: 1 1 220px; min-width: 0; }
 .headerActions { flex-wrap: wrap; }
+/* ON A PHONE (owner, 2026-11-05) the header is one row: the actions sit beside
+   the title, not on a line of their own that was mostly empty. */
 @media (max-width: 767px) {
-  .headerActions { flex: 1 1 100%; justify-content: flex-end; }
+  .headerActions { flex: 0 1 auto; justify-content: flex-end; }
 }

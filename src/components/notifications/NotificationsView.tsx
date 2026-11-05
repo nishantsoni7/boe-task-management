@@ -365,12 +365,13 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
       subtitle={subtitle}
       onSignOut={handleLogout}
       actions={
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="boe-notif-tools" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {/* Delete selected — only shown when something is selected */}
           {selected.size > 0 && (
             <button
               onClick={handleDeleteSelected}
               disabled={deletingBulk}
+              className="boe-notif-tool"
               style={{
                 ...toolBtn(true, true),
                 opacity: deletingBulk ? 0.6 : 1,
@@ -384,22 +385,29 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           <button
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0 || markingAll}
+            className="boe-notif-tool"
+            aria-label="Mark all read"
+            title="Mark all read"
             style={{ ...toolBtn(unreadCount > 0 && !markingAll), opacity: markingAll ? 0.6 : 1 }}
           >
             <CheckCheck size={14} strokeWidth={2.2} />
-            {markingAll ? 'Marking…' : 'Mark all read'}
+            {/* On a phone the two tools are icons (owner, 2026-11-05). */}
+            <span className="boe-desktop-only">{markingAll ? 'Marking…' : 'Mark all read'}</span>
           </button>
 
           <button
             onClick={handleDeleteAll}
             disabled={deletingAll || rows.length === 0}
+            className="boe-notif-tool"
+            aria-label="Delete all"
+            title="Delete all"
             style={{
               ...toolBtn(rows.length > 0 && !deletingAll, true),
               opacity: deletingAll ? 0.6 : 1,
             }}
           >
             <Trash2 size={13} strokeWidth={2.2} />
-            {deletingAll ? 'Deleting…' : 'Delete all'}
+            <span className="boe-desktop-only">{deletingAll ? 'Deleting…' : 'Delete all'}</span>
           </button>
         </div>
       }
@@ -441,6 +449,8 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           <button
             key={tab}
             onClick={() => setFilter(tab)}
+            className="boe-notif-pill"
+            aria-pressed={filter === tab}
             style={{
               padding: '5px 14px', borderRadius: '12px',
               fontSize: '12px', fontWeight: 600,

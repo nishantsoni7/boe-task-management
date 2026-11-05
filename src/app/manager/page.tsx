@@ -163,7 +163,9 @@ export default function ManagerPage() {
       subtitle={`Team overview · ${members.length} members · Live`}
       actions={
         <>
-          <div style={{
+          {/* On a phone "Live" is in the subtitle and Assign Task is the
+              header's "+" (owner, 2026-11-05), so both are desktop-only. */}
+          <div className="boe-desktop-only" style={{
             display: 'flex', alignItems: 'center', gap: '6px',
             fontSize: '12px', color: colors.tertiary,
           }}>
@@ -179,7 +181,7 @@ export default function ManagerPage() {
           {!viewAsUserId && (
             <button
               onClick={() => router.push('/tasks/create')}
-              className="boe-btn boe-btn-primary"
+              className="boe-btn boe-btn-primary boe-desktop-only"
             >
               + Assign Task
             </button>

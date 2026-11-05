@@ -2,6 +2,7 @@
 
 import { useEffect, useId, type ReactNode } from 'react'
 import s from './controlCenter.module.css'
+import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 
 // ── The Control Center's shared page furniture ──────────────────────────────
 //
@@ -41,11 +42,12 @@ export function CcToolbar({ children }: { children: ReactNode }) {
   return <div className={s.toolbar}>{children}</div>
 }
 
+// On a phone each row is a card (PhoneTableCards, owner 2026-11-05).
 export function CcTable({ children }: { children: ReactNode }) {
   return (
-    <div className={s.tableWrap}>
+    <PhoneTableCards className={s.tableWrap}>
       <table className={s.table}>{children}</table>
-    </div>
+    </PhoneTableCards>
   )
 }
 

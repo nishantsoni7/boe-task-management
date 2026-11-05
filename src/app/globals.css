@@ -13904,3 +13904,209 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .boe-viewas:not(.is-acting) .boe-viewas-trigger svg { width: 16px; height: 16px; }
   .boe-viewas:not(.is-acting) [role="dialog"] { right: 8px !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PHONES: CONTENT FIRST (owner, 2026-11-05, Phase 1 of the phone redesign)
+
+   Below 768px every module's page header is ONE row: ☰, the title with one
+   short line under it, and icon buttons. The subtitle keeps one line
+   (ellipsis) instead of wrapping to three; a layout's own extra actions sit
+   in PhoneHeaderMenu (⋯ or +). Desktop and tablet are unchanged.
+   `.boe-desktop-only` / `.boe-phone-only` say which of a pair is drawn.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.boe-phone-only { display: none !important; }
+
+@media (max-width: 767px) {
+  .boe-desktop-only { display: none !important; }
+  .boe-phone-only { display: inline-flex !important; }
+
+  .boe-page-header {
+    flex-wrap: wrap; align-items: center; gap: 2px 4px;
+    padding: 6px 6px 6px 4px;
+  }
+  .boe-page-title-group { flex: 1 1 140px; min-width: 0; }
+  .boe-page-title {
+    font-size: 18px; line-height: 1.25; margin-bottom: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .boe-page-subtitle {
+    font-size: 12px; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .boe-header-actions {
+    flex: 0 1 auto !important; flex-wrap: wrap !important; justify-content: flex-end;
+    gap: 2px; max-width: 100%; min-width: 0;
+  }
+  /* The Orders ↔ Finance switch is its arrows icon alone on a phone. */
+  .boe-page-header .boe-module-switch { border: 0; background: none; padding: 0; justify-content: center; }
+  .boe-page-header .boe-module-switch-long,
+  .boe-page-header .boe-module-switch-short { display: none; }
+  .boe-page-header .boe-module-switch svg,
+  .boe-page-header .boe-shell-refresh svg,
+  .boe-page-header .boe-header-refresh svg { width: 18px; height: 18px; }
+  .boe-page-header .boe-shell-refresh,
+  .boe-page-header .boe-header-refresh { border: 0 !important; background: none !important; }
+  /* Text buttons a page passes stay, a little tighter. */
+  .boe-header-actions .boe-btn { padding-left: 12px; padding-right: 12px; }
+}
+
+/* The ⋯ / + button in the header. */
+.boe-header-icon {
+  align-items: center; justify-content: center;
+  width: 44px; height: 44px; border: 0; border-radius: 10px; background: none;
+  color: #4C5352; cursor: pointer; flex-shrink: 0;
+}
+.boe-header-icon:hover { background: #F1EEE9; }
+.boe-header-icon--add { background: #B9472E; color: #FFFFFF; width: 40px; height: 40px; margin: 2px; }
+.boe-header-icon--add:hover { background: #9E3B25; }
+.boe-header-icon:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+
+/* A sheet from the bottom of the screen: the phone's menu and filter panel. */
+.boe-psheet-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(30, 34, 35, 0.4); }
+.boe-psheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001;
+  max-height: 85vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: #FFFFFF; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+}
+.boe-psheet:focus { outline: none; }
+.boe-psheet-head { display: flex; align-items: center; gap: 8px; }
+.boe-psheet-head h2 { flex: 1; margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 700; color: #303536; }
+.boe-psheet-close { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: none; color: #4C5352; cursor: pointer; border-radius: 8px; }
+.boe-psheet-menu { display: flex; flex-direction: column; gap: 6px; }
+.boe-psheet-item {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 50px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid #E4DED7; background: #FFFFFF;
+  font: inherit; font-size: 15px; font-weight: 600; color: #303536; text-align: left; cursor: pointer;
+}
+.boe-psheet-item.is-primary { background: #B9472E; border-color: #B9472E; color: #FFFFFF; }
+.boe-psheet-item-icon { display: inline-flex; }
+.boe-psheet-item:focus-visible, .boe-psheet-close:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+
+/* NUMBER CARDS ON A PHONE (owner, 2026-11-05): every `.fin-stats` group
+   (Finance lists, Orders drafts, Sales, Cash journeys, Founders) is one row of
+   chips that scrolls sideways, "● Running 13", instead of a 2-column grid of
+   ~92px cards. The line under the number goes. A pressed card is the dark
+   chip, as on Confirmed Orders. The fade at the right edge says there is
+   more. */
+@media (max-width: 767px) {
+  .fin-stats, .fin-stats[style] {
+    display: flex !important; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -12px 10px; padding: 2px 12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .fin-stats::-webkit-scrollbar { display: none; }
+  .fin-stat {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 40px; padding: 0 12px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .fin-stat-label { font-size: 13px; color: #4C5352; white-space: nowrap; }
+  .fin-stat-value { margin-top: 0; font-size: 14px; font-weight: 700; overflow: visible; }
+  .fin-stat-sub { display: none !important; }
+  .fin-stat-value { display: inline !important; }
+  button.fin-stat[aria-pressed="true"] { background: #303536; border-color: #303536; }
+  button.fin-stat[aria-pressed="true"] .fin-stat-label,
+  button.fin-stat[aria-pressed="true"] .fin-stat-value { color: #FFFFFF; }
+  .fin-stats-note { margin: 0 0 10px; }
+}
+
+/* FILTER CHIPS ON A PHONE (owner, 2026-11-05): the search box takes its own
+   44px row, the chips sit under it at 40px, and a chip's panel opens as a
+   sheet from the bottom of the screen instead of a popover that ran off the
+   edge. Tapping the shaded backdrop closes it: the backdrop is the chip's own
+   <summary>, stretched over the screen while the chip is open. */
+@media (max-width: 767px) {
+  .fin-viewbar { padding: 0 10px; }
+  .fin-tools { flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+  .fin-tools .boe-list-search { flex: 1 1 100%; max-width: none; height: 44px; }
+  .fin-chip > summary { height: 40px; padding: 0 12px; font-size: 13px; }
+  .fin-chip[open] > summary::after {
+    content: ''; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(30, 34, 35, 0.4); cursor: default;
+  }
+  .fin-chip-panel, .fin-chip[open] .fin-chip-panel {
+    position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 1001;
+    min-width: 0; max-height: 80vh; overflow-y: auto;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0; border: 0;
+    box-shadow: 0 -10px 30px -12px rgba(30, 34, 35, 0.35);
+  }
+  .fin-chip-panel .boe-input, .fin-chip-panel select, .fin-chip-panel input { min-height: 44px; font-size: 16px; }
+}
+
+/* TABLES AS CARDS ON A PHONE (owner, 2026-11-05). PhoneTableCards labels each
+   body cell from its column heading; below 768px each row is a card: the first
+   cell is its title, the rest are "Column  value" lines, and a cell with no
+   heading (actions) sits at the foot. */
+@media (max-width: 767px) {
+  .boe-cardtable { overflow: visible !important; border: 0 !important; background: none !important; }
+  .boe-cardtable table { display: block; width: 100%; min-width: 0 !important; border: 0; }
+  .boe-cardtable thead { display: none; }
+  .boe-cardtable tbody { display: flex; flex-direction: column; gap: 8px; }
+  .boe-cardtable tbody tr {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 14px; border: 1px solid #E4DED7; border-radius: 12px; background: #FFFFFF;
+  }
+  .boe-cardtable tbody td {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 0 !important; border: 0 !important; background: none !important;
+    min-width: 0; width: auto !important; height: auto !important; text-align: right; white-space: normal !important;
+    font-size: 13.5px;
+  }
+  .boe-cardtable tbody td[data-label]::before {
+    content: attr(data-label); flex: none; max-width: 45%;
+    font-size: 12px; font-weight: 500; color: #686D6C; text-align: left;
+  }
+  .boe-cardtable tbody td:first-child { display: block; text-align: left; font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .boe-cardtable tbody td:first-child::before { display: none; }
+  .boe-cardtable tbody td:not([data-label]):not(:first-child) { justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+  .boe-cardtable tbody td[colspan] { display: block; text-align: left; }
+  .boe-cardtable tbody td[colspan]::before { display: none; }
+  .boe-cardtable tbody tr:hover td { background: none !important; }
+}
+
+/* NOTIFICATIONS ON A PHONE (owner, 2026-11-05): the header tools are 44px
+   icons (Mark all read, Delete all) beside the title; All / Unread are 40px. */
+@media (max-width: 767px) {
+  .boe-notif-tools { gap: 2px !important; }
+  .boe-notif-tool { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 10px !important; }
+  .boe-notif-tool:not(:has(.boe-desktop-only)) { padding: 0 12px !important; }
+  .boe-notif-pill { min-height: 40px; padding: 0 16px !important; font-size: 13px !important; border-radius: 999px !important; }
+}
+
+/* Status tabs (StatusTabs.tsx) are 44px tall on a phone, whatever their size. */
+@media (max-width: 767px) {
+  .boe-status-tab { min-height: 44px; }
+}
+
+/* SHOWROOM INQUIRY DETAIL ON A PHONE (owner, 2026-11-05). Its grids are inline
+   styles sized for a desktop ("1fr 340px" left the main column almost no room
+   at 390px), so these rules win with !important: one column, a smaller
+   picture beside each item, and the dimension/price row in three columns. */
+@media (max-width: 767px) {
+  .sra-inq-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .sra-inq-item { grid-template-columns: 84px minmax(0, 1fr) !important; gap: 12px !important; }
+  .sra-inq-item > div:first-child { width: 84px !important; height: 84px !important; }
+  .sra-inq-info { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .sra-inq-info > div:nth-child(2), .sra-inq-info > div:nth-child(4), .sra-inq-info > div:nth-child(6) { display: none !important; }
+  .sra-inq-info > div:first-child { grid-column: 1 / -1; width: auto !important; }
+}
+
+/* QUOTATION REQUESTS ON A PHONE (owner, 2026-11-05): each request is a card
+   of three lines (customer and priority; who raised it and when; the note);
+   the whole card opens it, so the small View button goes. */
+@media (max-width: 767px) {
+  .qtn-head { display: none !important; }
+  .qtn-row { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 2px; padding: 4px 10px 10px 4px !important; }
+  .qtn-row > :nth-child(1) { grid-column: 1; grid-row: 1; }
+  .qtn-row > :nth-child(3) { grid-column: 2; grid-row: 1; }
+  .qtn-row > :nth-child(2) { grid-column: 1; grid-row: 2; }
+  .qtn-row > :nth-child(4) { grid-column: 2; grid-row: 2; text-align: right; }
+  .qtn-row > :nth-child(5) { grid-column: 1 / -1; grid-row: 3; padding-top: 4px !important; }
+  .qtn-row > :nth-child(6) { display: none !important; }
+}

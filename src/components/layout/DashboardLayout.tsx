@@ -24,6 +24,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 import { shouldShowTaskCreateActions } from '@/lib/tasks/taskCreateActions'
+import { PhoneHeaderMenu } from './PhoneHeaderMenu'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -443,7 +444,7 @@ export function DashboardLayout({
               <>
                 <button
                   type="button"
-                  className="boe-record-action"
+                  className="boe-record-action boe-desktop-only"
                   style={{ minHeight: 38 }}
                   onClick={() => router.push('/tasks/create-self')}
                 >
@@ -452,13 +453,22 @@ export function DashboardLayout({
                 </button>
                 <button
                   type="button"
-                  className="boe-record-action boe-record-action--primary"
+                  className="boe-record-action boe-record-action--primary boe-desktop-only"
                   style={{ minHeight: 38 }}
                   onClick={() => router.push('/tasks/create')}
                 >
                   <Plus size={14} strokeWidth={2.2} />
                   Delegate Task
                 </button>
+                {/* ON A PHONE (owner, 2026-11-05) the two become one "+". */}
+                <PhoneHeaderMenu
+                  label="New task"
+                  kind="add"
+                  items={[
+                    { key: 'delegate', label: 'Delegate Task', primary: true, icon: <Plus size={18} strokeWidth={2.2} />, onSelect: () => router.push('/tasks/create') },
+                    { key: 'self', label: 'Self Task', icon: <Plus size={18} strokeWidth={2.2} />, onSelect: () => router.push('/tasks/create-self') },
+                  ]}
+                />
               </>
             )}
 
@@ -466,6 +476,8 @@ export function DashboardLayout({
               onClick={handleRefresh}
               disabled={refreshing}
               title="Refresh"
+              aria-label="Refresh"
+              className="boe-header-refresh"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',

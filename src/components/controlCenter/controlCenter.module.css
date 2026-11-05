@@ -322,3 +322,9 @@
 .fold > summary::-webkit-details-marker { display: none; }
 .fold > summary::before { content: '▸'; display: inline-block; margin-right: 6px; color: #686D6C; transition: transform .12s; }
 .fold[open] > summary::before { transform: rotate(90deg); }
+
+/* A phone header is one row (owner, 2026-11-05): the group name above the
+   title goes; the sidebar already names where you are. */
+@media (max-width: 767px) {
+  .eyebrow { display: none; }
+}
