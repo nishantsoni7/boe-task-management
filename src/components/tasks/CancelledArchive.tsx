@@ -13,7 +13,7 @@ import React, { useState } from 'react'
 import { ChevronRight, Ban, Search, Star } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { PhoneSearchFilter } from './PhoneListTools'
+import { PhoneSearchFilter } from '@/components/ui/phoneSheet'
 
 const PRIORITY: Record<string, { label: string; dot: string }> = {
   high:   { label: 'High', dot: '#A12438'    },

@@ -11,7 +11,8 @@ import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewBadge } from '@/components/customerReviews/ReviewPieces'
 import { StackedBarChart } from '@/components/customerReviews/ReviewCharts'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { SlidersHorizontal } from 'lucide-react'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import styles from './reports.module.css'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
@@ -214,9 +215,18 @@ function Filters({
         <span className="crv-phone-filter-text">
           {monthText}{activeCount - (filters.month ? 1 : 0) > 0 ? ` · ${activeCount - (filters.month ? 1 : 0)} more filter${activeCount - (filters.month ? 1 : 0) === 1 ? '' : 's'}` : ' · everyone'}
         </span>
-        <PhoneFilterSheet activeCount={activeCount} resultLabel="Show the report" onClearAll={active ? onReset : undefined}>
+        <PhoneSheetButton
+          label="Filter"
+          title="Filter"
+          icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+          triggerClassName="boe-phone-only orders-phone-filter p3-filter"
+          sheetClassName="orders-sheet p3-sheet"
+          badge={activeCount}
+          doneLabel="Show the report"
+          onClearAll={active ? onReset : undefined}
+        >
           <div className="crv-sheet-fields">{fields}</div>
-        </PhoneFilterSheet>
+        </PhoneSheetButton>
       </div>
       <section aria-label="Filters" className="crv-rfilters" style={{
         display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', alignItems: 'end',

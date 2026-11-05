@@ -9,7 +9,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
-import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import { SlidersHorizontal } from 'lucide-react'
 import styles from './records.module.css'
 
@@ -193,14 +193,16 @@ export default function AttendanceRecordsPage() {
             {' · '}
             {fromDate || toDate ? `${fromDate || '…'} to ${toDate || '…'}` : 'any date'}
           </span>
-          <PhoneSheet
+          <PhoneSheetButton
+            triggerClassName={`orders-phone-filter ${ui.phoneOnly} ${ui.sheetTrigger}`}
+            sheetClassName={`orders-sheet ${ui.sheet}`}
             label="Filter"
             icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
             badge={(employeeId ? 1 : 0) + (fromDate ? 1 : 0) + (toDate ? 1 : 0)}
             title="Filter records"
             doneLabel={fetching ? 'Loading…' : 'Search'}
             onDone={() => { if (!fetching) void handleSearch() }}
-            onClear={() => { setEmployeeId(''); setFromDate(''); setToDate('') }}
+            onClearAll={() => { setEmployeeId(''); setFromDate(''); setToDate('') }}
           >
             <div className={ui.field}>
               <label className={ui.label} htmlFor="rec-employee-phone">Employee</label>
@@ -226,7 +228,7 @@ export default function AttendanceRecordsPage() {
               <label className={ui.label} htmlFor="rec-to-phone">To date</label>
               <input id="rec-to-phone" type="date" className={ui.input} value={toDate} onChange={e => setToDate(e.target.value)} />
             </div>
-          </PhoneSheet>
+          </PhoneSheetButton>
         </div>
 
         {/* ── Filters ── */}

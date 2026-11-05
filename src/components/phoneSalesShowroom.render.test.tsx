@@ -9,7 +9,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PhoneFilterSheet, PhoneMultiGroup, PhoneSheetField } from './phoneFilters/PhoneFilterSheet'
+import { PhoneMultiGroup, PhoneSheetButton, PhoneSheetField } from '@/components/ui/phoneSheet'
 import { chartGeometry } from './customerReviews/ReviewCharts'
 import { ProductRow } from '@/app/showroom-admin/products/ProductTable'
 import type { ShowroomProduct } from '@/lib/types'
@@ -21,8 +21,13 @@ const globals = read('src/app/globals.css')
 const phase3 = globals.slice(globals.indexOf('PHONE PHASE 3 — SALES, LEADS, SHOWROOM, REVIEWS, SEO, MARKETING'))
 
 describe('the shared Filter sheet', () => {
+  // The phone-only Filter button as Sales, Vendors and Reviews draw it.
+  const p3 = {
+    label: 'Filter', title: 'Filter',
+    triggerClassName: 'boe-phone-only orders-phone-filter p3-filter', sheetClassName: 'orders-sheet p3-sheet',
+  }
   test('closed: one phone-only Filter button with the count of filters set', () => {
-    const html = renderToStaticMarkup(<PhoneFilterSheet activeCount={2} resultLabel="Show 3 leads" />)
+    const html = renderToStaticMarkup(<PhoneSheetButton {...p3} badge={2} doneLabel="Show 3 leads" />)
     assert.ok(html.includes('boe-phone-only'), 'a desktop keeps its own filters')
     assert.ok(html.includes('aria-label="Filter, 2 set"'))
     assert.equal(html.includes('role="dialog"'), false)
@@ -30,13 +35,13 @@ describe('the shared Filter sheet', () => {
 
   test('open: groups, a page\'s own controls, and a result button that names the rows', () => {
     const html = renderToStaticMarkup(
-      <PhoneFilterSheet
-        activeCount={0} initiallyOpen resultLabel="Show 12 vendors" onClearAll={noop}
+      <PhoneSheetButton
+        {...p3} badge={0} initiallyOpen doneLabel="Show 12 vendors" onClearAll={noop}
         groups={[{ id: 'sort', label: 'Sort', value: 'name', options: [{ value: 'name', label: 'Name' }, { value: 'last', label: 'Last visit' }], onChange: noop }]}
       >
         <PhoneMultiGroup id="area" label="Area" options={[{ value: 'A', label: 'Andheri' }, { value: 'B', label: 'Bandra' }]} value={['B']} onChange={noop} />
         <PhoneSheetField label="Month"><select aria-label="Month" /></PhoneSheetField>
-      </PhoneFilterSheet>,
+      </PhoneSheetButton>,
     )
     assert.ok(html.includes('role="dialog"'))
     assert.ok(html.includes('p3-sheet'))
@@ -75,7 +80,7 @@ describe('Exhibition Leads: search and one Filters button; figures as chips', ()
 describe('Sales', () => {
   test('Lead Master: Source in a Filter sheet, Add and Import behind the header +', () => {
     const src = read('src/components/salesLeads/LeadMasterScreen.tsx')
-    assert.ok(src.includes('<PhoneFilterSheet'))
+    assert.ok(src.includes('<PhoneSheetButton'))
     assert.ok(src.includes("label: 'Import from ClickUp'"))
     assert.ok(src.includes("label: 'Add lead'"))
     assert.ok(src.includes('className={`${s.headActions} ${s.phoneHide}`}'))
