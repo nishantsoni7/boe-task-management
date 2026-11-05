@@ -5,18 +5,19 @@
 
 ## Snapshot
 
-- Commit: `5e948814` — Backups: only one backup-all at a time, via status/backup-all.lock (no SQL)
-- Commits on this branch: 1185
+- Commit: `c8cd87ad` — Test: the payment-notes migration test no longer says "is the last migration file"
+- Commits on this branch: 1186
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
-- Migrations: 419 (first `20260530_create_positions.sql`, latest `20270603000000_finance_payment_admin_notes.sql`)
+- Migrations: 420 (first `20260530_create_positions.sql`, latest `20270604000000_payroll_results_half_paid_leave.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
-- Test files: 760   Next.js 16.2.6, React 19.2.4
+- Test files: 761   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `5e948814` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL)
-- `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
+- `c8cd87ad` 2026-11-05 Test: the payment-notes migration test no longer says "is the last migration file"
+- `a55ed051` 2026-11-05 Merge origin/main into the half-leave branch (keep both migrations in the ledger lists)
 - `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
+- `4a4a2471` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
 - `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
@@ -38,7 +39,6 @@
 - `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
 - `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
 - `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
-- `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 
 ## Pages by top-level area
 
@@ -154,7 +154,7 @@
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 105 source, 158 test
-- `src/lib/payroll` — 34 source, 32 test
+- `src/lib/payroll` — 34 source, 33 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
@@ -449,7 +449,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270510000100_users_minop_user_id.sql`
 - `20270511000000_attendance_machine_stopped_notification_type.sql`
 - `20270513000000_for_you_settings.sql`
 - `20270514000000_finance_bank_line_review.sql`
@@ -479,6 +478,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270601000000_sales_board_page.sql`
 - `20270602000000_sales_auto_allot.sql`
 - `20270603000000_finance_payment_admin_notes.sql`
+- `20270604000000_payroll_results_half_paid_leave.sql`
 
 ## All SQL function names
 

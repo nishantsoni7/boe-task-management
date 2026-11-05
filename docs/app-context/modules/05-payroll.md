@@ -26,6 +26,7 @@ Verified against checkout `852e0493`. Part of "Attendance & Payroll" (03 Attenda
 | Holiday half-day | Shipped |
 | Month-end rule + attendance-ack lock gate | Shipped in code (needs migration `20270215000000`, see 03) |
 | Participation (exclude members) | Shipped |
+| Half a paid leave stored on a payslip (11-15 days present) | Engine always did it; the DATABASE could not hold it until `20270604000000` (columns now `numeric(3,1)`). Apply state: see CHANGELOG |
 | Ask About Your Salary (LLM Q&A on How Payroll Works) | Shipped; needs `ANTHROPIC_API_KEY` else reports `configured:false` |
 | Per-result locking, payslip approval workflow, payroll audit history | NOT BUILT (roadmap; `payroll_results.status` is always written `'draft'`; period-level lock is the only lock) |
 | Overtime, tax/PF, bonuses calculation | Deliberately NOT calculated (bonuses arrive as adjustments) |
@@ -59,6 +60,7 @@ Verified against checkout `852e0493`. Part of "Attendance & Payroll" (03 Attenda
 ### Tables (defining migration)
 - `payroll_periods` (`20260611_create_payroll_periods.sql`; `20260616` adds 'generated'; `20260618` lock metadata): `status` CHECK `draft|generated|locked`; UNIQUE `(payroll_month, payroll_year)`; `settings_snapshot jsonb` nullable (`20260828000000`, no backfill); `locked_at/locked_by` never cleared by unlock.
 - `payroll_results`, `payroll_deduction_lines` (`20260612000000`; engine fields `20260614`; `20260617` `employee_reviewed_at`), `payroll_generation` (`20260615`): results store `gross_salary`, `total_deductions`, `net_salary`, `days_present` numeric(4,1), `pending_adjustment_total` (engine-time snapshot), etc. Deduction lines cascade from results; `is_overridden/override_reason` are dead columns. Lines are deleted and recreated on every regeneration.
+- **Paid-leave columns.** `payroll_results.paid_leave_available` and `paid_leave_used` were `smallint` ("always 1 in Phase 1", `20260612000000`); `20270604000000` makes them `numeric(3,1)` like `days_present`, because the rules award 0.5 for 11-15 days present. Existing 0 and 1 are kept. `half_day_count` and `working_days_in_month` stay `smallint` (whole counts).
 - `payroll_pending_adjustments` (`20260612000000`, `20260636` adds `adjustment_type` addition|deduction and always-positive amount, `20260809000000` repair, `20260826000000` void columns, `20260829000000` `adjustment_category` + direction CHECK). Status pending|applied|cancelled; `applied_in_period_id` stamped on generation.
 - `payroll_settlements` + `payroll_settlement_events` (`20260826000000`): carry-forward (with source period and proposed vs override + reason), `amount_paid` (NULL = not recorded; 0 = recorded), BEFORE INSERT/UPDATE/DELETE lock guard `payroll_settlements_lock_guard` reads the period status. Totals are COMPUTED at read time and never stored.
 - `payroll_settings` (`20260828000000`): append-only (trigger `payroll_settings_no_update` blocks UPDATE/DELETE even for service role), newest row active, admin-only RLS, no employee policy; seeded with one row that must equal code defaults (guarded by `settingsMigrationSeed.test.ts`).
@@ -140,6 +142,9 @@ closing_balance         = salary_payable - amount_paid     (NULL until a payment
 - Employee issue = report only (07).
 
 ## 9. Known traps / gotchas / unfixed defects
+- **A whole-number column cannot hold what the engine produces.** Until `20270604000000` a payslip in the 11-15 days-present band could not be saved (`22P02 invalid input syntax for type smallint: "0.5"`). First hit for October 2026: two employees with 15 and 14 days present were left off the run. Before adding or changing an engine output, check the column type that stores it; `halfPaidLeaveColumns.test.ts` guards these two.
+- **Generation keeps who failed, not why.** `payroll_generation.failed_employee_ids` holds the ids and a count; the error text only goes back in the HTTP response of that one call. A failed employee has no result and no recorded reason (see section 11).
+- **A correction is undone when the payslip cannot be saved.** `applyAttendanceCorrection` saves the correction, then regenerates that employee's payslip; if that write fails the correction is deleted ("Nothing was changed"). Before `20270604000000` this meant days could not be corrected one at a time through the 11-15 band (14 to 15 present days).
 - `net_salary` is clamped and excludes carry-forward/credits: never use it as "payable".
 - `pending_adjustment_total` is a generation-time snapshot: stale after any later adjustment.
 - `payroll_pending_adjustments`: before the 20260809 repair the `adjustment_type` columns were recorded-as-applied but missing; and `fetchPendingAdjustments` had read signed amounts (a deduction increased net) and had no month scope. Both fixed; keep `src/lib/payroll/adjustments.ts` as the only conversion.
@@ -157,7 +162,7 @@ closing_balance         = salary_payable - amount_paid     (NULL until a payment
 
 ## 10. Tests that guard it
 Run all: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"`; payroll only: `npx tsx --test src/lib/payroll/*.test.ts`. Live-DB suites skip without a test DB (`skipLiveDbSuite`; `REQUIRE_LIVE_DB_TESTS=1` to enforce); never run two suites concurrently.
-- Engine/rules: `engine.{corrections,missingPunch,rounding,companyPaidLeave,creditRedemption}.test.ts`, `rulesSource.test.ts`, `settings.test.ts`, `settingsSnapshot.test.ts`, `settingsMigrationSeed.test.ts`, `paidLeaveBands.test.ts`, `money.test.ts`, `halfDayHoliday*.test.ts`, `periodCompletion.test.ts`, `staleRecalculation.test.ts`.
+- Engine/rules: `engine.{corrections,missingPunch,rounding,companyPaidLeave,creditRedemption}.test.ts`, `halfPaidLeaveColumns.test.ts` (the engine's 0.5 against the latest column type; the executed proof is `supabase/tests/payroll_half_paid_leave_pglite.mjs`, run by hand with a PGlite folder, not in `npm test`), `rulesSource.test.ts`, `settings.test.ts`, `settingsSnapshot.test.ts`, `settingsMigrationSeed.test.ts`, `paidLeaveBands.test.ts`, `money.test.ts`, `halfDayHoliday*.test.ts`, `periodCompletion.test.ts`, `staleRecalculation.test.ts`.
 - Settlement/reports: `settlement.test.ts`, `settlementPolicy.test.ts`, `salaryReport.test.ts`, `adjustments*.test.ts`, `resultTabs.test.ts`, `resultDetailPayload.stale.test.ts`, `deductionExplanation.test.ts`, `generatedAt.test.ts`, `src/app/api/payroll/{salaryReportAuth,monthlyReviewConsistency (pins engine-call arg list),settlementAuth}.test.ts`.
 - Lifecycle: `unlockRules.test.ts`, `deletionRules.test.ts`, `periodActions.test.ts`, `correctionRules.test.ts`, `correctionContext.test.ts`, `src/app/payroll/PayrollRowActions.test.tsx`, live-DB: `src/app/api/payroll/{periods,delete,unlock}/route.test.ts` (sandbox years 2999/2996/2998).
 - Guide/access: `src/app/payroll/how-it-works/guide.test.tsx` (asserts described bands against the classifier's behaviour), `payrollGuideAccess.test.ts`, `askGrounding.test.ts`.
@@ -165,6 +170,8 @@ Run all: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"`; payroll only: 
 - Migration-ledger tests (about 10-13 files) pin the migration list; since #327 use `assertNamedSuccessors`.
 
 ## 11. Open items / next planned work
+- Keep the failure reason per employee on a generation run (today only the ids; see section 9).
+- No bulk way to record company-duty days (for example an exhibition trip): each day is a one-day "full day" correction with a remark. October 2026 needed 42 for five people.
 - Owner decision on the 2-5 h threshold strategy (section 8).
 - Per-result locking, payslip approval workflow, audit history (roadmap order).
 - Resolve Preview/Copy vs WhatsApp "Net payable" vs "Salary Payable" inconsistency.
