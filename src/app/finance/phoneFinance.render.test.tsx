@@ -21,7 +21,10 @@ import { BankSyncCheck } from './bank/bankSyncCheck'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const CSS = read('src/app/globals.css')
-const PHASE3 = CSS.slice(CSS.indexOf('PHONE PHASE 3 — FINANCE'))
+const PHASE3_AT = CSS.indexOf('PHONE PHASE 3 — FINANCE')
+// The Finance block runs to the next Phase 3 block (several modules append theirs).
+const PHASE3_NEXT = CSS.indexOf('PHONE PHASE 3 —', PHASE3_AT + 20)
+const PHASE3 = CSS.slice(PHASE3_AT, PHASE3_NEXT < 0 ? undefined : CSS.lastIndexOf('/* ═', PHASE3_NEXT))
 
 function row(over: Partial<PaymentRequest> = {}): PaymentRequest {
   return {

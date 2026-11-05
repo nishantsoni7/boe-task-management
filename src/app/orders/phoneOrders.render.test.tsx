@@ -16,7 +16,9 @@ import { PI_FORMAT_ACTION } from '@/lib/orders/piFormat'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const css = read('src/app/globals.css')
 const start = css.indexOf('PHONE PHASE 3 — ORDERS (owner')
-const block = css.slice(start)
+// The Orders block runs to the next Phase 3 block (several modules append theirs).
+const nextBlock = css.indexOf('PHONE PHASE 3 —', start + 20)
+const block = css.slice(start, nextBlock < 0 ? undefined : css.lastIndexOf('/* ═', nextBlock))
 const dashboard = read('src/app/orders/page.tsx')
 const drafts = read('src/app/orders/drafts/page.tsx')
 const bdpi = read('src/app/orders/bdpi/page.tsx')
