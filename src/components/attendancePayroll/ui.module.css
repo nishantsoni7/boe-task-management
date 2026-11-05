@@ -228,7 +228,7 @@ textarea.input { resize: vertical; line-height: 1.45; }
 
 /* ── Phones: content first (owner, 2026-11-05) ──────────────────────────────
    .phoneOnly is drawn below 768px only (the counterpart of .desktopOnly).
-   PhoneSheet's trigger and sheet; .phoneTools is the search box with its
+   the trigger and sheet of PhoneSheetButton (components/ui/phoneSheet); .phoneTools is the search box with its
    Filter / Download buttons on one row. */
 .phoneOnly { display: none; }
 .sheet .field + .field { margin-top: 0; }

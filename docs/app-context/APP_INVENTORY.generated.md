@@ -5,15 +5,20 @@
 
 ## Snapshot
 
-- Commit: `a4efc8f` — Merge the merged #614 branch history (already in main) so this push is a fast-forward
-- Commits on this branch: 92
+- Commit: `46cacc4` — Merge: one shared phone filter sheet
+- Commits on this branch: 97
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
-- Test files: 754   Next.js 16.2.6, React 19.2.4
+- Test files: 755   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `46cacc4` 2026-11-05 Merge: one shared phone filter sheet
+- `dc72c27` 2026-11-05 Phones: one shared Filter button and bottom sheet for every list
+- `3e1fc92` 2026-11-05 Merge the merged #615 branch history (already in main) so later pushes fast-forward
+- `331ac7e` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
+- `366272a` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28)
 - `a4efc8f` 2026-11-05 Merge the merged #614 branch history (already in main) so this push is a fast-forward
 - `5a66c28` 2026-11-05 Phones, content first (Phase 4): sticky works on phones; every remaining page lifted to 8.5+ (no SQL) (#614)
 - `8c72d0d` 2026-11-05 Orders import: keep every pinned card exactly as it was
@@ -34,11 +39,6 @@
 - `7523294` 2026-11-05 Phones, Phase 3: docs, and scope two phone tests to their own CSS block
 - `f38d5d8` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
 - `640a028` 2026-11-05 Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
-- `cc703f1` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Sales, Leads, Vendors, Showroom, Reviews, SEO, Marketing (no SQL)
-- `8c220d1` 2026-11-05 Phones, content first (Phase 3): Sales, Leads, Vendors, Showroom, Reviews, SEO, Marketing (no SQL)
-- `97d70d8` 2026-11-05 Phones: four shared fixes the Phase 3 work turned up
-- `aaf0b99` 2026-11-05 Merge Phase 3 work: Attendance & Payroll on phones: content first (Phase 3, no SQL)
-- `db5df1f` 2026-11-05 Merge Phase 3 work: Orders on a phone, content first (Phase 3): list or record on the first screen
 
 ## Pages by top-level area
 
