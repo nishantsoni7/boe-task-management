@@ -23,6 +23,7 @@ import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
 import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
+import { PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
 
 /**
  * What the screen says when the list could not be read in full.
@@ -334,6 +335,10 @@ function QuotationRequestsContent() {
   )
 
   const anyFilterActive = filtersActive(filters)
+  // Phone (owner, 2026-11-05, phone phase 4): the three selects sit in ONE
+  // Filter sheet beside the search box; this counts the ones that are set.
+  const phoneFilterCount =
+    (filters.assignedBy !== 'all' ? 1 : 0) + (filters.priority !== 'all' ? 1 : 0) + (filters.dateRange !== 'all' ? 1 : 0)
 
   const visibleTasks = useMemo(() => {
     const filtered = applyQuotationFilters(tabTasks, filters)
@@ -389,6 +394,7 @@ function QuotationRequestsContent() {
                 <button
                   key={tab.key}
                   onClick={() => setState({ tab: tab.key })}
+                  className="boe-p4-qtn-tab"
                   style={{
                     display: 'flex', alignItems: 'center', gap: '7px',
                     padding: '8px 14px',
@@ -415,9 +421,43 @@ function QuotationRequestsContent() {
             })}
           </div>
 
+          {/* Phone: search + ONE Filter button; the selects below are desktop
+              and tablet only. Same setters, so a filter is the same filter. */}
+          <PhoneSearchFilter
+            className="boe-p4-qtn-phone"
+            search={{
+              value: searchInput,
+              onChange: setSearchInput,
+              onBlur: flushSearch,
+              placeholder: 'Search customer or quotation…',
+              label: 'Search quotation requests by customer, title or notes',
+            }}
+            groups={[
+              {
+                id: 'qtn-assigned', label: 'Assigned by', value: filters.assignedBy,
+                options: [{ value: 'all', label: 'Anyone' }, ...assignerOptions.map(a => ({ value: a.id, label: a.name }))],
+                onChange: v => setState({ assignedBy: v === 'all' ? '' : v }),
+              },
+              {
+                id: 'qtn-priority', label: 'Priority', value: filters.priority,
+                options: [{ value: 'all', label: 'Any priority' }, ...PRIORITY_FILTERS.map(p => ({ value: p.key, label: p.label }))],
+                onChange: v => setState({ priority: v === 'all' ? '' : v as TaskPriority }),
+              },
+              {
+                id: 'qtn-date', label: 'Created', value: filters.dateRange,
+                options: DATE_FILTERS.map(d => ({ value: d.key, label: d.label })),
+                onChange: v => setState({ date: v as DateFilterKey }),
+              },
+            ]}
+            activeCount={phoneFilterCount}
+            resultCount={visibleTasks.length}
+            noun={['request', 'requests']}
+            onClearAll={() => setState({ assignedBy: '', priority: '', date: 'all' })}
+          />
+
           {/* Search + filters. Form controls only — the toggle to the left stays
               the tab navigation. */}
-          <div className="boe-qtn-toolbar-controls">
+          <div className="boe-qtn-toolbar-controls boe-p3-desk">
             {/* The band's only elastic control: it takes the leftover width on a
                 wide screen and gives it back first when the row is tight, so the
                 selects beside it are never pushed onto a second line. */}

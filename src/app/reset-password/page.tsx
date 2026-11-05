@@ -115,7 +115,7 @@ export default function ResetPasswordPage() {
         >
           Request a new link
         </Link>
-        <Link href="/login" style={authLinkStyle}>Back to sign in</Link>
+        <Link href="/login" className="boe-p4-authlink" style={authLinkStyle}>Back to sign in</Link>
       </AuthShell>
     )
   }
@@ -169,6 +169,7 @@ export default function ResetPasswordPage() {
               onClick={() => setVisible(v => !v)}
               aria-label={visible ? 'Hide passwords' : 'Show passwords'}
               aria-pressed={visible}
+              className="boe-p4-eye"
               style={{
                 position: 'absolute', top: 0, right: 0, bottom: 0, width: 38,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',

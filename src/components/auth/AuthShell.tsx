@@ -46,7 +46,7 @@ export function AuthShell({ title, children }: { title: string; children: React.
           {children}
         </div>
 
-        <p style={{
+        <p className="boe-p4-authfoot" style={{
           textAlign: 'center',
           color: colors.muted,
           fontSize: '11px',

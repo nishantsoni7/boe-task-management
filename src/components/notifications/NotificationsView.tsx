@@ -545,6 +545,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           <button
             onClick={loadOlder}
             disabled={loadingOlder}
+            className="boe-p4-load-older"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '7px 14px', borderRadius: '8px',

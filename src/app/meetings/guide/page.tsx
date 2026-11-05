@@ -54,7 +54,7 @@ export default function HowMeetingsWorkPage() {
       actions={
         <button
           onClick={() => router.push('/meetings')}
-          className="boe-btn boe-btn-ghost"
+          className="boe-btn boe-btn-ghost boe-desktop-only"
           style={{ padding: '7px 13px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '5px' }}
         >
           <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back to Meetings

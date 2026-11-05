@@ -345,7 +345,7 @@
   .fieldControl { height: 44px; font-size: 16px; }
   .inlineSelect { height: 44px; }
   .linkBtn, .countBtn { min-height: 44px; min-width: 44px; justify-content: center; padding: 0 6px; }
-  .rowActions { gap: 4px; flex-wrap: wrap; }
+  .rowActions { gap: 8px; flex-wrap: wrap; }
   .quickLink { min-height: 44px; }
   .quickLinks { gap: 0 14px; }
   .record { min-height: 44px; }
@@ -364,4 +364,36 @@
   .toolbar { gap: 8px; }
   .section { margin-bottom: 20px; }
   .dialogFoot :global(.boe-btn) { min-height: 44px; }
+}
+
+/* Data Management bullets: the full list on desktop and tablet, folded on a
+   phone. */
+.bulletsDesk { display: block; }
+.bulletsPhone { display: none; }
+/* A radio choice on its own line (Test Data Cleanup). */
+.radio { cursor: pointer; }
+
+/* PHONES (owner, 2026-11-05, phone phase 4): ticks and radios are 20px inside
+   44px labels; a list row puts its actions on their own full row instead of
+   squeezing the text; Data Management's long lists fold behind one line. */
+@media (max-width: 767px) {
+  .check { min-height: 44px; gap: 10px; }
+  .check > input[type="checkbox"], .check > input[type="radio"] { width: 20px; height: 20px; flex: none; margin: 0 !important; }
+  .check[style*="flex-start"] > input { margin-top: 12px !important; }
+  .check[style*="flex-start"] > span { padding: 11px 0; }
+  .radio { display: flex !important; align-items: flex-start; gap: 10px; min-height: 44px; padding: 11px 0; margin: 0 !important; line-height: 1.45; }
+  .radio > input[type="radio"] { width: 20px; height: 20px; flex: none; margin: 0; }
+
+  .listRow { flex-wrap: wrap; row-gap: 8px; }
+  .listRow > .listMain { flex: 1 1 200px; }
+  .listRow > .rowActions { flex: 1 1 100%; justify-content: space-between; }
+  .listRow > .rowActions:only-child, .listRow > .rowActions > :only-child { margin-left: auto; }
+
+  .bulletsDesk { display: none; }
+  .bulletsPhone { display: block; }
+  .bulletsPhone > summary {
+    display: flex; align-items: center; min-height: 44px; cursor: pointer;
+    font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #686D6C;
+  }
+  .bulletsPhone > ul { margin-bottom: 6px !important; }
 }

@@ -147,7 +147,7 @@ export default function QuickStartGuidePage() {
     }}>
 
       {/* ── Sticky header ── */}
-      <div style={{
+      <div className="boe-p4-qsg-bar" style={{
         position: 'sticky',
         top: 0,
         zIndex: 10,
@@ -170,7 +170,7 @@ export default function QuickStartGuidePage() {
           <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>
             Quick Start Guide
           </span>
-          <span style={{
+          <span className="boe-p4-qsg-badge" style={{
             fontSize: '12px', fontWeight: 700, color: colors.muted,
             background: colors.float, border: `1px solid ${colors.border}`,
             borderRadius: '999px', padding: '2px 8px', letterSpacing: '0.04em',
@@ -181,6 +181,8 @@ export default function QuickStartGuidePage() {
         </div>
         <button
           onClick={() => router.push('/dashboard')}
+          className="boe-p4-qsg-back"
+          aria-label="Back to Dashboard"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '12.5px', fontWeight: 600,
@@ -198,19 +200,19 @@ export default function QuickStartGuidePage() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
           </svg>
-          Back to Dashboard
+          <span className="boe-p4-qsg-backlabel">Back to Dashboard</span>
         </button>
       </div>
 
       {/* ── Content ── */}
-      <div style={{ maxWidth: '720px', margin: '0 auto', padding: '36px 24px 0' }}>
+      <div className="boe-p4-qsg-body" style={{ maxWidth: '720px', margin: '0 auto', padding: '36px 24px 0' }}>
 
         {/* Hero */}
-        <div style={{ marginBottom: '32px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', color: colors.muted, textTransform: 'uppercase', marginBottom: '8px' }}>
+        <div className="boe-p4-qsg-hero" style={{ marginBottom: '32px' }}>
+          <div className="boe-p4-qsg-eyebrow" style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', color: colors.muted, textTransform: 'uppercase', marginBottom: '8px' }}>
             BOE Internal Platform
           </div>
-          <h1 style={{
+          <h1 className="boe-p4-qsg-h1" style={{
             fontFamily: font.display,
             fontSize: '26px',
             fontWeight: 700,
@@ -221,13 +223,13 @@ export default function QuickStartGuidePage() {
           }}>
             BOE One<br />Quick Start Guide
           </h1>
-          <p style={{ margin: 0, fontSize: '14px', color: colors.tertiary, lineHeight: 1.65 }}>
+          <p className="boe-p4-qsg-lede" style={{ margin: 0, fontSize: '14px', color: colors.tertiary, lineHeight: 1.65 }}>
             Version 1 guide for using tasks, updates, follow-ups, and daily work tracking correctly.
           </p>
         </div>
 
         {/* ── Section 1 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>1</span>
             Why We Are Using This System
@@ -246,7 +248,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 2 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>2</span>
             What Every Task Must Have
@@ -281,7 +283,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 3 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>3</span>
             When You Receive a Task
@@ -302,7 +304,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 4 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>4</span>
             Task Status Meaning
@@ -330,7 +332,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 5 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>5</span>
             Waiting On Rules
@@ -345,7 +347,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 6 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>6</span>
             Blocked Rules
@@ -359,7 +361,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 7 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>7</span>
             Daily Updates
@@ -374,7 +376,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 8 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>8</span>
             End-of-Day Work Log
@@ -396,7 +398,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 9 ── */}
-        <div style={card}>
+        <div className="boe-p4-qsg-card" style={card}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>9</span>
             Manager Review

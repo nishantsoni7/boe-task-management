@@ -8,7 +8,7 @@ export default function ComingSoonPage() {
   const router = useRouter()
 
   return (
-    <div style={{
+    <div className="boe-p4-soon" style={{
       minHeight: '100vh',
       background: colors.void,
       display: 'flex',
@@ -17,7 +17,7 @@ export default function ComingSoonPage() {
       justifyContent: 'center',
       padding: '24px',
     }}>
-      <div style={{
+      <div className="boe-p4-soon-card" style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
         borderRadius: '12px',
@@ -94,6 +94,7 @@ export default function ComingSoonPage() {
         {/* Back button */}
         <button
           onClick={() => router.push('/modules')}
+          className="boe-p4-soon-btn"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '13px', fontWeight: 600,

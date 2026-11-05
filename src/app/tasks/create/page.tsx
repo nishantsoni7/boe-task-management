@@ -313,6 +313,8 @@ export default function CreateTaskPage() {
           </div>
           <button
             onClick={() => setSuccess(false)}
+            className="boe-p4-x"
+            aria-label="Dismiss"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
           >
             ×
@@ -337,6 +339,8 @@ export default function CreateTaskPage() {
           </p>
           <button
             onClick={() => setSubmitError(null)}
+            className="boe-p4-x"
+            aria-label="Dismiss"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
           >
             ×
@@ -348,7 +352,7 @@ export default function CreateTaskPage() {
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '0' : '20px', alignItems: 'flex-start', maxWidth: isMobile ? '100%' : '90%' }}>
 
         {/* ── Form card ───────────────────────────────────────────────── */}
-        <div style={{
+        <div className="boe-p4-formcard" style={{
           flex: 2.5, minWidth: 0,
           background: colors.base,
           border: `1px solid ${colors.border}`,
@@ -394,7 +398,7 @@ export default function CreateTaskPage() {
           </div>
 
           {/* Priority + Due Date row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+          <div className="boe-p4-stack2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
               <label className="boe-form-section-label">
                 Priority <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
@@ -411,6 +415,7 @@ export default function CreateTaskPage() {
                     <button
                       key={p}
                       onClick={() => { setPriority(p); setPriorityDirty(true) }}
+                      className="boe-p4-prio"
                       style={{
                         flex: 1, textAlign: 'center', textTransform: 'capitalize',
                         fontSize: '12px', fontWeight: selected ? 700 : 500,
@@ -466,6 +471,7 @@ export default function CreateTaskPage() {
           {/* Mark Important */}
           <div
             onClick={() => setIsUrgent(!isUrgent)}
+            className="boe-p4-toggle"
             style={{
               marginBottom: '14px',
               padding: '11px 13px', cursor: 'pointer', height: '42px', boxSizing: 'border-box',
@@ -519,6 +525,8 @@ export default function CreateTaskPage() {
                     <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                     <button
                       onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
+                      className="boe-p4-x"
+                      aria-label="Remove file"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                     >
                       <X size={13} color={colors.muted} strokeWidth={2} />
@@ -536,6 +544,7 @@ export default function CreateTaskPage() {
             >
               <button
                 onClick={() => fileInputRef.current?.click()}
+                className="boe-p4-addfiles"
                 style={{
                   width: '100%', height: '40px', boxSizing: 'border-box',
                   borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? colors.brand : colors.border}`,
@@ -575,6 +584,7 @@ export default function CreateTaskPage() {
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}
+            className="boe-p4-submit"
             style={{
               width: '100%',
               padding: '11px 0',

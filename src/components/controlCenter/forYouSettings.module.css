@@ -141,3 +141,35 @@
     height: 44px;
   }
 }
+
+/* Phone (owner, 2026-11-05, phone phase 4): the three legend cards stacked to
+   ~210px; below 768px they are one closed "What the three settings mean". */
+.phoneLegend { display: none; }
+
+@media (max-width: 767px) {
+  .legend { display: none; }
+  .phoneLegend {
+    display: block;
+    margin: 0 0 12px;
+    background: #fff;
+    border: 1px solid #E4DED7;
+    border-radius: 10px;
+  }
+  .phoneLegendSummary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #303536;
+    cursor: pointer;
+  }
+  .phoneLegendList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0 14px 12px;
+  }
+}

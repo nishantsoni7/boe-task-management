@@ -76,6 +76,19 @@ export function ForYouSettings() {
           </div>
         ))}
       </dl>
+      {/* Phone (owner, 2026-11-05, phone phase 4): the same three meanings
+          behind one closed line, so the items start on the first screen. */}
+      <details className={styles.phoneLegend}>
+        <summary className={styles.phoneLegendSummary}>What the three settings mean</summary>
+        <dl className={styles.phoneLegendList}>
+          {FOR_YOU_MODES.map(mode => (
+            <div key={mode}>
+              <dt className={styles.legendName}>{FOR_YOU_MODE_LABEL[mode]}</dt>
+              <dd className={styles.legendMeaning}>{FOR_YOU_MODE_MEANING[mode]}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
 
       {unreadable && (
         <p className={styles.error} role="alert">
