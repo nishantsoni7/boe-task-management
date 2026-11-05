@@ -30,6 +30,8 @@
 
 import React from 'react'
 import { formatRupees } from '@/lib/payroll/money'
+import { ReviewCreditsCard } from '@/components/payroll/ReviewCreditsCard'
+import { withLiveSpendable, type PayslipReviewCreditsBlock } from '@/lib/payroll/reviewCredits'
 import { periodLabel, formatGeneratedAt } from '@/lib/payroll/months'
 import { Avatar } from '@/components/ui/atoms'
 import phone from '../../payrollResultsPhone.module.css'
@@ -229,6 +231,11 @@ export type DetailPayload = {
     locked: boolean
     application: { id: string; credits_used: number; credit_value: number; amount: number; created_at: string } | null
   } | null
+  /**
+   * What the month's approved reviews earned, one row per review, for BOTH
+   * readers. Null when the month has no review credit or it could not be read.
+   */
+  review_credits?: PayslipReviewCreditsBlock | null
   /**
    * BOE Credits (Phase 1C). `can_redeem` is true only for the employee's own
    * view of an unlocked month; `redeemable_dates` lists the dates whose
@@ -877,11 +884,13 @@ export function signTone(amount: number): string | undefined {
 }
 
 export function AdjustmentsAndSettlement({
-  settlement, adjustments, canEdit, onEditCarryForward, onEditPayment,
+  settlement, adjustments, canEdit, onEditCarryForward, onEditPayment, reviewCredits,
 }: {
   settlement: SettlementPayload
   adjustments: Adjustment[]
   canEdit: boolean
+  /** The month's approved reviews and what each earned. Omitted or null: no card. */
+  reviewCredits?: PayslipReviewCreditsBlock | null
   /** Omitted entirely for the employee — there is no edit path to reach. */
   onEditCarryForward?: () => void
   onEditPayment?: () => void
@@ -1008,6 +1017,10 @@ export function AdjustmentsAndSettlement({
             )}
           </SettlementCard>
           </div>
+
+          {/* Why the BOE Credit Addition is what it is: the month's reviews, each
+              with its credit, under the two cards it explains. */}
+          {reviewCredits && <ReviewCreditsCard credits={reviewCredits} isAdmin={isAdmin} applied={settlement.credits ?? null} />}
         </div>
 
         {/* ── The conclusion, in the page's summary rail ──────────────── */}
@@ -1636,6 +1649,7 @@ export function PayrollDetailWorkspace({
           canEdit={canEdit}
           onEditCarryForward={onEditCarryForward}
           onEditPayment={onEditPayment}
+          reviewCredits={data.review_credits ? withLiveSpendable(data.review_credits, data.credits?.spendable_credits) : null}
         />
       )}
 

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `b1588211` — Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
-- Commits on this branch: 1187
+- Commit: `2ce0e81e` — Docs: the half-leave fix merged (#619 as b1588211), migration 20270604000000 applied (#624)
+- Commits on this branch: 1188
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 420 (first `20260530_create_positions.sql`, latest `20270604000000_payroll_results_half_paid_leave.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
-- Test files: 761   Next.js 16.2.6, React 19.2.4
+- Test files: 764   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `2ce0e81e` 2026-11-05 Docs: the half-leave fix merged (#619 as b1588211), migration 20270604000000 applied (#624)
 - `b1588211` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
 - `2a3ea821` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL) (#623)
 - `2f739e42` 2026-11-05 Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied (#622)
@@ -38,7 +39,6 @@
 - `3f145802` 2026-11-03 Docs: the scan-first Record dispatch screen merged (#600); the spacing change (#597) stamped (#601)
 - `e980e2da` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
 - `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
-- `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
 
 ## Pages by top-level area
 
@@ -154,7 +154,7 @@
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 105 source, 158 test
-- `src/lib/payroll` — 34 source, 33 test
+- `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test

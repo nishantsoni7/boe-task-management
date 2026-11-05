@@ -42,6 +42,7 @@ import {
   type SettlementCreditInput,
 } from '@/lib/payroll/settlement'
 import { fetchSettlement, type SettlementRow } from '@/lib/payroll/settlementStore'
+import { fetchPayslipReviewCredits } from '@/lib/payroll/reviewCreditsStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -287,7 +288,7 @@ export async function buildResultDetailPayload(
 
   const u = result.users as unknown as { full_name: string; employee_code: string | null } | null
 
-  const [dayView, creditsBlock] = await Promise.all([
+  const [dayView, creditsBlock, reviewCredits] = await Promise.all([
     buildDayView(svc, {
       employeeId,
       month: period.payroll_month,
@@ -307,6 +308,18 @@ export async function buildResultDetailPayload(
           application: creditApplication,
         })
       : Promise.resolve(null),
+    // What the month's reviews earned, for BOTH readers: the admin reviewing the
+    // payslip and the employee are looking at the same explanation. Display
+    // only — a payslip must open even when this cannot be built.
+    fetchPayslipReviewCredits(svc, {
+      employeeId,
+      month: period.payroll_month,
+      year:  period.payroll_year,
+      creditValue: creditSettings.settings.credit_value,
+    }).catch((e: unknown) => {
+      console.error('[payroll/detail] review credits unavailable:', e)
+      return null
+    }),
   ])
 
   return {
@@ -353,6 +366,9 @@ export async function buildResultDetailPayload(
       // The employee's BOE Credits standing for this month (Phase 1D). Null on
       // the admin's view.
       credits: creditsBlock,
+      // The month's approved reviews and the credit each earned. Null when the
+      // month has none, or when it could not be read.
+      review_credits: reviewCredits,
       ...dayView,
     },
   }
