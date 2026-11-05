@@ -1,19 +1,22 @@
 // Confirmed Orders on a phone (owner, 2026-11-04, "Option A: compact list"):
 // the status chips, the one Filter button and its sheet, and how the page wires
-// them to the same URL state as the desktop controls.
+// them to the same URL state as the desktop controls. The pieces are the shared
+// phone filter set (components/ui/PhoneFilters.tsx) with Orders' own names.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PhoneFilterButton, PhoneStatusChips, showOrdersLabel } from './PhoneListControls'
+import { PhoneChips, PhoneFilterSheet, showResultsLabel } from '@/components/ui/PhoneFilters'
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 const noop = () => {}
 
 describe('the status chips', () => {
   const html = renderToStaticMarkup(
-    <PhoneStatusChips
+    <PhoneChips
+      label="Order status"
+      rowClassName="orders-phone-chips"
       active="running"
       onSelect={noop}
       chips={[
@@ -25,6 +28,7 @@ describe('the status chips', () => {
   )
 
   test('one button per status, in the order given, with its count', () => {
+    assert.ok(html.startsWith('<div class="orders-phone-chips" role="group" aria-label="Order status">'))
     assert.equal(text(html), 'Running 13 On Hold 0 All orders —')
     assert.equal((html.match(/<button/g) ?? []).length, 3)
   })
@@ -36,35 +40,39 @@ describe('the status chips', () => {
   })
 })
 
-describe('the Filter button and its sheet', () => {
-  const groups = [
-    { id: 'person', label: 'Sales person', value: 'all', onChange: noop, options: [{ value: 'all', label: 'Anyone' }, { value: 'u1', label: 'Meera' }] },
-    { id: 'sort', label: 'Sort', value: 'number_desc', onChange: noop, options: [{ value: 'number_desc', label: 'Project code high–low' }] },
-  ]
+const ORDERS = ['order', 'orders'] as const
+const groups = [
+  { id: 'person', label: 'Sales person', value: 'all', onChange: noop, options: [{ value: 'all', label: 'Anyone' }, { value: 'u1', label: 'Meera' }] },
+  { id: 'sort', label: 'Sort', value: 'number_desc', onChange: noop, options: [{ value: 'number_desc', label: 'Project code high–low' }] },
+]
+const sheet = (activeCount: number, resultCount: number, initiallyOpen = false) => renderToStaticMarkup(
+  <PhoneFilterSheet title="Filter and sort" activeCount={activeCount} applyLabel={showResultsLabel(resultCount, ORDERS)} onClearAll={noop} groups={groups} initiallyOpen={initiallyOpen} />,
+)
 
+describe('the Filter button and its sheet', () => {
   test('closed: one button, no badge when nothing is set', () => {
-    const html = renderToStaticMarkup(<PhoneFilterButton activeCount={0} groups={groups} resultCount={13} onClearAll={noop} />)
+    const html = sheet(0, 13)
     assert.equal(text(html), 'Filter')
     assert.equal(html.includes('orders-phone-filter-badge'), false)
     assert.equal(html.includes('role="dialog"'), false)
   })
 
   test('a badge says how many filters are set', () => {
-    const html = renderToStaticMarkup(<PhoneFilterButton activeCount={2} groups={groups} resultCount={4} onClearAll={noop} />)
+    const html = sheet(2, 4)
     assert.ok(html.includes('orders-phone-filter-badge'))
     assert.ok(html.includes('aria-label="Filter and sort, 2 set"'))
   })
 
   test('open: every group, the chosen option pressed, Clear all, and the live count', () => {
-    const html = renderToStaticMarkup(<PhoneFilterButton activeCount={0} groups={groups} resultCount={13} onClearAll={noop} initiallyOpen />)
+    const html = sheet(0, 13, true)
     assert.ok(html.includes('role="dialog"'))
     for (const word of ['Sales person', 'Anyone', 'Meera', 'Sort', 'Clear all', 'Show 13 orders']) assert.ok(text(html).includes(word), word)
     assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 2, 'one per group')
   })
 
   test('the count reads as words', () => {
-    assert.equal(showOrdersLabel(1), 'Show 1 order')
-    assert.equal(showOrdersLabel(0), 'Show 0 orders')
+    assert.equal(showResultsLabel(1, ORDERS), 'Show 1 order')
+    assert.equal(showResultsLabel(0, ORDERS), 'Show 0 orders')
   })
 })
 
@@ -100,6 +108,12 @@ describe('the page wires the phone controls to the desktop state', () => {
   test('CSS shows one set of controls: the desktop set is hidden on a phone, the phone set everywhere else', () => {
     assert.ok(css.includes('.orders-desktop-controls, .orders-desktop-viewbar { display: none; }'))
     assert.ok(/\.orders-phone-chips,\r?\n\.orders-phone-tools,\r?\n\.orders-phone-summary \{ display: none; \}/.test(css))
+  })
+
+  test('the page names its own chips and sheet', () => {
+    assert.ok(page.includes('label="Order status"') && page.includes('rowClassName="orders-phone-chips"'))
+    assert.ok(page.includes('title="Filter and sort"'))
+    assert.ok(page.includes("applyLabel={showResultsLabel(visible.length, ['order', 'orders'])}"))
   })
 
   test('only this page asks for the compact header', () => {

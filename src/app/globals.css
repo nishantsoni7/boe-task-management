@@ -13770,7 +13770,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    chips, the search box and ONE Filter button (a bottom sheet holds Sales
    person, Order date, Source and Sort), a summary line, and each Order as three
    tight lines. Pure CSS decides which set is on screen; the desktop is
-   unchanged. Components: app/orders/all/PhoneListControls.tsx.
+   unchanged. Components: components/ui/PhoneFilters.tsx (the shared set).
    ══════════════════════════════════════════════════════════════════════════════ */
 .boe-page-phone-subtitle,
 .orders-phone-chips,
@@ -14529,7 +14529,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    so a rule that has to beat one carries !important.
    ══════════════════════════════════════════════════════════════════════════════ */
 
-/* The shared Filter sheet (components/phoneFilters/PhoneFilterSheet.tsx) reuses
+/* The shared Filter sheet (components/ui/PhoneFilters.tsx, `p3-sheet`) reuses
    Confirmed Orders' sheet; its options are 40px, a page's own selects 44px.
    The sheet only ever opens on a phone (its button is phone-only). */
 .p3-sheet .orders-sheet-options button { min-height: 40px; padding: 0 14px; border-radius: 999px; }
@@ -14667,7 +14667,7 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    Meetings, Control Center, Settings, Super Admin, Performance, Assets, My
    Issues, My Credits, Manager and Dashboard pages put their content on the
    first screen: chips that scroll sideways, a search box and ONE Filter
-   button (components/tasks/PhoneListTools.tsx), tables as cards, and every
+   button (components/ui/PhoneFilters.tsx), tables as cards, and every
    control at least 44px (pills 40px). Desktop and tablet are untouched. */
 .boe-p3-chips, .boe-p3-tools { display: none; }
 

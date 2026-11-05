@@ -1,7 +1,7 @@
 'use client'
 
 import { formatCount } from '@/lib/seo/report'
-import { useIsPhone } from '@/components/phoneFilters/useIsPhone'
+import { useIsPhone } from '@/components/ui/useIsPhone'
 import s from './seo.module.css'
 
 // One month's value per bar, as inline SVG like BOE's other charts (the project has no charting library). The

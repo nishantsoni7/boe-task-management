@@ -9,7 +9,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PhoneFilterSheet, PhoneMultiGroup, PhoneSheetField } from './phoneFilters/PhoneFilterSheet'
+import { PhoneFilterSheet, PhoneMultiGroup, PhoneSheetField } from './ui/PhoneFilters'
 import { chartGeometry } from './customerReviews/ReviewCharts'
 import { ProductRow } from '@/app/showroom-admin/products/ProductTable'
 import type { ShowroomProduct } from '@/lib/types'
@@ -21,8 +21,17 @@ const globals = read('src/app/globals.css')
 const phase3 = globals.slice(globals.indexOf('PHONE PHASE 3 — SALES, LEADS, SHOWROOM, REVIEWS, SEO, MARKETING'))
 
 describe('the shared Filter sheet', () => {
+  test('every Sales, Vendors and Reviews sheet is drawn on a phone only, with the p3 styles', () => {
+    for (const file of ['src/components/vendors/VendorListScreen.tsx', 'src/components/salesLeads/TeamScreen.tsx', 'src/components/salesLeads/LeadMasterScreen.tsx', 'src/app/customer-reviews/ReportsScreen.tsx', 'src/app/customer-reviews/CustomSubmissionsScreen.tsx']) {
+      const src = read(file)
+      const sheets = src.split('<PhoneFilterSheet').length - 1
+      assert.ok(sheets > 0, file)
+      assert.equal(src.split('triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"').length - 1, sheets, file)
+    }
+  })
+
   test('closed: one phone-only Filter button with the count of filters set', () => {
-    const html = renderToStaticMarkup(<PhoneFilterSheet activeCount={2} resultLabel="Show 3 leads" />)
+    const html = renderToStaticMarkup(<PhoneFilterSheet triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet" activeCount={2} applyLabel="Show 3 leads" />)
     assert.ok(html.includes('boe-phone-only'), 'a desktop keeps its own filters')
     assert.ok(html.includes('aria-label="Filter, 2 set"'))
     assert.equal(html.includes('role="dialog"'), false)
@@ -31,7 +40,8 @@ describe('the shared Filter sheet', () => {
   test('open: groups, a page\'s own controls, and a result button that names the rows', () => {
     const html = renderToStaticMarkup(
       <PhoneFilterSheet
-        activeCount={0} initiallyOpen resultLabel="Show 12 vendors" onClearAll={noop}
+        triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"
+        activeCount={0} initiallyOpen applyLabel="Show 12 vendors" onClearAll={noop}
         groups={[{ id: 'sort', label: 'Sort', value: 'name', options: [{ value: 'name', label: 'Name' }, { value: 'last', label: 'Last visit' }], onChange: noop }]}
       >
         <PhoneMultiGroup id="area" label="Area" options={[{ value: 'A', label: 'Andheri' }, { value: 'B', label: 'Bandra' }]} value={['B']} onChange={noop} />

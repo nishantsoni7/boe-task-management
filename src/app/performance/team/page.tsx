@@ -29,7 +29,7 @@ import {
 } from '@/lib/performanceAdoption'
 import { formatMinutesOfDay } from '@/lib/istDate'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
+import { PhoneChips, PhoneSearchFilter } from '@/components/ui/PhoneFilters'
 import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────

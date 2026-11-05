@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing, UserRoundPen } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { istAddDays, istToday } from '@/lib/istDate'
@@ -121,13 +121,14 @@ export function TeamScreen() {
             {PERIODS.find(p => p.key === period)?.label} · {market ? (MARKETS.find(m => m.value === market)?.label ?? market) : 'All markets'} · {holder ? (peopleOptions.find(p => p.id === holder)?.full_name ?? 'One person') : 'Everyone'}
           </span>
           <PhoneFilterSheet
+            triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"
             activeCount={(period !== 'quarter' ? 1 : 0) + (market ? 1 : 0) + (holder ? 1 : 0)}
             groups={[
               { id: 'period', label: 'Period', value: period, options: PERIODS.map(p => ({ value: p.key, label: p.label })), onChange: v => setPeriod(v as PeriodKey) },
               { id: 'market', label: 'Market', value: market, options: [{ value: '', label: 'All markets' }, ...MARKETS.map(m => ({ value: m.value, label: m.label }))], onChange: setMarket },
               { id: 'holder', label: 'Salesperson', value: holder, options: [{ value: '', label: 'Everyone' }, ...peopleOptions.map(p => ({ value: p.id, label: p.full_name }))], onChange: setHolder },
             ]}
-            resultLabel="Show"
+            applyLabel="Show"
             onClearAll={() => { setPeriod('quarter'); setMarket(''); setHolder('') }}
           />
         </div>

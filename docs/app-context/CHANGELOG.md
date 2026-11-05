@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-05 — All modules: phones, content first, Phase 4 (PR pending) · no SQL
+## 2026-11-05 — Platform: one phone filter set (PR pending) · no SQL
+- **Owner request.** Fold the near-identical phone filter sheets Phases 3-4 left (Orders, Tasks, Sales/Vendors/Reviews, Attendance) into one shared set in `components/ui`, move every caller onto it, delete the copies; phones only, desktop unchanged. Plan agreed ("yes, go ahead").
+- **Changed.** New `src/components/ui/PhoneFilters.tsx` (`PhoneChips`, `PhoneSearchBox`, `PhoneSearchFilter`, `PhoneFilterSheet`, `PhoneOptionGroup`, `PhoneMultiGroup`, `PhoneSheetField`, `showResultsLabel`) and `src/components/ui/useIsPhone.ts`. Removed `app/orders/all/PhoneListControls.tsx`, `components/tasks/PhoneListTools.tsx`, `components/phoneFilters/*`, `components/attendancePayroll/PhoneSheet.tsx`. Every caller passes the classes it had, so the phone markup is the same (sheet group ids are now `p3-sheet-*` everywhere). No CSS rule changed.
+- **Database.** None. Rollback: revert the PR.
+- **Proof.** New `phoneFilters.render.test.tsx`; the four phone test files retargeted on purpose (see dossier 08); full suite, type check and lint (see the PR). Not seen signed in or on a phone.
+
+## 2026-11-05 — All modules: phones, content first, Phase 4 (PR #614 squash-merged as 5a66c289) · no SQL
 - **Owner request.** "ok merge it and start phase 4": score every page on a phone and bring each one to 8.5 or more. Phase 3 merged as #613 (b5dc116f).
 - **Changed (below 768px only).** Sticky now works on phones (`.boe-main-content` clips instead of hiding sideways overflow), so the page header and save bars stay in view. Every page the second scoring pass found below 8.5 was fixed: Attendance & Payroll (14 pages), Tasks/core/Admin (about 20, including the Notifications row used by every module, the task and quotation forms, login), Sales/Showroom/Samples (about 18, including Samples, the Sales board and the public Showroom pages), Orders & Finance (11, including Edit PI, Founders, Expenses, dispatch). Small desktop-visible changes: the login fields carry `autoComplete`, the quotation phone field is `type="tel"`, two Settings references became links.
 - **Database.** None. Rollback: revert the PR.

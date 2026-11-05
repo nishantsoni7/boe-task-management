@@ -7,7 +7,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@t
 import { Plus, Upload, UserRoundCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -210,13 +210,14 @@ export function LeadMasterScreen() {
               </label>
               {/* A phone: one Filter button holds Source (the select and the count are hidden there). */}
               <PhoneFilterSheet
+                triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"
                 activeCount={state.source ? 1 : 0}
                 groups={[{
                   id: 'source', label: 'Source', value: state.source,
                   options: [{ value: '', label: 'All sources' }, ...LEAD_SOURCES.map(o => ({ value: o.value, label: o.label }))],
                   onChange: v => setState({ source: v as typeof state.source }),
                 }]}
-                resultLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
+                applyLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
                 onClearAll={() => setState({ source: '' })}
               />
               <select
