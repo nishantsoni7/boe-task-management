@@ -475,6 +475,9 @@ export default function OrderPaymentPlan({
             {canEdit ? 'Type how many of each item leave in this lot. Amounts fill in as you type.' : 'How many of each item leave in this lot.'}
           </p>
         </div>
+        {/* ON A PHONE (owner, 2026-11-05) each line is a card: the picture and
+            the name, then Ordered / Sent / This lot / Left, then the four
+            amounts, each under its data-label (globals.css "PHONE PHASE 3"). */}
         <div className="opp-scroll">
           <table className="opp-grid">
             <colgroup>
@@ -509,14 +512,14 @@ export default function OrderPaymentPlan({
                         ? <img src={pictures[l.itemSequence]} alt={l.productName ?? `Line ${l.itemSequence}`} className="opp-thumb" loading="lazy" />
                         : <span className="opp-thumb opp-thumb--none">No image</span>}
                     </td>
-                    <td className="l">{l.itemSequence}</td>
+                    <td className="l" data-label="Code">{l.itemSequence}</td>
                     <td className="l">
                       <span className="opp-name">{l.productName ?? '—'}</span>
                       <span className="opp-rates">{lineRatesText(l)}</span>
                     </td>
-                    <td className="opp-gs">{qty(l.ordered)}</td>
-                    <td>{qty(l.previouslyDispatched)}</td>
-                    <td className="opp-lot">
+                    <td className="opp-gs" data-label="Ordered">{qty(l.ordered)}</td>
+                    <td data-label="Sent">{qty(l.previouslyDispatched)}</td>
+                    <td className="opp-lot" data-label="This lot">
                       <input className={`boe-input opp-qty${issue ? ' opp-bad' : ''}`} inputMode="decimal"
                         aria-label={`Quantity of ${l.productName ?? l.itemSequence} in this lot`}
                         aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId : undefined}
@@ -525,11 +528,11 @@ export default function OrderPaymentPlan({
                         <span id={issueId} className="opp-field-problem"><AlertTriangle aria-hidden="true" />{issue}</span>
                       )}
                     </td>
-                    <td>{qty(Math.max(0, l.remaining))}</td>
-                    <td className="opp-gs">{none ? <Dash /> : rs(l.plannedPaise)}</td>
-                    <td>{none || l.plannedPackingPaise === 0 ? <Dash /> : rs(l.plannedPackingPaise)}</td>
-                    <td>{none || l.plannedFabricPaise === 0 ? <Dash /> : rs(l.plannedFabricPaise)}</td>
-                    <td><strong>{none ? <Dash /> : rs(l.plannedLineTotalPaise)}</strong></td>
+                    <td data-label="Left">{qty(Math.max(0, l.remaining))}</td>
+                    <td className="opp-gs" data-label="Items">{none ? <Dash /> : rs(l.plannedPaise)}</td>
+                    <td data-label="Packing">{none || l.plannedPackingPaise === 0 ? <Dash /> : rs(l.plannedPackingPaise)}</td>
+                    <td data-label="Fabric">{none || l.plannedFabricPaise === 0 ? <Dash /> : rs(l.plannedFabricPaise)}</td>
+                    <td data-label="Total"><strong>{none ? <Dash /> : rs(l.plannedLineTotalPaise)}</strong></td>
                   </tr>
                 )
               })}
@@ -537,14 +540,14 @@ export default function OrderPaymentPlan({
             <tfoot>
               <tr>
                 <td className="l" colSpan={3}>This lot · {qty(sum(l => l.planned))} pieces</td>
-                <td className="opp-gs">{qty(sum(l => l.ordered))}</td>
-                <td>{qty(sum(l => l.previouslyDispatched))}</td>
-                <td className="opp-lot">{qty(sum(l => l.planned))}</td>
-                <td>{qty(sum(l => Math.max(0, l.remaining)))}</td>
-                <td className="opp-gs">{hasPlanned ? rs(result.lot.items) : <Dash />}</td>
-                <td>{hasPlanned && result.lot.packing !== 0 ? rs(result.lot.packing) : <Dash />}</td>
-                <td>{hasPlanned && result.lot.fabric !== 0 ? rs(result.lot.fabric) : <Dash />}</td>
-                <td>{hasPlanned ? rs(lotTotal) : <Dash />}</td>
+                <td className="opp-gs" data-label="Ordered">{qty(sum(l => l.ordered))}</td>
+                <td data-label="Sent">{qty(sum(l => l.previouslyDispatched))}</td>
+                <td className="opp-lot" data-label="This lot">{qty(sum(l => l.planned))}</td>
+                <td data-label="Left">{qty(sum(l => Math.max(0, l.remaining)))}</td>
+                <td className="opp-gs" data-label="Items">{hasPlanned ? rs(result.lot.items) : <Dash />}</td>
+                <td data-label="Packing">{hasPlanned && result.lot.packing !== 0 ? rs(result.lot.packing) : <Dash />}</td>
+                <td data-label="Fabric">{hasPlanned && result.lot.fabric !== 0 ? rs(result.lot.fabric) : <Dash />}</td>
+                <td data-label="Total">{hasPlanned ? rs(lotTotal) : <Dash />}</td>
               </tr>
             </tfoot>
           </table>

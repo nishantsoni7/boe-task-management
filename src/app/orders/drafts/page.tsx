@@ -594,20 +594,27 @@ export default function PiDraftsPage() {
     </div>
   )
 
+  // The cards are drawn below 1100px (tablets too). ON A PHONE (owner,
+  // 2026-11-05) the classes let globals.css ("PHONE PHASE 3 — ORDERS") pack
+  // each card into three lines; a tablet keeps the card as it was. The whole
+  // card opens the draft, as a table row does.
   const listCards = (rows: PiDraftListEntry[], actionLabel: string) => (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map((entry, i) => (
         <div
           key={entry.id}
+          className="drafts-card"
+          onClick={() => router.push(entry.href)}
           style={{
+            cursor: 'pointer',
             padding: '14px 16px',
             borderTop: i === 0 ? 'none' : '1px solid #ECE7E0',
             display: 'flex', flexDirection: 'column', gap: '8px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+          <div className="drafts-card-head" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
+              <div className="drafts-card-client" style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
                 {entry.client}
               </div>
               <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
@@ -617,7 +624,7 @@ export default function PiDraftsPage() {
             <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
+          <div className="drafts-card-facts" style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
             <span style={{ color: colors.secondary }}>
               <span style={{ color: colors.muted }}>Salesperson </span>{entry.authoredBy}
             </span>
@@ -630,12 +637,12 @@ export default function PiDraftsPage() {
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', fontVariantNumeric: 'tabular-nums' }}>
+          <div className="drafts-card-value" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', fontVariantNumeric: 'tabular-nums' }}>
             <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
             <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+          <div className="drafts-card-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
             {rowActions(entry, actionLabel)}
           </div>
         </div>
@@ -670,6 +677,14 @@ export default function PiDraftsPage() {
   // reviewer is told plainly that nothing is waiting rather than shown nothing.
   const showQueue = canReview && (statusFilter === 'all' || statusFilter === 'submitted')
   const nothingInView = review.length === 0 && working.length === 0
+
+  // The phone header's one short line (owner, 2026-11-05): the status card in
+  // force and how many drafts the list shows under it.
+  const inViewCount = review.length + working.length
+  const statusLabel = STATUS_CARDS.find(c => c.key === statusFilter)?.label ?? 'All drafts'
+  const phoneSubtitle = entries === null
+    ? undefined
+    : `${statusLabel}${search ? ' · searching' : ''} · ${inViewCount} draft${inViewCount === 1 ? '' : 's'}`
 
   const viewBar = (
     <div className="fin-viewbar">
@@ -733,6 +748,7 @@ export default function PiDraftsPage() {
       profile={profile}
       title="PI Drafts"
       subtitle={PI_DRAFTS_SUBTITLE}
+      phoneSubtitle={phoneSubtitle}
       onSignOut={handleSignOut}
       onRefresh={load}
       // THE ENTRY POINT TO THE IMPORTER, and the only one on this page for a
@@ -741,10 +757,11 @@ export default function PiDraftsPage() {
       // for itself, and the storage policies and the server route decide again.
       actions={(
         <>
+          {/* On a phone (owner, 2026-11-05) the filled upload icon, so the header stays one row. */}
           {canCreate ? (
-            <button className="boe-btn boe-btn-primary" onClick={goToImport}>
-              <Upload size={13} strokeWidth={2} />
-              {UPLOAD_PI_BUTTON_LABEL}
+            <button className="boe-btn boe-btn-primary orders-hdr-iconbtn orders-hdr-primary" onClick={goToImport}>
+              <Upload size={13} strokeWidth={2} aria-hidden="true" />
+              <span className="orders-hdr-label">{UPLOAD_PI_BUTTON_LABEL}</span>
             </button>
           ) : null}
           {/* The approved PI format, for everyone who can enter Orders (the route's own rule) —

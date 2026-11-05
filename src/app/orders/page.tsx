@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Upload } from 'lucide-react'
+import { Pin, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -267,21 +267,24 @@ export default function OrdersDashboardPage() {
             // /orders/import enforces the same `create` grant in its own right,
             // because hiding a button is not access control.
             ordersCaps.canCreateOrder ? (
+              // On a phone (owner, 2026-11-05) the filled upload icon, so the header stays one row.
               <button
-                className="boe-btn boe-btn-primary"
+                className="boe-btn boe-btn-primary orders-hdr-iconbtn orders-hdr-primary"
                 onClick={() => router.push(NEW_ORDER_ACTION.href)}
                 title={NEW_ORDER_ACTION.title}
               >
-                <Upload size={13} strokeWidth={2.2} />
-                {NEW_ORDER_ACTION.label}
+                <Upload size={13} strokeWidth={2.2} aria-hidden="true" />
+                <span className="orders-hdr-label">{NEW_ORDER_ACTION.label}</span>
               </button>
             ) : null
           }
           {/* ── FACTORY FOCUS, FOR THE OWNER ── opens the selection form. The database
               refuses anybody else, so this is only a courtesy. */}
           {!personalView && !operationsView && ready?.viewer.canManageFocus && !viewAsUserId ? (
-            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setFocusFormOpen(true)}>
-              {FOCUS_ADD_LABEL}
+            // ON A PHONE (owner, 2026-11-05) this is a 44px pin icon, so the header stays one row.
+            <button type="button" className="boe-btn boe-btn-ghost orders-hdr-iconbtn" title={FOCUS_ADD_LABEL} onClick={() => setFocusFormOpen(true)}>
+              <span className="boe-phone-only" aria-hidden="true"><Pin size={18} strokeWidth={1.9} /></span>
+              <span className="orders-hdr-label">{FOCUS_ADD_LABEL}</span>
             </button>
           ) : null}
         </>

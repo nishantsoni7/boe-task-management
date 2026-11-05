@@ -10,16 +10,19 @@ import { PI_FORMAT_ACTION, PI_FORMAT_FILENAME } from '@/lib/orders/piFormat'
 // ordinary navigation carrying the session cookie and works the same on a phone; it is a real
 // link, so it is reachable and activated with the keyboard.
 
+// ON A PHONE (owner, 2026-11-05) the header shows it as its download icon alone
+// (`.orders-hdr-iconbtn`), so the PI Drafts header stays one row; the name stays
+// its accessible name (the label is hidden visually, not from a screen reader).
 export function PiFormatButton() {
   return (
     <a
-      className="boe-btn boe-btn-ghost"
+      className="boe-btn boe-btn-ghost orders-hdr-iconbtn"
       href={PI_FORMAT_ACTION.href}
       download={PI_FORMAT_FILENAME}
       title={PI_FORMAT_ACTION.title}
     >
       <Download size={13} strokeWidth={2.2} aria-hidden="true" />
-      {PI_FORMAT_ACTION.label}
+      <span className="orders-hdr-label">{PI_FORMAT_ACTION.label}</span>
     </a>
   )
 }
