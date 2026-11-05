@@ -290,7 +290,7 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         </div>
       )}
       {canDecide && (
-        <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: 12.5, marginTop: 4 }}
+        <button type="button" className="boe-btn boe-btn-ghost ap4-decide" style={{ padding: '5px 12px', fontSize: 12.5, marginTop: 4 }}
           onClick={onDecide}>
           {ev.decision ? (ev.salary_status === 'action_required' && ev.applies_in_one_step ? 'Apply decision' : 'Change decision') : 'Decide'}
         </button>
@@ -371,13 +371,13 @@ function ReviewModal({ emp, ev, onClose, onSave }: {
       <PayrollField label="Salary treatment">
         <div role="radiogroup" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {ev.allowed_decisions.map(d => (
-            <label key={d} style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label key={d} className="ap4-radio" style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
               <input type="radio" name="pay_decision" checked={decision === d} onChange={() => setDecision(d)} />
               {d === 'paid_waived' && ev.request?.type === 'time_out' ? 'No deduction for time away' : PAY_DECISION_LABEL[d]}
             </label>
           ))}
           {decision && (
-            <button type="button" className="boe-btn boe-btn-ghost" style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: 12 }}
+            <button type="button" className="boe-btn boe-btn-ghost ap4-clear" style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: 12 }}
               onClick={() => setDecision('')}>Clear</button>
           )}
         </div>

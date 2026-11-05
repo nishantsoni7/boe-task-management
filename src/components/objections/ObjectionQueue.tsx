@@ -59,6 +59,11 @@ export function ObjectionQueue({
   const [busyId,  setBusyId]  = useState<string | null>(null)
   const [error,   setError]   = useState<string | null>(null)
   const [historyKey, setHistoryKey] = useState<string | null>(null)
+  // Phone only: the queue is one row ("Reported issues · 2 awaiting") until
+  // opened, so the page it sits on starts on the first screen.
+  const [phoneOpen, setPhoneOpen] = useState(false)
+  const phoneFold = phoneOpen ? '' : ` ${styles.folded}`
+  const panelId = `objection-queue-${subject}`
 
   // A period turns the request into "this run's issues"; without one the
   // endpoint answers with everything, as the attendance queue needs.
@@ -167,7 +172,22 @@ export function ObjectionQueue({
       border: `1px solid ${colors.border}`, borderRadius: 12,
       background: colors.base, marginBottom: 20, overflow: 'hidden',
     }}>
-      <div style={{
+      <button
+        type="button"
+        className={styles.phoneToggle}
+        aria-expanded={phoneOpen}
+        aria-controls={panelId}
+        onClick={() => setPhoneOpen(o => !o)}
+      >
+        <span className={styles.toggleTitle}>
+          {title}
+          <span className={styles.muted}>
+            {pending.length > 0 ? ` · ${pending.length} awaiting` : rows.length > 0 ? ` · ${rows.length}` : ' · none'}
+          </span>
+        </span>
+        <span aria-hidden="true">{phoneOpen ? '▴' : '▾'}</span>
+      </button>
+      <div className={styles.head} style={{
         padding: '12px 16px', borderBottom: `1px solid ${colors.border}`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
       }}>
@@ -192,7 +212,7 @@ export function ObjectionQueue({
       )}
 
       {rows.length === 0 ? (
-        <div style={{ padding: '20px 16px', fontSize: 13, color: colors.muted }}>{emptyLabel}</div>
+        <div id={panelId} className={phoneFold} style={{ padding: '20px 16px', fontSize: 13, color: colors.muted }}>{emptyLabel}</div>
       ) : (
         <>
         <div className={styles.desktopOnly} style={{ overflowX: 'auto' }}>
@@ -250,7 +270,7 @@ export function ObjectionQueue({
 
         {/* Phone: one card per issue — who and when, what they said, then
             Resolve / Reject / History at full touch size. No sideways scroll. */}
-        <ul className={styles.cards} aria-label={title}>
+        <ul id={panelId} className={`${styles.cards}${phoneFold}`} aria-label={title}>
           {rows.map(r => (
             <li key={r.id} className={styles.card}>
               <div className={styles.cardHead}>

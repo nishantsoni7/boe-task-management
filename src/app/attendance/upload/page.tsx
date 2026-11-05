@@ -145,9 +145,17 @@ function searchEmployees(employees: SelectableEmployee[], query: string): Select
 
 const STEP_LABELS = ['Choose file', 'Check results', 'Confirm import', 'Outcome']
 
+/** On a phone, how many modified-record cards show before "Show all". */
+const PHONE_MODIFIED_PREVIEW = 5
+
 function Steps({ current }: { current: number }) {
   return (
-    <ol className={styles.steps} aria-label="Import steps">
+    <>
+    {/* Phone: the four steps as one line. */}
+    <p className={`${ui.phoneOnly} ${styles.stepLine}`}>
+      Step {current} of {STEP_LABELS.length} · <strong>{STEP_LABELS[current - 1]}</strong>
+    </p>
+    <ol className={`${styles.steps} ${ui.desktopOnly}`} aria-label="Import steps">
       {STEP_LABELS.map((label, i) => {
         const n = i + 1
         const cls = n < current ? styles.stepDone : n === current ? styles.stepCurrent : ''
@@ -159,6 +167,7 @@ function Steps({ current }: { current: number }) {
         )
       })}
     </ol>
+    </>
   )
 }
 
@@ -175,6 +184,8 @@ export default function AttendanceUploadPage() {
   const [preview, setPreview]   = useState<PreviewSummary | null>(null)
   const [result, setResult]     = useState<ImportResult | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
+  // Phone only: the first few modified-record cards, then "Show all".
+  const [showAllModified, setShowAllModified] = useState(false)
 
   // ── Manual employee matching ──
   // The codes an admin has named an employee for. Held here, sent to BOTH the
@@ -392,18 +403,30 @@ export default function AttendanceUploadPage() {
             <div className={ui.surfaceHead}>
               <div>
                 <h2 className={ui.surfaceTitle}>Fingerprint machine import</h2>
-                <p className={ui.surfaceSub}>
+                <p className={`${ui.surfaceSub} ${styles.desktopText}`}>
                   Upload the monthly attendance report exported from the machine (.xls or .xlsx).
                   Employees are matched by <strong>fingerprint employee code</strong> (e.g. 0014, 0017).
                 </p>
               </div>
             </div>
             <div className={`${ui.surfaceBody} ${ui.stack}`}>
-              <ul className={styles.expected}>
+              <ul className={`${styles.expected} ${styles.desktopText}`}>
                 <li>Format: XLS/XLSX monthly attendance export</li>
                 <li>Employee codes must be mapped in Employee directory</li>
                 <li>Days with no punch (--:--) are automatically skipped</li>
               </ul>
+              {/* Phone: the same guidance, folded so Preview Import is on the first screen. */}
+              <details className={styles.whatFile}>
+                <summary>What file?</summary>
+                <p>
+                  The monthly attendance report exported from the machine (.xls or .xlsx).
+                  Employees are matched by <strong>fingerprint employee code</strong> (e.g. 0014, 0017).
+                </p>
+                <ul>
+                  <li>Employee codes must be mapped in Employee directory</li>
+                  <li>Days with no punch (--:--) are automatically skipped</li>
+                </ul>
+              </details>
 
               <div className={ui.field}>
                 <label className={ui.label} htmlFor="upload-file">Select file</label>
@@ -695,7 +718,7 @@ export default function AttendanceUploadPage() {
                   </div>
                 </div>
                 <ul className={ui.cards} style={{ padding: 12 }}>
-                  {preview.modifiedRecords.map((r, i) => (
+                  {(showAllModified ? preview.modifiedRecords : preview.modifiedRecords.slice(0, PHONE_MODIFIED_PREVIEW)).map((r, i) => (
                     <li key={i} className={`${ui.surface} ${ui.card}`}>
                       <div className={ui.strong}>{r.employeeName}</div>
                       <div className={ui.sub}>{r.date}</div>
@@ -706,6 +729,13 @@ export default function AttendanceUploadPage() {
                     </li>
                   ))}
                 </ul>
+                {!showAllModified && preview.modifiedRecords.length > PHONE_MODIFIED_PREVIEW && (
+                  <div className={`${ui.phoneOnly} ${styles.showAll}`}>
+                    <button type="button" className={btn} onClick={() => setShowAllModified(true)}>
+                      Show all {preview.modifiedRecords.length}
+                    </button>
+                  </div>
+                )}
               </Section>
             )}
 
@@ -727,7 +757,7 @@ export default function AttendanceUploadPage() {
                         ? 'Import New & Apply Corrections'
                         : `Confirm Import (${preview.newCount} new record${preview.newCount !== 1 ? 's' : ''})`
               return (
-                <div className={styles.narrow}>
+                <div className={`${styles.narrow} ${styles.confirmBar}`}>
                   <Section title="Confirm import">
                     <div className={`${ui.surfaceBody} ${styles.actions}`}>
                       <button

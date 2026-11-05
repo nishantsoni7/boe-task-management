@@ -103,3 +103,45 @@
   .mapEnd { margin-left: 0; }
   .actions > * { flex: 1 1 100%; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   The step strip is one line ("Step 2 of 4 · Check results"); the file
+   guidance folds into "What file?"; Confirm / Cancel are fixed to the bottom
+   of the screen while the changes are checked; the modified-record cards stop
+   at five until "Show all". Desktop is unchanged. */
+.whatFile { display: none; }
+
+@media (max-width: 767px) {
+  .steps { display: none; }
+  .stepLine { margin: 0; font-size: 13px; color: #4C5352; }
+  .stepLine strong { color: #303536; margin-left: 4px; }
+  .desktopText { display: none; }
+  .whatFile { display: block; font-size: 13px; color: #4C5352; line-height: 1.5; }
+  .whatFile > summary {
+    min-height: 44px; display: flex; align-items: center; cursor: pointer;
+    font-weight: 600; color: #335A86;
+  }
+  .whatFile p { margin: 0 0 6px; }
+  .whatFile ul { margin: 0; padding-left: 20px; }
+  .showAll { padding: 0 12px 12px; }
+  .showAll > button { width: 100%; }
+  /* Fixed, not sticky: below 768px .boe-main-content sets overflow-x:
+     hidden, so sticky would never engage. The page body's 72px bottom
+     padding keeps the last card clear of it. */
+  .confirmBar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    max-width: none;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: #F7F5F1;
+    box-shadow: 0 -1px 0 #E4DED7;
+  }
+  .confirmBar > section { border: 0; box-shadow: none; background: transparent; }
+  .confirmBar > section > :first-child { display: none; }
+  .confirmBar .actions { padding: 0; flex-wrap: nowrap; gap: 8px; }
+  .confirmBar .actions > :first-child { flex: 1 1 auto; min-width: 0; white-space: normal; line-height: 1.2; }
+  .confirmBar .actions > :last-child { flex: 0 0 auto; }
+}

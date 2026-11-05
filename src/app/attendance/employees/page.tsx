@@ -8,6 +8,7 @@ import type { UnmappedMinopId } from '@/lib/minop/unmapped'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
+import { Pencil } from 'lucide-react'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, StatusFilter, ui } from '@/components/attendancePayroll/ui'
@@ -581,9 +582,21 @@ export default function EmployeeMasterPage() {
 
         {unlinked.length > 0 && (
           <Notice kind="warning">
-            <strong>Machine IDs not linked to anyone:</strong>{' '}
-            {unlinked.map(u => `${u.minopUserId} (last punch ${fmtMachineTime(u.lastPunchLocal)})`).join(', ')}.
-            {' '}Choose Edit on the right person and enter their Machine ID.
+            <span className={styles.unlinkedFull}>
+              <strong>Machine IDs not linked to anyone:</strong>{' '}
+              {unlinked.map(u => `${u.minopUserId} (last punch ${fmtMachineTime(u.lastPunchLocal)})`).join(', ')}.
+              {' '}Choose Edit on the right person and enter their Machine ID.
+            </span>
+            {/* Phone: one line; the IDs open on a tap. */}
+            <details className={styles.unlinkedFold}>
+              <summary>
+                <strong>{unlinked.length} Machine ID{unlinked.length !== 1 ? 's' : ''} not linked to anyone</strong>
+              </summary>
+              <p>
+                {unlinked.map(u => `${u.minopUserId} (last punch ${fmtMachineTime(u.lastPunchLocal)})`).join(', ')}.
+                {' '}Choose Edit on the right person and enter their Machine ID.
+              </p>
+            </details>
           </Notice>
         )}
 
@@ -670,32 +683,29 @@ export default function EmployeeMasterPage() {
                 </div>
               </div>
 
-              {/* Phone cards */}
+              {/* Phone cards: two lines; the whole card opens the employee, Edit is the 44px pencil. */}
               <ul className={ui.cards}>
                 {visible.map(emp => (
-                  <li key={emp.id} className={`${ui.surface} ${ui.card}`}>
-                    <div className={ui.cardHead}>
-                      <div>
-                        <div className={styles.cardTitle}>{emp.full_name}</div>
-                        <div className={ui.sub}>
-                          <span className={styles.code}>{fmt(emp.employee_code)}</span>
-                          {emp.position ? ` · ${emp.position}` : ''}
-                        </div>
+                  <li key={emp.id} className={`${ui.surface} ${ui.card} ${styles.empCard}`}>
+                    <div className={styles.empMain}>
+                      <div className={styles.empTop}>
+                        <Link href={`/attendance/employees/${emp.id}`} className={styles.cardLink} aria-label={`View ${emp.full_name}`}>
+                          {emp.full_name}
+                        </Link>
+                        <Badge tone={emp.is_active ? 'good' : 'neutral'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
                       </div>
-                      <Badge tone={emp.is_active ? 'good' : 'neutral'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge>
+                      <div className={styles.empLine}>
+                        <span className={styles.code}>{fmt(emp.employee_code)}</span>
+                        {emp.team ? <> · <span className={styles.cap}>{emp.team}</span></> : ''}
+                        {emp.monthly_salary != null ? ` · ${fmtSalary(emp.monthly_salary)}` : ''}
+                        {emp.minop_user_id ? ` · Machine ${emp.minop_user_id}` : ''}
+                      </div>
                     </div>
-                    <dl className={ui.facts}>
-                      <dt>Machine ID</dt><dd>{fmt(emp.minop_user_id)}</dd>
-                      <dt>Department</dt><dd className={styles.cap}>{fmt(emp.team)}</dd>
-                      <dt>Joined</dt><dd>{fmtDate(emp.joining_date)}</dd>
-                      <dt>Salary</dt><dd>{fmtSalary(emp.monthly_salary)}</dd>
-                    </dl>
-                    <div className={styles.cardActions}>
-                      <Link href={`/attendance/employees/${emp.id}`} className={`boe-btn boe-btn-ghost ${ui.btnSm}`} aria-label={`View ${emp.full_name}`}>View</Link>
-                      {showEdit && (
-                        <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => setEditEmp(emp)} aria-label={`Edit ${emp.full_name}`}>Edit</button>
-                      )}
-                    </div>
+                    {showEdit && (
+                      <button type="button" className={styles.cardEdit} onClick={() => setEditEmp(emp)} aria-label={`Edit ${emp.full_name}`}>
+                        <Pencil size={16} strokeWidth={2} aria-hidden="true" />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

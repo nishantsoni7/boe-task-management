@@ -143,7 +143,7 @@ export function RequestQueue({ getToken, focusId = null }: {
           <Notice
             kind="error"
             action={
-              <button type="button" className="boe-btn boe-btn-ghost" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }} onClick={() => void load(filter)}>
+              <button type="button" className={`boe-btn boe-btn-ghost ${styles.retryBtn}`} style={{ padding: '0 14px', fontSize: 13 }} onClick={() => void load(filter)}>
                 Try again
               </button>
             }
@@ -219,42 +219,42 @@ export function RequestQueue({ getToken, focusId = null }: {
             </div>
           </div>
 
-          {/* Phone: one card per request. */}
+          {/* Phone: one card per request; the whole card opens the review.
+              Who and the status, what was asked, the reason on one line, then
+              submitted · timing · actual punches on one line. */}
           <ul className={styles.cards}>
             {rows.map(r => {
               const tone = statusTone(r.status)
               return (
-                <li key={r.id} id={`request-mobile-${r.id}`} className={`${styles.surface} ${styles.card}${r.id === focusId ? ` ${styles.focusCard}` : ''}`}>
+                <li key={r.id} id={`request-mobile-${r.id}`} className={`${styles.surface} ${styles.card} ${styles.tapCard}${r.id === focusId ? ` ${styles.focusCard}` : ''}`}>
                   <div className={styles.cardHead}>
-                    <div style={{ minWidth: 0 }}>
-                      <div className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</div>
-                      <div className={styles.cellSub}>
-                        {r.employee?.employee_code}
-                        {r.employee && !r.employee.is_active && <span style={{ color: '#B42332', fontWeight: 600 }}> · inactive</span>}
-                      </div>
+                    <div className={styles.cardWho}>
+                      <span className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</span>
+                      {r.employee?.employee_code && <span className={styles.cellSub}> · {r.employee.employee_code}</span>}
+                      {r.employee && !r.employee.is_active && <span style={{ color: '#B42332', fontWeight: 600, fontSize: 12 }}> · inactive</span>}
                     </div>
                     <span className={styles.badge} style={{ background: tone.bg, color: tone.fg }}>{REQUEST_STATUS_LABEL[r.status]}</span>
                   </div>
                   <div style={{ fontSize: 13.5 }}>
                     <strong>{REQUEST_TYPE_LABEL[r.request_type]}</strong> · {requestSummary(r)}
                   </div>
-                  <div className={styles.cellSub}>
+                  <div className={`${styles.cellSub} ${styles.oneLine}`}>
                     {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                   </div>
                   <div className={styles.cellSub}>
-                    Submitted {formatIstDateTime(r.submitted_at)} ·{' '}
+                    {formatIstDateTime(r.submitted_at)} ·{' '}
                     <span style={{ color: submissionTiming(r) === 'before_shift' ? '#276247' : '#805B0D', fontWeight: 600 }}>
                       {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                     </span>
+                    {' · '}Actual {actualPunchText(punches[`${r.employee_id}|${r.start_date}`])}
                   </div>
-                  <div className={styles.cellSub}>Actual: {actualPunchText(punches[`${r.employee_id}|${r.start_date}`])}</div>
                   <button
                     type="button"
-                    className={`boe-btn ${r.status === 'pending' ? 'boe-btn-primary' : 'boe-btn-ghost'}`}
-                    style={{ minHeight: 44, justifyContent: 'center', fontSize: 14, marginTop: 4 }}
+                    className={styles.cardOpen}
+                    aria-label={`Review ${REQUEST_TYPE_LABEL[r.request_type].toLowerCase()} request from ${r.employee?.full_name ?? 'employee'}`}
                     onClick={() => openReview(r)}
                   >
-                    Review
+                    <span aria-hidden="true">›</span>
                   </button>
                 </li>
               )

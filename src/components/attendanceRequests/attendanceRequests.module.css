@@ -241,3 +241,26 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   .myRequestsAction { min-height: 44px; padding: 0 14px !important; }
   .phoneFolded, .phoneHidden { display: none !important; }
 }
+
+/* ── /attendance/requests on a phone (Phase 4) ─────────────────────────────
+   The whole request card opens the review (a stretched button with a ›);
+   the reason is one line; submitted, timing and actual punches share a line.
+   The scheduled shift is in the review drawer, so its toolbar line goes.
+   "Try again" is 44px. Desktop is unchanged (Try again stays 36px). */
+.retryBtn { min-height: 36px; }
+.cardOpen { display: none; }
+
+@media (max-width: 767px) {
+  .retryBtn { min-height: 44px; }
+  .shiftLabel { display: none; }
+  .tapCard { position: relative; gap: 3px; padding-right: 32px; }
+  .cardWho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oneLine { margin-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cardOpen {
+    display: flex; position: absolute; inset: 0; z-index: 1;
+    align-items: center; justify-content: flex-end; padding: 0 12px;
+    border: 0; border-radius: inherit; background: transparent; cursor: pointer;
+    font-size: 22px; color: #686D6C; font-family: inherit;
+  }
+  .cardOpen:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+}
