@@ -225,3 +225,20 @@ textarea.input { resize: vertical; line-height: 1.45; }
 /* Header cells follow their column's alignment (.table th sets left otherwise). */
 .table th.num { text-align: right; }
 .table th.center { text-align: center; }
+
+/* ── Phones: content first (owner, 2026-11-05) ──────────────────────────────
+   .phoneOnly is drawn below 768px only (the counterpart of .desktopOnly).
+   PhoneSheet's trigger and sheet; .phoneTools is the search box with its
+   Filter / Download buttons on one row. */
+.phoneOnly { display: none; }
+.sheet .field + .field { margin-top: 0; }
+.sheetActions { display: flex; flex-direction: column; gap: 8px; }
+.sheetActions > button, .sheetActions > a { width: 100%; min-height: 44px; justify-content: center; }
+
+@media (max-width: 767px) {
+  .phoneOnly { display: flex; }
+  .sheetTrigger { flex: none; }
+  .sheet { gap: 14px; }
+  .phoneTools { display: flex; align-items: center; gap: 8px; }
+  .phoneTools > :first-child { flex: 1 1 auto; min-width: 0; }
+}

@@ -12,7 +12,7 @@
 // the questions an employee actually has are "was I marked present on the 12th"
 // and "why does it say I was late", and those are answered by a plain table.
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -21,6 +21,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { RefreshCw } from 'lucide-react'
+import { useRefresh } from '@/contexts/RefreshContext'
 import { MonthPicker, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import styles from './myAttendance.module.css'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
@@ -267,6 +268,18 @@ export default function MyAttendancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The header's Refresh re-reads this page too. On a phone it is the only
+  // Refresh (the toolbar's own copy is hidden there), so it must reload the
+  // month, not just the route. Skips the value the page mounted with.
+  const { refreshKey } = useRefresh()
+  const mountedRefreshKey = useRef(refreshKey)
+  useEffect(() => {
+    if (refreshKey === mountedRefreshKey.current || loading) return
+    mountedRefreshKey.current = refreshKey
+    void load(year, month)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
+
   // Same-day verification (Phase E): a Minop punch should be visible without
   // an employee having to think to press Refresh. Polling only the CURRENT
   // IST month, only while this page is open, at a modest interval — near
@@ -325,7 +338,7 @@ export default function MyAttendancePage() {
   const issueControls = (r: MyDayRow) => {
     const objection = objectionByDate.get(r.attendance_date)
     return (
-      <div className={styles.issueControls}>
+      <div className={`${styles.issueControls}${objection ? ` ${styles.issueControlsWide}` : ''}`}>
         {objection && (
           <>
             <span
@@ -364,7 +377,7 @@ export default function MyAttendancePage() {
       subtitle="Your own attendance record, month by month. Something look wrong? Raise an issue on that day."
       onSignOut={handleSignOut}
     >
-      <div className={ui.stack}>
+      <div className={`${ui.stack} ${styles.page}`}>
         {error && (
           <Notice
             kind="error"
@@ -394,7 +407,7 @@ export default function MyAttendancePage() {
             <RefreshCw size={13} className={busy ? 'boe-spin' : undefined} /> Refresh
           </button>
           <span className={ui.muted} style={{ fontSize: 13 }} aria-live="polite">
-            {MONTHS[month - 1]} {year}
+            <span className={styles.monthEcho}>{MONTHS[month - 1]} {year}</span>
             {busy && <span style={{ marginLeft: 8 }}>· Loading…</span>}
           </span>
         </div>
@@ -417,15 +430,38 @@ export default function MyAttendancePage() {
             are not in the table at all — they have not been processed, and some
             have not happened, so neither one is something to be absent on. */}
         {partiallyUploaded && !busy && (
-          <Notice kind="warning">
-            {(machineMonth ? machineCoverageNoticeMessage : coverageNoticeMessage)(dayLabel(coverageThrough!))}
-          </Notice>
+          <div className={styles.desktopNotice}>
+            <Notice kind="warning">
+              {(machineMonth ? machineCoverageNoticeMessage : coverageNoticeMessage)(dayLabel(coverageThrough!))}
+            </Notice>
+          </div>
         )}
 
         {todayTimes.length > 0 && !busy && (
-          <Notice kind="info">
-            Today so far: punched at {todayTimes.map(clock).join(' and ')}. Today is counted once the day is over.
-          </Notice>
+          <div className={styles.desktopNotice}>
+            <Notice kind="info">
+              Today so far: punched at {todayTimes.map(clock).join(' and ')}. Today is counted once the day is over.
+            </Notice>
+          </div>
+        )}
+
+        {/* Phone: the same two notes as ONE line that opens to the full text,
+            so the days start on the first screen. */}
+        {(partiallyUploaded || todayTimes.length > 0) && !busy && (
+          <details className={styles.phoneNotes}>
+            <summary>
+              {[
+                partiallyUploaded ? `Shown up to ${dayLabel(coverageThrough!)}` : null,
+                todayTimes.length > 0 ? `Today: ${todayTimes.map(clock).join(', ')}` : null,
+              ].filter(Boolean).join(' · ')}
+            </summary>
+            {partiallyUploaded && (
+              <p>{(machineMonth ? machineCoverageNoticeMessage : coverageNoticeMessage)(dayLabel(coverageThrough!))}</p>
+            )}
+            {todayTimes.length > 0 && (
+              <p>Today so far: punched at {todayTimes.map(clock).join(' and ')}. Today is counted once the day is over.</p>
+            )}
+          </details>
         )}
 
         {monthImported && rows.length === 0 && !busy && (
@@ -485,7 +521,7 @@ export default function MyAttendancePage() {
             {/* Phone: one card per day, so nothing scrolls sideways. */}
             <ul className={ui.cards} aria-label="Days this month">
               {rows.map(r => (
-                <li key={r.id} className={`${ui.surface} ${ui.card}`}>
+                <li key={r.id} className={`${ui.surface} ${ui.card} ${styles.dayCard}`}>
                   <div className={ui.cardHead}>
                     <div className={ui.strong}>
                       {dayLabel(r.attendance_date)}
@@ -493,7 +529,7 @@ export default function MyAttendancePage() {
                     </div>
                     <div>{statusPill(r.effective_status)}</div>
                   </div>
-                  <div className={ui.sub}>
+                  <div className={`${ui.sub} ${styles.dayTimes}`}>
                     {clock(r.check_in_at)} → {clock(r.check_out_at)}
                     {r.hours_worked != null && r.hours_worked > 0 && ` · ${r.hours_worked.toFixed(2)} h`}
                     {r.is_late && r.late_minutes != null && r.late_minutes > 0 && (

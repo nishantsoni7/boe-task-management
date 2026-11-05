@@ -135,15 +135,26 @@ function OverviewScreen() {
       subtitle={data ? coverageLine(data) : 'Who is doing well this month, and who needs attention.'}
       onSignOut={handleSignOut}
       actions={
-        <MonthPicker
-          year={shown.year}
-          month={shown.month}
-          idPrefix="overview-month"
-          onChange={(year, month) => router.replace(`/attendance?year=${year}&month=${month}`, { scroll: false })}
-        />
+        // On a phone the header is one row, so the month moves into the page.
+        <div className={ui.desktopOnly}>
+          <MonthPicker
+            year={shown.year}
+            month={shown.month}
+            idPrefix="overview-month"
+            onChange={(year, month) => router.replace(`/attendance?year=${year}&month=${month}`, { scroll: false })}
+          />
+        </div>
       }
     >
       <div className={ui.stack}>
+        <div className={ui.phoneOnly}>
+          <MonthPicker
+            year={shown.year}
+            month={shown.month}
+            idPrefix="overview-month-phone"
+            onChange={(year, month) => router.replace(`/attendance?year=${year}&month=${month}`, { scroll: false })}
+          />
+        </div>
         {error && (
           <StateBlock
             kind="error"

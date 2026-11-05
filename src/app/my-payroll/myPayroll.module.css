@@ -1,0 +1,60 @@
+/* My Payroll on a phone (owner, 2026-11-05, "phones: content first").
+ *
+ * /my-payroll: the 620px table that scrolled sideways becomes one row per
+ * month (month, net payable, review status); the whole row opens the payslip.
+ * The BOE Credits card above it is one tight row.
+ *
+ * /my-payroll/[periodId]: a 44px Back, and 44px buttons in the issue panel.
+ *
+ * Desktop and tablet are unchanged: every rule below sits under 768px, apart
+ * from the phone-only pieces being hidden on wider screens (ui.cards does that).
+ */
+
+@media (max-width: 767px) {
+  /* The card is an inline-styled component, so its phone shape wins here. */
+  .credits > div { padding: 6px 6px 6px 14px !important; margin-bottom: 10px !important; flex-wrap: nowrap !important; }
+  .credits > div > div > div:nth-child(1) { font-size: 11px !important; }
+  .credits > div > div > div:nth-child(2) { font-size: 16px !important; }
+  .credits > div > div > div:nth-child(3) { display: none; }
+  .credits button { min-height: 44px; padding: 0 14px !important; flex: none; }
+
+  /* The list sits on the page ground; each month is its own card. */
+  .results:has(.payCards) { background: none !important; border: 0 !important; overflow: visible !important; }
+  .payCards { gap: 8px; }
+  .payCard { background: #fff; border: 1px solid #E4DED7; border-radius: 12px; overflow: hidden; }
+  .payRow {
+    width: 100%; min-height: 60px; display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px 8px 14px; border: 0; background: none; text-align: left;
+    font: inherit; color: #303536; cursor: pointer;
+  }
+  .payRow:active { background: #FBFAF8; }
+  .payRow:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; border-radius: 12px; }
+  .payMonth { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 700; }
+  .payGross { font-size: 12px; font-weight: 400; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .payNet {
+    flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+    font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .payNet > span { font-size: 11px !important; padding: 1px 8px !important; }
+  .payChevron { flex: none; font-size: 22px; line-height: 1; color: #9A9F9E; }
+  .payIssue {
+    display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px;
+    padding: 0 10px 10px; border-top: 1px solid #F1EEE9; padding-top: 8px;
+  }
+  .issueBtn { min-height: 44px; padding: 0 14px !important; font-size: 13px !important; }
+
+  /* /my-payroll/[periodId] */
+  .back { min-height: 44px; padding: 0 8px 0 0 !important; font-size: 14px !important; font-weight: 600; color: #4C5352 !important; }
+  .backRow { margin-bottom: 4px !important; }
+  .panelBtn { min-height: 44px; padding: 0 16px !important; font-size: 13.5px !important; flex: 1 1 auto; justify-content: center; }
+  .panel { padding: 12px !important; }
+  .panel > div:first-child { min-width: 0 !important; flex-basis: 100% !important; }
+  .panel > div:last-child { width: 100%; }
+}
+
+/* The payslip is the employee's own, so on a phone the identity card drops the
+   name and avatar; month · status · generated stay on one line (the shared
+   phone rules in payroll/results/payrollResultsPhone.module.css). */
+@media (max-width: 767px) {
+  .detail :global(.payroll-identity-card) > div:first-child { display: none !important; }
+}

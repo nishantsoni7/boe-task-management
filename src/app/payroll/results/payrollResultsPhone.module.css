@@ -1,0 +1,43 @@
+/* Payroll results on a phone (owner, 2026-11-05, "phones: content first").
+ *
+ * Used by the payslip workspace (PayrollDetailView, shared by the admin's
+ * /payroll/results/[periodId]/[employeeId] and the employee's
+ * /my-payroll/[periodId]) and by the salary report. Every control a finger
+ * presses is 44px tall, checkboxes have a 44px target, and Back is a real
+ * 44px target instead of a 12px line of text. Desktop and tablet unchanged.
+ */
+
+@media (max-width: 767px) {
+  /* Tabs, Edit, Use credits, Edit previous balance, Record amount paid. The
+     round "?" is hidden on a phone (the whole row opens the same thing). */
+  .detail button:not([title="How was this calculated?"]) { min-height: 44px; }
+  .detail :global(.boe-btn) { padding-top: 0 !important; padding-bottom: 0 !important; font-size: 13.5px !important; }
+
+  .back {
+    min-height: 44px; padding: 0 10px 0 0 !important;
+    font-size: 14px !important; font-weight: 600; color: #4C5352 !important;
+  }
+  .backRow { margin-bottom: 4px !important; }
+  .dismiss { min-width: 44px; min-height: 44px; }
+
+  /* Salary report: 44px toolbar buttons, a bigger box, and the whole row
+     includes or leaves out the employee. */
+  .report { gap: 12px !important; }
+  .reportBar { gap: 8px !important; }
+  .reportBar button { min-height: 44px; }
+  .checkCell { width: 34px !important; }
+  .checkCell input[type='checkbox'] { width: 22px; height: 22px; margin: 0; vertical-align: middle; }
+  .pickRow td { height: 52px; vertical-align: middle; }
+
+  /* The identity card: the name, then month · status · generated on ONE line
+     (the labels are read out, not drawn). It was 131px as a three-up grid. */
+  .detail :global(.payroll-identity-card) { padding: 8px 12px; gap: 4px; margin-bottom: 10px; }
+  .detail :global(.payroll-identity-meta) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .detail :global(.payroll-identity-meta) > div > div:first-child {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .detail :global(.payroll-identity-meta) > div > div:last-child { margin-top: 0 !important; }
+  .detail :global(.payroll-identity-meta) > div:nth-child(3) > div:last-child {
+    font-weight: 400 !important; font-size: 12px !important; color: #686D6C !important;
+  }
+}

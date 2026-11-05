@@ -211,3 +211,33 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   .drawer { width: 100vw; border-left: 0; }
   .facts { grid-template-columns: 96px minmax(0, 1fr); }
 }
+
+/* ── My requests on /my-attendance ─────────────────────────────────────────
+   ON A PHONE (owner, 2026-11-05, "phones: content first") the section is one
+   row: a summary that opens the list ("My requests · 3 · 1 pending ▾") and
+   "New request". Up to five request cards used to push the day list about
+   1000px down. On a desktop the section is unchanged. */
+.myRequestsToggle { display: none; }
+
+@media (max-width: 767px) {
+  .myRequests { padding: 6px 6px 6px 4px !important; margin-bottom: 0 !important; }
+  .myRequestsHead { flex-wrap: nowrap !important; gap: 8px !important; }
+  .myRequestsTitle { display: none; }
+  .myRequestsToggle {
+    flex: 1 1 auto; min-width: 0; min-height: 44px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 8px; border: 0; border-radius: 8px; background: none;
+    font: inherit; text-align: left; color: #303536; cursor: pointer;
+  }
+  .myRequestsToggle:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+  .myRequestsToggleLabel { flex: none; font-size: 14px; font-weight: 700; }
+  .myRequestsToggleCount {
+    flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: #686D6C;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .myRequestsChevron { flex: none; margin-left: auto; font-size: 12px; color: #686D6C; }
+  .myRequestsNew { flex: none; padding: 0 14px !important; }
+  .myRequests ul { margin-top: 8px !important; }
+  .myRequestsAction { min-height: 44px; padding: 0 14px !important; }
+  .phoneFolded, .phoneHidden { display: none !important; }
+}

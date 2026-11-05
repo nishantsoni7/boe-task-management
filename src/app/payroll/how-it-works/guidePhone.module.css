@@ -1,0 +1,16 @@
+/* The payroll guide's two tables on a phone (owner, 2026-11-05, "phones:
+ * content first"). They had a 620px minimum and scrolled sideways; below 768px
+ * each row stacks: its name, then "Column: value" lines. Desktop unchanged. */
+
+@media (max-width: 767px) {
+  .stack { overflow: visible !important; }
+  .stack table { display: block; min-width: 0 !important; width: 100%; }
+  .stack thead { display: none; }
+  .stack tbody { display: flex; flex-direction: column; }
+  .stack tr { display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; border-top: 1px solid #E4DED7; }
+  .stack tr:first-child { border-top: 0; }
+  .stack tbody th,
+  .stack tbody td { display: block; padding: 0 !important; border: 0 !important; white-space: normal !important; }
+  .stack tbody th { margin-bottom: 2px; font-size: 13.5px !important; }
+  .stack td[data-label]::before { content: attr(data-label) ': '; font-weight: 600; color: #4C5352; }
+}

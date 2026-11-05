@@ -63,6 +63,7 @@ import {
 } from './guideContent'
 import { PaidLeaveAbsorption, PayableDaysWeek, SalaryFunnel, ToneGlyph } from './GuideVisuals'
 import { AskAboutSalary } from './AskAboutSalary'
+import phone from './guidePhone.module.css'
 
 const ACCENT = '#335A86'
 
@@ -688,7 +689,7 @@ function AttendanceStateTable() {
   return (
     <>
       <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 }}>
-        <div className="payroll-guide-scroll">
+        <div className={`payroll-guide-scroll ${phone.stack}`}>
           <table className="payroll-guide-table">
             <caption className="payroll-guide-sr-only">
               Attendance states, what each counts as, its effect on salary, and whether an admin can correct it.
@@ -711,15 +712,15 @@ function AttendanceStateTable() {
                       {s.label}
                     </span>
                   </th>
-                  <td style={{
+                  <td data-label="Counts as" style={{
                     fontSize: 12.5, fontWeight: 600, color: '#4C5352',
                     fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                   }}>
                     {s.payableLabel}
                   </td>
-                  <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.meaning}</td>
-                  <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.salaryEffect}</td>
-                  <td style={{ fontSize: 12.5, color: s.correctable ? '#4C5352' : '#686D6C', lineHeight: 1.5 }}>
+                  <td data-label="What it means" style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.meaning}</td>
+                  <td data-label="Effect on salary" style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{s.salaryEffect}</td>
+                  <td data-label="Can review change it?" style={{ fontSize: 12.5, color: s.correctable ? '#4C5352' : '#686D6C', lineHeight: 1.5 }}>
                     {s.correctable ? 'Yes — an admin can restate the day' : 'Not applicable'}
                   </td>
                 </tr>
@@ -740,7 +741,7 @@ function AttendanceStateTable() {
 function ParameterTable() {
   return (
     <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 }}>
-      <div className="payroll-guide-scroll">
+      <div className={`payroll-guide-scroll ${phone.stack}`}>
         <table className="payroll-guide-table">
           <caption className="sr-only">
             Payroll rules: the attendance condition, its salary effect, and whether an admin can change it.
@@ -757,9 +758,9 @@ function ParameterTable() {
             {PARAMETERS.map(p => (
               <tr key={p.rule}>
                 <th scope="row" style={{ fontWeight: 600, fontSize: 12.5, color: '#303536' }}>{p.rule}</th>
-                <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.condition}</td>
-                <td style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.effect}</td>
-                <td style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{p.adminCanChange}</td>
+                <td data-label="Attendance condition" style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.condition}</td>
+                <td data-label="Salary effect" style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.5 }}>{p.effect}</td>
+                <td data-label="Admin review" style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{p.adminCanChange}</td>
               </tr>
             ))}
           </tbody>
