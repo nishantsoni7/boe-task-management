@@ -9,7 +9,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import Link from 'next/link'
-import { PhoneSheet } from '@/components/attendancePayroll/PhoneSheet'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import styles from './detail.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -309,11 +309,13 @@ export default function EmployeeDetailPage() {
               )}
             </p>
             {/* Phone: the From / To dates live in a sheet beside the count. */}
-            <PhoneSheet
+            <PhoneSheetButton
+              triggerClassName={`orders-phone-filter ${ui.phoneOnly} ${ui.sheetTrigger}`}
+              sheetClassName={`orders-sheet ${ui.sheet}`}
               label="Filter"
               title="Filter by date"
               badge={(fromDate ? 1 : 0) + (toDate ? 1 : 0)}
-              onClear={hasFilter ? () => { setFromDate(''); setToDate('') } : undefined}
+              onClearAll={hasFilter ? () => { setFromDate(''); setToDate('') } : undefined}
             >
               <div className={ui.field}>
                 <label className={ui.label} htmlFor="from-date-phone">From date</label>
@@ -323,7 +325,7 @@ export default function EmployeeDetailPage() {
                 <label className={ui.label} htmlFor="to-date-phone">To date</label>
                 <input id="to-date-phone" type="date" className={ui.input} value={toDate} onChange={e => setToDate(e.target.value)} />
               </div>
-            </PhoneSheet>
+            </PhoneSheetButton>
           </div>
 
           {filtered.length > 0 ? (

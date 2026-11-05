@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Phone, Plus, Search, UserPlus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Phone, Plus, Search, SlidersHorizontal, UserPlus, X } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
@@ -17,7 +17,7 @@ import {
 import { vendorsCsv } from '@/lib/vendors/csv'
 import { telHref, formatPhone } from '@/lib/exhibitionLeads/phone'
 import FilterMenu from './FilterMenu'
-import { PhoneFilterSheet, PhoneMultiGroup } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneSheetButton, PhoneMultiGroup } from '@/components/ui/phoneSheet'
 import { Highlight, StatusBadge, daysAgoText } from './VendorBits'
 import s from './vendors.module.css'
 
@@ -233,11 +233,16 @@ export default function VendorListScreen() {
             </select>
           </span>
           {/* A phone: the six filters and the sort above are hidden; this one button holds them all. */}
-          <PhoneFilterSheet
+          <PhoneSheetButton
+            label="Filter"
             title="Filter and sort"
-            activeCount={state.can.length + state.type.length + state.team.length + state.area.length + state.status.length + (state.waiting === '1' ? 1 : 0)}
+            ariaLabel="Filter and sort"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            triggerClassName="boe-phone-only orders-phone-filter p3-filter"
+            sheetClassName="orders-sheet p3-sheet"
+            badge={state.can.length + state.type.length + state.team.length + state.area.length + state.status.length + (state.waiting === '1' ? 1 : 0)}
             groups={[{ id: 'sort', label: 'Sort', value: state.sort, options: SORTS.map(k => ({ value: k, label: SORT_LABELS[k] })), onChange: v => setState({ sort: v as Sort }) }]}
-            resultLabel={`Show ${total} vendor${total === 1 ? '' : 's'}`}
+            doneLabel={`Show ${total} vendor${total === 1 ? '' : 's'}`}
             onClearAll={() => setState({ can: [], type: [], team: [], area: [], status: [], waiting: '0' })}
           >
             <PhoneMultiGroup id="v-can" label="Expertise" options={CAPABILITIES} value={state.can} onChange={v => setState({ can: v as typeof state.can })} />
@@ -252,7 +257,7 @@ export default function VendorListScreen() {
                 <button type="button" aria-pressed={state.waiting === '1'} onClick={() => setState({ waiting: state.waiting === '1' ? '0' : '1' })}>Met us, not visited</button>
               </div>
             </div>
-          </PhoneFilterSheet>
+          </PhoneSheetButton>
         </div>
         </div>
 

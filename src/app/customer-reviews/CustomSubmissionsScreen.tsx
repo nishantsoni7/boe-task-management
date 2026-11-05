@@ -8,7 +8,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { SlidersHorizontal } from 'lucide-react'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import { AdminSubmissionAction, type AdminActionKind } from '@/components/customerReviews/AdminSubmissionAction'
 import { CustomSubmissionList } from '@/components/customerReviews/CustomSubmissionList'
 import listStyles from '@/components/customerReviews/customSubmissionList.module.css'
@@ -340,13 +341,18 @@ export function CustomSubmissionsScreen() {
           <span className={listStyles.phoneFilterText}>
             {filters.month ? reviewMonthLabel(filters.month) : 'All months'} · {filters.employeeId ? (employeeOptions.find(o => o.id === filters.employeeId)?.name ?? 'One employee') : 'All employees'}
           </span>
-          <PhoneFilterSheet
-            activeCount={(filters.month ? 1 : 0) + (filters.employeeId ? 1 : 0)}
+          <PhoneSheetButton
+            label="Filter"
+            title="Filter"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            triggerClassName="boe-phone-only orders-phone-filter p3-filter"
+            sheetClassName="orders-sheet p3-sheet"
+            badge={(filters.month ? 1 : 0) + (filters.employeeId ? 1 : 0)}
             groups={[
               { id: 'month', label: 'Review month', value: filters.month, options: [{ value: '', label: 'All months' }, ...monthOptions.map(m => ({ value: m, label: reviewMonthLabel(m) }))], onChange: v => changeFilters({ month: v }) },
               { id: 'employee', label: 'Submitted by', value: filters.employeeId, options: [{ value: '', label: 'All employees' }, ...employeeOptions.map(o => ({ value: o.id, label: o.name }))], onChange: v => changeFilters({ employeeId: v }) },
             ]}
-            resultLabel={listLoading ? 'Show reviews' : `Show ${rows.length}${total != null && total > rows.length ? ` of ${total}` : ''} ${rows.length === 1 ? 'review' : 'reviews'}`}
+            doneLabel={listLoading ? 'Show reviews' : `Show ${rows.length}${total != null && total > rows.length ? ` of ${total}` : ''} ${rows.length === 1 ? 'review' : 'reviews'}`}
             onClearAll={() => changeFilters({ month: '', employeeId: '' })}
           />
         </div>

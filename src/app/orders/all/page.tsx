@@ -28,7 +28,7 @@ import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
-import { PackageSearch, Percent } from 'lucide-react'
+import { PackageSearch, Percent, SlidersHorizontal } from 'lucide-react'
 import {
   COMMISSION_ICON_LABEL,
   cancelledOrderGapText,
@@ -48,7 +48,7 @@ import { AdvanceCell } from './AdvanceCell'
 import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
 import { SortHeader } from './SortHeader'
-import { PhoneFilterButton, PhoneStatusChips } from './PhoneListControls'
+import { PhoneChips, PhoneSheetButton, showResultsLabel } from '@/components/ui/phoneSheet'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -675,7 +675,9 @@ export default function AllOrdersPage() {
           cards={STATUS_CARDS.map(c => ({ ...c, count: statusCount(c.key) }))}
         />
       </div>
-      <PhoneStatusChips
+      <PhoneChips
+        label="Order status"
+        rowClassName="orders-phone-chips"
         active={effectiveStatus}
         onSelect={setStatusTab}
         chips={PHONE_STATUS_ORDER.map(key => {
@@ -708,9 +710,14 @@ export default function AllOrdersPage() {
               <button type="button" onClick={() => setSearchInput('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
             )}
           </label>
-          <PhoneFilterButton
-            activeCount={phoneFilterCount}
-            resultCount={visible.length}
+          <PhoneSheetButton
+            label="Filter"
+            ariaLabel="Filter and sort"
+            title="Filter and sort"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            badge={phoneFilterCount}
+            doneLabel={showResultsLabel(visible.length, ['order', 'orders'])}
+            groupIdPrefix="orders-sheet-"
             onClearAll={() => setListState({ assignee: '', source: '', date: 'all', sort: 'number_desc' })}
             groups={[
               {

@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BellRing, UserRoundPen } from 'lucide-react'
+import { BellRing, SlidersHorizontal, UserRoundPen } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { istAddDays, istToday } from '@/lib/istDate'
@@ -120,14 +120,19 @@ export function TeamScreen() {
           <span className={s.phoneFilterText}>
             {PERIODS.find(p => p.key === period)?.label} · {market ? (MARKETS.find(m => m.value === market)?.label ?? market) : 'All markets'} · {holder ? (peopleOptions.find(p => p.id === holder)?.full_name ?? 'One person') : 'Everyone'}
           </span>
-          <PhoneFilterSheet
-            activeCount={(period !== 'quarter' ? 1 : 0) + (market ? 1 : 0) + (holder ? 1 : 0)}
+          <PhoneSheetButton
+            label="Filter"
+            title="Filter"
+            icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+            triggerClassName="boe-phone-only orders-phone-filter p3-filter"
+            sheetClassName="orders-sheet p3-sheet"
+            badge={(period !== 'quarter' ? 1 : 0) + (market ? 1 : 0) + (holder ? 1 : 0)}
             groups={[
               { id: 'period', label: 'Period', value: period, options: PERIODS.map(p => ({ value: p.key, label: p.label })), onChange: v => setPeriod(v as PeriodKey) },
               { id: 'market', label: 'Market', value: market, options: [{ value: '', label: 'All markets' }, ...MARKETS.map(m => ({ value: m.value, label: m.label }))], onChange: setMarket },
               { id: 'holder', label: 'Salesperson', value: holder, options: [{ value: '', label: 'Everyone' }, ...peopleOptions.map(p => ({ value: p.id, label: p.full_name }))], onChange: setHolder },
             ]}
-            resultLabel="Show"
+            doneLabel="Show"
             onClearAll={() => { setPeriod('quarter'); setMarket(''); setHolder('') }}
           />
         </div>

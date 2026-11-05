@@ -6,14 +6,17 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PhoneFilterButton, PhoneStatusChips, showOrdersLabel } from './PhoneListControls'
+import { SlidersHorizontal } from 'lucide-react'
+import { PhoneChips, PhoneSheetButton, showResultsLabel, type PhoneSheetGroup } from '@/components/ui/phoneSheet'
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 const noop = () => {}
 
 describe('the status chips', () => {
   const html = renderToStaticMarkup(
-    <PhoneStatusChips
+    <PhoneChips
+      label="Order status"
+      rowClassName="orders-phone-chips"
       active="running"
       onSelect={noop}
       chips={[
@@ -41,6 +44,18 @@ describe('the Filter button and its sheet', () => {
     { id: 'person', label: 'Sales person', value: 'all', onChange: noop, options: [{ value: 'all', label: 'Anyone' }, { value: 'u1', label: 'Meera' }] },
     { id: 'sort', label: 'Sort', value: 'number_desc', onChange: noop, options: [{ value: 'number_desc', label: 'Project code high–low' }] },
   ]
+  // The Filter button as the page draws it (src/app/orders/all/page.tsx).
+  const PhoneFilterButton = ({ activeCount, groups, resultCount, onClearAll, initiallyOpen }: {
+    activeCount: number; groups: PhoneSheetGroup[]; resultCount: number; onClearAll: () => void; initiallyOpen?: boolean
+  }) => (
+    <PhoneSheetButton
+      label="Filter" ariaLabel="Filter and sort" title="Filter and sort"
+      icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+      badge={activeCount} groups={groups} groupIdPrefix="orders-sheet-"
+      doneLabel={showResultsLabel(resultCount, ['order', 'orders'])}
+      onClearAll={onClearAll} initiallyOpen={initiallyOpen}
+    />
+  )
 
   test('closed: one button, no badge when nothing is set', () => {
     const html = renderToStaticMarkup(<PhoneFilterButton activeCount={0} groups={groups} resultCount={13} onClearAll={noop} />)
@@ -60,11 +75,12 @@ describe('the Filter button and its sheet', () => {
     assert.ok(html.includes('role="dialog"'))
     for (const word of ['Sales person', 'Anyone', 'Meera', 'Sort', 'Clear all', 'Show 13 orders']) assert.ok(text(html).includes(word), word)
     assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 2, 'one per group')
+    assert.ok(html.includes('id="orders-sheet-person"'), 'the groups keep the Orders label ids')
   })
 
   test('the count reads as words', () => {
-    assert.equal(showOrdersLabel(1), 'Show 1 order')
-    assert.equal(showOrdersLabel(0), 'Show 0 orders')
+    assert.equal(showResultsLabel(1, ['order', 'orders']), 'Show 1 order')
+    assert.equal(showResultsLabel(0, ['order', 'orders']), 'Show 0 orders')
   })
 })
 

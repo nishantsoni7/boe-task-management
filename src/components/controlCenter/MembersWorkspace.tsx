@@ -7,7 +7,7 @@ import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
 import { Avatar } from '@/components/ui/atoms'
-import { PhoneChips, PhoneSearchFilter } from '@/components/tasks/PhoneListTools'
+import { PhoneChips, PhoneSearchFilter } from '@/components/ui/phoneSheet'
 import {
   cc, CcSection, CcToolbar, CcTable, CcBadge, CcEmpty, CcDialog, CcField,
 } from '@/components/controlCenter/CcPrimitives'

@@ -4,10 +4,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Upload, UserRoundCheck } from 'lucide-react'
+import { Plus, SlidersHorizontal, Upload, UserRoundCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
-import { PhoneFilterSheet } from '@/components/phoneFilters/PhoneFilterSheet'
+import { PhoneSheetButton } from '@/components/ui/phoneSheet'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -209,14 +209,19 @@ export function LeadMasterScreen() {
                 {searchInput && <button type="button" className="boe-list-search-clear" aria-label="Clear search" onClick={() => { setSearchInput(''); setState({ q: '' }) }}>✕</button>}
               </label>
               {/* A phone: one Filter button holds Source (the select and the count are hidden there). */}
-              <PhoneFilterSheet
-                activeCount={state.source ? 1 : 0}
+              <PhoneSheetButton
+                label="Filter"
+                title="Filter"
+                icon={<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />}
+                triggerClassName="boe-phone-only orders-phone-filter p3-filter"
+                sheetClassName="orders-sheet p3-sheet"
+                badge={state.source ? 1 : 0}
                 groups={[{
                   id: 'source', label: 'Source', value: state.source,
                   options: [{ value: '', label: 'All sources' }, ...LEAD_SOURCES.map(o => ({ value: o.value, label: o.label }))],
                   onChange: v => setState({ source: v as typeof state.source }),
                 }]}
-                resultLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
+                doneLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
                 onClearAll={() => setState({ source: '' })}
               />
               <select
