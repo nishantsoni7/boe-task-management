@@ -1932,6 +1932,7 @@ export default function TaskDetailPage() {
             onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
             aria-label="Go back"
+            className="boe-p3-back"
           >
             ← Back
           </button>
@@ -2002,7 +2003,7 @@ export default function TaskDetailPage() {
         <div className="boe-task-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
 
             {/* ─ A. Task Summary Card ─ */}
-            <div className="boe-card" style={{
+            <div className="boe-card boe-p3-task-card" style={{
               padding: '14px 22px',
               background: '#ffffff',
               borderLeft: isQuotation ? `1px solid ${colors.border}` : `3px solid ${relationColor}`,
@@ -2063,7 +2064,7 @@ export default function TaskDetailPage() {
                     {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditTitle(task.title); setEditingTitle(true); setEditingDescription(false) }}
-                        style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
+                        className="boe-p3-textbtn" style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
                       >
                         Edit
                       </button>
@@ -2127,7 +2128,7 @@ export default function TaskDetailPage() {
                       {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingDueDate && (
                         <button
                           onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
-                          style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                          className="boe-p3-textbtn" style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
                         >
                           Edit
                         </button>
@@ -2175,7 +2176,7 @@ export default function TaskDetailPage() {
                       {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingPriority && (
                         <button
                           onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
-                          style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                          className="boe-p3-textbtn" style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
                         >
                           Edit
                         </button>
@@ -2291,7 +2292,7 @@ export default function TaskDetailPage() {
                     {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
-                        style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
+                        className="boe-p3-textbtn" style={{ fontSize: '12px', fontWeight: 600, color: colors.brandInk, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
                       >
                         Edit
                       </button>

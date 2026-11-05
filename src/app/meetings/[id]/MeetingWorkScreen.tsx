@@ -10,6 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { Toast, useToast } from '@/components/ui/toast'
 import { colors } from '@/lib/tokens'
 import { MeetingsLayout } from '@/components/layout/MeetingsLayout'
+import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { MeetingBadge } from '@/components/meetings/MeetingModal'
 import { MeetingFormModal } from '@/components/meetings/MeetingFormModal'
 import { ItemUpdateModal } from '@/components/meetings/ItemUpdateModal'
@@ -587,7 +588,29 @@ export function MeetingWorkScreen() {
       subtitle={`${typeMeta.label} Review · ${formatMeetingDate(meeting.meeting_date)}${meeting.lead_name ? ` · Led by ${meeting.lead_name}` : ''}`}
       onSignOut={signOut}
       actions={
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <>
+        {/* PHONE (owner, 2026-11-05, phone phase 3): up to six buttons wrapped
+            into a ~240px header, so on a phone they sit in one ⋯ menu. Each
+            item calls the same handler as its desktop button. */}
+        <PhoneHeaderMenu
+          label="Meeting actions"
+          items={[
+            ...(canSetStatus && meeting.status === 'draft' && !actionBusy
+              ? [{ key: 'start', label: 'Start Meeting', primary: true, onSelect: startMeeting }] : []),
+            ...(canSetStatus && meeting.status !== 'completed'
+              ? [{ key: 'complete', label: 'Complete Meeting', primary: meeting.status !== 'draft', icon: <CheckCircle2 size={18} strokeWidth={2} />, onSelect: () => setModal({ kind: 'complete' }) }] : []),
+            ...(canSetStatus && meeting.status === 'completed'
+              ? [{ key: 'reopen', label: 'Reopen', icon: <RotateCcw size={18} strokeWidth={2} />, onSelect: () => setModal({ kind: 'reopen' }) }] : []),
+            ...(editable
+              ? [{ key: 'add-order', label: 'Add Order', icon: <Plus size={18} strokeWidth={2.2} />, onSelect: () => setModal({ kind: 'add-order' }) },
+                 { key: 'carry', label: 'From Last Meeting', icon: <ListPlus size={18} strokeWidth={2} />, onSelect: () => setModal({ kind: 'carry-forward' }) }] : []),
+            ...(editable && caps.canImport
+              ? [{ key: 'import', label: 'Import', icon: <Upload size={18} strokeWidth={2} />, onSelect: () => setModal({ kind: 'import' }) }] : []),
+            ...(profile?.role === 'admin'
+              ? [{ key: 'delete', label: 'Delete meeting', icon: <Trash2 size={18} strokeWidth={2} color="#B42332" />, onSelect: () => setModal({ kind: 'delete-meeting' }) }] : []),
+          ]}
+        />
+        <div className="boe-desktop-only" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           {editable && caps.canImport && (
             <button
               onClick={() => setModal({ kind: 'import' })}
@@ -656,6 +679,7 @@ export function MeetingWorkScreen() {
             </button>
           )}
         </div>
+        </>
       }
     >
       {/* Back + status strip. Back goes to the list, which restores its own
@@ -664,6 +688,7 @@ export function MeetingWorkScreen() {
         display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
       }}>
         <button
+          className="boe-p3-back"
           onClick={() => router.push(meeting.status === 'completed' ? '/meetings/completed' : '/meetings')}
           style={{
             display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 4px',

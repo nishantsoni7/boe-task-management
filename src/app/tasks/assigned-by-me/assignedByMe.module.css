@@ -329,3 +329,12 @@
     grid-template-columns: 28px minmax(0, 1fr) 104px 112px 88px 128px;
   }
 }
+
+/* PHONE (owner, 2026-11-05, phone phase 3): the tab strip and the toolbar give
+   way to PhoneChips + PhoneSearchFilter, and the Team response summary moves
+   below the list so the first task is on the first screen. */
+@media (max-width: 767px) {
+  .desktopOnly { display: none !important; }
+  .page { display: flex; flex-direction: column; }
+  .page > aside { order: 10; margin-top: 12px; }
+}

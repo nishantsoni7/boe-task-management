@@ -23,23 +23,18 @@ export function CompletionSummaryCard({
 }) {
   const shown = (key: keyof CompletionSummary) => (summary ? String(summary[key]) : '—')
 
+  // The phone line (owner, 2026-11-05, phone phase 3): one line of text in
+  // place of three ~56px tiles, so the archive starts on the first screen.
   if (compact) {
     return (
       <section aria-label="Completed summary" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px',
+        display: 'flex', flexWrap: 'wrap', gap: '2px 12px', marginBottom: '8px',
+        fontSize: '12.5px', color: colors.muted,
       }}>
         {SUMMARY_ROWS.map(row => (
-          <div key={row.key} style={{
-            background: colors.raised, border: `1.5px solid ${colors.border}`,
-            borderRadius: '8px', padding: '8px 10px',
-          }}>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, lineHeight: 1.1 }}>
-              {shown(row.key)}
-            </div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px', whiteSpace: 'nowrap' }}>
-              {row.label}
-            </div>
-          </div>
+          <span key={row.key} style={{ whiteSpace: 'nowrap' }}>
+            {row.label} <b style={{ color: colors.primary, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{shown(row.key)}</b>
+          </span>
         ))}
       </section>
     )
@@ -78,7 +73,7 @@ export function CompletedOnFilter({
 }) {
   const inputId = useId()
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <div className="boe-p3-datefilter" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <label htmlFor={inputId} style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
         Completed on:
       </label>
@@ -87,6 +82,7 @@ export function CompletedOnFilter({
         type="date"
         value={value}
         onChange={e => onChange(e.target.value)}
+        className="boe-p3-date"
         style={{
           padding: '3px 8px', background: colors.base, border: `1px solid ${colors.border}`,
           borderRadius: '6px', outline: 'none', fontSize: '12px',
@@ -98,6 +94,7 @@ export function CompletedOnFilter({
           type="button"
           onClick={() => onChange('')}
           aria-label="Clear completed date"
+          className="boe-p3-pager-btn"
           style={{
             padding: '3px 8px', background: 'transparent', border: `1px solid ${colors.border}`,
             borderRadius: '6px', fontSize: '12px', color: colors.secondary, cursor: 'pointer',
@@ -125,6 +122,7 @@ export function CompletedPager({
   const button = (label: string, target: number, disabled: boolean) => (
     <button
       type="button"
+      className="boe-p3-pager-btn"
       disabled={disabled}
       onClick={() => onPage(target)}
       style={{

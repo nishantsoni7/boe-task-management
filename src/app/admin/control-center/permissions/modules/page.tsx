@@ -82,6 +82,7 @@ function ByModulePageInner() {
   const [deptFilter, setDeptFilter]     = useState('')
   const [includeInactive, setIncludeInactive] = useState(true)
   const [picker, setPicker] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [offConfirm, setOffConfirm] = useState<{ employeeId: string; cleared: string[] } | null>(null)
 
   const dirty = edits.pending.size > 0
@@ -251,11 +252,19 @@ function ByModulePageInner() {
     <div className={styles.layout}>
 
       {/* ── Module list ──────────────────────────────────────────────────── */}
-      <div className={styles.panel}>
+      <div className={`${styles.panel}${selectedKey ? ` ${styles.panelChosen}` : ''}${pickerOpen ? ` ${styles.panelOpen}` : ''}`}>
         <div className={styles.panelHead}>
           <span>Modules</span>
           <span className={styles.panelCount}>{listed.length}</span>
         </div>
+        {/* PHONE (owner, 2026-11-05, phone phase 3): once someone is chosen the
+            300px list folds to that one row, so their access is on the first
+            screen; Change opens the list again. Desktop never shows this. */}
+        {selectedKey && (
+          <button type="button" className={styles.panelChange} aria-expanded={pickerOpen} onClick={() => setPickerOpen(v => !v)}>
+            {pickerOpen ? 'Done' : 'Change'}
+          </button>
+        )}
         <div className={styles.panelList}>
           {listed.map(m => {
             const keys = m.actions.map(a => a.actionKey)
@@ -269,7 +278,7 @@ function ByModulePageInner() {
                 type="button"
                 className={`${styles.row}${isSelected ? ` ${styles.rowSelected}` : ''}`}
                 aria-pressed={isSelected}
-                onClick={() => selectModule(m.moduleKey)}
+                onClick={() => { setPickerOpen(false); selectModule(m.moduleKey) }}
               >
                 <span className={styles.rowIcon}><ModuleIcon moduleKey={m.moduleKey} size={15} /></span>
                 <div className={styles.rowText}>
@@ -282,7 +291,7 @@ function ByModulePageInner() {
             )
           })}
         </div>
-        <div className={cc.muted} style={{ fontSize: 12, lineHeight: 1.45, padding: '0 2px' }}>
+        <div className={`${cc.muted} ${styles.panelNote}`} style={{ fontSize: 12, lineHeight: 1.45, padding: '0 2px' }}>
           Attendance &amp; Payroll are self-service; their management access is restricted to system administrators and is not granted here.
         </div>
       </div>

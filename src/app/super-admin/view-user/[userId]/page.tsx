@@ -186,7 +186,9 @@ export default function ViewUserPage() {
         onSignOut={handleLogout}
       >
         {/* Admin view banner */}
-        <div style={{
+        {/* Phone (phase 3): the banner is two short lines, the four summary
+            cards are one row of chips, and the bottom bar is a 2×2 grid. */}
+        <div className="boe-p3-va-banner" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px',
           padding: '10px 16px',
           background: '#FAF0DA',
@@ -217,7 +219,7 @@ export default function ViewUserPage() {
         </div>
 
         {/* Summary cards */}
-        <div style={{
+        <div className="boe-p3-va-cards" style={{
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
           gap: '16px',
@@ -315,7 +317,7 @@ export default function ViewUserPage() {
         </div>
 
         {/* Bottom summary bar */}
-        <div style={{
+        <div className="boe-p3-va-bar" style={{
           background: '#fff', border: '1px solid #E4DED7', borderRadius: '12px',
           boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'stretch',
           overflow: 'hidden', marginBottom: '12px',
@@ -418,6 +420,7 @@ function ViewSummaryCard({ onClick, icon, iconBg, count, countColor, label, subl
   return (
     <div
       onClick={onClick}
+      className="boe-p3-va-card"
       style={{
         background: '#fff', border: '1px solid #E4DED7', borderRadius: '8px',
         padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
@@ -427,14 +430,14 @@ function ViewSummaryCard({ onClick, icon, iconBg, count, countColor, label, subl
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.09)'; e.currentTarget.style.borderColor = '#CFC8BF' }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#E4DED7' }}
     >
-      <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div className="boe-p3-va-icon" style={{ width: '38px', height: '38px', borderRadius: '8px', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#303536', lineHeight: 1.3 }}>{label}</div>
-        <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '2px' }}>{sublabel}</div>
+        <div className="boe-p3-va-sub" style={{ fontSize: '12px', color: '#686D6C', marginTop: '2px' }}>{sublabel}</div>
       </div>
-      <div style={{ fontSize: '26px', fontWeight: 800, color: countColor, lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>{count}</div>
+      <div className="boe-p3-va-count" style={{ fontSize: '26px', fontWeight: 800, color: countColor, lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>{count}</div>
     </div>
   )
 }
