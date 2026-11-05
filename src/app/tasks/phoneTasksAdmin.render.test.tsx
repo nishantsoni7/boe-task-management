@@ -149,7 +149,10 @@ describe('phone rules stay on phones', () => {
 // class and every phase 4 rule sits inside a phone media query.
 describe('phone phase 4', () => {
   const css = read('src/app/globals.css')
-  const block = css.slice(css.indexOf('/* PHONE PHASE 4 — TASKS, CORE, ADMIN'))
+  // This module's block runs to the next Phase 4 block (every module appends one).
+  const p4 = css.indexOf('/* PHONE PHASE 4 — TASKS, CORE, ADMIN')
+  const p4next = css.indexOf('PHONE PHASE 4 —', p4 + 20)
+  const block = css.slice(p4, p4next < 0 ? undefined : css.lastIndexOf('/*', p4next))
 
   test('the phase 4 globals block exists and has no rule outside a phone query', () => {
     assert.ok(block.length > 100)
