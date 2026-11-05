@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-05 — Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (PR number added on opening) · no SQL
+## 2026-11-05 — Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (PR #621) · no SQL
 - **Owner request.** Make `backup-all.mjs` end `{"code":true,"database":true}` every time, and find why the 9:30 pm task had no complete backup for 2 days. Three faults came from the hand run of 2026-11-05.
 - **Why the nightly "failed".** The task ran; its database step did not. 3 Nov 21:30: `order_submission_fabric_finish_lines: terminated`. 4 Nov 21:30: laptop off, Task Scheduler's catch-up ran at 09:06 on 5 Nov: `sales_lead_activities: terminated`. A run that does not finish cleanly writes no `covered.json`, so the "no complete backup" reminder kept firing. Task Scheduler said 0 every time because the `.cmd` returned the reminder pop-up's exit code. The 2 Nov run never finished (no end line in the log, cause not recorded). Sleep was ruled out: no standby event inside any failing window.
 - **Cause of "terminated".** Not one table and not Supabase: the laptop's own network dropping mid-page (`ECONNRESET`, and once DNS `ENOTFOUND` for about 15 s). It hit `notifications`, `sales_leads`, `sales_lead_activities`, `sales_lead_events`, `sales_lead_import_refs` and others, a different one each time. The old code retried only `fetch()`; the body was read afterwards by `res.json()`, outside any retry, so one cut page lost the whole table.
