@@ -788,8 +788,6 @@ function NewOrderPiImportPageInner() {
 
 
   const limitText = formatByteLimit(PI_MAX_WORKBOOK_BYTES)
-  /** The cards' side padding: 14px on a phone, where every pixel of width is text. */
-  const padX = isMobile ? '14px' : '20px'
 
   /** A replacement that cannot proceed. Saving is refused while this is true,
    *  in the handler as well as on the button. */
@@ -802,7 +800,7 @@ function NewOrderPiImportPageInner() {
   // PI or start a second one beside it.
   const replaceNotice = replaceTarget.kind === 'ready' ? (
     <Card style={{ borderColor: 'rgba(51,90,134,0.35)' }}>
-      <div style={{ padding: `13px ${padX}`, display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+      <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
         <Info size={16} strokeWidth={1.9} color="#335A86" style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
@@ -826,7 +824,7 @@ function NewOrderPiImportPageInner() {
     </Card>
   ) : replaceTarget.kind === 'unavailable' ? (
     <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
-      <div style={{ padding: `16px ${padX}`, display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+      <div style={{ padding: '16px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
         <AlertTriangle size={16} strokeWidth={1.9} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
@@ -903,7 +901,7 @@ function NewOrderPiImportPageInner() {
   // ── Failure ──
   const failureBlock = stage.kind === 'failed' && (
     <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
-      <div style={{ padding: `16px ${padX}`, display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+      <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         <AlertTriangle size={18} strokeWidth={1.8} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
@@ -1013,7 +1011,7 @@ function NewOrderPiImportPageInner() {
       {preview.groups.blocking.length > 0 && (
         <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
           <div style={{
-            padding: `12px ${padX}`, borderBottom: `1px solid ${colors.border}`,
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
             background: colors.redTint,
             display: 'flex', alignItems: 'center', gap: '8px',
           }}>
@@ -1026,7 +1024,7 @@ function NewOrderPiImportPageInner() {
             </span>
           </div>
           <DiagnosticList entries={preview.groups.blocking} tone="red" />
-          <div style={{ padding: `10px ${padX}`, borderTop: `1px solid ${colors.border}`, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
             the order must match the document the client was sent.
           </div>
@@ -1159,7 +1157,7 @@ function NewOrderPiImportPageInner() {
       {preview.groups.warnings.length > 0 && (
         <Card>
           <div style={{
-            padding: `12px ${padX}`, borderBottom: `1px solid ${colors.border}`,
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
             display: 'flex', alignItems: 'center', gap: '8px',
           }}>
             <Info size={15} strokeWidth={2} color={colors.amber} />
@@ -1196,7 +1194,7 @@ function NewOrderPiImportPageInner() {
           same order. */}
       <Card>
         <CardHeader title="Order information" />
-        <div style={{ padding: `16px ${padX}`, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {(() => {
             const rows = buildOrderInformationRows({
               header: preview.data.header,

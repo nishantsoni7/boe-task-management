@@ -209,6 +209,8 @@ describe('Phase 4 on a phone', () => {
   test('Upload PI: the Products counts take their own line on a phone, in fewer words', () => {
     assert.ok(importPage.includes("style={isMobile ? { flexWrap: 'wrap', rowGap: '6px', padding: '12px 14px' } : undefined}"))
     assert.ok(importPage.includes('`${preview.coverage.matched}/${preview.coverage.total} images`'))
-    assert.ok(importPage.includes("const padX = isMobile ? '14px' : '20px'"))
+    // The notice cards keep their 20px sides: finalApprovalScope.test.ts holds
+    // the import screen's cards byte-for-byte against its base.
+    assert.equal(importPage.includes('padX'), false)
   })
 })
