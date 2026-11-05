@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f38d5d8` — Merge Phase 3 work: Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
-- Commits on this branch: 74
+- Commit: `50b5517` — Merge Phase 4 work: Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
+- Commits on this branch: 84
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 418 (first `20260530_create_positions.sql`, latest `20270602000000_sales_auto_allot.sql`)
 - Tables ever created: 224 (dropped at some point: 7)   SQL functions: 945   Enums: 0
@@ -14,6 +14,16 @@
 
 ## Latest 25 commits
 
+- `50b5517` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
+- `a2ca74d` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Sales, Leads, Showroom and Samples pages reach the phone rubric (no SQL)
+- `07d0389` 2026-11-05 Phones, content first (Phase 4): Orders and Finance pages to 8.5+ on a phone
+- `115e59f` 2026-11-05 Phones, content first (Phase 4): Sales, Leads, Showroom and Samples pages reach the phone rubric (no SQL)
+- `74c74d8` 2026-11-05 Merge Phase 4 work: Phones, content first (Phase 4): Tasks, core and admin pages brought to 8.5+ on a 390px phone
+- `2eee45b` 2026-11-05 Phones, content first (Phase 4): Tasks, core and admin pages brought to 8.5+ on a 390px phone
+- `32305df` 2026-11-05 Phones: let sticky work again (main content clips instead of hiding)
+- `6870a98` 2026-11-05 Merge the merged #613 branch history (already in main) so later pushes fast-forward
+- `b5dc116` 2026-11-05 Phones, content first (Phase 3): every module's lowest-scoring pages redesigned for phones (no SQL) (#613)
+- `7523294` 2026-11-05 Phones, Phase 3: docs, and scope two phone tests to their own CSS block
 - `f38d5d8` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
 - `640a028` 2026-11-05 Phones, content first (Phase 3): Tasks, Meetings, Control Center, Performance, Assets and admin pages
 - `cc703f1` 2026-11-05 Merge Phase 3 work: Phones, content first (Phase 3): Sales, Leads, Vendors, Showroom, Reviews, SEO, Marketing (no SQL)
@@ -29,16 +39,6 @@
 - `cf3591b` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
 - `6b4ee18` 2026-11-05 Phones, Phase 2: fix the pages that were broken on a phone
 - `7d62a7b` 2026-11-05 Phones, content first (Phase 1): one-row header, chips, filter sheets, table cards
-- `6ef831a` 2026-11-05 Merge the merged #611 branch history (already in main) so this push is a fast-forward
-- `5df4002` 2026-11-05 Tools: add the UI/UX Pro Max design skill for cloud sessions
-- `344f081` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
-- `2ee2543` 2026-11-05 Merge the merged PR #610 branch history (already in main) so the docs push is a fast-forward
-- `0dba74a` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed)
-- `d3c61d9` 2026-11-04 Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
-- `bc30d86` 2026-11-04 Test: accept Windows line endings in the phone-controls CSS check
-- `2e2769e` 2026-11-04 Login as member: a slim edge tab on phones, so it no longer covers the page
-- `9a92f18` 2026-11-04 Confirmed Orders: a compact list on a phone (Option A, no SQL)
-- `25d06f7` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
 
 ## Pages by top-level area
 
