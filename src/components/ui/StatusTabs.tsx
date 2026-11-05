@@ -137,6 +137,8 @@ export function StatusTabs<K extends string>({
               key={key}
               onClick={() => onSelect(key)}
               aria-pressed={isActive}
+              // Every size is 44px tall on a phone (owner, 2026-11-05).
+              className="boe-status-tab"
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 // The touch size raises the HIT AREA and leaves the type alone:

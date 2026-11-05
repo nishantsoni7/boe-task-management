@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-05 — Platform: phones, content first, Phase 1 (PR pending) · no SQL
+- **Owner request.** Every page on a phone should put the content first, with only the essential options, and reach 8.5 to 9 of 10, using the UI/UX Pro Max skill. Plan approved ("yes to all"): a ⋯ menu for secondary header actions, number cards as chips, build directly, merge after the owner's OK on each preview.
+- **Changed (below 768px only).** One-row page header on every module (title and subtitle one line each; Hand over cash, the Orders/Finance switch and Self/Delegate Task in a ⋯ or + menu); number cards as a sideways chip row; filter chips open as bottom sheets; Control Center tables as cards; 44px Notifications tools and status tabs; Samples gained its menu button. Also adds the UI/UX Pro Max skill to `.claude/skills` for cloud sessions.
+- **Database.** None. Rollback: revert the PR.
+- **Proof.** `phoneShell.render.test.tsx` (15 checks), full suite, type check, lint; a static 390px render of the shared markup. Not seen signed in or on a phone.
+
 ## 2026-11-04 — Orders: Confirmed Orders on a phone, compact list; the Login as member button is an edge tab on phones (PR #610 squash-merged as d3c61d98, 2026-11-04, deployed) · no SQL
 - **Owner request.** "Redesign this page in mobile... only important details and use the space to the fullest." Two mockups; the owner chose Option A (compact list) with the suggested defaults.
 - **Changed (below 768px only).** One-line header with "Running · 13 orders"; the six status cards become one sideways row of chips (Running first, All orders last); the four filter chips become one Filter button with a count and a bottom sheet (Sales person, Order date, Source, Sort); a summary line with the count and value; each Order is three lines (code and value; client and advance; factory status, due or overdue, pendencies, update) and the whole card opens it. Desktop unchanged. `OrdersLayout` gains an optional `phoneSubtitle`, used only here.

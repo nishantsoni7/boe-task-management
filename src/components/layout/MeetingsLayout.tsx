@@ -201,13 +201,14 @@ export function MeetingsLayout({
                 onClick={() => router.push(GUIDE_PATH)}
                 className="boe-btn boe-btn-ghost"
                 title="How Meetings Work"
+                aria-label="How Meetings Work"
                 style={{
                   display: 'flex', alignItems: 'center', gap: '5px',
                   padding: '7px 11px', fontSize: '12.5px', flexShrink: 0,
                 }}
               >
                 <HelpCircle size={14} strokeWidth={2} aria-hidden="true" />
-                How Meetings Work
+                <span className="boe-desktop-only">How Meetings Work</span>
               </button>
             )}
             {actions}

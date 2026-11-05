@@ -2,12 +2,13 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, FileText, Bell, GraduationCap, Archive } from 'lucide-react'
+import { ArrowLeftRight, LayoutDashboard, List, FileText, Bell, GraduationCap, Archive } from 'lucide-react'
 import { LEARNING_PATH, canTrainCustomizeImage } from '@/lib/orders/customizationLearning'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
-import { ModuleSwitchButton } from './ModuleSwitchButton'
+import { ModuleSwitchButton, useModuleSwitch } from './ModuleSwitchButton'
+import { PhoneHeaderMenu } from './PhoneHeaderMenu'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
@@ -64,6 +65,7 @@ export function OrdersLayout({
   // the page on hover, unless pinned. Elsewhere this changes nothing.
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router   = useRouter()
+  const toFinance = useModuleSwitch('finance')
   const pathname = usePathname()
   // While a page is still loading it has no profile of its own yet; the
   // session-scoped context already holds the same row (it is the one the module
@@ -305,6 +307,13 @@ export function OrdersLayout({
             {actions}
             {showRefresh && (
               <ShellRefreshButton refreshing={refreshing} onRefresh={handleRefresh} />
+            )}
+            {/* ON A PHONE (owner, 2026-11-05) the switch is in the ⋯ menu. */}
+            {showModuleSwitch && toFinance.visible && (
+              <PhoneHeaderMenu
+                label="More actions"
+                items={[{ key: 'switch', label: toFinance.label, icon: <ArrowLeftRight size={18} strokeWidth={1.8} />, onSelect: () => router.push(toFinance.route) }]}
+              />
             )}
           </div>
         </div>

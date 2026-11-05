@@ -40,7 +40,12 @@ const TARGET_META: Record<SwitchTarget, { label: string; short: string; route: s
  *
  * A LINK, so it can be opened in a new tab and Next prefetches the target's code.
  */
-export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
+/**
+ * Whether the switch is offered, with its words and route. The header button
+ * below and, on a phone, the layout's ⋯ menu (owner, 2026-11-05) ask the same
+ * question here, so the two can never disagree.
+ */
+export function useModuleSwitch(target: SwitchTarget): { visible: boolean; label: string; short: string; route: string } {
   const actor = usePermissionContext()
   const subject = useDisplaySubject()
 
@@ -56,9 +61,12 @@ export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
         permissions: subject.subjectPermissionsByModule.get('finance') ?? [],
       })
 
-  if (!visible) return null
+  return { visible, ...TARGET_META[target] }
+}
 
-  const { label, short, route } = TARGET_META[target]
+export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
+  const { visible, label, short, route } = useModuleSwitch(target)
+  if (!visible) return null
 
   // On a phone the full sentence pushed the page's own primary action onto a
   // second header row; there the module's name alone is shown (CSS swaps the
@@ -66,7 +74,8 @@ export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
   return (
     <Link
       href={route}
-      className="boe-btn boe-btn-ghost boe-module-switch"
+      // On a phone it is an item of the header's ⋯ menu instead.
+      className="boe-btn boe-btn-ghost boe-module-switch boe-desktop-only"
       title={label}
       aria-label={label}
       style={{ whiteSpace: 'nowrap', textDecoration: 'none' }}
