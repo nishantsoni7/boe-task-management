@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c8cd87ad` — Test: the payment-notes migration test no longer says "is the last migration file"
-- Commits on this branch: 1186
+- Commit: `b1588211` — Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
+- Commits on this branch: 1187
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 420 (first `20260530_create_positions.sql`, latest `20270604000000_payroll_results_half_paid_leave.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
@@ -14,10 +14,11 @@
 
 ## Latest 25 commits
 
-- `c8cd87ad` 2026-11-05 Test: the payment-notes migration test no longer says "is the last migration file"
-- `a55ed051` 2026-11-05 Merge origin/main into the half-leave branch (keep both migrations in the ledger lists)
+- `b1588211` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
+- `2a3ea821` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL) (#623)
+- `2f739e42` 2026-11-05 Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied (#622)
+- `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
 - `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
-- `4a4a2471` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
 - `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
@@ -38,7 +39,6 @@
 - `e980e2da` 2026-11-03 Orders: the Record dispatch screen is scan first (no SQL) (#600)
 - `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
 - `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
-- `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
 
 ## Pages by top-level area
 
