@@ -65,3 +65,35 @@
   .saveActions { width: 100%; }
   .saveActions > button { flex: 1; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   The warning and the bands help are one line each until opened; the save bar
+   appears only once something has changed (or a save has a word to say), as
+   one row of Discard / Save; the change history is folded. Desktop is
+   unchanged. */
+.fold { display: none; }
+
+@media (max-width: 767px) {
+  .fullText { display: none; }
+  .fold { display: block; }
+  .fold > summary {
+    min-height: 40px; display: flex; align-items: center; cursor: pointer; font-weight: 600;
+  }
+  .tiersFold { margin: 0 0 10px; font-size: 12.5px; line-height: 1.5; color: #4C5352; }
+  .tiersFold > summary { min-height: 44px; color: #335A86; font-size: 13px; }
+  .saveBarIdle { display: none; }
+  /* Fixed while shown: .boe-main-content's overflow-x: hidden stops sticky
+     engaging on a phone. It fits in the page body's 72px bottom padding. */
+  .saveBarDirty {
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 50; gap: 8px; padding: 8px 10px;
+  }
+  .saveBarQuiet { flex-wrap: nowrap; }
+  .saveBarQuiet .saveStatus { display: none; }
+  .saveBarQuiet .saveActions { flex-wrap: nowrap; }
+  .historyToggle {
+    min-height: 44px; margin: -10px -6px -10px auto; padding: 0 8px; align-items: center; gap: 4px;
+    border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #335A86; cursor: pointer;
+  }
+  .phoneFolded { display: none; }
+}

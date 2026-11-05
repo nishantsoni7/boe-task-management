@@ -229,8 +229,9 @@ export default function PayrollResultsPage() {
       }
     >
       <div className={ui.stack}>
-        {/* True detail page: one way back to its list. */}
-        <div>
+        {/* True detail page: one way back to its list. On a phone the
+            Payroll Runs section tab already is that way back. */}
+        <div className={styles.backRow}>
           <Link href="/payroll" className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>← Payroll Runs</Link>
         </div>
 
@@ -258,9 +259,17 @@ export default function PayrollResultsPage() {
                     {' — Regeneration and employee review are disabled.'}
                   </span>
                 ) : canLock ? (
-                  <span className={styles.runStateLine}>
-                    Lock this payroll period to finalise it. Generation and employee review will be disabled.
-                  </span>
+                  <>
+                    <span className={`${styles.runStateLine} ${styles.desktopText}`}>
+                      Lock this payroll period to finalise it. Generation and employee review will be disabled.
+                    </span>
+                    {/* Phone: the review count takes the sentence's place. */}
+                    {totalCount > 0 && (
+                      <span className={`${styles.runStateLine} ${styles.phoneInline}`} style={{ color: reviewedCount === totalCount ? '#276247' : '#805B0D' }}>
+                        {reviewedCount}/{totalCount} reviewed
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <span className={styles.runStateLine}>
                     {period.status === 'generated' ? 'Only an admin can lock this period.' : 'This period has not been generated.'}
@@ -268,7 +277,7 @@ export default function PayrollResultsPage() {
                 )}
               </div>
               {canLock && totalCount > 0 && (
-                <div className={styles.reviewLine} style={{ color: reviewedCount === totalCount ? '#276247' : '#805B0D' }}>
+                <div className={`${styles.reviewLine} ${styles.desktopText}`} style={{ color: reviewedCount === totalCount ? '#276247' : '#805B0D' }}>
                   {reviewedCount} of {totalCount} employee{totalCount !== 1 ? 's' : ''} have reviewed their payslip.
                 </div>
               )}
@@ -355,42 +364,42 @@ export default function PayrollResultsPage() {
               </div>
             </div>
 
-            {/* Phone: one card per employee, and the totals as a line. */}
+            {/* Phone: the totals first, as one row of chips, then one card
+                per employee; the whole card opens the payslip. */}
+            {totals && (
+              <ul className="ap4-chips" aria-label="Totals">
+                <li><strong>{totalCount}</strong> employees</li>
+                <li>net <strong>{fmt(totals.net)}</strong></li>
+                <li>gross <strong>{fmt(totals.gross)}</strong></li>
+                <li className={totals.deductions > 0 ? 'is-bad' : undefined}>deductions <strong>{fmt(totals.deductions)}</strong></li>
+                <li>adjustments <strong>{fmt(totals.adjustments)}</strong></li>
+              </ul>
+            )}
             <ul className={ui.cards} aria-label="Employee results">
               {results.map(r => (
-                <li key={r.id} className={`${ui.surface} ${ui.card}`}>
+                <li key={r.id} className={`${ui.surface} ${ui.card} ${styles.resultCard}`}>
                   <div className={ui.cardHead}>
-                    <div>
-                      <div className={ui.strong}>{r.employee_name}</div>
-                      {r.employee_code && <div className={ui.sub}>{r.employee_code}</div>}
+                    <div style={{ minWidth: 0 }}>
+                      <Link
+                        href={`/payroll/results/${periodId}/${r.employee_id}`}
+                        className={`${ui.strong} ${styles.resultLink}`}
+                        aria-label={`View details for ${r.employee_name}`}
+                      >
+                        {r.employee_name}
+                      </Link>
+                      {r.employee_code && <span className={ui.muted} style={{ fontSize: 12, marginLeft: 6 }}>{r.employee_code}</span>}
                     </div>
-                    <div className={styles.cardNet}>
-                      <div className={ui.strong}>{fmt(r.net_salary)}</div>
-                      <div className={ui.sub}>Net salary</div>
-                    </div>
+                    <div className={`${styles.cardNet} ${ui.strong}`}>{fmt(r.net_salary)}</div>
                   </div>
-                  <dl className={styles.cardFacts}>
-                    <div><dt>Working days</dt><dd>{r.working_days_in_month ?? '—'}</dd></div>
-                    <div><dt>Gross</dt><dd>{fmt(r.gross_salary)}</dd></div>
-                    <div><dt>Deductions</dt><dd className={r.total_deductions ? styles.neg : ''}>{fmt(r.total_deductions)}</dd></div>
-                    <div><dt>Adjustments</dt><dd>{fmt(r.pending_adjustment_total)}</dd></div>
-                  </dl>
+                  <div className={styles.factLine}>
+                    {r.working_days_in_month ?? '—'} days · gross {fmt(r.gross_salary)}
+                    {' · '}<span className={r.total_deductions ? styles.neg : ''}>ded. {fmt(r.total_deductions)}</span>
+                    {r.pending_adjustment_total ? <> · adj. {fmt(r.pending_adjustment_total)}</> : null}
+                  </div>
                   {reviewCell(r)}
-                  <Link href={`/payroll/results/${periodId}/${r.employee_id}`} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
-                    View Details
-                  </Link>
                 </li>
               ))}
             </ul>
-            {totals && (
-              <p className={`${styles.totalsLine} ${styles.phoneOnly}`}>
-                <strong>Total ({totalCount})</strong>
-                {' · '}gross {fmt(totals.gross)}
-                {' · '}deductions {fmt(totals.deductions)}
-                {' · '}adjustments {fmt(totals.adjustments)}
-                {' · '}net <strong>{fmt(totals.net)}</strong>
-              </p>
-            )}
           </>
         )}
 

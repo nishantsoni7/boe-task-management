@@ -187,12 +187,12 @@ export default function CorrectionLogPage() {
         />
 
         {/* Filter bar */}
-        <div className={ui.toolbar} style={{ marginBottom: 0 }}>
-          <div className={ui.row}>
+        <div className={`${ui.toolbar} ap4-log-toolbar`} style={{ marginBottom: 0 }}>
+          <div className={`${ui.row} ap4-log-month`}>
             <label className={ui.label} htmlFor="log-month">Month</label>
             <select
               id="log-month"
-              className={ui.input}
+              className={`${ui.input} ap4-log-select`}
               style={{ width: 'auto', minWidth: 170 }}
               value={month}
               onChange={e => handleMonthChange(e.target.value)}
@@ -321,11 +321,19 @@ export default function CorrectionLogPage() {
           </div>
         )}
 
-        <p style={{ margin: 0, fontSize: 12.5, color: '#686D6C', lineHeight: 1.6 }}>
+        <p className="ap4-desktop-block" style={{ margin: 0, fontSize: 12.5, color: '#686D6C', lineHeight: 1.6 }}>
           <strong style={{ color: '#4C5352' }}>Note:</strong>{' '}Only records modified during import are logged here.
           Unchanged records from re-uploads do not appear.
           &ldquo;New&rdquo; means the employee had no prior record for that date; &ldquo;Modified&rdquo; means an existing record was updated.
         </p>
+        {/* Phone: the same note, folded to one line. */}
+        <details className="ap4-phone-fold">
+          <summary>What is logged here?</summary>
+          <p>
+            Only records modified during import are logged here. Unchanged records from re-uploads do not appear.
+            &ldquo;New&rdquo; means the employee had no prior record for that date; &ldquo;Modified&rdquo; means an existing record was updated.
+          </p>
+        </details>
 
       </div>
     </AttendancePayrollLayout>

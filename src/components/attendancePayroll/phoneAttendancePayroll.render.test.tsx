@@ -129,7 +129,7 @@ describe('admin pages', () => {
   test('ObjectionQueue: cards on a phone, 44px Resolve / Reject / History', () => {
     const src = read('src/components/objections/ObjectionQueue.tsx')
     assert.ok(src.includes('<div className={styles.desktopOnly} style={{ overflowX: \'auto\' }}>'))
-    assert.ok(src.includes('<ul className={styles.cards} aria-label={title}>'))
+    assert.ok(src.includes('<ul id={panelId} className={`${styles.cards}${phoneFold}`} aria-label={title}>'))
     assert.equal((src.match(/\{actions\(r\)\}/g) ?? []).length, 2, 'the same actions on both layouts')
     assert.match(phoneRules(read('src/components/objections/objectionQueue.module.css')), /\.action \{ min-height: 44px;/)
   })
@@ -177,5 +177,122 @@ describe('admin pages', () => {
     const css = phoneRules(read('src/app/payroll/how-it-works/guidePhone.module.css'))
     assert.match(css, /\.stack table \{ display: block; min-width: 0 !important;/)
     assert.equal((read('src/app/payroll/how-it-works/page.tsx').match(/phone\.stack/g) ?? []).length, 2)
+  })
+})
+
+// ── Phase 4: every Attendance & Payroll page at 8.5 or better on a phone ─────
+
+describe('Phase 4: attendance pages', () => {
+  test('one employee: an identity line, Details folds the four sections, dates in a Filter sheet', () => {
+    const src = read('src/app/attendance/employees/[id]/page.tsx')
+    assert.ok(src.includes('aria-controls="employee-sections"'))
+    assert.ok(src.includes("${detailsOpen ? '' : ` ${styles.phoneFolded}`}"))
+    assert.ok(src.includes('<PhoneSheet') && src.includes('id="from-date-phone"') && src.includes('id="to-date-phone"'))
+    assert.ok(src.includes('${ui.surface} ${ui.surfaceBody} ${ui.desktopOnly}'), 'the desktop date row is unchanged, hidden on a phone')
+    const css = phoneRules(read('src/app/attendance/employees/[id]/detail.module.css'))
+    assert.match(css, /\.back \{ min-height: 44px; \}/)
+    assert.match(css, /\.detailsToggle \{[^}]*min-height: 44px/)
+  })
+
+  test('upload: one step line, "What file?", five modified cards, Confirm fixed at the bottom', () => {
+    const src = read('src/app/attendance/upload/page.tsx')
+    assert.ok(src.includes('Step {current} of {STEP_LABELS.length}'))
+    assert.ok(src.includes('<summary>What file?</summary>'))
+    assert.ok(src.includes('const PHONE_MODIFIED_PREVIEW = 5'))
+    assert.ok(src.includes('Show all {preview.modifiedRecords.length}'))
+    const css = phoneRules(read('src/app/attendance/upload/upload.module.css'))
+    assert.match(css, /\.confirmBar \{[^}]*position: fixed;/)
+    assert.match(css, /\.steps \{ display: none; \}/)
+  })
+
+  test('employee directory: a two-line card that opens the employee, Edit a 44px pencil, warning one line', () => {
+    const src = read('src/app/attendance/employees/page.tsx')
+    assert.ok(src.includes('className={styles.cardLink} aria-label={`View ${emp.full_name}`}'))
+    assert.ok(src.includes('className={styles.cardEdit} onClick={() => setEditEmp(emp)}'))
+    assert.ok(src.includes('<details className={styles.unlinkedFold}>'))
+    const css = phoneRules(read('src/app/attendance/employees/employees.module.css'))
+    assert.match(css, /\.total \{ display: none; \}/)
+    assert.match(css, /\.cardEdit \{[^}]*width: 44px; height: 44px;/)
+  })
+
+  test('the issues queue is one row on a phone wherever it appears; the log note folds', () => {
+    const src = read('src/components/objections/ObjectionQueue.tsx')
+    assert.ok(src.includes('className={styles.phoneToggle}') && src.includes('aria-expanded={phoneOpen}'))
+    assert.ok(src.includes('` · ${pending.length} awaiting`'))
+    const css = phoneRules(read('src/components/objections/objectionQueue.module.css'))
+    assert.match(css, /\.head \{ display: none !important; \}/)
+    assert.match(css, /\.folded \{ display: none !important; \}/)
+    const log = read('src/app/attendance/correction-log/page.tsx')
+    assert.ok(log.includes('ap4-log-month') && log.includes('<details className="ap4-phone-fold">'))
+  })
+
+  test('requests: the card opens the review, reason one line, Try again 44px', () => {
+    const src = read('src/components/attendanceRequests/RequestQueue.tsx')
+    assert.ok(src.includes('className={styles.cardOpen}'))
+    assert.equal(src.includes('minHeight: 36'), false)
+    const css = phoneRules(read('src/components/attendanceRequests/attendanceRequests.module.css'))
+    assert.match(css, /\.retryBtn \{ min-height: 44px; \}/)
+    assert.match(css, /\.shiftLabel \{ display: none; \}/)
+    assert.match(css, /\.cardOpen \{[^}]*position: absolute; inset: 0;/)
+  })
+
+  test('sync, today and the monthly review: notes fold, links 44px, totals as chips', () => {
+    const minop = phoneRules(read('src/app/attendance/minop/sync.module.css'))
+    assert.match(minop, /\.tech > summary \{ min-height: 44px;/)
+    assert.match(minop, /\.legend \{ order: 1; \}/)
+    assert.ok(read('src/app/attendance/minop/page.tsx').includes("needsAttention(d) ? '' : ` ${styles.calm}`"))
+    const today = phoneRules(read('src/app/attendance/today/today.module.css'))
+    assert.match(today, /\.stripLink, \.backToday \{ min-height: 44px; display: inline-flex;/)
+    assert.ok(read('src/app/attendance/today/page.tsx').includes('<summary>What to check</summary>'))
+    const review = read('src/app/attendance/monthly-review/page.tsx')
+    assert.ok(review.includes('<ul className="ap4-chips" aria-label="Month totals">'))
+    assert.ok(review.includes('ap4-card-link'))
+    assert.ok(review.includes('<summary>How attendance is counted</summary>'))
+    const g = read('src/app/globals.css')
+    assert.ok(g.includes('PHONE PHASE 4 — ATTENDANCE & PAYROLL'))
+    assert.match(g, /\.ap4-decide \{ min-height: 44px !important;/)
+    assert.match(g, /\.ap4-clear \{ min-height: 40px !important;/)
+  })
+})
+
+describe('Phase 4: payroll pages', () => {
+  test('Payroll Runs: totals one line, the card opens the results, secondary actions in ⋯', () => {
+    const src = read('src/app/payroll/page.tsx')
+    assert.ok(src.includes('<PayrollRowPhoneMenu {...rowProps(p)}'))
+    assert.ok(src.includes('<PayrollRowPhonePrimary {...rowProps(p)} />'))
+    assert.ok(src.includes('<Link href={`/payroll/results/${p.id}`} className={`${ui.strong} ${styles.runLink}`}>'))
+    const css = phoneRules(read('src/app/payroll/page.module.css'))
+    assert.match(css, /\.dismiss \{ min-width: 44px; min-height: 44px;/)
+    assert.match(read('src/app/payroll/PayrollRowActions.tsx'), /\.boe-payroll-attention \{ width: 44px; height: 44px; \}/)
+  })
+
+  test('Payroll Rules: one-line warning, save bar only when there is something to say, history folded', () => {
+    const src = read('src/app/payroll/settings/page.tsx')
+    assert.ok(src.includes('<summary>Changes apply to new payroll only</summary>'))
+    assert.ok(src.includes('<summary>How the bands work</summary>'))
+    assert.ok(src.includes('aria-controls="settings-history"'))
+    const css = phoneRules(read('src/app/payroll/settings/settings.module.css'))
+    assert.match(css, /\.saveBarIdle \{ display: none; \}/)
+    assert.match(css, /\.saveBarDirty \{[^}]*position: fixed;/)
+  })
+
+  test('a payroll run: no back row, one run-state row, totals first, the card opens the payslip', () => {
+    const src = read('src/app/payroll/results/[periodId]/page.tsx')
+    assert.ok(src.includes('{reviewedCount}/{totalCount} reviewed'))
+    assert.ok(src.indexOf('<ul className="ap4-chips" aria-label="Totals">') < src.indexOf('<ul className={ui.cards} aria-label="Employee results">'))
+    assert.ok(src.includes('className={`${ui.strong} ${styles.resultLink}`}'))
+    const css = phoneRules(read('src/app/payroll/results/[periodId]/results.module.css'))
+    assert.match(css, /\.backRow \{ display: none; \}/)
+    assert.match(css, /\.runState \{ flex-wrap: nowrap;/)
+  })
+
+  test('preview detail uses the payslip phone rules; no 11px labels left', () => {
+    const src = read('src/app/payroll/monthly-review/[userId]/page.tsx')
+    assert.ok(src.includes('<div className={`payroll-detail-page ${phone.detail}`}>'))
+    assert.ok(src.includes('<span className={ui.phoneOnly}>Preview</span>'))
+    for (const f of ['src/app/payroll/monthly-review/preview.module.css', 'src/app/my-payroll/myPayroll.module.css']) {
+      // The ▾ glyph after a summary is not text to read.
+      assert.equal(/font-size: 11px/.test(phoneRules(read(f)).replace(/summary::after \{[^}]*\}/g, '')), false, f)
+    }
   })
 })

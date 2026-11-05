@@ -70,3 +70,22 @@
   .techBody dd { margin-bottom: 6px; }
   .cardActions button { width: 100%; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   The 1 November notice is one line; a result's meaning shows only on the
+   punches that need attention; "Technical details" is 44px; the "What do
+   these results mean?" key moves below the list. Desktop is unchanged. */
+.noticeFold { display: none; }
+
+@media (max-width: 767px) {
+  .noticeFull { display: none; }
+  .noticeFold { display: block; }
+  .noticeFold > summary {
+    min-height: 40px; display: flex; align-items: center; cursor: pointer;
+    font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+  }
+  .calm { display: none; }
+  .tech { margin-top: 2px; }
+  .tech > summary { min-height: 44px; font-size: 12.5px; }
+  .legend { order: 1; }
+}

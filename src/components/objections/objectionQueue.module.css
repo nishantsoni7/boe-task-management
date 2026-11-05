@@ -19,3 +19,22 @@
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .action { min-height: 44px; padding: 0 16px !important; font-size: 13px !important; }
 }
+
+/* Phase 4: on a phone the queue is one 44px row ("Reported issues · 2
+ * awaiting ▾") until it is opened, on the correction log, the payroll results
+ * and the monthly preview alike. Desktop keeps its own header and list. */
+.phoneToggle { display: none; }
+
+@media (max-width: 767px) {
+  .head { display: none !important; }
+  .phoneToggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; min-height: 44px; padding: 0 16px;
+    border: 0; background: transparent; cursor: pointer; text-align: left;
+    font: inherit; font-size: 13.5px; color: #303536;
+  }
+  .phoneToggle[aria-expanded='true'] { border-bottom: 1px solid #E4DED7; }
+  .phoneToggle:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
+  .toggleTitle { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folded { display: none !important; }
+}

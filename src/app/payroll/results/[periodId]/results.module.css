@@ -51,3 +51,30 @@
 @media (max-width: 767px) {
   .phoneOnly { display: block; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   No back row (the Payroll Runs tab is the way back); the run state is one
+   row: badge, "3/12 reviewed", Lock; the totals come first as chips; each
+   employee card opens the payslip from anywhere on it, its figures on one
+   line. Desktop is unchanged. */
+.phoneInline { display: none; }
+
+@media (max-width: 767px) {
+  .backRow { display: none; }
+  .desktopText { display: none; }
+  .phoneInline { display: inline; }
+  .runState { flex-wrap: nowrap; gap: 10px; padding: 8px 8px 8px 12px; }
+  .runStateText { flex: 1 1 auto; }
+  .runStateText > div { flex-wrap: nowrap; min-width: 0; }
+  .runStateLine { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .runState > button { flex: none; padding: 0 14px; }
+  .resultCard { position: relative; gap: 4px; }
+  .resultLink { color: #303536; text-decoration: none; }
+  .resultLink::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+  .resultLink:focus-visible { outline: none; }
+  .resultLink:focus-visible::after { outline: 2px solid #B9472E; outline-offset: 2px; }
+  .factLine {
+    font-size: 12.5px; color: #686D6C; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+}

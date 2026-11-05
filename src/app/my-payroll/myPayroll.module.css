@@ -13,7 +13,7 @@
 @media (max-width: 767px) {
   /* The card is an inline-styled component, so its phone shape wins here. */
   .credits > div { padding: 6px 6px 6px 14px !important; margin-bottom: 10px !important; flex-wrap: nowrap !important; }
-  .credits > div > div > div:nth-child(1) { font-size: 11px !important; }
+  .credits > div > div > div:nth-child(1) { font-size: 12px !important; }
   .credits > div > div > div:nth-child(2) { font-size: 16px !important; }
   .credits > div > div > div:nth-child(3) { display: none; }
   .credits button { min-height: 44px; padding: 0 14px !important; flex: none; }
@@ -35,7 +35,7 @@
     flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
     font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums;
   }
-  .payNet > span { font-size: 11px !important; padding: 1px 8px !important; }
+  .payNet > span { font-size: 12px !important; padding: 1px 8px !important; }
   .payChevron { flex: none; font-size: 22px; line-height: 1; color: #9A9F9E; }
   .payIssue {
     display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px;

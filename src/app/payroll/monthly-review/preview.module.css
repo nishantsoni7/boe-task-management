@@ -69,7 +69,7 @@
   .card { position: relative; gap: 4px; }
   .cardFacts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; font-size: 12.5px; }
   .cardFacts div { flex-direction: column; justify-content: flex-start; gap: 0; }
-  .cardFacts dt { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cardFacts dt { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cardFacts dd { text-align: left; }
   .cardLink {
     align-self: flex-end; min-height: 0 !important; padding: 0 !important;

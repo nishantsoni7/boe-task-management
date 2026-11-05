@@ -96,3 +96,34 @@
   .close { min-width: 44px; min-height: 44px; }
   .check { min-height: 44px; }
 }
+
+/* ── Phones: content first (Phase 4) ───────────────────────────────────────
+   Two-line cards: the whole card opens the employee, Edit is a 44px pencil.
+   The unlinked Machine ID warning folds to one line; the count line goes (the
+   status pills already carry the counts). Desktop is unchanged. */
+.unlinkedFold { display: none; }
+
+@media (max-width: 767px) {
+  .total { display: none; }
+  .unlinkedFull { display: none; }
+  .unlinkedFold { display: block; }
+  .unlinkedFold > summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; }
+  .unlinkedFold > p { margin: 4px 0 0; overflow-wrap: anywhere; }
+  .empCard { position: relative; flex-direction: row; align-items: center; gap: 8px; padding: 10px 6px 10px 14px; min-height: 60px; }
+  .empMain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .empTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .cardLink {
+    font-weight: 600; font-size: 14.5px; color: #303536; text-decoration: none;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cardLink::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+  .cardLink:focus-visible { outline: none; }
+  .cardLink:focus-visible::after { outline: 2px solid #B9472E; outline-offset: 2px; }
+  .empLine { font-size: 12.5px; color: #686D6C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cardEdit {
+    position: relative; z-index: 1; flex: none;
+    width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 8px; background: transparent; color: #4C5352; cursor: pointer;
+  }
+  .cardEdit:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+}

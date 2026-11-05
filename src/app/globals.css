@@ -15247,3 +15247,75 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .expense-filter-panel .expense-filter-check { min-height: 44px; font-size: 14px; }
   .expense-filter-panel .boe-btn { flex: 1 1 0; justify-content: center; min-height: 46px !important; font-size: 15px !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHONE PHASE 4 — ATTENDANCE & PAYROLL (owner, 2026-11-05, "phones: content first")
+   For pages without a CSS module of their own. Below 768px only, except the
+   two "hidden on a desktop" defaults just below.
+   .ap4-phone-fold    a one-line <details> drawn on a phone in place of a note
+   .ap4-desktop-block the note it replaces, drawn on a desktop only
+   ═══════════════════════════════════════════════════════════════════════════ */
+.ap4-phone-fold { display: none; }
+
+@media (max-width: 767px) {
+  .ap4-desktop-block { display: none !important; }
+  .ap4-phone-fold { display: block; font-size: 12.5px; color: #686D6C; line-height: 1.55; }
+  .ap4-phone-fold > summary {
+    min-height: 44px; display: flex; align-items: center; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: #335A86;
+  }
+  .ap4-phone-fold > p { margin: 0 0 6px; }
+
+  /* /attendance/correction-log: the month select fills the row, its label
+     is read aloud only, the count sits beside it. */
+  .ap4-log-toolbar { flex-wrap: nowrap !important; }
+  .ap4-log-toolbar > span { flex: none; white-space: nowrap; }
+  .ap4-log-month { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap !important; }
+  .ap4-log-month > label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .ap4-log-select { width: 100% !important; min-width: 0 !important; }
+}
+
+/* Shared on a phone: a sideways row of totals chips (the .fin-stats look,
+   for a line of numbers), and a card whose name link covers the whole card. */
+.ap4-chips { display: none; }
+
+@media (max-width: 767px) {
+  .ap4-chips {
+    display: flex; gap: 6px; margin: 0; padding: 0 0 2px; list-style: none;
+    overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .ap4-chips::-webkit-scrollbar { display: none; }
+  .ap4-chips > li {
+    flex: none; display: inline-flex; align-items: center; gap: 4px;
+    min-height: 32px; padding: 0 11px; border-radius: 999px;
+    background: #fff; border: 1px solid #E4DED7;
+    font-size: 12.5px; color: #4C5352; white-space: nowrap;
+  }
+  .ap4-chips > li > strong { color: #303536; font-variant-numeric: tabular-nums; }
+  .ap4-chips > li.is-bad > strong { color: #B42332; }
+  .ap4-chips > li.is-warn > strong { color: #805B0D; }
+
+  .ap4-tap-card { position: relative; }
+  .ap4-card-link { color: #303536; text-decoration: none; }
+  .ap4-card-link::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+  .ap4-card-link:focus-visible { outline: none; }
+  .ap4-card-link:focus-visible::after { outline: 2px solid #B9472E; outline-offset: 2px; }
+  /* Anything else that is pressable in such a card stays pressable. */
+  .ap4-tap-card a:not(.ap4-card-link), .ap4-tap-card button { position: relative; z-index: 1; }
+
+  /* /attendance/monthly-review: the month and the two views on one row. */
+  .ap4-review-toolbar { flex-wrap: nowrap !important; gap: 8px !important; }
+  .ap4-review-toolbar > [role='group'] { flex: none; flex-wrap: nowrap; gap: 6px; }
+  .ap4-review-toolbar select { min-width: 0 !important; padding-left: 8px; padding-right: 2px; }
+  .ap4-review-views { flex: 1 1 auto; min-width: 0; }
+  .ap4-review-views > div { width: 100%; }
+  .ap4-review-views button { flex: 1 1 auto; padding: 0 8px; }
+
+  /* Salary decisions: Decide 44px, Clear 40px, each choice a 44px row. */
+  .ap4-decide { min-height: 44px !important; padding: 0 16px !important; font-size: 13.5px !important; }
+  .ap4-clear { min-height: 40px !important; padding: 0 14px !important; font-size: 13px !important; }
+  .ap4-radio { min-height: 44px; font-size: 14px !important; }
+}

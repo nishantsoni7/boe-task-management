@@ -23,6 +23,7 @@ import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { periodLabel } from '@/lib/payroll/months'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
+import phone from '@/app/payroll/results/payrollResultsPhone.module.css'
 import {
   fmt,
   fmtHours,
@@ -488,11 +489,15 @@ export default function PayrollMonthlyReviewDetailPage() {
           Result Detail. */}
       <div style={{ marginBottom: 12 }}>
         <Link href={backHref} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
-          ← Monthly Preview{monthLabel ? ` · ${monthLabel}` : ''}
+          {/* The title already names the month; a phone says just "Preview". */}
+          ← <span className={ui.desktopOnly}>Monthly Preview{monthLabel ? ` · ${monthLabel}` : ''}</span>
+          <span className={ui.phoneOnly}>Preview</span>
         </Link>
       </div>
 
-      <div className="payroll-detail-page">
+      {/* phone.detail: the identity card on one line and 44px controls, as on
+          the saved payslip. */}
+      <div className={`payroll-detail-page ${phone.detail}`}>
 
         {error && (
           <div style={{ marginBottom: 16 }}>
