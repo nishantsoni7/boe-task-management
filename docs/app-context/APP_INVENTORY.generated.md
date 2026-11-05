@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `caadedcd` — Docs: one phone filter set merged (#616 as f6d855a2) (#617)
-- Commits on this branch: 1182
+- Commit: `1ff6b7b8` — Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL)
+- Commits on this branch: 1183
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 419 (first `20260530_create_positions.sql`, latest `20270603000000_finance_payment_admin_notes.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
-- Test files: 757   Next.js 16.2.6, React 19.2.4
+- Test files: 759   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `1ff6b7b8` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
 - `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
@@ -38,7 +39,6 @@
 - `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
 - `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
 - `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
-- `dfe7a3c3` 2026-11-03 Sales: the Lead Master, one register of every lead and who holds it (#593)
 
 ## Pages by top-level area
 
@@ -175,6 +175,7 @@
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
 - `ANTHROPIC_API_KEY` (18 reads)
+- `BACKUP_RETRY_WAIT_MS` (1 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
 - `BOE_BACKUP_ROOT` (1 reads)
@@ -190,6 +191,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (6 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
+- `LOCALAPPDATA` (1 reads)
 - `META_ACCESS_TOKEN` (3 reads)
 - `META_AD_ACCOUNT_IDS` (4 reads)
 - `MINOP_ATTENDANCE_PROCESSING_ENABLED` (2 reads)
@@ -207,6 +209,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `SALES_CAPTURE_SECRET` (1 reads)
 - `SEO_INGEST_SECRET` (5 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
+- `STUB_BACKUP_RC` (1 reads)
+- `STUB_VERIFY_RC` (1 reads)
 - `SUPABASE_SERVICE_ROLE_KEY` (151 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
