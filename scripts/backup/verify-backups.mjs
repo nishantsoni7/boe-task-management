@@ -2,7 +2,7 @@
 //   node scripts/backup/verify-backups.mjs [--max-age-hours 36]
 import fs from 'node:fs'
 import path from 'node:path'
-import { BACKUP_ROOT, MAIN_REPO, GITHUB_REPO, git, gitTry, readStatus } from './lib.mjs'
+import { BACKUP_ROOT, MAIN_REPO, GITHUB_REPO, git, gitTry, mirrorGitTry, readStatus, restrictedTablesLayer } from './lib.mjs'
 
 const i = process.argv.indexOf('--max-age-hours')
 const maxH = i > 0 ? Number(process.argv[i + 1]) : 36
@@ -15,13 +15,13 @@ const mirror = path.join(BACKUP_ROOT, 'git', 'boe-task-management.git')
 if (!fs.existsSync(mirror)) add('code mirror', false, 'missing - run backup-code.mjs')
 else {
   const ghMain = gitTry(MAIN_REPO, 'ls-remote', url, 'refs/heads/main').out.split(/\s/)[0]
-  const has = ghMain && gitTry(mirror, 'cat-file', '-e', ghMain + '^{commit}').ok
+  const has = ghMain && mirrorGitTry(mirror, 'cat-file', '-e', ghMain + '^{commit}').ok
   // A merge waits for the nightly backup, so main ahead of the mirror is normal while that backup keeps finishing on time.
   const last = readStatus('covered')
   const waiting = !has && !!ghMain && !!last && age(last.at) <= maxH
   add('GitHub main is inside the local mirror', !!has || waiting, has ? `main ${ghMain.slice(0, 8)} present` : waiting ? `main ${ghMain.slice(0, 8)} waits for the nightly backup (see pending-backups)` : `GitHub main ${String(ghMain).slice(0, 8)} NOT in mirror - run backup-all`)
   const localHeads = git(MAIN_REPO, 'for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads').split('\n').filter(Boolean)
-  const missing = localHeads.filter((l) => !gitTry(mirror, 'cat-file', '-e', l.split(' ')[0] + '^{commit}').ok)
+  const missing = localHeads.filter((l) => !mirrorGitTry(mirror, 'cat-file', '-e', l.split(' ')[0] + '^{commit}').ok)
   add('every local branch tip is in the mirror', missing.length === 0, missing.length ? `${missing.length} tip(s) missing, e.g. ${missing[0]}` : `${localHeads.length} branches covered`)
 }
 const code = readStatus('code-full')
@@ -34,6 +34,8 @@ if (latestBundle) add('latest bundle verifies', gitTry(MAIN_REPO, 'bundle', 'ver
 else add('latest bundle verifies', false, 'no bundle')
 const db = readStatus('database')
 add('database + storage export', !!db && db.ok && age(db.at) <= maxH, db ? `${age(db.at).toFixed(1)} h old, ${db.tables} tables, ${db.totalRows} rows, ${db.errors} errors` + (db.viaPgDump?.length ? `, pg_dump: ${db.viaPgDump.join(' ')}` : '') + (db.unreadable?.length ? `, NOT COVERED: ${db.unreadable.join(' ')}` : '') : 'never run')
+const restricted = restrictedTablesLayer(db)
+add('finance tables the service role cannot read', restricted.ok, restricted.note)
 const hp = gitTry(MAIN_REPO, 'config', '--get', 'core.hooksPath').out
 add('git hooks installed', hp.toLowerCase().includes('backups/hooks'), hp || 'core.hooksPath not set - run install-backup-system.mjs')
 const second = readStatus('all')

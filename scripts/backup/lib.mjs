@@ -35,6 +35,50 @@ export function gitTry(cwd, ...args) {
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() }
 }
 
+// The bare mirror is addressed with --git-dir, never by being the working folder: the Claude desktop app's Terminal panel
+// forces safe.bareRepository=explicit, and then git refuses to discover a bare repository from its folder ("fatal: not in a git directory").
+export const mirrorGit = (mirror, ...args) => git(mirror, '--git-dir', mirror, ...args)
+export const mirrorGitTry = (mirror, ...args) => gitTry(mirror, '--git-dir', mirror, ...args)
+
+// fetch() says only "fetch failed" or "terminated"; what really happened (reset, closed socket, timeout) is in .cause.
+export function describeError(e) {
+  const c = e?.cause
+  return c ? `${e.message} (${[c.code, c.message].filter(Boolean).join(': ')})` : String(e?.message ?? e)
+}
+
+// Run read(size) with each size in turn, moving to the next (smaller) one after a transient failure. Gives up with every reason
+// listed. A failure that isTransient() rejects (a refusal, not a dropped connection) is thrown at once and unchanged.
+// The wait before try n+1 is baseWaitMs * n: 5, 10, 15 ... s by default, because the real outage seen on 2026-11-05 was the laptop's own
+// network dropping (ECONNRESET, then DNS "ENOTFOUND" for about 15 s), which a short wait does not outlast.
+export async function readWithShrink(sizes, read, { isTransient = () => true, onRetry = () => {}, baseWaitMs = 5000, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const reasons = []
+  for (let i = 0; i < sizes.length; i++) {
+    try { return { size: sizes[i], value: await read(sizes[i]) } } catch (e) {
+      if (!isTransient(e)) throw e
+      reasons.push(describeError(e))
+      if (i + 1 < sizes.length) { onRetry({ attempt: i + 1, of: sizes.length, size: sizes[i], next: sizes[i + 1], reason: reasons[i] }); await wait(baseWaitMs * (i + 1)) }
+    }
+  }
+  throw new Error(`failed ${sizes.length} times: ${[...new Set(reasons)].join(' | ')}`)
+}
+
+// pg_dump runs in Docker. Start Docker Desktop when it is not running and wait for the engine; true when it is up.
+// start() returns false when there is nothing to start. Never throws.
+export async function waitForDocker({ isUp, start, wait = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, timeoutMs = 240000, pollMs = 5000 }) {
+  if (isUp()) return true
+  if (start() === false) return false
+  for (const t0 = now(); now() - t0 < timeoutMs;) { await wait(pollMs); if (isUp()) return true }
+  return false
+}
+
+// verify-backups layer: the finance tables the service role cannot read are in the newest export only via pg_dump.
+export function restrictedTablesLayer(db) {
+  if (!db) return { ok: false, note: 'no database export yet' }
+  const missing = db.unreadable ?? []
+  if (missing.length) return { ok: false, note: `NOT in the newest export: ${missing.join(' ')} - start Docker Desktop and run backup-all again (Supabase's own daily backup still holds them)` }
+  return { ok: true, note: db.viaPgDump?.length ? `pg_dump: ${db.viaPgDump.join(' ')}` : 'none unreadable' }
+}
+
 export function sha256File(p) {
   const h = crypto.createHash('sha256'); const fd = fs.openSync(p, 'r'); const buf = Buffer.alloc(1 << 20)
   try { let n; while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n)) } finally { fs.closeSync(fd) }

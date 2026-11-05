@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `4a4a2471` — Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first)
-- Commits on this branch: 1183
+- Commit: `c8cd87ad` — Test: the payment-notes migration test no longer says "is the last migration file"
+- Commits on this branch: 1186
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 420 (first `20260530_create_positions.sql`, latest `20270604000000_payroll_results_half_paid_leave.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 948   Enums: 0
-- Test files: 758   Next.js 16.2.6, React 19.2.4
+- Test files: 761   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c8cd87ad` 2026-11-05 Test: the payment-notes migration test no longer says "is the last migration file"
+- `a55ed051` 2026-11-05 Merge origin/main into the half-leave branch (keep both migrations in the ledger lists)
+- `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
 - `4a4a2471` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
@@ -36,9 +39,6 @@
 - `c0edc50a` 2026-11-03 Docs: dispatch drives the Order's status merged (#598), migrations 20270527000000 and 20270528000000 applied (#599)
 - `5b37b88f` 2026-11-03 Orders: dispatch drives the Order's status, Confirmed Orders opens on Running (migration 20270528000000, apply first) (#598)
 - `10abb87b` 2026-11-03 Confirmed Orders: even spacing between the columns (#597)
-- `594daf93` 2026-11-03 Sales: the ten review fixes, and ClickUp's full history (migration 20270527000000, apply first) (#596)
-- `972413c3` 2026-11-03 Sales goes live: ClickUp import, Team page, Sales team tab, alerts (migrations 20270526000000 and 20270526000100, apply first) (#595)
-- `05e299ed` 2026-11-03 Sales: the Lead Board, My day, the board and the lead panel (migration 20270525000000, apply first) (#594)
 
 ## Pages by top-level area
 
@@ -175,6 +175,7 @@
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
 - `ANTHROPIC_API_KEY` (18 reads)
+- `BACKUP_RETRY_WAIT_MS` (1 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
 - `BOE_BACKUP_ROOT` (1 reads)
@@ -190,6 +191,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
 - `FAL_KEY` (6 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
+- `LOCALAPPDATA` (1 reads)
 - `META_ACCESS_TOKEN` (3 reads)
 - `META_AD_ACCOUNT_IDS` (4 reads)
 - `MINOP_ATTENDANCE_PROCESSING_ENABLED` (2 reads)
@@ -207,6 +209,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `SALES_CAPTURE_SECRET` (1 reads)
 - `SEO_INGEST_SECRET` (5 reads)
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
+- `STUB_BACKUP_RC` (1 reads)
+- `STUB_VERIFY_RC` (1 reads)
 - `SUPABASE_SERVICE_ROLE_KEY` (151 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)

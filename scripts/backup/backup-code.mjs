@@ -5,7 +5,7 @@
 //   node backup-code.mjs --no-github  full backup without the network fetch
 import fs from 'node:fs'
 import path from 'node:path'
-import { BACKUP_ROOT, DEV_ROOT, MAIN_REPO, MEMORY_DIR, HOME, ensureDir, encryptFile, git, gitTry, log, prune, sha256File, stamp, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, DEV_ROOT, MAIN_REPO, MEMORY_DIR, HOME, ensureDir, encryptFile, git, gitTry, log, mirrorGit, mirrorGitTry, prune, sha256File, stamp, writeStatus } from './lib.mjs'
 
 const quick = process.argv.includes('--quick')
 const noGithub = process.argv.includes('--no-github')
@@ -21,20 +21,20 @@ if (!fs.existsSync(path.join(mirror, 'HEAD'))) {
   ensureDir(mirror)
   git(mirror, 'init', '--bare', '--quiet')
 }
-for (const [k, v] of [['gc.auto', '0'], ['gc.pruneExpire', 'never'], ['gc.reflogExpire', 'never'], ['gc.reflogExpireUnreachable', 'never'], ['core.logAllRefUpdates', 'always']]) git(mirror, 'config', k, v)
+for (const [k, v] of [['gc.auto', '0'], ['gc.pruneExpire', 'never'], ['gc.reflogExpire', 'never'], ['gc.reflogExpireUnreachable', 'never'], ['core.logAllRefUpdates', 'always']]) mirrorGit(mirror, 'config', k, v)
 // Local view (includes branches that were never pushed, stashes, remote-tracking refs).
-let r = gitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/heads/*:refs/local/heads/*', '+refs/tags/*:refs/local/tags/*', '+refs/remotes/*:refs/local/remotes/*')
+let r = mirrorGitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/heads/*:refs/local/heads/*', '+refs/tags/*:refs/local/tags/*', '+refs/remotes/*:refs/local/remotes/*')
 if (!r.ok) throw new Error('mirror fetch from local repo failed: ' + r.err)
-gitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/stash:refs/local/stash') // absent when nothing is stashed
+mirrorGitTry(mirror, 'fetch', '--quiet', '--no-tags', common, '+refs/stash:refs/local/stash') // absent when nothing is stashed
 result.steps.mirrorLocal = 'ok'
 // GitHub view (heads, tags, and the head of every pull request, merged or not).
 if (!quick && !noGithub) {
-  r = gitTry(mirror, 'fetch', '--quiet', '--no-tags', 'https://github.com/nishantsoni7/boe-task-management.git',
+  r = mirrorGitTry(mirror, 'fetch', '--quiet', '--no-tags', 'https://github.com/nishantsoni7/boe-task-management.git',
     '+refs/heads/*:refs/github/heads/*', '+refs/tags/*:refs/github/tags/*', '+refs/pull/*/head:refs/github/pull/*')
   result.steps.mirrorGithub = r.ok ? 'ok' : 'FAILED: ' + r.err.split('\n').slice(-1)[0]
   if (!r.ok) log('WARNING: GitHub fetch failed —', r.err)
 }
-result.mirrorRefs = git(mirror, 'for-each-ref', '--format=%(refname)').split('\n').length
+result.mirrorRefs = mirrorGit(mirror, 'for-each-ref', '--format=%(refname)').split('\n').length
 
 if (!quick) {
   // 2 ── dated bundle (single portable file; restore with `git clone <bundle>`) ──
