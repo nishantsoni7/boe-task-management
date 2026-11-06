@@ -304,12 +304,18 @@ describe('the customer is derived, never entered', () => {
     const src = code(read(SHARED_FIELDS))
     assert.ok(src.includes('state.target.clientName'),
       'the chosen record confirms which customer it names')
-    // The only input in the block is the target SEARCH box — never a name.
+    // Two inputs, and only two: the target SEARCH box, and OldOrderField — the
+    // typed half of the OLD ORDER destination (20270607000000). An order that is
+    // not in the system has no record to read a customer from, so its client is
+    // typed, exactly as Allocate Funds asks for it. Every other destination still
+    // derives the customer from the record it names.
     const inputs = [...src.matchAll(/<input\b/g)]
-    assert.equal(inputs.length, 1, 'the destination block has exactly one input: the target search')
-    const tag = src.slice(src.indexOf('<input'), src.indexOf('<input') + 600)
-    assert.ok(tag.includes('runSearch'), 'and it is the search box')
-    assert.equal(/value=\{[^}]*clientName/.test(tag), false, 'the customer is never editable')
+    assert.equal(inputs.length, 2, 'the destination block has two inputs: OldOrderField and the target search')
+    assert.ok(src.indexOf('function OldOrderField') < src.indexOf('<input'),
+      'the first input belongs to the Old Order field')
+    const tag = src.slice(src.lastIndexOf('<input'), src.lastIndexOf('<input') + 600)
+    assert.ok(tag.includes('runSearch'), 'and the other is the search box')
+    assert.equal(/value=\{[^}]*clientName/.test(tag), false, 'the record\'s customer is never editable')
     // No <textarea> or <select> smuggles one in either.
     assert.equal(/<textarea|<select/.test(src), false)
   })
@@ -458,7 +464,7 @@ describe('choosing the record a payment is for', () => {
     assert.ok(src.includes('{kind && !state.target && ('),
       'no target picker is drawn when the destination has no target')
     // Switching destination CLEARS the target rather than carrying it across.
-    assert.ok(src.includes('return { destination, target: null }'))
+    assert.ok(src.includes('return { ...state, destination, target: null }'))
   })
 
   test('the Record Payment form refuses a Suspense entry that still holds rows', () => {
@@ -648,7 +654,9 @@ describe('what the forms cost to open and to submit', () => {
 
   test('reading a payment intent is a fixed cost, never one query per row', () => {
     const src = code(read('src/app/finance/paymentIntents.ts'))
-    assert.ok(src.includes('.limit(1)'), 'one intent, for one payment')
+    // The newest few intents of ONE payment: a correction that changes the target
+    // leaves a cancelled one behind, and the live one is picked from them.
+    assert.ok(src.includes('.limit(20)'), 'a bounded read of one payment\'s intents')
     const queries = [...src.matchAll(/\.from\('/g)]
     // 20270322000000: a payment recorded from a PI carries ALLOCATIONS, not an
     // intent, so loadPaymentAllocation reads them (limit 2: one, or 'split') and
@@ -716,7 +724,12 @@ describe('the retired workflows stay retired', () => {
 describe('what a refused submission tells the person', () => {
   const CASES: [string, RegExp][] = [
     ['FINANCE_MODULE_CLOSED: …',       /access to Finance/],
-    ['PAYMENT_DESTINATION_INVALID: …', /PI Draft, Confirmed Order or Suspense/],
+    ['PAYMENT_DESTINATION_INVALID: …', /PI Draft, Confirmed Order, Old Order or Suspense/],
+    ['PAYMENT_LEGACY_ORDER_REQUIRED: …',    /old order number/],
+    ['PAYMENT_LEGACY_ORDER_TOO_LONG: …',    /at most 60/],
+    ['PAYMENT_LEGACY_CLIENT_REQUIRED: …',   /client the old order belongs to/],
+    ['PAYMENT_LEGACY_CLIENT_TOO_LONG: …',   /at most 120/],
+    ['PAYMENT_LEGACY_FORBIDDEN: …',         /only to an Old Order request/],
     ['PAYMENT_TARGET_REQUIRED: …',     /Choose the PI Draft or Order/],
     ['PAYMENT_TARGET_FORBIDDEN: …',    /Suspense Entry names no/],
     ['PAYMENT_TARGET_CONVERTED: …',    /now an Order/],

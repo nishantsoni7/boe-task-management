@@ -135,7 +135,12 @@ describe('what the redesign must not have touched', () => {
 
   test('no customer name is sent: the server reads it from the chosen record', () => {
     const args = src.slice(src.indexOf('const args = {'), src.indexOf('const attempt = attemptRef.current'))
-    assert.equal(/client|customer/i.test(args), false)
+    // The ONE exception is an Old Order (20270607000000): there is no record to
+    // read a customer from, so its client is typed and sent as p_legacy_client_name,
+    // inside the spread that only an old_order request enters.
+    const oldOrder = args.slice(args.indexOf("...(entry.destination === 'old_order'"), args.indexOf('} : {}),') + '} : {}),'.length)
+    assert.ok(oldOrder.includes('p_legacy_client_name'), 'the typed old-order client travels in its own argument')
+    assert.equal(/client|customer/i.test(args.replace(oldOrder, '')), false)
   })
 
   test('the unsaved-work guard still stands in front of Cancel and the close button', () => {

@@ -14,7 +14,8 @@ import { ProofReferenceField, ProofReferenceSection } from './components/ProofRe
 import { ProofDropZone } from './components/ProofDropZone'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import { compressImageFile } from '@/lib/attachment-utils'
-import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type PaymentDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
+import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type RequestDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
+import { legacyRequestProblems, normalizeLegacyClientName, normalizeLegacyOrderNo } from '@/lib/finance/legacyOrderAllocation'
 import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { loadPaymentAllocation, loadPaymentIntent, type StoredAllocation } from './paymentIntents'
@@ -23,6 +24,10 @@ import { ErrorBanner } from './paymentRequestsAtoms'
 import { PaymentCashLockNotice, usePaymentCashLock } from '@/components/finance/PaymentCashLockNotice'
 
 // ── Edit Payment modal (creator only) ────────────────────────────────────────
+
+// The two typed facts of an Old Order request as one comparable value.
+const legacyKey = (l: { orderNo?: string | null; clientName?: string | null } | undefined) =>
+  `${normalizeLegacyOrderNo(l?.orderNo)}|${normalizeLegacyClientName(l?.clientName)}`
 
 export type EditPaymentModalProps = {
   request: PaymentRequest
@@ -70,6 +75,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
 
   const loadedDestination = useRef<PaymentEntryDestination | null>(null)
   const loadedTargetId    = useRef<string | undefined>(undefined)
+  const loadedLegacy      = useRef('')
 
   useEffect(() => {
     let active = true
@@ -94,9 +100,18 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
         }
       }
       loadedDestination.current = found ? found.targetType : 'suspense'
-      loadedTargetId.current    = found ? found.targetId : undefined
+      loadedTargetId.current    = found && found.targetType !== 'old_order' ? found.targetId : undefined
+      loadedLegacy.current      = found?.targetType === 'old_order'
+        ? legacyKey({ orderNo: found.legacyOrderNo, clientName: found.legacyClientName })
+        : ''
       setEntry(found
-        ? {
+        ? found.targetType === 'old_order'
+          ? {
+              destination: 'old_order',
+              target: null,
+              legacy: { orderNo: found.legacyOrderNo ?? '', clientName: found.legacyClientName ?? '' },
+            }
+          : {
             destination: found.targetType,
             target: {
               id: found.targetId,
@@ -169,7 +184,8 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     paymentMode !== r.payment_mode ||
     attachFile !== null ||
     (entry !== null && (entry.destination !== loadedDestination.current
-      || entry.target?.id !== loadedTargetId.current))
+      || entry.target?.id !== loadedTargetId.current
+      || (entry.destination === 'old_order' && legacyKey(entry.legacy) !== loadedLegacy.current)))
 
   const guard = useDiscardGuard({ isDirty, onClose: stale || recorded ? onSaved : onClose, disabled: saving })
 
@@ -193,6 +209,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
         ? 'Choose which PI Draft this payment is for.'
         : 'Choose which Confirmed Order this payment is for.')
     : null
+  const legacyProblems = showProblems && entry?.destination === 'old_order' ? legacyRequestProblems(entry.legacy) : null
   const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
   const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
 
@@ -201,7 +218,9 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
     paymentModeLabel(paymentMode),
     entry?.target
       ? `${entry.target.reference} · ${entry.target.clientName}`
-      : entry?.destination === 'suspense' ? 'Suspense Entry' : null,
+      : entry?.destination === 'suspense' ? 'Suspense Entry'
+      : entry?.destination === 'old_order' && entry.legacy?.orderNo.trim()
+        ? `Old order ${normalizeLegacyOrderNo(entry.legacy.orderNo)}` : null,
   ].filter(Boolean).join(' · ')
 
   // SAVE IS NEVER GREYED OUT BY AN UNFINISHED FORM. It names what is missing and
@@ -273,6 +292,11 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
       p_proof_note:      form.proofNote.trim() || null,
       p_sales_note:      form.salesNote.trim() || null,
       p_custody_events:  custodyEvents,
+      // Sent only for an Old Order (20270607000000).
+      ...(entry.destination === 'old_order' ? {
+        p_legacy_order_no:    normalizeLegacyOrderNo(entry.legacy?.orderNo),
+        p_legacy_client_name: normalizeLegacyClientName(entry.legacy?.clientName),
+      } : {}),
     })
 
     if (rpcError || !data) {
@@ -432,6 +456,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
             onSearch={searchTargets}
             disabled={saving}
             problem={targetProblem}
+            legacyProblems={legacyProblems}
           />
         )}
       </FormStep>

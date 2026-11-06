@@ -27,17 +27,20 @@
 // nobody may change it from a browser.
 
 import type { createClient } from '@/lib/supabase/client'
-import { PAYMENT_DESTINATION_LABEL, type PaymentDestination } from '@/lib/finance/paymentEntry'
+import { REQUEST_DESTINATION_LABEL, type PaymentDestination, type RequestDestination } from '@/lib/finance/paymentEntry'
 
 export type IntentStatus = 'pending' | 'applied' | 'cancelled'
 
 export type StoredIntent = {
   id: string
-  /** 'pi_draft' or 'confirmed_order'. Suspense creates no intent at all. */
-  targetType: Extract<PaymentDestination, 'pi_draft' | 'confirmed_order'>
+  /** 'pi_draft', 'confirmed_order' or 'old_order'. Suspense creates no intent at all. */
+  targetType: Extract<RequestDestination, 'pi_draft' | 'confirmed_order' | 'old_order'>
   status: IntentStatus
-  /** The PI Draft or the Order this intent names. */
+  /** The PI Draft or the Order this intent names. Empty for an old order. */
   targetId: string
+  /** The two typed facts of an OLD-order intent (20270607000000); null otherwise. */
+  legacyOrderNo: string | null
+  legacyClientName: string | null
   intendedAmount: number
   /**
    * How the target identifies itself: an Order's number, or a PI's own source
@@ -61,8 +64,8 @@ export const INTENT_STATUS_LABEL: Record<IntentStatus, string> = {
  * and not a missing one, so it is named rather than left blank.
  */
 export function intentDestinationLabel(intent: StoredIntent | null): string {
-  if (!intent) return PAYMENT_DESTINATION_LABEL.suspense
-  return PAYMENT_DESTINATION_LABEL[intent.targetType]
+  if (!intent) return REQUEST_DESTINATION_LABEL.suspense
+  return REQUEST_DESTINATION_LABEL[intent.targetType]
 }
 
 /** How the chosen record is written down, or what to say when it cannot be read. */
@@ -156,26 +159,35 @@ export async function loadPaymentIntent(
 ): Promise<StoredIntent | null> {
   const { data } = await supabase
     .from('finance_payment_allocation_intents')
-    .select('id, target_type, order_submission_id, order_id, intended_amount, status')
+    .select('id, target_type, order_submission_id, order_id, legacy_order_no, legacy_client_name, intended_amount, status')
     .eq('payment_request_id', paymentRequestId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+    .order('created_at', { ascending: false })
+    .limit(20)
 
-  if (!data) return null
-
-  const row = data as {
+  // THE LIVE INTENT IF THERE IS ONE, otherwise the newest. A correction that
+  // changes the target cancels the old intent and places a new one, so a payment
+  // can carry several; reading the OLDEST would reopen a corrected request on the
+  // record it had been moved away from.
+  const rows = (data ?? []) as {
     id: string
     target_type: string
     order_submission_id: string | null
     order_id: string | null
+    legacy_order_no: string | null
+    legacy_client_name: string | null
     intended_amount: number | string
     status: string
-  }
-  const targetType = row.target_type === 'pi_draft' ? 'pi_draft' : 'confirmed_order'
+  }[]
+  const row = rows.find(r => r.status === 'pending') ?? rows[0]
+  if (!row) return null
+  const targetType = row.target_type === 'legacy_order'
+    ? 'old_order'
+    : row.target_type === 'pi_draft' ? 'pi_draft' : 'confirmed_order'
 
   let reference: string | null = null
-  if (targetType === 'confirmed_order' && row.order_id) {
+  if (targetType === 'old_order') {
+    reference = row.legacy_order_no
+  } else if (targetType === 'confirmed_order' && row.order_id) {
     // Through finance_order_lookup(): the pre-scope rule, never an Order visibility scope (20270221000000).
     const { data: o } = await supabase.rpc('finance_order_lookup', { p_ids: [row.order_id] })
     reference = ((o as { display_number?: string }[] | null) ?? [])[0]?.display_number ?? null
@@ -196,6 +208,8 @@ export async function loadPaymentIntent(
     id: row.id,
     targetType,
     targetId: (targetType === 'pi_draft' ? row.order_submission_id : row.order_id) ?? '',
+    legacyOrderNo: row.legacy_order_no,
+    legacyClientName: row.legacy_client_name,
     status: (['pending', 'applied', 'cancelled'] as const).includes(row.status as IntentStatus)
       ? (row.status as IntentStatus)
       : 'pending',

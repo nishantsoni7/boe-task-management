@@ -14,6 +14,7 @@ import { useDialogFocus, useModalScrollLock, FINANCE_MODAL_OVERLAY_Z, FINANCE_MO
 import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
 import { EMPTY_PAYMENT_ENTRY, PaymentEntryFields, isPaymentEntryComplete, type PaymentEntryState, type PaymentEntryTarget } from './components/PaymentEntryFields'
 import { HandoverAfterSaveNotice, WhereIsMoneyNowField, handOverAfterRecording } from '@/components/finance/WhereIsMoneyNowField'
+import { legacyRequestProblems, normalizeLegacyClientName, normalizeLegacyOrderNo } from '@/lib/finance/legacyOrderAllocation'
 import { PaymentModeHint } from './components/PaymentModeHint'
 import { FieldProblem, FormStep, OptionalDisclosure, PaymentModePicker, QuickDateField } from './components/PaymentFormParts'
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
@@ -161,6 +162,7 @@ export function NewPaymentConfirmationModal({
     form.paymentMode !== EMPTY_FORM.paymentMode ||
     entry.destination !== EMPTY_PAYMENT_ENTRY.destination ||
     entry.target !== null ||
+    !!(entry.legacy?.orderNo.trim() || entry.legacy?.clientName.trim()) ||
     moneyNow.choice !== 'with_me' ||
     attachFile !== null
 
@@ -175,6 +177,7 @@ export function NewPaymentConfirmationModal({
         ? 'Choose which PI Draft this payment is for.'
         : 'Choose which Confirmed Order this payment is for.')
     : null
+  const legacyProblems = showProblems && entry.destination === 'old_order' ? legacyRequestProblems(entry.legacy) : null
   const amountProblem = showProblems && form.amount.trim() === '' ? 'Enter the amount received.' : null
   const dateProblem = showProblems && !form.paymentDate ? 'Pick the date it was paid.' : null
 
@@ -286,6 +289,12 @@ export function NewPaymentConfirmationModal({
       p_proof_note:      form.proofNote.trim() || null,
       p_sales_note:      form.salesNote.trim() || null,
       p_custody_events:  custodyEvents,
+      // THE ONE DESTINATION THAT TYPES ITS TARGET (20270607000000). Sent only
+      // for an Old Order, so every other request is byte-for-byte what it was.
+      ...(entry.destination === 'old_order' ? {
+        p_legacy_order_no:    normalizeLegacyOrderNo(entry.legacy?.orderNo),
+        p_legacy_client_name: normalizeLegacyClientName(entry.legacy?.clientName),
+      } : {}),
     }
     const attempt = attemptRef.current!
     const { data, error: rpcError } = await supabase.rpc('submit_payment_request', {
@@ -444,6 +453,7 @@ export function NewPaymentConfirmationModal({
               initialQuery={initialClientName}
               autoFocusSearch
               problem={targetProblem}
+              legacyProblems={legacyProblems}
             />
           </FormStep>
 
