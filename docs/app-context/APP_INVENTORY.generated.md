@@ -5,16 +5,20 @@
 
 ## Snapshot
 
-- Commit: `d4a6e258` — Payment Request: an Old Order destination (migration 20270607000000, apply first)
-- Commits on this branch: 1193
+- Commit: `7bf6eeeb` — Merge remote-tracking branch 'origin/main' into feat/payment-request-old-order
+- Commits on this branch: 1197
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
-- Migrations: 422 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
+- Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 951   Enums: 0
-- Test files: 769   Next.js 16.2.6, React 19.2.4
+- Test files: 771   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `7bf6eeeb` 2026-11-06 Merge remote-tracking branch 'origin/main' into feat/payment-request-old-order
 - `d4a6e258` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first)
+- `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
+- `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
+- `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
@@ -35,10 +39,6 @@
 - `d3c61d98` 2026-11-04 Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
 - `25d06f7e` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
 - `bed54928` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
-- `88afd4f2` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
-- `a574e82a` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
-- `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
-- `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
 
 ## Pages by top-level area
 
@@ -158,7 +158,7 @@
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/salesLeads` — 11 source, 9 test
+- `src/lib/salesLeads` — 12 source, 11 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
@@ -449,7 +449,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270514000000_finance_bank_line_review.sql`
 - `20270515000000_register_sales_marketing_pricing_modules.sql`
 - `20270516000000_finance_bank_proof_before_verify.sql`
 - `20270516000100_finance_bank_old_routes_closed.sql`
@@ -478,6 +477,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
 - `20270605000000_boe_credits_open_months_follow_target.sql`
+- `20270606000000_sales_lead_master_date_range.sql`
 - `20270607000000_finance_payment_request_old_order.sql`
 
 ## All SQL function names

@@ -1230,6 +1230,8 @@ describe('the applied migrations are frozen', () => {
       '20270604000000_payroll_results_half_paid_leave.sql',
       // BOE Credits, a review month that is still open follows the saved monthly target: two functions replaced, one added, one trigger.
       '20270605000000_boe_credits_open_months_follow_target.sql',
+      // Sales, the Lead Master list can be cut to a day or a range of days: one read-only function replaced.
+      '20270606000000_sales_lead_master_date_range.sql',
       '20270607000000_finance_payment_request_old_order.sql',
     ])
   })
@@ -1712,6 +1714,8 @@ describe('the applied migrations are frozen', () => {
       '20270604000000_payroll_results_half_paid_leave.sql',
       // BOE Credits, a review month that is still open follows the saved monthly target: two functions replaced, one added, one trigger.
       '20270605000000_boe_credits_open_months_follow_target.sql',
+      // Sales, the Lead Master list can be cut to a day or a range of days: one read-only function replaced.
+      '20270606000000_sales_lead_master_date_range.sql',
       '20270607000000_finance_payment_request_old_order.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been

@@ -48,7 +48,7 @@ describe('what the database says, in words a person can act on', () => {
 describe('the calls', () => {
   test('the list: nothing chosen means everyone, every source, no search', async () => {
     const { supabase, calls } = fake({ data: { rows: [] } })
-    await fetchLeadPage(supabase, { period: 'today', holder: '', source: '', q: '', limit: 50, offset: 0 })
+    await fetchLeadPage(supabase, { period: 'today', from: '', to: '', holder: '', source: '', q: '', limit: 50, offset: 0 })
     assert.deepEqual(calls, [{
       fn: 'sales_leads_page',
       args: { p_period: 'today', p_holder: 'all', p_source: null, p_q: null, p_limit: 50, p_offset: 0 },
@@ -56,8 +56,20 @@ describe('the calls', () => {
   })
   test('the list: a person, a source and a search go through as they are', async () => {
     const { supabase, calls } = fake({ data: { rows: [] } })
-    await fetchLeadPage(supabase, { period: 'month', holder: 'none', source: 'website', q: '98765', limit: 50, offset: 100 })
+    await fetchLeadPage(supabase, { period: 'month', from: '', to: '', holder: 'none', source: 'website', q: '98765', limit: 50, offset: 100 })
     assert.deepEqual(calls[0].args, { p_period: 'month', p_holder: 'none', p_source: 'website', p_q: '98765', p_limit: 50, p_offset: 100 })
+  })
+  test('the list: chosen days are sent, a missing side as nothing; with no days the call is the one every database version knows', async () => {
+    const { supabase, calls } = fake({ data: { rows: [] } })
+    const base = { period: 'all' as const, holder: '', source: '', q: '', limit: 50, offset: 0 }
+    await fetchLeadPage(supabase, { ...base, from: '2026-11-01', to: '2026-11-05' })
+    await fetchLeadPage(supabase, { ...base, from: '2026-11-01', to: '' })
+    await fetchLeadPage(supabase, { ...base, from: '', to: '2026-11-05' })
+    await fetchLeadPage(supabase, { ...base, from: '', to: '' })
+    assert.equal(calls[0].args.p_from, '2026-11-01'); assert.equal(calls[0].args.p_to, '2026-11-05')
+    assert.equal(calls[1].args.p_from, '2026-11-01'); assert.equal(calls[1].args.p_to, null)
+    assert.equal(calls[2].args.p_from, null); assert.equal(calls[2].args.p_to, '2026-11-05')
+    assert.ok(!('p_from' in calls[3].args) && !('p_to' in calls[3].args), 'no days: neither argument is sent')
   })
   test('adding a lead sends a blank optional field as nothing', async () => {
     const { supabase, calls } = fake({ data: { status: 'created' } })

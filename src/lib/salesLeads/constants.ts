@@ -28,6 +28,7 @@ export function sourceLabel(value: string): string {
 /** The period cards. The database counts them all at once and ignores every other filter. */
 export const PERIODS = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'week', label: 'Last 7 days' },
   { key: 'month', label: 'Last 30 days' },
   { key: 'all', label: 'All time' },

@@ -44,10 +44,8 @@ function latestFunction(name: string): string {
 }
 
 describe('where the migration sits', () => {
+  // Not "the newest migration": any later migration (another module's) would break that for no reason.
   test('it is the newest credits migration', () => {
-    // Not "the newest migration": every later migration of any module would
-    // break that, and nothing here depends on it.
-    assert.ok(allFiles.includes(FILE))
     const credits = allFiles.filter(f => /credit/i.test(f))
     assert.equal(credits[credits.length - 1], FILE)
   })

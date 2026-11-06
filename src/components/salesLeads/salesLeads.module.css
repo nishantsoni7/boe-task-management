@@ -12,8 +12,8 @@
 .add { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; font-size: 13px; text-decoration: none; }
 .add svg { width: 15px; height: 15px; }
 
-.whoBar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #ECE7E0; overflow-x: auto; scrollbar-width: none; }
-.whoBar::-webkit-scrollbar { display: none; }
+/* Everyone, Not allotted and the Person button: three controls, so the row neither scrolls nor clips the person panel. */
+.whoBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #ECE7E0; }
 .whoLabel { font-size: 12px; color: #686D6C; margin-right: 4px; white-space: nowrap; }
 .who {
   height: 32px; padding: 0 12px 0 8px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff;
@@ -222,8 +222,12 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
   /* The search box and the Filter button share one row (Phase 1 gives the search the whole row). */
   .wrap :global(.fin-tools) { flex-wrap: nowrap; }
   .wrap :global(.fin-tools .boe-list-search) { flex: 1 1 0; min-width: 0; }
-  .whoBar { padding: 8px 12px; gap: 8px; }
-  .who { height: 40px; font-size: 13px; }
+  .whoBar { padding: 8px 12px; gap: 8px; flex-wrap: nowrap; }
+  .who { height: 40px; font-size: 13px; padding: 0 10px 0 8px; gap: 6px; }
+  .whoAll { padding-left: 10px; }
+  /* The chosen person's name gives way ("Mohit Sh…") before the row can run off the screen. */
+  .whoBar :global(.fin-chip) { min-width: 0; }
+  .whoBar :global(.fin-chip > summary) { height: 40px; padding: 0 10px; gap: 6px; max-width: 100%; box-sizing: border-box; }
 }
 
 /* ── PHONES, CONTENT FIRST (Phase 4): Add lead ─────────────────────────────
@@ -243,4 +247,57 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
     position: fixed; left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 30; border-radius: 0;
     padding: 10px 16px; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
   }
+}
+
+/* ── Date filter and the compact "Allotted to" (2026-11-06) ────────────────────────────────────────────────────
+   Five period cards across (the shared .fin-stats rule has four columns), three on a tablet; a phone keeps the
+   shared sideways row of chips. The dates button and the Person button are the shared .fin-chip (globals.css), so
+   these rules only lay out what is inside their panels. */
+.wrap .periodCards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .wrap .periodCards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.panelLabel { font-size: 12px; font-weight: 600; color: #686D6C; }
+.panelNote { font-size: 12px; color: #8F9392; }
+.rangeBody { width: 320px; max-width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.quickRow { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick {
+  height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff;
+  font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer;
+}
+.quick:hover { background: #FAF8F5; }
+.quick[aria-pressed="true"] { border-color: #303536; background: #F3F0EB; color: #303536; }
+.dateGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dateField { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #686D6C; min-width: 0; }
+.dateField input { width: 100%; box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 8px; font-size: 13px; }
+.panelFoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid #ECE7E0; }
+.panelFoot :global(.boe-btn) { white-space: nowrap; height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* Person panel: every name as one button, two across, the count on the right; a name with no leads in the days fades. */
+.peopleGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 400px; max-width: 100%; }
+.person {
+  height: 36px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid #ECE7E0; background: #fff;
+  font: 500 12.5px var(--boe-font-body); color: #303536; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; text-align: left; min-width: 0;
+}
+.personName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.person:hover { background: #FAF8F5; border-color: #CFC8BF; }
+.person .count { margin-left: auto; font-variant-numeric: tabular-nums; color: #8F9392; font-weight: 500; }
+.person[aria-pressed="true"] { border-color: #303536; background: #F3F0EB; }
+.personZero { color: #8F9392; }
+.personZero :global(.fin-avatar) { opacity: .6; }
+
+/* The Person button, once somebody is chosen, carries the avatar, the name and the count. */
+.whoBar :global(.fin-chip > summary) :global(.fin-avatar) { width: 20px; height: 20px; font-size: 9.5px; }
+.whoBar :global(.fin-chip > summary) .count { font-variant-numeric: tabular-nums; color: #4C5352; font-weight: 500; }
+.whoBar :global(.fin-chip > summary) { gap: 8px; }
+.chipName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.phoneOnly { display: none; }
+.rangeChip { align-items: center; }
+@media (max-width: 767px) {
+  .phoneOnly { display: flex; }
+  .rangeChip svg { color: #fff; flex-shrink: 0; }
+  .peopleGrid { width: auto; grid-template-columns: 1fr; gap: 8px; }
+  .person { height: 48px; font-size: 14px; }
+  .sheetDates { margin-top: 10px; }
 }

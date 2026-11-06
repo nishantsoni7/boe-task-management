@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { AllotPicker, ConfirmChange, Holder } from './AllotParts'
 import { eventBy, eventLine } from './LeadBits'
+import { DatesChip, DatesFields, PersonChip } from './LeadFilters'
 import { DupCallout } from './LeadFields'
 import { LeadTable } from './LeadTable'
 import type { LeadEvent, Person, SalesLead } from '@/lib/salesLeads/api'
@@ -241,9 +242,35 @@ describe('the routes', () => {
 
   test('a search looks through every day, and the period cards say they are not in use while it does', () => {
     const screen = read('src/components/salesLeads/LeadMasterScreen.tsx')
-    assert.ok(screen.includes("const period: Period = searching ? 'all' : state.period"))
-    assert.ok(screen.includes('aria-pressed={!searching && state.period === p.key}'))
+    assert.ok(screen.includes('const when = leadWhen(state.period, days, today, searching)'))
+    assert.ok(screen.includes('aria-pressed={!searching && !rangeOn && state.period === p.key}'), 'a card is lit only while no days are chosen')
     assert.ok(screen.includes('A search looks through every day.'))
+  })
+
+  test('the list is cut by what leadWhen says and by nothing else, and pressing a card drops chosen days', () => {
+    const screen = read('src/components/salesLeads/LeadMasterScreen.tsx')
+    assert.ok(screen.includes("queryKey: [SALES_KEY, 'list', when.period, when.from, when.to, state.holder, state.source, state.q]"), 'a new range is a new list')
+    assert.ok(screen.includes('period: when.period, from: when.from, to: when.to,'))
+    assert.ok(screen.includes('setState({ period: p.key, ...NO_DAYS })'))
+    assert.ok(screen.includes('from: dateParam(),') && screen.includes('to: dateParam(),'), 'the days live in the URL as real dates')
+  })
+
+  test('a phone gets the dates inside the Filter sheet and, once chosen, as the first chip of the cards', () => {
+    const screen = read('src/components/salesLeads/LeadMasterScreen.tsx')
+    assert.ok(screen.includes("id: 'received', label: 'Received on'"))
+    assert.ok(screen.includes('<DatesChip className={s.phoneHide}'), 'the desktop button is hidden on a phone')
+    assert.ok(screen.includes('activeCount={(state.source ? 1 : 0) + (rangeOn ? 1 : 0)}'))
+    assert.ok(screen.includes("onClearAll={() => setState({ source: '', ...NO_DAYS })}"))
+    assert.ok(screen.includes('className={`fin-stat ${s.rangeChip} ${s.phoneOnly}`}'))
+  })
+
+  test('the Allotted to row is Everyone, Not allotted and one Person button, never a chip per person', () => {
+    const screen = read('src/components/salesLeads/LeadMasterScreen.tsx')
+    assert.ok(screen.includes('<PersonChip people={chips} holder={state.holder}'))
+    assert.ok(!screen.includes('chips.map('), 'one chip per person is what filled the row')
+    const css = read('src/components/salesLeads/salesLeads.module.css')
+    const whoBar = /\.whoBar \{[^}]*\}/.exec(css)?.[0] ?? ''
+    assert.ok(whoBar.includes('flex-wrap: wrap') && !whoBar.includes('overflow'), 'a scrolling row would clip the person panel')
   })
 
   test('an edit carries the version it started from, and Add/edit look again when a number turns out to be taken', () => {
@@ -262,5 +289,86 @@ describe('the routes', () => {
     assert.ok(launcher.includes("canOpenModule('sales')"))
     assert.ok(launcher.includes("description: 'Sales: the Lead Master, every lead and who holds it.'"))
     assert.ok(read('src/components/layout/SalesLayout.tsx').includes("const BASE = '/sales'"))
+  })
+})
+
+describe('the dates button', () => {
+  const TODAY = '2026-11-06'
+  const chip = (days: { from: string; to: string }, active = true) =>
+    renderToStaticMarkup(<DatesChip days={days} today={TODAY} active={active} onChange={() => {}} />)
+
+  test('until days are chosen it says Custom dates, is not lit, and has nothing to clear', () => {
+    const html = chip({ from: '', to: '' })
+    assert.ok(html.includes('Custom dates'))
+    assert.ok(html.includes('class="fin-chip"'))
+    assert.match(html, /<button[^>]*disabled=""[^>]*>Clear dates<\/button>/)
+  })
+
+  test('chosen days are on the button, lit, and in the two boxes, which cannot pass today or each other', () => {
+    const html = chip({ from: '2026-11-01', to: '2026-11-05' })
+    assert.ok(html.includes('1 Nov – 5 Nov 2026'))
+    assert.ok(html.includes('class="fin-chip is-set"'))
+    const input = (label: string) => new RegExp(`<input[^>]*aria-label="${label}"[^>]*/>`).exec(html)?.[0] ?? ''
+    const from = input('Received on or after'), to = input('Received on or before')
+    assert.ok(from.includes('value="2026-11-01"') && from.includes('max="2026-11-05"'), from)
+    assert.ok(to.includes('value="2026-11-05"') && to.includes('min="2026-11-01"') && to.includes('max="2026-11-06"'), to)
+    assert.ok(!/<button[^>]*disabled=""[^>]*>Clear dates/.test(html))
+  })
+
+  test('a whole month is named, and its quick pick is pressed', () => {
+    const html = chip({ from: '2026-10-01', to: '2026-10-31' })
+    assert.ok(html.includes('Last month'))
+    assert.match(html, /aria-pressed="true"[^>]*>Last month<\/button>/)
+    assert.match(html, /aria-pressed="false"[^>]*>This month<\/button>/)
+  })
+
+  test('while a search is on the days are kept but the button is not lit (the search ignores them)', () => {
+    const html = chip({ from: '2026-11-01', to: '2026-11-05' }, false)
+    assert.ok(html.includes('1 Nov – 5 Nov 2026'))
+    assert.ok(html.includes('class="fin-chip"') && !html.includes('is-set'))
+  })
+
+  test('the phone sheet draws the same boxes with the quick picks as pills', () => {
+    const html = renderToStaticMarkup(<DatesFields variant="sheet" days={{ from: '', to: '' }} today={TODAY} onChange={() => {}} />)
+    assert.ok(html.includes('orders-sheet-options') && html.includes('This month') && html.includes('Last month'))
+    assert.ok(html.includes('Received on or after') && html.includes('Received on or before'))
+    assert.ok(!html.includes('Quick picks'), 'the sheet already has its own heading')
+  })
+})
+
+describe('the person button', () => {
+  const PEOPLE_N = [
+    { id: 'p1', name: 'Ashok Choudhary', n: 6 }, { id: 'p2', name: 'Dhruv', n: 0 }, { id: 'p3', name: 'Mohit Sharma', n: 7 },
+  ]
+  test('with nobody chosen it says Person and lists everybody with their count, a name with none faded', () => {
+    const html = renderToStaticMarkup(<PersonChip people={PEOPLE_N} holder="" onPick={() => {}} />)
+    assert.ok(html.includes('>Person</summary>') || html.includes('Person</summary>'))
+    assert.ok(html.includes('class="fin-chip"'))
+    for (const p of PEOPLE_N) assert.ok(html.includes(p.name))
+    assert.equal((html.match(/personZero/g) ?? []).length, 1)
+    assert.match(html, /<span class="personName">Mohit Sharma<\/span><span class="count">7<\/span>/)
+  })
+
+  test('a chosen person is on the button with their count, lit, and pressed in the list', () => {
+    const html = renderToStaticMarkup(<PersonChip people={PEOPLE_N} holder="p3" onPick={() => {}} />)
+    assert.ok(html.includes('class="fin-chip is-set"'))
+    assert.match(html, /<summary>.*MS.*<span class="chipName">Mohit Sharma<\/span><span class="count">7<\/span><\/summary>/)
+    assert.match(html, /aria-pressed="true"[^>]*><span class="fin-avatar"[^>]*>MS<\/span>/)
+  })
+
+  test('Not allotted and Everyone have their own chips: they do not light this button', () => {
+    for (const holder of ['', 'none']) {
+      const html = renderToStaticMarkup(<PersonChip people={PEOPLE_N} holder={holder} onPick={() => {}} />)
+      assert.ok(!html.includes('is-set'), `holder "${holder}"`)
+    }
+  })
+
+  test('a person the list no longer knows still lights the button instead of leaving the filter invisible', () => {
+    const html = renderToStaticMarkup(<PersonChip people={PEOPLE_N} holder="gone" onPick={() => {}} />)
+    assert.ok(html.includes('is-set') && html.includes('This person'))
+  })
+
+  test('nobody to choose yet says so', () => {
+    assert.ok(renderToStaticMarkup(<PersonChip people={[]} holder="" onPick={() => {}} />).includes('Nobody to choose yet.'))
   })
 })
