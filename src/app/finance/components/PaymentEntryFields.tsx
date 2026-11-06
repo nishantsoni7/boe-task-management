@@ -19,20 +19,31 @@
 import { useId, useRef, useState } from 'react'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { colors } from '@/lib/tokens'
-import { FileText, PackageCheck, Wallet, Search, Check, type LucideIcon } from 'lucide-react'
+import { Archive, FileText, PackageCheck, Wallet, Search, Check, type LucideIcon } from 'lucide-react'
 import {
+  OLD_ORDER_NOTICE,
   PAYMENT_DESTINATION_OPTIONS,
+  REQUEST_DESTINATION_OPTIONS,
   SUSPENSE_NOTICE,
   destinationNeedsTarget,
   destinationTargetKind,
+  type DestinationIconKey,
+  type DestinationOption,
   type PaymentDestination,
+  type RequestDestination,
 } from '@/lib/finance/paymentEntry'
+import {
+  LEGACY_CLIENT_NAME_MAX,
+  LEGACY_ORDER_NO_MAX,
+  isLegacyRequestComplete,
+} from '@/lib/finance/legacyOrderAllocation'
 
 /** Resolved from the pure module's iconKey so the mapping lives in one place. */
-const DESTINATION_ICON: Record<'file-text' | 'package-check' | 'wallet', LucideIcon> = {
+const DESTINATION_ICON: Record<DestinationIconKey, LucideIcon> = {
   'file-text':     FileText,
   'package-check': PackageCheck,
   'wallet':        Wallet,
+  'archive':       Archive,
 }
 
 export type PaymentEntryTarget = {
@@ -44,12 +55,19 @@ export type PaymentEntryTarget = {
   totalValue?: number | null
 }
 
+/** The two typed facts of an Old Order request. Meaningful only for that destination. */
+export type LegacyEntry = { orderNo: string; clientName: string }
+
 export type PaymentEntryState = {
-  destination: PaymentDestination
+  destination: RequestDestination
   target: PaymentEntryTarget | null
+  /** Absent means empty. Kept when the destination changes, so a slip of the mouse loses nothing. */
+  legacy?: LegacyEntry
 }
 
-export const EMPTY_PAYMENT_ENTRY: PaymentEntryState = {
+// A form that opens before anything is chosen opens on one of the three
+// destinations both forms share; Old Order is something a person picks.
+export const EMPTY_PAYMENT_ENTRY: PaymentEntryState & { destination: PaymentDestination } = {
   destination: 'pi_draft',
   target: null,
 }
@@ -65,14 +83,15 @@ export const EMPTY_PAYMENT_ENTRY: PaymentEntryState = {
  */
 export function switchDestination(
   state: PaymentEntryState,
-  destination: PaymentDestination,
+  destination: RequestDestination,
 ): PaymentEntryState {
   if (state.destination === destination) return state
-  return { destination, target: null }
+  return { ...state, destination, target: null }
 }
 
 /** Is the destination half answered? */
 export function isPaymentEntryComplete(state: PaymentEntryState): boolean {
+  if (state.destination === 'old_order') return isLegacyRequestComplete(state.legacy)
   return destinationNeedsTarget(state.destination) ? state.target !== null : true
 }
 
@@ -81,7 +100,7 @@ export function isPaymentEntryComplete(state: PaymentEntryState): boolean {
 function DestinationCard({
   option, selected, onSelect,
 }: {
-  option: typeof PAYMENT_DESTINATION_OPTIONS[number]
+  option: DestinationOption
   selected: boolean
   onSelect: () => void
 }) {
@@ -126,28 +145,79 @@ function DestinationCard({
  * would be the drift this whole module exists to end. So the question is
  * shared and the answer's shape is not.
  */
-export function DestinationCards({
-  value, onChange, disabled,
+export function DestinationCards<D extends RequestDestination = PaymentDestination>({
+  value, onChange, disabled, options,
 }: {
-  value: PaymentDestination
-  onChange: (next: PaymentDestination) => void
+  value: D
+  onChange: (next: D) => void
   disabled?: boolean
+  /** The cards to draw: the three both forms share unless a form says otherwise. */
+  options?: readonly DestinationOption[]
 }) {
   const groupId = useId()
+  const list: readonly DestinationOption[] = options ?? PAYMENT_DESTINATION_OPTIONS
+  // Four cards sit two by two (one column on a phone); three keep their row.
+  const grid = list.length > 3
   return (
     <div role="radiogroup" aria-labelledby={groupId}
-         style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+         style={grid
+           ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }
+           : { display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
       <span id={groupId} style={{
         position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)',
       }}>Where should this payment go?</span>
-      {PAYMENT_DESTINATION_OPTIONS.map(option => (
+      {list.map(option => (
         <DestinationCard
           key={option.value}
           option={option}
           selected={value === option.value}
-          onSelect={() => !disabled && onChange(option.value)}
+          onSelect={() => !disabled && onChange(option.value as D)}
         />
       ))}
+    </div>
+  )
+}
+
+// ── The typed half of an Old Order request ──────────────────────────────────
+
+function OldOrderField({
+  id, label, placeholder, value, max, problem, disabled, autoFocus, onChange,
+}: {
+  id: string
+  label: string
+  placeholder: string
+  value: string
+  max: number
+  problem: string | null
+  disabled?: boolean
+  autoFocus?: boolean
+  onChange: (next: string) => void
+}) {
+  return (
+    <div>
+      <label htmlFor={id} style={{
+        fontSize: '12px', fontWeight: 500, color: colors.muted, display: 'block', marginBottom: '6px',
+      }}>
+        {label}
+        <span aria-hidden="true" style={{ color: colors.red }}> *</span>
+      </label>
+      <input
+        id={id}
+        className="boe-input"
+        value={value}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        maxLength={max}
+        aria-invalid={problem ? true : undefined}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ width: '100%' }}
+      />
+      {problem && (
+        <p role="alert" style={{ margin: '4px 0 0', fontSize: '12px', color: colors.red, lineHeight: 1.4 }}>
+          {problem}
+        </p>
+      )}
     </div>
   )
 }
@@ -155,7 +225,7 @@ export function DestinationCards({
 // ── The whole block ──────────────────────────────────────────────────────────
 
 export function PaymentEntryFields({
-  state, onChange, onSearch, disabled, initialQuery, autoFocusSearch, problem,
+  state, onChange, onSearch, disabled, initialQuery, autoFocusSearch, problem, legacyProblems,
 }: {
   state: PaymentEntryState
   onChange: (next: PaymentEntryState) => void
@@ -175,6 +245,8 @@ export function PaymentEntryFields({
   autoFocusSearch?: boolean
   /** A sentence under the search box, shown when it has been left unanswered. */
   problem?: string | null
+  /** The same for the two typed fields of an Old Order request. */
+  legacyProblems?: { orderNo: string | null; clientName: string | null } | null
 }) {
   const groupId = useId()
   const [query, setQuery] = useState(initialQuery ?? '')
@@ -216,6 +288,7 @@ export function PaymentEntryFields({
         value={state.destination}
         onChange={next => onChange(switchDestination(state, next))}
         disabled={disabled}
+        options={REQUEST_DESTINATION_OPTIONS}
       />
 
       {/* SUSPENSE: no search, and a plain sentence about what happens next. */}
@@ -226,6 +299,44 @@ export function PaymentEntryFields({
         }}>
           {SUSPENSE_NOTICE}
         </p>
+      )}
+
+      {/* OLD ORDER: there is no record to search for, so the person types the old
+          order's number and its client — the two facts Allocate Funds asks for.
+          The database checks both again; Finance attaches the payment when it
+          verifies it. */}
+      {state.destination === 'old_order' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <p style={{
+            margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+            padding: '10px 12px', borderRadius: '8px', background: colors.hover,
+          }}>
+            {OLD_ORDER_NOTICE}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+            <OldOrderField
+              id={`${groupId}-old-no`}
+              label="Old order number"
+              placeholder="e.g. 0412"
+              value={state.legacy?.orderNo ?? ''}
+              max={LEGACY_ORDER_NO_MAX}
+              problem={legacyProblems?.orderNo ?? null}
+              disabled={disabled}
+              autoFocus={autoFocusSearch}
+              onChange={orderNo => onChange({ ...state, legacy: { orderNo, clientName: state.legacy?.clientName ?? '' } })}
+            />
+            <OldOrderField
+              id={`${groupId}-old-client`}
+              label="Client"
+              placeholder="Who the old order is for"
+              value={state.legacy?.clientName ?? ''}
+              max={LEGACY_CLIENT_NAME_MAX}
+              problem={legacyProblems?.clientName ?? null}
+              disabled={disabled}
+              onChange={clientName => onChange({ ...state, legacy: { orderNo: state.legacy?.orderNo ?? '', clientName } })}
+            />
+          </div>
+        </div>
       )}
 
       {/* A TARGET, once one is needed. */}

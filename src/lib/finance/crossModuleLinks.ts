@@ -127,7 +127,7 @@ const CANCELLED_ORDER_STATUS = 'cancelled'
 
 /** The fields of a payment destination this needs — see paymentDestination.ts. */
 export type LinkableDestination = {
-  kind: 'confirmed_order' | 'pi_draft' | 'mixed' | 'suspense'
+  kind: 'confirmed_order' | 'pi_draft' | 'old_order' | 'mixed' | 'suspense'
   orderId: string | null
   submissionId: string | null
   /**

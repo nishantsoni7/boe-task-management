@@ -79,6 +79,38 @@ export function legacyRowProblem(
   return null
 }
 
+/**
+ * What is wrong with the two typed fields of an old-order PAYMENT REQUEST, each
+ * in one sentence, or null for a field that is acceptable. A request names one
+ * old order, so there is no row position to quote (legacyRowProblem does that).
+ */
+export function legacyRequestProblems(
+  fields: { orderNo?: string | null; clientName?: string | null } | null | undefined,
+): { orderNo: string | null; clientName: string | null } {
+  const no = normalizeLegacyOrderNo(fields?.orderNo)
+  const client = normalizeLegacyClientName(fields?.clientName)
+  return {
+    orderNo: !no
+      ? 'Enter the old order number.'
+      : no.length > LEGACY_ORDER_NO_MAX
+        ? `The old order number can be at most ${LEGACY_ORDER_NO_MAX} characters.`
+        : null,
+    clientName: !client
+      ? 'Enter the client the old order belongs to.'
+      : client.length > LEGACY_CLIENT_NAME_MAX
+        ? `The client name can be at most ${LEGACY_CLIENT_NAME_MAX} characters.`
+        : null,
+  }
+}
+
+/** Both typed fields of an old-order request are acceptable. */
+export function isLegacyRequestComplete(
+  fields: { orderNo?: string | null; clientName?: string | null } | null | undefined,
+): boolean {
+  const p = legacyRequestProblems(fields)
+  return p.orderNo === null && p.clientName === null
+}
+
 /** One target of allocate_payment_to_targets() for an old order. */
 export type LegacyRpcTarget = {
   legacy_order_no: string

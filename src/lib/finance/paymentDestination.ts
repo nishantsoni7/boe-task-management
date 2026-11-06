@@ -43,6 +43,8 @@ import type { createClient } from '@/lib/supabase/client'
 export type PaymentDestinationKind =
   | 'confirmed_order'
   | 'pi_draft'
+  /** An order that is not in BOE One, named by its number (20270407000000 / 20270607000000). */
+  | 'old_order'
   /** More than one record, or two kinds at once. Never rendered as one Order. */
   | 'mixed'
   /** No active allocation and no pending intent. */
@@ -113,7 +115,7 @@ export type PaymentDestination = {
   cancelled?: boolean
 }
 
-const KINDS: readonly string[] = ['confirmed_order', 'pi_draft', 'mixed', 'suspense']
+const KINDS: readonly string[] = ['confirmed_order', 'pi_draft', 'old_order', 'mixed', 'suspense']
 const SOURCES: readonly string[] = ['allocation', 'intent', 'none']
 
 /**
@@ -151,6 +153,7 @@ export function readPaymentDestination(row: PaymentDestinationRow): PaymentDesti
 export const DESTINATION_KIND_LABEL: Record<PaymentDestinationKind, string> = {
   confirmed_order: 'Confirmed Order',
   pi_draft:        'PI Draft',
+  old_order:       'Old order',
   mixed:           'Multiple destinations',
   suspense:        'Suspense / Unallocated',
 }
@@ -271,6 +274,9 @@ export function orderNumberDisplay(
   if (destination && destination.kind === 'pi_draft') {
     return { value: 'No Order yet — PI Draft', muted: true }
   }
+  if (destination && destination.kind === 'old_order') {
+    return { value: 'Old order — not in the system', muted: true }
+  }
   return { value: 'Not allocated', muted: true }
 }
 
@@ -386,7 +392,68 @@ export async function loadPaymentDestinations(
       if (d.kind === 'pi_draft' && pid) map.set(id, { ...d, reference: pid })
     }
   }
+  await nameOldOrderDestinations(supabase, map)
   return map
+}
+
+/**
+ * AN OLD ORDER IS NOT IN THE PROJECTION. finance_payment_destinations names
+ * PI Drafts and Orders, so a payment whose only destination is an old order
+ * (an order that predates BOE One, 20270407000000) reads there as Suspense.
+ * That is wrong in both places it matters: a pending Old Order request
+ * (20270607000000) is "for" something, and a verified one is allocated.
+ *
+ * So the payments the projection calls Suspense are looked up once more, in two
+ * batched reads: ACTIVE legacy allocations first (the money is attached), PENDING
+ * legacy intents second (it will be, on verification). One old order is named by
+ * its number; several are counted. Nothing is read for a payment the projection
+ * already names, and A FAILED READ CHANGES NOTHING: the row keeps reading
+ * Suspense, which is what it read before this lookup existed.
+ */
+async function nameOldOrderDestinations(
+  supabase: ReturnType<typeof createClient>,
+  map: Map<string, PaymentDestination>,
+): Promise<void> {
+  const ids = [...map.values()].filter(d => d.kind === 'suspense').map(d => d.paymentId)
+  if (ids.length === 0) return
+
+  const numbersByPayment = (rows: unknown): Map<string, Set<string>> => {
+    const out = new Map<string, Set<string>>()
+    for (const r of (Array.isArray(rows) ? rows : []) as { payment_request_id: string; legacy_order_no: string | null }[]) {
+      if (!r.legacy_order_no) continue
+      const set = out.get(r.payment_request_id) ?? new Set<string>()
+      set.add(r.legacy_order_no)
+      out.set(r.payment_request_id, set)
+    }
+    return out
+  }
+
+  try {
+    const [allocated, intended] = await Promise.all([
+      supabase.from('finance_payment_allocations')
+        .select('payment_request_id, legacy_order_no')
+        .in('payment_request_id', ids).eq('status', 'active').not('legacy_order_no', 'is', null),
+      supabase.from('finance_payment_allocation_intents')
+        .select('payment_request_id, legacy_order_no')
+        .in('payment_request_id', ids).eq('status', 'pending').not('legacy_order_no', 'is', null),
+    ])
+    const live = numbersByPayment(allocated.data)
+    const waiting = numbersByPayment(intended.data)
+
+    for (const id of ids) {
+      const numbers = live.get(id) ?? waiting.get(id)
+      const current = map.get(id)
+      if (!numbers || numbers.size === 0 || !current) continue
+      map.set(id, {
+        ...current,
+        source: live.has(id) ? 'allocation' : 'intent',
+        kind: 'old_order',
+        reference: numbers.size === 1 ? [...numbers][0] : `${numbers.size} old orders`,
+      })
+    }
+  } catch {
+    // Keep what the projection said.
+  }
 }
 
 /** The destination for one payment, for a modal that opens on a single row. */

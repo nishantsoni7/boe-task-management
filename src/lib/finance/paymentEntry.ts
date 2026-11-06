@@ -32,13 +32,24 @@ export function isPaymentDestination(value: string | null | undefined): value is
   return (PAYMENT_DESTINATIONS as readonly string[]).includes(value ?? '')
 }
 
+/** Which icon a destination card draws. Resolved to a component by the form. */
+export type DestinationIconKey = 'file-text' | 'package-check' | 'wallet' | 'archive'
+
+/** One destination card, as either form draws it. */
+export type DestinationOption = {
+  value: RequestDestination
+  label: string
+  description: string
+  iconKey: DestinationIconKey
+}
+
 /** The card copy. The description names the situation, not the database effect. */
 export const PAYMENT_DESTINATION_OPTIONS: {
   value: PaymentDestination
   label: string
   description: string
   /** Resolved to a component by the form. Decorative — every icon sits beside its label. */
-  iconKey: 'file-text' | 'package-check' | 'wallet'
+  iconKey: DestinationIconKey
 }[] = [
   {
     value: 'pi_draft',
@@ -64,13 +75,42 @@ export const PAYMENT_DESTINATION_LABEL: Record<PaymentDestination, string> =
   Object.fromEntries(PAYMENT_DESTINATION_OPTIONS.map(o => [o.value, o.label])) as
     Record<PaymentDestination, string>
 
+// ── A fourth destination, on the Payment Request forms only ──────────────────
+//
+// OLD ORDER is money for an order that predates BOE One and is not in it: the
+// third allocation target of 20270407000000, named by its number and client
+// (legacyOrderAllocation.ts). The Payment Request and Edit Payment Request forms
+// offer it as a fourth card (submit_payment_request and edit_payment_request
+// accept it since 20270607000000). Record Payment does NOT: it adds an old order
+// as a ROW under Confirmed Order, so PAYMENT_DESTINATIONS and its options stay
+// the three both forms share, and this is laid on top of them.
+export type RequestDestination = PaymentDestination | 'old_order'
+
+export const OLD_ORDER_DESTINATION_OPTION: DestinationOption = {
+  value: 'old_order',
+  label: 'Old Order',
+  description: 'Allocate this payment to an older order that is not in the system.',
+  iconKey: 'archive',
+}
+
+export const REQUEST_DESTINATION_OPTIONS: readonly DestinationOption[] =
+  [...PAYMENT_DESTINATION_OPTIONS, OLD_ORDER_DESTINATION_OPTION]
+
+export const REQUEST_DESTINATION_LABEL: Record<RequestDestination, string> =
+  Object.fromEntries(REQUEST_DESTINATION_OPTIONS.map(o => [o.value, o.label])) as
+    Record<RequestDestination, string>
+
+/** Shown under the Old Order card once it is chosen. */
+export const OLD_ORDER_NOTICE =
+  'This order is not in BOE One. Finance attaches the payment to it when they verify the payment. It counts toward the payment only, never toward an Order or PI here.'
+
 /** Does this destination need a PI Draft or an Order chosen? */
-export function destinationNeedsTarget(destination: PaymentDestination): boolean {
-  return destination !== 'suspense'
+export function destinationNeedsTarget(destination: RequestDestination): boolean {
+  return destination !== 'suspense' && destination !== 'old_order'
 }
 
 /** What a target search should look for, or null when there is nothing to pick. */
-export function destinationTargetKind(destination: PaymentDestination): 'submission' | 'order' | null {
+export function destinationTargetKind(destination: RequestDestination): 'submission' | 'order' | null {
   switch (destination) {
     case 'pi_draft':        return 'submission'
     case 'confirmed_order': return 'order'
@@ -290,11 +330,17 @@ export function paymentEntryErrorMessage(message: string | null | undefined): st
     return 'You do not have access to Finance. Ask an administrator to open the module for you.'
   }
   if (m.includes('PAYMENT_DESTINATION_INVALID')) {
-    return 'Choose PI Draft, Confirmed Order or Suspense Entry.'
+    return 'Choose PI Draft, Confirmed Order, Old Order or Suspense Entry.'
   }
   if (m.includes('PAYMENT_TARGET_FORBIDDEN')) {
     return 'A Suspense Entry names no PI Draft and no Order. Remove the selection, or choose a different destination.'
   }
+  // An Old Order request (20270607000000).
+  if (m.includes('PAYMENT_LEGACY_ORDER_REQUIRED')) return 'Enter the old order number.'
+  if (m.includes('PAYMENT_LEGACY_ORDER_TOO_LONG')) return 'An old order number can be at most 60 characters.'
+  if (m.includes('PAYMENT_LEGACY_CLIENT_REQUIRED')) return 'Enter the client the old order belongs to.'
+  if (m.includes('PAYMENT_LEGACY_CLIENT_TOO_LONG')) return 'A client name can be at most 120 characters.'
+  if (m.includes('PAYMENT_LEGACY_FORBIDDEN')) return 'An old order number and client belong only to an Old Order request. Refresh and try again.'
   if (m.includes('PAYMENT_TARGET_REQUIRED')) {
     return 'Choose the PI Draft or Order this payment is for.'
   }
