@@ -346,7 +346,7 @@ export default function HowCreditsWorkPage() {
               ? 'Every redemption and payroll application keeps the price and rate it was made at.'
               : 'Every payroll application keeps the rate it was made at.'],
             ['Cancellations',  'An invalid review’s credit is reversed on its own; a completed month is never reopened, and a lapsed month’s credit is never taken twice.'],
-            ['Settings',       'An administrator sets the numbers above. Changes apply to future actions only.'],
+            ['Settings',       'An administrator sets the numbers above. Changes apply to future actions only; the monthly target also applies to a month that is still open.'],
           ].map(([term, meaning], i) => (
             <div key={term} style={{ padding: '10px 16px', borderTop: i === 0 ? 'none' : '1px solid #E4DED7', display: 'grid', gridTemplateColumns: 'minmax(110px, 150px) 1fr', gap: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.primary }}>{term}</div>

@@ -1228,6 +1228,8 @@ describe('the applied migrations are frozen', () => {
       '20270603000000_finance_payment_admin_notes.sql',
       // Payroll, a payslip can hold half a paid leave: two columns become numeric(3,1).
       '20270604000000_payroll_results_half_paid_leave.sql',
+      // BOE Credits, a review month that is still open follows the saved monthly target: two functions replaced, one added, one trigger.
+      '20270605000000_boe_credits_open_months_follow_target.sql',
     ])
   })
 
@@ -1707,6 +1709,8 @@ describe('the applied migrations are frozen', () => {
       '20270603000000_finance_payment_admin_notes.sql',
       // Payroll, a payslip can hold half a paid leave: two columns become numeric(3,1).
       '20270604000000_payroll_results_half_paid_leave.sql',
+      // BOE Credits, a review month that is still open follows the saved monthly target: two functions replaced, one added, one trigger.
+      '20270605000000_boe_credits_open_months_follow_target.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

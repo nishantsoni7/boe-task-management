@@ -7,7 +7,11 @@ Phases 1A–1D (`20261101000000`–`20261104000000`), decimal credits
 (monthly submission rules, reapplication, the new settings row with the 1.5
 image reward) — is in the repository and NOT yet applied.** **The attendance
 redemption switches — `20261208000000_boe_credits_redemption_toggles.sql` — are
-in the repository and NOT yet applied.**
+in the repository and NOT yet applied.** (That paragraph is from 2026-09-13; both
+were applied later, see `docs/app-context/modules/06-boe-credits.md` section 4.)
+**Newest: `20270605000000_boe_credits_open_months_follow_target.sql` — a review
+month that is still open follows the monthly target saved now (section 1, rule
+4, and section 5). Built 2026-11-06, NOT yet applied.**
 
 This document is the technical and business reference. Where an earlier phase's
 rule changed, the current rule is stated and the old one is noted; nothing
@@ -58,8 +62,17 @@ payroll applications already recorded keep the numbers written on them.
    spendable**. Older credits are untouched. Displayed as *Pending*.
 4. **Qualification.** The approval that reaches the minimum flips the month to
    `qualified`: all its still-valid rewards become spendable; further rewards in
-   that month are spendable immediately. The minimum that applies is the one
-   **snapshotted when the month row was created** (first reward of the month).
+   that month are spendable immediately. **Which minimum applies (changed by
+   `20270605000000`; before it, the target was copied onto the month row at its
+   first reward and never moved):** a month that is still **open** is judged
+   against the target saved **now** — every recount re-reads it, and saving a new
+   target recounts all open months at once, so lowering it from 3 to 1 qualifies
+   an open month that already has 1 approved review and makes its credits
+   spendable. A month that has **qualified** stays qualified when the target is
+   raised later (nothing already held is taken). A month that has been **closed**
+   (finalized or lapsed) keeps the minimum it was closed under and is never
+   reopened. Closing recounts first, so it is judged against the target in force
+   when it is closed.
 5. **No penalty for missing the minimum.** Nothing posts a negative row because
    a month has 0, 1 or 2 approved reviews — such a month simply earns nothing
    usable. **Finalization** (admin, explicit, after the month has ended IST): a
@@ -175,7 +188,7 @@ A switched-OFF kind of day:
 |---|---|
 | `boe_credit_settings` + 3 columns | `half_day_redemption_credits` (8), `full_day_redemption_credits` (15), `minimum_monthly_reviews` (3); `credit_value > 0` |
 | ledger kind `review_month_lapse` | negative; `source_type 'boe_credit_review_month'`, `source_id` = the month row → the uniqueness index makes a second lapse impossible; admin actor; never checked against the balance |
-| `boe_credit_review_months` | one row per employee + `review_month` (first day, IST): `minimum_reviews_snapshot`, `qualifying_review_count`, `earned_review_credits` (still-valid), `status open/qualified/lapsed`, `qualified_at`, `finalized_at/by`, `lapse_transaction_id`. Guard trigger: identity and minimum never move, lapsed is final, qualified never un-qualifies, finalized never re-finalized |
+| `boe_credit_review_months` | one row per employee + `review_month` (first day, IST): `minimum_reviews_snapshot`, `qualifying_review_count`, `earned_review_credits` (still-valid), `status open/qualified/lapsed`, `qualified_at`, `finalized_at/by`, `lapse_transaction_id`. Guard trigger: identity never moves, the minimum moves only while the month is open and not finalized (it follows the saved target; frozen once qualified or closed, since `20270605000000`), lapsed is final, qualified never un-qualifies, finalized never re-finalized |
 | `boe_credit_review_rewards` | one row per reward ledger row: `card_id`, `card_ref` (for a custom review: the submission id and `CR-…` reference), `submitted_at`, `review_month`, `review_month_id`. Append-only |
 | `boe_credit_payroll_applications` | `credits_used`, `credit_value_snapshot`, `credit_amount_snapshot`, `redemption_transaction_id`, `reversal_transaction_id/reversed_at`; partial unique active per employee-period; close-once guard |
 | `boe_credit_provisional_credits(uuid)`, `boe_credit_spendable_balance(uuid)` | SECURITY INVOKER reads |
@@ -281,8 +294,9 @@ Example: normal payable ₹30,000, 5 credits × ₹50 → Salary Payable ₹30,2
 * A locked payroll month freezes its coverage and its application, including
   against a direct admin reversal.
 * Historical values are snapshots: attendance cost on the record, rate and
-  rupees on the application, minimum on the month row, the reward on the ledger
-  row and on the submission.
+  rupees on the application, the reward on the ledger row and on the submission,
+  and the minimum on a month row **once the month has qualified or been closed**
+  (while it is open the month row carries the target saved now).
 
 ## 6. Tests
 
