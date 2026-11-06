@@ -29,6 +29,7 @@ import {
   renderReportText,
   renderWhatsAppText,
   prepareWhatsApp,
+  prepareSalaryCsv,
   monthLabel,
   WHATSAPP_URL_TEXT_LIMIT,
   type ReportResultRow,
@@ -723,5 +724,108 @@ describe('the BOE Credits salary addition', () => {
     // Amit has no addition and no advance: no BOE line and no Amount Payable line for him.
     const amitBlock = wa.slice(wa.indexOf('Amit Sharma'), wa.indexOf('Priya Nair'))
     assert.doesNotMatch(amitBlock, /BOE Credits|Amount Payable/)
+  })
+})
+
+// ─── Department CSV ───────────────────────────────────────────────────────────
+//
+// The accounts department imports "Salary Sheet as per ERP.csv". The sample they
+// sent is: a UTF-8 BOM, a NON-BREAKING SPACE before "Salary Month", CRLF line
+// endings with a closing CRLF, no quotes, and the Salary column empty. These
+// tests pin those bytes, because the importer is a system we cannot see.
+
+describe('the department salary CSV', () => {
+  const ONE = result('1', 'Test One', { employee_code: '286' })
+  const TWO = result('2', 'Test Two', { employee_code: '285', gross_salary: 30_000, total_deductions: 0, net_salary: 30_000 })
+
+  function csvFor(rows: ReportResultRow[], selected: string[], month = 10, year = 2026,
+                  adjustments: ReportAdjustmentRow[] = [], settlements: ReportSettlementRow[] = []) {
+    const prepared = prepareSalaryCsv(buildSalaryReport(month, year, rows, adjustments, selected, settlements))
+    assert.ok(prepared.ok, 'expected the CSV to be produced')
+    return prepared
+  }
+
+  test('the header is the sample header byte for byte: BOM, then NBSP before Salary Month', () => {
+    const { csv } = csvFor([ONE], ['1'])
+    const bytes = Buffer.from(csv, 'utf8')
+    assert.deepEqual([...bytes.subarray(0, 5)], [0xEF, 0xBB, 0xBF, 0xC2, 0xA0])
+    const header = csv.split('\r\n')[0]
+    assert.equal(header, '﻿ Salary Month,Salary Year,Employee Code,Employee Name,Salary')
+  })
+
+  test('rows are month,year,code,name,salary with unpadded month and no quotes', () => {
+    const { csv } = csvFor([ONE, TWO], ['1', '2'])
+    assert.deepEqual(csv.split('\r\n').slice(1), [
+      '10,2026,286,Test One,25000',
+      '10,2026,285,Test Two,30000',
+      '',
+    ])
+    assert.equal(csvFor([ONE], ['1'], 7, 2027).csv.split('\r\n')[1], '7,2027,286,Test One,25000')
+  })
+
+  test('every line ends in CRLF, the file ends in CRLF, and there is no bare LF', () => {
+    const { csv } = csvFor([ONE, TWO], ['1', '2'])
+    assert.ok(csv.endsWith('\r\n'))
+    assert.equal(csv.replace(/\r\n/g, '').includes('\n'), false)
+    assert.equal(csv.replace(/\r\n/g, '').includes('\r'), false)
+  })
+
+  test('Salary is Salary to be Booked: not gross, not net, not Amount Payable', () => {
+    // gross 26,000 − deduction 1,000 = 25,000 booked. Net is stored as 24,000 on
+    // purpose (it must not be used), and an advance of −3,433 and a credit of
+    // +500 move Amount Payable away from the booked figure.
+    const row = result('1', 'Test One', { employee_code: '286', net_salary: 24_000 })
+    const { csv } = csvFor(
+      [row], ['1'], 10, 2026,
+      [adj('1', 'deduction', 'advance_recovery', 3_433)],
+      [{ employee_id: '1', carry_forward_amount: 0, boe_credit_addition: 500 }],
+    )
+    assert.equal(csv.split('\r\n')[1], '10,2026,286,Test One,25000')
+  })
+
+  test('only the selected employees are in the file', () => {
+    const { csv } = csvFor([ONE, TWO], ['2'])
+    assert.equal(csv.includes('Test One'), false)
+    assert.equal(csv.includes('Test Two'), true)
+  })
+
+  test('the salary is a whole rupee even if a legacy row carries paise', () => {
+    const { csv } = csvFor([result('1', 'Test One', { employee_code: '286', gross_salary: 26_000.4, total_deductions: 0 })], ['1'])
+    assert.equal(csv.split('\r\n')[1], '10,2026,286,Test One,26000')
+  })
+
+  test('a name with a comma or a quote is quoted; a plain name never is', () => {
+    const { csv } = csvFor([
+      result('1', 'Sharma, Amit', { employee_code: '286' }),
+      result('2', 'Dev "DJ" Rao', { employee_code: '285' }),
+    ], ['1', '2'])
+    const lines = csv.split('\r\n')
+    assert.equal(lines[1], '10,2026,286,"Sharma, Amit",25000')
+    assert.equal(lines[2], '10,2026,285,"Dev ""DJ"" Rao",25000')
+  })
+
+  test('REFUSES, naming them, when a selected employee has no code — and returns no file', () => {
+    const noCode  = result('3', 'No Code', { employee_code: null })
+    const blank   = result('4', 'Blank Code', { employee_code: '   ' })
+    const prepared = prepareSalaryCsv(buildSalaryReport(10, 2026, [ONE, noCode, blank], [], ['1', '3', '4']))
+    assert.equal(prepared.ok, false)
+    if (prepared.ok) return
+    assert.match(prepared.message, /No Code, Blank Code/)
+    assert.equal('csv' in prepared, false)
+  })
+
+  test('an employee without a code does not block a download that leaves them out', () => {
+    const noCode = result('3', 'No Code', { employee_code: null })
+    const prepared = prepareSalaryCsv(buildSalaryReport(10, 2026, [ONE, noCode], [], ['1']))
+    assert.equal(prepared.ok, true)
+  })
+
+  test('an empty selection is refused rather than downloading a header-only file', () => {
+    const prepared = prepareSalaryCsv(buildSalaryReport(10, 2026, [ONE], [], []))
+    assert.equal(prepared.ok, false)
+  })
+
+  test('the filename names the month', () => {
+    assert.equal(csvFor([ONE], ['1']).filename, 'Salary Sheet as per ERP - October 2026.csv')
   })
 })

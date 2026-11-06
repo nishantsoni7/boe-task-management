@@ -22,6 +22,7 @@ Verified against checkout `852e0493`. Part of "Attendance & Payroll" (03 Attenda
 | Lock / Unlock (with audit events) | Shipped |
 | Controlled permanent deletion (`delete_payroll_period`) | Shipped |
 | Salary report + WhatsApp text | Shipped |
+| Salary Sheet CSV download for the accounts department (`prepareSalaryCsv`) | Shipped 2026-11-06 (PR #630 as 028e4f21); no SQL. Not yet opened signed in on real October figures. See "Salary Sheet CSV" at the end |
 | Company-paid leave (earned paid leave absorbs earliest item) | Shipped |
 | Holiday half-day | Shipped |
 | Month-end rule + attendance-ack lock gate | Shipped in code (needs migration `20270215000000`, see 03) |
@@ -188,6 +189,14 @@ Run all: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"`; payroll only: 
 4. `docs/Module Docs/PAYROLL_ATTENDANCE_RULES.md`, `ATTENDANCE_REQUESTS.md` (sections 3, 3b).
 5. Live-state queries (read-only): `supabase migration list --linked`; periods with NULL `settings_snapshot`; probe actual columns after any migration.
 6. Run the section 10 suites; for DB-touching work also `supabase/tests` runners (bare postgres:16-alpine recipe per memory) because text tests can pass while an apply aborts.
+
+## Salary Sheet CSV (2026-11-06, owner; no SQL; PR #630 merged as 028e4f21)
+`/payroll/results/[periodId]/salary-report` has a **Download CSV** button next to Copy. It follows the ticked employees, builds the file in the browser from the report the page already holds (`prepareSalaryCsv` in `src/lib/payroll/salaryReport.ts`), and adds no route and no salary arithmetic.
+- **The format is the department's, copied from their sample ("Salary Sheet as per ERP.csv").** UTF-8 BOM, then a NON-BREAKING SPACE (U+00A0) before "Salary Month" in the header (looks like a typo; reproduced on purpose because the importer is a system we cannot see), `Salary Month,Salary Year,Employee Code,Employee Name,Salary`, CRLF line endings with a closing CRLF, month not zero-padded, no quotes unless a name holds a comma, quote or line break. Do not "tidy" the header.
+- **Salary column = Salary to be Booked** (gross minus attendance deduction; owner choice 2026-11-06), not gross, not `net_salary`, not Amount Payable. It leaves out advances, carry-forward and BOE Credits. The page's own "Salary" column is gross, so the page says which figure the file holds.
+- **Employee Code = `users.employee_code`** as stored (owner confirmed it reads like the sheet's numbers). A ticked employee with no code makes the download refuse and name them; nothing is written.
+- Row order is the report's (by name). The sample's order looks like the ERP's own and was not copied. No spreadsheet-formula neutralising on names.
+- Tests: `salaryReport.test.ts`, group "the department salary CSV" (header bytes, CRLF, which figure, selection, rounding, quoting, missing code, empty selection, filename).
 
 ## Phones: content first, Phase 3 (2026-11-05, owner; no SQL; PR pending)
 Below 768px only; desktop and tablet unchanged. Shared pieces in `src/components/attendancePayroll/`: `HeaderActions.tsx` (a page's header buttons stay on a desktop and move into the shared `PhoneHeaderMenu` ⋯ / + on a phone). The Filter / Download button with its bottom sheet is the shared `PhoneFilterSheet` (`components/ui/PhoneFilters.tsx` since 2026-11-05, was `attendancePayroll/PhoneSheet.tsx`), given this module's `phoneOnly sheetTrigger` / `sheet` classes; `ui.module.css` gained `.phoneOnly`, `.phoneTools`, `.sheetActions`. Pinned by `src/components/attendancePayroll/phoneAttendancePayroll.render.test.tsx`.

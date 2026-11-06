@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `29f12593` — Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
-- Commits on this branch: 1192
+- Commit: `d4a6e258` — Payment Request: an Old Order destination (migration 20270607000000, apply first)
+- Commits on this branch: 1193
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 422 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 951   Enums: 0
-- Test files: 767   Next.js 16.2.6, React 19.2.4
+- Test files: 769   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d4a6e258` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first)
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
@@ -38,7 +39,6 @@
 - `a574e82a` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
 - `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
 - `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
-- `6db10ccd` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
 
 ## Pages by top-level area
 

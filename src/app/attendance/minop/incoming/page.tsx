@@ -15,6 +15,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import { Download, RefreshCw } from 'lucide-react'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { formatDelay, type IncomingRegisterRow } from '@/lib/minop/incomingRegister'
 import styles from './incoming.module.css'
@@ -284,6 +285,11 @@ export default function IncomingMinopDataPage() {
             onClearAll={() => { setQ(''); setFrom(''); setTo(''); setPage(1) }}
           >
             <label className={ui.field}>
+              <span className={ui.label}>Quick range</span>
+              <QuickRangeSelect className={ui.input} from={from} to={to}
+                onPick={(f, t) => { setFrom(f); setTo(t); setPage(1) }} />
+            </label>
+            <label className={ui.field}>
               <span className={ui.label}>Received from</span>
               <input type="date" className={ui.input} value={from} max={to || undefined}
                 onChange={e => { setFrom(e.target.value); setPage(1) }} />
@@ -334,6 +340,11 @@ export default function IncomingMinopDataPage() {
               value={q}
               onChange={e => { setQ(e.target.value); setPage(1) }}
             />
+          </label>
+          <label className={styles.date}>
+            <span>Quick range</span>
+            <QuickRangeSelect className={ui.input} from={from} to={to}
+              onPick={(f, t) => { setFrom(f); setTo(t); setPage(1) }} />
           </label>
           <label className={styles.date}>
             <span>Received from</span>

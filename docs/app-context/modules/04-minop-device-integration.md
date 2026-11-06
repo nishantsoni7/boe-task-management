@@ -104,6 +104,7 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 - A month the machine supplies stops at yesterday (`machineLatestDate`): today is not a row until the day is over, so nobody reads as absent or missing a punch while it is going. My Attendance shows today as a separate "so far" line.
 - Today reads punches through `buildMachineDay`, not `attendance_records`, so it also works before the start date and shows what attendance will hold. It does not read corrections: it says what the machine recorded, and a missing punch is still fixed in Monthly Review.
 - The stopped check is worked out when a screen opens, so it turns red at 11:00. The cron only reaches an admin who is not looking. Its schedule is 11:05 IST because Vercel has started the handover reminder 49 minutes late (03:30 UTC -> 04:19 UTC), so the notification can come nearly an hour later, and the body says "today" rather than naming 11:00.
+- The Incoming register's "Received from / to" has a "Quick range" dropdown (month presets, `QuickRangeSelect`) on the desktop bar and in the phone Filter sheet (2026-11-06). It sets the same `from` / `to` state and returns to page 1; the server query is unchanged.
 - The alert goes to active admins, which on 2026-10-30 is the owner alone. It is one row a day per admin (checked by a read, so a rare double run could send two). The bell row stays as a record after the machine recovers; the screens clear themselves.
 
 ## 9. Known traps / gotchas / unfixed defects

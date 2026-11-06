@@ -464,3 +464,69 @@ export function prepareWhatsApp(report: SalaryReport): WhatsAppPreparation {
     url: `https://wa.me/?text=${encoded}`,
   }
 }
+
+// ─── Department CSV ───────────────────────────────────────────────────────────
+
+/**
+ * The header row of the department's own "Salary Sheet as per ERP.csv", copied
+ * byte for byte: a UTF-8 byte-order mark, then a non-breaking space (U+00A0) in
+ * front of "Salary Month". The space looks like a typo, but the file is read by a
+ * system we cannot see, so we reproduce the sample exactly rather than tidy it.
+ */
+const SALARY_CSV_HEADER = '﻿ Salary Month,Salary Year,Employee Code,Employee Name,Salary'
+
+/** Quote a cell only when it must be, as the sample does (it quotes nothing). */
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+export type SalaryCsvPreparation =
+  | { ok: true;  csv: string; filename: string }
+  | { ok: false; message: string }
+
+/**
+ * The salary sheet the accounts department imports: one row per selected
+ * employee, in the department's five columns.
+ *
+ * The Salary column is Salary to be Booked (gross minus attendance deduction),
+ * the owner's choice on 2026-11-06 — the same figure the WhatsApp message leads
+ * with, so the two documents cannot disagree. It excludes advances, carry-forward
+ * and BOE Credits; Amount Payable is the figure that includes them.
+ *
+ * Refuses rather than guessing when a selected employee has no code: the
+ * department matches rows on Employee Code, so a blank would be an unreadable row
+ * in someone else's system, found only after it was sent.
+ *
+ * CRLF line endings and a closing newline, as the sample has.
+ */
+export function prepareSalaryCsv(report: SalaryReport): SalaryCsvPreparation {
+  if (report.employees.length === 0) {
+    return { ok: false, message: 'Select at least one employee to download.' }
+  }
+
+  const missing = report.employees.filter(e => !e.employee_code?.trim()).map(e => e.employee_name)
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message:
+        `Nothing was downloaded. These employees have no Employee HR code, which the sheet needs: ` +
+        `${missing.join(', ')}. Add the code on the Employees page, or untick them.`,
+    }
+  }
+
+  const rows = report.employees.map(e =>
+    [
+      report.month,
+      report.year,
+      csvCell((e.employee_code ?? '').trim()),
+      csvCell(e.employee_name),
+      e.salary_to_be_booked,
+    ].join(','),
+  )
+
+  return {
+    ok: true,
+    csv: [SALARY_CSV_HEADER, ...rows].join('\r\n') + '\r\n',
+    filename: `Salary Sheet as per ERP - ${monthLabel(report.month, report.year)}.csv`,
+  }
+}
