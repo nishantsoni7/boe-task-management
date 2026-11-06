@@ -22,7 +22,7 @@ Verified against checkout `852e0493`. Part of "Attendance & Payroll" (03 Attenda
 | Lock / Unlock (with audit events) | Shipped |
 | Controlled permanent deletion (`delete_payroll_period`) | Shipped |
 | Salary report + WhatsApp text | Shipped |
-| Salary Sheet CSV download for the accounts department (`prepareSalaryCsv`) | Built 2026-11-06, PR pending; no SQL. See "Salary Sheet CSV" at the end |
+| Salary Sheet CSV download for the accounts department (`prepareSalaryCsv`) | Shipped 2026-11-06 (PR #630 as 028e4f21); no SQL. Not yet opened signed in on real October figures. See "Salary Sheet CSV" at the end |
 | Company-paid leave (earned paid leave absorbs earliest item) | Shipped |
 | Holiday half-day | Shipped |
 | Month-end rule + attendance-ack lock gate | Shipped in code (needs migration `20270215000000`, see 03) |
@@ -190,7 +190,7 @@ Run all: `npx tsx --test "src/**/*.test.ts" "src/**/*.test.tsx"`; payroll only: 
 5. Live-state queries (read-only): `supabase migration list --linked`; periods with NULL `settings_snapshot`; probe actual columns after any migration.
 6. Run the section 10 suites; for DB-touching work also `supabase/tests` runners (bare postgres:16-alpine recipe per memory) because text tests can pass while an apply aborts.
 
-## Salary Sheet CSV (2026-11-06, owner; no SQL; PR pending)
+## Salary Sheet CSV (2026-11-06, owner; no SQL; PR #630 merged as 028e4f21)
 `/payroll/results/[periodId]/salary-report` has a **Download CSV** button next to Copy. It follows the ticked employees, builds the file in the browser from the report the page already holds (`prepareSalaryCsv` in `src/lib/payroll/salaryReport.ts`), and adds no route and no salary arithmetic.
 - **The format is the department's, copied from their sample ("Salary Sheet as per ERP.csv").** UTF-8 BOM, then a NON-BREAKING SPACE (U+00A0) before "Salary Month" in the header (looks like a typo; reproduced on purpose because the importer is a system we cannot see), `Salary Month,Salary Year,Employee Code,Employee Name,Salary`, CRLF line endings with a closing CRLF, month not zero-padded, no quotes unless a name holds a comma, quote or line break. Do not "tidy" the header.
 - **Salary column = Salary to be Booked** (gross minus attendance deduction; owner choice 2026-11-06), not gross, not `net_salary`, not Amount Payable. It leaves out advances, carry-forward and BOE Credits. The page's own "Salary" column is gross, so the page says which figure the file holds.

@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `9fc8b272` — Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL)
+- Commit: `028e4f21` — Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
 - Commits on this branch: 1194
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 421 (first `20260530_create_positions.sql`, latest `20270605000000_boe_credits_open_months_follow_target.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `9fc8b272` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL)
+- `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
 - `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
