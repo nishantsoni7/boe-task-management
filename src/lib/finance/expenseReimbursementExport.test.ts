@@ -291,6 +291,7 @@ describe('the Expenses list text is never cut, and the Filters panel has no dead
   })
   test('every select in the Filters panel opts out of the class flex-basis that made it 160px tall', () => {
     const panel = EXPENSES.slice(EXPENSES.indexOf('aria-label="More filters"'))
-    assert.equal((panel.match(/style=\{\{ flex: 'none', width: '100%', height: '36px'/g) ?? []).length, 4)
+    // Quick range (QuickRangeSelect) plus the panel's own four selects.
+    assert.equal((panel.match(/style=\{\{ flex: 'none', width: '100%', height: '36px'/g) ?? []).length, 5)
   })
 })

@@ -10,6 +10,7 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import styles from './records.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -219,6 +220,11 @@ export default function AttendanceRecordsPage() {
               </select>
             </div>
             <div className={ui.field}>
+              <label className={ui.label} htmlFor="rec-quick-phone">Quick range</label>
+              <QuickRangeSelect id="rec-quick-phone" className={ui.input} from={fromDate} to={toDate}
+                onPick={(from, to) => { setFromDate(from); setToDate(to) }} />
+            </div>
+            <div className={ui.field}>
               <label className={ui.label} htmlFor="rec-from-phone">From date</label>
               <input id="rec-from-phone" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
             </div>
@@ -250,6 +256,12 @@ export default function AttendanceRecordsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className={ui.field}>
+              <label className={ui.label} htmlFor="rec-quick">Quick range</label>
+              <QuickRangeSelect id="rec-quick" className={ui.input} from={fromDate} to={toDate}
+                onPick={(from, to) => { setFromDate(from); setToDate(to) }} />
             </div>
 
             <div className={ui.field}>

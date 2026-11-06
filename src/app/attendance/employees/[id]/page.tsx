@@ -10,6 +10,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import Link from 'next/link'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import styles from './detail.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -286,6 +287,11 @@ export default function EmployeeDetailPage() {
           <div className={`${ui.surface} ${ui.surfaceBody} ${ui.desktopOnly}`}>
             <div className={styles.dates}>
               <div className={`${ui.field} ${styles.dateField}`}>
+                <label className={ui.label} htmlFor="quick-range">Quick range</label>
+                <QuickRangeSelect id="quick-range" className={ui.input} from={fromDate} to={toDate}
+                  onPick={(from, to) => { setFromDate(from); setToDate(to) }} />
+              </div>
+              <div className={`${ui.field} ${styles.dateField}`}>
                 <label className={ui.label} htmlFor="from-date">From date</label>
                 <input id="from-date" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
               </div>
@@ -318,6 +324,11 @@ export default function EmployeeDetailPage() {
               activeCount={(fromDate ? 1 : 0) + (toDate ? 1 : 0)}
               onClearAll={hasFilter ? () => { setFromDate(''); setToDate('') } : undefined}
             >
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="quick-range-phone">Quick range</label>
+                <QuickRangeSelect id="quick-range-phone" className={ui.input} from={fromDate} to={toDate}
+                  onPick={(from, to) => { setFromDate(from); setToDate(to) }} />
+              </div>
               <div className={ui.field}>
                 <label className={ui.label} htmlFor="from-date-phone">From date</label>
                 <input id="from-date-phone" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
