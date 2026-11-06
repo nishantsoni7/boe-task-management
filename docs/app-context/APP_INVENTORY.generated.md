@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `29f12593` — Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
-- Commits on this branch: 1192
+- Commit: `9fc8b272` — Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL)
+- Commits on this branch: 1194
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 421 (first `20260530_create_positions.sql`, latest `20270605000000_boe_credits_open_months_follow_target.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 950   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `9fc8b272` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL)
+- `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
@@ -37,8 +39,6 @@
 - `88afd4f2` 2026-11-03 Sales: the Lead Board is a Pipeline and the lead panel is short (migration 20270601000000, apply first) (#607)
 - `a574e82a` 2026-11-03 Sales: website leads arrive by themselves (migrations 20270531000000 and 20270531000100, apply first) (#606)
 - `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
-- `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
-- `6db10ccd` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
 
 ## Pages by top-level area
 
