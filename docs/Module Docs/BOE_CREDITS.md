@@ -11,7 +11,7 @@ in the repository and NOT yet applied.** (That paragraph is from 2026-09-13; bot
 were applied later, see `docs/app-context/modules/06-boe-credits.md` section 4.)
 **Newest: `20270605000000_boe_credits_open_months_follow_target.sql` — a review
 month that is still open follows the monthly target saved now (section 1, rule
-4, and section 5). Built 2026-11-06, NOT yet applied.**
+4, and section 5). Applied 2026-11-06.**
 
 This document is the technical and business reference. Where an earlier phase's
 rule changed, the current rule is stated and the old one is noted; nothing

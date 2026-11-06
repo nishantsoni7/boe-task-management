@@ -21,7 +21,7 @@ Verified against checkout `852e0493`. Reference doc: `docs/Module Docs/BOE_CREDI
 | Custom review submissions + reward | #153 | Shipped (the CURRENT earning path) |
 | Custom phase: reapply + monthly rules | #155 (38e76415 + ad8a0ac7) | Shipped |
 | Redemption on/off switches | #156 0a8f7f39 + #157 1c620ddf | Shipped, both OFF |
-| A month that is still OPEN follows the saved monthly target (owner report 2026-11-05: the target was lowered 3 -> 1 and October still read "2 of 3", "Below target") | migration `20270605000000` (PR #627) | Built; NOT applied until the owner applies it, after a backup. Moves credits: see section 6 |
+| A month that is still OPEN follows the saved monthly target (owner report 2026-11-05: the target was lowered 3 -> 1 and October still read "2 of 3", "Below target") | migration `20270605000000` (PR #627, merged ad44cccd) | Shipped; migration APPLIED 2026-11-06 about 05:12Z. Moved 3 credits (2 months) from pending to spendable. See section 6 |
 | Edit/delete own custom review, duplicates, reporting + leaderboard, admin reject-after-approval | migrations 20270223/224/225/304 (#269, #291) | Shipped in code; prod apply-state unverified, from memory not tracked |
 | Generated-review flow for candidates | paused by constant `CANDIDATE_GENERATED_REVIEWS_ENABLED = false` and SQL `customer_review_generated_booking_enabled()` | Paused |
 | Campaigns, per-employee rates, expiry, cash-out, transfers, scheduler for month close, negative penalties, auto-reversal on review deletion | - | NOT built (by design) |
@@ -60,7 +60,7 @@ Verified against checkout `852e0493`. Reference doc: `docs/Module Docs/BOE_CREDI
 
 ### Apply-state / immutability
 - From memory (unverified here): 1A applied by the owner by hand 2026-09-02; 1B applied via `db push --linked` same day; 1C and 1D applied; 20261204 + 20261205 applied 2026-09-13 BEFORE merging #153; 20261206 + repair 20261207 applied; 20261208 applied 2026-09-13 13:43 UTC (+ #157). Production ledger was EMPTY at last check (no live use then). Re-verify before trusting.
-- `20270605000000_boe_credits_open_months_follow_target.sql`: NOT applied (built 2026-11-06). It ends with a one-time recount that QUALIFIES every open month that already meets the saved target and so makes its pending credits spendable; take a backup first (the database export is the rollback data), apply, THEN merge. Its own checks abort the apply if the result is wrong. Rollback restores behaviour only: a qualified month stays qualified.
+- `20270605000000_boe_credits_open_months_follow_target.sql`: APPLIED 2026-11-06 about 05:12Z (after the merge, not before as planned; wording-only code, so harmless). Its one-time recount qualified every open month that already met the saved target (2 October months, 3 credits). Its own checks abort an apply whose result is wrong. Rollback restores behaviour only: a qualified month stays qualified. Never edit it; correct forward with a new migration.
 - NEVER recreate/reapply or edit `20261206000000`; `20261207000000` is the permanent forward repair (AFTER trigger off-by-one: `new.reapplication_count + 1` recorded the first reapplication as attempt 2 because NEW already had the increment).
 - The Claude auto-mode classifier denies `supabase db push` in this repo; the owner applies migrations by hand or approves a guarded push.
 
@@ -124,7 +124,7 @@ Bounds: `MAX_REVIEW_REWARD_CREDITS = 100_000`; `credit_value > 0`; amounts have 
 
 ## 9. Known traps / gotchas / unfixed defects
 - The target a month is judged against is only "live" while the month is open. The 1D assertions (`boe_credits_phase_1d_assertions.sql` section 2 and the guard refusals) and `phase1d.test.ts` still describe the 20261104000000 behaviour (minimum frozen); they stay true for that file and are superseded for open months by `20270605000000` (`openMonthsTarget.test.ts`, `boe_credits_open_months_target_pglite.mjs`). Do not "fix" them back.
-- Never close a review month on `/payroll/credits` while the screen still shows "of 3" for a target that was lowered but the migration is not applied: the close judges the stored copy and lapses the credits.
+- Before `20270605000000` was applied, closing a review month on `/payroll/credits` judged the stored copy of the target and lapsed credits that the lowered target would have allowed. Applied 2026-11-06, so an open month is now judged against the saved target; a month closed EARLIER is still final.
 - PL/pgSQL `integer` variables silently ROUNDED 1.5 -> 2 (and admitted an 8-credit overdraft against 7.5 spendable); decimal migration re-created every affected function. Any new function must use numeric.
 - Trigger-written derived values need behavioural SQL assertions (text tests passed the attempt-number bug).
 - `post_boe_credit_transaction` / `apply_boe_credits_to_payroll` have numeric signatures only; integer ones dropped. `redeem`/`apply` overload ambiguity (PGRST203) is avoided by not giving defaults to overloads.
