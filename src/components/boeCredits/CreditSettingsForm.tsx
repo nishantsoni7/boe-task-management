@@ -48,7 +48,7 @@ const FIELDS: {
   { key: 'credit_value',                label: 'Value of 1 Credit',            unit: '',          hint: 'Rupees one credit adds to salary when applied to payroll.', step: '0.01', money: true },
   { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1', switchKey: 'half_day_redemption_enabled', switchLabel: 'Enable half-day attendance redemption' },
   { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1', switchKey: 'full_day_redemption_enabled', switchLabel: 'Enable absent-day redemption' },
-  { key: 'minimum_monthly_reviews',     label: 'Minimum Approved Reviews Per Month', unit: 'reviews', hint: 'Approved reviews a month needs before its review credits become spendable. Below it the month earns nothing; no credit already held is taken.', step: '1' },
+  { key: 'minimum_monthly_reviews',     label: 'Minimum Approved Reviews Per Month', unit: 'reviews', hint: 'Approved reviews a month needs before its review credits become spendable. It applies to every month that is still open: one that already reaches it qualifies as soon as you save. A month that has qualified or been closed keeps the target it had, and no credit already held is taken.', step: '1' },
   { key: 'max_monthly_review_submissions', label: 'Maximum Review Submissions Per Month', unit: 'reviews', hint: 'Custom reviews one employee may submit for approval in a month. Reapplying a rejected review takes no extra slot.', step: '1' },
   { key: 'minimum_monthly_image_reviews',  label: 'Minimum Image Reviews Per Month',      unit: 'reviews', hint: 'Of the monthly maximum, how many must be Image Reviews. 0 turns this rule off.', step: '1', allowZero: true },
 ]
@@ -245,8 +245,8 @@ export function CreditSettingsForm({
                 {saving ? 'Saving…' : 'Save Changes'}
               </button>
               <span style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5, maxWidth: 560 }}>
-                Changes apply to future transactions only. Existing credit history, attendance redemptions and
-                payroll applications keep their original values.
+                Changes apply to future transactions only, except the monthly minimum, which also applies to months still
+                open. Existing credit history, attendance redemptions and payroll applications keep their original values.
               </span>
             </div>
           </>

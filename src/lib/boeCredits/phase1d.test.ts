@@ -245,6 +245,8 @@ describe('the review month', () => {
     assert.match(effects, /update public\.boe_credit_payroll_applications\s*\n\s*set reversal_transaction_id = new\.id,\s*\n\s*reversed_at\s+= new\.created_at\s*\n\s*where redemption_transaction_id = v_original\.id\s*\n\s*and reversal_transaction_id is null;/)
   })
 
+  // What 20261104000000 says. For a month that is still OPEN the minimum may now follow the
+  // saved target: 20270605000000 replaced this guard (see openMonthsTarget.test.ts).
   test('the months guard: a lapsed month is final, a qualified month stays qualified, identity and minimum never move', () => {
     const g = fn('boe_credit_review_months_guard')
     assert.match(g, /old\.status = 'lapsed' and \(new\.status <> 'lapsed'/)

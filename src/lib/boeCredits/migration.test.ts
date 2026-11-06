@@ -56,6 +56,9 @@ describe('the file, and where it sits', () => {
       // the attendance redemption record. Asserted in settings.test.ts and
       // attendanceRedemption.test.ts.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // An open review month follows the saved monthly target: the months guard,
+      // the recount and a settings trigger. Asserted in openMonthsTarget.test.ts.
+      '20270605000000_boe_credits_open_months_follow_target.sql',
     ])
     const prior = all.filter(f => f < FILE)
     assert.equal(prior[prior.length - 1], '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql')

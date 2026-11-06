@@ -326,6 +326,7 @@ export default function BoeCreditsPage() {
   const totalSpendable = balances.reduce((sum, b) => sum + b.spendable_credits, 0)
   const totalProvisional = balances.reduce((sum, b) => sum + b.provisional_credits, 0)
 
+  const reviewTarget = monthClose?.minimum_monthly_reviews ?? settings.minimum_monthly_reviews
   const openRows = monthClose?.rows.filter(r => r.month?.status === 'open') ?? []
   const closedRows = monthClose?.rows.filter(r => r.month && r.month.status !== 'open') ?? []
   const closeRows = monthClose
@@ -402,7 +403,7 @@ export default function BoeCreditsPage() {
             <div>
               <h2 id="month-close-heading" className={ui.surfaceTitle}>Month close</h2>
               <p className={ui.surfaceSub}>
-                Review months below the target of {monthClose?.minimum_monthly_reviews ?? settings.minimum_monthly_reviews} verified reviews lapse when closed. Closing twice changes nothing.
+                Review months below the target of {reviewTarget} verified {reviewTarget === 1 ? 'review' : 'reviews'} lapse when closed. A month still open follows the target saved now. Closing twice changes nothing.
               </p>
             </div>
             <div className={ui.row}>
