@@ -1,4 +1,5 @@
-import { istAddDays, istMonthEnd, istMonthStart, istMonthStartOffset } from '@/lib/istDate'
+import { istAddDays } from '@/lib/istDate'
+import { matchMonthRange, resolveMonthRange } from '@/lib/monthRangePresets'
 import type { Period } from './constants'
 import { dayLabel } from './format'
 
@@ -35,20 +36,18 @@ export const hasDays = (d: DayRange) => d.from !== '' || d.to !== ''
 
 export type MonthKey = 'this' | 'last'
 
-/** This month runs to today; last month is the whole of it. */
+// The two month quick picks are the shared presets (Finance and Attendance use them too): this month runs to today,
+// last month is the whole of it.
+const PRESET = { this: 'this_month', last: 'last_month' } as const
+
 export function monthDays(which: MonthKey, today: string): DayRange {
-  if (which === 'this') return { from: istMonthStart(today), to: today }
-  const start = istMonthStartOffset(today, 1)
-  return { from: start, to: istMonthEnd(start) }
+  return resolveMonthRange(PRESET[which], today)
 }
 
-/** 'this' / 'last' when the days are exactly that month, else null. */
+/** 'this' / 'last' when the days are exactly that month, else null (a longer preset such as "Last 3 months" is just days here). */
 export function monthOf(d: DayRange, today: string): MonthKey | null {
-  for (const key of ['this', 'last'] as const) {
-    const m = monthDays(key, today)
-    if (m.from === d.from && m.to === d.to) return key
-  }
-  return null
+  const key = matchMonthRange(d.from, d.to, today)
+  return key === 'this_month' ? 'this' : key === 'last_month' ? 'last' : null
 }
 
 const short = (date: string) => dayLabel(date).replace(/ \d{4}$/, '')
