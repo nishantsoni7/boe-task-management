@@ -149,6 +149,7 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - `src/components/layout/attendancePayrollNav.tsx`, `AttendancePayrollLayout.tsx`, `QuickActions.tsx`; `src/components/attendancePayroll/ui.tsx`.
 - `src/lib/payroll/participation.ts`, `holidays.ts`, `halfDayHoliday.ts`, `attendanceCorrectionService.ts`, `correctionRules.ts`.
 - API: `src/app/api/attendance/*`, `src/app/api/attendance-requests/*`.
+- "Quick range" on the date filters of `/attendance/records` and the Attendance history of `/attendance/employees/[id]` (desktop bar AND the phone Filter sheet, which are separate copies of the fields): `src/components/ui/QuickRangeSelect.tsx` over `src/lib/monthRangePresets.ts` (tests `monthRangePresets.test.ts`, `QuickRangeSelect.render.test.tsx`). It only fills From / To; Records still needs Search.
 
 ## 8. Decisions made and why
 - Corrections live in a SEPARATE table because the import UPDATES `attendance_records` in place and would erase them.
@@ -161,6 +162,7 @@ Shared helper: `src/lib/security/attendancePayrollApiAuth.ts` (`resolveCaller`, 
 - Half-day holidays reuse the existing classifier through a derived settings object (no new classification value, no new deduction builder).
 - Check-in/out removed (Attendance V1.1): attendance comes only from machine import.
 - The score asks the payroll engine rather than restating its rules, so a day cannot read one way on the Overview and another on a payslip.
+- Month quick ranges (2026-11-06, owner request): months are whole IST calendar months; "Last 3 / 6 months" END on the last day of last month (the month in progress is not counted; "This month" covers it, up to today). The dropdown keeps no state of its own: it reads From / To, so a hand-typed range equal to a preset shows as that preset and any other shows "Custom dates".
 
 ## 9. Known traps / gotchas / unfixed defects
 - `/attendance/requests`: the toolbar is `ui.toolbar` from `ui.module.css`. Until 2026-10-31 it read `styles.toolbar`, which `attendanceRequests.module.css` never had, so the status filter and the Scheduled shift label had no row.

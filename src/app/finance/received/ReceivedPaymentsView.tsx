@@ -90,6 +90,7 @@ export { ReceivedPaymentsTable, AllocatedAgainstCell } from './receivedPaymentsT
 
 import { ConfirmedSummaryCards } from './receivedPaymentsSummary'
 import { FilterChip, dateChipLabel } from '../components/FinanceListParts'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import { AllocationDetailsPopup } from './receivedPaymentsAllocationPopup'
 import { summarizeConfirmed, type ConfirmedSummary, type ConfirmedSummaryRow } from '@/lib/finance/confirmedSummary'
 import { fetchAllRows } from '@/lib/supabasePaging'
@@ -1207,6 +1208,15 @@ function ReceivedPaymentsViewInner(
                 read as the range between them. */}
             <FilterChip label={dateChipLabel(dateFrom, dateTo, fmtDate)} isSet={!!(dateFrom || dateTo)}>
               <div className="boe-list-daterange" role="group" aria-label="Payment date">
+                <label className="boe-list-date">
+                  <span>Quick range</span>
+                  <QuickRangeSelect
+                    className="boe-input boe-quick-range"
+                    from={dateFrom}
+                    to={dateTo}
+                    onPick={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1) }}
+                  />
+                </label>
                 <label className="boe-list-date">
                   <span>Paid from</span>
                   <input

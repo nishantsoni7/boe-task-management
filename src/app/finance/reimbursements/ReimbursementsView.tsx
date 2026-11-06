@@ -35,6 +35,7 @@ import { exactToString, sumExact } from '@/lib/finance/exactMoney'
 import { formatMoney, localTodayIso } from '@/lib/finance/piPaymentView'
 import type { UserProfile } from '@/lib/types'
 import { FinanceEmpty } from '@/app/finance/components/FinanceListParts'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import { ReimbursementBatchModal } from '@/app/finance/expenses/ExpenseReimbursementModals'
 import { EMPTY_BATCH_FILTERS, loadAllBatches, loadPeopleNames, loadReimbursementSheets, type BatchFilters } from './reimbursementData'
 
@@ -241,6 +242,11 @@ export function ReimbursementsView() {
           </button>
         </div>
         <div className="boe-list-daterange" role="group" aria-label="Reimbursement date">
+          <label className="boe-list-date">
+            <span>Quick range</span>
+            <QuickRangeSelect className="boe-input boe-quick-range" from={filters.dateFrom} to={filters.dateTo}
+              onPick={(dateFrom, dateTo) => setFilters(prev => ({ ...prev, dateFrom, dateTo }))} />
+          </label>
           <label className="boe-list-date">
             <span>From</span>
             <input type="date" className="boe-input" aria-label="Reimbursed on or after" value={filters.dateFrom}
