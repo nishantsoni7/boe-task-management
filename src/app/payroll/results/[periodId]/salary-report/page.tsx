@@ -26,6 +26,7 @@ import {
   buildSalaryReport,
   renderReportText,
   prepareWhatsApp,
+  prepareSalaryCsv,
   monthLabel,
   WHATSAPP_URL_TEXT_LIMIT,
   type ReportResultRow,
@@ -125,6 +126,24 @@ export default function SalaryProcessingReportPage() {
     }
   }
 
+  const handleDownloadCsv = () => {
+    setError(''); setNotice('')
+    if (!report) return
+    const csv = prepareSalaryCsv(report)
+    if (!csv.ok) { setError(csv.message); return }
+    // Blob encodes the string as UTF-8 and keeps the leading BOM the sheet needs.
+    const url = URL.createObjectURL(new Blob([csv.csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = csv.filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    // The page's own "Salary" column is gross; the file's is Salary to be Booked.
+    setNotice(`Downloaded ${csv.filename}. Its Salary column is Salary to be Booked.`)
+  }
+
   const handleWhatsApp = () => {
     setError(''); setNotice('')
     if (!whatsapp) return
@@ -173,6 +192,9 @@ export default function SalaryProcessingReportPage() {
                 </button>
                 <button onClick={handleCopy} disabled={selected.size === 0} style={primaryButton(selected.size === 0)}>
                   Copy
+                </button>
+                <button onClick={handleDownloadCsv} disabled={selected.size === 0} style={primaryButton(selected.size === 0)}>
+                  Download CSV
                 </button>
                 <button onClick={handleWhatsApp} disabled={selected.size === 0} style={primaryButton(selected.size === 0)}>
                   Share on WhatsApp
