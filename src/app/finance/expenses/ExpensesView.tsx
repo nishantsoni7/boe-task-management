@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CircleCheck, Clock, Download, Eye, Mic, Paperclip, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -809,6 +810,17 @@ export function ExpensesView() {
                       boxShadow: '0 8px 24px rgba(48,53,54,0.14)',
                     }}
                   >
+                    <label className="expense-filter-row">
+                      <span>Quick range</span>
+                      <QuickRangeSelect
+                        className="boe-input expense-filter-select"
+                        style={{ flex: 'none', width: '100%', height: '36px', fontSize: '13px' }}
+                        from={filters.dateFrom}
+                        to={filters.dateTo}
+                        onPick={(dateFrom, dateTo) => setFilters(prev => ({ ...prev, dateFrom, dateTo }))}
+                      />
+                    </label>
+
                     {/* ONE ROW for the date range: from – to. */}
                     <div role="group" aria-label="Expense date" className="expense-filter-row">
                       <span>Dates</span>
