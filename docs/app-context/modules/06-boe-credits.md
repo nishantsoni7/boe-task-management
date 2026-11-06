@@ -21,7 +21,7 @@ Verified against checkout `852e0493`. Reference doc: `docs/Module Docs/BOE_CREDI
 | Custom review submissions + reward | #153 | Shipped (the CURRENT earning path) |
 | Custom phase: reapply + monthly rules | #155 (38e76415 + ad8a0ac7) | Shipped |
 | Redemption on/off switches | #156 0a8f7f39 + #157 1c620ddf | Shipped, both OFF |
-| A month that is still OPEN follows the saved monthly target (owner report 2026-11-05: the target was lowered 3 -> 1 and October still read "2 of 3", "Below target") | migration `20270605000000` (PR number in CHANGELOG) | Built; NOT applied until the owner applies it, after a backup. Moves credits: see section 6 |
+| A month that is still OPEN follows the saved monthly target (owner report 2026-11-05: the target was lowered 3 -> 1 and October still read "2 of 3", "Below target") | migration `20270605000000` (PR #627) | Built; NOT applied until the owner applies it, after a backup. Moves credits: see section 6 |
 | Edit/delete own custom review, duplicates, reporting + leaderboard, admin reject-after-approval | migrations 20270223/224/225/304 (#269, #291) | Shipped in code; prod apply-state unverified, from memory not tracked |
 | Generated-review flow for candidates | paused by constant `CANDIDATE_GENERATED_REVIEWS_ENABLED = false` and SQL `customer_review_generated_booking_enabled()` | Paused |
 | Campaigns, per-employee rates, expiry, cash-out, transfers, scheduler for month close, negative penalties, auto-reversal on review deletion | - | NOT built (by design) |
