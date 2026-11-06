@@ -2,6 +2,8 @@
 
 **Update 2026-11-03:** the Lead Board (module 28, `20270525000000`) changes three things here. `view` no longer reads every lead: a person sees their own, and `view_all`, `assign` and Admin see all. The duplicate warning links to the lead and can record a repeat enquiry, which replaces rule 8. `/sales` opens My day. The rest of this file describes the Lead Master as built.
 
+**Update 2026-11-06 (date filter and a compact "Allotted to", migration `20270606000000`):** the list can be cut to a day or a range of days, and the row of one chip per salesperson is now Everyone, Not allotted and ONE Person button. Rules 12 and 13 below; section 7 lists the new files. Everything else in this file is as built.
+
 Written 2026-11-02 from the build, merged as PR #593 (dfe7a3c3). Migration `20270524000000_sales_lead_master.sql` is applied. Sales is module 24's second filled slot (Marketing was the first, module 26).
 
 ## 1. Purpose & users
@@ -21,10 +23,10 @@ Written 2026-11-02 from the build, merged as PR #593 (dfe7a3c3). Migration `2027
 | Route | Screen | Who |
 |---|---|---|
 | `/sales` | redirects to `/sales/lead-master` | module users |
-| `/sales/lead-master` | `LeadMasterScreen`: four period cards, search, source filter, "Allotted to" chips, the table (cards on a phone), the lead panel, the confirmation | `view` (reads); `assign` shows the name dropdowns; `create` shows Add lead |
+| `/sales/lead-master` | `LeadMasterScreen`: five period cards (Today, Yesterday, Last 7 days, Last 30 days, All time), search, source filter, the "Custom dates" button, the "Allotted to" row (Everyone, Not allotted, one Person button), the table (cards on a phone), the lead panel, the confirmation | `view` (reads); `assign` shows the name dropdowns; `create` shows Add lead |
 | `/sales/lead-master/new` | `AddLeadScreen`: number, source, optional details | `create` (anyone else sees why they cannot) |
 
-Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on Add lead too); guard `src/app/sales/layout.tsx` (`ModuleGuard`, refused goes to `/modules`). List state (period, holder, source, search) lives in the URL (`useListUrlState`).
+Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on Add lead too); guard `src/app/sales/layout.tsx` (`ModuleGuard`, refused goes to `/modules`). List state (period, from, to, holder, source, search) lives in the URL (`useListUrlState`; `?from=2026-11-01&to=2026-11-05` are real dates, anything else reads as no filter).
 
 ## 4. Database (`20270524000000_sales_lead_master.sql`)
 
@@ -32,6 +34,7 @@ Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on
 - `sales_lead_events`: append-only (trigger), kinds `added` / `allotted` / `reassigned` / `edited`; the people columns are **plain ids with no foreign key** (a foreign key's `on delete set null` is an UPDATE the append-only trigger would refuse, so removing a person would be blocked by their own history). `edited` records which fields changed, never their values.
 - Both tables: RLS on, `select` only to `authenticated` through a policy `module_entry_open('sales')`, no write grant, all writes through functions. Nothing is seeded.
 - Functions (all `SECURITY DEFINER`, `search_path = public, pg_temp`): browser-callable `sales_lead_phone_check`, `sales_leads_page`, `get_sales_lead`, `create_sales_lead`, `update_sales_lead`, `allot_sales_lead`; internal (closed to browsers) `sales_leads_require(action)` (module gate, then the right: Admin or `resolve_permission`) and `sales_lead_json`. Errors are `SALES_FORBIDDEN` (42501), `SALES_NOT_FOUND`, `SALES_INVALID: …`, `SALES_CHANGED: …`.
+- **`sales_leads_page` since `20270606000000`** takes eight arguments: the six above plus `p_from date` and `p_to date` (both default null). A given bound wins over `p_period`; one bound alone is open-ended; a pair the wrong way round is read as the range between. `periods` carries `yesterday` as well as today / week / month / all; the holder counts follow the chosen days. The six-argument function was dropped in that file (two would be ambiguous). A call with only the first six arguments, which is what the screen sends when no days are chosen, still resolves.
 - Reused, not rebuilt: `normalize_lead_phone()` (20270305000000, the Exhibition Leads rule) and `is_eligible_order_assignee()` / `list_eligible_order_assignees()` (20260697000000: active AND (team = 'sales' OR the `can_be_order_assignee` grant)).
 - The migration registers `create`, `edit`, `assign` on `sales` (Admin role rows, none default-on), changes the description in `app_modules` and `permission_modules`, and self-checks (four Admin rows, nothing default-on, RLS on, no browser write grant, `anon` cannot execute anything, the internal gate is closed).
 
@@ -52,12 +55,14 @@ Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on
 7. Ten sources: Website, WhatsApp, Instagram, Insta Promo, Facebook Promo, Google Ads, Campaign, Reference, Repeat Customer, Others. "Campaign" is in use in the sheet but missing from its Variables list.
 8. A repeat enquiry from a known number cannot be recorded yet: it is blocked with the holder shown, until Lead Management can hold follow-ups.
 9. Out of the register by decision: the sheet's **Worker** and **Job** tabs (suppliers and job seekers, not leads) and the **Architects** tab (an outbound call list with its own assignee).
-10. A **search looks through every day** (the period cards step aside while it is used), so a number that came in last week is found.
+10. A **search looks through every day** (the period cards and any chosen days step aside while it is used; the dates button keeps its words but is not lit), so a number that came in last week is found.
 11. An **edit started from an older version of a lead is refused** (`SALES_CHANGED`): editing a detail or allotting the lead both count as a change. The person is shown the latest version and edits again.
+12. **Dates (owner, 2026-11-06).** Cards: Today, Yesterday, Last 7 days, Last 30 days (the owner's "Last 1 month"), All time. The "Custom dates" button beside Source holds This month (to today), Last month (whole month) and From / To boxes (the phone's own date pickers, no later than today; either may be left empty). Chosen days win over a card; pressing a card drops them. All days are India time, like the received date. Yesterday is sent to the database as the day itself, never as the word alone (a database without 20270606000000 refuses the call instead of answering "all time"). On a phone the dates are the "Received on" section of the Filter sheet and, once chosen, the first (dark) chip of the card row; pressing it clears them.
+13. **Allotted to, compact (owner, 2026-11-06).** The row is Everyone, Not allotted (the queue, one tap, with its "Allot waiting leads now" button) and one Person button. Its panel lists every person with how many leads they hold in the chosen days (a name with none fades); on a phone it is a bottom sheet. It holds any number of names, the row never scrolls (a scrolling row clips the panel), and a chosen person shows as avatar, name and count (the name is cut short on a narrow phone).
 
 ## 7. Key components & lib files
 
-`src/components/salesLeads/`: `LeadMasterScreen`, `LeadTable`, `LeadPanel` (drawer, history, edit), `AllotParts` (`AllotPicker`, `ConfirmChange`, `Holder`), `AddLeadScreen`, `LeadFields` (live number check, `DupCallout`, source chips, detail fields), `SalesFrame`, `useToast`, `useDialogFocus` (one keyboard layer for the panel and the confirmation: Escape, Tab trap, focus back), `salesLeads.module.css`. `src/lib/salesLeads/`: `constants.ts`, `api.ts` (typed wrappers, error kinds), `validation.ts`, `format.ts`, `allot.ts` (the dropdown rule). Hook `src/hooks/useSalesAccess.ts`. The number rules are imported from `src/lib/exhibitionLeads/phone.ts`, not copied.
+`src/components/salesLeads/`: `LeadMasterScreen`, `LeadTable`, `LeadPanel` (drawer, history, edit), `AllotParts` (`AllotPicker`, `ConfirmChange`, `Holder`), `AddLeadScreen`, `LeadFields` (live number check, `DupCallout`, source chips, detail fields), `SalesFrame`, `useToast`, `useDialogFocus` (one keyboard layer for the panel and the confirmation: Escape, Tab trap, focus back), `LeadFilters` (since 2026-11-06: `DatesChip`, `DatesFields`, `PersonChip`, built on the shared `.fin-chip`; each closes on a choice, Escape and a press outside), `salesLeads.module.css`. `src/lib/salesLeads/`: `constants.ts`, `api.ts` (typed wrappers, error kinds), `validation.ts`, `format.ts`, `allot.ts` (the dropdown rule), `dateRange.ts` (what the list asks for, the words; the two month quick picks are the shared `src/lib/monthRangePresets.ts` presets, not a copy). Hook `src/hooks/useSalesAccess.ts`. The number rules are imported from `src/lib/exhibitionLeads/phone.ts`, not copied.
 
 ## 8. Decisions made & why
 
@@ -70,6 +75,8 @@ Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on
 
 - **Migration number.** `20270523000000` is the Meta Ads weekly review (PR #592, merged), so this migration is `20270524000000` and is applied after it. Check `supabase migration list --linked` shows 523 applied first.
 - A browser `<select>` on Chrome / Edge changes (and fires `change`) on an arrow key or a typed letter while closed. `AllotPicker` ignores a change that arrives within 100 ms of such a key (`isSelectNavigationKey`, `changeCameFromKey` in `allot.ts`); a person opens the list (click, Space, Enter, Alt+Down) and picks. It is judged by time, not by waiting for a key-up: on a Mac an arrow key opens the list and its key-up never reaches the select. Do not "simplify" this away. **Unchecked on a real iPhone:** its wheel picker applies the scrolled value when it is dismissed; for an unallotted lead that saves at once.
+- **Dates and the deploy order.** `20270606000000` is safe to apply before the code (the live screen sends six arguments). If the code is merged first, Today / Last 7 / Last 30 / All time keep working; Yesterday and Custom dates show "The leads could not be loaded" and the Yesterday card shows a dash until it is applied. Never send `p_period: 'yesterday'` alone: an older database treats an unknown period as all time and would answer wrongly without an error.
+- `.whoBar` must not scroll (`overflow` makes the Person panel clip). `globals.css` is not touched by this feature; the Finance chip (`.fin-chip`) and the phone filter sheet are reused as they are.
 - The picker uses `aria-busy`, never `disabled`: a disabled control drops keyboard focus to `<body>` after every allotment.
 - Edits and numbers: the shared phone rule accepts `+9710501234567` (a 0 left after +971) as a different number from `+971501234567`; the form refuses it (`numberError`) but the database does not, because the rule is shared and applied. The same for "Other" without a +.
 - `text[] || 'literal'` in PL/pgSQL fails ("malformed array literal"); `update_sales_lead` uses `array_append`.
@@ -79,6 +86,8 @@ Shell `src/components/layout/SalesLayout.tsx` (one nav item, Lead Master, lit on
 - The registry's display name for `assign` is per module ("Assign Leads" here, "Assign Assets" in Assets); the drift check compares action keys only.
 
 ## 10. Tests
+
+Date filter (2026-11-06): `src/lib/salesLeads/dateRange.test.ts`, `dateRangeMigration.test.ts`, the new cases in `api.test.ts` and `salesLeads.test.tsx` (dates button, Person button, screen wiring), and 7 checks at the end of `supabase/tests/sales_full_flow_pglite.mjs` (Yesterday and its count, ranges and open sides, days beat a period, the six-argument call still answers, holder counts follow the days, visibility unchanged, grants).
 
 `src/lib/salesLeads/logic.test.ts`, `api.test.ts`, `migration.test.ts`; `src/components/salesLeads/salesLeads.test.tsx`; changed on purpose: `comingSoonModules.test.tsx`, `accessCatalog.test.ts`, the two migration ledgers in `participantAndOrderTotalSecurity.test.ts`. Database: `node supabase/tests/sales_lead_master_pglite.mjs <dir with @electric-sql/pglite>` (expected last line `all 46 checks passed`).
 

@@ -35,7 +35,8 @@ export type SalesLead = {
 }
 
 export type LeadPage = {
-  periods: Record<Period, number>
+  /** The count on each period card. `yesterday` is missing until 20270606000000 is applied: the card then shows a dash. */
+  periods: Partial<Record<Period, number>>
   /** How many leads the period, source and search select, before the "Allotted to" filter. */
   everyone: number
   unallotted: number
@@ -134,6 +135,9 @@ export const SALES_KEY = 'sales-leads'
 
 export type LeadFilter = {
   period: Period
+  /** Chosen days (India dates, YYYY-MM-DD); '' = open on that side, both '' = the period alone decides. */
+  from: string
+  to: string
   /** '' = everyone, 'none' = not allotted, or a user id. */
   holder: string
   /** '' = every source. */
@@ -151,6 +155,8 @@ export const fetchLeadPage = (s: Supabase, f: LeadFilter) =>
     p_q: f.q || null,
     p_limit: f.limit,
     p_offset: f.offset,
+    // Only when days were chosen: a call without them is the one every database version understands.
+    ...(f.from || f.to ? { p_from: f.from || null, p_to: f.to || null } : {}),
   }))
 
 export const fetchLead = (s: Supabase, id: string) =>
