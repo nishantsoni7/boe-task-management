@@ -4,33 +4,35 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Upload, UserRoundCheck } from 'lucide-react'
+import { Plus, Upload, UserRoundCheck, X } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
-import { enumParam, idParam, optionParam, textParam, type ParamCodec } from '@/lib/listState'
+import { dateParam, enumParam, idParam, optionParam, textParam, type ParamCodec } from '@/lib/listState'
 import {
   allotLead, allotWaiting, fetchLeadPage, fetchPeople, SALES_KEY, SalesRequestError,
   type LeadPage, type SalesLead,
 } from '@/lib/salesLeads/api'
 import { allotStep } from '@/lib/salesLeads/allot'
-import { LEAD_SOURCES, LEAD_SOURCE_VALUES, PAGE_SIZE, PERIODS, PERIOD_KEYS, type Period } from '@/lib/salesLeads/constants'
-import { initialsOf, plural } from '@/lib/salesLeads/format'
+import { LEAD_SOURCES, LEAD_SOURCE_VALUES, PAGE_SIZE, PERIODS, PERIOD_KEYS } from '@/lib/salesLeads/constants'
+import { hasDays, leadWhen, NO_DAYS, rangeLabel, whenWords } from '@/lib/salesLeads/dateRange'
+import { plural } from '@/lib/salesLeads/format'
 import { istToday } from '@/lib/istDate'
 import { createClient } from '@/lib/supabase/client'
 import { ConfirmChange } from './AllotParts'
+import { DatesChip, DatesFields, PersonChip } from './LeadFilters'
 import { LeadPanel } from './LeadPanel'
 import { LeadTable } from './LeadTable'
 import { SalesFrame } from './SalesFrame'
 import { useToast } from './useToast'
 import s from './salesLeads.module.css'
 
-// The Lead Master: every lead, newest first, and who holds it. The period cards and the "Allotted to" chips are the
-// filters (the URL keeps them). Leads are allotted here, from the name dropdown on each row: the first name saves at
-// once, and changing a name that is already there asks first.
+// The Lead Master: every lead, newest first, and who holds it. The period cards, the "Custom dates" button and the
+// "Allotted to" row are the filters (the URL keeps them). Leads are allotted here, from the name dropdown on each row:
+// the first name saves at once, and changing a name that is already there asks first.
 
 const holderId = idParam()
 /** '' = everyone, 'none' = not allotted yet, or a user id. */
@@ -41,20 +43,20 @@ const holderParam: ParamCodec<string> = {
 
 const LIST_PARAMS = {
   period: enumParam(PERIOD_KEYS, 'today'),
+  // Chosen days win over the period card. Either may be left empty (open on that side).
+  from: dateParam(),
+  to: dateParam(),
   holder: holderParam,
   source: optionParam(LEAD_SOURCE_VALUES),
   q: textParam(),
 }
 
-const WHEN_WORDS: Record<Period, string> = { today: 'today', week: 'in the last 7 days', month: 'in the last 30 days', all: 'so far' }
-
 function WhoChip({ pressed, label, count, kind, onClick }: {
-  pressed: boolean; label: string; count: number | null; kind: 'all' | 'none' | 'person'; onClick: () => void
+  pressed: boolean; label: string; count: number | null; kind: 'all' | 'none'; onClick: () => void
 }) {
-  const cls = `${s.who}${kind === 'all' ? ` ${s.whoAll}` : ''}${kind === 'none' ? ` ${s.whoNone}` : ''}`
+  const cls = `${s.who}${kind === 'all' ? ` ${s.whoAll}` : ` ${s.whoNone}`}`
   return (
     <button type="button" className={cls} aria-pressed={pressed} onClick={onClick}>
-      {kind === 'person' && <span className="fin-avatar" aria-hidden="true">{initialsOf(label)}</span>}
       {kind === 'none' && <span className="fin-dot fin-dot--zero" aria-hidden="true" />}
       {label} <span className={s.count}>{count ?? '–'}</span>
     </button>
@@ -78,7 +80,10 @@ export function LeadMasterScreen() {
   const today = istToday()
   // A search looks through every day: a person looking for a number that came in last week must find it.
   const searching = state.q !== ''
-  const period: Period = searching ? 'all' : state.period
+  // Chosen days win over a card; Yesterday is sent as the day itself (see leadWhen).
+  const days = useMemo(() => ({ from: state.from, to: state.to }), [state.from, state.to])
+  const rangeOn = hasDays(days)
+  const when = leadWhen(state.period, days, today, searching)
 
   const people = useQuery({
     queryKey: [SALES_KEY, 'people'],
@@ -88,9 +93,9 @@ export function LeadMasterScreen() {
   })
 
   const list = useInfiniteQuery({
-    queryKey: [SALES_KEY, 'list', period, state.holder, state.source, state.q],
+    queryKey: [SALES_KEY, 'list', when.period, when.from, when.to, state.holder, state.source, state.q],
     queryFn: ({ pageParam }) => fetchLeadPage(supabase, {
-      period, holder: state.holder, source: state.source, q: state.q, limit: PAGE_SIZE, offset: pageParam,
+      period: when.period, from: when.from, to: when.to, holder: state.holder, source: state.source, q: state.q, limit: PAGE_SIZE, offset: pageParam,
     }),
     initialPageParam: 0,
     getNextPageParam: (last: LeadPage, all: LeadPage[]) => {
@@ -166,6 +171,8 @@ export function LeadMasterScreen() {
 
   const hasFilters = state.q !== '' || state.holder !== '' || state.source !== ''
   const periods = first?.periods
+  const words = whenWords(when)
+  const dayChip = rangeLabel(days, today)
 
   let body: React.ReactNode
   if (!ready || (list.isPending && !first)) {
@@ -181,14 +188,31 @@ export function LeadMasterScreen() {
   } else {
     body = (
       <div className={s.wrap}>
-        <div className="fin-stats" role="group" aria-label="Leads received">
-          {PERIODS.map(p => (
-            <button key={p.key} type="button" className="fin-stat" aria-pressed={!searching && state.period === p.key} onClick={() => setState({ period: p.key })}>
-              <span className="fin-stat-label">{p.label}</span>
-              <span className="fin-stat-value" style={{ display: 'block' }}>{periods ? periods[p.key].toLocaleString('en-IN') : '—'}</span>
-              <span className="fin-stat-sub" style={{ display: 'block' }}>{periods?.[p.key] === 1 ? 'lead' : 'leads'}</span>
+        <div className={`fin-stats ${s.periodCards}`} role="group" aria-label="Leads received">
+          {/* A phone has no dates button in the toolbar (it is in the Filter sheet): chosen days show here instead, as the first chip. */}
+          {rangeOn && (
+            <button
+              type="button"
+              className={`fin-stat ${s.rangeChip} ${s.phoneOnly}`}
+              aria-pressed={!searching}
+              aria-label={`${dayChip}. Press to clear the dates`}
+              onClick={() => setState(NO_DAYS)}
+            >
+              <span className="fin-stat-label">{dayChip}</span>
+              <span className="fin-stat-value">{first ? first.everyone.toLocaleString('en-IN') : '—'}</span>
+              <X size={14} aria-hidden="true" />
             </button>
-          ))}
+          )}
+          {PERIODS.map(p => {
+            const n = periods?.[p.key]
+            return (
+              <button key={p.key} type="button" className="fin-stat" aria-pressed={!searching && !rangeOn && state.period === p.key} onClick={() => setState({ period: p.key, ...NO_DAYS })}>
+                <span className="fin-stat-label">{p.label}</span>
+                <span className="fin-stat-value" style={{ display: 'block' }}>{n === undefined ? '—' : n.toLocaleString('en-IN')}</span>
+                <span className="fin-stat-sub" style={{ display: 'block' }}>{n === 1 ? 'lead' : 'leads'}</span>
+              </button>
+            )
+          })}
         </div>
 
         <section className="fin-board" aria-label="Leads">
@@ -208,18 +232,22 @@ export function LeadMasterScreen() {
                 />
                 {searchInput && <button type="button" className="boe-list-search-clear" aria-label="Clear search" onClick={() => { setSearchInput(''); setState({ q: '' }) }}>✕</button>}
               </label>
-              {/* A phone: one Filter button holds Source (the select and the count are hidden there). */}
+              {/* A phone: one Filter button holds Source and the dates (the dates button, the select and the count are hidden there). */}
               <PhoneFilterSheet
                 triggerClassName="boe-phone-only p3-filter" sheetClassName="p3-sheet"
-                activeCount={state.source ? 1 : 0}
+                activeCount={(state.source ? 1 : 0) + (rangeOn ? 1 : 0)}
                 groups={[{
                   id: 'source', label: 'Source', value: state.source,
                   options: [{ value: '', label: 'All sources' }, ...LEAD_SOURCES.map(o => ({ value: o.value, label: o.label }))],
                   onChange: v => setState({ source: v as typeof state.source }),
+                }, {
+                  id: 'received', label: 'Received on',
+                  content: <div className={s.sheetDates}><DatesFields variant="sheet" days={days} today={today} onChange={d => setState(d)} /></div>,
                 }]}
                 applyLabel={first ? `Show ${plural(first.total, 'lead')}` : 'Show leads'}
-                onClearAll={() => setState({ source: '' })}
+                onClearAll={() => setState({ source: '', ...NO_DAYS })}
               />
+              <DatesChip className={s.phoneHide} days={days} today={today} active={!searching} onChange={d => setState(d)} />
               <select
                 className={`${s.sourceSelect} ${s.phoneHide}${state.source ? ` ${s.sourceSet}` : ''}`}
                 aria-label="Source"
@@ -243,9 +271,7 @@ export function LeadMasterScreen() {
             <span className={`${s.whoLabel} ${s.phoneHide}`}>Allotted to</span>
             <WhoChip kind="all" label="Everyone" count={first?.everyone ?? null} pressed={state.holder === ''} onClick={() => setState({ holder: '' })} />
             <WhoChip kind="none" label="Not allotted" count={first?.unallotted ?? null} pressed={state.holder === 'none'} onClick={() => setState({ holder: 'none' })} />
-            {chips.map(c => (
-              <WhoChip key={c.id} kind="person" label={c.name} count={c.n} pressed={state.holder === c.id} onClick={() => setState({ holder: c.id })} />
-            ))}
+            <PersonChip people={chips} holder={state.holder} onPick={id => setState({ holder: id })} />
             {canAssign && state.holder === 'none' && (first?.unallotted ?? 0) > 0 && (
               <button type="button" className="boe-btn boe-btn-secondary" style={{ marginLeft: 'auto' }} disabled={allotting} onClick={() => void allotAllWaiting()}>
                 <UserRoundCheck aria-hidden="true" />{allotting ? 'Allotting...' : 'Allot waiting leads now'}
@@ -270,13 +296,13 @@ export function LeadMasterScreen() {
             <div className={s.empty} style={{ display: 'block' }}>
               {hasFilters
                 ? <>No lead matches. <button type="button" className="boe-btn boe-btn-secondary" onClick={() => { setSearchInput(''); setState({ holder: '', source: '', q: '' }) }}>Clear the filters</button></>
-                : <>No leads {WHEN_WORDS[period]} yet.{canCreate && <> <Link className="boe-btn boe-btn-secondary" href="/sales/lead-master/new">Add a lead</Link></>}</>}
+                : <>{when.from || when.to ? `No leads received ${words}.` : `No leads ${words} yet.`}{canCreate && <> <Link className="boe-btn boe-btn-secondary" href="/sales/lead-master/new">Add a lead</Link></>}</>}
             </div>
           )}
 
           <div className="fin-footer">
             <span>
-              {first ? plural(first.total, 'lead') : 'No leads'} received {WHEN_WORDS[period]}
+              {first ? plural(first.total, 'lead') : 'No leads'} received {words}
               {state.holder === 'none' ? ', not allotted yet' : holderName ? `, allotted to ${holderName}` : ''}. Newest first.
               {searching && ' A search looks through every day.'}
             </span>

@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), and the automatic allotment (20270602000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), and the Lead Master date range (20270606000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -89,7 +89,8 @@ await db.exec(`grant execute on function public.normalize_lead_phone(text), publ
 for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', '20270524000000_sales_lead_master.sql',
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
-  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql']) {
+  '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
+  '20270606000000_sales_lead_master_date_range.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -871,6 +872,74 @@ await step('Browser users cannot fire the alert job', () =>
     const rows = await one(U.manager, `select public.sales_premium_misplaced()`)
     must(rows.some(r => r.phone === '+919811100069' && r.level === 'junior' && r.premium === '300 guests'), JSON.stringify(rows.map(r => [r.phone, r.level, r.premium])))
     must(!rows.some(r => r.phone === '+919811100061'), 'a Mid holding a Premium lead is fine')
+  })
+}
+
+// ── The Lead Master date range (20270606000000) ─────────────────────────────
+{
+  // Six leads on known days: today, two yesterday, 3 days ago, 10 and 40 days ago. All found by the digits "98111900".
+  const days = [0, -1, -1, -3, -10, -40]
+  const ids = []
+  for (const [i, n] of days.entries()) {
+    ids.push(await scalar(`insert into public.sales_leads (phone_e164, source, received_on) values ($1, 'website', $2::date) returning id`,
+      [`+91981119000${i + 1}`, day(n)]))
+  }
+  const [TODAY, YEST_A, YEST_B, THREE, TEN, FORTY] = ids.map((_, i) => `+91981119000${i + 1}`)
+  const pageR = (uid, from, to, period = 'all') =>
+    one(uid, `select public.sales_leads_page($1, 'all', null, '98111900', 50, 0, $2::date, $3::date)`, [period, from, to])
+  const phonesOf = p => p.rows.map(r => r.phone).sort()
+  const same = (got, want) => must(JSON.stringify(got) === JSON.stringify([...want].sort()), `got ${JSON.stringify(got)}, wanted ${JSON.stringify([...want].sort())}`)
+
+  await step('Yesterday: only the leads received the day before, and the Yesterday count says the same', async () => {
+    const p = await pageR(U.leadmgr, null, null, 'yesterday')
+    same(phonesOf(p), [YEST_A, YEST_B])
+    must(p.total === 2, 'total ' + p.total)
+    const all = await one(U.leadmgr, `select public.sales_leads_page('all')`)
+    const direct = Number(await scalar(`select count(*) from public.sales_leads where received_on = $1::date`, [day(-1)]))
+    must(all.periods.yesterday === direct, `periods.yesterday ${all.periods.yesterday}, counted ${direct}`)
+  })
+  await step('A range: both days included, either bound alone is open-ended, a pair the wrong way round is the range between', async () => {
+    same(phonesOf(await pageR(U.leadmgr, day(-3), day(-1))), [THREE, YEST_A, YEST_B])
+    same(phonesOf(await pageR(U.leadmgr, day(-1), day(-3))), [THREE, YEST_A, YEST_B])
+    same(phonesOf(await pageR(U.leadmgr, day(-1), day(-1))), [YEST_A, YEST_B])
+    same(phonesOf(await pageR(U.leadmgr, day(-3), null)), [TODAY, YEST_A, YEST_B, THREE])
+    same(phonesOf(await pageR(U.leadmgr, null, day(-3))), [THREE, TEN, FORTY])
+    same(phonesOf(await pageR(U.leadmgr, day(-30), day(-5))), [TEN])
+    same(phonesOf(await pageR(U.leadmgr, day(-400), day(-300))), [])
+  })
+  await step('Chosen days win over the period; the period cards still count the whole register', async () => {
+    const p = await pageR(U.leadmgr, day(-3), day(-1), 'today')
+    same(phonesOf(p), [THREE, YEST_A, YEST_B])
+    must(p.periods.all >= 6 && p.periods.today >= 1, JSON.stringify(p.periods))
+  })
+  await step('The screen that is live now (six arguments, no dates) still gets the same answers', async () => {
+    const six = async period => phonesOf(await one(U.leadmgr, `select public.sales_leads_page($1, 'all', null, '98111900', 50, 0)`, [period]))
+    same(await six('today'), [TODAY])
+    same(await six('week'), [TODAY, YEST_A, YEST_B, THREE])
+    same(await six('month'), [TODAY, YEST_A, YEST_B, THREE, TEN])
+    same(await six('all'), [TODAY, YEST_A, YEST_B, THREE, TEN, FORTY])
+  })
+  await step('Who holds how many follows the chosen days', async () => {
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [ids[1], U.ashok])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [ids[3], U.ashok])
+    const heldBy = async (from, to) => (await pageR(U.leadmgr, from, to)).holders.find(h => h.id === U.ashok)?.n ?? 0
+    must(await heldBy(day(-1), day(-1)) === 1, 'yesterday only')
+    must(await heldBy(day(-3), day(-1)) === 2, 'three days')
+    must(await heldBy(day(-300), day(-200)) === 0, 'no leads in that range')
+    const p = await pageR(U.leadmgr, day(-3), day(-1))
+    must(p.everyone === 3 && p.unallotted === 1, `everyone ${p.everyone}, unallotted ${p.unallotted}`)
+    const mine = await one(U.leadmgr, `select public.sales_leads_page('all', $1, null, '98111900', 50, 0, $2::date, $3::date)`, [U.ashok, day(-3), day(-1)])
+    same(phonesOf(mine), [THREE, YEST_A])
+  })
+  await step('A date range does not widen what anyone sees: a salesperson reads only their own leads, and a stranger is refused', async () => {
+    same(phonesOf(await pageR(U.ashok, day(-3), day(-1))), [THREE, YEST_A])
+    same(phonesOf(await pageR(U.mohit, day(-3), day(-1))), [])
+    await expectErr(U.nobody, `select public.sales_leads_page('all', 'all', null, null, 50, 0, $1::date, $2::date)`, /SALES_FORBIDDEN/, [day(-3), day(-1)])
+  })
+  await step('The old six-argument function is gone and the new one is closed to anon', async () => {
+    must(await scalar(`select to_regprocedure('public.sales_leads_page(text, text, text, text, integer, integer)') is null`), 'old function still there')
+    must(await scalar(`select not has_function_privilege('anon', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'open to anon')
+    must(await scalar(`select has_function_privilege('authenticated', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'authenticated lost it')
   })
 }
 

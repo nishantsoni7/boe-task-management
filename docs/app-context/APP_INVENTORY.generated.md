@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `ad44cccd` — BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
-- Commits on this branch: 1191
+- Commit: `29f12593` — Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
+- Commits on this branch: 1192
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
-- Migrations: 421 (first `20260530_create_positions.sql`, latest `20270605000000_boe_credits_open_months_follow_target.sql`)
+- Migrations: 422 (first `20260530_create_positions.sql`, latest `20270606000000_sales_lead_master_date_range.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 950   Enums: 0
-- Test files: 765   Next.js 16.2.6, React 19.2.4
+- Test files: 767   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
 - `aa1f4b46` 2026-11-06 Payroll: the payslip lists the month's approved reviews and their credits (no SQL) (#625)
@@ -38,7 +39,6 @@
 - `3d4606b4` 2026-11-03 Sales: the old Google Sheets come into the Lead Master (migration 20270530000000, apply first) (#605)
 - `b909e1f8` 2026-11-03 Docs: the Assigned By Me polish merged (#602) (#604)
 - `6db10ccd` 2026-11-03 Assigned By Me: no overlaps, icon buttons with tooltips, calmer list (#602)
-- `a38b5a5a` 2026-11-03 Sales: Can be given leads, a tick per person (migration 20270529000000, apply first) (#603)
 
 ## Pages by top-level area
 
@@ -158,7 +158,7 @@
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/salesLeads` — 11 source, 9 test
+- `src/lib/salesLeads` — 12 source, 11 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
@@ -449,7 +449,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270513000000_for_you_settings.sql`
 - `20270514000000_finance_bank_line_review.sql`
 - `20270515000000_register_sales_marketing_pricing_modules.sql`
 - `20270516000000_finance_bank_proof_before_verify.sql`
@@ -479,6 +478,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
 - `20270605000000_boe_credits_open_months_follow_target.sql`
+- `20270606000000_sales_lead_master_date_range.sql`
 
 ## All SQL function names
 
