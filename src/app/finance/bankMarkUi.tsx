@@ -26,6 +26,8 @@ import {
   type BankCandidate, type BankMark, type BankMarkTone, type SearchCredit,
 } from '@/lib/finance/bankMarks'
 import { PAYMENT_STATUS_LABEL, creditHref, formatBankDate, paymentHref, rpcMessage } from './bank/bankStatementsModel'
+import { DuplicatePanel, useDuplicates, type DuplicatePayment } from './bankDuplicate'
+import type { MergeResult } from '@/lib/finance/paymentDuplicates'
 
 /** What an admin usually means when a payment cannot wait for the next statement. They can change it. */
 export const BANK_CHECK_DEFAULT_REASON = 'Seen in the bank app'
@@ -65,14 +67,7 @@ export function PiWaitingChip() {
   return <span className="bank-mark bank-mark--warn" title="This payment's PI cannot be approved until this payment is decided">PI waiting</span>
 }
 
-type PanelPayment = {
-  id: string
-  amount: number
-  client_name: string | null
-  payment_date: string
-  payment_mode: string
-  proof_note: string | null
-}
+type PanelPayment = DuplicatePayment
 
 function CreditCard({ payment, credit, remaining, best, canVerify, confirmLabel, busy, onVerify, onLink, onReject, onBack, onSearch }: {
   payment: PanelPayment
@@ -215,7 +210,7 @@ function BankSearch({ supabase, payment, need, dismissed, onPick }: {
 }
 
 /** What the bank shows for this payment, and where an HDFC payment is verified. */
-export function BankMatchPanel({ supabase, payment, mark, markFailed = false, canVerify, canVerifyUrgent, confirmLabel = 'Link', onChanged, onReread, onVerified }: {
+export function BankMatchPanel({ supabase, payment, mark, markFailed = false, canVerify, canVerifyUrgent, confirmLabel = 'Link', onChanged, onReread, onVerified, onMerged }: {
   supabase: SupabaseClient
   payment: PanelPayment
   /** Undefined while it is being read. */
@@ -232,6 +227,11 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
   /** Read the marks again, keeping this window where it is. Defaults to onChanged. */
   onReread?: () => void
   onVerified: () => void
+  /**
+   * A pending request was merged into the payment already confirmed (merge_payment_request).
+   * Absent where merging is not offered (the Bank check pending list, whose payments are verified).
+   */
+  onMerged?: (result: MergeResult) => void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -240,6 +240,9 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
   const [focusId, setFocusId] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
   const [picked, setPicked] = useState<SearchCredit | null>(null)
+  // Earlier payments that look like the same money (only for a pending HDFC request). A failed or
+  // empty read leaves the panel exactly as it was.
+  const dup = useDuplicates(supabase, payment, mark, isBankAccountMode(payment.payment_mode))
   if (!isBankAccountMode(payment.payment_mode)) return null
   if (!mark) {
     return (
@@ -256,13 +259,16 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
   const remaining = mark.kind === 'suggested' || mark.kind === 'linked' ? mark.remaining : 0
   const fits = candidates.filter(c => c.amountExact).length
   const covered = mark.kind === 'linked' && mark.complete
-  const mayBeDuplicate = mark.kind === 'lookalike'
+  // A payment already confirmed that looks like this request, found by its details or by the credit it holds.
+  const hasDuplicate = dup.status === 'ready' && dup.candidates.length > 0
+  const mayBeDuplicate = mark.kind === 'lookalike' || hasDuplicate
   const need = mark.kind === 'suggested' || mark.kind === 'linked' ? mark.remaining : payment.amount
   const focused = candidates.find(c => c.lineId === focusId) ?? candidates[0]
   const others = candidates.filter(c => c !== focused)
   const position = focused ? candidates.indexOf(focused) + 1 : 0
   const dismissedLines = mark.dismissed ?? []
-  const showSearch = !covered && (searching || candidates.length === 0)
+  // With a duplicate on screen the search waits behind a link: the comparison is the decision.
+  const showSearch = !covered && (searching || (candidates.length === 0 && !hasDuplicate))
 
   // On a possible second record the sentence is theirs to write: the usual reason
   // says the money was seen, and that is true of a credit already recorded too.
@@ -324,6 +330,11 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
 
   return (
     <div className="bank-panel">
+      {dup.status === 'ready' && dup.candidates.length > 0 && (
+        <DuplicatePanel supabase={supabase} payment={payment} request={dup.request} candidates={dup.candidates} mark={mark}
+          canMerge={canVerify && !!onMerged} busyElsewhere={busy !== null} onMerged={r => onMerged?.(r)} />
+      )}
+
       {!picked && !searching && candidates.length > 1 && (
         <div className="bank-panel-head">
           <span className="fin-muted" style={{ fontSize: 13 }}>{fits > 1 ? 'More than one credit fits this payment. Compare them and pick the right one.' : ''}</span>
@@ -372,7 +383,7 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
         </>
       )}
 
-      {mark.kind === 'lookalike' && (
+      {mark.kind === 'lookalike' && !hasDuplicate && (
         <div className="bank-twin">
           <p className="bank-panel-lead"><strong>May be a duplicate.</strong> {formatMoney(mark.deposit)} credited on {formatBankDate(mark.lineDate)} is already on another payment.</p>
           {mark.holders.map(h => (
@@ -394,8 +405,11 @@ export function BankMatchPanel({ supabase, payment, mark, markFailed = false, ca
       {!picked && showSearch && (
         <BankSearch supabase={supabase} payment={payment} need={need} dismissed={new Set(dismissedLines.map(d => d.lineId))} onPick={setPicked} />
       )}
-      {!picked && searching && candidates.length > 0 && (
-        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setSearching(false)}>Back to the suggestions</button></div>
+      {!picked && searching && (candidates.length > 0 || hasDuplicate) && (
+        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setSearching(false)}>{candidates.length > 0 ? 'Back to the suggestions' : 'Close the search'}</button></div>
+      )}
+      {!picked && !searching && !covered && hasDuplicate && candidates.length === 0 && (
+        <div><button className="bank-link-button" disabled={busy !== null} onClick={() => setSearching(true)}>Look for a different credit</button></div>
       )}
 
       {dismissedLines.map(d => (

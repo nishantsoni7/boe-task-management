@@ -21,6 +21,8 @@ export type FinanceNotifyEvent =
   | 'finance_linked'
   | 'finance_status_corrected'
   | 'finance_payment_moved'
+  /** A request was merged into the payment already recorded (20270608000000): its sender is told, for information. */
+  | 'finance_merged'
 
 export type FinanceNotifyPayload = {
   event: FinanceNotifyEvent
@@ -32,6 +34,8 @@ export type FinanceNotifyPayload = {
   creatorId?: string | null
   orderNumber?: string | null
   statusLabel?: string | null
+  /** finance_merged: the Payment ID the request was merged into. */
+  mergedInto?: string | null
 }
 
 export async function notifyFinance(payload: FinanceNotifyPayload): Promise<void> {

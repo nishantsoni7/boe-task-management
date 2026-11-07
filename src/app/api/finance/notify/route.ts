@@ -22,6 +22,8 @@ export type FinanceNotifyEvent =
   | 'finance_status_corrected'
   /** Use this money (20270506000000): already-received money moved onto a PI or Order. For information only. */
   | 'finance_payment_moved'
+  /** A request was merged into the payment already recorded (20270608000000). */
+  | 'finance_merged'
 
 type NotifRow = {
   user_id: string
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { event, requestNumber: givenNumber, entityId, clientName, creatorId, orderNumber, statusLabel } =
+  const { event, requestNumber: givenNumber, entityId, clientName, creatorId, orderNumber, statusLabel, mergedInto } =
     await req.json() as {
       event: FinanceNotifyEvent
       requestNumber: string
@@ -47,6 +49,7 @@ export async function POST(req: NextRequest) {
       creatorId?: string | null
       orderNumber?: string | null
       statusLabel?: string | null
+      mergedInto?: string | null
     }
 
   // A screen that holds only the payment's id (the PI page records through
@@ -118,6 +121,11 @@ export async function POST(req: NextRequest) {
       // NO NEW ENUM VALUE: sent with the existing finance_linked type, which opens
       // the payment like every other Finance notice.
       await toAdmins(`Payment request ${requestNumber} was moved onto ${orderNumber ?? 'a PI'} from money already received.`, 'finance_linked')
+      break
+    case 'finance_merged':
+      // NO NEW ENUM VALUE, like finance_payment_moved: sent with finance_linked, which opens the
+      // payment the request was merged into (entityId). The sender has nothing to do.
+      push(creatorId, `Payment request ${requestNumber} was already recorded${mergedInto ? ` as ${mergedInto}` : ''}, so Finance merged them. You do not need to do anything.`, 'finance_linked')
       break
     case 'finance_status_corrected':
       push(creatorId, `Payment request ${requestNumber} status was updated to ${statusLabel ?? 'a new status'}.`)

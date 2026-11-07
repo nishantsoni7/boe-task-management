@@ -232,13 +232,38 @@ describe('renaming is all that happened — the trail itself is untouched', () =
   })
 })
 
+describe('a duplicate request merged into a confirmed payment (20270608000000)', () => {
+  test('the old payment says who sent the request, when, and that it was merged', () => {
+    assert.equal(
+      paymentActivityLabel(row('request_merged_in', {
+        request_human_id: 'P-AA-0093', submitted_by_name: 'Mohit Sharma', submitted_at: '2026-11-07T10:30:00Z',
+      })),
+      'Duplicate request P-AA-0093 from Mohit Sharma (7 Nov 2026) merged into this payment')
+  })
+
+  test('it still reads when the payload is thin', () => {
+    assert.equal(paymentActivityLabel(row('request_merged_in', {})), 'A duplicate request merged into this payment')
+    assert.equal(paymentActivityLabel(row('request_merged_in', { request_human_id: 'P-AA-0093' })), 'Duplicate request P-AA-0093 merged into this payment')
+  })
+
+  test('the closed request says where it went, and that it was not rejected', () => {
+    assert.equal(paymentActivityLabel(row('request_merged', { into_human_id: 'P-AA-0089' })), 'Merged into P-AA-0089 as a duplicate. Not rejected')
+    assert.equal(paymentActivityLabel(row('request_merged', {})), 'Merged into a payment already confirmed as a duplicate. Not rejected')
+  })
+
+  test('the merger\'s note is printed by the timeline from the payload', () => {
+    const timeline = readFileSync(join(process.cwd(), 'src/components/PaymentRequestActivity.tsx'), 'utf8')
+    assert.ok(timeline.includes("row.event_type === 'request_merged_in'"), 'the merge has its own marker colour')
+  })
+})
+
 describe('no label leaks an internal identifier', () => {
   const EVERY_EVENT = [
     'request_submitted', 'target_changed', 'order_linked', 'order_unlinked',
     'order_request_linked', 'order_request_unlinked', 'order_link_changed',
     'status_changed', 'collection_details_updated', 'cash_handover_recorded',
     'allocation_created', 'allocation_reversed', 'allocation_moved',
-    'request_deleted',
+    'request_deleted', 'request_merged', 'request_merged_in',
     'an_event_from_the_future',
   ]
 

@@ -12,6 +12,7 @@ import { canDeleteOwnPaymentRequest } from '@/lib/finance/ownPaymentRequestDelet
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
+import type { MergeResult } from '@/lib/finance/paymentDuplicates'
 import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { BankWindowBar } from './bankWindowBar'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
@@ -52,6 +53,23 @@ export function announcePaymentVerified(r: PaymentRequest) {
   // payment_verified row the database's own echo trigger just wrote, so the
   // figure in the sentence is the ALLOCATED amount, not one computed here.
   if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
+}
+
+/**
+ * Tells the person who sent a request that it was already recorded and merged (nothing for them
+ * to do), and the people on the Order when the money now sits on one. For information only; a
+ * failed notice never undoes the merge.
+ */
+export function announcePaymentMerged(r: MergeResult) {
+  void notifyFinance({
+    event: 'finance_merged',
+    requestNumber: r.requestHumanId ?? r.requestNumber ?? '',
+    entityId: r.intoPaymentId,
+    creatorId: r.submittedBy,
+    clientName: r.clientName,
+    mergedInto: r.intoHumanId,
+  })
+  if (r.orderId) void notifyOrderUpdate({ orderId: r.orderId, event: 'payment' })
 }
 
 // ── Details modal (read-only for creators; includes status correction for admin) ──

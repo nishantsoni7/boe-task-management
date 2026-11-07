@@ -65,6 +65,14 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+/** "7 Nov 2026" from a stored timestamp, in India time; blank when it is not a date. */
+function shortDate(value: unknown): string {
+  const t = typeof value === 'string' ? Date.parse(value) : NaN
+  return Number.isNaN(t)
+    ? ''
+    : new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+}
+
 /** "Order 0524", or null when this reader could not name that record. */
 function resolvedTarget(
   kind: ActivityTargetKind,
@@ -208,6 +216,18 @@ export function paymentActivityLabel(
       // The submitter removed their own never-approved request
       // (delete_own_payment_request, 20270226000000). The row and this trail stay.
       return 'Payment request deleted by the submitter'
+
+    // A duplicate request was merged into a payment already confirmed
+    // (merge_payment_request, 20270608000000). Two rows, one on each payment. The merger's note,
+    // when there is one, is the payload's `note` and the timeline prints it under the sentence.
+    case 'request_merged_in': {
+      const id = str(p.request_human_id)
+      const who = str(p.submitted_by_name)
+      const when = shortDate(p.submitted_at)
+      return `${id ? `Duplicate request ${id}` : 'A duplicate request'}${who ? ` from ${who}` : ''}${when ? ` (${when})` : ''} merged into this payment`
+    }
+    case 'request_merged':
+      return `Merged into ${str(p.into_human_id) || 'a payment already confirmed'} as a duplicate. Not rejected`
     case 'allocation_moved': {
       // The PI-to-Order conversion, and the only shape it has: the allocation
       // leaves an order_submission and lands on an order. Both ends are in the
