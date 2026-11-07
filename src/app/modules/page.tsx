@@ -50,6 +50,7 @@ import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import { participatesInPayroll } from '@/lib/payroll/participation'
 import { AttentionPanel, AttentionStrip, type AttentionSources } from './AttentionPanel'
+import { PunchStrip } from './PunchStrip'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -932,6 +933,15 @@ export default function BoeOsHomePage() {
             />}
           </>) : null}
         >
+          {/* ── Today's punch-in, first thing on the page ──
+              Green or amber for 30 minutes after the punch, red all day until
+              they punch in or hide it. Above everything so it is the first
+              thing seen on a phone and in the tile column on a desktop (the
+              For you panel is docked beside it). Not while previewing someone
+              else, whose punch the admin must not be shown, nor while
+              arranging the cards. See PunchStrip.tsx. */}
+          {!editingOrder && <PunchStrip userId={userId} enabled={!viewMode} />}
+
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
               that it must be reachable in one tap from the first screen after

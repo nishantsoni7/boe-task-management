@@ -144,6 +144,10 @@ Modules launcher (`src/app/modules/page.tsx`):
   Records -> `/admin/control-center/people`), performance (always `/performance`), finance, meetings, customer_reviews
   (Review Workflow), image_editor, exhibition_leads, inventory, plus personal pages (my credits etc.). The newest
   unread announcement (module 22) is the first item of the For you panel, not a row above the tiles (2026-10-29).
+- The punch-in strip (`PunchStrip.tsx`, 2026-11-07) is the FIRST child of the page body, above Quick Actions: green or
+  amber for 30 minutes after a punch, red from 10:15 until they punch or "Hide for today" (this device only). It is not
+  drawn while arranging the cards or while previewing with View As, and a failed read draws nothing. Rules, silent cases
+  and the route are in module 04 section 6.
 - Unread badge counts via `useUnreadCountState('task'|'finance'|'order')`, only when the person may open that module.
 - Phone layout (2026-10-27 redesign), measured on the launcher's own width with container queries in
   `src/app/modules/modules.module.css`: up to 719 px the Essentials are ONE row of equal tiles (icon over name,

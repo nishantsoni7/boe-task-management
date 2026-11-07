@@ -26,6 +26,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | Monthly "Salary decisions" review (day reviews -> payroll correction) | Shipped in code, same migration |
 | Manual check-in / check-out | REMOVED: both routes return HTTP 410 ("use the attendance CSV import") |
 | Minop device feed | The attendance source from 2026-11-01 (see 04). Writes `attendance_records` with `source = 'minop'`; the engine reads them like any other row |
+| Punch-in strip on the Modules page (every employee with a Machine ID) | Built 2026-11-07, PR pending, no SQL: green or amber for 30 minutes after the punch, red from 10:15 until they punch or hide it for the day (04 section 6) |
 | Leave types, balances, per-employee shifts, mid-day punch collection, admin editing of a request | NOT BUILT (stated in ATTENDANCE_REQUESTS.md section 10). `ATTENDANCE_MODULE_PLAN.md` is a "Planning only" document: its leave_requests / salary-concern tables do not exist |
 
 ## 3. Pages and API routes
@@ -51,6 +52,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | `/api/attendance/check-in`, `/check-out` | POST | none; static 410 |
 | `/api/attendance/minop-deliveries`, `/minop-incoming*` | GET | `requireAdmin` (04) |
 | `/api/attendance/machine-day`, `/machine-status` | GET | `requireAdmin` (04) |
+| `/api/attendance/my-punch` | GET | `resolveCaller`: the caller's OWN punch today only, no id accepted (04) |
 | `/api/attendance/machine-alert` | GET | Vercel Cron, `CRON_SECRET` (04) |
 | `/api/attendance-requests` | GET/POST | `resolveCaller`; employee own, admin `?scope=queue` |
 | `/api/attendance-requests/[id]/decision` | POST | admin, never own request |
