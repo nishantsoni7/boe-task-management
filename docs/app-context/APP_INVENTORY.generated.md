@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `7bf6eeeb` — Merge remote-tracking branch 'origin/main' into feat/payment-request-old-order
+- Commit: `937a6914` — Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - Commits on this branch: 1197
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 186
 - Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `7bf6eeeb` 2026-11-06 Merge remote-tracking branch 'origin/main' into feat/payment-request-old-order
-- `d4a6e258` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first)
+- `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
+- `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
 - `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
 - `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
 - `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
