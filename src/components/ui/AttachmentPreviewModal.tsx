@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { colors, font } from '@/lib/tokens'
 import { getExt, getFileTypeLabel, IMAGE_EXTS } from '@/lib/attachment-utils'
+import { ExcelSheetView } from '@/components/ui/ExcelSheetView'
+import type { PreviewSheet } from '@/lib/attachments/excelPreview'
 
 const CSV_EXTS = ['csv']
 const EXCEL_EXTS = ['xlsx', 'xls']
@@ -11,7 +13,14 @@ const MAX_PREVIEW_ROWS = 100
 type SheetState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; sheetNames: string[]; rowsBySheet: Record<string, string[][]> }
+  | {
+      status: 'ready'
+      sheetNames: string[]
+      /** Plain values: CSV, .xls, or an .xlsx the full reader could not read. */
+      rowsBySheet: Record<string, string[][]>
+      /** .xlsx drawn as in Excel: widths, merges, colours, borders, pictures. */
+      richBySheet?: Record<string, PreviewSheet>
+    }
 
 const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
   PDF:     { fg: '#B42332', bg: 'rgba(180,35,50,0.08)'   },
@@ -51,8 +60,10 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
   const label    = getFileTypeLabel(fileName ?? url)
   const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
   const isPdf    = ext === 'pdf'
-  const isCsv    = CSV_EXTS.includes(ext)
-  const isExcel  = EXCEL_EXTS.includes(ext)
+  // Excel is read here, in the browser. Microsoft's online viewer was embedded
+  // before: it sent the file's link to Microsoft and filled the console with
+  // errors from its own page that BOE cannot fix.
+  const isSheet  = CSV_EXTS.includes(ext) || EXCEL_EXTS.includes(ext)
   const chip     = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
   const name     = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
 
@@ -101,16 +112,37 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
   }, [onClose])
 
   useEffect(() => {
-    if (!isCsv) return
+    if (!isSheet) return
     let cancelled = false
 
     ;(async () => {
       try {
         setSheetState({ status: 'loading' })
-        const XLSX = await import('xlsx')
         const res = await fetch(url)
         if (!res.ok) throw new Error('Failed to fetch file')
         const buffer = await res.arrayBuffer()
+
+        // .xlsx first through the full reader (loaded only now); anything it
+        // cannot read falls through to the plain table below.
+        if (ext === 'xlsx') {
+          try {
+            const { readWorkbookPreview } = await import('@/lib/attachments/excelPreview')
+            const sheets = await readWorkbookPreview(buffer)
+            if (cancelled) return
+            setSheetState({
+              status: 'ready',
+              sheetNames: sheets.map(s => s.name),
+              rowsBySheet: {},
+              richBySheet: Object.fromEntries(sheets.map(s => [s.name, s])),
+            })
+            setActiveSheet(sheets[0].name)
+            return
+          } catch {
+            // fall through
+          }
+        }
+
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'array' })
         const sheetNames = workbook.SheetNames
         if (sheetNames.length === 0) throw new Error('No sheets found')
@@ -133,7 +165,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
     })()
 
     return () => { cancelled = true }
-  }, [isCsv, url])
+  }, [isSheet, ext, url])
 
   return (
     <div
@@ -152,7 +184,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
           borderRadius: '12px',
           boxShadow: '0 8px 40px rgba(0,0,0,0.3)',
           width: '100%',
-          maxWidth: isCsv ? '1100px' : '860px',
+          maxWidth: isSheet ? '1100px' : '860px',
           maxHeight: '90dvh',
           display: 'flex',
           flexDirection: 'column',
@@ -190,7 +222,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
           </span>
 
           {/* Sheet selector */}
-          {isCsv && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
+          {isSheet && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
             <select
               value={activeSheet ?? ''}
               onChange={e => setActiveSheet(e.target.value)}
@@ -255,25 +287,17 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
         {/* Preview area */}
         <div style={{
           flex: 1, overflow: 'auto',
-          display: 'flex', alignItems: isCsv ? 'stretch' : 'center', justifyContent: isCsv ? 'flex-start' : 'center',
+          display: 'flex', alignItems: isSheet ? 'stretch' : 'center', justifyContent: isSheet ? 'flex-start' : 'center',
           padding: isImage ? '16px' : 0,
           minHeight: 0,
         }}>
-          {/* Excel: Office Online viewer for full formatting/merged-cell preview */}
-          {isExcel && (
-            <iframe
-              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-              title={name}
-              style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
-            />
-          )}
-          {/* CSV: plain table preview */}
-          {isCsv && sheetState.status === 'loading' && (
+          {/* CSV and Excel: plain table preview */}
+          {isSheet && sheetState.status === 'loading' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
               <p style={{ fontSize: '13px', color: colors.muted }}>Loading preview…</p>
             </div>
           )}
-          {isCsv && sheetState.status === 'error' && (
+          {isSheet && sheetState.status === 'error' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>📋</div>
               <p style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
@@ -298,7 +322,17 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
               </a>
             </div>
           )}
-          {isCsv && sheetState.status === 'ready' && activeSheet && (
+          {isSheet && sheetState.status === 'ready' && activeSheet && sheetState.richBySheet?.[activeSheet] && (
+            <div style={{ width: '100%', overflow: 'auto', padding: '12px', background: '#FFFFFF' }}>
+              <ExcelSheetView sheet={sheetState.richBySheet[activeSheet]} />
+              {sheetState.richBySheet[activeSheet].truncated && (
+                <p style={{ fontSize: '12px', color: colors.muted, marginTop: '10px' }}>
+                  This sheet is larger than the preview shows. Download the file to see all of it.
+                </p>
+              )}
+            </div>
+          )}
+          {isSheet && sheetState.status === 'ready' && activeSheet && sheetState.rowsBySheet[activeSheet] && (
             <div style={{ width: '100%', overflow: 'auto', padding: '12px' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '12px', fontFamily: font.body, width: '100%' }}>
                 <tbody>
@@ -348,7 +382,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
               style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
             />
           )}
-          {!isImage && !isPdf && !isExcel && !isCsv && (
+          {!isImage && !isPdf && !isSheet && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>
                 {label === 'Excel'   ? '📊'
