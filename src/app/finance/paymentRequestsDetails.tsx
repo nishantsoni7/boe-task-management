@@ -3,7 +3,8 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import { useRef, useState } from 'react'
-import { CircleCheck, CircleX, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowUpRight, ChevronDown, ChevronUp, CircleCheck, CircleX, Info, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
@@ -17,12 +18,20 @@ import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { BankWindowBar } from './bankWindowBar'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import { isBankAccountMode } from '@/lib/finance/bankMarks'
-import { PaymentCustodyTrail, PaymentDestinationSummary, usePaymentDestination } from './components/PaymentDestinationBlock'
-import { PaymentModeHint } from './components/PaymentModeHint'
+import { PaymentCustodyTrail, usePaymentDestination } from './components/PaymentDestinationBlock'
+import { PaymentFactsCard, ProofNotesCard } from './components/PaymentPopupParts'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { paymentAgainstDisplay } from '@/lib/finance/paymentDestination'
-import { STATUS_META, fmtDate, fmtDateTime, fmtAmount, orderNoCell, friendlyDbErrorMessage, isApproved, APPROVED_LOCK_NOTE, canManageRequest, type AdminAction, type PaymentRequest } from './paymentRequestsModel'
-import { ErrorBanner, SectionHeader, MetaItem, PaymentDestinationLine, StatusBadge, STATUS_CORRECTION_OPTIONS } from './paymentRequestsAtoms'
+import {
+  DECISION_NOTE_NEEDED,
+  OWN_PAYMENT_NOTE,
+  decisionButtonLabel,
+  decisionConsequence,
+  decisionFieldLabel,
+  firstName,
+} from '@/lib/finance/paymentPopupWords'
+import { STATUS_META, fmtDate, fmtDateTime, fmtAmount, friendlyDbErrorMessage, isApproved, APPROVED_LOCK_NOTE, canManageRequest, type AdminAction, type PaymentRequest } from './paymentRequestsModel'
+import { ErrorBanner, SectionHeader, StatusBadge, STATUS_CORRECTION_OPTIONS } from './paymentRequestsAtoms'
 
 // ── THE ONE PAYMENT POPUP ───────────────────────────────────────────────────
 //
@@ -160,6 +169,8 @@ export function DetailsModal({
   const [correctionNote,  setCorrectionNote]  = useState('')
   const [correcting,      setCorrecting]      = useState(false)
   const [correctionError, setCorrectionError] = useState<string | null>(null)
+  // A status correction is rare, so its form opens on demand.
+  const [showCorrect, setShowCorrect] = useState(false)
 
   // ── Verification ──
   // Only a PENDING payment can be verified, and only by somebody holding the
@@ -170,6 +181,10 @@ export function DetailsModal({
   // their own payments — the database refuses that decision, so it is not offered.
   const canVerify = canVerifyPayment(r.status, mayApprovePayments)
     && !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)
+  // The one case the Decision card is withheld from somebody who could otherwise
+  // decide: they recorded this payment. Say so, rather than let it just vanish.
+  const ownPaymentBlocked = canVerifyPayment(r.status, mayApprovePayments)
+    && isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)
   // AN HDFC PAYMENT IS VERIFIED AGAINST THE BANK (20270516000000): its Verify is on
   // the bank match in this window, so this list offers only the other two decisions.
   const verifiedAtTheBank = isBankAccountMode(r.payment_mode)
@@ -284,8 +299,12 @@ export function DetailsModal({
     onCorrected()
   }
 
-  // Status-specific decision/clarification block. Shown only when a stored
-  // admin_note exists; tinted with the request's own status colours.
+  // Finance's reason, question or note, when a stored admin_note exists, tinted
+  // with the request's own status colours. It is a BANNER across the top of the
+  // popup: for a salesperson whose payment was sent back or rejected it is the
+  // first thing to read, and it used to sit in the middle of a column. The
+  // activity entry that carries the same words keeps its actor and time but not
+  // the text again (hideNote on the activity below).
   const decision = r.admin_note
     ? (() => {
         const m = STATUS_META[r.status] ?? { bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
@@ -294,13 +313,30 @@ export function DetailsModal({
           r.status === 'needs_clarification' ? 'Clarification required' :
           (isLinkageStatus)                  ? 'Approval note' :
                                                'Admin note'
-        return { title, bg: m.bg, border: m.border, color: m.color, note: r.admin_note }
+        const Icon: LucideIcon =
+          r.status === 'rejected'            ? CircleX :
+          r.status === 'needs_clarification' ? MessageCircleQuestion :
+          (isLinkageStatus)                  ? CircleCheck :
+                                               Info
+        return { title, Icon, bg: m.bg, border: m.border, color: m.color, note: r.admin_note }
       })()
     : null
-
-  const submittedLine = r.submitted_by_name
-    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
-    : `Submitted ${fmtDate(r.created_at)}`
+  const banner = decision && !bankWindow ? (
+    <div role="note" style={{
+      display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', borderRadius: '10px',
+      background: decision.bg, border: `1px solid ${decision.border}`, color: decision.color,
+    }}>
+      <decision.Icon size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px' }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>
+          {decision.title}
+        </div>
+        <div style={{ fontSize: '14px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {decision.note}
+        </div>
+      </div>
+    </div>
+  ) : null
 
   // ── WHAT THIS PAYMENT IS FOR, from the ledger and the intent ──
   //
@@ -309,37 +345,39 @@ export function DetailsModal({
   // were empty, which is every request the current form writes. Every one of
   // those columns became provenance at 20261012000000. It reads
   // finance_payment_destinations now: the pending INTENT before Finance
-  // approves, the ACTIVE ALLOCATIONS afterwards.
+  // approves, the ACTIVE ALLOCATIONS afterwards. It is stated ONCE, in the
+  // "Paid for" row (PaymentFactsCard).
   const destination  = usePaymentDestination(supabase, r.id)
   const againstLine  = paymentAgainstDisplay(destination)
-  const orderNoLine  = orderNoCell(destination)
 
+  // The bank window's header still names who sent the payment; every other
+  // header carries the client and the paid date instead, and who sent it is in
+  // Activity, where it is stated once, with the time.
+  const submittedLine = r.submitted_by_name
+    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
+    : `Submitted ${fmtDate(r.created_at)}`
+  const headerLine = (
+    <>
+      <span style={{ fontWeight: 600, color: colors.secondary }}>{customerDisplayName(r.client_name, { distinctAllocationCustomers: destination?.customerCount ?? 0 })}</span>
+      {' · Paid '}{fmtDate(r.payment_date)}
+    </>
+  )
+  // Who the decision is sent to, by first name, in the sentences that say so.
+  const sender = firstName(r.submitted_by_name)
+
+  // PROOF / REFERENCE / NOTES — the attachment, the reference and the notes, in
+  // ONE card. They are three parts of the same question ("what backs this
+  // payment up?"). The database keeps them in separate columns because they mean
+  // separate things; this is a grouping, not a merge. On a payment still waiting
+  // for Finance a missing proof is drawn in amber: the verifier needs to see it.
   const proofBlock = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <SectionHeader>Payment Proof / Reference</SectionHeader>
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {supabase
-              ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" />
-              : <span style={{ fontSize: '13px', color: colors.muted }}>No payment proof attached</span>}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-            {r.proof_note || 'No reference provided'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
-          <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-            {r.sales_note || 'No notes provided'}
-          </span>
-        </div>
-      </div>
-    </div>
+    <ProofNotesCard
+      proof={supabase
+        ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" emptyWarn={r.status === 'pending_approval' || r.status === 'needs_clarification'} />
+        : <span style={{ fontSize: '13px', color: colors.muted }}>No payment proof attached</span>}
+      reference={r.proof_note}
+      notes={r.sales_note}
+    />
   )
   const custodyBlock = supabase && (
     <PaymentCustodyTrail
@@ -352,69 +390,20 @@ export function DetailsModal({
   )
   const activityBlock = supabase && (
     <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
-      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} hideNote={banner ? r.admin_note : null} />
     </div>
   )
 
+  // LEFT: what the payment is, and what backs it up. RIGHT: what to do about it,
+  // then what happened. On a phone the right column stacks under the left, so a
+  // verifier reads the facts, the proof and the cash trail before the Decision.
   const left = (
     <>
-      {/* A. Primary summary card — amount + client lead, payment details below */}
-      <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-        display: 'flex', flexDirection: 'column', gap: '14px',
-      }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
-              {fmtAmount(r.amount)}
-            </div>
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
-            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
-              {customerDisplayName(r.client_name)}
-            </div>
-          </div>
-        </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
-          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
-        }}>
-          <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
-          <MetaItem label="Payment Against" value={againstLine} muted={!destination || destination.kind === 'suspense'} />
-          <MetaItem label="Order Number"    value={orderNoLine.value} muted={orderNoLine.muted} />
-          {/* ONE destination row, spanning both columns, in place of the
-              Payment Mode + Received In pair that was printing the same
-              account name twice ("Paytm" over "Paytm"). Spanning is what keeps
-              the grid from ending on a lone empty cell. */}
-          <div style={{ gridColumn: '1 / -1' }}>
-            <PaymentDestinationLine payment_mode={r.payment_mode} received_in={r.received_in} />
-            {/* What the account IS, in a line ("Company bank account — primary HDFC
-                current account"): the verification window had it, and a verifier
-                matching a payment to a statement reads it. */}
-            <PaymentModeHint mode={r.payment_mode} />
-          </div>
-        </div>
-      </div>
+      {/* A. WHAT IT IS FOR AND WHERE IT LANDED — each stated once */}
+      <PaymentFactsCard destination={destination} paymentMode={r.payment_mode} receivedIn={r.received_in} />
 
-      {/* B. Decision block — compact status-tinted note, only when one exists */}
-      {decision && (
-        <div style={{ padding: '12px 14px', borderRadius: '8px', background: decision.bg, border: `1px solid ${decision.border}` }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: decision.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-            {decision.title}
-          </div>
-          <div style={{ fontSize: '13.5px', color: decision.color, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {decision.note}
-          </div>
-        </div>
-      )}
-
-      {/* B2. WHAT THIS PAYMENT IS FOR, in full: the kind, the record, and which
-          of the two sources answered — a promise (the pending intent) reads
-          differently from a fact (the allocations), and a person deciding
-          anything about this payment needs to know which they are looking at. */}
-      <PaymentDestinationSummary destination={destination} clientName={r.client_name} />
+      {/* B. PAYMENT PROOF / REFERENCE / NOTES */}
+      {proofBlock}
 
       {/* C. WHO PHYSICALLY CARRIED IT. Shown for PNB and Paytm, and for any
           payment that already has a trail — a request corrected onto a bank
@@ -426,17 +415,6 @@ export function DetailsModal({
           DRAWING rule: append_payment_custody_events re-derives the authority
           itself and refuses anyone else. */}
       {custodyBlock}
-
-      {/* D. PAYMENT PROOF / REFERENCE — the attachment, the reference and the
-          notes, under ONE heading and in one frame. They are three parts of the
-          same question ("what backs this payment up?") and they are asked
-          together on all three entry forms, so they are answered together here.
-          The database keeps them in separate columns because they mean separate
-          things; this is a grouping, not a merge. */}
-      {proofBlock}
-
-      {/* F2. THE ADMIN'S PRIVATE NOTE — admins only (the page decides). */}
-      {adminNotePanel}
 
       {/* G. BANK STATEMENT — only for a holder of finance.reconcile (the page
           decides). Information for the verifier; linking never verifies. */}
@@ -455,7 +433,7 @@ export function DetailsModal({
               An HDFC payment is verified against its bank credit, which needs access to Bank Statements.
             </div>
           )}
-          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {decisions.map(d => {
               const on = decisionAction === d.key
               return (
@@ -468,7 +446,7 @@ export function DetailsModal({
                   disabled={deciding}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', width: '100%',
-                    padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                    padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', minHeight: '56px',
                     border: `1px solid ${on ? d.color : colors.border}`, background: on ? d.tint : '#FFFFFF',
                   }}
                 >
@@ -487,88 +465,119 @@ export function DetailsModal({
             })}
           </div>
 
-          {decisionAction === 'approve' && (
-            <div style={{
-              fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-              background: colors.greenTint, border: '1px solid rgba(39,98,71,0.2)',
-              borderRadius: '8px', padding: '10px 12px',
-            }}>
-              Verify {fmtAmount(r.amount)} from {customerDisplayName(r.client_name)}? It will be verified as received
-              {r.payment_against === 'new_order'
-                ? ' and held until an order is linked.'
-                : ` against ${r.order_number ?? 'the linked order'}.`} This cannot be undone from this page.
+          {/* CHOOSING ONE OPENS ITS NOTE, ITS ONE-LINE CONSEQUENCE AND A BUTTON NAMED
+              FOR WHAT IT DOES. Nothing is drawn before a choice: no greyed Confirm
+              and no "select a decision" sentence. The consequence is read from the
+              destination this popup already loaded, so it cannot say "held until an
+              order is linked" about a payment that names an Order, a PI Draft or an
+              old order. */}
+          {decisionAction && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label htmlFor="decision-note" style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                  {decisionFieldLabel(decisionAction, sender)}
+                </label>
+                <textarea
+                  id="decision-note"
+                  className="boe-input"
+                  autoFocus
+                  value={decisionNote}
+                  onChange={e => setDecisionNote(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+                />
+                {decisionNoteRequired && (
+                  <div style={{ fontSize: '12.5px', minHeight: '18px', color: decisionNote.trim() === '' ? colors.red : colors.muted }}>
+                    {decisionNote.trim() === '' ? DECISION_NOTE_NEEDED : ' '}
+                  </div>
+                )}
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12.5px', lineHeight: 1.5,
+                color: colors.secondary, background: colors.raised, border: `1px solid ${colors.border}`,
+                borderRadius: '8px', padding: '9px 11px',
+              }}>
+                <Info size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>{decisionConsequence(decisionAction, destination, sender)}</span>
+              </div>
             </div>
           )}
-          {decisionAction && (
-            <textarea
-              className="boe-input"
-              aria-label={decisionAction === 'approve' ? 'Verification note' : decisionAction === 'reject' ? 'Rejection reason' : 'Clarification note'}
-              value={decisionNote}
-              onChange={e => setDecisionNote(e.target.value)}
-              placeholder={
-                decisionAction === 'approve' ? 'Note for the salesperson (optional)'
-                : decisionAction === 'reject' ? 'Rejection reason (required)'
-                : 'What do you need to know? (required)'
-              }
-              rows={2}
-              style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
-            />
-          )}
           {decisionError && <ErrorBanner message={decisionError} />}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
-            {!decisionAction && <span style={{ fontSize: '12px', color: colors.muted, marginRight: 'auto' }}>Select a decision to continue.</span>}
-            {decisionAction && (
+          {decisionAction && (
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
                 onClick={() => { setDecisionAction(null); setDecisionNote(''); setDecisionError(null) }}
                 disabled={deciding}
                 className="boe-btn boe-btn-ghost"
-                style={{ padding: '7px 16px', fontSize: '13px' }}
               >
                 Cancel
               </button>
-            )}
-            <button
-              onClick={handleDecide}
-              disabled={!canConfirmDecision || deciding}
-              className="boe-btn boe-btn-primary"
-              style={{ padding: '7px 16px', fontSize: '13px' }}
-            >
-              {deciding ? (decisionAction === 'approve' ? 'Verifying…' : 'Saving…') : 'Confirm'}
-            </button>
-          </div>
+              <button
+                onClick={handleDecide}
+                disabled={!canConfirmDecision || deciding}
+                className={`boe-btn ${decisionAction === 'reject' ? 'boe-btn-danger-solid' : 'boe-btn-primary'}`}
+              >
+                {decisionButtonLabel(decisionAction, sender, deciding)}
+              </button>
+            </div>
+          )}
         </div>
   ) : null
 
   const right = (
     <>
-      {/* E. Activity panel — subtle bordered panel; the timeline keeps its
-          own "Activity" heading, query, ordering, and event text. */}
-      {activityBlock}
-
-      {/* E2. DECISION — verify, send back, or reject. One section, three outcomes,
+      {/* E. DECISION — verify, send back, or reject. One section, three outcomes,
           each through its own protected door (see handleDecide). Drawn only for
           somebody holding finance.approve, on a pending payment they did not
           record themselves (unless they may decide their own). A DRAWING rule:
           every call re-derives the actor, the permission and the row's status
           under a row lock. Moving a row into the approved statuses is never an
-          option in a status <select>: a protected action gets its own door. */}
+          option in a status <select>: a protected action gets its own door.
+          It comes FIRST: deciding is what a verifier opened this for, and the
+          history is reference. */}
       {!bankWindow && decisionBlock}
 
-      {/* F. Admin controls — compact action panel. Never for
-          approved_unlinked/approved_linked rows; those are managed only via
-          Verify Payment and Allocate Funds. */}
+      {/* A verifier who recorded this payment is not offered the decision; the
+          database would refuse it. Say why, instead of a card that is missing. */}
+      {ownPaymentBlocked && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', lineHeight: 1.5,
+          color: colors.secondary, background: colors.raised, border: `1px solid ${colors.border}`,
+          borderRadius: '8px', padding: '10px 12px',
+        }}>
+          <Info size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <span>{OWN_PAYMENT_NOTE}</span>
+        </div>
+      )}
+
+      {/* F. Correct status — a rare administrative tool, so it opens on demand.
+          Never for approved_unlinked/approved_linked rows; those are managed only
+          via Verify Payment and Allocate Funds. */}
       {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && !canVerify && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          <div>
-            <SectionHeader>Admin controls</SectionHeader>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+          <button
+            type="button"
+            onClick={() => setShowCorrect(open => !open)}
+            aria-expanded={showCorrect}
+            aria-controls="status-correction"
+            style={{
+              display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 0, padding: 0, cursor: 'pointer', minHeight: '32px', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Correct status</span>
+            {showCorrect
+              ? <ChevronUp size={16} aria-hidden="true" color={colors.muted} />
+              : <ChevronDown size={16} aria-hidden="true" color={colors.muted} />}
+          </button>
+          {showCorrect && (
+          <div id="status-correction" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               Administrative correction. This action will be recorded in activity history.
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <select
               className="boe-input"
               aria-label="Correct status"
@@ -621,42 +630,60 @@ export function DetailsModal({
               </div>
             )}
           </div>
+          )}
         </div>
       )}
       {/* Approved requests are view-only on this page for every role. The note
-          says where the record now lives instead of offering a disabled
-          control; the admin-only linkage sentence is kept alongside it. */}
+          says where the record now lives, and the link takes you there; the
+          admin-only linkage sentence is kept alongside it. */}
       {isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-          fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+          display: 'flex', flexDirection: 'column', gap: '8px',
+          fontSize: '13px', color: colors.secondary, lineHeight: 1.5,
         }}>
-          {APPROVED_LOCK_NOTE}
-          {isAdmin && ' Funds are attached to a PI Draft or an Order there, with Allocate Funds.'}
+          <span>
+            {APPROVED_LOCK_NOTE}
+            {isAdmin && ' Funds are attached to a PI Draft or an Order there, with Allocate Funds.'}
+          </span>
+          <Link
+            href={`/finance/received?payment=${r.id}`}
+            className="boe-btn boe-btn-text"
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Open in Confirmed Payments <ArrowUpRight size={14} aria-hidden="true" />
+          </Link>
         </div>
       )}
+
+      {/* H. ACTIVITY — below the decision. The timeline keeps its own heading,
+          query, ordering and event text. */}
+      {activityBlock}
+
+      {/* H2. THE ADMIN'S PRIVATE NOTE — admins only (the page decides). It sits
+          under the history, so on a phone the verifier reaches the Decision first. */}
+      {adminNotePanel}
     </>
   )
 
   // Actions live in the shell's pinned footer so they stay reachable while the
   // body scrolls. Delete and Edit/Reapply are gated SEPARATELY — canDelete
   // (admin-only) and canManage (edit/reapply) — so the footer renders whenever
-  // either offers something, not only when both do.
+  // either offers something, not only when both do. Delete sits at the far left,
+  // away from the main action: a destructive button beside Edit is one slip on a phone.
   const footer = ((canManage && onEdit) || (canDelete && onDelete)) ? (
     <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
       {onDelete && canDelete && (
         <button
           onClick={() => onDelete(r)}
-          style={{
-            padding: '7px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-            border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red, cursor: 'pointer',
-          }}
+          className="boe-btn boe-btn-danger"
+          style={{ marginRight: 'auto' }}
         >
           Delete
         </button>
       )}
       {onEdit && canManage && (
-        <button onClick={() => onEdit(r)} className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+        <button onClick={() => onEdit(r)} className="boe-btn boe-btn-primary">
           {!isAdmin && r.status === 'rejected' ? 'Reapply' : 'Edit'}
         </button>
       )}
@@ -687,9 +714,23 @@ export function DetailsModal({
           <span className="bank-window-amount">{fmtAmount(r.amount)} <span>· {customerDisplayName(r.client_name)}</span></span>
           {againstLine} · {submittedLine}
         </>
-      ) : submittedLine}
-      statusBadge={<StatusBadge status={r.status} />}
+      ) : headerLine}
+      /* THE AMOUNT IS THE LOUDEST THING ON THE SCREEN, beside the state of the
+         money: "how much" is the first question. The bank window carries it in
+         its own header line, so there it is only the badge. */
+      statusBadge={bankWindow ? <StatusBadge status={r.status} /> : (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px' }}>
+          <span style={{
+            fontSize: 'clamp(20px, 5vw, 26px)', fontWeight: 700, color: colors.primary,
+            lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+          }}>
+            {fmtAmount(r.amount)}
+          </span>
+          <StatusBadge status={r.status} />
+        </div>
+      )}
       onClose={onClose}
+      top={banner}
       left={bankWindow ? <>{proofBlock}{custodyBlock}{adminNotePanel}</> : left}
       right={bankWindow ? activityBlock : right}
       body={bankWindow && !showDetails ? bankPanel : undefined}

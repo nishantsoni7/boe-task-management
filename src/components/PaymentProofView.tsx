@@ -24,6 +24,7 @@ export function PaymentProofView({
   renderEmpty = false,
   inline = false,
   emptyLabel,
+  emptyWarn = false,
   heading,
 }: {
   supabase: ReturnType<typeof createClient>
@@ -40,6 +41,9 @@ export function PaymentProofView({
   // it has always used, so adopting the fuller "No payment proof attached"
   // phrasing is a per-caller decision rather than a silent change everywhere.
   emptyLabel?: string
+  // Draws the empty state in amber with a warning mark, for a payment still
+  // waiting on Finance, where a missing proof is something to notice.
+  emptyWarn?: boolean
   /**
    * A section label drawn ABOVE the proof, and only when there is a proof.
    *
@@ -94,7 +98,15 @@ export function PaymentProofView({
   if (!proof) {
     if (!renderEmpty) return null
     return (
-      <div style={{ fontSize: '13px', color: colors.muted }}>
+      <div style={{
+        fontSize: '13px', color: emptyWarn ? colors.amber : colors.muted,
+        display: 'flex', alignItems: 'center', gap: '6px',
+      }}>
+        {emptyWarn && (
+          <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" />
+          </svg>
+        )}
         {emptyLabel ?? (inline ? 'Not attached' : 'No proof attached')}
       </div>
     )

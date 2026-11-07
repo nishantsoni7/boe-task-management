@@ -29,6 +29,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { decisionFieldLabel } from '@/lib/finance/paymentPopupWords'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const page = read('src/app/finance/page.tsx')
@@ -98,8 +99,11 @@ describe('the Decision section: three outcomes, the rules the review window had'
   test('a note is required to send back or reject, optional to verify', () => {
     assert.ok(code.includes("const decisionNoteRequired = decisionAction === 'needs_clarification' || decisionAction === 'reject'"))
     assert.ok(code.includes("(!decisionNoteRequired || decisionNote.trim() !== '')"))
-    assert.ok(code.includes('Rejection reason (required)'))
-    assert.ok(code.includes('Note for the salesperson (optional)'))
+    // The label above the note box says which, in its own words (paymentPopupWords.ts).
+    assert.ok(code.includes('decisionFieldLabel(decisionAction, sender)'))
+    assert.equal(decisionFieldLabel('approve', 'Mohit'), 'Note for Mohit (optional)')
+    assert.equal(decisionFieldLabel('needs_clarification', 'Mohit'), 'Your question for Mohit (required)')
+    assert.equal(decisionFieldLabel('reject', 'Mohit'), 'Why you are rejecting it (required)')
   })
 
   test('APPROVAL LOGIC IS THE REVIEW WINDOW’S — the RPC, both doors and every notification', () => {
@@ -151,9 +155,13 @@ describe('what the popup keeps', () => {
     assert.equal(paymentDestinationLabel('bank_transfer', 'company_account'), 'HDFC PRI')
   })
 
-  test('the destination is read once, and the popup still says what the payment is for', () => {
+  test('the destination is read once, and the popup says what the payment is for ONCE', () => {
     assert.equal((code.match(/usePaymentDestination\(/g) ?? []).length, 1)
-    assert.ok(code.includes('<PaymentDestinationSummary'))
+    assert.ok(code.includes('<PaymentFactsCard destination={destination}'))
+    // The three old places: Payment Against, Order Number and a box of its own.
+    for (const gone of ['Payment Against', 'Order Number', 'What this payment is for', 'Read from the record itself']) {
+      assert.ok(!details.includes(gone), `"${gone}" must not come back to the popup`)
+    }
   })
 
   test('Activity, the proof, the reference and the notes are still there', () => {

@@ -125,10 +125,13 @@ describe('all three entry forms group the same three things', () => {
 })
 
 describe('the detail views group them the same way', () => {
-  test('the Payment Requests detail modal puts them under one heading', () => {
+  test('the Payment Requests detail modal puts them in one card', () => {
+    // CHANGED with the popup redesign: the three are rows of ONE card (Proof,
+    // Reference, Notes) instead of rows under a heading, and a reference or note
+    // nobody wrote is absent rather than a row saying so.
     const src = read(REQUEST_PAGE)
-    assert.ok(src.includes('<SectionHeader>Payment Proof / Reference</SectionHeader>'),
-      `${REQUEST_PAGE} must group the three under the product's own heading`)
+    assert.ok(src.includes('<ProofNotesCard'),
+      `${REQUEST_PAGE} must group the three in the one card`)
     assert.equal(src.includes('<SectionHeader>Notes</SectionHeader>'), false,
       `${REQUEST_PAGE} must not keep a standalone Notes section`)
     assert.equal(src.includes('<SectionHeader>Supporting information</SectionHeader>'), false,

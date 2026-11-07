@@ -82,9 +82,9 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, type PaymentRequest } from './paymentRequestsModel'
 // Re-exported: other modules import the type from the page.
 export type { PaymentRequest } from './paymentRequestsModel'
-// @split: src/app/finance/paymentRequestsModel.tsx private=AdminAction,STATUS_META,ARCHIVE_TAB_ACCENT,FILTER_TABS,EMPTY_MESSAGES,fmtDate,fmtDateTime,fmtAmount,orderNoCell,friendlyDbErrorMessage,SEARCH_DEBOUNCE_MS,isApproved,APPROVED_RACE_MESSAGE,APPROVED_LOCK_NOTE,canManageRequest,isStaleClarification
+// @split: src/app/finance/paymentRequestsModel.tsx private=AdminAction,STATUS_META,ARCHIVE_TAB_ACCENT,FILTER_TABS,EMPTY_MESSAGES,fmtDate,fmtDateTime,fmtAmount,friendlyDbErrorMessage,SEARCH_DEBOUNCE_MS,isApproved,APPROVED_RACE_MESSAGE,APPROVED_LOCK_NOTE,canManageRequest,isStaleClarification
 
-// @split: src/app/finance/paymentRequestsAtoms.tsx private=Field,ErrorBanner,SectionHeader,MetaItem,PaymentDestinationLine,StatusBadge,StaleBadge,STATUS_CORRECTION_OPTIONS
+// @split: src/app/finance/paymentRequestsAtoms.tsx private=Field,ErrorBanner,SectionHeader,StatusBadge,StaleBadge,STATUS_CORRECTION_OPTIONS
 
 import { DetailsModal, announcePaymentMerged, announcePaymentVerified } from './paymentRequestsDetails'
 // @split: src/app/finance/paymentRequestsDetails.tsx private=DetailsModal
