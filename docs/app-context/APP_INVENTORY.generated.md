@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `0b67f4f8` — Attachments: Excel previews in BOE's own table, not Microsoft's viewer (no SQL)
+- Commit: `354119f6` — Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 - Commits on this branch: 1201
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 187
 - Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `0b67f4f8` 2026-11-07 Attachments: Excel previews in BOE's own table, not Microsoft's viewer (no SQL)
+- `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 - `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
 - `5aa5448f` 2026-11-07 Modules: a punch-in strip at the top of the page for every employee (no SQL) (#635)
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
