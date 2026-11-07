@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `937a6914` — Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
-- Commits on this branch: 1197
-- Pages (`page.tsx`): 182   API routes (`route.ts`): 186
+- Commit: `fd117893` — Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
+- Commits on this branch: 1198
+- Pages (`page.tsx`): 182   API routes (`route.ts`): 187
 - Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 951   Enums: 0
-- Test files: 771   Next.js 16.2.6, React 19.2.4
+- Test files: 774   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
 - `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
@@ -38,7 +39,6 @@
 - `344f081f` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
 - `d3c61d98` 2026-11-04 Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
 - `25d06f7e` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
-- `bed54928` 2026-11-03 Docs: the Lead Board Pipeline merged (#607), migration 20270601000000 applied (#609)
 
 ## Pages by top-level area
 
@@ -91,7 +91,7 @@
 - **admin-members** (1): ` [GET]`
 - **admin-tasks** (1): ` [GET]`
 - **assets** (2): `/notify [POST]`, `/warranty-sweep [POST]`
-- **attendance** (21): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/machine-alert [GET]`, `/machine-day [GET]`, `/machine-status [GET]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/overview [GET]`, `/preview [POST]`, `/records [GET]`
+- **attendance** (22): `/check-in [POST]`, `/check-out [POST]`, `/correction-log [GET]`, `/dashboard [GET]`, `/employee-monthly-detail [GET]`, `/employee-records [GET]`, `/holidays [DELETE,GET,POST]`, `/import [POST]`, `/machine-alert [GET]`, `/machine-day [GET]`, `/machine-status [GET]`, `/minop-deliveries [GET]`, `/minop-incoming [GET]`, `/minop-incoming/[deliveryId] [GET]`, `/minop-incoming/export [GET]`, `/minop-sync [GET]`, `/minop-unmapped [GET]`, `/monthly-summary [GET]`, `/my-punch [GET]`, `/overview [GET]`, `/preview [POST]`, `/records [GET]`
 - **attendance-requests** (5): ` [GET,POST]`, `/[id]/cancel [POST]`, `/[id]/decision [POST]`, `/[id]/history [GET]`, `/reconciliation [GET,POST]`
 - **boe-credits** (8): `/adjustments [POST]`, `/balances [GET]`, `/ledger [GET]`, `/payroll-applications [DELETE,POST]`, `/redemptions [POST]`, `/reversals [POST]`, `/review-months [GET,POST]`, `/settings [GET,PUT]`
 - **cancel-task** (1): ` [POST]`
@@ -149,8 +149,8 @@
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/meta` — 11 source, 8 test
-- `src/lib/minop` — 11 source, 9 test
-- `src/lib/modules` — 4 source, 5 test
+- `src/lib/minop` — 12 source, 10 test
+- `src/lib/modules` — 5 source, 6 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 105 source, 158 test
