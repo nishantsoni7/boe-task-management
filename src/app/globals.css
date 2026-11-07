@@ -12100,6 +12100,64 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .bank-panel-line { font-size: 14px; color: #303536; }
 .bank-panel-note { margin: 0; font-size: 12px; }
 
+/* A pending request beside the payment already in Confirmed Payments (bankDuplicate.tsx, 20270608000000). */
+.bank-dup { display: flex; flex-direction: column; gap: 14px; padding-bottom: 6px; }
+.bank-dup-origin { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4C5352; }
+.bank-tag { display: inline-flex; align-items: center; align-self: flex-start; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; }
+.bank-tag--request { background: #EAF0F8; color: #335A86; }
+.bank-tag--confirmed { background: #E8F2EC; color: #276247; }
+.bank-avatar { width: 22px; height: 22px; border-radius: 50%; background: #F1D5CB; color: #963B27; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.bank-dup-alert { display: flex; gap: 12px; align-items: flex-start; background: #FAF0DA; border: 1px solid #E6D2A0; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5; color: #303536; }
+.bank-dup-alert svg { flex: none; color: #805B0D; margin-top: 2px; }
+.bank-dup-table { display: flex; flex-direction: column; font-size: 14px; }
+.bank-dup-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) 140px; align-items: stretch; }
+.bank-dup-row > span { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-top: 1px solid #ECE7E0; overflow-wrap: anywhere; color: #303536; }
+.bank-dup-row > span small { font-size: 12px; color: #686D6C; }
+.bank-dup-row > span.bank-dup-lab { padding-left: 0; font-size: 13px; font-weight: 500; color: #686D6C; }
+.bank-dup-row > span.bank-dup-s { background: #F6F9FC; border-left: 1px solid #E4DED7; }
+.bank-dup-row > span.bank-dup-c { background: #F6FAF7; border-left: 1px solid #E4DED7; border-right: 1px solid #E4DED7; }
+.bank-dup-row.is-differs > span.bank-dup-s, .bank-dup-row.is-differs > span.bank-dup-c { background: #FBF1D9; }
+.bank-dup-row:last-child > span.bank-dup-s, .bank-dup-row:last-child > span.bank-dup-c { border-bottom: 1px solid #E4DED7; }
+.bank-dup-row > span.is-muted { color: #686D6C; }
+.bank-dup-row > span.bank-dup-res { flex-direction: row; align-items: flex-start; gap: 5px; font-size: 13px; font-weight: 600; }
+.bank-dup-res.is-same { color: #276247; }
+.bank-dup-res.is-differs { color: #805B0D; }
+.bank-dup-res.is-adds { color: #335A86; }
+.bank-dup-res.is-plain { color: #686D6C; font-weight: 500; }
+.bank-dup-head > span { border-top: 0; }
+.bank-dup-head > span.bank-dup-s, .bank-dup-head > span.bank-dup-c { gap: 4px; padding: 10px 12px; border-top: 3px solid #335A86; border-radius: 10px 10px 0 0; }
+.bank-dup-head > span.bank-dup-c { border-top-color: #276247; }
+.bank-dup-head > span.bank-dup-res { align-items: flex-end; justify-content: flex-end; padding: 0 0 8px 12px; font-weight: 500; color: #686D6C; }
+.bank-dup-head b { font-size: 16px; font-weight: 700; color: #303536; }
+.bank-dup-head small { color: #4C5352; }
+.bank-dup-m { display: none; }
+.bank-dup-narr { background: #FAF8F5; border: 1px solid #ECE7E0; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #4C5352; word-break: break-word; }
+.bank-dup-narr small { display: block; margin-bottom: 2px; font-size: 12px; color: #686D6C; }
+.bank-dup-blocked { margin: 0; background: #FAF0DA; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: #805B0D; }
+.bank-dup-actions { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px 16px; }
+.bank-dup-primary { display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
+.bank-dup-primary .boe-btn { align-self: flex-start; min-height: 44px; padding: 10px 18px; font-size: 14px; }
+.bank-dup-primary p { margin: 0; font-size: 13px; line-height: 1.5; color: #4C5352; }
+.bank-dup-confirm { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; background: #FAF8F5; border: 1px solid #ECE7E0; border-radius: 10px; }
+.bank-dup-confirm h3 { margin: 0; font-size: 16px; font-weight: 700; color: #303536; }
+.bank-dup-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bank-dup-steps li { display: flex; gap: 8px; font-size: 14px; line-height: 1.45; color: #303536; }
+.bank-dup-steps svg { flex: none; margin-top: 3px; color: #276247; }
+@media (max-width: 640px) {
+  /* The table stacks: a fact's name and result on one line, the two values side by side under it. */
+  .bank-dup-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "lab res" "s c"; }
+  .bank-dup-row > span { border-top: 0; }
+  .bank-dup-row > span.bank-dup-lab { grid-area: lab; padding: 10px 0 4px; border-top: 1px solid #ECE7E0; text-transform: uppercase; font-size: 12px; letter-spacing: 0.04em; }
+  .bank-dup-row > span.bank-dup-res { grid-area: res; justify-content: flex-end; padding: 10px 0 4px; border-top: 1px solid #ECE7E0; }
+  .bank-dup-row > span.bank-dup-s { grid-area: s; }
+  .bank-dup-row > span.bank-dup-c { grid-area: c; border-right: 1px solid #E4DED7; }
+  .bank-dup-head { grid-template-areas: "s c"; }
+  .bank-dup-head > span.bank-dup-lab, .bank-dup-head > span.bank-dup-res { display: none; }
+  .bank-dup-m { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #686D6C; }
+  .bank-dup-primary { width: 100%; max-width: none; }
+  .bank-dup-primary .boe-btn { align-self: stretch; }
+}
+
 /* ── OPERATIONS DASHBOARD (/orders for the Operations team) ───────────────────
    Quiet, Notion-like: white surfaces, hairline borders, small muted labels, large
    tabular numerals. Colour is reserved for the answers (green / red / amber) and for

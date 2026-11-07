@@ -1233,6 +1233,8 @@ describe('the applied migrations are frozen', () => {
       // Sales, the Lead Master list can be cut to a day or a range of days: one read-only function replaced.
       '20270606000000_sales_lead_master_date_range.sql',
       '20270607000000_finance_payment_request_old_order.sql',
+      // Finance, a duplicate Sales request is merged into the payment already confirmed: one door, two activity events.
+      '20270608000000_finance_merge_duplicate_payment_request.sql',
     ])
   })
 
@@ -1717,6 +1719,7 @@ describe('the applied migrations are frozen', () => {
       // Sales, the Lead Master list can be cut to a day or a range of days: one read-only function replaced.
       '20270606000000_sales_lead_master_date_range.sql',
       '20270607000000_finance_payment_request_old_order.sql',
+      '20270608000000_finance_merge_duplicate_payment_request.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -86,7 +86,7 @@ export type { PaymentRequest } from './paymentRequestsModel'
 
 // @split: src/app/finance/paymentRequestsAtoms.tsx private=Field,ErrorBanner,SectionHeader,MetaItem,PaymentDestinationLine,StatusBadge,StaleBadge,STATUS_CORRECTION_OPTIONS
 
-import { DetailsModal, announcePaymentVerified } from './paymentRequestsDetails'
+import { DetailsModal, announcePaymentMerged, announcePaymentVerified } from './paymentRequestsDetails'
 // @split: src/app/finance/paymentRequestsDetails.tsx private=DetailsModal
 
 import { NewPaymentConfirmationModal } from './paymentRequestsNew'
@@ -1126,6 +1126,13 @@ function FinancePageInner() {
               onChanged={() => setBankReload(n => n + 1)}
               onVerified={() => {
                 announcePaymentVerified(detailRequest)
+                setDetailRequest(null)
+                refreshAfterMutation()
+                queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+              }}
+              // A request merged into the payment already confirmed: it leaves this list, the old payment keeps going.
+              onMerged={result => {
+                announcePaymentMerged(result)
                 setDetailRequest(null)
                 refreshAfterMutation()
                 queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })

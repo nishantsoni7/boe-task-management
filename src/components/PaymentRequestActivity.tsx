@@ -63,6 +63,8 @@ function markerColor(row: ActivityRow): string {
   if (row.event_type === 'allocation_reversed') return colors.amber
   if (row.event_type === 'allocation_moved')    return colors.blue
   if (row.event_type === 'request_deleted')     return colors.red
+  // A duplicate request folded into this payment: worth noticing, neither good nor bad.
+  if (row.event_type === 'request_merged_in' || row.event_type === 'request_merged') return colors.blue
   // A completed handover is the outcome the business waits for; clearing one is
   // a change worth noticing. Colour is never the only signal — the event text
   // above says which of the two happened.
