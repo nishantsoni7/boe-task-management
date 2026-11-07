@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `0a4b806f` — Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
-- Commits on this branch: 1200
+- Commit: `0b67f4f8` — Attachments: Excel previews in BOE's own table, not Microsoft's viewer (no SQL)
+- Commits on this branch: 1201
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 187
 - Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 951   Enums: 0
-- Test files: 774   Next.js 16.2.6, React 19.2.4
+- Test files: 775   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0b67f4f8` 2026-11-07 Attachments: Excel previews in BOE's own table, not Microsoft's viewer (no SQL)
 - `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
 - `5aa5448f` 2026-11-07 Modules: a punch-in strip at the top of the page for every employee (no SQL) (#635)
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
@@ -38,7 +39,6 @@
 - `5a66c289` 2026-11-05 Phones, content first (Phase 4): sticky works on phones; every remaining page lifted to 8.5+ (no SQL) (#614)
 - `b5dc116f` 2026-11-05 Phones, content first (Phase 3): every module's lowest-scoring pages redesigned for phones (no SQL) (#613)
 - `cf3591be` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
-- `344f081f` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
 
 ## Pages by top-level area
 
@@ -137,6 +137,7 @@
 ## Library folders (src/lib)
 
 - `src/lib/assets` — 19 source, 17 test
+- `src/lib/attachments` — 1 source, 1 test
 - `src/lib/attendance` — 20 source, 14 test
 - `src/lib/auth` — 1 source, 1 test
 - `src/lib/boeCredits` — 6 source, 9 test

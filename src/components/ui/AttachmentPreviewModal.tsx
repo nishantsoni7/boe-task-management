@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { colors, font } from '@/lib/tokens'
 import { getExt, getFileTypeLabel, IMAGE_EXTS } from '@/lib/attachment-utils'
+import { ExcelSheetView } from '@/components/ui/ExcelSheetView'
+import type { PreviewSheet } from '@/lib/attachments/excelPreview'
 
 const CSV_EXTS = ['csv']
 const EXCEL_EXTS = ['xlsx', 'xls']
@@ -11,7 +13,14 @@ const MAX_PREVIEW_ROWS = 100
 type SheetState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; sheetNames: string[]; rowsBySheet: Record<string, string[][]> }
+  | {
+      status: 'ready'
+      sheetNames: string[]
+      /** Plain values: CSV, .xls, or an .xlsx the full reader could not read. */
+      rowsBySheet: Record<string, string[][]>
+      /** .xlsx drawn as in Excel: widths, merges, colours, borders, pictures. */
+      richBySheet?: Record<string, PreviewSheet>
+    }
 
 const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
   PDF:     { fg: '#B42332', bg: 'rgba(180,35,50,0.08)'   },
@@ -51,9 +60,9 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
   const label    = getFileTypeLabel(fileName ?? url)
   const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
   const isPdf    = ext === 'pdf'
-  // Excel is read here, in the browser, like CSV. Microsoft's online viewer was
-  // embedded before: it sent the file's link to Microsoft and filled the
-  // console with errors from its own page that BOE cannot fix.
+  // Excel is read here, in the browser. Microsoft's online viewer was embedded
+  // before: it sent the file's link to Microsoft and filled the console with
+  // errors from its own page that BOE cannot fix.
   const isSheet  = CSV_EXTS.includes(ext) || EXCEL_EXTS.includes(ext)
   const chip     = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
   const name     = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
@@ -109,10 +118,31 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
     ;(async () => {
       try {
         setSheetState({ status: 'loading' })
-        const XLSX = await import('xlsx')
         const res = await fetch(url)
         if (!res.ok) throw new Error('Failed to fetch file')
         const buffer = await res.arrayBuffer()
+
+        // .xlsx first through the full reader (loaded only now); anything it
+        // cannot read falls through to the plain table below.
+        if (ext === 'xlsx') {
+          try {
+            const { readWorkbookPreview } = await import('@/lib/attachments/excelPreview')
+            const sheets = await readWorkbookPreview(buffer)
+            if (cancelled) return
+            setSheetState({
+              status: 'ready',
+              sheetNames: sheets.map(s => s.name),
+              rowsBySheet: {},
+              richBySheet: Object.fromEntries(sheets.map(s => [s.name, s])),
+            })
+            setActiveSheet(sheets[0].name)
+            return
+          } catch {
+            // fall through
+          }
+        }
+
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'array' })
         const sheetNames = workbook.SheetNames
         if (sheetNames.length === 0) throw new Error('No sheets found')
@@ -135,7 +165,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
     })()
 
     return () => { cancelled = true }
-  }, [isSheet, url])
+  }, [isSheet, ext, url])
 
   return (
     <div
@@ -292,7 +322,17 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
               </a>
             </div>
           )}
-          {isSheet && sheetState.status === 'ready' && activeSheet && (
+          {isSheet && sheetState.status === 'ready' && activeSheet && sheetState.richBySheet?.[activeSheet] && (
+            <div style={{ width: '100%', overflow: 'auto', padding: '12px', background: '#FFFFFF' }}>
+              <ExcelSheetView sheet={sheetState.richBySheet[activeSheet]} />
+              {sheetState.richBySheet[activeSheet].truncated && (
+                <p style={{ fontSize: '12px', color: colors.muted, marginTop: '10px' }}>
+                  This sheet is larger than the preview shows. Download the file to see all of it.
+                </p>
+              )}
+            </div>
+          )}
+          {isSheet && sheetState.status === 'ready' && activeSheet && sheetState.rowsBySheet[activeSheet] && (
             <div style={{ width: '100%', overflow: 'auto', padding: '12px' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '12px', fontFamily: font.body, width: '100%' }}>
                 <tbody>
