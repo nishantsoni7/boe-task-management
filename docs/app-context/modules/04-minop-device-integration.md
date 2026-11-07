@@ -27,7 +27,7 @@ Verified against `origin/main` 14a3fc5a plus read-only production queries on 202
 | Excel import and preview for months from November 2026 | Refused (400), #526 |
 | Today tab `/attendance/today` + machine status | Shipped (#528). Seen by the owner on the preview with real punches |
 | Stopped-machine alert `GET /api/attendance/machine-alert` (Vercel Cron, 11:05 IST) | Shipped (#528), 20270511000000 APPLIED 2026-10-30. Has not fired for real yet |
-| Punch-in strip at the top of the Modules page, every employee (`GET /api/attendance/my-punch`) | Built 2026-11-07, PR pending, no migration. The owner saw a mockup in the real styles and said "Yes, build it". Not yet seen signed in or on a phone |
+| Punch-in strip at the top of the Modules page, every employee (`GET /api/attendance/my-punch`) | Shipped 2026-11-07 (#635 as 5aa5448f, deployed), no migration. The owner saw a mockup in the real styles and said "Yes, build it". Not yet seen signed in or on a phone |
 
 ## 3. Pages and API routes
 
@@ -138,7 +138,7 @@ Machine-only attendance from 1 November 2026. Every punch is kept in `minop_webh
 1. Clean punches and link staff: DONE (#523).
 2. Switch-on: DONE (#526). Its first real test is the first day of punches: check the rows on 2 November.
 3. Daily machine screen and stopped-punches alert: DONE (#528). The red state and the alert have not been seen for real: they need a quiet working day from 2 November. Phone alerts are not switched on, so the alert stops at For you and the bell until they are.
-4. The employee punch-in strip on the Modules page: BUILT 2026-11-07 (PR pending; see section 6). It only helps people who have a Machine ID: link every payroll employee first, or they never see it. Still to do after it is live: the owner looks at it signed in and on a phone.
+4. The employee punch-in strip on the Modules page: SHIPPED 2026-11-07 (#635 as 5aa5448f; see section 6). It only helps people who have a Machine ID: link every payroll employee first, or they never see it. Still to do after it is live: the owner looks at it signed in and on a phone.
 - Owner reminder for the Minop subscription renewal: it lapsed once, and a lapse now stops attendance. Needs the date from the owner.
 - Open with the owner: a Machine ID for the one payroll employee not yet on the list.
 

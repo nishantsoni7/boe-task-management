@@ -26,7 +26,7 @@ Verified against checkout `852e0493` (origin/main, 2026-10-18). "Shipped" means 
 | Monthly "Salary decisions" review (day reviews -> payroll correction) | Shipped in code, same migration |
 | Manual check-in / check-out | REMOVED: both routes return HTTP 410 ("use the attendance CSV import") |
 | Minop device feed | The attendance source from 2026-11-01 (see 04). Writes `attendance_records` with `source = 'minop'`; the engine reads them like any other row |
-| Punch-in strip on the Modules page (every employee with a Machine ID) | Built 2026-11-07, PR pending, no SQL: green or amber for 30 minutes after the punch, red from 10:15 until they punch or hide it for the day (04 section 6) |
+| Punch-in strip on the Modules page (every employee with a Machine ID) | Shipped 2026-11-07 (#635 as 5aa5448f), no SQL: green or amber for 30 minutes after the punch, red from 10:15 until they punch or hide it for the day (04 section 6) |
 | Leave types, balances, per-employee shifts, mid-day punch collection, admin editing of a request | NOT BUILT (stated in ATTENDANCE_REQUESTS.md section 10). `ATTENDANCE_MODULE_PLAN.md` is a "Planning only" document: its leave_requests / salary-concern tables do not exist |
 
 ## 3. Pages and API routes
