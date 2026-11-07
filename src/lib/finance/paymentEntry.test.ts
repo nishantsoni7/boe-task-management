@@ -1107,8 +1107,10 @@ describe('what each payment mode is, in plain words', () => {
 
   test('shown on entry, editing and verification screens', () => {
     const request = read(REQUEST_FORM)
-    assert.equal((request.match(/<PaymentModeHint /g) ?? []).length, 2,
-      'Payment Request entry and the verification modal draw it directly')
+    assert.equal((request.match(/<PaymentModeHint /g) ?? []).length, 1,
+      'Payment Request entry draws it directly; the verification modal draws it through PaymentFactsCard')
+    assert.ok(read('src/app/finance/components/PaymentPopupParts.tsx').includes('<PaymentModeHint mode={paymentMode}'),
+      'the verification modal still says what the account is')
     assert.ok(read(FORM_PARTS).includes('<PaymentModeHint mode={mode}'),
       'the shared payment-details block draws it for Record Payment and the edit modal')
     assert.ok(read(RECORD_FORM).includes('<PaymentDetailsFields'))

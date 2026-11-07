@@ -10,7 +10,7 @@ import { type FilterTab } from './paymentRequestsQuery'
 import { paymentTargetErrorMessage } from './paymentTargets'
 import { paymentCashLockErrorMessage } from '@/lib/finance/paymentCashLock'
 import { bankVerifyRefusal } from '@/lib/finance/bankMarks'
-import { PAYMENT_DISPLAY_STATE_META, orderNumberDisplay, type PaymentDestination } from '@/lib/finance/paymentDestination'
+import { PAYMENT_DISPLAY_STATE_META } from '@/lib/finance/paymentDestination'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -181,21 +181,6 @@ export function fmtDateTime(iso: string) {
 // formatter that only takes a number forces a lossy conversion at the boundary.
 export const fmtAmount = formatMoney
 
-// ── The Order Number cell, from the ALLOCATION LEDGER ────────────────────────
-//
-// THE DEFECT THIS REPLACES. The old helper read order_number, then
-// order_request_number, then payment_against — and printed "New Order — no order
-// created yet" whenever all three were empty, which is EVERY request the current
-// form writes, including one naming a Confirmed Order that Finance has already
-// approved and allocated in full. All three columns became provenance at
-// 20261012000000; the answer lives in finance_payment_destinations now.
-//
-// A number appears only when exactly one Confirmed Order is the whole
-// destination. A split payment says how many rather than naming one.
-export function orderNoCell(destination: PaymentDestination | null | undefined) {
-  return orderNumberDisplay(destination)
-}
-
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
 // clear message instead of surfacing the raw Postgres error.
 //
@@ -262,7 +247,7 @@ export const APPROVED_RACE_MESSAGE =
   'This request has already been verified and can no longer be changed here.'
 
 export const APPROVED_LOCK_NOTE =
-  'This request has been verified and is now managed under Received Payments.'
+  'This payment is verified. It is managed in Confirmed Payments.'
 
 // Who may act on a request from this page. Ownership and role are re-checked by
 // RLS (finance_payment_requests_own_update / own_delete / admin_*) and by the

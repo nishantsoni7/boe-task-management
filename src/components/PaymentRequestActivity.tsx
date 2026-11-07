@@ -79,6 +79,7 @@ export function PaymentRequestActivity({
   paymentRequestId,
   resolveTarget,
   heading,
+  hideNote,
 }: {
   supabase: ReturnType<typeof createClient>
   paymentRequestId: string
@@ -97,6 +98,14 @@ export function PaymentRequestActivity({
    * Order" — true, just less specific. No extra query is issued either way.
    */
   resolveTarget?: ActivityTargetResolver
+  /**
+   * A note the host already shows somewhere else, so the entry that carries the
+   * same words keeps its actor and time but not the words again. The database
+   * copies a decision's note into its activity row, so a payment's rejection
+   * reason would otherwise read twice on one screen. Only the NEWEST entry whose
+   * note is exactly this text is trimmed; an earlier round's note stays in the history.
+   */
+  hideNote?: string | null
 }) {
   const [rows,    setRows]    = useState<ActivityRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -119,6 +128,11 @@ export function PaymentRequestActivity({
 
   if (loading || rows.length === 0) return null
 
+  // Rows are newest first, so the first match is the decision the host is showing.
+  const hiddenAt = hideNote
+    ? rows.findIndex(r => typeof r.payload?.note === 'string' && r.payload.note.trim() === hideNote.trim())
+    : -1
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {heading ?? (
@@ -129,7 +143,7 @@ export function PaymentRequestActivity({
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {rows.map((row, idx) => {
           const isLast = idx === rows.length - 1
-          const note = typeof row.payload?.note === 'string' ? row.payload.note : ''
+          const note = idx === hiddenAt ? '' : typeof row.payload?.note === 'string' ? row.payload.note : ''
           return (
             <div key={row.id} style={{ display: 'flex', gap: '12px' }}>
               {/* Marker + connector */}

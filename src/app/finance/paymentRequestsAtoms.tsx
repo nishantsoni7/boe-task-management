@@ -4,8 +4,6 @@
 
 import React from 'react'
 import { colors } from '@/lib/tokens'
-import { destinationFromDb, paymentDestinationLabel } from './paymentDestinations'
-import { DESTINATION_ICON } from './components/AccountIcons'
 import { paymentDisplayStateMeta, type PaymentDestination } from '@/lib/finance/paymentDestination'
 import { STATUS_META } from './paymentRequestsModel'
 
@@ -41,52 +39,6 @@ export function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
       {children}
-    </div>
-  )
-}
-
-// Label-over-value metadata item; muted styling for empty/placeholder values.
-export function MetaItem({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-      <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>{value}</span>
-    </div>
-  )
-}
-
-// One payment destination, read-only: icon, the account name, and what that
-// account means. The icon is decorative — it sits beside a label and a helper
-// that both stay visible, and nothing here is carried by icon or colour alone.
-//
-// A legacy pair no account matches has no icon and no helper; it still prints
-// the honest legacy label rather than being forced into an account it was never
-// recorded against.
-// ── The account, and NOTHING ABOUT WHAT IT MEANS ─────────────────────────────
-//
-// The four accounts a payment may name are HDFC, PNB, Paytm and Canara. What
-// each MEANS internally is recorded in the database's own column comment and
-// appears on no screen — so this prints the account name and stops.
-//
-// THE HELPER LINE IS GONE, deliberately. It described the four legacy account
-// PAIRS ("cash collected through an external source" and so on), which is
-// exactly the kind of sentence this product no longer puts beside a mode name.
-// paymentDestinationLabel still resolves a historical pair to its account, so a
-// 2026 row keeps reading as the account it was recorded against.
-export function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: string; received_in: string | null }) {
-  const d    = destinationFromDb(payment_mode, received_in)
-  const Icon = d ? DESTINATION_ICON[d.iconKey] : null
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        Payment Mode
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-        {Icon && <Icon size={15} aria-hidden="true" color={colors.muted} style={{ flexShrink: 0 }} />}
-        <span style={{ fontSize: '14px', color: colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>
-          {paymentDestinationLabel(payment_mode, received_in)}
-        </span>
-      </span>
     </div>
   )
 }

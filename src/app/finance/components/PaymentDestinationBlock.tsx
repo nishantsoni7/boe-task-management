@@ -18,8 +18,6 @@ import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import {
   DESTINATION_LOADING,
-  destinationLabel,
-  destinationReferenceLabel,
   loadPaymentDestination,
   type PaymentDestination,
 } from '@/lib/finance/paymentDestination'
@@ -35,7 +33,6 @@ import {
   type CustodyEventRow,
   type LegacyCustodyColumns,
 } from '@/lib/finance/custodyTrail'
-import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { CustodyTrailView, newCustodyDraftKey } from './CustodyTrailFields'
 import { PaymentJourneyButton } from '@/components/finance/PaymentJourneyDialog'
 
@@ -70,65 +67,6 @@ export function usePaymentDestination(
     return () => { active = false }
   }, [supabase, paymentId])
   return destination
-}
-
-/**
- * "What this payment is for", in one block.
- *
- * BEFORE APPROVAL it is the pending allocation intent — the PI Draft or
- * Confirmed Order somebody chose on the form. AFTER approval it is the active
- * allocations. The projection decides which; this only puts it into words, and
- * says which of the two it read so a person can tell a promise from a fact.
- */
-export function PaymentDestinationSummary({
-  destination, clientName, distinctCustomers,
-}: {
-  destination: PaymentDestination | null | undefined
-  clientName: string | null
-  /** Overrides the destination's own count, when the caller already has one. */
-  distinctCustomers?: number
-}) {
-  const reference = destinationReferenceLabel(destination)
-  const customers = distinctCustomers ?? destination?.customerCount ?? 0
-  return (
-    <div style={{
-      padding: '11px 12px', borderRadius: '8px',
-      border: `1px solid ${colors.border}`, background: colors.raised,
-      display: 'flex', flexDirection: 'column', gap: '6px',
-    }}>
-      <div style={SECTION_LABEL}>What this payment is for</div>
-
-      {destination === undefined ? (
-        <div style={{ fontSize: '13px', color: colors.muted }}>{DESTINATION_LOADING}</div>
-      ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-            {destinationLabel(destination)}
-          </span>
-          {reference && (
-            <span style={{ fontSize: '12.5px', color: colors.secondary }}>{reference}</span>
-          )}
-          {destination && (
-            <span style={{ fontSize: '12px', color: colors.muted }}>
-              {destination.source === 'intent'
-                ? 'Chosen on the request — attached when Finance verifies it'
-                : destination.source === 'allocation'
-                  ? 'From this payment’s allocations'
-                  : 'Nothing is attached to this payment yet'}
-            </span>
-          )}
-        </div>
-      )}
-
-      <div style={{ fontSize: '12.5px', color: colors.secondary }}>
-        {customerDisplayName(clientName, { distinctAllocationCustomers: customers })}
-      </div>
-
-      <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
-        Read from the record itself, never typed.
-      </span>
-    </div>
-  )
 }
 
 // ── The custody trail ────────────────────────────────────────────────────────

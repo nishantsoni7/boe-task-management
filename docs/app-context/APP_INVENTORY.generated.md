@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `b00b78c0` — Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
-- Commits on this branch: 1202
+- Commit: `407e3d82` — Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
+- Commits on this branch: 1204
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 187
 - Migrations: 424 (first `20260530_create_positions.sql`, latest `20270608000000_finance_merge_duplicate_payment_request.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 952   Enums: 0
-- Test files: 777   Next.js 16.2.6, React 19.2.4
+- Test files: 779   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
+- `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
 - `b00b78c0` 2026-11-07 Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
 - `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 - `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
@@ -37,8 +39,6 @@
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
 - `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
 - `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
-- `5a66c289` 2026-11-05 Phones, content first (Phase 4): sticky works on phones; every remaining page lifted to 8.5+ (no SQL) (#614)
-- `b5dc116f` 2026-11-05 Phones, content first (Phase 3): every module's lowest-scoring pages redesigned for phones (no SQL) (#613)
 
 ## Pages by top-level area
 
@@ -145,7 +145,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 57 source, 71 test
+- `src/lib/finance` — 58 source, 72 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test

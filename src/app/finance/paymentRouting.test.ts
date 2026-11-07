@@ -356,9 +356,11 @@ describe('the details modal actually offers verification', () => {
   test('verification is described as verification, start to finish', () => {
     // Confirmation, in-flight and outcome text for the SAME action. A person who
     // clicks Verify Payment should not be told the money was "approved".
-    assert.ok(SOURCE.includes("'Verifying…'"),
+    // The popup's words live in paymentPopupWords.ts: the screen only calls them.
+    const WORDS = readFileSync(join(process.cwd(), 'src/lib/finance/paymentPopupWords.ts'), 'utf8')
+    assert.ok(WORDS.includes("'Verifying…'") && SOURCE.includes('decisionButtonLabel(decisionAction, sender, deciding)'),
       'the in-flight label must name the action being performed')
-    assert.ok(/will be verified/.test(SOURCE),
+    assert.ok(/will be verified/.test(WORDS) && SOURCE.includes('decisionConsequence(decisionAction, destination, sender)'),
       'the consequence text must describe verification')
     assert.ok(!/has already been approved|has been approved and is now managed/.test(SOURCE),
       'the stale-row messages must describe verification too')
