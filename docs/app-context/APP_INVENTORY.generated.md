@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `fd117893` — Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
-- Commits on this branch: 1198
+- Commit: `0a4b806f` — Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
+- Commits on this branch: 1200
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 187
 - Migrations: 423 (first `20260530_create_positions.sql`, latest `20270607000000_finance_payment_request_old_order.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 951   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
+- `5aa5448f` 2026-11-07 Modules: a punch-in strip at the top of the page for every employee (no SQL) (#635)
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
@@ -37,8 +39,6 @@
 - `b5dc116f` 2026-11-05 Phones, content first (Phase 3): every module's lowest-scoring pages redesigned for phones (no SQL) (#613)
 - `cf3591be` 2026-11-05 Phones, content first (Phases 1-2): one-row header, chips, filter sheets, table cards, broken pages fixed (no SQL) (#612)
 - `344f081f` 2026-11-05 Docs: Confirmed Orders on a phone merged (#610 as d3c61d98, deployed) (#611)
-- `d3c61d98` 2026-11-04 Confirmed Orders: a compact list on a phone; Login as member is an edge tab on phones (no SQL) (#610)
-- `25d06f7e` 2026-11-03 Sales: website leads allotted by themselves (migration 20270602000000, apply first) (#608)
 
 ## Pages by top-level area
 

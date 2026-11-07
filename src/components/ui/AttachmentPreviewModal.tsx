@@ -51,8 +51,10 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
   const label    = getFileTypeLabel(fileName ?? url)
   const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
   const isPdf    = ext === 'pdf'
-  const isCsv    = CSV_EXTS.includes(ext)
-  const isExcel  = EXCEL_EXTS.includes(ext)
+  // Excel is read here, in the browser, like CSV. Microsoft's online viewer was
+  // embedded before: it sent the file's link to Microsoft and filled the
+  // console with errors from its own page that BOE cannot fix.
+  const isSheet  = CSV_EXTS.includes(ext) || EXCEL_EXTS.includes(ext)
   const chip     = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
   const name     = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
 
@@ -101,7 +103,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
   }, [onClose])
 
   useEffect(() => {
-    if (!isCsv) return
+    if (!isSheet) return
     let cancelled = false
 
     ;(async () => {
@@ -133,7 +135,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
     })()
 
     return () => { cancelled = true }
-  }, [isCsv, url])
+  }, [isSheet, url])
 
   return (
     <div
@@ -152,7 +154,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
           borderRadius: '12px',
           boxShadow: '0 8px 40px rgba(0,0,0,0.3)',
           width: '100%',
-          maxWidth: isCsv ? '1100px' : '860px',
+          maxWidth: isSheet ? '1100px' : '860px',
           maxHeight: '90dvh',
           display: 'flex',
           flexDirection: 'column',
@@ -190,7 +192,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
           </span>
 
           {/* Sheet selector */}
-          {isCsv && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
+          {isSheet && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
             <select
               value={activeSheet ?? ''}
               onChange={e => setActiveSheet(e.target.value)}
@@ -255,25 +257,17 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
         {/* Preview area */}
         <div style={{
           flex: 1, overflow: 'auto',
-          display: 'flex', alignItems: isCsv ? 'stretch' : 'center', justifyContent: isCsv ? 'flex-start' : 'center',
+          display: 'flex', alignItems: isSheet ? 'stretch' : 'center', justifyContent: isSheet ? 'flex-start' : 'center',
           padding: isImage ? '16px' : 0,
           minHeight: 0,
         }}>
-          {/* Excel: Office Online viewer for full formatting/merged-cell preview */}
-          {isExcel && (
-            <iframe
-              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-              title={name}
-              style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
-            />
-          )}
-          {/* CSV: plain table preview */}
-          {isCsv && sheetState.status === 'loading' && (
+          {/* CSV and Excel: plain table preview */}
+          {isSheet && sheetState.status === 'loading' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
               <p style={{ fontSize: '13px', color: colors.muted }}>Loading preview…</p>
             </div>
           )}
-          {isCsv && sheetState.status === 'error' && (
+          {isSheet && sheetState.status === 'error' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>📋</div>
               <p style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
@@ -298,7 +292,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
               </a>
             </div>
           )}
-          {isCsv && sheetState.status === 'ready' && activeSheet && (
+          {isSheet && sheetState.status === 'ready' && activeSheet && (
             <div style={{ width: '100%', overflow: 'auto', padding: '12px' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '12px', fontFamily: font.body, width: '100%' }}>
                 <tbody>
@@ -348,7 +342,7 @@ export function AttachmentPreviewModal({ url, fileName, downloadUrl, getDownload
               style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
             />
           )}
-          {!isImage && !isPdf && !isExcel && !isCsv && (
+          {!isImage && !isPdf && !isSheet && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>
                 {label === 'Excel'   ? '📊'

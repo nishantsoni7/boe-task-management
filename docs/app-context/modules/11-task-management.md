@@ -147,6 +147,7 @@ Statuses and transitions:
 - Activity text: one "Send Update" writes ONE `note_added` row whether it carried text, files or both; heading is read from the row (`activityHeadings.ts`:
   `attachmentPhrase`, `commentHeadingRest`). "Read more" appears only when text actually overflows 8 lines.
 - Attachments: private bucket; legacy rows are resolved to `storage://task-attachments/...` canonical refs; "Download all images (ZIP)" via `fflate`.
+- Preview of `.xlsx`/`.xls`/`.csv` (`AttachmentPreviewModal`): read in the browser with `xlsx`, first 100 rows per sheet, sheet picker; no formatting or merged cells. Microsoft's Office Online viewer was removed 2026-11-07: it sent the signed file link to Microsoft and its own page filled the console with CSP / unload / icon errors BOE cannot fix. Do not re-embed an outside viewer (guard in `attachmentDownload.test.ts`).
 - Daily/EOD log: `daily_work_logs` unique per (user_id, log_date); POST needs a non-empty summary; date default `istToday()`; authorization is Performance's, not task role
   (module 13).
 

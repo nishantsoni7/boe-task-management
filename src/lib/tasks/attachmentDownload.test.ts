@@ -64,8 +64,13 @@ describe('the preview modal', () => {
 
   test('the preview itself still renders from the plain URL', () => {
     assert.ok(modal.includes('src={url}'))
-    assert.ok(modal.includes('encodeURIComponent(url)'))
     assert.ok(modal.includes('href={isImage || isPdf ? url : (downloadUrl ?? url)}'))
+  })
+
+  test('Excel is read in the browser like CSV, never sent to an outside viewer', () => {
+    assert.ok(modal.includes('const isSheet  = CSV_EXTS.includes(ext) || EXCEL_EXTS.includes(ext)'))
+    assert.ok(modal.includes("const XLSX = await import('xlsx')"))
+    assert.equal(/officeapps|docs\.google\.com/.test(modal), false)
   })
 
   test('the task page signs a second URL carrying the filename and passes it down', () => {
