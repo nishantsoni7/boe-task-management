@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `407e3d82` — Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
-- Commits on this branch: 1204
-- Pages (`page.tsx`): 182   API routes (`route.ts`): 187
+- Commit: `bcd673f2` — Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
+- Commits on this branch: 1206
+- Pages (`page.tsx`): 182   API routes (`route.ts`): 188
 - Migrations: 424 (first `20260530_create_positions.sql`, latest `20270608000000_finance_merge_duplicate_payment_request.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 952   Enums: 0
-- Test files: 779   Next.js 16.2.6, React 19.2.4
+- Test files: 781   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
+- `ca901dcd` 2026-11-07 Payment Requests popup: every fact once, the Decision first (#641)
 - `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
 - `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
 - `b00b78c0` 2026-11-07 Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
@@ -37,8 +39,6 @@
 - `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
 - `64c879d4` 2026-11-05 Finance: an admin-only note on each payment request (migration 20270603000000) (#620)
 - `caadedcd` 2026-11-05 Docs: one phone filter set merged (#616 as f6d855a2) (#617)
-- `f6d855a2` 2026-11-05 Phones: one shared filter set in components/ui (no SQL) (#616)
-- `331ac7e8` 2026-11-05 Docs: phones Phase 4 merged (#614 as 5a66c28) (#615)
 
 ## Pages by top-level area
 
@@ -108,7 +108,7 @@
 - **finance** (4): `/bank/parse [POST]`, `/handovers/remind [GET]`, `/notify [POST]`, `/payments/delete [POST]`
 - **image-editor** (5): `/cleanup [GET]`, `/convert [POST]`, `/results [GET]`, `/results/[id] [DELETE,PATCH]`, `/studio [POST]`
 - **impersonation** (3): `/end [POST]`, `/members [GET]`, `/start [POST]`
-- **integrations** (6): `/meta/review [GET]`, `/meta/sync [GET]`, `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`, `/seo/decisions [GET]`, `/seo/ingest [POST]`
+- **integrations** (7): `/meta/review [GET]`, `/meta/sync [GET]`, `/minop/partner/punches [GET]`, `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`, `/seo/decisions [GET]`, `/seo/ingest [POST]`
 - **meetings** (5): `/delete [POST]`, `/import [POST]`, `/import-pi [POST]`, `/import-pi/confirm [POST]`, `/template [GET]`
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
@@ -150,7 +150,7 @@
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/meta` — 11 source, 8 test
-- `src/lib/minop` — 12 source, 10 test
+- `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 5 source, 6 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
@@ -196,13 +196,14 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `META_ACCESS_TOKEN` (3 reads)
 - `META_AD_ACCOUNT_IDS` (4 reads)
 - `MINOP_ATTENDANCE_PROCESSING_ENABLED` (2 reads)
+- `MINOP_PARTNER_PULL_KEY` (4 reads)
 - `MINOP_WEBHOOK_PATH_TOKEN` (1 reads)
 - `MINOP_WEBHOOK_SECRET` (2 reads)
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (12 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (151 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (153 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
@@ -212,7 +213,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `SHOWROOM_PRODUCT_IMAGE_BUCKET` (1 reads)
 - `STUB_BACKUP_RC` (1 reads)
 - `STUB_VERIFY_RC` (1 reads)
-- `SUPABASE_SERVICE_ROLE_KEY` (151 reads)
+- `SUPABASE_SERVICE_ROLE_KEY` (153 reads)
 - `VAPID_PRIVATE_KEY` (1 reads)
 - `VAPID_SUBJECT` (1 reads)
 

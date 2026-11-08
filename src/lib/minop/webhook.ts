@@ -19,7 +19,7 @@ export type MinopAuthResult =
   | { ok: true; method: MinopAuthMethod }
   | { ok: false; reason: 'missing_secret' | 'unauthorized' }
 
-function constantTimeEqual(left: string, right: string): boolean {
+export function constantTimeEqual(left: string, right: string): boolean {
   const leftHash = createHash('sha256').update(left).digest()
   const rightHash = createHash('sha256').update(right).digest()
   return timingSafeEqual(leftHash, rightHash)

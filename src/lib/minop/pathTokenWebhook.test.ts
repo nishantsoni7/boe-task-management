@@ -211,9 +211,11 @@ test('attendance_records and payroll are never written: the route writes one tab
   const route = readFileSync(ROUTE, 'utf8')
   assert.deepEqual(route.match(/\.from\('[a-z_]+'\)/g), [".from('minop_webhook_deliveries')"])
   assert.match(route, /process\.env\.MINOP_WEBHOOK_PATH_TOKEN/)
-  // The route must not export anything but the handler Minop calls.
+  // The route must not export anything but the handler Minop calls and the run-time settings:
+  // maxDuration lets the push to the operations ERP (after Minop is answered) finish its retries.
   assert.deepEqual(route.match(/^export .*$/gm), [
     "export const runtime = 'nodejs'",
+    'export const maxDuration = 30',
     'export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {',
   ])
 })
