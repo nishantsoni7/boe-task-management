@@ -83,7 +83,7 @@ describe('a good call', () => {
     assert.equal(url.searchParams.get('or'), null)
     assert.equal(url.searchParams.get('minop_user_id'), null)
     assert.deepEqual(await res.json(), {
-      punches: [{ id: '1|7|2026-11-03 10:04:12', machineId: '7', deviceId: '1', punchTime: '2026-11-03T10:04:12+05:30', receivedAt: '2026-11-03T04:36:10.123Z' }],
+      punches: [{ id: '1|7|2026-11-03 10:04:12', machineId: '7', deviceId: '1', punchTime: '2026-11-03T10:04:12+05:30', receivedAt: '2026-11-03T10:06:10.123+05:30' }],
       cursor: encodeCursor({ t: '2026-11-03T04:36:10.123456+00:00', i: ROW_ID }),
       more: false,
     })

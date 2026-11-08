@@ -14,7 +14,7 @@
 // Nothing here writes to the database or changes what Minop is told.
 
 import { constantTimeEqual } from './webhook'
-import { extractMinopPunches, isPlausiblePunchTime, mergePunchRows } from './punches'
+import { MINOP_DEVICE_UTC_OFFSET_MINUTES, extractMinopPunches, isPlausiblePunchTime, mergePunchRows } from './punches'
 
 /** Shortest push token or pull key accepted. Anything shorter fails closed. */
 export const PARTNER_MIN_SECRET_LENGTH = 32
@@ -32,7 +32,7 @@ export type PartnerPunch = {
   deviceId: string
   /** ISO-8601 with the IST offset, e.g. 2026-11-03T10:04:12+05:30. */
   punchTime: string
-  /** UTC instant at which BOE first received the punch. */
+  /** When BOE One first received the punch, in IST: ISO-8601 with +05:30, e.g. 2026-11-03T10:06:10.123+05:30. */
   receivedAt: string
 }
 
@@ -54,8 +54,13 @@ export function toPartnerPunch(p: PunchFields): PartnerPunch {
     machineId: p.minop_user_id,
     deviceId: p.dvc_id,
     punchTime: `${local.replace(' ', 'T')}${IST_OFFSET}`,
-    receivedAt: new Date(p.first_seen_at).toISOString(),
+    receivedAt: toIst(p.first_seen_at),
   }
+}
+
+/** The same instant written on India's clock, so both times in a punch read alike (owner, 2026-11-08). */
+function toIst(instant: string): string {
+  return new Date(Date.parse(instant) + MINOP_DEVICE_UTC_OFFSET_MINUTES * 60_000).toISOString().replace('Z', IST_OFFSET)
 }
 
 // ---------------------------------------------------------------------------
