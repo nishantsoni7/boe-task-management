@@ -161,8 +161,24 @@ export async function forwardPunchesToPartner(
 // PULL
 // ---------------------------------------------------------------------------
 
-/** Where the ERP stopped: when BOE first received the last punch it got, and that punch's row id. */
+/**
+ * Where the ERP stopped: when the last punch it got was ADDED to BOE One's punch
+ * list (`created_at`), and that punch's row id. Not the receipt time: the nightly
+ * sync adds a punch the webhook missed with its old receipt time, which would
+ * land behind a cursor that has already moved on.
+ */
 export type PartnerCursor = { t: string; i: string }
+
+/**
+ * A punch is handed out by the pull only once it has been in the list this long,
+ * so a write still finishing can never land behind a cursor already handed out.
+ * The push brings fresh punches within seconds anyway.
+ */
+export const PARTNER_SETTLE_MS = 2 * 60_000
+
+export function partnerSettledBefore(nowMs = Date.now()): string {
+  return new Date(nowMs - PARTNER_SETTLE_MS).toISOString()
+}
 
 const CURSOR_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -221,14 +237,14 @@ export type PartnerPage = {
   more: boolean
 }
 
-export type PartnerRow = PunchFields & { id: string; punch_at: string }
+export type PartnerRow = PunchFields & { id: string; punch_at: string; created_at: string }
 
 /** Turns one fetched page of rows into the reply. Rows that are not real punches are left out but still move the cursor on. */
 export function buildPartnerPage(rows: PartnerRow[], query: PartnerQuery): PartnerPage {
   const last = rows[rows.length - 1]
   return {
     punches: rows.filter(r => isPlausiblePunchTime(r.punch_at, r.first_seen_at)).map(toPartnerPunch),
-    cursor: last ? encodeCursor({ t: last.first_seen_at, i: last.id }) : query.cursor ? encodeCursor(query.cursor) : null,
+    cursor: last ? encodeCursor({ t: last.created_at, i: last.id }) : query.cursor ? encodeCursor(query.cursor) : null,
     more: rows.length >= query.limit,
   }
 }

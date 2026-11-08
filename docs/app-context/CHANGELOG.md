@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-08 — Minop feed: the receipt time in India time too (branch `fix/minop-feed-received-ist`, PR open, NOT merged) · no migration
+## 2026-11-08 — Minop feed: the pull can no longer skip a punch the nightly sync repairs (branch `fix/minop-feed-pull-no-gap`, PR open, NOT merged) · no migration
+- **Found while answering the owner's "no data missed in any case".** The pull's cursor followed `first_seen_at`. The nightly sync (`syncMachineAttendance`) adds a punch the webhook failed to record with its OLD receipt time, so an ERP whose cursor had already passed that time never pulled it. Only a punch whose push ALSO failed could be lost, but the promise is no loss in any case.
+- **Changed.** The pull now runs in insert order (`created_at`, then `id`), and the cursor carries `created_at`. It lists a punch only once it has been in the table 2 minutes (`PARTNER_SETTLE_MS`), so a write still finishing cannot land behind a cursor just handed out. The push brings fresh punches within seconds, so nothing waits on that. The reply shape, the push and every other part are unchanged. An older cursor still decodes and at worst re-sends punches, which the ERP skips by `id`.
+- **Proof.** All 247 Minop tests pass, including a repaired punch with an old receipt time that still comes after the cursor, the settle bound, and the exact query (`created_at=lt.<now - 2 min>`, `order=created_at.asc,id.asc`, the cursor `or` filter on `created_at`). Type check and lint are clean. No index: the table grows by a few thousand rows a year.
+- **Rollback.** Revert the PR.
+
+## 2026-11-08 — Minop feed: the receipt time in India time too (PR #644 squash-merged by the owner as 2bce39a0, 06:35 UTC (12:05 IST), all checks green; live 06:37 UTC) · no migration
 - **Owner request.** "Why is it showing UTC time": `receivedAt` went out as UTC (`...Z`) beside a `punchTime` in IST. Now both read on India's clock.
 - **Changed.** `toPartnerPunch` writes `receivedAt` as the same instant with `+05:30` (e.g. `2026-11-03T10:06:10.123+05:30`, was `2026-11-03T04:36:10.123Z`). `punchTime`, `id`, the cursor and everything else are unchanged; any ERP that parses the value gets the same moment.
 - **Proof.** The two feed test files updated and a test added for a receipt late in the UTC evening (next day in India).

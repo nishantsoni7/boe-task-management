@@ -1,8 +1,8 @@
 /**
  * GET /api/integrations/minop/partner/punches, the handler run against a stand-in for Supabase behind a stubbed
  * `fetch`. Proves the door (no key set means closed, a wrong key reads nothing), that bad queries read nothing,
- * and exactly what a good call asks the database: oldest first by receipt, a cursor that cannot skip rows that
- * share a receipt time, and the machine-id filter.
+ * and exactly what a good call asks the database: in the order rows were added, only rows two minutes old, a
+ * cursor that cannot skip rows that share an insert time, and the machine-id filter.
  *
  * Run: npx tsx --test src/app/api/integrations/minop/partner/punches/route.test.ts
  */
@@ -24,7 +24,7 @@ const get = (qs = '', authorization: string | null = `Bearer ${KEY}`) =>
 
 const row = (id: string, over: Record<string, unknown> = {}) => ({
   id, dvc_id: '1', minop_user_id: '7', punch_local: '2026-11-03T10:04:12', punch_at: '2026-11-03T04:34:12+00:00',
-  first_seen_at: '2026-11-03T04:36:10.123456+00:00', ...over,
+  first_seen_at: '2026-11-03T04:36:10.123456+00:00', created_at: '2026-11-03T04:36:11.654321+00:00', ...over,
 })
 
 beforeEach(() => {
@@ -70,30 +70,35 @@ describe('the door', () => {
 })
 
 describe('a good call', () => {
-  test('asks for the punch table oldest first by receipt then id, 500 at a time, with no filter', async () => {
+  test('asks for punches in the order they were added, two minutes old or more, 500 at a time', async () => {
     rows = [row(ROW_ID)]
+    const before = Date.now()
     const res = await get()
     assert.equal(res.status, 200)
     assert.equal(res.headers.get('cache-control'), 'no-store')
     assert.equal(dbCalls.length, 1)
     const url = dbCalls[0]
     assert.equal(url.pathname, '/rest/v1/minop_punches')
-    assert.equal(url.searchParams.get('order'), 'first_seen_at.asc,id.asc')
+    assert.equal(url.searchParams.get('order'), 'created_at.asc,id.asc')
     assert.equal(url.searchParams.get('limit'), '500')
     assert.equal(url.searchParams.get('or'), null)
     assert.equal(url.searchParams.get('minop_user_id'), null)
+    const settle = url.searchParams.get('created_at') ?? ''
+    assert.match(settle, /^lt\./)
+    const bound = Date.parse(settle.slice(3))
+    assert.ok(bound <= before - 120_000 + 1_000 && bound >= before - 120_000 - 5_000, `settle bound ${settle} is two minutes back`)
     assert.deepEqual(await res.json(), {
       punches: [{ id: '1|7|2026-11-03 10:04:12', machineId: '7', deviceId: '1', punchTime: '2026-11-03T10:04:12+05:30', receivedAt: '2026-11-03T10:06:10.123+05:30' }],
-      cursor: encodeCursor({ t: '2026-11-03T04:36:10.123456+00:00', i: ROW_ID }),
+      cursor: encodeCursor({ t: '2026-11-03T04:36:11.654321+00:00', i: ROW_ID }),
       more: false,
     })
   })
 
-  test('a cursor asks for rows after that receipt time, or at it with a later id, so a tie cannot skip a row', async () => {
-    const t = '2026-11-03T04:36:10.123456+00:00'
+  test('a cursor asks for rows added after it, or at the same moment with a later id, so a tie cannot skip a row', async () => {
+    const t = '2026-11-03T04:36:11.654321+00:00'
     await get(`?since=${encodeURIComponent(encodeCursor({ t, i: ROW_ID }))}&limit=2`)
     const url = dbCalls[0]
-    assert.equal(url.searchParams.get('or'), `(first_seen_at.gt.${t},and(first_seen_at.eq.${t},id.gt.${ROW_ID}))`)
+    assert.equal(url.searchParams.get('or'), `(created_at.gt.${t},and(created_at.eq.${t},id.gt.${ROW_ID}))`)
     assert.equal(url.searchParams.get('limit'), '2')
   })
 
