@@ -61,14 +61,20 @@ function fakeDeps(statuses: (number | 'network')[]) {
 
 // ---- the shape of a punch ------------------------------------------------
 
-test('a punch goes out with its machine id, device, IST time and receipt time', () => {
+test('a punch goes out with its machine id, device, and both times on India clock', () => {
   assert.deepEqual(punch, {
     id: '1|7|2026-11-03 10:04:12',
     machineId: '7',
     deviceId: '1',
     punchTime: '2026-11-03T10:04:12+05:30',
-    receivedAt: RECEIVED,
+    receivedAt: '2026-11-03T10:06:10.000+05:30',
   })
+  assert.equal(Date.parse(punch.receivedAt), Date.parse(RECEIVED), 'the same instant, only written in IST')
+})
+
+test('a receipt late in the UTC evening is the next day in India', () => {
+  const late = toPartnerPunch({ dvc_id: '1', minop_user_id: '7', punch_local: '2026-11-04 01:29:00', first_seen_at: '2026-11-03T20:00:00.123456+00:00' })
+  assert.equal(late.receivedAt, '2026-11-04T01:30:00.123+05:30')
 })
 
 test('the same punch has the same id whether it came from a message or from the table', () => {

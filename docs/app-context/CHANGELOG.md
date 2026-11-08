@@ -4,11 +4,17 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-08 — Minop: a punch feed for the operations ERP (branch `feat/minop-partner-feed`, PR open, NOT merged) · no migration
+## 2026-11-08 — Minop feed: the receipt time in India time too (branch `fix/minop-feed-received-ist`, PR open, NOT merged) · no migration
+- **Owner request.** "Why is it showing UTC time": `receivedAt` went out as UTC (`...Z`) beside a `punchTime` in IST. Now both read on India's clock.
+- **Changed.** `toPartnerPunch` writes `receivedAt` as the same instant with `+05:30` (e.g. `2026-11-03T10:06:10.123+05:30`, was `2026-11-03T04:36:10.123Z`). `punchTime`, `id`, the cursor and everything else are unchanged; any ERP that parses the value gets the same moment.
+- **Proof.** The two feed test files updated and a test added for a receipt late in the UTC evening (next day in India).
+- **Rollback.** Revert the PR.
+
+## 2026-11-08 — Minop: a punch feed for the operations ERP (PR #643 squash-merged by the owner as ada1bf18, 06:13 UTC; production served it at 06:15 UTC, when the pull address answered 401 without a key) · no migration
 - **Owner request.** The operations team is managed by a colleague whose ERP is built in Base44. Same company, one machine: BOE keeps the data and each side takes what it needs, quickly. Plan agreed in chat ("Yes, build it"): raw punches for everyone, no names and no attendance results; push for speed and a pull call for catch-up; settings in Vercel, no database change.
 - **Changed.** New `src/lib/minop/partnerFeed.ts`; the path-token receiver now schedules the push with `after()` as the first step of its punch handling and has `maxDuration = 30`; new `GET /api/integrations/minop/partner/punches` (bearer key, cursor paging, optional `machineIds`); `constantTimeEqual` in `webhook.ts` is exported. Three settings, off while missing: `MINOP_PARTNER_PUSH_URL`, `MINOP_PARTNER_PUSH_TOKEN`, `MINOP_PARTNER_PULL_KEY`.
 - **Not changed.** Minop's reply, the raw store, `minop_punches`, attendance, payroll, permissions, any table. No stored outbox: a push that fails three times is recovered by the pull call.
-- **Proof.** 31 new tests pass (`partnerFeed.test.ts`, the pull route's test on a stubbed `fetch` that checks the exact database query); type check and lint clean on the changed files. NOT verified: a real push to a real ERP, and a real pull against the production database.
+- **Proof.** 31 new tests pass (`partnerFeed.test.ts`, the pull route's test on a stubbed `fetch` that checks the exact database query); type check and lint clean on the changed files; full suite on the rebased tree 20,304 tests, 0 failed, 9 skipped; CI verify passed. The ERP's function, tested from the owner's terminal, stored a test punch once and skipped the repeat. NOT verified at merge: a real tap arriving by push, and the ERP's scheduled pull.
 - **Rollout and rollback.** No SQL. The owner set the three settings in Vercel on 2026-11-08, before the merge, so the deploy switches the feed on; clear `MINOP_PARTNER_PUSH_URL` to stop the push and `MINOP_PARTNER_PULL_KEY` to stop the pull, or revert the PR.
 
 ## 2026-11-07 — Payment Requests popup: every fact once, the Decision first (PR #641 squash-merged as ca901dcd, 2026-11-07 16:11 UTC, on the owner's word; Production deployment 7623634546 success 16:13 UTC; built on the owner's "Yes, build it" after a 12-state preview) · no SQL
