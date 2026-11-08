@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   PARTNER_MIN_SECRET_LENGTH,
+  PARTNER_SETTLE_MS,
   buildPartnerPage,
   decodeCursor,
   encodeCursor,
@@ -20,6 +21,7 @@ import {
   partnerKeyMatches,
   partnerPunchId,
   partnerPushConfig,
+  partnerSettledBefore,
   pushPartnerPunches,
   toPartnerPunch,
   type PartnerPunch,
@@ -223,6 +225,7 @@ const row = (n: number, over: Record<string, string> = {}) => ({
   punch_local: '2026-11-03T10:04:12',
   punch_at: '2026-11-03T04:34:12+00:00',
   first_seen_at: '2026-11-03T04:36:10.123456+00:00',
+  created_at: '2026-11-03T04:36:11.654321+00:00',
   ...over,
 })
 
@@ -231,8 +234,24 @@ test('a page lists the punches and a cursor that picks up after the last row; a 
   const page = buildPartnerPage(rows, { cursor: null, limit: 2, machineIds: null })
   assert.equal(page.punches.length, 2)
   assert.equal(page.more, true)
-  assert.deepEqual(decodeCursor(page.cursor!), { t: '2026-11-03T04:36:10.123456+00:00', i: rows[1].id })
+  assert.deepEqual(decodeCursor(page.cursor!), { t: '2026-11-03T04:36:11.654321+00:00', i: rows[1].id })
   assert.equal(buildPartnerPage(rows, { cursor: null, limit: 3, machineIds: null }).more, false)
+})
+
+test('the cursor follows when a punch was ADDED, so one the nightly sync repairs late still comes after it', () => {
+  // Received on 1 Nov but only added by the nightly sync on 3 Nov: its receipt time is behind the cursor, its insert time is not.
+  const repaired = row(12, {
+    punch_local: '2026-11-01T09:20:00', punch_at: '2026-11-01T03:50:00+00:00',
+    first_seen_at: '2026-11-01T04:00:00+00:00', created_at: '2026-11-03T18:45:05.000001+00:00',
+  })
+  const page = buildPartnerPage([repaired], { cursor: { t: '2026-11-03T04:36:11.654321+00:00', i: ROW_ID }, limit: 500, machineIds: null })
+  assert.equal(page.punches.length, 1)
+  assert.equal(decodeCursor(page.cursor!)?.t, '2026-11-03T18:45:05.000001+00:00')
+})
+
+test('only punches at least two minutes in the list are handed out by the pull', () => {
+  assert.equal(PARTNER_SETTLE_MS, 120_000)
+  assert.equal(partnerSettledBefore(Date.parse('2026-11-08T06:40:00.000Z')), '2026-11-08T06:38:00.000Z')
 })
 
 test('no new rows: the cursor you sent comes back, so you can keep asking from the same place', () => {

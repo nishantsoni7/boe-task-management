@@ -1,8 +1,10 @@
 // GET /api/integrations/minop/partner/punches
 //
 // The catch-up call for the operations ERP: every punch the machine has sent,
-// oldest first, from where the caller stopped. The push to that ERP is the fast
-// path; this is for after an outage, and for the first load of history.
+// in the order BOE One added them to its punch list, from where the caller
+// stopped. A punch is listed once it is 2 minutes old (PARTNER_SETTLE_MS). The
+// push to that ERP is the fast path; this is for after an outage, for punches
+// the nightly sync repairs, and for the first load of history.
 //
 //   Authorization: Bearer <MINOP_PARTNER_PULL_KEY>
 //   ?since=<cursor from the last reply>   (leave out for the very first call)
@@ -16,7 +18,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { buildPartnerPage, parsePartnerQuery, partnerKeyMatches, PARTNER_MIN_SECRET_LENGTH, type PartnerRow } from '@/lib/minop/partnerFeed'
+import { buildPartnerPage, parsePartnerQuery, partnerKeyMatches, partnerSettledBefore, PARTNER_MIN_SECRET_LENGTH, type PartnerRow } from '@/lib/minop/partnerFeed'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,15 +47,18 @@ export async function GET(req: Request) {
   }
   const svc = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
-  // Oldest first by when BOE received the punch, then by row id: several punches of one message share a
-  // receipt time, so the row id keeps the cursor exact. The cursor values were checked by decodeCursor.
+  // In the order the rows were added (created_at), then by row id: the punches of one message share an
+  // insert time, so the row id keeps the cursor exact. Only rows older than the settle window, so a write
+  // still finishing cannot land behind the cursor. The cursor values were checked by decodeCursor.
+  // No index on created_at: the table grows by a few thousand rows a year.
   let query = svc
     .from('minop_punches')
-    .select('id, dvc_id, minop_user_id, punch_local, punch_at, first_seen_at')
-    .order('first_seen_at', { ascending: true })
+    .select('id, dvc_id, minop_user_id, punch_local, punch_at, first_seen_at, created_at')
+    .lt('created_at', partnerSettledBefore())
+    .order('created_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(limit)
-  if (cursor) query = query.or(`first_seen_at.gt.${cursor.t},and(first_seen_at.eq.${cursor.t},id.gt.${cursor.i})`)
+  if (cursor) query = query.or(`created_at.gt.${cursor.t},and(created_at.eq.${cursor.t},id.gt.${cursor.i})`)
   if (machineIds) query = query.in('minop_user_id', machineIds)
 
   const { data, error } = await query
