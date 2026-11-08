@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
 import { handleMinopPathTokenWebhook, type MinopRawDeliveryRow } from '@/lib/minop/pathTokenWebhook'
 import { machineRangeOf, rebuildMachineDays } from '@/lib/minop/machineAttendance'
+import { forwardPunchesToPartner } from '@/lib/minop/partnerFeed'
 import { recordMinopPunches } from '@/lib/minop/punches'
 
 export const runtime = 'nodejs'
+// The push to the operations ERP runs after Minop has its reply, and may retry for up to about 20 seconds.
+export const maxDuration = 30
 
 /**
  * POST /api/integrations/minop/webhook/<MINOP_WEBHOOK_PATH_TOKEN>
@@ -47,6 +50,9 @@ async function insertRawDelivery(row: MinopRawDeliveryRow): Promise<{ ok: boolea
 }
 
 async function recordPunches(receivedAt: string, payload: unknown): Promise<void> {
+  // The operations ERP gets its copy once Minop has been answered, so a slow server there never holds Minop up.
+  after(() => forwardPunchesToPartner(receivedAt, payload))
+
   const svc = serviceClient()
   if (!svc) return
   await recordMinopPunches(svc, receivedAt, payload)
