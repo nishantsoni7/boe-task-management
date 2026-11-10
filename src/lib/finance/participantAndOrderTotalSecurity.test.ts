@@ -1235,6 +1235,8 @@ describe('the applied migrations are frozen', () => {
       '20270607000000_finance_payment_request_old_order.sql',
       // Finance, a duplicate Sales request is merged into the payment already confirmed: one door, two activity events.
       '20270608000000_finance_merge_duplicate_payment_request.sql',
+      // Sales, a chat on WhatsApp becomes a lead: one table for the ads, one service-role function.
+      '20270609000000_sales_whatsapp_capture.sql',
     ])
   })
 
@@ -1720,6 +1722,7 @@ describe('the applied migrations are frozen', () => {
       '20270606000000_sales_lead_master_date_range.sql',
       '20270607000000_finance_payment_request_old_order.sql',
       '20270608000000_finance_merge_duplicate_payment_request.sql',
+      '20270609000000_sales_whatsapp_capture.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

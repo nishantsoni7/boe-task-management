@@ -46,6 +46,9 @@ export function LeadChips({ lead }: { lead: WorkLead }) {
 
 const who = (name: string | null) => <b>{name ?? 'a former colleague'}</b>
 
+// What the WhatsApp capture writes as the detail of "added" and "enquired_again" (capture_sales_chats, 20270609000000).
+const FROM_WHATSAPP = /^WhatsApp (chat|ad)/
+
 /** One line of a lead's history, the same in the Lead Master and in the lead panel. */
 export function eventLine(e: LeadEvent): React.ReactNode {
   switch (e.kind) {
@@ -53,7 +56,7 @@ export function eventLine(e: LeadEvent): React.ReactNode {
     case 'allotted': return <>Allotted to {who(e.to_name)}{e.detail && <> automatically: {e.detail}</>}</>
     case 'reassigned': return <>Moved from {who(e.from_name)} to {who(e.to_name)}{e.detail && <> automatically: {e.detail}</>}</>
     case 'edited': return `Changed ${editedFields(e.detail)}`
-    case 'enquired_again': return 'Enquired again'
+    case 'enquired_again': return e.detail && FROM_WHATSAPP.test(e.detail) ? <>Enquired again on the <b>{e.detail}</b></> : 'Enquired again'
     case 'imported': return <>Brought over from ClickUp{e.detail ? <> as <b>{e.detail}</b></> : null}</>
     case 'clickup_status': return <>In ClickUp: <b>{e.detail}</b></>
     case 'moved': {
@@ -64,8 +67,10 @@ export function eventLine(e: LeadEvent): React.ReactNode {
   }
 }
 
-// The website capture, and the allotment rule (whose allot lines alone carry a reason), act with nobody behind them.
-const byItself = (e: LeadEvent) => e.detail === 'website form' || (!!e.detail && (e.kind === 'allotted' || e.kind === 'reassigned'))
+// The website capture, the WhatsApp capture ("WhatsApp chat", "WhatsApp ad: <headline>"), and the allotment rule (whose
+// allot lines alone carry a reason), act with nobody behind them.
+const byItself = (e: LeadEvent) =>
+  e.detail === 'website form' || FROM_WHATSAPP.test(e.detail ?? '') || (!!e.detail && (e.kind === 'allotted' || e.kind === 'reassigned'))
 
 /** Who did it. ClickUp's own entries say so instead of naming a former colleague. */
 export const eventBy = (e: LeadEvent) =>

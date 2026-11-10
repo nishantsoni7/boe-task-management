@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), and the Lead Master date range (20270606000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), the Lead Master date range (20270606000000), and the WhatsApp chats (20270609000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -90,7 +90,7 @@ for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', 
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
   '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
-  '20270606000000_sales_lead_master_date_range.sql']) {
+  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -872,6 +872,148 @@ await step('Browser users cannot fire the alert job', () =>
     const rows = await one(U.manager, `select public.sales_premium_misplaced()`)
     must(rows.some(r => r.phone === '+919811100069' && r.level === 'junior' && r.premium === '300 guests'), JSON.stringify(rows.map(r => [r.phone, r.level, r.premium])))
     must(!rows.some(r => r.phone === '+919811100061'), 'a Mid holding a Premium lead is fine')
+  })
+}
+
+{
+  // ── Chats on WhatsApp become leads (20270609000000) ──────────────────────
+  const asService = async (sql, rows) => {
+    await db.exec('reset role; set role service_role;')
+    try { return (await db.query(sql, [JSON.stringify(rows)])).rows[0].r } finally { await db.exec('reset role;') }
+  }
+  const chat = rows => asService('select public.capture_sales_chats($1::jsonb) as r', rows)
+  const web = rows => asService('select public.capture_sales_leads($1::jsonb) as r', rows)
+  const lead = async phone => (await db.query(`select * from public.sales_leads where phone_e164 = $1`, [phone])).rows[0]
+  const events = async id => (await db.query(`select kind, detail, actor from public.sales_lead_events where lead_id = $1 order by at, id`, [id])).rows
+  const clicks = async id => (await db.query(`select ad_id, headline, source_url, ctwa_clid from public.sales_lead_ad_clicks where lead_id = $1 order by at`, [id])).rows
+  const waitingFor = async phone => (await db.query(`select n.title, n.body from public.notifications n join public.sales_leads l on l.id = n.entity_id
+    where n.type::text = 'sales_lead_waiting' and l.phone_e164 = $1`, [phone])).rows
+  // Make a lead's last word from the client N days old: its creation, its last enquiry and every chat message it remembers.
+  // created_at never changes in real life (a trigger refuses it), so the test switches triggers off to age a lead.
+  const age = async (id, days) => {
+    await db.exec('set session_replication_role = replica;')
+    try { await db.query(`update public.sales_leads set created_at = now() - make_interval(days => $2), enquired_again_at = null where id = $1`, [id, days]) }
+    finally { await db.exec('set session_replication_role = default;') }
+    await db.query(`update public.sales_lead_import_refs set at = now() - make_interval(days => $2) where lead_id = $1 and ref like 'wa:%'`, [id, days])
+  }
+  const punch = async (...who) => {
+    await db.exec('delete from public.attendance_records')
+    for (const u of who) await db.query(`insert into public.attendance_records values ($1, (now() at time zone 'Asia/Kolkata')::date, now())`, [u])
+  }
+  const person = (uid, level, exp = false, limit = 200) => one(U.admin, `select public.set_sales_allot_person($1, $2, $3, $4)`, [uid, level, exp, limit])
+  const hours = (on) => one(U.admin, `select public.set_sales_auto_allot($1, '{1,2,3,4,5,6,7}'::integer[], '00:00', '24:00')`, [on])
+  const P1 = '+919811100070', P2 = '+919811100071'
+
+  await step('Only the service role can capture a chat, and a browser cannot read the ad clicks', async () => {
+    await expectErr(U.admin, `select public.capture_sales_chats('[]'::jsonb)`, /permission denied/)
+    await expectErr(U.leadmgr, `select count(*) from public.sales_lead_ad_clicks`, /permission denied/)
+    await db.exec('reset role; set role service_role;')
+    try { await db.query(`select public.capture_sales_chats('[]'::jsonb)`) } finally { await db.exec('reset role;') }
+  })
+  await step('A new number that writes in becomes a WhatsApp lead, given by the same rule as a website lead, and the history says so', async () => {
+    await person(U.ashok, 'senior'); await person(U.mohit, 'mid'); await person(U.senior, 'junior')
+    await hours(true)
+    await punch()
+    const before = await notesFor(U.ashok, 'sales_lead_allotted')
+    const r = await chat([{ key: 'wamid.1', phone: P1, name: 'Chat Hotel', message: 'Need 250 seats for a new restaurant' }])
+    must(r.created === 1 && r.allotted === 1 && r.ignored === 0 && r.failed.length === 0, JSON.stringify(r))
+    const l = await lead(P1)
+    must(l.source === 'whatsapp' && l.name === 'Chat Hotel' && l.requirement === 'Need 250 seats for a new restaurant', JSON.stringify([l.source, l.name, l.requirement]))
+    must(l.assigned_to === U.ashok && l.assigned_by === null && l.next_step === 'First call', 'Premium to the Senior, first call')
+    must(await notesFor(U.ashok, 'sales_lead_allotted') === before + 1, 'the holder was not told')
+    const ev = await events(l.id)
+    must(ev[0].kind === 'added' && ev[0].detail === 'WhatsApp chat' && ev[0].actor === null, JSON.stringify(ev[0]))
+    must(ev.some(e => e.kind === 'allotted' && /^Premium \(250 seats\) to a Senior/.test(e.detail)), JSON.stringify(ev))
+    must((await clicks(l.id)).length === 0, 'an ad that is not there')
+  })
+  await step('A message Meta sends twice counts once', async () => {
+    const r = await chat([{ key: 'wamid.1', phone: P1, name: 'Chat Hotel', message: 'Need 250 seats for a new restaurant' }])
+    must(r.created === 0 && r.already === 1 && r.ignored === 0 && r.repeat === 0, JSON.stringify(r))
+    must(Number(await scalar(`select count(*) from public.sales_leads where phone_e164 = $1`, [P1])) === 1, 'two leads')
+  })
+  await step('The same client writing again the same day goes on in WhatsApp: remembered, not a new enquiry, nobody pinged', async () => {
+    const l = await lead(P1)
+    const evBefore = (await events(l.id)).length
+    const told = await notesFor(U.ashok, 'sales_lead_enquired_again')
+    const r = await chat([{ key: 'wamid.2', phone: P1, message: 'ok thanks, call me' }, { key: 'wamid.2b', phone: P1, message: 'hello?' }])
+    must(r.ignored === 2 && r.repeat === 0 && r.created === 0, JSON.stringify(r))
+    const now_ = await lead(P1)
+    must(now_.requirement === l.requirement && (await events(l.id)).length === evBefore, 'the lead changed')
+    must(await notesFor(U.ashok, 'sales_lead_enquired_again') === told, 'the holder was pinged')
+    must(Number(await scalar(`select count(*) from public.sales_lead_import_refs where ref in ('wa:wamid.2', 'wa:wamid.2b')`)) === 2, 'not remembered')
+  })
+  await step('A chat from an ad is a new enquiry at once: the holder is told, the ad is kept, and the history names it', async () => {
+    const l = await lead(P1)
+    const told = await notesFor(U.ashok, 'sales_lead_enquired_again')
+    const r = await chat([{ key: 'wamid.3', phone: P1, message: 'Saw your ad', ad_id: '120226305854810726', ad_headline: 'Hotel furniture',
+      ad_url: 'https://fb.example/ad', ctwa_clid: 'AbC123' }])
+    must(r.repeat === 1 && r.ignored === 0 && r.created === 0, JSON.stringify(r))
+    must(await notesFor(U.ashok, 'sales_lead_enquired_again') === told + 1, 'the holder was not told')
+    const ev = await events(l.id)
+    must(ev[ev.length - 1].kind === 'enquired_again' && ev[ev.length - 1].detail === 'WhatsApp ad: Hotel furniture' && ev[ev.length - 1].actor === null, JSON.stringify(ev[ev.length - 1]))
+    must(JSON.stringify(await clicks(l.id)) === JSON.stringify([{ ad_id: '120226305854810726', headline: 'Hotel furniture', source_url: 'https://fb.example/ad', ctwa_clid: 'AbC123' }]), 'the ad')
+    must((await lead(P1)).requirement.includes('Saw your ad'), 'the words were not added')
+    must((await lead(P1)).assigned_to === U.ashok, 'the holder changed')
+  })
+  await step('A new number that comes from an ad keeps the ad from the first message', async () => {
+    const r = await chat([{ key: 'wamid.4', phone: P2, name: 'Ad Cafe', message: 'Price for 30 chairs?', ad_id: '99', ad_headline: null }])
+    must(r.created === 1, JSON.stringify(r))
+    const l = await lead(P2)
+    must(JSON.stringify(await clicks(l.id)) === JSON.stringify([{ ad_id: '99', headline: null, source_url: null, ctwa_clid: null }]), 'the ad')
+    must((await events(l.id))[0].detail === 'WhatsApp ad: 99', 'the history names the ad id when there is no headline')
+  })
+  await step('Quiet for 3 days: a client who writes after 2 days is still the same conversation, after 4 days an enquiry again', async () => {
+    const l = await lead(P2)
+    await age(l.id, 2)
+    must((await chat([{ key: 'wamid.5', phone: P2, message: 'any news' }])).ignored === 1, 'two days is still talking')
+    await age(l.id, 4)
+    const told = await notesFor(l.assigned_to, 'sales_lead_enquired_again')
+    const r = await chat([{ key: 'wamid.6', phone: P2, message: 'Are you there? I need 30 chairs by March' }])
+    must(r.repeat === 1 && r.ignored === 0, JSON.stringify(r))
+    must(await notesFor(l.assigned_to, 'sales_lead_enquired_again') === told + 1, 'the holder was not told')
+    const ev = await events(l.id)
+    must(ev[ev.length - 1].kind === 'enquired_again' && ev[ev.length - 1].detail === 'WhatsApp chat', JSON.stringify(ev[ev.length - 1]))
+    must((await lead(P2)).requirement.endsWith('I need 30 chairs by March'), 'the words were not added')
+    must((await chat([{ key: 'wamid.7', phone: P2, message: 'thanks' }])).ignored === 1, 'the enquiry just now is talking again')
+  })
+  await step('A Dead lead whose client writes after a quiet spell comes back as New, with a call today', async () => {
+    const l = await lead(P2)
+    await db.query(`update public.sales_leads set stage = 'dead', dead_reason = 'not_relevant', closed_at = now() where id = $1`, [l.id])
+    await age(l.id, 5)
+    const r = await chat([{ key: 'wamid.8', phone: P2, message: 'Sorry, I still need them' }])
+    const back = await lead(P2)
+    must(r.repeat === 1 && back.stage === 'new' && back.dead_reason === null && back.closed_at === null, JSON.stringify([r, back.stage]))
+    must(back.next_step && String(back.next_due_on).length > 0, 'no next step')
+  })
+  await step('With nobody free, or after hours, a new chat waits and the allotters hear it was a WhatsApp lead', async () => {
+    await hours(false)
+    const r = await chat([{ key: 'wamid.9', phone: '+919811100072', name: 'Night Chat', message: 'Need 20 tables' }])
+    must(r.created === 1 && r.allotted === 0, JSON.stringify(r))
+    const l = await lead('+919811100072')
+    must(!l.assigned_to && l.source === 'whatsapp', 'given although switched off')
+    const told = await waitingFor('+919811100072')
+    must(told.length >= 2 && told.every(t => t.title === 'New lead from WhatsApp' && t.body === 'Night Chat. Allot it in Lead Master. Need 20 tables'), JSON.stringify(told))
+    await hours(true)
+  })
+  await step('A number the database cannot use is reported, the other messages in the batch still land, and a batch of more than 100 is refused', async () => {
+    const r = await chat([{ key: 'wamid.10', phone: '12', message: 'x' }, { key: 'wamid.11', phone: '+919811100073', message: 'Need 8 stools' }])
+    must(r.failed.length === 1 && r.failed[0].why === 'no valid number' && r.created === 1, JSON.stringify(r))
+    await db.exec('reset role; set role service_role;')
+    try {
+      const rows = Array.from({ length: 101 }, (_, i) => ({ key: 'big' + i, phone: '+919811100074' }))
+      let m = null
+      try { await db.query('select public.capture_sales_chats($1::jsonb)', [JSON.stringify(rows)]) } catch (e) { m = e.message }
+      must(m && /up to 100 rows/.test(m), 'not refused: ' + m)
+    } finally { await db.exec('reset role;') }
+  })
+  await step('The website capture is untouched: a form still becomes a Website lead, and the same number writing in WhatsApp later is ignored that day', async () => {
+    const r = await web([{ key: 'wk1', name: 'Form Hotel', phone: '98111 00075', message: 'Need 40 chairs' }])
+    must(r.created === 1, JSON.stringify(r))
+    const l = await lead('+919811100075')
+    must(l.source === 'website', l.source)
+    const c = await chat([{ key: 'wamid.12', phone: '+919811100075', message: 'I just filled your form' }])
+    must(c.ignored === 1 && c.repeat === 0, JSON.stringify(c))
+    must((await events(l.id)).filter(e => e.kind === 'enquired_again').length === 0, 'a form then a chat is one enquiry')
   })
 }
 

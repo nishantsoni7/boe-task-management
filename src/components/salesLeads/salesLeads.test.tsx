@@ -111,6 +111,17 @@ describe('a lead\'s history', () => {
     assert.equal(eventBy(moved), 'Automatically')
   })
 
+  test('a WhatsApp chat or ad says where it came from, by itself, and an ordinary repeat is unchanged', () => {
+    const chat = ev({ kind: 'added', to_name: null, detail: 'WhatsApp chat' })
+    assert.equal(line(chat), 'Came in from the <b>WhatsApp chat</b>')
+    assert.equal(eventBy(chat), 'Automatically')
+    const ad = ev({ kind: 'enquired_again', to_name: null, detail: 'WhatsApp ad: Hotel furniture' })
+    assert.equal(line(ad), 'Enquired again on the <b>WhatsApp ad: Hotel furniture</b>')
+    assert.equal(eventBy(ad), 'Automatically')
+    assert.equal(line(ev({ kind: 'enquired_again', to_name: null, detail: 'website form' })), 'Enquired again')
+    assert.equal(line(ev({ kind: 'enquired_again', to_name: null, detail: 'whatsapp: asked for prices', actor_name: 'Asha' })), 'Enquired again')
+  })
+
   test('a person\'s allotment names them, and one by a former colleague says so', () => {
     assert.equal(line(ev({ actor_name: 'Nishant' })), 'Allotted to <b>Ashok</b>')
     assert.equal(eventBy(ev({ actor_name: 'Nishant' })), 'Nishant')
