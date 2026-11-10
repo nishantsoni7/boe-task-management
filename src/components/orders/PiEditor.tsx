@@ -40,6 +40,7 @@ import {
   newEditItem,
   normalizePi,
   editProductFigures,
+  piSaveFailureText,
   priceEdit,
   summarizeChanges,
   validateEdit,
@@ -300,7 +301,7 @@ export function PiEditor({
         body: JSON.stringify({ mode, submissionId, edit: state, reason }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setFailure(body.message ?? 'The PI could not be saved just now.'); setReviewing(false); return }
+      if (!res.ok) { setFailure(piSaveFailureText(res.status, body)); setReviewing(false); return }
       dirtyRef.current = false
       // 20270122000000: a dates-only edit is not a new PI version.
       onDone(mode === 'propose'
