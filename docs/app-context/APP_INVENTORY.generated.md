@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `da509cd3` — Edit PI: a failed save now explains itself (#646)
-- Commits on this branch: 1210
+- Commit: `74be747e` — Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
+- Commits on this branch: 1211
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `74be747e` 2026-11-10 Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
 - `da509cd3` 2026-11-10 Edit PI: a failed save now explains itself (#646)
 - `243a8521` 2026-11-08 Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
 - `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
@@ -38,7 +39,6 @@
 - `aa1f4b46` 2026-11-06 Payroll: the payslip lists the month's approved reviews and their credits (no SQL) (#625)
 - `2ce0e81e` 2026-11-05 Docs: the half-leave fix merged (#619 as b1588211), migration 20270604000000 applied (#624)
 - `b1588211` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
-- `2a3ea821` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL) (#623)
 
 ## Pages by top-level area
 
