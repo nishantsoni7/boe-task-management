@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `2bce39a0` — Minop feed: send the receipt time in India time too; record #643's merge (#644)
-- Commits on this branch: 1208
+- Commit: `243a8521` — Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
+- Commits on this branch: 1209
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 188
 - Migrations: 424 (first `20260530_create_positions.sql`, latest `20270608000000_finance_merge_duplicate_payment_request.sql`)
 - Tables ever created: 225 (dropped at some point: 7)   SQL functions: 952   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `243a8521` 2026-11-08 Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
 - `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
 - `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
 - `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
@@ -38,7 +39,6 @@
 - `b1588211` 2026-11-05 Payroll: a payslip can hold half a paid leave (migration 20270604000000, apply first) (#619)
 - `2a3ea821` 2026-11-05 Backups: only one backup-all at a time, via status/backup-all.lock (no SQL) (#623)
 - `2f739e42` 2026-11-05 Docs: admin notes on payment requests merged (#620 as 64c879d4), migration applied (#622)
-- `356901e6` 2026-11-05 Backups: finish under the Terminal panel's git setting, read a dropped page again, start Docker themselves (no SQL) (#621)
 
 ## Pages by top-level area
 

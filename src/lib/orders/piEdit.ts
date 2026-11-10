@@ -153,6 +153,19 @@ export type PiEditState = {
   items: PiEditItem[]
 }
 
+/**
+ * What Edit PI shows when a save is refused. A server fault (5xx) gets a short
+ * reference after the sentence — the route's error code, or "HTTP 500" when the
+ * platform answered instead of the route — so a person can read out exactly what
+ * failed. A refusal a person can fix (4xx) already says so and is left as is.
+ */
+export function piSaveFailureText(status: number, body: { message?: unknown; error?: unknown } | null): string {
+  const message = typeof body?.message === 'string' && body.message !== '' ? body.message : 'The PI could not be saved just now.'
+  if (status < 500) return message
+  const code = typeof body?.error === 'string' && body.error !== '' ? body.error : `HTTP ${status}`
+  return `${message} (Reference: ${code})`
+}
+
 // ── Reading numbers the way people type them ─────────────────────────────────
 
 /** "1,20,000.50" → 120000.5; "" → null; anything else → NaN. */

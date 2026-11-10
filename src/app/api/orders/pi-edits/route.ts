@@ -49,7 +49,19 @@ function looksLikeEdit(v: unknown): v is PiEditState {
     && e.items.length <= 200
 }
 
+// A crash anywhere below is logged and answered as JSON with a code the person
+// can read out, instead of a bare platform 500 nobody can explain. The message
+// does NOT say "nothing was changed": a throw after the write would be a lie.
 export async function POST(req: NextRequest) {
+  try {
+    return await save(req)
+  } catch (error) {
+    console.error('[orders/pi-edits] unexpected error', error)
+    return fail(500, 'UNEXPECTED', 'The PI could not be saved just now. Reload the page to see whether it was saved, then try again.')
+  }
+}
+
+async function save(req: NextRequest) {
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return fail(401, 'UNAUTHORIZED', 'Please sign in again.')
@@ -69,6 +81,7 @@ export async function POST(req: NextRequest) {
 
   const admin = adminClient()
   if (!admin.ok) {
+    console.error('[orders/pi-edits] not configured; missing:', admin.missing.join(', '))
     return fail(500, 'SERVER_NOT_CONFIGURED', 'Editing a PI is not configured on this deployment. Please report it.')
   }
   const service = admin.client
@@ -109,7 +122,10 @@ export async function POST(req: NextRequest) {
     // Every item number this Order has ever used (20270116000000): an added
     // line never takes a removed product's number.
     const everUsed = await service.rpc('order_item_sequences_ever_used', { p_order_id: orderId })
-    if (everUsed.error) return fail(500, 'LOOKUP_FAILED', 'This PI could not be read. Please try again.')
+    if (everUsed.error) {
+      console.error('[orders/pi-edits] order_item_sequences_ever_used failed', { code: everUsed.error.code, message: everUsed.error.message })
+      return fail(500, 'LOOKUP_FAILED', 'This PI could not be read. Please try again.')
+    }
     const retiredSequences = (everUsed.data ?? []) as string[]
     const retired = retiredSequenceProblems(edit, content, retiredSequences)
     if (retired.length > 0) return fail(400, 'SEQUENCE_RETIRED', retired[0].message)
@@ -148,7 +164,7 @@ export async function POST(req: NextRequest) {
         if (/ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION/.test(m)) {
           return fail(400, 'DUE_BEFORE_CONFIRMATION', 'The due date cannot be before the order confirmation date.')
         }
-        const f = describePiEditFailure(error)
+        const f = describePiEditFailure(error, 'update_order_submission_schedule_terms')
         return fail(f.status, f.code, f.message)
       }
       return NextResponse.json({ ok: true, mode, dates_amended: true, change_summary: proposal.change_summary })
@@ -163,7 +179,7 @@ export async function POST(req: NextRequest) {
       p_order_id: orderId, p_actor_id: user.id, p_proposal: proposal, p_reason: reason,
     })
     if (error) {
-      const f = describePiEditFailure(error)
+      const f = describePiEditFailure(error, 'propose_order_pi_edit_revision')
       return fail(f.status, f.code, f.message)
     }
 
@@ -208,7 +224,7 @@ export async function POST(req: NextRequest) {
     p_submission_id: submissionId, p_actor_id: user.id, p_token: token,
   })
   if (lease.error) {
-    const f = describePiEditFailure(lease.error)
+    const f = describePiEditFailure(lease.error, 'begin_order_submission_processing')
     return fail(f.status, f.code, f.message)
   }
   try {
@@ -222,7 +238,7 @@ export async function POST(req: NextRequest) {
       p_payload: { ...proposal.payload, processing_token: token, change_reason: reason || null },
     })
     if (error) {
-      const f = describePiEditFailure(error)
+      const f = describePiEditFailure(error, 'replace_order_submission_parse')
       return fail(f.status, f.code, f.message)
     }
     // The terms the parse writer does not own: same lease, same editor check,
@@ -235,6 +251,7 @@ export async function POST(req: NextRequest) {
       p_reason: reason || null,
     })
     if (termsErr) {
+      console.error('[orders/pi-edits] apply_order_submission_pi_edit_terms failed', { code: termsErr.code, message: termsErr.message })
       return fail(500, 'TERMS_NOT_SAVED',
         'The products and details were saved, but the terms could not be. Open Edit PI again and save the terms.')
     }

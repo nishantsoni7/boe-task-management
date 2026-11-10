@@ -25,6 +25,12 @@ export async function loadPiContent(service: AdminSupabaseClient, submissionId: 
     service.from('order_submission_item_images').select(PI_EDIT_IMAGE_COLUMNS).eq('submission_id', submissionId),
   ])
   if (sub.error || items.error || images.error) {
+    // The only record of WHICH read failed and why: the person is told "could not be read".
+    console.error('[orders/pi-edits] PI read failed', {
+      submission: sub.error ? { code: sub.error.code, message: sub.error.message } : null,
+      items: items.error ? { code: items.error.code, message: items.error.message } : null,
+      images: images.error ? { code: images.error.code, message: images.error.message } : null,
+    })
     return { ok: false, status: 500, code: 'LOOKUP_FAILED', message: 'This PI could not be read. Please try again.' }
   }
   if (!sub.data) return { ok: false, status: 404, code: 'NOT_FOUND', message: 'This PI no longer exists.' }
@@ -40,8 +46,15 @@ export async function loadPiContent(service: AdminSupabaseClient, submissionId: 
   }
 }
 
-/** A database refusal, in the words a person reads. Never the raw message. */
-export function describePiEditFailure(error: { message?: string; code?: string } | null): { status: number; code: string; message: string } {
+/**
+ * A database refusal, in the words a person reads. Never the raw message to the
+ * browser; a refusal no rule below recognises is written to the server log (with
+ * `where`, the database function that raised it) so a bare 500 can be explained.
+ */
+export function describePiEditFailure(
+  error: { message?: string; code?: string } | null,
+  where = 'unspecified',
+): { status: number; code: string; message: string } {
   const m = error?.message ?? ''
   const rules: [RegExp, number, string, string][] = [
     [/ORDER_PI_REVISION_PENDING/, 409, 'ORDER_PI_REVISION_PENDING',
@@ -60,5 +73,6 @@ export function describePiEditFailure(error: { message?: string; code?: string }
     [/ORDER_SUBMISSION_DELETION_CLAIMED/, 409, 'DELETION_CLAIMED', 'This PI is reserved for deletion.'],
   ]
   for (const [re, status, code, message] of rules) if (re.test(m)) return { status, code, message }
+  console.error('[orders/pi-edits] unrecognised database error', { where, code: error?.code, message: m })
   return { status: 500, code: 'EDIT_FAILED', message: 'The PI could not be saved just now. Nothing was changed. Please try again.' }
 }

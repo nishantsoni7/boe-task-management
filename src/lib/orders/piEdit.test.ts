@@ -9,9 +9,10 @@
  *   npx tsx --test src/lib/orders/piEdit.test.ts
  */
 
-import { test, describe } from 'node:test'
+import { test, describe, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { describePiEditFailure } from './piEditServer'
 import {
   buildEditProposal,
   DIFF_FIELD_LABELS,
@@ -24,6 +25,7 @@ import {
   normalizePi,
   normalizeProposal,
   parseAmount,
+  piSaveFailureText,
   priceEdit,
   retiredSequenceProblems,
   summarizeChanges,
@@ -368,5 +370,76 @@ describe('a PI that is not yet an Order is always numbered 1…n in order', () =
     const s = initialEditState(current())
     s.items.splice(1, 0, { ...newEditItem('mid'), product_name: 'Middle', quantity: '1', cost_per_piece: '100' })
     assert.deepEqual(run(s), [['BE0001', 'Lounge chair'], ['BE0002', 'Middle'], ['BE0003', s.items[2].product_name]])
+  })
+})
+
+// ── A failed save must be explainable (owner screenshot, 2026-11-10: a bare 500) ──
+
+describe('a refused save says what failed', () => {
+  test('a server fault carries the route\'s code after the sentence', () => {
+    assert.equal(
+      piSaveFailureText(500, { error: 'EDIT_FAILED', message: 'The PI could not be saved just now. Nothing was changed. Please try again.' }),
+      'The PI could not be saved just now. Nothing was changed. Please try again. (Reference: EDIT_FAILED)',
+    )
+  })
+
+  test('a 500 the platform answered (no JSON) still gives a reference', () => {
+    assert.equal(piSaveFailureText(500, null), 'The PI could not be saved just now. (Reference: HTTP 500)')
+    assert.equal(piSaveFailureText(504, {}), 'The PI could not be saved just now. (Reference: HTTP 504)')
+  })
+
+  test('a refusal the person can fix is left exactly as the route worded it', () => {
+    assert.equal(piSaveFailureText(409, { error: 'STALE', message: 'Reload and edit again.' }), 'Reload and edit again.')
+    assert.equal(piSaveFailureText(400, null), 'The PI could not be saved just now.')
+  })
+})
+
+describe('the Edit PI route logs what it cannot explain', () => {
+  const quiet = () => mock.method(console, 'error', () => {})
+
+  test('an unrecognised database error is logged with the function that raised it, and answered 500', () => {
+    const log = quiet()
+    try {
+      const f = describePiEditFailure({ code: '23514', message: 'new row violates check constraint "x"' }, 'propose_order_pi_edit_revision')
+      assert.deepEqual([f.status, f.code], [500, 'EDIT_FAILED'])
+      assert.equal(log.mock.callCount(), 1)
+      const [label, detail] = log.mock.calls[0].arguments as [string, { where: string; code: string; message: string }]
+      assert.match(label, /pi-edits/)
+      assert.deepEqual(detail, { where: 'propose_order_pi_edit_revision', code: '23514', message: 'new row violates check constraint "x"' })
+    } finally { log.mock.restore() }
+  })
+
+  test('a refusal the rules recognise is answered as before and is not logged', () => {
+    const log = quiet()
+    try {
+      assert.equal(describePiEditFailure({ message: 'ORDER_PI_REVISION_PENDING' }, 'propose_order_pi_edit_revision').status, 409)
+      assert.equal(log.mock.callCount(), 0)
+    } finally { log.mock.restore() }
+  })
+
+  const route = readFileSync('src/app/api/orders/pi-edits/route.ts', 'utf8').replace(/\r/g, '')
+
+  test('a crash is answered as JSON with a code, and logged', () => {
+    assert.match(route, /export async function POST\(req: NextRequest\) \{\s+try \{\s+return await save\(req\)\s+\} catch \(error\) \{\s+console\.error\('\[orders\/pi-edits\] unexpected error', error\)\s+return fail\(500, 'UNEXPECTED'/)
+    assert.doesNotMatch(route.slice(route.indexOf("'UNEXPECTED'"), route.indexOf('async function save')), /Nothing was changed/,
+      'a throw after the write must not claim nothing changed')
+  })
+
+  test('every database refusal passes the name of the function that raised it', () => {
+    const calls = route.match(/describePiEditFailure\([^)]*\)/g) ?? []
+    assert.equal(calls.length, 4)
+    for (const call of calls) assert.match(call, /, '[a-z_]+'\)$/, `${call} names its database function`)
+  })
+
+  test('the other 500 exits are logged too', () => {
+    for (const label of ['not configured; missing:', 'order_item_sequences_ever_used failed', 'apply_order_submission_pi_edit_terms failed']) {
+      assert.ok(route.includes(`'[orders/pi-edits] ${label}`), label)
+    }
+    assert.match(readFileSync('src/lib/orders/piEditServer.ts', 'utf8'), /\[orders\/pi-edits\] PI read failed/)
+  })
+
+  test('the editor shows the reference for a server fault', () => {
+    const editor = readFileSync('src/components/orders/PiEditor.tsx', 'utf8')
+    assert.ok(editor.includes('setFailure(piSaveFailureText(res.status, body))'))
   })
 })
