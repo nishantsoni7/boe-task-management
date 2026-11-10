@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-10 — Edit PI: a failed save now explains itself (branch `fix/pi-save-diagnostics`, PR not yet opened, NOT merged) · no migration
+## 2026-11-10 — Edit PI: a failed save now explains itself (PR #646, branch `fix/pi-save-diagnostics`) · no migration
 - **Owner report.** A console screenshot showed `POST /api/orders/pi-edits` answering 500 (the rest of the console was a Chrome extension's "message channel closed" and the harmless preload warning, not BOE). Nothing in the app recorded WHY: the route returned its generic "could not be saved" for any database error it did not recognise and wrote nothing to the log. The cause of that 500 was NOT found (the response body was not available and a production read was refused); this change makes the next one findable.
 - **Changed.** `describePiEditFailure(error, where)` logs `{where, code, message}` for an error no rule recognises; `loadPiContent`, the sequence lookup, the terms write and the not-configured exit each log their own reason; `POST` now wraps the handler (`save`) so a thrown error is logged and answered as JSON `UNEXPECTED` (message does not claim "nothing was changed"). The editor shows a server fault with `(Reference: <code>)` (`piSaveFailureText`, `HTTP 500` when the platform answered). 4xx wording is unchanged.
 - **Not changed.** Who may edit, pricing, the proposal, any database function, any response shape (the new `UNEXPECTED` code is only added; `EDIT_FAILED` etc. are as before).
