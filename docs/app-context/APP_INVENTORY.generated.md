@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0c664c3a` — Payments: Canara asks for the paying account, no "Where is this money now?"
-- Commits on this branch: 1215
+- Commit: `06167f61` — Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
+- Commits on this branch: 1219
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
@@ -14,7 +14,11 @@
 
 ## Latest 25 commits
 
-- `0c664c3a` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?"
+- `06167f61` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
+- `8ff4dafd` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free) (#652)
+- `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
+- `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
+- `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 - `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
@@ -35,10 +39,6 @@
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
 - `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
-- `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
-- `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
-- `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
-- `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 
 ## Pages by top-level area
 

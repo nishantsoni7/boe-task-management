@@ -10,13 +10,26 @@ import path from 'node:path'
 // prefetched the launcher (`/modules`) on mount, so its stylesheet was preloaded
 // and never applied (one "preloaded but not used" warning per page opened), and
 // opening the drawer on My Tasks had already requested every task page in the
-// list (13 tasks, 26+ requests). See src/app/modules/intentPrefetch.test.ts for
-// the same rule on the Modules cards.
+// list (13 tasks, 26+ requests). The Orders / Finance switch did the same from
+// the Finance header: its Link prefetched `/orders` on every Finance page, so
+// the Orders stylesheet was preloaded and never applied. See
+// src/app/modules/intentPrefetch.test.ts for the same rule on the Modules cards.
 
 const read = (...p: string[]) => readFileSync(path.join(process.cwd(), ...p), 'utf8')
 
 const HOOK = read('src', 'hooks', 'useIntentWarm.ts')
 const SHELL = read('src', 'components', 'layout', 'DashboardLayout.tsx')
+const SWITCH = read('src', 'components', 'layout', 'ModuleSwitchButton.tsx')
+
+describe('the Orders / Finance switch does not prefetch the other module on every page', () => {
+  it('turns viewport prefetch off and warms on intent only', () => {
+    assert.ok(SWITCH.includes('prefetch={false}'))
+    assert.ok(SWITCH.includes('onPointerEnter={() => warmOnRest(route)}'))
+    assert.ok(SWITCH.includes('onPointerLeave={cancel}'))
+    assert.ok(SWITCH.includes('onFocus={() => warmNow(route)}'))
+    assert.ok(SWITCH.includes('onTouchStart={() => warmNow(route)}'))
+  })
+})
 
 describe('useIntentWarm', () => {
   it('waits for the pointer to rest before it warms, and cancels on leave and unmount', () => {
