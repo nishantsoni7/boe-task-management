@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-11 — Finance and Orders side menus warm a page on intent only (branch `perf/shell-menu-intent`) · no migration
+- **Owner ask.** After the switch fix (#656) one "preloaded but not used" source was left on Finance pages; the owner approved fixing it ("Yes, fix it").
+- **Found (owner's Chrome, live build, 2026-11-11).** A hard load of `/finance?tab=pending` requested every page of the Finance menu by itself (`/finance/handovers` 6×, `/bank`, `/founders`, `/reimbursements`, `/expenses`, `/received`, `/notifications` 4× each). One of them, `/finance/founders`, has its own stylesheet (`0lyqf42u8_3td.css`), which stayed preloaded and unused on every other Finance page. The Orders menu did the same (its stylesheets happened to be shared, so no unused file was seen there).
+- **Changed.** `ShellNavLink` (`src/components/layout/ModuleShellControls.tsx`, used only by `FinanceLayout` and `OrdersLayout`): `prefetch={warm ? null : false}`; `warm` turns on after a 250 ms pointer rest, or on focus or touch. Next's own hover-prefetch pattern with local state, not `useIntentWarm`, because `ordersFinanceUsability.test.tsx` renders `ShellNavLink` outside the app router. Guard in `src/lib/tasks/warmOnIntent.test.ts`.
+- **Cost, told to the owner.** A menu click is warmed about a quarter second after the pointer rests, instead of as soon as the menu appears.
+- **Not changed.** Other module shells (they use their own link code: Attendance & Payroll, Control Center, Assets and the rest; not measured), `NotificationsNavItem`, the Home links.
+- **Proof.** Related tests, `tsc` and eslint: see the PR. NOT checked live yet: after deploy, a hard load of `/finance?tab=pending` should request none of the menu's pages and list no unused style preload.
+- **Rollback.** Revert the PR; no data involved.
+
 ## 2026-11-11 — Orders / Finance switch warms the other module on intent only (branch `perf/module-switch-intent`) · no migration
 - **Owner ask.** More "preloaded but not used" lines "in some new page"; the owner wanted every similar one removed or explained.
 - **Found (owner's Chrome, live build, 2026-11-11).** A hard load of `/finance?tab=pending` left the Orders stylesheet `0vpo57o72-4do.css` (the `adminDashboard` module) preloaded and unused, and requested `/orders` once by itself: the header's "Switch to Order Management" `<Link>` (`ModuleSwitchButton`, rendered by the Finance and Orders shells) was prefetched by Next's viewport rule. This is the file in the owner's earlier screenshots that was not reproduced until now. `/tasks/create-self` and `/modules` showed no unused preload and no prefetch at load.
