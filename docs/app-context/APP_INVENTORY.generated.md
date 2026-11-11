@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `edb88492` — Docs: the WhatsApp judge against the real model, 59 of 60, no lead lost
-- Commits on this branch: 1234
+- Commit: `03b6cb30` — Merge origin/main into feat/sales-whatsapp-classify
+- Commits on this branch: 1236
 - Pages (`page.tsx`): 183   API routes (`route.ts`): 189
 - Migrations: 429 (first `20260530_create_positions.sql`, latest `20270613000000_sales_whatsapp_classify.sql`)
 - Tables ever created: 227 (dropped at some point: 7)   SQL functions: 961   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `03b6cb30` 2026-11-11 Merge origin/main into feat/sales-whatsapp-classify
+- `b2dd6175` 2026-11-11 SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
 - `edb88492` 2026-11-11 Docs: the WhatsApp judge against the real model, 59 of 60, no lead lost
 - `68a9db3f` 2026-11-11 Docs: migration 20270613000000 applied to production
 - `7b22bd71` 2026-11-11 Merge origin/main into feat/sales-whatsapp-classify
@@ -37,8 +39,6 @@
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 - `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
-- `74be747e` 2026-11-10 Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
-- `da509cd3` 2026-11-10 Edit PI: a failed save now explains itself (#646)
 
 ## Pages by top-level area
 
