@@ -35,7 +35,7 @@
 .headline { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--boe-border); }
 .headline > span { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--boe-text); }
 .headline small { display: block; font-size: 12px; font-weight: 400; color: var(--boe-text-muted); }
-.headline b { font: 800 24px/1 var(--boe-font-heading); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--boe-text); }
+.headline b { font: 800 24px/1 var(--boe-font-heading); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--boe-text); }
 .headline b.up { color: var(--boe-completed-fg); }
 .headline b.down { color: var(--boe-blocked-fg); }
 
@@ -289,7 +289,8 @@
 
 /* The discussion brief drawn as a case for a decision. */
 .beforeBox { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--boe-border); }
-.checkList, .bullets { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; line-height: 1.5; color: var(--boe-text-strong); }
+/* The app's base styles remove list markers, so these lists ask for them back. */
+.checkList, .bullets { list-style: disc; margin: 6px 0 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; line-height: 1.5; color: var(--boe-text-strong); }
 .trendGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 14px 20px 0; }
 .chartTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--boe-text); }
 .chartKey { display: inline-flex; align-items: center; gap: 6px; }

@@ -22,7 +22,7 @@ Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks
 
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
-The discussion brief can now be drawn as a case for a decision about the role (PR pending). The owner asked on 2026-11-11 for every fact, a performance chart, quarterly rankings of the searches that bring business, the flow of leads, what was missed, the three claims tested with outside research, answers to likely counters, and how to hold the conversation kindly. Mock-up: https://claude.ai/artifact/UwAz8zrKcHJk63n6rGYL1f (private). No migration. Seen with the real document in the app's own stylesheets at desktop and phone, not signed in.
+The discussion brief can now be drawn as a case for a decision about the role (#661, `c9f1ce32`, merged by the owner 2026-11-11). The owner asked on 2026-11-11 for every fact, a performance chart, quarterly rankings of the searches that bring business, the flow of leads, what was missed, the three claims tested with outside research, answers to likely counters, and how to hold the conversation kindly. Mock-up: https://claude.ai/artifact/UwAz8zrKcHJk63n6rGYL1f (private). No migration. Seen with the real document in the app's own stylesheets at desktop and phone, not signed in.
 
 ## 3. The model
 

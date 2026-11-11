@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-11 — SEO: the discussion brief drawn as a case for a decision about the role (PR pending) · no migration
+## 2026-11-11 — SEO: the discussion brief drawn as a case for a decision about the role (PR #661, c9f1ce32) · no migration
 - **Owner request.** Rebuild the Admin-only discussion brief so every fact, chart and claim can be discussed with the SEO person and answered with data, with research on three claims (a Google update in September 2026, content not updated, no guest posting) and a kind way to hold the conversation.
 - **Changed.** A brief that has `claims` is drawn by `SeoBriefCase.tsx`: headline numbers, two monthly charts with Google's confirmed updates marked, rankings by quarter as a coloured table, the flow from clicks to leads, our base against the sites that beat us, the rivals that rose, each claim with our data, Google's own statements and a line to say, likely counters, what was missed, credit and fairness, running SEO without the role, and the conversation in steps. An older brief draws as before.
 - **Data check.** Sections may be left out whole, a quarter cell may be blank, and the review's scored, others, yours and next are optional. The September brief still passes.
