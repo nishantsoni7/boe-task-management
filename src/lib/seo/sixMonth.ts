@@ -44,10 +44,10 @@ export type DiscussionBrief = {
   credit: { title: string; text: string; ask?: string }[]
   raise: { title: string; tag: SeoTag; text: string; ask: string }[]
   fair: { title: string; text: string }[]
-  scored: { title: string; text: string; value: string }[]
-  others: { title: string; text: string }[]
-  yours: { title: string; text: string }
-  next: { title: string; rows: { tag: SeoTag; text: string }[] }
+  scored?: { title: string; text: string; value: string }[]
+  others?: { title: string; text: string }[]
+  yours?: { title: string; text: string }
+  next?: { title: string; rows: { tag: SeoTag; text: string }[] }
   proof: Titled & {
     chart: string
     bars: { month: string; value: number; recent?: boolean }[]
@@ -55,12 +55,37 @@ export type DiscussionBrief = {
     table: { head: string[]; rows: string[][] }
   }
   foot: string
+} & Partial<BriefCase>
+
+/** The case for a decision about the role (November 2026). A brief with `claims` is drawn as a case; one without, as a review. */
+export type BriefCase = {
+  headline: { title: string; items: { label: string; note: string; value: string; tone?: SeoTone }[] }
+  trend: Titled & { months: string[]; series: { label: string; values: number[] }[]; events: { month: number; text: string }[]; takeaway: string }
+  quarters: Titled & {
+    columns: string[]
+    rows: { keyword: string; demand: string; values: (number | null)[] }[]
+    totals: { label: string; values: string[] }[]
+    caveat: string
+    takeaway: string
+  }
+  leads: { title: string; steps: { label: string; value: string; note: string; tone?: SeoTone }[]; head: string[]; rows: string[][]; takeaway: string }
+  base: Titled & { head: string[]; rows: string[][]; takeaway: string }
+  risers: Titled & { rows: { site: string; from: string; to: string; text: string }[]; fair: string }
+  claims: { claim: string; tag: SeoTag; data: string[]; research: string[]; say: string }[]
+  counters: { says: string; answer: string }[]
+  missed: { title: string; text: string; tag: SeoTag }[]
+  plan: Titled & { rows: { task: string; who: string; when: string }[]; risks: string[] }
+  talk: Titled & { steps: { title: string; text: string; say?: string }[]; avoid: string[]; care: string[] }
+  sources: string[]
 }
 
 export type SixMonthRow = { period_end: string; body: SixMonthReview }
 export type DiscussionBriefRow = { period_end: string; body: DiscussionBrief }
 
-type Spec = 'text' | 'text?' | 'number' | 'tag' | 'tone?' | 'bool?' | 'direction?' | readonly [Spec] | { readonly [key: string]: Spec }
+type Spec = 'text' | 'text?' | 'number' | 'number?' | 'tag' | 'tone?' | 'bool?' | 'direction?' | readonly [Spec] | { readonly [key: string]: Spec }
+
+// A whole section that may be left out. An object with the single key '?' is never a real section.
+const optional = <S extends Spec>(spec: S) => ({ '?': spec }) as const
 
 const TITLED = { title: 'text', note: 'text' } as const
 const FINDING = { value: 'text', title: 'text', tag: 'tag', lines: [{ label: 'text?', text: 'text' }] } as const
@@ -105,12 +130,31 @@ const BRIEF_SPEC = {
   credit: [{ title: 'text', text: 'text', ask: 'text?' }],
   raise: [{ title: 'text', tag: 'tag', text: 'text', ask: 'text' }],
   fair: [{ title: 'text', text: 'text' }],
-  scored: [{ title: 'text', text: 'text', value: 'text' }],
-  others: [{ title: 'text', text: 'text' }],
-  yours: { title: 'text', text: 'text' },
-  next: { title: 'text', rows: [{ tag: 'tag', text: 'text' }] },
+  scored: optional([{ title: 'text', text: 'text', value: 'text' }]),
+  others: optional([{ title: 'text', text: 'text' }]),
+  yours: optional({ title: 'text', text: 'text' }),
+  next: optional({ title: 'text', rows: [{ tag: 'tag', text: 'text' }] }),
   proof: { ...TITLED, chart: 'text', bars: [{ month: 'text', value: 'number', recent: 'bool?' }], axis: ['text'], table: TABLE },
   foot: 'text',
+  headline: optional({ title: 'text', items: [{ label: 'text', note: 'text', value: 'text', tone: 'tone?' }] }),
+  trend: optional({ ...TITLED, months: ['text'], series: [{ label: 'text', values: ['number'] }], events: [{ month: 'number', text: 'text' }], takeaway: 'text' }),
+  quarters: optional({
+    ...TITLED,
+    columns: ['text'],
+    rows: [{ keyword: 'text', demand: 'text', values: ['number?'] }],
+    totals: [{ label: 'text', values: ['text'] }],
+    caveat: 'text',
+    takeaway: 'text',
+  }),
+  leads: optional({ title: 'text', steps: [{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }], ...TABLE, takeaway: 'text' }),
+  base: optional({ ...TITLED, ...TABLE, takeaway: 'text' }),
+  risers: optional({ ...TITLED, rows: [{ site: 'text', from: 'text', to: 'text', text: 'text' }], fair: 'text' }),
+  claims: optional([{ claim: 'text', tag: 'tag', data: ['text'], research: ['text'], say: 'text' }]),
+  counters: optional([{ says: 'text', answer: 'text' }]),
+  missed: optional([{ title: 'text', text: 'text', tag: 'tag' }]),
+  plan: optional({ ...TITLED, rows: [{ task: 'text', who: 'text', when: 'text' }], risks: ['text'] }),
+  talk: optional({ ...TITLED, steps: [{ title: 'text', text: 'text', say: 'text?' }], avoid: ['text'], care: ['text'] }),
+  sources: optional(['text']),
 } satisfies Spec
 
 const TONES: readonly unknown[] = ['good', 'bad', 'wait', 'work', 'pending']
@@ -118,10 +162,13 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 
 /** The first thing wrong with a document, or null. */
 function problem(value: unknown, spec: Spec, where: string): string | null {
-  const optional = spec === 'text?' || spec === 'tone?' || spec === 'bool?' || spec === 'direction?'
-  if (optional && value === undefined) return null
+  if (isObject(spec) && '?' in spec) return value === undefined ? null : problem(value, spec['?'] as Spec, where)
+  const mayBeMissing = spec === 'text?' || spec === 'number?' || spec === 'tone?' || spec === 'bool?' || spec === 'direction?'
+  if (mayBeMissing && value === undefined) return null
   if (spec === 'text' || spec === 'text?') return typeof value === 'string' ? null : `${where} must be text`
   if (spec === 'number') return typeof value === 'number' && Number.isFinite(value) ? null : `${where} must be a number`
+  // A blank cell, such as a quarter with no reading.
+  if (spec === 'number?') return value === null || (typeof value === 'number' && Number.isFinite(value)) ? null : `${where} must be a number or blank`
   if (spec === 'bool?') return typeof value === 'boolean' ? null : `${where} must be true or false`
   if (spec === 'tone?') return TONES.includes(value) ? null : `${where} is not a tone`
   if (spec === 'direction?') return value === 'up' || value === 'down' ? null : `${where} must be up or down`

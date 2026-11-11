@@ -1,12 +1,12 @@
 'use client'
 
 import { useMemo } from 'react'
-import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import { useQuery } from '@tanstack/react-query'
 import { useSeoAccess } from '@/hooks/useSeoAccess'
 import { fetchLatestBrief } from '@/lib/seo/api'
 import type { DiscussionBrief } from '@/lib/seo/sixMonth'
 import { createClient } from '@/lib/supabase/client'
+import { CaseBrief, Proof } from './SeoBriefCase'
 import { SeoScreen } from './SeoScreen'
 import { Tag } from './SeoSixMonth'
 import s from './sixMonth.module.css'
@@ -16,8 +16,7 @@ const Step = ({ number, title, note }: { number: number; title: string; note?: s
 )
 
 export function BriefBody({ brief }: { brief: DiscussionBrief }) {
-  const { proof } = brief
-  const most = Math.max(...proof.bars.map(b => b.value), 1)
+  if (brief.claims) return <CaseBrief brief={brief} />
 
   return (
     <div className={s.page}>
@@ -67,54 +66,39 @@ export function BriefBody({ brief }: { brief: DiscussionBrief }) {
             ))}
           </section>
 
-          <section className="boe-panel" aria-label="Agree for 30 days">
-            <Step number={4} title="Agree for 30 days" note="Suggested. You decide." />
-            <div className={s.group}>Scored: SEO person</div>
-            {brief.scored.map(item => (
-              <div key={item.title} className={s.goal}>
-                <div><div className={s.strong}>{item.title}</div><div className={s.small}>{item.text}</div></div>
-                <div className={s.goalValue}>{item.value}</div>
+          {brief.scored && brief.others && brief.yours && (
+            <section className="boe-panel" aria-label="Agree for 30 days">
+              <Step number={4} title="Agree for 30 days" note="Suggested. You decide." />
+              <div className={s.group}>Scored: SEO person</div>
+              {brief.scored.map(item => (
+                <div key={item.title} className={s.goal}>
+                  <div><div className={s.strong}>{item.title}</div><div className={s.small}>{item.text}</div></div>
+                  <div className={s.goalValue}>{item.value}</div>
+                </div>
+              ))}
+              <div className={s.group}>Not scored against them</div>
+              {brief.others.map(item => (
+                <div key={item.title} className={s.line}><div className={s.strong}>{item.title}</div><div className={s.small}>{item.text}</div></div>
+              ))}
+              <div className={`${s.goal} ${s.goalYou}`}>
+                <div><div className={s.strong}>{brief.yours.title}</div><div className={s.small}>{brief.yours.text}</div></div>
+                <div className={s.goalValue}>You</div>
               </div>
-            ))}
-            <div className={s.group}>Not scored against them</div>
-            {brief.others.map(item => (
-              <div key={item.title} className={s.line}><div className={s.strong}>{item.title}</div><div className={s.small}>{item.text}</div></div>
-            ))}
-            <div className={`${s.goal} ${s.goalYou}`}>
-              <div><div className={s.strong}>{brief.yours.title}</div><div className={s.small}>{brief.yours.text}</div></div>
-              <div className={s.goalValue}>You</div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          <section className="boe-panel" aria-label={brief.next.title}>
-            <Step number={5} title={brief.next.title} />
-            <div className={s.nextRows}>
-              {brief.next.rows.map(row => <div key={row.tag.text} className={s.nextRow}><Tag tag={row.tag} /><span>{row.text}</span></div>)}
-            </div>
-          </section>
+          {brief.next && (
+            <section className="boe-panel" aria-label={brief.next.title}>
+              <Step number={5} title={brief.next.title} />
+              <div className={s.nextRows}>
+                {brief.next.rows.map(row => <div key={row.tag.text} className={s.nextRow}><Tag tag={row.tag} /><span>{row.text}</span></div>)}
+              </div>
+            </section>
+          )}
         </div>
       </div>
 
-      <section className="boe-panel" aria-label={proof.title}>
-        <div className={s.head}><h2 className={s.title}>{proof.title}</h2><span className={s.noteLeft}>{proof.note}</span></div>
-        <div className={s.proofGrid}>
-          <div>
-            <div className={s.small}>{proof.chart}</div>
-            <div className={s.proofBars} role="img" aria-label={proof.chart}>
-              {proof.bars.map(bar => (
-                <i key={bar.month} className={bar.recent ? s.proofRecent : undefined} style={{ height: `${Math.round((bar.value / most) * 100)}%` }} title={`${bar.month}: ${bar.value}`} />
-              ))}
-            </div>
-            <div className={s.proofAxis}>{proof.axis.map(label => <span key={label}>{label}</span>)}</div>
-          </div>
-          <PhoneTableCards className={s.tableWrapFlat}>
-            <table className={s.table}>
-              <thead><tr>{proof.table.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
-              <tbody>{proof.table.rows.map(row => <tr key={row[0]}>{row.map((cell, i) => <td key={`${i}-${cell}`}>{cell}</td>)}</tr>)}</tbody>
-            </table>
-          </PhoneTableCards>
-        </div>
-      </section>
+      <Proof proof={brief.proof} />
 
       <p className={s.foot}>{brief.foot}</p>
     </div>

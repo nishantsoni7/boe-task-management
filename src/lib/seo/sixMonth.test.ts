@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, test } from 'node:test'
 import { SeoIngestError, parseSeoIngest } from './ingest'
 import { briefProblem, sixMonthProblem } from './sixMonth'
-import { SAMPLE_BRIEF, SAMPLE_REVIEW } from './sixMonthSample'
+import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REVIEW } from './sixMonthSample'
 
 const NOW = '2030-07-01T00:00:00.000Z'
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -35,6 +35,24 @@ describe('what the door accepts as a review or a brief', () => {
     const brief = copy(SAMPLE_BRIEF) as unknown as Record<string, unknown>
     delete brief.raise
     assert.equal(briefProblem(brief), 'raise must be a list')
+  })
+
+  test('a case passes without the review sections, and each section it has is checked whole', () => {
+    assert.equal(briefProblem(SAMPLE_CASE), null)
+    const halfClaim = copy(SAMPLE_CASE) as unknown as { claims: Record<string, unknown>[] }
+    delete halfClaim.claims[0].say
+    assert.equal(briefProblem(halfClaim), 'claims[0].say must be text')
+    const badSection = copy(SAMPLE_CASE) as unknown as Record<string, unknown>
+    badSection.talk = 'later'
+    assert.equal(briefProblem(badSection), 'talk must be an object')
+  })
+
+  test('a quarter may be blank, but never text', () => {
+    const brief = copy(SAMPLE_CASE) as unknown as { quarters: { rows: { values: unknown[] }[] } }
+    brief.quarters.rows[0].values = [null, 4]
+    assert.equal(briefProblem(brief), null)
+    brief.quarters.rows[0].values = ['12']
+    assert.equal(briefProblem(brief), 'quarters.rows[0].values[0] must be a number or blank')
   })
 
   test('something that is not a document is refused', () => {

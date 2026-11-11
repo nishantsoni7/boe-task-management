@@ -41,7 +41,7 @@ export const SAMPLE_REVIEW: SixMonthReview = {
   foot: 'Sample footnote.',
 }
 
-export const SAMPLE_BRIEF: DiscussionBrief = {
+export const SAMPLE_BRIEF = {
   subtitle: 'Hold it soon.',
   message: 'Sample message',
   before: ['Keep to facts.'],
@@ -61,4 +61,43 @@ export const SAMPLE_BRIEF: DiscussionBrief = {
     table: { head: ['Entries', 'First'], rows: [['Blogs', '3']] },
   },
   foot: 'Sample footnote.',
-}
+} satisfies DiscussionBrief
+
+// A brief drawn as a case for a decision: the review's four planning sections are left out on purpose.
+export const SAMPLE_CASE = {
+  subtitle: 'For the conversation.',
+  message: 'Sample case message',
+  before: ['Say it early.'],
+  credit: [{ title: 'Sample credit', text: 'True.' }],
+  raise: [],
+  fair: [{ title: 'Sample fairness', text: 'Not on them.' }],
+  proof: SAMPLE_BRIEF.proof,
+  foot: 'Sample case footnote.',
+  headline: { title: 'Sample numbers', items: [{ label: 'Buyer clicks', note: 'Flat', value: '10–20' }, { label: 'Leads', note: 'Fell', value: '9 → 5', tone: 'bad' }] },
+  trend: {
+    title: 'Sample trend',
+    note: 'Clicks a month',
+    months: ['Jan', 'Feb', 'Mar'],
+    series: [{ label: 'All clicks', values: [100, 700, 400] }, { label: 'Buyer clicks', values: [20, 30, 25] }, { label: 'Category clicks', values: [48, 30, 17] }],
+    events: [{ month: 1, text: 'Sample update' }],
+    takeaway: 'Sample trend takeaway.',
+  },
+  quarters: {
+    title: 'Sample quarters',
+    note: 'Average position',
+    columns: ['Q1', 'Q2', 'Q3'],
+    rows: [{ keyword: 'sample keyword', demand: '100', values: [2.9, 10.9, null] }, { keyword: 'second keyword', demand: '50', values: [11, 21, 3.5] }],
+    totals: [{ label: 'On page 1', values: ['2', '1', '1'] }],
+    caveat: 'Sample caveat.',
+    takeaway: 'Sample quarters takeaway.',
+  },
+  leads: { title: 'Sample flow', steps: [{ label: 'Clicks', value: '1,000', note: 'From Google' }, { label: 'Orders', value: 'Not known', note: 'No status', tone: 'wait' }], head: ['', 'Jan'], rows: [['Visits', '10']], takeaway: 'Sample leads takeaway.' },
+  base: { title: 'Sample base', note: 'Estimates', head: ['Site', 'Strength'], rows: [['us.example', '9'], ['them.example', '1']], takeaway: 'Sample base takeaway.' },
+  risers: { title: 'Sample risers', note: 'Visits', rows: [{ site: 'riser.example', from: '4', to: '12', text: 'Focused' }], fair: 'Sample fair note.' },
+  claims: [{ claim: 'Sample claim', tag: { text: 'Not true', tone: 'bad' }, data: ['Sample data line.'], research: ['Sample research line.'], say: 'Sample answer.' }],
+  counters: [{ says: 'Sample counter', answer: 'Sample reply.' }],
+  missed: [{ title: 'Sample miss', text: 'What was missed.', tag: { text: 'Missed', tone: 'wait' } }],
+  plan: { title: 'Sample plan', note: 'Who does what', rows: [{ task: 'Sample task', who: 'Claude', when: 'Daily' }], risks: ['Sample risk.'] },
+  talk: { title: 'Sample talk', note: 'One to one', steps: [{ title: 'Open', text: 'Thank them.', say: 'Sample line.' }, { title: 'Decide', text: 'Say it.' }], avoid: ['Sample avoid.'], care: ['Sample care.'] },
+  sources: ['Sample source.'],
+} satisfies DiscussionBrief

@@ -3,9 +3,10 @@ import { strict as assert } from 'node:assert'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { SeoData } from '@/lib/seo/report'
-import { SAMPLE_BRIEF, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
+import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
 import { BoardBody } from './SeoBoard'
 import { BriefBody } from './SeoBrief'
+import { axisTicks } from './SeoBriefCase'
 import { CompetitorsBody } from './SeoCompetitors'
 import { OverviewBody } from './SeoOverview'
 import { RankingsBody } from './SeoRankings'
@@ -70,6 +71,32 @@ describe('the 6-month review and the discussion brief', () => {
     assert.ok(page.indexOf('Scored: SEO person') < page.indexOf(SAMPLE_BRIEF.scored[0].title))
     assert.ok(page.indexOf(SAMPLE_BRIEF.scored[0].title) < page.indexOf('Not scored against them'))
     assert.ok(page.indexOf('Not scored against them') < page.indexOf(SAMPLE_BRIEF.others[0].title))
+  })
+
+  test('a brief with claims is drawn as a case: evidence, then the claims, then the conversation', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    const order = [SAMPLE_CASE.message, 'Sample trend', 'Sample quarters', 'Sample flow', 'Sample base', 'Sample risers', 'Sample claim', 'Sample miss', 'Sample counter', 'Give credit first', 'Sample plan', 'Sample talk', 'Proof', 'Sample source.']
+    order.forEach((text, i) => {
+      assert.ok(page.includes(text), text)
+      if (i) assert.ok(page.indexOf(order[i - 1]) < page.indexOf(text), `${order[i - 1]} before ${text}`)
+    })
+    assert.equal(page.includes('Scored: SEO person'), false, 'the review\'s scoring is not part of a case')
+    assert.ok(page.includes('Sample answer.'))
+    assert.ok(page.includes('Sample line.'))
+  })
+
+  test('a quarter cell is coloured by where it sits, and a blank one says so', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    for (const [value, tone] of [['2.9', 'qTop'], ['10.9', 'qPage1'], ['11.0', 'qPage2'], ['21.0', 'qLow'], ['3.5', 'qTop']]) {
+      assert.ok(page.includes(`class="qCell ${tone}">${value}<`), `${value} is ${tone}`)
+    }
+    assert.ok(page.includes('class="qCell qNone">—<'))
+  })
+
+  test('the chart axis rounds up to an easy number', () => {
+    assert.deepEqual(axisTicks(7070), [0, 2500, 5000, 7500])
+    assert.deepEqual(axisTicks(485), [0, 200, 400, 600])
+    assert.deepEqual(axisTicks(700), [0, 250, 500, 750])
   })
 })
 
