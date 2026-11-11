@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `1f02808c` — SEO brief: list bullets show, headline numbers stay on one line; docs stamped for #661
+- Commit: `b2dd6175` — SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
 - Commits on this branch: 1231
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 428 (first `20260530_create_positions.sql`, latest `20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `1f02808c` 2026-11-11 SEO brief: list bullets show, headline numbers stay on one line; docs stamped for #661
+- `b2dd6175` 2026-11-11 SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
 - `715d807a` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment) (#667)
 - `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
 - `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
