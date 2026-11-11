@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `00a3b163` — Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
-- Commits on this branch: 1212
+- Commit: `19250a90` — Modules: a card warms its route only after the pointer rests 250 ms (#649)
+- Commits on this branch: 1213
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
 - `74be747e` 2026-11-10 Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
 - `da509cd3` 2026-11-10 Edit PI: a failed save now explains itself (#646)
@@ -38,7 +39,6 @@
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
 - `aa1f4b46` 2026-11-06 Payroll: the payslip lists the month's approved reviews and their credits (no SQL) (#625)
-- `2ce0e81e` 2026-11-05 Docs: the half-leave fix merged (#619 as b1588211), migration 20270604000000 applied (#624)
 
 ## Pages by top-level area
 
