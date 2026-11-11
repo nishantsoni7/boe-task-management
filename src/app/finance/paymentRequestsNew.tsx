@@ -104,8 +104,7 @@ export function NewPaymentConfirmationModal({
   // recorder says whether they still hold it or handed it to someone; a handover
   // is offered after the payment is saved, and the receiver must accept it.
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
-  // CANARA asks for the paying account instead (owner 2026-11-11): no question,
-  // no handover; Nitish accepts it once the money reached the company.
+  // CANARA also asks for the paying account (owner 2026-11-11), above the question.
   const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
   // The payment saved but its handover did not: the record is right ("with
   // you"), and the notice offers one retry. Send is closed while it shows.
@@ -499,22 +498,8 @@ export function NewPaymentConfirmationModal({
             </Field>
           </FormStep>
 
-          {/* 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara, decided by
-              the mode and decided again server-side. */}
-          {asksMoneyNow && (
-            <FormStep number={3} quiet title="Where is this money now?">
-              <WhereIsMoneyNowField
-                paymentMode={form.paymentMode}
-                value={moneyNow}
-                onChange={setMoneyNow}
-                recorderId={userId}
-                problem={showProblems ? custodyError : null}
-              />
-            </FormStep>
-          )}
-
-          {/* 3. CANARA — the account the money came from, in place of the
-              question above (owner 2026-11-11). Holder and number are required. */}
+          {/* 3. CANARA — the account the money came from (owner 2026-11-11).
+              Holder and number are required. */}
           {isCanara && (
             <FormStep number={3} quiet title="Account details">
               <CanaraAccountFields
@@ -522,6 +507,20 @@ export function NewPaymentConfirmationModal({
                 onChange={setCanara}
                 problems={showProblems ? canaraProblems : null}
                 disabled={saving}
+              />
+            </FormStep>
+          )}
+
+          {/* WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara, decided by
+              the mode and decided again server-side. */}
+          {asksMoneyNow && (
+            <FormStep number={isCanara ? 4 : 3} quiet title="Where is this money now?">
+              <WhereIsMoneyNowField
+                paymentMode={form.paymentMode}
+                value={moneyNow}
+                onChange={setMoneyNow}
+                recorderId={userId}
+                problem={showProblems ? custodyError : null}
               />
             </FormStep>
           )}

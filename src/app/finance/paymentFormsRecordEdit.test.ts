@@ -50,12 +50,13 @@ describe('Record Payment', () => {
     assert.equal(/<select/.test(src), false)
   })
 
-  test('the custody step exists only for the modes that ask it; Canara asks for the paying account instead', () => {
+  test('the custody step exists only for the modes that ask it; Canara also asks for the paying account, above it', () => {
     assert.ok(/\{asksMoneyNow && \(/.test(src))
     assert.ok(src.includes('const asksMoneyNow = modeAsksWhereMoneyIs(paymentMode)'))
     assert.ok(/\{isCanara && \(/.test(src))
-    // The one numbered step before the targets, whichever of the two it is.
-    assert.ok(src.includes('const carriesCustody = asksMoneyNow || isCanara'))
+    assert.ok(src.indexOf('title="Account details"') < src.indexOf('title="Where is this money now?"'))
+    // The targets are numbered after however many of the two steps are drawn.
+    assert.ok(src.includes('const firstTargetStep = 3 + (asksMoneyNow ? 1 : 0) + (isCanara ? 1 : 0)'))
   })
 
   test('Record is never greyed out by an unfinished form', () => {

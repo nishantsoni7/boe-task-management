@@ -1,17 +1,16 @@
 // ── Canara: who the money came from (owner 2026-11-11) ──────────────────────
 //
-// A Canara payment is money that landed in a bank account, so nobody carries it
-// and the form no longer asks "Where is this money now?" (see
-// modeAsksWhereMoneyIs). It asks instead for the account the money CAME FROM:
+// A Canara payment asks, in addition to "Where is this money now?" (it has the
+// same handover journey as PNB and Paytm again, owner 2026-11-11 later that day),
+// for the account the money CAME FROM:
 //
 //   Account holder   required
 //   Account number   required
 //   Bank             optional, any bank (the word "Canara" is only the name of
 //                    BOE's own account, never the answer here)
 //
-// The company cash custodian (Nitish) then accepts the payment — the existing
-// Receive step — which means the money reached the company. Accepting never
-// verifies the payment; Finance still does that (20270417000000).
+// The payment is Confirmed when the company cash custodian (Nitish) accepts it
+// (20270612000000), exactly like PNB and Paytm.
 //
 // NO SQL: the three answers are written as labelled lines at the top of the
 // payment's note to Finance (sales_note), so they show wherever the note shows.

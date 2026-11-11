@@ -32,6 +32,7 @@ import Link from 'next/link'
 import { modeAsksWhereMoneyIs, paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
+import { ApproveUnlessCashPending } from '@/components/finance/ApproveUnlessCashPending'
 import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
 import { CanaraAccountFields } from '@/app/finance/components/CanaraAccountFields'
 import { EMPTY_CANARA_ACCOUNT, canaraAccountProblems, composeCanaraNote, isCanaraMode, type CanaraAccount } from '@/lib/finance/canaraAccount'
@@ -237,8 +238,8 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
   const [touched, setTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [extrasOpen, setExtrasOpen] = useState(false)
-  // Where is this money now (20270413000000): asked for PNB and Paytm. CANARA asks
-  // for the paying account instead (owner 2026-11-11): no question, no handover.
+  // Where is this money now (20270413000000): asked for PNB, Paytm and Canara. CANARA
+  // also asks for the paying account (owner 2026-11-11), above the question.
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
   const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
   const tracked = modeAsksWhereMoneyIs(form.paymentMode)
@@ -345,18 +346,6 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
           />
         )}
 
-        {tracked && (
-          <FormStep number={2} title="Where is this money now?">
-            <WhereIsMoneyNowField
-              paymentMode={form.paymentMode}
-              value={moneyNow}
-              onChange={setMoneyNow}
-              recorderId={recorderId}
-              problem={touched ? moneyNowProblem : null}
-            />
-          </FormStep>
-        )}
-
         {isCanara && (
           <FormStep number={2} title="Account details">
             <CanaraAccountFields
@@ -364,6 +353,18 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
               onChange={setCanara}
               problems={touched ? canaraProblems : null}
               disabled={busy}
+            />
+          </FormStep>
+        )}
+
+        {tracked && (
+          <FormStep number={isCanara ? 3 : 2} title="Where is this money now?">
+            <WhereIsMoneyNowField
+              paymentMode={form.paymentMode}
+              value={moneyNow}
+              onChange={setMoneyNow}
+              recorderId={recorderId}
+              problem={touched ? moneyNowProblem : null}
             />
           </FormStep>
         )}
@@ -624,6 +625,17 @@ export function PiPaymentRow({
   const rowClass = ['pi-pay-row', showDetails ? 'is-open' : '', row.reversed ? 'is-reversed' : '']
     .filter(Boolean).join(' ')
   const nothingAdded = !row.reference && !row.remarks && !row.canOpenProof
+  const approveButton = (
+    <button
+      type="button"
+      className="pi-pay-btn"
+      onClick={() => onArm('approve')}
+      disabled={busy}
+      style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
+    >
+      {APPROVE_PAYMENT_LABEL}
+    </button>
+  )
   return (
     <>
       <tr className={rowClass}>
@@ -677,17 +689,10 @@ export function PiPaymentRow({
                   >
                     {VERIFY_IN_FINANCE_LABEL}
                   </Link>
-                ) : (
-                  <button
-                    type="button"
-                    className="pi-pay-btn"
-                    onClick={() => onArm('approve')}
-                    disabled={busy}
-                    style={{ ...SMALL_BUTTON, border: 'none', background: '#276247', color: '#fff' }}
-                  >
-                    {APPROVE_PAYMENT_LABEL}
-                  </button>
-                )}
+                ) : row.tracksCash ? (
+                  // PNB / Paytm / Canara: no Approve while the cash is not at the company (20270612000000).
+                  <ApproveUnlessCashPending paymentId={row.paymentId}>{approveButton}</ApproveUnlessCashPending>
+                ) : approveButton}
                 <button
                   type="button"
                   className="pi-pay-btn"

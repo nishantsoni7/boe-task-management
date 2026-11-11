@@ -396,6 +396,11 @@ describe('the read side excludes system types too', () => {
     // 20270516000000 re-creates complete_payment_entry (20270120000000): the SAME one information note, in
     // the transaction of the person's own entry, with one early return added before it. Nothing new is sent.
     const BANK_PROOF = '20270516000000_finance_bank_proof_before_verify.sql'
+    // 20270612000000 restates complete_payment_entry ONCE MORE (the same one information note, in the transaction of
+    // the person's own entry, with a second early return before it) and tells a payment's recorder it is confirmed,
+    // through the shared helper order_notify_users, inside the custodian's own accept / receive. A person's press
+    // each time. Finance types only. Nothing is scheduled.
+    const COMPANY_CASH = '20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql'
     // 20270526000100, Sales going live: ONE helper insert, sales_lead_notify. A person's own action tells one person (a
     // lead allotted, a repeat enquiry, a manager's Remind), and the two daily alerts the owner asked for go through it
     // from a Vercel cron, as the cash handover reminder does. Sales types only. Nothing is scheduled in the database.
@@ -427,6 +432,15 @@ describe('the read side excludes system types too', () => {
       assert.ok(sql.includes('v_actor    uuid := auth.uid();'), `${BANK_PROOF}: it acts as a signed-in person`)
       assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${BANK_PROOF}: nothing is scheduled`)
       for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${BANK_PROOF} must not write ${t}`)
+    }
+    {
+      const sql = read(join(dir, COMPANY_CASH))
+      assert.equal((sql.match(/insert\s+into\s+public\.notifications/gi) ?? []).length, 1, `${COMPANY_CASH}: the one note complete_payment_entry already wrote`)
+      assert.ok(sql.includes('v_actor    uuid := auth.uid();'), `${COMPANY_CASH}: complete_payment_entry acts as a signed-in person`)
+      assert.ok(sql.includes('public.order_notify_users('), `${COMPANY_CASH}: the confirmation notice goes through the one helper`)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${COMPANY_CASH}: nothing is scheduled`)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false, `${COMPANY_CASH}: no trigger on notifications`)
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) assert.equal(sql.includes(`'${t}'`), false, `${COMPANY_CASH} must not write ${t}`)
     }
     {
       const sql = read(join(dir, OPERATIONS_DASHBOARD))
@@ -585,7 +599,7 @@ describe('the read side excludes system types too', () => {
       assert.ok(sent.length >= 5)
       for (const type of sent) assert.ok(type.startsWith('sales_'), `${SALES_GO_LIVE} must write only Sales types, not ${type}`)
     }
-    for (const f of inserters.filter(name => name !== SALES_GO_LIVE && name !== BANK_PROOF && name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS && name !== OPERATIONS_DASHBOARD)) {
+    for (const f of inserters.filter(name => name !== SALES_GO_LIVE && name !== BANK_PROOF && name !== COMPANY_CASH && name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== REVIEW_ADMIN_REJECT && name !== INVENTORY_BOOKINGS && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS && name !== ORDERS_NOTIFICATIONS && name !== OPERATIONS_DASHBOARD)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

@@ -102,6 +102,9 @@ import {
   type BankCheckRow, type BankMark, type Coverage, type MarkPayment, type PendingBankView,
 } from '@/lib/finance/bankMarks'
 
+import { usePaymentCustodyStatus } from '@/hooks/queries/useCashJourneys'
+import { awaitsCompanyCash, isTrackedPaymentMode } from '@/lib/finance/cashJourney'
+
 import { PaymentsTable } from './paymentRequestsTable'
 export { PaymentsTable } from './paymentRequestsTable'
 // @split: src/app/finance/paymentRequestsTable.tsx private=TH_STYLE
@@ -143,6 +146,9 @@ function FinancePageInner() {
     payment?: { amount: string; paymentDate: string; paymentMode: string; reference: string }
   } | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
+  // Where the open PNB / Paytm / Canara payment's cash is (20270612000000): its popup offers no Verify
+  // until the cash is with the company. Unknown (loading, not readable) leaves Verify drawn; the database decides.
+  const detailCash = usePaymentCustodyStatus(detailRequest && isTrackedPaymentMode(detailRequest.payment_mode) ? [detailRequest.id] : [])
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
   // The submitter's own soft delete — a different dialog from the admin's.
@@ -1111,6 +1117,7 @@ function FinancePageInner() {
           mayCorrectPayments={caps.canCorrectOrReversePayment}
           mayApprovePayments={caps.canApprovePayment}
           mayDecideOwnPayments={caps.canDecideOwnPayment}
+          awaitsCash={awaitsCompanyCash(detailRequest.payment_mode, detailCash.data?.get(detailRequest.id))}
           userId={userId}
           supabase={supabase}
           // The bank-statement panel: ONLY for a holder of finance.reconcile.
