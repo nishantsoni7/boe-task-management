@@ -75,7 +75,7 @@ describe('the 6-month review and the discussion brief', () => {
 
   test('a brief with claims is drawn as a case: evidence, then the claims, then the conversation', () => {
     const page = html(<BriefBody brief={SAMPLE_CASE} />)
-    const order = [SAMPLE_CASE.message, 'Sample trend', 'Sample quarters', 'Sample flow', 'Sample base', 'Sample risers', 'Sample claim', 'Sample miss', 'Sample counter', 'Give credit first', 'Sample plan', 'Sample talk', 'Proof', 'Sample source.']
+    const order = [SAMPLE_CASE.message, 'Sample trend', 'Sample quarters', 'Sample flow', 'Sample finding', 'Sample base', 'Sample risers', 'Sample claim', 'Sample his plan', 'Sample miss', 'Sample counter', 'Sample freelance', 'Give credit first', 'Sample plan', 'Sample talk', 'Proof', 'Sample source.']
     order.forEach((text, i) => {
       assert.ok(page.includes(text), text)
       if (i) assert.ok(page.indexOf(order[i - 1]) < page.indexOf(text), `${order[i - 1]} before ${text}`)
@@ -91,6 +91,18 @@ describe('the 6-month review and the discussion brief', () => {
       assert.ok(page.includes(`class="qCell ${tone}">${value}<`), `${value} is ${tone}`)
     }
     assert.ok(page.includes('class="qCell qNone">—<'))
+  })
+
+  test('each proof opens its source in a new tab, and a file with no link is only named', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    const newTab = 'target="_blank" rel="noopener noreferrer"'
+    for (const url of ['https://example.com/report', 'https://example.com/policy', 'https://example.com/evidence', 'https://example.com/q2']) {
+      assert.ok(page.includes(`href="${url}" ${newTab}`), url)
+    }
+    assert.ok(page.includes('Check it yourself'))
+    assert.ok(page.includes('Sample file'))
+    assert.equal(/<a[^>]*>Sample file/.test(page), false, 'a proof with no link is not a link')
+    assert.ok(page.includes('1 click<') && page.includes('26 clicks<'), 'clicks sit under each quarter')
   })
 
   test('the chart axis rounds up to an easy number', () => {

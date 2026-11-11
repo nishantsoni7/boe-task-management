@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a773808d` — Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, apply first)
-- Commits on this branch: 1230
+- Commit: `edb88492` — Docs: the WhatsApp judge against the real model, 59 of 60, no lead lost
+- Commits on this branch: 1234
 - Pages (`page.tsx`): 183   API routes (`route.ts`): 189
 - Migrations: 429 (first `20260530_create_positions.sql`, latest `20270613000000_sales_whatsapp_classify.sql`)
 - Tables ever created: 227 (dropped at some point: 7)   SQL functions: 961   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `edb88492` 2026-11-11 Docs: the WhatsApp judge against the real model, 59 of 60, no lead lost
+- `68a9db3f` 2026-11-11 Docs: migration 20270613000000 applied to production
+- `7b22bd71` 2026-11-11 Merge origin/main into feat/sales-whatsapp-classify
+- `715d807a` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment) (#667)
 - `a773808d` 2026-11-11 Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, apply first)
 - `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
 - `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
@@ -35,10 +39,6 @@
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
 - `74be747e` 2026-11-10 Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
 - `da509cd3` 2026-11-10 Edit PI: a failed save now explains itself (#646)
-- `243a8521` 2026-11-08 Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
-- `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
-- `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
-- `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
 
 ## Pages by top-level area
 

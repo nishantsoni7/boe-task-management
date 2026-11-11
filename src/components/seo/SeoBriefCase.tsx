@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
-import type { BriefCase, DiscussionBrief } from '@/lib/seo/sixMonth'
+import type { BriefCase, BriefProof, DiscussionBrief } from '@/lib/seo/sixMonth'
 import { Head, Tag } from './SeoSixMonth'
 import s from './sixMonth.module.css'
 
@@ -37,6 +37,27 @@ export function Proof({ proof }: { proof: DiscussionBrief['proof'] }) {
 const Takeaway = ({ text, label = 'What it shows' }: { text: string; label?: string }) => (
   <div className={s.strip}><Tag tag={{ text: label, tone: 'wait' }} /><span>{text}</span></div>
 )
+
+/** Where each figure can be checked. Links open in a new tab; a file with no link is named so it can be found. */
+function Proofs({ proofs }: { proofs?: BriefProof[] }) {
+  if (!proofs?.length) return null
+  return (
+    <div className={s.proofs}>
+      <div className={s.miniHead}>Check it yourself</div>
+      <ul className={s.proofList}>
+        {proofs.map(proof => (
+          <li key={`${proof.label}-${proof.shows}`}>
+            {proof.url
+              ? <a href={proof.url} target="_blank" rel="noopener noreferrer" className={s.proofLink}>{proof.label}<span className="sr-only"> (opens in a new tab)</span></a>
+              : <span className={s.strong}>{proof.label}</span>}
+            <span className={s.small}>{proof.shows}</span>
+            <span className={s.proofHow}>{proof.how}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 function Table({ head, rows, highlightFirst = false }: { head: string[]; rows: string[][]; highlightFirst?: boolean }) {
   return (
@@ -140,6 +161,7 @@ function Trend({ trend }: { trend: BriefCase['trend'] }) {
       </div>
       <div className={s.events}>{trend.events.map((e, k) => <div key={e.text} className={s.event}><span className={s.dot}>{k + 1}</span><span>{e.text}</span></div>)}</div>
       <Takeaway text={trend.takeaway} />
+      <Proofs proofs={trend.proofs} />
     </>
   )
 }
@@ -152,13 +174,29 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
     <>
       <PhoneTableCards className={s.tableWrapFlat}>
         <table className={s.qTable}>
-          <thead><tr><th>Search</th><th>Searches a month</th>{quarters.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>
+          <thead>
+            <tr>
+              <th>Search</th><th>Searches a month</th>
+              {quarters.columns.map((c, i) => {
+                const link = quarters.links?.[i]
+                return <th key={c}>{link ? <a href={link} target="_blank" rel="noopener noreferrer" className={s.proofLink}>{c}<span className="sr-only"> (opens the report in a new tab)</span></a> : c}</th>
+              })}
+            </tr>
+          </thead>
           <tbody>
             {quarters.rows.map(row => (
               <tr key={row.keyword}>
                 <td>{row.keyword}</td>
                 <td className={s.muted}>{row.demand}</td>
-                {row.values.map((v, i) => <td key={quarters.columns[i]}><span className={`${s.qCell} ${cell(v)}`}>{v === null ? '—' : v.toFixed(1)}</span></td>)}
+                {row.values.map((v, i) => {
+                  const clicks = row.clicks?.[i]
+                  return (
+                    <td key={quarters.columns[i]}>
+                      <span className={`${s.qCell} ${cell(v)}`}>{v === null ? '—' : v.toFixed(1)}</span>
+                      {clicks !== undefined && clicks !== null && <small className={s.qClicks}>{clicks} {clicks === 1 ? 'click' : 'clicks'}</small>}
+                    </td>
+                  )
+                })}
               </tr>
             ))}
             {quarters.totals.map(total => (
@@ -176,6 +214,7 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
       </div>
       <Takeaway text={quarters.caveat} label="Read this first" />
       <Takeaway text={quarters.takeaway} />
+      <Proofs proofs={quarters.proofs} />
     </>
   )
 }
@@ -197,6 +236,7 @@ function Leads({ leads }: { leads: BriefCase['leads'] }) {
       </div>
       <Table head={leads.head} rows={leads.rows} />
       <Takeaway text={leads.takeaway} />
+      <Proofs proofs={leads.proofs} />
     </>
   )
 }
@@ -218,6 +258,9 @@ export function CaseBrief({ brief }: { brief: Case }) {
             <div className={s.sideTitle}><Tag tag={{ text: 'Expert check', tone: 'wait' }} /> Before you start</div>
             <ul className={s.checkList}>{brief.before.map(line => <li key={line}>{line}</li>)}</ul>
           </div>
+          {brief.evidence && (
+            <a href={brief.evidence.url} target="_blank" rel="noopener noreferrer" className={`${s.proofLink} ${s.evidence}`}>{brief.evidence.text}<span className="sr-only"> (opens in a new tab)</span></a>
+          )}
         </div>
         {brief.headline && (
           <div className={s.heroSide}>
@@ -236,11 +279,26 @@ export function CaseBrief({ brief }: { brief: Case }) {
       {brief.quarters && <section className="boe-panel" aria-label={brief.quarters.title}><Head title={brief.quarters.title} note={brief.quarters.note} /><Quarters quarters={brief.quarters} /></section>}
       {brief.leads && <section className="boe-panel" aria-label={brief.leads.title}><Head title={brief.leads.title} note="Not to scale" /><Leads leads={brief.leads} /></section>}
 
+      {brief.findings && (
+        <section className="boe-panel" aria-label="What else went wrong">
+          <Head title="What else went wrong, biggest first" note="Each with the report behind it" />
+          {brief.findings.map(item => (
+            <article key={item.title} className={s.claim}>
+              <div className={s.claimTop}><h3 className={s.claimTitle}>{item.title}</h3><Tag tag={item.tag} /></div>
+              <p className={s.findingNumber}>{item.number}</p>
+              {item.example && <p className={s.small}>{item.example}</p>}
+              <Proofs proofs={item.proofs} />
+            </article>
+          ))}
+        </section>
+      )}
+
       {brief.base && (
         <section className="boe-panel" aria-label={brief.base.title}>
           <Head title={brief.base.title} note={brief.base.note} />
           <Table head={brief.base.head} rows={brief.base.rows} highlightFirst />
           <Takeaway text={brief.base.takeaway} />
+          <Proofs proofs={brief.base.proofs} />
         </section>
       )}
 
@@ -257,6 +315,7 @@ export function CaseBrief({ brief }: { brief: Case }) {
             ))}
           </div>
           <Takeaway text={brief.risers.fair} label="Be fair" />
+          <Proofs proofs={brief.risers.proofs} />
         </section>
       )}
 
@@ -271,8 +330,22 @@ export function CaseBrief({ brief }: { brief: Case }) {
                 <div><div className={s.miniHead}>What Google and research say</div><ul className={s.bullets}>{claim.research.map(line => <li key={line}>{line}</li>)}</ul></div>
               </div>
               <div className={s.say}><b>Say:</b> {claim.say}</div>
+              <Proofs proofs={claim.proofs} />
             </article>
           ))}
+        </section>
+      )}
+
+      {brief.hisPlan && (
+        <section className="boe-panel" aria-label={brief.hisPlan.title}>
+          <Head title={brief.hisPlan.title} note={brief.hisPlan.note} />
+          <PhoneTableCards className={`${s.tableWrapFlat} ${s.padded}`}>
+            <table className={`${s.table} ${s.caseTable} ${s.planTable}`}>
+              <thead><tr><th>His plan says</th><th>What the data says</th><th>Verdict</th></tr></thead>
+              <tbody>{brief.hisPlan.rows.map(row => <tr key={row.point}><td>{row.point}</td><td>{row.answer}</td><td><Tag tag={row.tag} /></td></tr>)}</tbody>
+            </table>
+          </PhoneTableCards>
+          <Proofs proofs={brief.hisPlan.proofs} />
         </section>
       )}
 
@@ -294,7 +367,20 @@ export function CaseBrief({ brief }: { brief: Case }) {
         <section className="boe-panel" aria-label="If he says, you answer">
           <Head title="If he says… you answer" note="Agree where he is right; it makes the rest stronger" />
           {brief.counters.map(row => (
-            <div key={row.says} className={s.counter}><div className={s.saysText}>&ldquo;{row.says}&rdquo;</div><div className={s.small}>{row.answer}</div></div>
+            <div key={row.says} className={s.counter}><div className={s.saysText}>&ldquo;{row.says}&rdquo;</div><div><div className={s.small}>{row.answer}</div><Proofs proofs={row.proofs} /></div></div>
+          ))}
+        </section>
+      )}
+
+      {brief.freelance && (
+        <section className="boe-panel" aria-label={brief.freelance.title}>
+          <Head title={brief.freelance.title} note={brief.freelance.note} />
+          {brief.freelance.rows.map(row => (
+            <div key={row.title} className={s.line}>
+              <div className={s.strong}>{row.title}</div>
+              <div className={s.small}>{row.text}</div>
+              <Proofs proofs={row.proofs} />
+            </div>
           ))}
         </section>
       )}
