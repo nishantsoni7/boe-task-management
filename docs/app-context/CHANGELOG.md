@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-11 — Tasks: automatic escalation removed (branch `fix/remove-auto-escalation`, PR open, NOT merged) · migration `20270610000000` (NOT APPLIED when written; either order with the code is safe)
+## 2026-11-11 — Tasks: automatic escalation removed (PR #652, branch `fix/remove-auto-escalation`, open, NOT merged) · migration `20270610000000` (NOT APPLIED when written; either order with the code is safe)
 - **Owner ask.** Remove the escalation feature: "not solving any purpose and just sends comments and messages on repeat after certain hours".
 - **What it was.** The hourly pg_cron job `run_task_health_check()` added two lines to a task's Activity, written under the task creator's name: "Auto-escalated: overdue with no action for 24 hours" and "Auto-escalated: no update for 72 hours" (action `escalated`, once per task each). It sent no notification since `20261015000000`.
 - **Changed.** `20270610000000_task_health_check_stops_escalating.sql` replaces the function without those two writes. The stale flag (`is_stale`, `stale_day_count`, the `stale_flagged` line) is carried over as identical text, and the overdue-and-silent skip stays so the same tasks are flagged as before. `isHiddenActivity` (`src/lib/ui.ts`) is applied in `buildActivityLog` (`taskDetailLoad.ts`), so Task Detail's Activity no longer draws old `escalated` lines; the two dead label branches in `src/app/tasks/[id]/page.tsx` are gone. Nothing is deleted from `task_activity_log`.
