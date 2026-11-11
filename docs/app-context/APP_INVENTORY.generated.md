@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `be50e507` — Docs: regenerate the app inventory for the #666 merge record
-- Commits on this branch: 1230
+- Commit: `1f02808c` — SEO brief: list bullets show, headline numbers stay on one line; docs stamped for #661
+- Commits on this branch: 1231
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 428 (first `20260530_create_positions.sql`, latest `20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 957   Enums: 0
@@ -14,8 +14,9 @@
 
 ## Latest 25 commits
 
-- `be50e507` 2026-11-11 Docs: regenerate the app inventory for the #666 merge record
-- `b3f505be` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment)
+- `1f02808c` 2026-11-11 SEO brief: list bullets show, headline numbers stay on one line; docs stamped for #661
+- `715d807a` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment) (#667)
+- `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
 - `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
 - `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
 - `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
@@ -38,7 +39,6 @@
 - `243a8521` 2026-11-08 Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
 - `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
 - `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
-- `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
 
 ## Pages by top-level area
 

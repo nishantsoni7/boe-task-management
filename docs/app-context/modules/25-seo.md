@@ -22,7 +22,9 @@ Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks
 
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
-The discussion brief can now be drawn as a case for a decision about the role (PR pending). The owner asked on 2026-11-11 for every fact, a performance chart, quarterly rankings of the searches that bring business, the flow of leads, what was missed, the three claims tested with outside research, answers to likely counters, and how to hold the conversation kindly. Mock-up: https://claude.ai/artifact/UwAz8zrKcHJk63n6rGYL1f (private). No migration. Seen with the real document in the app's own stylesheets at desktop and phone, not signed in.
+The discussion brief can now be drawn as a case for a decision about the role (#661, `c9f1ce32`, merged by the owner 2026-11-11). The owner asked on 2026-11-11 for every fact, a performance chart, quarterly rankings of the searches that bring business, the flow of leads, what was missed, the three claims tested with outside research, answers to likely counters, and how to hold the conversation kindly. Mock-up: https://claude.ai/artifact/UwAz8zrKcHJk63n6rGYL1f (private). No migration. Seen with the real document in the app's own stylesheets at desktop and phone, not signed in.
+
+Every figure in the case brief can now carry its proof (pull request `feat/seo-brief-proof-links`, not merged yet). The owner asked on 2026-11-11 that every figure show a source link that proves it, biggest points first, comparisons backed by something to show the SEO person, and only what helps the discussion. Plan v3, approved the same day: https://claude.ai/artifact/6NoJVrUMmT4PoXV3EjbCcm (private). Evidence pack with the dated screenshots: https://claude.ai/artifact/Jk2yQPUzZqBfUVuGW3v6QM (private). No migration. Seen with the real document in the app's own stylesheets at desktop and at phone width, not signed in.
 
 ## 3. The model
 
@@ -40,7 +42,7 @@ Owner decision 2026-11-01: **no additional paid package.** Ahrefs stays on the T
 | `/seo/rankings` | `SeoRankings` | The 20 money keywords in India over 28 days, with demand, position track and next step; where Google shows the wrong page; the 8 cities; the keywords too thin to judge |
 | `/seo/competitors` | `SeoCompetitors` | Who to watch and what to copy, who is rising or falling, the directories' share, the other sites, what winners do that we do not |
 | `/seo/review` | `SeoSixMonth` | The rolling 6-month review: verdict, likely causes, top 5 good and bad, dated next moves, targets, what to be careful quoting, 18 months of visits, leads and forms, what moved in India, AI readiness, blind spots |
-| `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief. A brief with `claims` is drawn as a case (`SeoBriefCase.tsx`): the numbers, clicks by month with Google's updates marked, rankings by quarter, the flow of leads, our base against the sites that beat us, the claims tested, the counters, credit and fairness, running SEO without the role, and how to hold the conversation. Without `claims` it is the review layout: credit, what to raise, what is not on them, what is scored |
+| `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief. A brief with `claims` is drawn as a case (`SeoBriefCase.tsx`): the numbers and a link to the evidence pack, clicks by month with Google's updates marked, rankings by quarter (each quarter heading opens its report, clicks under each position), the flow of leads, what else went wrong biggest first, our base against the sites that beat us, the rivals that rose, the claims tested, his own plan point by point, the counters, why the work can be freelance, credit and fairness, and how to hold the conversation. Under each part, "Check it yourself" lists the report, page or file behind it. Without `claims` it is the review layout: credit, what to raise, what is not on them, what is scored |
 | `/seo/year` | `SeoYear` | 12 months of clicks and leads, page groups, work done. Off the menu since the 6-month review; reached from the review's footnote |
 | `/seo/board` | `SeoBoard` | The 30 and 60-day board, open proposals with a recommendation, targets, achieved; Update and Keep or Change for those who hold them |
 | `/seo/reviews` | `SeoReviews` | The newest Monday in full: verdict, numbers, the week's work, move and risk, competitors, open and answered strategy changes. Earlier Mondays are one line each |
@@ -94,6 +96,7 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 
 - A brief section may now be left out whole: the spec wraps it as `{ '?': spec }` in `sixMonth.ts`. The September brief still passes, and the four review sections (scored, others, yours, next) are optional.
 - The data check ignores fields it does not know, but refuses a document missing a field it requires. So a brief that drops a required section waits until the code that makes it optional is live, or every daily send is refused.
+- A proof is `{ label, url?, shows, how }`. The door accepts only https links (no `http:`, `javascript:`, `data:` or relative paths), and every link opens in a new tab with `rel="noopener noreferrer"`. A proof with no `url` names a file, such as his worksheet tab, and draws as plain text. Search Console links open only for someone signed in to the property, so the brief points to the evidence pack for dated screenshots.
 
 ## 7. Traps
 
