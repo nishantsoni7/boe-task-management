@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `73dab73e` — Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company
-- Commits on this branch: 1225
+- Commit: `16761d04` — Merge remote-tracking branch 'origin/main' into feat/non-hdfc-confirm-on-accept
+- Commits on this branch: 1228
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 428 (first `20260530_create_positions.sql`, latest `20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 957   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `16761d04` 2026-11-11 Merge remote-tracking branch 'origin/main' into feat/non-hdfc-confirm-on-accept
+- `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
+- `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `73dab73e` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
@@ -36,9 +39,6 @@
 - `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
 - `ca901dcd` 2026-11-07 Payment Requests popup: every fact once, the Decision first (#641)
 - `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
-- `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
-- `b00b78c0` 2026-11-07 Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
-- `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 
 ## Pages by top-level area
 
