@@ -129,6 +129,15 @@ describe('readTaskSecondary', () => {
     assert.equal(log[0].actor_name, null)
     assert.deepEqual(log[0].attachments, [])
   })
+
+  test('old auto-escalation lines are never drawn, so the newest real update keeps Edit/Delete; the stale flag still shows', () => {
+    const { log } = buildActivityLog([
+      row('esc', '2026-01-03', { action: 'escalated', note: 'Auto-escalated: no update for 72 hours' }),
+      row('stale', '2026-01-02', { action: 'stale_flagged' }),
+      row('mine', '2026-01-01'),
+    ], [])
+    assert.deepEqual(log.map(e => e.id), ['stale', 'mine'])
+  })
 })
 
 describe('mergeActivityRead — a read overtaken by a local write must not erase it', () => {

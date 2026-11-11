@@ -55,7 +55,7 @@ order handoff, document submissions, customer review events, attendance requests
 - `entity_id` is a uuid: `''` is a malformed uuid and fails the whole INSERT (22P02) for every recipient; `normalizeNotificationEntityId` in `src/lib/assets/assetNotifications.ts` is the chokepoint.
 - `notifications_event_once_idx` (`20270301000000`): partial UNIQUE index on `(activity_log_id, user_id, type) WHERE activity_log_id IS NOT NULL`. The migration counts duplicate groups first and
   RAISES (deletes nothing) if any exist; creating the index blocks writes briefly (no CONCURRENTLY inside a migration transaction). `isEventAlreadyAnnounced` treats 23505 naming the index as success.
-- `run_task_health_check()` (hourly pg_cron) wrote ~16k `overdue`/`escalation` rows with no dedupe until `20261015000000` removed the inserts (activity-log writes kept). Rows remain in the table, hidden by the read rule.
+- `run_task_health_check()` (hourly pg_cron) wrote ~16k `overdue`/`escalation` rows with no dedupe until `20261015000000` removed the inserts (activity-log writes kept). Rows remain in the table, hidden by the read rule. `20270610000000` (Nov 2026) then stopped the job's "Auto-escalated" activity-log lines too (module 11): the job now writes only the stale flag, and no notification of any kind.
 - Announcements deliberately live outside this table (`20270110000000` does not touch `notifications` or the enum).
 - RLS idea: a client may not insert a row addressed to someone else; cross-user rows are written by service-role routes or SECURITY DEFINER functions. Immutability: enum additions are forward-only
   (Postgres cannot drop enum values).

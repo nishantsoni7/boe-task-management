@@ -13,7 +13,16 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { isOverdue, escalationLevel } from './ui'
+import { isOverdue, escalationLevel, isHiddenActivity } from './ui'
+
+describe('isHiddenActivity', () => {
+  test('hides the old auto-escalation line and nothing else', () => {
+    assert.equal(isHiddenActivity('escalated'), true)
+    for (const action of ['stale_flagged', 'status_changed', 'note_added', 'created', 'acknowledged']) {
+      assert.equal(isHiddenActivity(action), false, action)
+    }
+  })
+})
 
 describe('isOverdue', () => {
   const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)

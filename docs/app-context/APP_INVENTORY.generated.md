@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `f57ec063` — Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
-- Commits on this branch: 1214
+- Commit: `0c664c3a` — Payments: Canara asks for the paying account, no "Where is this money now?"
+- Commits on this branch: 1215
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
-- Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
+- Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
-- Test files: 783   Next.js 16.2.6, React 19.2.4
+- Test files: 786   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0c664c3a` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?"
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 - `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
@@ -38,7 +39,6 @@
 - `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
-- `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
 
 ## Pages by top-level area
 
@@ -165,7 +165,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 23 source, 37 test
+- `src/lib/tasks` — 24 source, 40 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
@@ -454,7 +454,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270516000100_finance_bank_old_routes_closed.sql`
 - `20270517000000_finance_bank_line_ids_and_match_search.sql`
 - `20270517000100_orders_advance_percent.sql`
 - `20270518000000_register_seo_module.sql`
@@ -484,6 +483,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
 - `20270609000000_sales_whatsapp_capture.sql`
+- `20270610000000_task_health_check_stops_escalating.sql`
 
 ## All SQL function names
 

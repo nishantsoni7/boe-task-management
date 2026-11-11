@@ -222,6 +222,13 @@ export function isValidUUID(id: string | null | undefined): id is string {
 }
 
 // ─── Activity log label ───────────────────────────────────────────────────────
+// The old hourly job wrote "Auto-escalated ..." lines (action 'escalated') under the task
+// creator's name. The owner removed that feature (migration 20270610000000): nothing writes
+// them now, the rows already written stay in the table (Team Performance still counts them),
+// and Task Detail's Activity skips them through this (buildActivityLog). Any other screen that
+// draws a task's own log rows should skip them too.
+export const isHiddenActivity = (action: string): boolean => action === 'escalated'
+
 export function formatLogAction(
   action: string,
   fromStatus?: string | null,

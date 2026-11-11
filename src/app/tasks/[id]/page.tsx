@@ -1627,7 +1627,6 @@ export default function TaskDetailPage() {
                         return 'changed the status'
                       }
                       if (action === 'stale_flagged')  return 'flagged the quotation as stale'
-                      if (action === 'escalated')      return 'escalated the quotation'
                       return formatLogAction(action, f, t).toLowerCase()
                     }
 
@@ -1644,7 +1643,6 @@ export default function TaskDetailPage() {
                         ? 'created the task'
                         : `assigned the task to ${assigneeName}`
                       case 'delegated':       return 'delegated the task'
-                      case 'escalated':       return 'escalated the task'
                       case 'stale_flagged':   return 'flagged the task as stale'
                       case 'task_copied':     return entry.note ?? 'copied this task'
                       default:                return action.replace(/_/g, ' ')
