@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `bad96612` — Docs: record PR #663 for the Dashboard Quotation Requests table
+- Commit: `4208b935` — Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - Commits on this branch: 1226
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `bad96612` 2026-11-11 Docs: record PR #663 for the Dashboard Quotation Requests table
-- `959383a5` 2026-11-11 Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
+- `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
+- `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 - `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
