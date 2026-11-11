@@ -139,6 +139,16 @@ Statuses and transitions:
   floating round buttons; narrower, an ordinary block under Needs Your Attention (counters three across from 640 px). Always drawn (a 0 still shows). Same counts,
   labels and rule as before: a counter opens its list drawer only when it has tasks; only Overdue is red. Table rows now read "Self tasks" / "Delegated tasks",
   columns "7 days" / "30 days" (the bar's heading says "created"). The page no longer has `OperationalStatusPanel`.
+- **Dashboard Quotation Requests card as a table (2026-11-11, owner picked option B of three previews, PR #663, branch `feat/dashboard-quotation-columns`, no SQL).** The card (admins only: `isAdmin ? <QuotationPanel> : <OverdueTasksPanel>`)
+  was a name plus a grey meta line, so how long a request had waited, its priority and the sales person were small or missing. Rows are now drawn by `src/app/dashboard/QuotationRequestsList.tsx` +
+  `quotationRequests.module.css` (the old `QuotationRequestsSection` is gone from `page.tsx`): columns **Lead | Sales person | Priority | Pending**, sorted longest pending first (the header arrow says so).
+  Sales person = the request's CREATOR (`created_by` through the page's name map), as a two-letter circle in one of four fixed colours per person, then the name; no name loaded = a dash, never "Unknown".
+  Priority = three-bar glyph + word, **only High is solid red** (`#A12438`), Medium amber, Low grey; the bars carry the level without colour. Pending = `quotationWait()` (`src/lib/tasks/quotationWait.ts`):
+  WHOLE 24-HOUR DAYS since `created_at` ("9 days", "1 day"; under a day "5 hours", under an hour "Under 1 hour"), coloured **grey under 2 days, amber from 2, red from 4**, with a bar full at 7 days. These two
+  day counts are the owner's call and live as `WAIT_AGING_DAYS` / `WAIT_LATE_DAYS`. The row is one button (Enter and Space open it, `aria-label` reads the whole row, `title` says the raised date).
+  It folds by the width of the CARD (`@container`, under 520 px: no header, two lines per row, "Pending 9 days" written out), not the window. **Unchanged:** the query and sort (`compareByUrgency`: overdue,
+  blocked, longest pending, priority), at most 8 rows, the empty state, "View all", the click (`taskDetailHref(task.id, pathname)` back to the Dashboard), admin-only visibility, no write, no notification.
+  Quotation requests made from the form never carry a due date (`due_date: null`), so the card no longer prints due-date wording for them.
 - URL list state: tab, search, filters, page live in the query string (`src/lib/listState.ts`, `useListUrlState`): defaults never written; unusable values parse to default;
   debounced search flushed on blur. Not converted on purpose: `/performance/team`, `/notifications`.
 - Return-to-source: Task Detail opens as `/tasks/<id>?returnTo=<encoded list path>`; `taskReturnPath.ts` re-exports `safeReturnPath` (module 08). After Submit for Approval:
@@ -158,12 +168,12 @@ Statuses and transitions:
 ## 7. Key components & lib files
 
 `src/lib/tasks/*` (taskDetailAccess, reviewTransitions, statusChange, acknowledgeTask, taskCreateFlow, taskCreateActions, taskReporting, myTaskTabs, taskReturnPath,
-assignmentNotification(.writer.server), attachmentStorage, commentAttachments, activityHeadings, addToMeetingAccess, taskGallery, taskDetailLoad, healthCheckMigrationAudit, quotationSend, taskDrawerBrief),
+assignmentNotification(.writer.server), attachmentStorage, commentAttachments, activityHeadings, addToMeetingAccess, taskGallery, taskDetailLoad, healthCheckMigrationAudit, quotationSend, quotationWait, taskDrawerBrief),
 `src/components/ui/TaskDetailPanel.tsx` (the preview drawer; 8 callers, 7 pass `fullPageHref`, `super-admin/view-user/[userId]` passes neither and shows no "View Task Page"),
 `src/hooks/queries/{useMyTasks,useAssignedByMe,useCompletedTasks,useTaskReports,useTopTasks,useQuotationRequests}.ts`, `src/components/tasks/{AddToMeetingModal,
 CancelledArchive,CompletedHistory,CopyAssignModal,MyTaskViewTabs,QuotationDetailView,TaskAttachmentGallery,TaskCreationReport,TaskImageViewer}.tsx`, `src/components/layout/DashboardLayout.tsx`
 (shell for the Task Management pages - 22 per memory; header Self/Delegate actions), `src/components/notifications/*`, `src/app/tasks/[id]/page.tsx` (3411 lines), `src/app/tasks/my/page.tsx`
-(1985), `src/app/dashboard/page.tsx` (about 1800) with `src/app/dashboard/GlanceBar.tsx` (the At a glance bar). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
+(1985), `src/app/dashboard/page.tsx` (about 1700) with `src/app/dashboard/GlanceBar.tsx` (the At a glance bar) and `src/app/dashboard/QuotationRequestsList.tsx` (the Quotation Requests table). Pure helpers are tested directly; the large client components are pinned by source-contract tests.
 
 Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancelled` render through `CancelledArchive.tsx` (month groups, rows, heading, note, toolbar, empty state); the pages keep their own paged read, filters, load-error banner and empty-state branch because `archiveListBounds.test.ts` reads those from the page source.
 
@@ -203,10 +213,11 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 16. Task Detail's `supabase.rpc('transition_task_review'` and `handleCancelTask` are pinned in place by `taskDetailLoad.test.ts`, so the list has its own calls in `taskListActions.ts`, built from the same rules.
 15. An icon-only `.boe-btn` must override `min-height` (38px), `padding` and `.boe-btn svg` (18px) with two classes (`.actions .iconButton`), or the button comes out wider than its column (Assigned By Me, Nov 2026).
 17. The preview drawer's words ("due tomorrow", "overdue by 3 days") count days against the same UTC date key `isOverdue()` uses, so between 00:00 and 05:30 IST they lag a day exactly as the red flag does; fix both together when `isOverdue` becomes IST-aware (trap 7). Its reason comes only from the 20 newest log rows: a task whose last status change is older than 20 rows shows no reason and no "Set by". Its "attached a file" line is a `note_added` row with no text (the Send Update gate refuses an empty post), because the drawer does not load `task_attachments`.
+18. The Dashboard's Quotation "Pending" must stay the same whole-24-hour floor the list is SORTED by (`daysSince` in `page.tsx`; `quotationWait.test.ts` pins the two to one expression). IST calendar days would let a row read "8 days" above one that reads "9 days". The card is admin-only and the day colours (2 and 4 days) are the owner's numbers, not a rule from the database.
 
 ## 10. Tests that guard it
 
-Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransitions,taskReturnPath,activityHeadings,statusChange,acknowledgeTask,taskGallery,attachmentStorage,commentAttachments,quotationSend}.test.ts`.
+Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransitions,taskReturnPath,activityHeadings,statusChange,acknowledgeTask,taskGallery,attachmentStorage,commentAttachments,quotationSend,quotationWait}.test.ts`; `src/app/dashboard/quotationRequests.render.test.tsx` (the Quotation table: columns, priority bars, wait text and bands, the 8-row cap, click / Enter / Space, what the page keeps).
 Source-contract/shape: `taskNavigationPerformance.test.ts`, `taskCreationPerformance.test.ts`, `taskDetailOpenFromDrawer.test.ts`, `myTasksLoadState.test.ts`, `myTasksRuntimeShape.test.ts`,
 `myTasksQuickAction.test.ts`, `dashboardViewAsReadOnly.test.ts`, `taskCreateFlow.test.ts`, `taskCreateActions.test.ts`, `assignmentWriteAuthority.test.ts`, `assignmentServerBoundary.test.ts`,
 `topTasksApproval.test.ts`, `taskDrawerBrief.test.ts` (the drawer's headline, reason and last-3-updates rules, plus a source check: one read, no write, 44px close), `changeTaskStatusMigration.test.ts`, `changeTaskStatusNotificationCompat.test.ts`, `acknowledgeCallers.test.ts`, `healthCheckMigrationAudit.test.ts` (pins `20261015000000`, which is applied and frozen — do not edit it),
