@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `308feb65` — Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
-- Commits on this branch: 1229
+- Commit: `a773808d` — Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, apply first)
+- Commits on this branch: 1230
 - Pages (`page.tsx`): 183   API routes (`route.ts`): 189
 - Migrations: 429 (first `20260530_create_positions.sql`, latest `20270613000000_sales_whatsapp_classify.sql`)
 - Tables ever created: 227 (dropped at some point: 7)   SQL functions: 961   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a773808d` 2026-11-11 Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, apply first)
 - `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
 - `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
 - `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
@@ -38,7 +39,6 @@
 - `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
 - `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
 - `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
-- `ca901dcd` 2026-11-07 Payment Requests popup: every fact once, the Decision first (#641)
 
 ## Pages by top-level area
 
