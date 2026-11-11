@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4c44f95a` — Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
-- Commits on this branch: 1222
+- Commit: `1c5f1930` — Orders: a PI Operations flagged is an action for who must answer it (#657)
+- Commits on this branch: 1223
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 954   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 - `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
 - `0da0e1d6` 2026-11-11 Finance and Orders side menus: warm a page on intent, not every page on load (#658)
 - `44b194ba` 2026-11-11 Orders / Finance switch: warm the other module on intent, not on every page (#656)
@@ -38,7 +39,6 @@
 - `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 - `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
 - `5aa5448f` 2026-11-07 Modules: a punch-in strip at the top of the page for every employee (no SQL) (#635)
-- `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 
 ## Pages by top-level area
 
