@@ -104,6 +104,17 @@ export const FOR_YOU_ITEMS = [
     applies: a => a.orders,
   },
   {
+    // Always on (owner, 2026-11-11): a PI Operations cannot accept holds its Order On Hold, and it was missed
+    // when it was only a notification. Whoever the answer door lets answer (my_flagged_pis) sees it until they have.
+    key: 'pi_flagged_by_operations',
+    label: 'PI flagged by Operations',
+    meaning: 'Operations cannot accept a PI and needs your answer.',
+    audience: 'The PI’s owner and administrators',
+    forWhom: 'for the PI’s owner and administrators',
+    defaultMode: 'always',
+    applies: a => a.orders,
+  },
+  {
     key: 'machine_stopped',
     label: 'Attendance machine stopped',
     meaning: 'No punch has reached BOE today.',

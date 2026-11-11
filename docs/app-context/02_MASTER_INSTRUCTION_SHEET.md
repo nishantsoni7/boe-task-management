@@ -65,6 +65,7 @@ Produce a plan containing **all** of:
 7. **Test plan:** the tests to add, the existing tests that pin related behavior, how each failure mode is proven (§6).
 8. **Risks & open questions** for the owner. Ask them *before* building when the answer changes the design (a dispatch gate threshold, who approves, what is visible to whom). Do not guess business rules — they are decisions recorded in the dossiers.
 9. **Checkpoints:** numbered, read-only checkpoints with the expected result stated *first*.
+10. **Who must act (any state that waits on a person):** name the person by the SAME function the action's own door asks, and plan where it shows on their own screen until it is done: a Modules For you item (default Always on when it must not be missed), a row on the module's own dashboard where it has one, and a test that it leaves when the state changes. A notification alone is never enough (owner, 2026-11-11, PI flagged by Operations). Register and rule: `modules/12-notifications.md` §8e.
 
 Stop and present the plan. Build only after the owner agrees.
 

@@ -5,6 +5,7 @@
 //   PI review      every PI Draft in status `submitted`
 //   PI revision    revised PIs on confirmed Orders waiting on this reader
 //   Design Files / Client PO submissions waiting on this reader
+//   PI flagged   a PI Operations cannot accept, which THIS reader must answer (my_flagged_pis, 20270611000000)
 //
 // It replaces PiReviewSections and the "needs you" half of DocumentActionQueue on the approver's
 // dashboard. The three reads run together under the reader's own RLS, so a row can never name a PI or
@@ -12,7 +13,8 @@
 //
 // A FAILED PI READ IS AN ERROR LINE, NEVER "NOTHING IS WAITING". A refused revisions or documents
 // read (migration not applied) just leaves those rows out, as it always did. Nothing is read under
-// View As. The payment chip on a PI is the database's own position (see lib/orders/adminDashboard.ts);
+// View As. A flagged-PI read that fails is said on the card (the rows already read are still drawn); a database
+// without the function simply has none. The payment chip on a PI is the database's own position (see lib/orders/adminDashboard.ts);
 // a PI whose summary could not be read simply has no chip.
 
 import { useEffect, useState } from 'react'
@@ -28,8 +30,10 @@ import {
   type PersistedDocumentSubmission,
 } from '@/lib/orders/orderDocumentSubmissions'
 import { splitRevisionQueue } from '@/lib/orders/orderPiVersions'
+import { FLAGGED_LOAD_FAILED, loadFlaggedPis } from '@/lib/orders/flaggedPis'
 import {
   documentRow,
+  flaggedRow,
   isMixed,
   paymentChip,
   reviewRow,
@@ -57,12 +61,12 @@ type RevisionRaw = {
 }
 type DocumentRaw = PersistedDocumentSubmission & { order: OrderEmbed }
 
-/** null = the PI read failed, which the card says; anything else is the list. */
+/** null = the PI read failed, which the card says; anything else is the list (and whether the flagged-PI read failed). */
 export async function loadDecisionRows(
   supabase: SupabaseClient,
   viewer: { viewerId: string; isAdmin: boolean },
-): Promise<DecisionRow[] | null> {
-  const [subs, revs, docs] = await Promise.all([
+): Promise<{ rows: DecisionRow[]; flaggedFailed: boolean } | null> {
+  const [subs, revs, docs, flagged] = await Promise.all([
     supabase
       .from('order_submissions')
       .select('id, client_name, bill_to_name, draft_reference, subtotal_after_discount, submitted_by, submitted_at')
@@ -83,6 +87,8 @@ export async function loadDecisionRows(
       .eq('stage', 'amendment')
       .order('submitted_at', { ascending: false })
       .limit(200),
+    // The ONE definition of "a flagged PI that waits on me": the database's (20270611000000).
+    loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }),
   ])
   if (subs.error) return null
 
@@ -121,18 +127,20 @@ export async function loadDecisionRows(
   ])
   const nameOf = (id: string | null) => (id ? names.get(id) ?? null : null)
 
-  return sortDecisionRows([
+  const rows = sortDecisionRows([
     ...reviews.map((r, i) => reviewRow(r, nameOf(r.submitted_by), paymentChip(summaries[i] ?? null))),
     ...myRevisions.map(r => revisionRow(r, nameOf(r.uploadedBy))),
     ...myDocuments.map(r => documentRow(r, nameOf(r.submission.submitted_by))),
+    ...(flagged ?? []).map(flaggedRow),
   ], Date.now())
+  return { rows, flaggedFailed: flagged === null }
 }
 
 export type DecisionState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'unavailable' }
-  | { kind: 'ready'; rows: DecisionRow[] }
+  | { kind: 'ready'; rows: DecisionRow[]; flaggedFailed?: boolean }
 
 export function DecisionQueue({ supabase, viewerId, isAdmin, viewingAs, reloadKey }: {
   supabase: SupabaseClient
@@ -147,8 +155,8 @@ export function DecisionQueue({ supabase, viewerId, isAdmin, viewingAs, reloadKe
   useEffect(() => {
     if (!viewerId || viewingAs) return
     let live = true
-    void loadDecisionRows(supabase, { viewerId, isAdmin }).then(rows => {
-      if (live) setState(rows ? { kind: 'ready', rows } : { kind: 'error' })
+    void loadDecisionRows(supabase, { viewerId, isAdmin }).then(read => {
+      if (live) setState(read ? { kind: 'ready', rows: read.rows, flaggedFailed: read.flaggedFailed } : { kind: 'error' })
     })
     return () => { live = false }
   }, [supabase, viewerId, viewingAs, isAdmin, reloadKey])
@@ -168,6 +176,7 @@ export function DecisionCard({ state }: { state: DecisionState }) {
         ) : null}
         <span className={styles.hint}>Longest waiting first</span>
       </header>
+      {state.kind === 'ready' && state.flaggedFailed ? <p className={styles.note} role="alert">{FLAGGED_LOAD_FAILED}</p> : null}
       {state.kind === 'loading' ? (
         <div className={styles.skeleton} aria-busy="true" aria-label="Loading what is waiting for your decision" />
       ) : state.kind === 'error' ? (
@@ -175,7 +184,10 @@ export function DecisionCard({ state }: { state: DecisionState }) {
       ) : state.kind === 'unavailable' ? (
         <p className={styles.note}>This list is not shown while you view as someone else.</p>
       ) : rows.length === 0 ? (
-        <div className={styles.empty}><CircleCheck size={20} aria-hidden="true" /><span>Nothing is waiting for your decision.</span></div>
+        // A failed flagged-PI read is said below the header, never "nothing is waiting".
+        state.flaggedFailed ? null : (
+          <div className={styles.empty}><CircleCheck size={20} aria-hidden="true" /><span>Nothing is waiting for your decision.</span></div>
+        )
       ) : (
         <ul className={styles.dlist}>
           <li className={styles.dcols} aria-hidden="true">
@@ -202,7 +214,7 @@ export function DecisionCard({ state }: { state: DecisionState }) {
                   <span className={`${styles.cellv} ${styles.cDet}`}>
                     {r.chip ? (
                       <>
-                        <ToneChip tone={r.chip.tone} icon={r.kind === 'pi_review' ? TONE_ICON[r.chip.tone] : FileText}>{r.chip.label}</ToneChip>
+                        <ToneChip tone={r.chip.tone} icon={r.kind === 'pi_review' || r.kind === 'pi_flagged' ? TONE_ICON[r.chip.tone] : FileText}>{r.chip.label}</ToneChip>
                         {r.chip.sub ? <span className={styles.sub}>{r.chip.sub}</span> : null}
                       </>
                     ) : null}

@@ -1,8 +1,9 @@
 // RECORDS WAITING ON THE VIEWER, as cards of the Modules For you column.
 //
-// Payment requests to verify (owner, 2026-10-31), and the four items an
+// Payment requests to verify (owner, 2026-10-31), the four items an
 // administrator can add from Control Center: a payment sent back, a PI waiting
-// for approval, an Order change request and a PI waiting for Operations. Each is
+// for approval, an Order change request and a PI waiting for Operations, and a
+// PI Operations flagged (2026-11-11, my_flagged_pis). Each is
 // a short read of an existing table under the reader's own RLS
 // (src/hooks/queries/useForYouWork.ts), so a card can never name a record the
 // reader may not open, and each button opens the record's existing page, where
@@ -16,6 +17,7 @@ import { itemKeys } from '@/lib/modules/forYouSnooze'
 import type { ForYouItemKey } from '@/lib/modules/forYouCatalogue'
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { flaggedBrief, flaggedHref, flaggedLabel, reasonLine, type FlaggedPi } from '@/lib/orders/flaggedPis'
 import { OPERATIONS_REVIEW_ANCHOR } from '@/lib/orders/operationsHandoff'
 import { timeAgo } from '@/lib/ui'
 
@@ -26,7 +28,7 @@ export const FOR_YOU_CARDS_SHOWN = 5
 export const FOR_YOU_READ_LIMIT = 20
 
 export type WorkItemKey = Extract<ForYouItemKey,
-  'payment_request' | 'payment_sent_back' | 'pi_waiting_approval' | 'order_change_request' | 'pi_waiting_operations'>
+  'payment_request' | 'payment_sent_back' | 'pi_waiting_approval' | 'order_change_request' | 'pi_waiting_operations' | 'pi_flagged_by_operations'>
 
 export type WorkCard = {
   /** Clear all's key: the record and its version. */
@@ -36,6 +38,8 @@ export type WorkCard = {
   detail: string
   action: string
   href: string
+  /** Drawn in the urgent style: something is stuck until this person acts. */
+  urgent?: boolean
 }
 
 type Person = { full_name: string | null } | null
@@ -153,6 +157,19 @@ export function operationsCard(r: OperationsRow): WorkCard {
     detail: `PI V${r.version_number} needs your review`,
     action: 'Review',
     href: `/orders/${r.order_id}#${OPERATIONS_REVIEW_ANCHOR}`,
+  }
+}
+
+/** A PI Operations flagged that this reader must answer: the Order is On Hold until they do, so it is drawn urgent. */
+export function flaggedCard(r: FlaggedPi): WorkCard {
+  return {
+    key: itemKeys.work('pi-flagged', r.handoffId, r.since),
+    label: `PI flagged by Operations · ${r.since ? timeAgo(r.since) : 'waiting'}`,
+    brief: flaggedBrief(r),
+    detail: `${flaggedLabel(r)} · “${reasonLine(r.reason)}”`,
+    action: 'Respond',
+    href: flaggedHref(r.orderId),
+    urgent: true,
   }
 }
 

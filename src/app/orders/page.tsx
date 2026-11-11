@@ -40,6 +40,7 @@ import { AdvanceSection, AlignmentSection, FabricFinishSection, StatusStrip } fr
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { AdminDashboardView } from '@/components/orders/dashboard/AdminDashboardView'
+import { FlaggedPiStrip } from '@/components/orders/dashboard/FlaggedPiStrip'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
@@ -97,6 +98,8 @@ export default function OrdersDashboardPage() {
   const [focusFormOpen, setFocusFormOpen] = useState(false)
   // The board's open tab; null until somebody picks one, when it is the first with rows.
   const [boardTab, setBoardTab] = useState<BoardKey | null>(null)
+  // Counts the page's refreshes, so the flagged-PI strip (its own read, 20270611000000) is read again with them.
+  const [reloadTick, setReloadTick] = useState(0)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -236,7 +239,10 @@ export default function OrdersDashboardPage() {
 
   if (pageLoading) return <OrdersRouteFallback />
 
-  const reload = () => loadData(profile?.id ?? '00000000-0000-0000-0000-000000000000')
+  const reload = () => {
+    setReloadTick(t => t + 1)
+    return loadData(profile?.id ?? '00000000-0000-0000-0000-000000000000')
+  }
 
   // The queue links: only what somebody is asked to WORK, and only where the
   // reader is offered it. One decision, made in one place
@@ -293,6 +299,8 @@ export default function OrdersDashboardPage() {
       {personalView ? (
         // ── THE SALESPERSON'S OWN DASHBOARD ── three figures, four complete lists, nothing else.
         <div className="od-stack">
+          {/* A PI Operations flagged waits on them: first, above everything. Draws nothing when none does. */}
+          <FlaggedPiStrip supabase={supabase} viewingAs={!!viewAsUserId} reloadKey={reloadTick} />
           {personal.kind === 'ready' ? (
             <SalespersonDashboardView data={personal.data} />
           ) : (
@@ -330,6 +338,11 @@ export default function OrdersDashboardPage() {
         )
       ) : (
       <div className="od-stack">
+        {/* ── PIs OPERATIONS FLAGGED ── that this reader must answer, first. The approver's own list
+            ("Needs your decision" below) carries them for an approver, so no second copy there. */}
+        {summary.kind === 'ready' && !approverView ? (
+          <FlaggedPiStrip supabase={supabase} viewingAs={!!viewAsUserId} reloadKey={reloadTick} />
+        ) : null}
         {/* ── WHAT OPERATIONS ANSWERED ── on the approver's dashboard, advice on changes to orders in
             production. Draws nothing when there are none or the read is not available. */}
         {operations.kind === 'ready' && operations.read.viewer.isApprover ? (

@@ -1,0 +1,102 @@
+// PIs FLAGGED BY OPERATIONS THAT WAIT ON YOU (owner, 2026-11-11).
+//
+// Operations flags a PI version it cannot accept ("clarification needed") and the Order goes On Hold.
+// The person who must answer is the one the answer door lets answer: the PI's creator / submitter, or
+// an active admin. public.my_flagged_pis() (20270611000000) is the ONE definition of that list; three
+// screens read it and never decide it themselves:
+//   - the approver's "Needs your decision" on the Orders dashboard,
+//   - the salesperson's (and any other reader's) Orders dashboard strip,
+//   - the Modules launcher's For you column.
+//
+// This module validates the database's answer and owns the words. A row it cannot read makes the whole
+// answer unreadable (the screen then says so), never a silently shorter list. A database without the
+// function answers [], like my_returned_pis() before it: nothing is invented.
+
+import { displayOrderNumber } from '@/lib/orderNumbering'
+import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
+
+export type FlaggedPi = {
+  handoffId: string
+  orderId: string
+  /** The Order's own number as people say it (`546`). */
+  orderNumber: string
+  clientName: string
+  versionNumber: number
+  /** Operations' reason, whole (at most 1000 characters). */
+  reason: string
+  /** Who flagged it; null when the person is no longer on record. */
+  byName: string | null
+  /** When it was flagged (ISO); null only on data older than the column. */
+  since: string | null
+  waitingSeconds: number
+}
+
+/** Turns the RPC's answer into rows; throws when the answer is not a list of readable rows. */
+export function readFlaggedPis(raw: unknown): FlaggedPi[] {
+  if (!Array.isArray(raw)) throw new Error('The flagged PIs answer is not a list.')
+  return raw.map((x): FlaggedPi => {
+    if (typeof x !== 'object' || x === null) throw new Error('A flagged PI row is not an object.')
+    const o = x as Record<string, unknown>
+    if (typeof o.handoff_id !== 'string' || o.handoff_id === '') throw new Error('A flagged PI has no id.')
+    if (typeof o.order_id !== 'string' || o.order_id === '') throw new Error('A flagged PI has no Order.')
+    const version = typeof o.version_number === 'number' ? o.version_number : Number(o.version_number)
+    if (!Number.isInteger(version) || version < 1) throw new Error('A flagged PI has no version.')
+    const seconds = typeof o.waiting_seconds === 'number' ? o.waiting_seconds : Number(o.waiting_seconds)
+    return {
+      handoffId: o.handoff_id,
+      orderId: o.order_id,
+      orderNumber: displayOrderNumber(typeof o.order_number === 'string' ? o.order_number : null) || '—',
+      clientName: typeof o.client_name === 'string' ? o.client_name : '',
+      versionNumber: version,
+      reason: typeof o.reason === 'string' ? o.reason.trim() : '',
+      byName: typeof o.by_name === 'string' && o.by_name.trim() !== '' ? o.by_name.trim() : null,
+      since: typeof o.since === 'string' ? o.since : null,
+      waitingSeconds: Number.isFinite(seconds) ? Math.max(0, seconds) : 0,
+    }
+  })
+}
+
+type RpcLike = { rpc: (fn: string) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }> }
+
+/**
+ * The flagged PIs that wait on the signed-in reader. null = the read FAILED (the screen says so; it never
+ * reads as "nothing waits"); [] = none, or this database does not have the function yet.
+ */
+export async function loadFlaggedPis(client: RpcLike): Promise<FlaggedPi[] | null> {
+  try {
+    const { data, error } = await client.rpc('my_flagged_pis')
+    if (isDashboardFunctionMissing(error)) return []
+    if (error) return null
+    return readFlaggedPis(data)
+  } catch {
+    return null
+  }
+}
+
+// ── Words ─────────────────────────────────────────────────────────────────────
+
+export const FLAGGED_KIND_LABEL = 'Flagged by Operations'
+export const FLAGGED_LOAD_FAILED = 'PIs flagged by Operations could not be loaded, so one waiting for you may be missing. Refresh to try again.'
+export const FLAGGED_STRIP_HINT = 'Operations cannot accept these yet, and the Order waits. Open the Order and use Respond and resubmit.'
+export const FLAGGED_OPEN = 'Respond'
+
+export const flaggedTitle = (n: number): string => `Operations flagged ${n} ${n === 1 ? 'PI' : 'PIs'}`
+
+/** `Operations cannot accept PI V1`. */
+export const flaggedLabel = (r: Pick<FlaggedPi, 'versionNumber'>): string => `Operations cannot accept PI V${r.versionNumber}`
+
+/** `Order 546 · Qavaali`. */
+export function flaggedBrief(r: Pick<FlaggedPi, 'orderNumber' | 'clientName'>): string {
+  return `Order ${r.orderNumber} · ${r.clientName || 'Client not recorded'}`
+}
+
+/** Operations' reason, on one short line; the Order page carries all of it. */
+export const REASON_CLIP = 140
+export function reasonLine(reason: string): string {
+  const flat = reason.replace(/\s+/g, ' ').trim()
+  if (flat === '') return 'No reason recorded'
+  return flat.length <= REASON_CLIP ? flat : `${flat.slice(0, REASON_CLIP - 1).trimEnd()}…`
+}
+
+/** Where the answer is made: the Order page, whose top banner holds Respond and resubmit. */
+export const flaggedHref = (orderId: string): string => `/orders/${orderId}`
