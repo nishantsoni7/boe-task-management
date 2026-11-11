@@ -292,9 +292,15 @@ export function statementsRunTo(coverage: Coverage | null | undefined): string |
   return parts.length > 0 ? `Bank statements run: ${parts.join(' · ')}` : null
 }
 
-/** A refusal from the verification doors, in a sentence. Null for anything else. */
+/**
+ * A refusal from the verification doors, in a sentence. Null for anything else.
+ * Also carries the PNB / Paytm / Canara cash rule (20270612000000), because every
+ * door already shows this function's sentence.
+ */
 export function bankVerifyRefusal(message: string | null | undefined): string | null {
   const m = message ?? ''
+  if (m.includes('PAYMENT_EDIT_NEEDS_COMPANY_CASH')) return 'This change would leave the payment verified while its cash is not with the company.'
+  if (m.includes('PAYMENT_NEEDS_COMPANY_CASH')) return 'The cash for this payment has not reached the company yet. It is confirmed when the company’s cash custodian accepts it.'
   if (m.includes('PAYMENT_EDIT_NEEDS_BANK_MATCH')) return 'This change would leave the payment without a bank credit covering it. Link the credit first.'
   if (m.includes('PAYMENT_NEEDS_BANK_MATCH')) return 'This HDFC payment has no bank credit covering it yet. Match it to its credit in Payment Requests first.'
   if (m.includes('BANK_PAYMENT_OVER_LINKED')) return 'This payment is already fully linked to bank credits. Unlink one on Bank Statements first.'

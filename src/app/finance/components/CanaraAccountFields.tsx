@@ -1,9 +1,9 @@
 'use client'
 
-// The account a Canara payment came FROM. Replaces "Where is this money now?" for
-// Canara on every form that records a payment; the rules and the saved shape live
-// in src/lib/finance/canaraAccount.ts (holder and number required, bank optional
-// and any bank).
+// The account a Canara payment came FROM, asked above "Where is this money now?"
+// on every form that records a payment; the rules and the saved shape live in
+// src/lib/finance/canaraAccount.ts (holder and number required, bank optional and
+// any bank).
 
 import { useId } from 'react'
 import { colors } from '@/lib/tokens'

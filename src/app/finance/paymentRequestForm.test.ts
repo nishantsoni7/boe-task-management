@@ -60,11 +60,12 @@ describe('the form is organised as steps', () => {
     assert.ok(parts.includes('paymentModeOptionsFor'), 'the options still come from the one shared list')
   })
 
-  test('the custody step exists only for the two modes that carry a trail', () => {
-    // PNB and Paytm ask it; Canara asks for the paying account instead.
+  test('the custody step exists only for the modes that carry a trail', () => {
+    // PNB, Paytm and Canara ask it; Canara also asks for the paying account, above it.
     assert.ok(src.includes('modeAsksWhereMoneyIs(form.paymentMode)'))
     assert.ok(/\{asksMoneyNow && \(/.test(src))
     assert.ok(/\{isCanara && \(/.test(src))
+    assert.ok(src.indexOf('title="Account details"') < src.indexOf('title="Where is this money now?"'))
   })
 
   test('the amount carries the rupee sign and the search box takes the cursor', () => {
