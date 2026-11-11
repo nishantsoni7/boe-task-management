@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `bad96612` — Docs: record PR #663 for the Dashboard Quotation Requests table
+- Commit: `4208b935` — Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - Commits on this branch: 1226
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 954   Enums: 0
-- Test files: 791   Next.js 16.2.6, React 19.2.4
+- Test files: 792   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `bad96612` 2026-11-11 Docs: record PR #663 for the Dashboard Quotation Requests table
-- `959383a5` 2026-11-11 Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
+- `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
+- `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 - `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
@@ -151,7 +151,7 @@
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
-- `src/lib/modules` — 5 source, 6 test
+- `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 106 source, 161 test
