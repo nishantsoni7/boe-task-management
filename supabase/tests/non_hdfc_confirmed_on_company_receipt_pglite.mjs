@@ -59,7 +59,8 @@ const U = {
   nishant: '00000000-0000-0000-0000-0000000000b2', // admin, NOT the cash custodian
   nitish:  '00000000-0000-0000-0000-0000000000c3', // cash custodian, finance.approve by grant
 }
-const P = {
+// The payment ids the fixtures use, kept as a reading key (the SQL below spells them out).
+const _P = {
   control: '10000000-0000-0000-0000-000000000001', // negative control under 20270416000000
   toNishant: '10000000-0000-0000-0000-000000000002',
   toNitish:  '10000000-0000-0000-0000-000000000003',
