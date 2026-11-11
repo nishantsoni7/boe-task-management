@@ -526,6 +526,24 @@ registerModule({
   actions: [{ actionKey: 'view', displayName: 'View' }],
 })
 
+// Quotations, phase 1: build a quotation by room type, price it, print it and share a client link. Registered by
+// 20270614000000; off for everybody until an administrator grants it. Every write is a checked database function.
+registerModule({
+  moduleKey: 'quotations',
+  displayName: 'Quotations',
+  description: 'Build quotations by room type, price them and share a client link.',
+  actions: [
+    // view: open the module and see your own quotations.
+    { actionKey: 'view', displayName: 'View' },
+    // create: start a quotation; change and share your own.
+    { actionKey: 'create', displayName: 'Create' },
+    // edit: change quotations you can see (with view_all: anybody's).
+    { actionKey: 'edit', displayName: 'Edit' },
+    // view_all: see every salesperson's quotations.
+    { actionKey: 'view_all', displayName: 'View All' },
+  ],
+})
+
 // SEO: Google rankings, competitors, the 30/60-day board and the Monday review, filled by the owner's scheduled
 // sessions. Registered by 20270518000000 and 20270519000000; off for everybody until an administrator grants it.
 registerModule({

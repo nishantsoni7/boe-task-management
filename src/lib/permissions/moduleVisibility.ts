@@ -91,6 +91,7 @@ export const ENGINE_GATED_MODULE_KEYS = [
   'marketing',
   'pricing',
   'seo',
+  'quotations',
 ] as const
 
 export type EngineGatedModuleKey = (typeof ENGINE_GATED_MODULE_KEYS)[number]

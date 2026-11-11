@@ -23,7 +23,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, Image as ImageIcon, Megaphone, Search, Tag } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Tag } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, PerformanceIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
@@ -635,6 +635,15 @@ export default function BoeOsHomePage() {
       description: 'Sales: the Lead Master, every lead and who holds it.',
       href: '/sales',
       icon: <ChartNoAxesCombined size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('quotations') ? [{
+      key: 'quotations',
+      title: 'Quotations',
+      // The registered module description, verbatim.
+      description: 'Build quotations by room type, price them and share a client link.',
+      href: '/quotations',
+      icon: <FileText size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(canOpenModule('marketing') ? [{

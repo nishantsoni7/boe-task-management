@@ -1,4 +1,4 @@
-import { Armchair, ChartNoAxesCombined, ContactRound, Factory, Image as ImageIcon, IndianRupee, Megaphone, Search, Tag } from 'lucide-react'
+import { Armchair, ChartNoAxesCombined, ContactRound, Factory, FileText, Image as ImageIcon, IndianRupee, Megaphone, Search, Tag } from 'lucide-react'
 
 // ── The module icons, drawn once ─────────────────────────────────────────────
 //
@@ -152,6 +152,7 @@ export function ModuleIcon({ moduleKey, size = 18 }: { moduleKey: string; size?:
     case 'marketing': return <Megaphone size={size} strokeWidth={1.8} aria-hidden />
     case 'pricing': return <Tag size={size} strokeWidth={1.8} aria-hidden />
     case 'seo': return <Search size={size} strokeWidth={1.8} aria-hidden />
+    case 'quotations': return <FileText size={size} strokeWidth={1.8} aria-hidden />
     default: return <ControlCenterIcon size={size} />
   }
 }

@@ -225,6 +225,17 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
     levels: { on: 'Open Pricing, which shows a Coming soon page for now.' },
     authorities: {},
   },
+  quotations: {
+    group: 'Sales',
+    blurb: 'Quotations by room type, priced, printed and shared with the client.',
+    levels: {
+      viewer: 'Open Quotations and read your own.',
+      contributor: 'Viewer, plus start quotations and change and share your own.',
+    },
+    authorities: {
+      view_all: { label: 'See all quotations', meaning: 'A manager’s sight of every salesperson’s quotations. With Edit, also change them (the pricing desk).' },
+    },
+  },
   seo: {
     group: 'Sales',
     blurb: 'Google rankings, competitors, the plan and the weekly review.',
