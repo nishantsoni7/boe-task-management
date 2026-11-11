@@ -139,7 +139,7 @@ Statuses and transitions:
   floating round buttons; narrower, an ordinary block under Needs Your Attention (counters three across from 640 px). Always drawn (a 0 still shows). Same counts,
   labels and rule as before: a counter opens its list drawer only when it has tasks; only Overdue is red. Table rows now read "Self tasks" / "Delegated tasks",
   columns "7 days" / "30 days" (the bar's heading says "created"). The page no longer has `OperationalStatusPanel`.
-- **Dashboard Quotation Requests card as a table (2026-11-11, owner picked option B of three previews, branch `feat/dashboard-quotation-columns`, no SQL).** The card (admins only: `isAdmin ? <QuotationPanel> : <OverdueTasksPanel>`)
+- **Dashboard Quotation Requests card as a table (2026-11-11, owner picked option B of three previews, PR #663, branch `feat/dashboard-quotation-columns`, no SQL).** The card (admins only: `isAdmin ? <QuotationPanel> : <OverdueTasksPanel>`)
   was a name plus a grey meta line, so how long a request had waited, its priority and the sales person were small or missing. Rows are now drawn by `src/app/dashboard/QuotationRequestsList.tsx` +
   `quotationRequests.module.css` (the old `QuotationRequestsSection` is gone from `page.tsx`): columns **Lead | Sales person | Priority | Pending**, sorted longest pending first (the header arrow says so).
   Sales person = the request's CREATOR (`created_by` through the page's name map), as a two-letter circle in one of four fixed colours per person, then the name; no name loaded = a dash, never "Unknown".

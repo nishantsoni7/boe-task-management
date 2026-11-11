@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-11 — Dashboard Quotation Requests card is a table: how long pending, priority, sales person (branch `feat/dashboard-quotation-columns`, PR to be opened) · no migration
+## 2026-11-11 — Dashboard Quotation Requests card is a table: how long pending, priority, sales person (PR #663, branch `feat/dashboard-quotation-columns`) · no migration
 - **Owner ask.** On the Dashboard's Quotation Requests card the wait was not shown ("it is a important factor"), priority and the sales person's name were small. Three previews were drawn on the real Dashboard (A age tile, B columns, C banded); the owner chose **B, Columns**.
 - **Changed.** The rows are now `src/app/dashboard/QuotationRequestsList.tsx` + `quotationRequests.module.css`; `src/lib/tasks/quotationWait.ts` works out the wait. Columns Lead / Sales person / Priority / Pending. Priority: three-bar glyph + word, only High solid red. Sales person: initials circle (four fixed colours per person) + name. Pending: whole 24-hour days since `created_at` (hours under a day), grey under 2 days, amber from 2, red from 4, bar full at 7. Under 520 px of card width the row folds to two lines. The old `QuotationRequestsSection` in `dashboard/page.tsx` is removed (about 95 lines).
 - **Not changed.** The query, the sort (`compareByUrgency`: longest pending first, then priority), the 8-row cap, the empty state, "View all", the click back to the Dashboard, admin-only visibility, `/tasks/quotation-requests`, the database, permissions, notifications.
