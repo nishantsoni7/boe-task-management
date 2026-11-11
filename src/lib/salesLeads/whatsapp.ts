@@ -15,6 +15,17 @@ export type ChatRow = {
   ad_headline: string | null
   ad_url: string | null
   ctwa_clid: string | null
+  /** What kind of message it was (text, image, document...). Read by the judge; not stored. */
+  kind: string
+  /** The name of a document the client sent ("Resume_Rahul.pdf"). Read by the judge; never stored. */
+  file: string | null
+}
+
+/** What capture_sales_chats takes: a ChatRow without the two fields only the judge reads. */
+export type CaptureRow = Omit<ChatRow, 'kind' | 'file'> & {
+  /** The other message ids merged into this row (see mergeByPhone). */
+  keys?: string[]
+  verdict?: { kind: 'lead' | 'other' | 'unclear'; category: string | null; reason: string | null; via: string }
 }
 
 /** capture_sales_chats takes this many rows at a time. */
@@ -98,9 +109,41 @@ export function chatRows(body: unknown): ChatRow[] {
           ad_headline: text(ref.headline, 200),
           ad_url: text(ref.source_url, 500),
           ctwa_clid: text(ref.ctwa_clid, 500),
+          kind,
+          file: kind === 'document' ? text(obj(m.document).filename, 200) : null,
         })
       }
     }
   }
   return out
+}
+
+/**
+ * One delivery can hold several messages from the same client ("Hi", then "need 20 chairs"). They are judged, and saved,
+ * as one chat: the first message's id and ad, every message's words in order, the other ids in `keys` (the database
+ * remembers them all, so a resend of any of them counts once). Clients keep the order they first appear in.
+ */
+export function mergeByPhone(rows: ChatRow[]): { phone: string; rows: ChatRow[]; row: CaptureRow }[] {
+  const groups = new Map<string, ChatRow[]>()
+  for (const r of rows) groups.set(r.phone, [...(groups.get(r.phone) ?? []), r])
+  return [...groups].map(([phone, rs]) => {
+    const first = rs[0]
+    const ad = rs.find(r => r.ad_id) ?? first
+    const words = rs.map(r => r.message).filter((w): w is string => !!w).join('\n')
+    return {
+      phone,
+      rows: rs,
+      row: {
+        key: first.key,
+        phone,
+        name: rs.find(r => r.name)?.name ?? null,
+        message: words ? words.slice(0, 4000) : null,
+        ad_id: ad.ad_id,
+        ad_headline: ad.ad_headline,
+        ad_url: ad.ad_url,
+        ctwa_clid: ad.ctwa_clid,
+        ...(rs.length > 1 ? { keys: rs.slice(1).map(r => r.key) } : {}),
+      },
+    }
+  })
 }

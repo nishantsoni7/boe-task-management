@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), the Lead Master date range (20270606000000), and the WhatsApp chats (20270609000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), the Lead Master date range (20270606000000), the WhatsApp chats (20270609000000) and their judging (20270613000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -90,7 +90,7 @@ for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', 
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
   '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
-  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql']) {
+  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -1014,6 +1014,139 @@ await step('Browser users cannot fire the alert job', () =>
     const c = await chat([{ key: 'wamid.12', phone: '+919811100075', message: 'I just filled your form' }])
     must(c.ignored === 1 && c.repeat === 0, JSON.stringify(c))
     must((await events(l.id)).filter(e => e.kind === 'enquired_again').length === 0, 'a form then a chat is one enquiry')
+  })
+
+  // ── Is it a lead? The route's verdict (20270613000000). Every check above ran on the new capture with no verdict. ──
+  const lead_ = (key, phone, message, kind, extra = {}) =>
+    ({ key, phone, name: extra.name ?? null, message, ...extra, verdict: { kind, category: extra.category ?? null, reason: extra.reason ?? null, via: 'ai' } })
+  const held = async phone => (await db.query(`select * from public.sales_whatsapp_held where phone_e164 = $1`, [phone])).rows[0]
+  const context = phones => asService('select public.sales_chat_context($1::jsonb) as r', phones)
+  const J1 = '+919811100081', J2 = '+919811100082', J3 = '+919811100083', J4 = '+919811100084', J5 = '+919811100085', J6 = '+919811100086'
+
+  await step('Judged a lead: the same lead as before, tagged Auto-detected with the reason, given by the same rule', async () => {
+    const r = await chat([lead_('wj.1', J1, 'Need 40 chairs for my cafe', 'lead', { name: 'Cafe One', reason: 'Asks for 40 chairs for a cafe' })])
+    must(r.created === 1 && r.held === 0, JSON.stringify(r))
+    const l = await lead(J1)
+    must(l.wa_tag === 'detected' && l.wa_reason === 'Asks for 40 chairs for a cafe' && l.source === 'whatsapp', JSON.stringify([l.wa_tag, l.wa_reason]))
+    must(r.allotted === 1 ? !!l.assigned_to : (await waitingFor(J1)).some(t => t.title === 'New lead from WhatsApp'), 'neither given nor told')
+    must((await events(l.id))[0].detail === 'WhatsApp chat', 'the history line changed')
+    const row = (await one(U.leadmgr, `select public.get_sales_lead($1)`, [l.id])).lead
+    must(row.wa_tag === 'detected' && row.wa_reason === 'Asks for 40 chairs for a cafe' && 'premium' in row, 'the screens do not see the tag')
+  })
+  await step('Judged not a lead: no lead, nobody told, the words held with the reason; a resend counts once', async () => {
+    const notes = Number(await scalar(`select count(*) from public.notifications`))
+    const r = await chat([lead_('wj.2', J2, 'I want a job in your factory', 'other', { name: 'Ravi', category: 'job_seeker', reason: 'Asks for a job' })])
+    must(r.held === 1 && r.created === 0, JSON.stringify(r))
+    must(!(await lead(J2)), 'a job seeker became a lead')
+    const h = await held(J2)
+    must(h.category === 'job_seeker' && h.reason === 'Asks for a job' && h.name === 'Ravi' && h.status === 'held', JSON.stringify(h))
+    must(h.messages.length === 1 && h.messages[0].text === 'I want a job in your factory' && h.messages[0].key === 'wj.2', JSON.stringify(h.messages))
+    must(Number(await scalar(`select count(*) from public.notifications`)) === notes, 'somebody was told about a job seeker')
+    const again = await chat([lead_('wj.2', J2, 'I want a job in your factory', 'other', { category: 'job_seeker' })])
+    must(again.already === 1 && again.held === 0 && (await held(J2)).messages.length === 1, JSON.stringify(again))
+  })
+  await step('A held number keeps only its last 5 messages, and its next message is judged with them: "Hi" then a real ask is a lead with every word', async () => {
+    for (let i = 3; i <= 8; i++) await chat([lead_(`wj.${i}`, J3, `msg ${i}`, 'other', { category: 'personal' })])
+    must((await held(J3)).messages.map(m => m.text).join(',') === 'msg 4,msg 5,msg 6,msg 7,msg 8', JSON.stringify((await held(J3)).messages))
+    const ctx = await context([J3, J1, '+919811100099'])
+    // jsonb keeps its keys sorted: compare sorted.
+    const same_ = (a, b) => JSON.stringify(a, Object.keys(a).sort()) === JSON.stringify(b, Object.keys(b).sort())
+    must(same_(ctx[J3], { known: false, held: ['msg 4', 'msg 5', 'msg 6', 'msg 7', 'msg 8'] }), JSON.stringify(ctx[J3]))
+    must(same_(ctx[J1], { known: true }), 'a known lead must say nothing more: ' + JSON.stringify(ctx[J1]))
+    must(same_(ctx['+919811100099'], { known: false, held: [] }), JSON.stringify(ctx['+919811100099']))
+    const r = await chat([lead_('wj.9', J3, 'Actually I need 12 dining chairs', 'lead', { reason: 'Asks for 12 dining chairs' })])
+    must(r.created === 1, JSON.stringify(r))
+    const l = await lead(J3)
+    must(l.requirement === 'msg 4\nmsg 5\nmsg 6\nmsg 7\nmsg 8\nActually I need 12 dining chairs', JSON.stringify(l.requirement))
+    must(!(await held(J3)), 'the held words stayed after the number became a lead')
+  })
+  await step('Unclear ("Hi"): a lead tagged Check that nobody is given, and the allotters hear "WhatsApp chat to check"', async () => {
+    await hours(true)
+    const r = await chat([lead_('wj.10', J4, 'Hi', 'unclear', { name: 'Someone', reason: 'Only says hi' })])
+    must(r.created === 1 && r.allotted === 0, JSON.stringify(r))
+    const l = await lead(J4)
+    must(l.wa_tag === 'check' && !l.assigned_to, JSON.stringify([l.wa_tag, l.assigned_to]))
+    const told = await waitingFor(J4)
+    must(told.length >= 2 && told.every(t => t.title === 'WhatsApp chat to check' && t.body.startsWith('Someone. Could not tell if this is a lead')), JSON.stringify(told))
+    const ctx = await context([J4])
+    must(ctx[J4].known === true && ctx[J4].check === true && ctx[J4].words === 'Hi', JSON.stringify(ctx[J4]))
+  })
+  await step('A Check lead nobody holds keeps listening: a next message that is not a lead only adds its words, a lead verdict makes it a lead given by the rule', async () => {
+    const r1 = await chat([lead_('wj.11', J4, 'what are you', 'unclear')])
+    must(r1.ignored === 1 && (await lead(J4)).wa_tag === 'check' && (await lead(J4)).requirement === 'Hi\n\nwhat are you', JSON.stringify([r1, (await lead(J4)).requirement]))
+    const r2 = await chat([lead_('wj.12', J4, 'I need a sofa set for my hotel lobby', 'lead', { reason: 'Asks for a sofa set for a hotel' })])
+    must(r2.promoted === 1 && r2.created === 0, JSON.stringify(r2))
+    const l = await lead(J4)
+    must(l.wa_tag === 'detected' && l.wa_reason === 'Asks for a sofa set for a hotel' && l.requirement.endsWith('I need a sofa set for my hotel lobby'), JSON.stringify([l.wa_tag, l.wa_reason, l.requirement]))
+    must(r2.allotted === 1 ? !!l.assigned_to : (await waitingFor(J4)).some(t => t.title === 'New lead from WhatsApp'), 'neither given nor told')
+    // Now an ordinary lead: its next message the same day is the conversation going on, not judged, not added.
+    const r3 = await chat([{ key: 'wj.13', phone: J4, message: 'ok' }])
+    must(r3.ignored === 1 && !(await lead(J4)).requirement.endsWith('ok'), JSON.stringify(r3))
+  })
+  await step('A chat from an ad is a lead whatever the verdict says', async () => {
+    const r = await chat([lead_('wj.14', J5, 'We supply plywood', 'other', { category: 'supplier', ad_id: 'AD7', ad_headline: 'Chairs' })])
+    must(r.created === 1 && r.held === 0 && (await lead(J5)).wa_tag === 'detected', JSON.stringify(r))
+    // A Check lead whose client then opens the chat from an ad: a lead at once, and the ad is kept.
+    const J7 = '+919811100090'
+    await chat([lead_('wj.18', J7, 'Hello', 'unclear')])
+    const r2 = await chat([lead_('wj.19', J7, 'Saw this chair in your ad', 'lead', { ad_id: 'AD8', ad_headline: 'Cafe chairs', reason: 'Opened the chat from an ad' })])
+    const l = await lead(J7)
+    must(r2.promoted === 1 && l.wa_tag === 'detected', JSON.stringify([r2, l.wa_tag]))
+    must(JSON.stringify(await clicks(l.id)) === JSON.stringify([{ ad_id: 'AD8', headline: 'Cafe chairs', source_url: null, ctwa_clid: null }]), 'the ad was not kept')
+  })
+  await step('Merged messages: every id is remembered, so a resend of any of them counts once', async () => {
+    const r = await chat([{ ...lead_('wj.15', J6, 'Hello\nNeed 6 bar stools', 'lead'), keys: ['wj.16', 'wj.17'] }])
+    must(r.created === 1, JSON.stringify(r))
+    must(Number(await scalar(`select count(*) from public.sales_lead_import_refs where ref in ('wa:wj.15', 'wa:wj.16', 'wa:wj.17')`)) === 3, 'not all remembered')
+    must((await chat([{ key: 'wj.16', phone: J6, message: 'Need 6 bar stools' }])).already === 1, 'a resend of a merged message counted again')
+  })
+
+  // ── Filtered chats: people who allot ──
+  const P_JOB = '+919811100087', P_TRUCK = '+919811100088'
+  await chat([lead_('wj.20', P_JOB, 'Sending my CV for the carpenter post', 'other', { name: 'Job Hunter', category: 'job_seeker', reason: 'Sends a CV' })])
+  await chat([lead_('wj.21', P_TRUCK, 'We give trucks pan India', 'other', { category: 'transport', reason: 'Offers trucks' })])
+  const heldId = async phone => (await held(phone)).id
+
+  await step('Only people with Sales assign (and Admin) read Filtered chats; nobody reads the table directly', async () => {
+    const list = await one(U.leadmgr, `select public.list_whatsapp_held_chats()`)
+    const job = list.rows.find(x => x.phone === P_JOB)
+    must(job && job.category === 'job_seeker' && job.reason === 'Sends a CV' && JSON.stringify(job.messages) === JSON.stringify(['Sending my CV for the carpenter post']), JSON.stringify(job))
+    must(list.rows.length >= 3 && list.rows[0].last_at >= list.rows[list.rows.length - 1].last_at, 'newest first')
+    must((await one(U.admin, `select public.list_whatsapp_held_chats()`)).rows.length === list.rows.length, 'admin sees a different list')
+    await expectErr(U.ashok, `select public.list_whatsapp_held_chats()`, /SALES_FORBIDDEN/)
+    await expectErr(U.manager, `select public.list_whatsapp_held_chats()`, /SALES_FORBIDDEN/)
+    await expectErr(U.leadmgr, `select count(*) from public.sales_whatsapp_held`, /permission denied/)
+    await expectErr(U.leadmgr, `select public.sales_chat_context('[]'::jsonb)`, /permission denied/)
+    await expectErr(U.ashok, `select public.make_whatsapp_chat_a_lead($1)`, /SALES_FORBIDDEN/, [await heldId(P_JOB)])
+    await expectErr(U.ashok, `select public.clear_whatsapp_held_chat($1)`, /SALES_FORBIDDEN/, [await heldId(P_JOB)])
+  })
+  await step('"This is a lead": a WhatsApp lead tagged From Filtered chats, by that person, NOT allotted, and gone from the list', async () => {
+    const id = await heldId(P_JOB)
+    const r = await one(U.leadmgr, `select public.make_whatsapp_chat_a_lead($1)`, [id])
+    must(r.status === 'created' && r.lead.wa_tag === 'hand' && r.lead.source === 'whatsapp' && r.lead.name === 'Job Hunter', JSON.stringify(r))
+    const l = await lead(P_JOB)
+    must(!l.assigned_to && l.created_by === U.leadmgr && l.requirement === 'Sending my CV for the carpenter post', JSON.stringify(l))
+    const ev = await events(l.id)
+    must(ev.length === 1 && ev[0].kind === 'added' && ev[0].detail === 'WhatsApp chat' && ev[0].actor === U.leadmgr, JSON.stringify(ev))
+    must(!(await held(P_JOB)), 'still held')
+    await expectErr(U.leadmgr, `select public.make_whatsapp_chat_a_lead($1)`, /SALES_NOT_FOUND/, [id])
+  })
+  await step('"Clear": out of the list for good; the number writing again is still judged, and a real ask still becomes a lead', async () => {
+    await one(U.leadmgr, `select public.clear_whatsapp_held_chat($1)`, [await heldId(P_TRUCK)])
+    const listed = async () => (await one(U.leadmgr, `select public.list_whatsapp_held_chats()`)).rows.some(x => x.phone === P_TRUCK)
+    must(!(await listed()), 'still listed')
+    await chat([lead_('wj.22', P_TRUCK, 'Special rates this week', 'other', { category: 'transport' })])
+    must(!(await listed()) && (await held(P_TRUCK)).status === 'cleared' && (await held(P_TRUCK)).messages.length === 2, 'came back after Clear')
+    const r = await chat([lead_('wj.23', P_TRUCK, 'Also we need 10 office chairs', 'lead')])
+    must(r.created === 1 && !(await held(P_TRUCK)), JSON.stringify(r))
+  })
+  await step('Held words are gone 30 days after their last message', async () => {
+    const OLD = '+919811100089'
+    await chat([lead_('wj.24', OLD, 'Bulk SMS offer', 'other', { category: 'service_seller' })])
+    await db.query(`update public.sales_whatsapp_held set last_at = now() - interval '31 days' where phone_e164 = $1`, [OLD])
+    must((await one(U.leadmgr, `select public.list_whatsapp_held_chats()`)).rows.every(x => x.phone !== OLD), 'listed after 30 days')
+    await chat([lead_('wj.25', J1, 'thanks', 'lead')])
+    must(!(await held(OLD)), 'kept after 30 days')
   })
 }
 
