@@ -5,15 +5,19 @@
 
 ## Snapshot
 
-- Commit: `b0f4ff3e` — Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
-- Commits on this branch: 1216
+- Commit: `d042c600` — Docs: the merged drawer already skips the old escalation lines
+- Commits on this branch: 1220
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
-- Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
+- Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
-- Test files: 784   Next.js 16.2.6, React 19.2.4
+- Test files: 785   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d042c600` 2026-11-11 Docs: the merged drawer already skips the old escalation lines
+- `03c2db3a` 2026-11-11 Docs: record PR #652 for the auto-escalation removal
+- `ac94007f` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free)
+- `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
 - `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
 - `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
@@ -35,10 +39,6 @@
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
-- `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
-- `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
-- `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
-- `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 
 ## Pages by top-level area
 
@@ -165,7 +165,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 24 source, 39 test
+- `src/lib/tasks` — 24 source, 40 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
@@ -454,7 +454,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270516000100_finance_bank_old_routes_closed.sql`
 - `20270517000000_finance_bank_line_ids_and_match_search.sql`
 - `20270517000100_orders_advance_percent.sql`
 - `20270518000000_register_seo_module.sql`
@@ -484,6 +483,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
 - `20270609000000_sales_whatsapp_capture.sql`
+- `20270610000000_task_health_check_stops_escalating.sql`
 
 ## All SQL function names
 
