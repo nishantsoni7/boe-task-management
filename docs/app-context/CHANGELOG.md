@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations, phase 1: build by room type, price, print, share a client link (PR pending) · `20270614000000` → NOT YET APPLIED
+## 2026-11-12 — Quotations, phase 1: build by room type, price, print, share a client link (PR #672) · `20270614000000` → NOT YET APPLIED
 - **Owner ask (2026-11-12).** A quotation maker inside BOE One to replace the Base44 tool: import any client file, clean up client pictures, easy to fill, share and reshare, connected to the other modules, and the base of the Pricing module. Planned the same night (plan + 15 mockups); the owner delegated every decision and asked for phase 1 to be built, tested and merged.
 - **Built.** New module `quotations` (view, create, edit, view_all; Admin only until granted). `/quotations` list, `/quotations/[id]` builder (room types × rooms, products with pictures, sizes in feet and inches shown in inches, per-room or fixed quantity, price, GST rate, optional lines, discount, fabric, packing, notes), `/quotations/[id]/print` (Print or save as PDF, the PI sheet's terms word for word), `/q/[token]` client link (no login) and a WhatsApp message with the link. History of every save, status change, share and client open.
 - **Database.** Four tables closed to every client role; all reads and writes through SECURITY DEFINER functions; `quotation_public(token)` is the only one open to anon and returns client-safe fields only. Public picture bucket `quotation-images`. Totals are never stored; the same arithmetic in `math.ts` and `quotation_value_before_gst`.
