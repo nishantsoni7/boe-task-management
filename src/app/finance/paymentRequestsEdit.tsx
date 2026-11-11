@@ -14,9 +14,8 @@ import { ProofReferenceField, ProofReferenceSection } from './components/ProofRe
 import { ProofDropZone } from './components/ProofDropZone'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import { compressImageFile } from '@/lib/attachment-utils'
-import { customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage, paymentModeLabel, type RequestDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
+import { customerDisplayName, destinationNeedsTarget, isPaymentMode, modeAsksWhereMoneyIs, paymentEntryErrorMessage, paymentModeLabel, type RequestDestination as PaymentEntryDestination } from '@/lib/finance/paymentEntry'
 import { legacyRequestProblems, normalizeLegacyClientName, normalizeLegacyOrderNo } from '@/lib/finance/legacyOrderAllocation'
-import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { loadPaymentAllocation, loadPaymentIntent, type StoredAllocation } from './paymentIntents'
 import { APPROVED_RACE_MESSAGE, type PaymentRequest } from './paymentRequestsModel'
@@ -484,7 +483,7 @@ export function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSav
       {/* WHERE THE MONEY IS. Not edited here: it moves only through a handover
           the receiver accepts (Hand over cash on the Finance page), and its
           journey is shown in the payment's details. */}
-      {modeRequiresCustodyTrail(paymentMode) && (
+      {modeAsksWhereMoneyIs(paymentMode) && (
         <FormStep number={3} title="Where is this money now?">
           <p style={{ margin: 0, fontSize: '13px', color: '#4C5352', lineHeight: 1.5 }}>
             This is cash the company must receive. To pass it on, use <strong>Hand over cash</strong> on the Finance page; the receiver accepts it there.

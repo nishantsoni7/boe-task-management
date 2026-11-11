@@ -61,7 +61,10 @@ describe('the form is organised as steps', () => {
   })
 
   test('the custody step exists only for the two modes that carry a trail', () => {
-    assert.ok(/modeRequiresCustodyTrail\(form\.paymentMode\) && \(/.test(src))
+    // PNB and Paytm ask it; Canara asks for the paying account instead.
+    assert.ok(src.includes('modeAsksWhereMoneyIs(form.paymentMode)'))
+    assert.ok(/\{asksMoneyNow && \(/.test(src))
+    assert.ok(/\{isCanara && \(/.test(src))
   })
 
   test('the amount carries the rupee sign and the search box takes the cursor', () => {

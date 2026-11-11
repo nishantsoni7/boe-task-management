@@ -20,10 +20,11 @@ import { FieldProblem, FormStep, OptionalDisclosure, PaymentModePicker, QuickDat
 import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
 import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
 import { ProofDropZone } from './components/ProofDropZone'
-import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, paymentEntryErrorMessage } from '@/lib/finance/paymentEntry'
+import { DEFAULT_PAYMENT_MODE, customerDisplayName, destinationNeedsTarget, isPaymentMode, modeAsksWhereMoneyIs, paymentEntryErrorMessage } from '@/lib/finance/paymentEntry'
 import { SubmissionAttempt, SUBMISSION_OUTCOME_UNKNOWN, isAmbiguousFailure } from '@/lib/finance/submissionAttempt'
-import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
 import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
+import { CanaraAccountFields } from './components/CanaraAccountFields'
+import { EMPTY_CANARA_ACCOUNT, canaraAccountIsEmpty, canaraAccountProblems, composeCanaraNote, isCanaraMode, type CanaraAccount } from '@/lib/finance/canaraAccount'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import { Field, ErrorBanner } from './paymentRequestsAtoms'
 
@@ -103,6 +104,9 @@ export function NewPaymentConfirmationModal({
   // recorder says whether they still hold it or handed it to someone; a handover
   // is offered after the payment is saved, and the receiver must accept it.
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
+  // CANARA asks for the paying account instead (owner 2026-11-11): no question,
+  // no handover; Nitish accepts it once the money reached the company.
+  const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
   // The payment saved but its handover did not: the record is right ("with
   // you"), and the notice offers one retry. Send is closed while it shows.
   const [handoverNotice, setHandoverNotice] = useState<{ paymentId: string; label: string; recipientId: string; message: string } | null>(null)
@@ -137,7 +141,10 @@ export function NewPaymentConfirmationModal({
   )
 
   // "Handed to" needs a person. create_cash_handover decides everything again.
-  const custodyError = modeRequiresCustodyTrail(form.paymentMode) ? moneyNowError(moneyNow, userId) : null
+  const asksMoneyNow = modeAsksWhereMoneyIs(form.paymentMode)
+  const custodyError = asksMoneyNow ? moneyNowError(moneyNow, userId) : null
+  const isCanara = isCanaraMode(form.paymentMode)
+  const canaraProblems = isCanara ? canaraAccountProblems(canara) : {}
 
   const canSubmit = !!(
     isPaymentEntryComplete(entry) &&
@@ -145,6 +152,7 @@ export function NewPaymentConfirmationModal({
     form.paymentDate &&
     isPaymentMode(form.paymentMode) &&
     !custodyError &&
+    Object.keys(canaraProblems).length === 0 &&
     !attachError &&
     !handoverNotice
   )
@@ -164,6 +172,7 @@ export function NewPaymentConfirmationModal({
     entry.target !== null ||
     !!(entry.legacy?.orderNo.trim() || entry.legacy?.clientName.trim()) ||
     moneyNow.choice !== 'with_me' ||
+    !canaraAccountIsEmpty(canara) ||
     attachFile !== null
 
   const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
@@ -287,7 +296,7 @@ export function NewPaymentConfirmationModal({
       p_payment_date:    form.paymentDate,
       p_payment_mode:    form.paymentMode,
       p_proof_note:      form.proofNote.trim() || null,
-      p_sales_note:      form.salesNote.trim() || null,
+      p_sales_note:      composeCanaraNote(form.paymentMode, canara, form.salesNote) || null,
       p_custody_events:  custodyEvents,
       // THE ONE DESTINATION THAT TYPES ITS TARGET (20270607000000). Sent only
       // for an Old Order, so every other request is byte-for-byte what it was.
@@ -351,7 +360,7 @@ export function NewPaymentConfirmationModal({
 
     // HANDED TO SOMEONE: offer the handover now that the payment exists. If it
     // fails the payment stays correct ("with you") and the notice offers a retry.
-    if (modeRequiresCustodyTrail(form.paymentMode) && moneyNow.choice === 'handed_to') {
+    if (asksMoneyNow && moneyNow.choice === 'handed_to') {
       const failed = await handOverAfterRecording(supabase, created.payment_request_id, moneyNow.recipientId)
       if (failed) {
         submitting.current = false
@@ -482,7 +491,7 @@ export function NewPaymentConfirmationModal({
             <Field label="Payment mode" required quiet>
               <PaymentModePicker
                 value={form.paymentMode}
-                onChange={v => setForm(prev => ({ ...prev, paymentMode: v }))}
+                onChange={v => { setForm(prev => ({ ...prev, paymentMode: v })); if (isCanaraMode(v)) setProofOpen(true) }}
                 disabled={saving}
                 describedBy="payment-mode-hint"
               />
@@ -492,7 +501,7 @@ export function NewPaymentConfirmationModal({
 
           {/* 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara, decided by
               the mode and decided again server-side. */}
-          {modeRequiresCustodyTrail(form.paymentMode) && (
+          {asksMoneyNow && (
             <FormStep number={3} quiet title="Where is this money now?">
               <WhereIsMoneyNowField
                 paymentMode={form.paymentMode}
@@ -504,12 +513,26 @@ export function NewPaymentConfirmationModal({
             </FormStep>
           )}
 
-          {/* PAYMENT PROOF / REFERENCE — closed until wanted. The attachment, the
+          {/* 3. CANARA — the account the money came from, in place of the
+              question above (owner 2026-11-11). Holder and number are required. */}
+          {isCanara && (
+            <FormStep number={3} quiet title="Account details">
+              <CanaraAccountFields
+                value={canara}
+                onChange={setCanara}
+                problems={showProblems ? canaraProblems : null}
+                disabled={saving}
+              />
+            </FormStep>
+          )}
+
+          {/* PAYMENT PROOF / REFERENCE — closed until wanted (opened for Canara,
+              whose screenshot and payment details are the point). The attachment, the
               reference and the note to Finance stay one section; the database
               keeps three columns because they mean three things. What was typed
               lives in this form's state, so closing the section never loses it. */}
           <OptionalDisclosure
-            title="Add proof or notes"
+            title={isCanara ? 'Add payment details or screenshot' : 'Add proof or notes'}
             hint={attachFile ? 'Proof attached' : (form.proofNote.trim() || form.salesNote.trim()) ? 'Added' : 'Optional'}
             open={proofOpen}
             onToggle={() => setProofOpen(o => !o)}
