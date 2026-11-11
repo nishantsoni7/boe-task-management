@@ -2,7 +2,7 @@
 
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import type { Person, SalesLead } from '@/lib/salesLeads/api'
-import { sourceLabel } from '@/lib/salesLeads/constants'
+import { sourceLabel, WA_TAGS } from '@/lib/salesLeads/constants'
 import { receivedLabel } from '@/lib/salesLeads/format'
 import { AllotPicker } from './AllotParts'
 import s from './salesLeads.module.css'
@@ -63,9 +63,16 @@ export function LeadTable({ rows, people, canAssign, today, saving, onOpen, onPi
                 {l.email && <span className="fin-sub">{l.email}</span>}
               </td>
               <td className={s.cSrc}>
-                <span className={s.tag}>{sourceLabel(l.source)}</span>
-                {l.is_history && <span className={s.tag}>Old lead</span>}
-                {l.premium && <span className={`${s.tag} ${s.tagPremium}`} title={`Premium: ${l.premium}`}>Premium</span>}
+                <span className={s.tags}>
+                  <span className={s.tag}>{sourceLabel(l.source)}</span>
+                  {l.wa_tag && WA_TAGS[l.wa_tag] && (
+                    <span className={`${s.tag} ${l.wa_tag === 'check' ? s.tagCheck : s.tagAuto}`} title={l.wa_reason ?? WA_TAGS[l.wa_tag].line}>
+                      {WA_TAGS[l.wa_tag].label}
+                    </span>
+                  )}
+                  {l.is_history && <span className={s.tag}>Old lead</span>}
+                  {l.premium && <span className={`${s.tag} ${s.tagPremium}`} title={`Premium: ${l.premium}`}>Premium</span>}
+                </span>
               </td>
               <td className={s.cLoc}>{l.location ?? <span className="fin-muted">–</span>}</td>
               <td className={s.cReq} title={l.requirement ?? undefined}>{l.requirement}</td>

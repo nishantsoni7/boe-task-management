@@ -11,17 +11,26 @@
 //         message delivered twice counts once. Meta resends for up to 36 hours when it is not answered 200, so a failure to
 //         save answers 500 and the retry is safe.
 //
-// With either setting missing the route answers 503 and does nothing. It never logs a number, a name or a message.
+//         IS IT A LEAD? (20270613000000) Before saving, the database says which numbers are already leads
+//         (sales_chat_context). Those are not judged and nothing about them leaves BOE One. A chat opened from an ad is a
+//         lead. Every other new number's words are judged (src/lib/salesLeads/classify.ts, ANTHROPIC_API_KEY) and the
+//         verdict goes with the row: a lead, not a lead (held in Filtered chats), or unclear (a lead tagged Check). Without
+//         the key, or when judging fails, every new chat is unclear: nothing is lost.
+//
+// With either Meta setting missing the route answers 503 and does nothing. It never logs a number, a name or a message.
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { chatRows, MAX_ROWS, safeEqual, signatureMatches } from '@/lib/salesLeads/whatsapp'
+import { FALLBACK, FROM_AD, judgeChat, type Verdict } from '@/lib/salesLeads/classify'
+import { chatRows, MAX_ROWS, mergeByPhone, safeEqual, signatureMatches, type CaptureRow } from '@/lib/salesLeads/whatsapp'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 const MAX_BODY_BYTES = 2_000_000
+// Judging runs side by side, each with its own 8 s limit, inside maxDuration.
+const MAX_JUDGED = 20
 
 export async function GET(req: Request) {
   const expected = process.env.WA_VERIFY_TOKEN
@@ -67,19 +76,54 @@ export async function POST(req: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  const total = { created: 0, repeat: 0, ignored: 0, already: 0, allotted: 0, failed: 0 }
-  for (let i = 0; i < rows.length; i += MAX_ROWS) {
-    const { data, error } = await svc.rpc('capture_sales_chats', { p_rows: rows.slice(i, i + MAX_ROWS) })
+  // One chat per client: several messages from the same number in one delivery are judged and saved together.
+  const chats = mergeByPhone(rows)
+
+  type Known = { known: boolean; check?: boolean; words?: string; held?: string[] }
+  const context: Record<string, Known> = {}
+  for (let i = 0; i < chats.length; i += MAX_ROWS) {
+    const { data, error } = await svc.rpc('sales_chat_context', { p_phones: chats.slice(i, i + MAX_ROWS).map(c => c.phone) })
+    if (error) {
+      console.error('[sales/capture/whatsapp] context failed:', error.message)
+      return NextResponse.json({ error: 'The chats could not be saved.' }, { status: 500 })
+    }
+    Object.assign(context, data as Record<string, Known>)
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) console.error('[sales/capture/whatsapp] ANTHROPIC_API_KEY is not set - new chats are saved as Check')
+  const toSave: CaptureRow[] = await Promise.all(chats.map(async (c, i): Promise<CaptureRow> => {
+    const known = context[c.phone]
+    if (known?.known && !known.check) return c.row
+    let verdict: Verdict
+    if (c.row.ad_id) verdict = FROM_AD
+    // A spend guard per delivery; past it a chat is a Check lead, never dropped.
+    else if (i >= MAX_JUDGED) verdict = FALLBACK
+    else {
+      verdict = await judgeChat({
+        name: c.row.name,
+        earlier: known?.check ? [known.words ?? ''] : (known?.held ?? []),
+        messages: c.rows.map(r => ({ kind: r.kind, text: r.message, file: r.file })),
+      }, { apiKey })
+    }
+    return { ...c.row, verdict }
+  }))
+
+  const total = { created: 0, repeat: 0, ignored: 0, already: 0, allotted: 0, held: 0, promoted: 0, failed: 0 }
+  for (let i = 0; i < toSave.length; i += MAX_ROWS) {
+    const { data, error } = await svc.rpc('capture_sales_chats', { p_rows: toSave.slice(i, i + MAX_ROWS) })
     if (error) {
       console.error('[sales/capture/whatsapp] capture failed:', error.message)
       return NextResponse.json({ error: 'The chats could not be saved.' }, { status: 500 })
     }
-    const r = data as { created: number; repeat: number; ignored: number; already: number; allotted: number; failed: unknown[] }
+    const r = data as { created: number; repeat: number; ignored: number; already: number; allotted: number; held?: number; promoted?: number; failed: unknown[] }
     total.created += r.created
     total.repeat += r.repeat
     total.ignored += r.ignored
     total.already += r.already
     total.allotted += r.allotted
+    total.held += r.held ?? 0
+    total.promoted += r.promoted ?? 0
     total.failed += r.failed.length
   }
   return NextResponse.json(total)

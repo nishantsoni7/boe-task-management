@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Upload, UserRoundCheck, X } from 'lucide-react'
+import { MessageCircle, Plus, Upload, UserRoundCheck, X } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
@@ -13,7 +13,7 @@ import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { dateParam, enumParam, idParam, optionParam, textParam, type ParamCodec } from '@/lib/listState'
 import {
-  allotLead, allotWaiting, fetchLeadPage, fetchPeople, SALES_KEY, SalesRequestError,
+  allotLead, allotWaiting, fetchHeldChats, fetchLeadPage, fetchPeople, HELD_KEY, SALES_KEY, SalesRequestError,
   type LeadPage, type SalesLead,
 } from '@/lib/salesLeads/api'
 import { allotStep } from '@/lib/salesLeads/allot'
@@ -91,6 +91,15 @@ export function LeadMasterScreen() {
     staleTime: 5 * 60_000,
     enabled: ready,
   })
+
+  // WhatsApp chats judged not to be leads (20270613000000): only people who allot see them, and only the count here.
+  const held = useQuery({
+    queryKey: HELD_KEY,
+    queryFn: () => fetchHeldChats(supabase),
+    staleTime: 60_000,
+    enabled: ready && canAssign,
+  })
+  const heldLabel = `Filtered chats${held.data?.rows.length ? ` (${held.data.rows.length})` : ''}`
 
   const list = useInfiniteQuery({
     queryKey: [SALES_KEY, 'list', when.period, when.from, when.to, state.holder, state.source, state.q],
@@ -260,6 +269,7 @@ export function LeadMasterScreen() {
               <span className={`fin-count ${s.phoneHide}`}>{first ? plural(first.total, 'lead') : ''}</span>
               {(canCreate || canAssign) && (
                 <div className={`${s.headActions} ${s.phoneHide}`}>
+                  {canAssign && <Link className={`boe-btn boe-btn-secondary ${s.add}`} href="/sales/lead-master/filtered-chats"><MessageCircle aria-hidden="true" />{heldLabel}</Link>}
                   {canAssign && <Link className={`boe-btn boe-btn-secondary ${s.add}`} href="/sales/import"><Upload aria-hidden="true" />Import from ClickUp</Link>}
                   {canCreate && <Link className={`boe-btn boe-btn-primary ${s.add}`} href="/sales/lead-master/new"><Plus aria-hidden="true" />Add lead</Link>}
                 </div>
@@ -328,6 +338,7 @@ export function LeadMasterScreen() {
           kind="add"
           items={[
             ...(canCreate ? [{ key: 'add', label: 'Add lead', icon: <Plus size={18} />, primary: true, onSelect: () => router.push('/sales/lead-master/new') }] : []),
+            ...(canAssign ? [{ key: 'held', label: heldLabel, icon: <MessageCircle size={18} />, onSelect: () => router.push('/sales/lead-master/filtered-chats') }] : []),
             ...(canAssign ? [{ key: 'import', label: 'Import from ClickUp', icon: <Upload size={18} />, onSelect: () => router.push('/sales/import') }] : []),
           ]}
         />

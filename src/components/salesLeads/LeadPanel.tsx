@@ -9,7 +9,7 @@ import {
   fetchLead, SALES_KEY, SalesRequestError, updateLead,
   type Person, type SalesLead,
 } from '@/lib/salesLeads/api'
-import { sourceLabel } from '@/lib/salesLeads/constants'
+import { sourceLabel, WA_TAGS } from '@/lib/salesLeads/constants'
 import { dayLabelLong, whenLabel } from '@/lib/salesLeads/format'
 import { formFromLead, toInput, validateLead, type LeadForm } from '@/lib/salesLeads/validation'
 import { createClient } from '@/lib/supabase/client'
@@ -100,6 +100,15 @@ export function LeadPanel({ leadId, people, canAssign, canEdit, saving, onClose,
                   <dt>Received</dt>
                   <dd><span className={s.lock}>{dayLabelLong(lead.received_on)} <Lock size={12} aria-label="Fixed" /></span></dd>
                   <dt>Source</dt><dd>{sourceLabel(lead.source)}</dd>
+                  {lead.wa_tag && WA_TAGS[lead.wa_tag] && (
+                    <>
+                      <dt>WhatsApp check</dt>
+                      <dd>
+                        <span className={`${s.tag} ${lead.wa_tag === 'check' ? s.tagCheck : s.tagAuto}`}>{WA_TAGS[lead.wa_tag].label}</span>
+                        <div className="fin-sub">{WA_TAGS[lead.wa_tag].line}{lead.wa_reason && lead.wa_tag !== 'hand' ? `: ${lead.wa_reason}` : ''}</div>
+                      </dd>
+                    </>
+                  )}
                   <dt>Name</dt><dd>{lead.name ?? 'No name'}</dd>
                   <dt>Email</dt><dd>{lead.email ?? '–'}</dd>
                   <dt>Location</dt><dd>{lead.location ?? '–'}</dd>

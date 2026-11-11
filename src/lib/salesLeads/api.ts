@@ -2,7 +2,7 @@ import type { createClient } from '@/lib/supabase/client'
 import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
 import type { HistoryRow, ImportRow } from './clickup'
 import type { SheetRow } from './sheets'
-import type { LeadSource, Period } from './constants'
+import type { LeadSource, Period, WaTag } from './constants'
 
 // Thin typed wrappers over the database functions (20270524000000). There is no API route in between on purpose:
 // every function reads auth.uid() itself, so the browser's own session IS the identity, and the database decides
@@ -32,6 +32,10 @@ export type SalesLead = {
   is_history?: boolean
   /** Why it is Premium, read from what the client wrote ("250 seats", "₹20 lakh"); null when it is not. */
   premium?: string | null
+  /** A WhatsApp chat BOE One judged (20270613000000); null for every other lead. */
+  wa_tag?: WaTag | null
+  /** The judge's one line ("Asks for 20 chairs for a hotel"). */
+  wa_reason?: string | null
 }
 
 export type LeadPage = {
@@ -184,6 +188,32 @@ export const updateLead = (s: Supabase, id: string, i: LeadInput, expectedUpdate
 /** `expectedFrom` is who the screen showed as holding the lead (null = not allotted): the database refuses the change if that is stale. */
 export const allotLead = (s: Supabase, id: string, to: string, expectedFrom: string | null) =>
   call<SaveResult>(() => s.rpc('allot_sales_lead', { p_id: id, p_to: to, p_expected_from: expectedFrom }))
+
+// ── Filtered chats (20270613000000): WhatsApp chats judged not to be leads. Sales `assign` only. ──
+
+export type HeldChat = {
+  id: string
+  phone: string
+  name: string | null
+  /** One of HELD_KINDS' keys. */
+  category: string
+  reason: string | null
+  first_at: string
+  last_at: string
+  /** The last 5 messages, oldest first. */
+  messages: string[]
+}
+
+export const HELD_KEY = [SALES_KEY, 'held'] as const
+
+export const fetchHeldChats = (s: Supabase) =>
+  call<{ rows: HeldChat[] }>(() => s.rpc('list_whatsapp_held_chats'))
+
+export const makeHeldChatALead = (s: Supabase, id: string) =>
+  call<SaveResult>(() => s.rpc('make_whatsapp_chat_a_lead', { p_id: id }))
+
+export const clearHeldChat = (s: Supabase, id: string) =>
+  call<null>(() => s.rpc('clear_whatsapp_held_chat', { p_id: id }))
 
 // ── The Lead Board (20270525000000) ─────────────────────────────────────────
 

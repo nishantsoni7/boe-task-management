@@ -25,6 +25,25 @@ export function sourceLabel(value: string): string {
   return LEAD_SOURCES.find(s => s.value === value)?.label ?? value
 }
 
+/** The tag a WhatsApp chat gets when BOE One judges it (20270613000000). */
+export type WaTag = 'detected' | 'check' | 'hand'
+export const WA_TAGS: Record<WaTag, { label: string; line: string }> = {
+  detected: { label: 'Auto-detected', line: 'BOE One read the WhatsApp chat as a lead' },
+  check: { label: 'Check', line: 'BOE One could not tell if this chat is a lead: read it before allotting' },
+  hand: { label: 'From Filtered chats', line: 'Judged not a lead at first, then chosen as a lead by hand' },
+}
+
+/** Why a WhatsApp chat was not taken as a lead (the Filtered chats list). */
+export const HELD_KINDS: Record<string, string> = {
+  job_seeker: 'Job seeker',
+  supplier: 'Supplier',
+  transport: 'Transport',
+  service_seller: 'Selling a service',
+  existing_customer: 'Existing order',
+  personal: 'Personal',
+  other: 'Not a buyer',
+}
+
 /** The period cards. The database counts them all at once and ignores every other filter. */
 export const PERIODS = [
   { key: 'today', label: 'Today' },
