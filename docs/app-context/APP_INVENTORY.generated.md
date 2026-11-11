@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9ca19c13` — For you: "Pending from <name>" per payment, verify card only where you can act
-- Commits on this branch: 1227
+- Commit: `b3f505be` — Docs: record the merge of #666 (For you: Pending from per payment)
+- Commits on this branch: 1229
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 954   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `9ca19c13` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act
+- `b3f505be` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment)
+- `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
+- `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
 - `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
@@ -37,8 +39,6 @@
 - `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
 - `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
 - `ca901dcd` 2026-11-07 Payment Requests popup: every fact once, the Decision first (#641)
-- `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
-- `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
 
 ## Pages by top-level area
 
