@@ -1241,6 +1241,8 @@ describe('the applied migrations are frozen', () => {
       '20270610000000_task_health_check_stops_escalating.sql',
       // Orders, the PIs Operations flagged that the caller must answer: one read-only function.
       '20270611000000_my_flagged_pis.sql',
+      // Finance, a PNB / Paytm / Canara payment is Confirmed when its cash reaches the company: one trigger, two helpers, three functions restated.
+      '20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql',
     ])
   })
 
@@ -1729,6 +1731,7 @@ describe('the applied migrations are frozen', () => {
       '20270609000000_sales_whatsapp_capture.sql',
       '20270610000000_task_health_check_stops_escalating.sql',
       '20270611000000_my_flagged_pis.sql',
+      '20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -4,7 +4,8 @@
 // Canara — Canara also stands for money received in somebody's savings
 // account) is carried by people until it reaches the company. Its JOURNEY is
 // the chain of accepted handovers; it CLOSES when its holder is a company cash
-// custodian (an admin setting; Nitish today).
+// custodian (an admin setting; Nitish today), and at that moment the payment is
+// CONFIRMED (20270612000000; before that it cannot be verified from any door).
 //
 // One idea for users: "where is this money now?" Every tracked payment is in
 // exactly one of four states, said in the same words everywhere.
@@ -12,8 +13,6 @@
 // NOTHING HERE AUTHORIZES ANYTHING. Who may accept, hand over or receive is
 // decided by the database (create/accept_cash_handover, receive_cash_directly)
 // and echoed as the can_* flags of finance_cash_payment_state.
-
-import { isCanaraMode } from './canaraAccount'
 
 export const CASH_STATES = ['with_holder', 'waiting', 'disputed', 'with_company'] as const
 export type CashState = typeof CASH_STATES[number]
@@ -85,6 +84,26 @@ export function isTrackedPaymentMode(mode: string | null | undefined): boolean {
   return (TRACKED_PAYMENT_MODES as readonly string[]).includes((mode ?? '').trim().toLowerCase())
 }
 
+/**
+ * A PNB / Paytm / Canara payment whose cash is known NOT to be with the company.
+ * Such a payment is not verified by a Verify press: it is Confirmed when the
+ * company's cash custodian accepts it (20270612000000), and the database refuses
+ * every other door. An unknown state (still loading, not readable) is NOT
+ * "awaiting": the Verify control stays and the database decides.
+ */
+export function awaitsCompanyCash(
+  mode: string | null | undefined,
+  cash: Pick<CashPayment, 'state'> | null | undefined,
+): boolean {
+  return isTrackedPaymentMode(mode) && !!cash && cash.state !== 'with_company'
+}
+
+/** What stands in for the Verify control on such a payment. */
+export const CONFIRMED_WHEN_CASH_ARRIVES = 'Confirmed when the cash reaches the company'
+
+/** Said in every accept dialog: only the cash custodian's acceptance confirms. */
+export const ACCEPT_CONFIRMS_NOTE = 'If you receive cash for the company, accepting also confirms these payments.'
+
 // ── Reading the RPC JSON ─────────────────────────────────────────────────────
 
 type Raw = Record<string, unknown>
@@ -134,11 +153,7 @@ export function readCashPayment(raw: unknown): CashPayment | null {
     ageHours: num(o.age_hours),
     openHandover: readOpenHandover(o.open_handover),
     canAccept: o.can_accept === true,
-    // CANARA IS NEVER HANDED OVER (owner 2026-11-11): its money is in a bank
-    // account, so the recorder is not "holding" anything. The company cash
-    // custodian accepts it (Receive). The server still allows a handover of an
-    // old Canara payment; no screen offers one.
-    canHandOver: o.can_hand_over === true && !isCanaraMode(str(o.payment_mode)),
+    canHandOver: o.can_hand_over === true,
     canReceive: o.can_receive === true,
     orderException: readOrderException(o.order_exception),
   }
@@ -204,13 +219,12 @@ export function readJourney(raw: unknown): PaymentJourney | null {
 // ── Words ────────────────────────────────────────────────────────────────────
 
 /** The one phrase for where a payment's money is. */
-export function cashStateLabel(p: Pick<CashPayment, 'state' | 'holderName' | 'openHandover'> & { paymentMode?: string }): string {
+export function cashStateLabel(p: Pick<CashPayment, 'state' | 'holderName' | 'openHandover'>): string {
   switch (p.state) {
     case 'with_company': return 'With company'
     case 'waiting':      return `Waiting for ${p.openHandover?.recipientName ?? 'the receiver'} to accept`
     case 'disputed':     return `Not received by ${p.openHandover?.recipientName ?? 'the receiver'}`
-    // A Canara payment nobody carries is waiting for the company, not "with" its recorder.
-    case 'with_holder':  return isCanaraMode(p.paymentMode) ? 'Waiting for the company to accept' : `With ${p.holderName ?? 'someone'}`
+    case 'with_holder':  return `With ${p.holderName ?? 'someone'}`
   }
 }
 

@@ -59,7 +59,6 @@ import { useSignedInUserId, usePermissionContext } from '@/hooks/queries/usePerm
 import { formatINR } from '@/lib/currency'
 import { formatDateTime, formatFullDate } from '@/lib/ui'
 import { paymentModeLabel } from '@/lib/finance/paymentEntry'
-import { isCanaraMode } from '@/lib/finance/canaraAccount'
 import {
   totalsByHolder,
   waitingAge,
@@ -537,9 +536,7 @@ function Trail({ payment: p }: { payment: CashPayment }) {
               <div>
                 Now: {p.state === 'waiting' && p.openHandover
                   ? `waiting for ${p.openHandover.recipientName} to accept`
-                  : isCanaraMode(p.paymentMode)
-                    ? 'waiting for the company to accept'
-                    : `with ${p.holderName ?? 'someone'}, not yet with the company`}
+                  : `with ${p.holderName ?? 'someone'}, not yet with the company`}
               </div>
             </li>
           )}

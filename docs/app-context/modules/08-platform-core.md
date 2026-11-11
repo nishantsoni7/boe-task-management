@@ -205,6 +205,14 @@ Modules launcher (`src/app/modules/page.tsx`):
        `canViewAllFinance` (`approve` alone gives no read of other people's payments). Own payments are left out
        unless `verify_own_payment`. Review -> `/finance?tab=pending&request=<id>`, which opens the payment. It leaves
        when decided or sent back; a resubmitted payment returns (`updated_at` is in its Clear all key).
+       **Only where the viewer can act (owner 2026-11-11, `verifyCardApplies` in `forYouWork.ts`):** the read now takes
+       up to 100 pending payments (`FOR_YOU_PAYMENT_SCAN_LIMIT`, then the cards are filtered; the rest are only counted
+       as "N more") and keeps a bank (HDFC, no cash chain) payment for every verifier, and a PNB/Paytm/Canara payment
+       only once its cash is WITH THE COMPANY (not in `finance_unclosed_funds`) and only for whoever recorded it (if
+       they may decide their own) or a company cash custodian. While it is still on its way, item 3 says who it is
+       pending from instead. If the cash list is unknown or not "all", cash-route payments are not shown, and the group
+       says "could not be loaded". A DISPLAY rule: Finance still lets any approver open and decide any payment, and
+       "in the chain" means recorder or custodian only (a past giver is not in it).
      - A PI Operations flagged (owner 2026-11-11, `pi_flagged_by_operations`, ALWAYS ON by default): `my_flagged_pis()`
        (20270611000000) is the one read; the card is urgent-styled, "Respond" opens `/orders/<id>`, where the red banner holds
        Respond and resubmit. Whoever the answer door lets answer sees it (PI creator/submitter with orders.create, or an
@@ -214,9 +222,14 @@ Modules launcher (`src/app/modules/page.tsx`):
        the review to an acting admin alone), PI waiting for Operations (own `awaiting` handoff, cancelled Orders dropped).
   3. "Cash not with the company", EVERYBODY ELSE's: `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin /
      custodian / view_all, else the viewer's own), minus the viewer's own held payments and payments whose open
-     handover is TO the viewer (item 2), grouped by holder (`totalsByHolder`, oldest first): "X holds ₹N" + "N
-     payments, not handed over" / "Handed to X, not accepted" + age. Review -> `/finance/handovers?holder=` ONLY when
-     `financeAllowed` (Finance route).
+     handover is TO the viewer (item 2). **One card per PAYMENT since 2026-11-11 (owner: "Pending from Dhruv · 3
+     days", `src/lib/modules/forYouPending.ts`), oldest first; it was one card per holder, "X holds ₹N".** Label "Pending
+     from <name> · age": the receiver of an open handover (age from the handover's `created_at`), else the holder (age
+     from `holderSince`), the giver when the receiver marked it not received. Brief "₹N · client"; detail says who
+     handed it to whom, or that the holder has not handed it on. NO button: it is somebody else's move. The only
+     exception is a company cash custodian (`canReceive`), who gets Review -> `/finance/handovers?holder=` ONLY when
+     `financeAllowed` (Finance route). Clear all key = payment + handover id/status (or holder), so a hand-on is new.
+     The Control Center item keeps its name "Cash not with the company".
   4. Leave and late arrival (admin): `PendingApprovals.tsx`, filtered to `LAUNCHER_REQUEST_TYPES` (late_arrival,
      half_day, full_day_leave); early departure and time out stay in Attendance.
   - Header "For you" + count + "Clear all": hides every card showing for 24 hours, in this browser per user
@@ -368,7 +381,7 @@ At #327 a clean `main` has 0 failures without a database (live-DB suites SKIP; `
 into a failure). Never run two suites at once against the same linked project (shared fixtures).
 Relevant: `src/lib/auth/recoveryLink.test.ts`, `src/lib/safeReturnPath.test.ts`, `src/lib/supabase/adminClient.test.ts`,
 `src/lib/viewAs.test.ts`, `src/lib/modules/moduleOrder.test.ts`, `moduleOrderStorage.test.ts`,
-`src/lib/modules/forYouCatalogue.test.ts`, `forYouWork.test.ts`, `src/app/modules/forYouSettings.test.ts`,
+`src/lib/modules/forYouCatalogue.test.ts`, `forYouWork.test.ts`, `forYouPending.test.ts`, `src/app/modules/forYouSettings.test.ts`,
 `src/lib/permissions/moduleParentGate.test.ts`, `moduleVisibility.test.ts`, `uiEnforcement.test.ts`,
 `src/lib/users/noStarSelect.test.ts`, `src/lib/security/usersPrivateColumns.test.ts` (live DB),
 `src/lib/navigation/*.test.ts*`, `src/components/layout/controlCenterNav.test.ts`, `boeOsDrawerInert.test.ts`,

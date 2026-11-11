@@ -10,8 +10,6 @@
 // friends) and echoed to the browser as the can_* flags of
 // finance_handover_list. The browser only draws what the server already allowed.
 
-import { isCanaraMode } from './canaraAccount'
-
 export const HANDOVER_STATUSES = ['pending', 'accepted', 'disputed', 'cancelled'] as const
 export type HandoverStatus = typeof HANDOVER_STATUSES[number]
 
@@ -255,8 +253,6 @@ export function readHandoverCandidates(raw: unknown): HandoverCandidate[] {
     const o = (i ?? {}) as Raw
     const paymentId = str(o.payment_id)
     if (!paymentId) return []
-    // CANARA IS NEVER HANDED OVER (owner 2026-11-11): the custodian accepts it.
-    if (isCanaraMode(str(o.payment_mode))) return []
     return [{
       paymentId,
       humanPaymentId: str(o.human_payment_id),

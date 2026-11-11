@@ -33,9 +33,11 @@
 //      record's own page; five show, then "N more".
 //   3. CASH NOT WITH THE COMPANY — everybody else's, from Finance's own "money
 //      not yet with the company" list (finance_unclosed_funds: everyone's for an
-//      admin, the custodian or a view_all holder), one card per person holding
-//      money. Review opens Cash journeys, for Finance users. The viewer's own
-//      cash is item 2, not repeated here.
+//      admin, the custodian or a view_all holder), one card PER PAYMENT saying
+//      who it is pending from and for how long (owner, 2026-11-11; the words are
+//      src/lib/modules/forYouPending.ts). No button: it is somebody else's move,
+//      except for a custodian, who may record receiving it (Review opens Cash
+//      journeys). The viewer's own cash is item 2, not repeated here.
 //   4. LEAVE AND LATE ARRIVAL — for the signed-in admin (PendingApprovals.tsx).
 //
 // WHICH OF THESE SHOW (owner, 2026-10-31): an administrator sets each item in
@@ -77,11 +79,12 @@ import { HandoverModal } from '@/components/finance/HandoverModal'
 import { CASH_JOURNEYS_PATH } from '@/components/finance/UnclosedFundsCard'
 import { formatINR } from '@/lib/currency'
 import { handoverPaymentCount, handoverRole, waitingFor, type Handover } from '@/lib/finance/handover'
-import { sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
+import { ACCEPT_CONFIRMS_NOTE, sumAmounts, waitingAge } from '@/lib/finance/cashJourney'
 import {
   EMPTY_SNOOZE, isHidden, itemKeys, readSnooze, snoozeAll, snoozeStorageKey, type SnoozeState,
 } from '@/lib/modules/forYouSnooze'
 import { FOR_YOU_SETTINGS_HREF } from '@/lib/modules/forYouCatalogue'
+import { pendingFromCards, type PendingFrom } from '@/lib/modules/forYouPending'
 import { FOR_YOU_CARDS_SHOWN, type WorkCard, type WorkItemKey } from '@/lib/modules/forYouWork'
 import { PendingApprovals, usePendingApprovalQueue } from './PendingApprovals'
 import styles from './attentionPanel.module.css'
@@ -98,14 +101,6 @@ export type AttentionSources = {
   latestAnnouncement: MyAnnouncement | null
 }
 
-type HolderCard = {
-  key: string
-  holderId: string
-  brief: string
-  state: string
-  age: string
-}
-
 /** Cash the viewer holds and has not handed on yet. */
 type HeldCard = {
   key: string
@@ -113,19 +108,6 @@ type HeldCard = {
   count: number
   age: string
   canHandOver: boolean
-}
-
-/** What one person's held cash is doing, in a few words (no age: it is in the key). */
-function holderState(payments: CashPayment[]): string {
-  const n = payments.length
-  const inHandover = payments.filter(p => p.openHandover)
-  const recipients = [...new Set(inHandover.map(p => p.openHandover!.recipientName))]
-  const disputed = inHandover.some(p => p.openHandover!.status === 'disputed')
-  if (inHandover.length === 0) return `${n} ${n === 1 ? 'payment' : 'payments'}, not handed over`
-  if (inHandover.length === n && recipients.length === 1) {
-    return disputed ? `${recipients[0]} marked not received` : `Handed to ${recipients[0]}, not accepted`
-  }
-  return `${n} payments · ${inHandover.length} handed over, not accepted`
 }
 
 /** Told to every copy of useSnooze in this tab when one of them clears. */
@@ -241,20 +223,8 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
     .filter(p => p.holderId !== viewerId)
     .filter(p => !(p.openHandover && p.openHandover.recipientId === viewerId))
   const cashOn = on('cash_not_with_company')
-  const holders: HolderCard[] = (cashOn ? totalsByHolder(payments) : [])
-    .sort((a, b) => b.oldestAgeHours - a.oldestAgeHours)
-    .map(t => {
-      const own = payments.filter(p => (p.holderId ?? 'unknown') === t.holderId)
-      const state = holderState(own)
-      return {
-        key: itemKeys.holder(t.holderId, t.amount, state),
-        holderId: t.holderId,
-        brief: `${t.holderName} holds ${formatINR(t.amount)}`,
-        state,
-        age: waitingAge(t.oldestAgeHours),
-      }
-    })
-    .filter(h => shown(h.key))
+  // One card per payment, oldest waiting first: whose move it is, and for how long.
+  const pending = (cashOn ? pendingFromCards(payments) : []).filter(c => shown(c.key))
 
   const requests = leaveOn
     ? approvals.rows.filter(r => shown(itemKeys.request(r.id)))
@@ -264,7 +234,7 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
   // "Waiting for" cards: that is somebody else's move.
   const actCount = returned.length + toAccept.length + (held?.canHandOver ? 1 : 0) + requests.length + workCount + (machine ? 1 : 0)
   const itemCount = (announcement ? 1 : 0) + (machine ? 1 : 0) + returned.length + toAccept.length + handedOut.length
-    + (held ? 1 : 0) + workCount + holders.length + requests.length
+    + (held ? 1 : 0) + workCount + pending.length + requests.length
   const visibleKeys = [
     ...(announcement ? [itemKeys.announcement(announcement.id)] : []),
     ...(machine ? [itemKeys.machineStopped(machine.today)] : []),
@@ -273,12 +243,12 @@ export function useAttentionSummary({ userId, ordersAllowed, showAttendance, lat
     ...handedOut.map(h => itemKeys.handover(h.id)),
     ...(held ? [held.key] : []),
     ...work.flatMap(group => group.cards.map(c => c.key)),
-    ...holders.map(h => h.key),
+    ...pending.map(c => c.key),
     ...requests.map(r => itemKeys.request(r.id)),
   ]
 
   return {
-    announcement, machine, returned, toAccept, handedOut, held, work, holders, requests,
+    announcement, machine, returned, toAccept, handedOut, held, work, pending, requests,
     viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
     machineError: machineOn && machineHealth.isError,
     returnedError: returnedOn && returnedPis.isError,
@@ -414,27 +384,7 @@ export function AttentionPanel(props: AttentionSources) {
             Could not be loaded.
           </ErrorCard>
         )}
-        {s.holders.map(h => (
-          <li key={h.key} className={styles.card}>
-            <span className={styles.cardLabel}>
-              <Banknote size={13} strokeWidth={2} aria-hidden="true" />
-              Not with the company · {h.age}
-            </span>
-            <span className={styles.cardBrief}>{h.brief}</span>
-            <span className={styles.cardDetail}>{h.state}</span>
-            {/* Cash journeys is a Finance page: offered only to somebody who
-                may open Finance. */}
-            {financeAllowed && (
-              <Link
-                href={`${CASH_JOURNEYS_PATH}?holder=${encodeURIComponent(h.holderId)}`}
-                className={styles.button}
-                aria-label={`Review: ${h.brief}`}
-              >
-                Review
-              </Link>
-            )}
-          </li>
-        ))}
+        {s.pending.map(c => <PendingFromCard key={c.key} card={c} financeAllowed={financeAllowed} />)}
 
         {(s.requests.length > 0 || s.approvalsError) && userId && (
           <PendingApprovals userId={userId} shown={key => s.shown(key)} />
@@ -442,6 +392,33 @@ export function AttentionPanel(props: AttentionSources) {
       </ul>
     </aside>
     </>
+  )
+}
+
+// ── One payment still on its way, and whose move it is ───────────────────────
+//
+// News, not a task: it is somebody else's move, so there is no button, except
+// for a company cash custodian, who may record receiving it on Cash journeys
+// (a Finance page: offered only to somebody who may open Finance).
+function PendingFromCard({ card, financeAllowed }: { card: PendingFrom; financeAllowed: boolean }) {
+  return (
+    <li className={styles.card}>
+      <span className={styles.cardLabel}>
+        <Banknote size={13} strokeWidth={2} aria-hidden="true" />
+        {card.label}
+      </span>
+      <span className={styles.cardBrief}>{card.brief}</span>
+      <span className={styles.cardDetail}>{card.detail}</span>
+      {card.canReceive && financeAllowed && (
+        <Link
+          href={card.holderId ? `${CASH_JOURNEYS_PATH}?holder=${encodeURIComponent(card.holderId)}` : CASH_JOURNEYS_PATH}
+          className={styles.button}
+          aria-label={`Review: ${card.brief}`}
+        >
+          Review
+        </Link>
+      )}
+    </li>
   )
 }
 
@@ -636,7 +613,7 @@ function AcceptCard({ h, onAccepted }: { h: Handover; onAccepted?: () => void })
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
             Accept only after the cash is in your hands. You are confirming that you received{' '}
             <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> for {handoverPaymentCount(h)}.
-            You will then be the holder of these payments in the custody trail.
+            You will then be the holder of these payments in the custody trail. {ACCEPT_CONFIRMS_NOTE}
           </p>
         </HandoverConfirmDialog>
       )}

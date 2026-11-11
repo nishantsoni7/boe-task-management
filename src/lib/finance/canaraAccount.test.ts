@@ -1,8 +1,9 @@
 /**
- * CANARA (owner 2026-11-11): no "Where is this money now?", no handover. The
- * recorder gives the paying account instead (holder and number required, bank
- * optional), saved as lines at the top of the note to Finance, and the company
- * cash custodian accepts the payment.
+ * CANARA (owner 2026-11-11): the recorder gives the paying account (holder and
+ * number required, bank optional), saved as lines at the top of the note to
+ * Finance. Later the same day the owner brought the handover journey back: Canara
+ * asks "Where is this money now?" like PNB and Paytm (20270612000000), and the
+ * payment is Confirmed when the company cash custodian accepts it.
  *
  * Run:
  *   npm run test:file -- src/lib/finance/canaraAccount.test.ts
@@ -28,12 +29,11 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const acct = (over: Partial<typeof EMPTY_CANARA_ACCOUNT> = {}) => ({ holder: 'Sumeet Babar', number: '1234 5678 9012', bank: '', ...over })
 
 describe('which modes ask the question', () => {
-  test('PNB and Paytm ask; Canara and the HDFC accounts do not', () => {
-    assert.equal(modeAsksWhereMoneyIs('pnb'), true)
-    assert.equal(modeAsksWhereMoneyIs('paytm'), true)
-    for (const m of ['canara', 'hdfc', 'hdfc_sec', '', null, undefined]) assert.equal(modeAsksWhereMoneyIs(m), false, String(m))
+  test('PNB, Paytm and Canara ask; the HDFC accounts do not', () => {
+    for (const m of ['pnb', 'paytm', 'canara']) assert.equal(modeAsksWhereMoneyIs(m), true, m)
+    for (const m of ['hdfc', 'hdfc_sec', '', null, undefined]) assert.equal(modeAsksWhereMoneyIs(m), false, String(m))
   })
-  test('Canara is still tracked until the company accepts it', () => {
+  test('Canara is tracked until the company accepts it', () => {
     assert.equal(modeRequiresCustodyTrail('canara'), true)
     assert.equal(isCanaraMode(' canara '), true)
     assert.equal(isCanaraMode('pnb'), false)
@@ -87,28 +87,28 @@ describe('after it is saved', () => {
     ...over,
   })
 
-  test('nobody is offered a handover of a Canara payment; Paytm still is', () => {
-    assert.equal(readCashPayment(raw())!.canHandOver, false)
+  test('a Canara payment can be handed over, exactly like Paytm', () => {
+    assert.equal(readCashPayment(raw())!.canHandOver, true)
     assert.equal(readCashPayment(raw({ payment_mode: 'paytm' }))!.canHandOver, true)
   })
   test('the custodian’s Receive is untouched', () => {
     assert.equal(readCashPayment(raw({ can_receive: true }))!.canReceive, true)
   })
-  test('it reads as waiting for the company, not "With <recorder>"', () => {
-    assert.equal(cashStateLabel(readCashPayment(raw())!), 'Waiting for the company to accept')
+  test('it reads as held by its holder until it reaches the company, as every cash payment does', () => {
+    assert.equal(cashStateLabel(readCashPayment(raw())!), 'With Prerna')
     assert.equal(cashStateLabel(readCashPayment(raw({ payment_mode: 'paytm' }))!), 'With Prerna')
     assert.equal(cashStateLabel(readCashPayment(raw({ state: 'with_company' }))!), 'With company')
   })
-  test('the hand-over picker never lists a Canara payment', () => {
+  test('the hand-over picker lists a Canara payment', () => {
     const rows = [
       { payment_id: 'a', payment_mode: 'canara', amount: 1 },
       { payment_id: 'b', payment_mode: 'paytm', amount: 2 },
     ]
-    assert.deepEqual(readHandoverCandidates(rows).map(c => c.paymentId), ['b'])
+    assert.deepEqual(readHandoverCandidates(rows).map(c => c.paymentId), ['a', 'b'])
   })
 })
 
-describe('the forms ask the question only where the mode asks it', () => {
+describe('the forms ask the question where the mode asks it', () => {
   const FORMS = [
     'src/app/finance/paymentRequestsNew.tsx',
     'src/app/finance/received/RecordSplitPaymentModal.tsx',
