@@ -22,6 +22,8 @@ Overview, Rankings, Competitors, Vision board, Weekly review and Scheduled tasks
 
 Not built yet: step 3 (Google's free link for Search Console and Analytics), step 4 (Ads, only if ads restart).
 
+The discussion brief can now be drawn as a case for a decision about the role (PR pending). The owner asked on 2026-11-11 for every fact, a performance chart, quarterly rankings of the searches that bring business, the flow of leads, what was missed, the three claims tested with outside research, answers to likely counters, and how to hold the conversation kindly. Mock-up: https://claude.ai/artifact/UwAz8zrKcHJk63n6rGYL1f (private). No migration. Seen with the real document in the app's own stylesheets at desktop and phone, not signed in.
+
 ## 3. The model
 
 The Claude scheduled tasks on the owner's PC do the work and save dated files in `repositories\bestofexports-website`, a plain folder outside this repository. Each task ends by running `scripts/push-to-boe-one.mjs` in that folder. BOE One keeps the results and shows them. "Scheduled tasks" here means those Claude tasks, not Task Management, which has no recurring tasks.
@@ -38,7 +40,7 @@ Owner decision 2026-11-01: **no additional paid package.** Ahrefs stays on the T
 | `/seo/rankings` | `SeoRankings` | The 20 money keywords in India over 28 days, with demand, position track and next step; where Google shows the wrong page; the 8 cities; the keywords too thin to judge |
 | `/seo/competitors` | `SeoCompetitors` | Who to watch and what to copy, who is rising or falling, the directories' share, the other sites, what winners do that we do not |
 | `/seo/review` | `SeoSixMonth` | The rolling 6-month review: verdict, likely causes, top 5 good and bad, dated next moves, targets, what to be careful quoting, 18 months of visits, leads and forms, what moved in India, AI readiness, blind spots |
-| `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief for a meeting with the SEO person: credit, what to raise, what is not on them, what is scored and what is not |
+| `/seo/brief` | `SeoBrief` | Admin only. The private discussion brief. A brief with `claims` is drawn as a case (`SeoBriefCase.tsx`): the numbers, clicks by month with Google's updates marked, rankings by quarter, the flow of leads, our base against the sites that beat us, the claims tested, the counters, credit and fairness, running SEO without the role, and how to hold the conversation. Without `claims` it is the review layout: credit, what to raise, what is not on them, what is scored |
 | `/seo/year` | `SeoYear` | 12 months of clicks and leads, page groups, work done. Off the menu since the 6-month review; reached from the review's footnote |
 | `/seo/board` | `SeoBoard` | The 30 and 60-day board, open proposals with a recommendation, targets, achieved; Update and Keep or Change for those who hold them |
 | `/seo/reviews` | `SeoReviews` | The newest Monday in full: verdict, numbers, the week's work, move and risk, competitors, open and answered strategy changes. Earlier Mondays are one line each |
@@ -90,8 +92,12 @@ RLS: one SELECT policy on each table, `module_entry_open('seo')`. No write polic
 - Bing's AI Performance has no data from 27 Aug to 19 Oct 2026, so its 3-month view covers 36 days and must not be compared with its 6-month total.
 - The employee audit, pay and role cost never enter this module. `docs/change-log.md` in the website folder can name customers, so the Year review reads the hand-written `data/plan/year-work.json`, not that file.
 
+- A brief section may now be left out whole: the spec wraps it as `{ '?': spec }` in `sixMonth.ts`. The September brief still passes, and the four review sections (scored, others, yours, next) are optional.
+- The data check ignores fields it does not know, but refuses a document missing a field it requires. So a brief that drops a required section waits until the code that makes it optional is live, or every daily send is refused.
+
 ## 7. Traps
 
+- Search Console's own notice: a logging fault overstated impressions, CTR and average position from 13 May 2025 to 27 Apr 2026. Clicks were not affected. Never compare positions or impressions across 27 Apr 2026; the brief's quarterly table carries this warning.
 - The repository is public. No SEO figures go in a migration, a fixture or a test. `sixMonthSample.ts` is made up.
 - The sender must not post a new key before the code that accepts it is live: the door refuses the whole delivery, and the daily runs fail with it.
 - `results.json` holds older URLs without `https://`. Normalise before counting, or brand counts come out too low (the sender's `host()`).

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `846f2a75` — Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
-- Commits on this branch: 1225
+- Commit: `bad96612` — Docs: record PR #663 for the Dashboard Quotation Requests table
+- Commits on this branch: 1226
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 954   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `846f2a75` 2026-11-11 Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
+- `bad96612` 2026-11-11 Docs: record PR #663 for the Dashboard Quotation Requests table
+- `959383a5` 2026-11-11 Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 - `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
@@ -38,7 +39,6 @@
 - `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
 - `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
 - `b00b78c0` 2026-11-07 Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
-- `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
 
 ## Pages by top-level area
 
