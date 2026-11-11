@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-11 — Modules launcher: a card warms its route only after the pointer rests 250 ms (branch `perf/modules-dwell-prefetch`, PR open) · no migration
+## 2026-11-11 — Modules launcher: a card warms its route only after the pointer rests 250 ms (#649 merged as 19250a90 at 11:53 IST, 2026-11-11) · no migration
 - **Owner ask.** The console again showed 56 "resource ... was preloaded using link preload but not used within a few seconds" warnings (source `modules:1`, owner on `/sales/my-day`), and they asked how to avoid them.
 - **Cause, reproduced in the owner's Chrome.** Loading `/modules` alone leaves no unused style preload. Hovering four cards without clicking left four (two were the owner's `0mn.s1bn975w.css` and `0vpo57o72-4do.css`): the 2026-10-19 fix warmed a module's route on pointer-enter, so every card the pointer crossed on the way to Sales preloaded a stylesheet the launcher never applies.
 - **Changed.** `src/app/modules/page.tsx` `ModuleCard`: pointer-enter starts a 250 ms timer (`INTENT_DWELL_MS`) that calls the intent handler; pointer-leave and unmount cancel it. Focus and touch-start still warm at once. Edit mode still warms nothing. Guard `src/app/modules/intentPrefetch.test.ts` now fails on raw `onPointerEnter={onIntent}`, requires the leave/unmount cancel and a dwell of 150-500 ms.
