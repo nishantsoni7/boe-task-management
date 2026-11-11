@@ -4,11 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
+import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
 import type { ForYouAccess, ForYouItemKey } from '@/lib/modules/forYouCatalogue'
 import { itemApplies } from '@/lib/modules/forYouCatalogue'
 import { readFlaggedPis, type FlaggedPi } from '@/lib/orders/flaggedPis'
 import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
 import {
+  FOR_YOU_PAYMENT_SCAN_LIMIT,
   FOR_YOU_READ_LIMIT,
   changeRequestCard,
   flaggedCard,
@@ -17,6 +19,7 @@ import {
   paymentRequestCard,
   piApprovalCard,
   sentBackCard,
+  verifyCardApplies,
   type ChangeRequestRow,
   type OperationsRow,
   type PaymentRequestRow,
@@ -71,16 +74,30 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
   const { viewMode } = useDisplaySubject()
   const wanted = (key: WorkItemKey) => !!userId && !viewMode && on(key) && itemApplies(key, access)
 
-  // Newest first: a new request must show, whatever is still waiting.
+  // Newest first: a new request must show, whatever is still waiting. Read wider
+  // than the cards shown: each is then kept only if the viewer can act on it
+  // (verifyCardApplies), which needs the cash still on its way (the same read
+  // as the panel's cash cards, shared by its key).
+  // shortcut: pending payments beyond the scan limit are counted, never judged; raise the limit if that many ever wait.
+  const unclosed = useUnclosedFunds()
   const payments = useWorkRead<PaymentRequestRow>('payment_request', userId, wanted('payment_request'), () => {
     const pending = createClient()
       .from('finance_payment_requests')
-      .select(`id, client_name, amount, payment_mode, created_at, updated_at, ${NAMES}`, { count: 'exact' })
+      .select(`id, client_name, amount, payment_mode, created_at, updated_at, submitted_by, ${NAMES}`, { count: 'exact' })
       .eq('status', 'pending_approval')
     return (access.decidesOwnPayments ? pending : pending.neq('submitted_by', userId!))
       .order('created_at', { ascending: false })
-      .limit(FOR_YOU_READ_LIMIT) as unknown as PromiseLike<Answer>
+      .limit(FOR_YOU_PAYMENT_SCAN_LIMIT) as unknown as PromiseLike<Answer>
   })
+  // Only an everyone's-cash read lists every payment on its way: any other
+  // answer cannot say a cash-route payment has arrived.
+  const inTransit = unclosed.data?.scope === 'all' ? new Set(unclosed.data.payments.map(p => p.paymentId)) : null
+  const verifiable = (payments.data?.rows ?? []).filter(row => verifyCardApplies(row, {
+    userId: userId ?? '',
+    decidesOwnPayments: access.decidesOwnPayments,
+    viewerIsCustodian: unclosed.data?.viewerIsCustodian ?? false,
+    inTransit,
+  }))
 
   const sentBack = useWorkRead<SentBackRow>('payment_sent_back', userId, wanted('payment_sent_back'), () => createClient()
     .from('finance_payment_requests')
@@ -134,11 +151,12 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
   const groups: WorkGroup[] = [
     {
       item: 'payment_request',
-      cards: (payments.data?.rows ?? []).map(paymentRequestCard),
+      cards: verifiable.map(paymentRequestCard),
       unread: unread(payments.data),
       moreHref: '/finance?tab=pending',
       moreLabel: n => `${n} more payment ${n === 1 ? 'request' : 'requests'} →`,
-      failed: payments.isError,
+      // A failed cash read hides every cash-route payment, so it says so too.
+      failed: payments.isError || unclosed.isError,
       failedLabel: 'Payment requests',
     },
     {

@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `16761d04` — Merge remote-tracking branch 'origin/main' into feat/non-hdfc-confirm-on-accept
-- Commits on this branch: 1228
+- Commit: `694f38e4` — Docs: stamp the PNB/Paytm/Canara change with PR #662 and the applied migration
+- Commits on this branch: 1231
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 428 (first `20260530_create_positions.sql`, latest `20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 957   Enums: 0
-- Test files: 792   Next.js 16.2.6, React 19.2.4
+- Test files: 793   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `694f38e4` 2026-11-11 Docs: stamp the PNB/Paytm/Canara change with PR #662 and the applied migration
+- `9845a4f5` 2026-11-11 Merge remote-tracking branch 'origin/main' into feat/non-hdfc-confirm-on-accept
+- `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
 - `16761d04` 2026-11-11 Merge remote-tracking branch 'origin/main' into feat/non-hdfc-confirm-on-accept
 - `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
@@ -36,9 +39,6 @@
 - `243a8521` 2026-11-08 Minop feed: the pull follows insert order, so a repaired punch is never skipped; record #644's merge (#645)
 - `2bce39a0` 2026-11-08 Minop feed: send the receipt time in India time too; record #643's merge (#644)
 - `ada1bf18` 2026-11-08 Minop: hand every punch to the operations ERP (push after Minop is answered, pull to catch up), no SQL (#643)
-- `bcd673f2` 2026-11-07 Docs: the payment popup redesign merged (#641 as ca901dcd), deployed (#642)
-- `ca901dcd` 2026-11-07 Payment Requests popup: every fact once, the Decision first (#641)
-- `407e3d82` 2026-11-07 Docs: the duplicate-request merge merged (#639 as 4981893b), deployed, migration 20270608000000 applied (#640)
 
 ## Pages by top-level area
 
@@ -151,7 +151,7 @@
 - `src/lib/meetings` — 16 source, 18 test
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
-- `src/lib/modules` — 5 source, 6 test
+- `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 6 test
 - `src/lib/notifications` — 7 source, 24 test
 - `src/lib/orders` — 106 source, 161 test

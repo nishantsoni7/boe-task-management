@@ -91,13 +91,25 @@ describe('the column', () => {
     assert.match(WORK, /\.order\('created_at', \{ ascending: false \}\)/)
   })
 
+  test('payment requests are then kept only where the viewer can act (owner, 2026-11-11)', () => {
+    // Read wider than the cards shown, because the filter drops rows after the read.
+    assert.match(WORK, /\.limit\(FOR_YOU_PAYMENT_SCAN_LIMIT\)/)
+    assert.match(WORK, /const unclosed = useUnclosedFunds\(\)/)
+    // Only an everyone's-cash read can say a cash-route payment has arrived.
+    assert.match(WORK, /unclosed\.data\?\.scope === 'all' \? new Set\(unclosed\.data\.payments\.map\(p => p\.paymentId\)\) : null/)
+    assert.match(WORK, /filter\(row => verifyCardApplies\(row, \{/)
+    assert.match(WORK, /cards: verifiable\.map\(paymentRequestCard\)/)
+    // A failed cash read hides cash-route payments, so the group says so.
+    assert.match(WORK, /failed: payments\.isError \|\| unclosed\.isError/)
+  })
+
   test('the two personal items are read for the viewer alone', () => {
     assert.match(WORK, /\.eq\('status', 'needs_clarification'\)\s+\.eq\('submitted_by', userId!\)/)
     assert.match(WORK, /\.eq\('status', 'awaiting'\)\s+\.eq\('assigned_to', userId!\)\s+\.is\('superseded_at', null\)/)
   })
 
   test('new cards sit before everybody else\'s cash, and count on a phone', () => {
-    const order = ['You hold {formatINR(s.held.amount)}', 's.work.map(group =>', 'Not with the company ·'].map(s => PANEL.indexOf(s))
+    const order = ['You hold {formatINR(s.held.amount)}', 's.work.map(group =>', '<PendingFromCard'].map(s => PANEL.indexOf(s))
     assert.ok(order.every(i => i >= 0))
     assert.deepEqual([...order].sort((a, b) => a - b), order)
     assert.match(PANEL, /const actCount = .*workCount/)

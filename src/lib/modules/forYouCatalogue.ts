@@ -135,7 +135,7 @@ export const FOR_YOU_ITEMS = [
   {
     key: 'cash_not_with_company',
     label: 'Cash not with the company',
-    meaning: 'Who is holding company cash, by person.',
+    meaning: 'Each payment on its way to the company, and who it is pending from.',
     audience: 'Admins, custodian, all-payments access',
     forWhom: 'for admins and Finance',
     defaultMode: 'optional',
