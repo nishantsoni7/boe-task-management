@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-11 — Finance and Orders Home link warms the launcher on intent only (branch `perf/shell-home-intent`) · no migration
+- **Found (owner's Chrome, live build after #658, 2026-11-11).** Finance pages now loaded with no unused stylesheet, but resting on the side menu opened the rail, which drew the Home link (`ShellHomeLink`, `/modules`); its viewport prefetch fired at that moment (4 requests) and left the launcher's stylesheet `0~vmtqc-rr4ch.css` unused. The same happens on the Orders rail.
+- **Changed.** `src/components/layout/ModuleShellControls.tsx`: the warm-on-rest logic of #658 becomes one local hook, `useWarmOnRest`, used by `ShellNavLink` and now `ShellHomeLink`. Guard extended in `src/lib/tasks/warmOnIntent.test.ts`.
+- **Measured on the #658 build (live).** Resting on a menu item warms that page about a second later (the 250 ms rest plus Next's own scheduling), not a quarter second: a click inside the first second is an ordinary un-warmed navigation. Recorded in dossier 08.
+- **Proof.** Related tests, `tsc` and eslint: see the PR. NOT checked live yet: after deploy, hovering the Finance rail should leave no unused style preload except a page the pointer actually rested on.
+- **Rollback.** Revert the PR; no data involved.
+
 ## 2026-11-11 — Finance and Orders side menus warm a page on intent only (branch `perf/shell-menu-intent`) · no migration
 - **Owner ask.** After the switch fix (#656) one "preloaded but not used" source was left on Finance pages; the owner approved fixing it ("Yes, fix it").
 - **Found (owner's Chrome, live build, 2026-11-11).** A hard load of `/finance?tab=pending` requested every page of the Finance menu by itself (`/finance/handovers` 6×, `/bank`, `/founders`, `/reimbursements`, `/expenses`, `/received`, `/notifications` 4× each). One of them, `/finance/founders`, has its own stylesheet (`0lyqf42u8_3td.css`), which stayed preloaded and unused on every other Finance page. The Orders menu did the same (its stylesheets happened to be shared, so no unused file was seen there).
