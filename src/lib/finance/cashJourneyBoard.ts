@@ -15,7 +15,6 @@ import {
   type Handover,
 } from './handover'
 import { journeyStepLabel, sumAmounts, waitingAge, type CashPayment, type JourneyStep } from './cashJourney'
-import { isCanaraMode } from './canaraAccount'
 
 // ── The payment record behind a journey ──────────────────────────────────────
 //
@@ -164,9 +163,7 @@ export function paymentFlags(
       flags.push({
         kind: 'held_long',
         severity: tone,
-        text: isCanaraMode(p.paymentMode)
-          ? `Waiting for the company to accept for ${waitingAge(p.ageHours)}`
-          : `With ${p.holderName ?? 'someone'} for ${waitingAge(p.ageHours)} and no handover started`,
+        text: `With ${p.holderName ?? 'someone'} for ${waitingAge(p.ageHours)} and no handover started`,
       })
     }
   }

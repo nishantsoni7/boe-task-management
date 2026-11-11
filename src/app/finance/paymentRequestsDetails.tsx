@@ -18,6 +18,7 @@ import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { BankWindowBar } from './bankWindowBar'
 import { canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import { isBankAccountMode } from '@/lib/finance/bankMarks'
+import { CONFIRMED_WHEN_CASH_ARRIVES } from '@/lib/finance/cashJourney'
 import { PaymentCustodyTrail, usePaymentDestination } from './components/PaymentDestinationBlock'
 import { PaymentFactsCard, ProofNotesCard } from './components/PaymentPopupParts'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
@@ -90,6 +91,7 @@ export function DetailsModal({
   mayCorrectPayments,
   mayApprovePayments,
   mayDecideOwnPayments,
+  awaitsCash,
   userId,
   supabase,
   onCorrected,
@@ -130,6 +132,13 @@ export function DetailsModal({
    * through the admin branch. See FinanceCapabilities.canDecideOwnPayment.
    */
   mayDecideOwnPayments?: boolean
+  /**
+   * A PNB / Paytm / Canara payment whose cash is known NOT to be with the company
+   * (20270612000000): it is Confirmed when the company's cash custodian accepts it,
+   * so no Verify is offered and the card says why. Passed by the page, which reads
+   * the cash state; this modal reads nothing of its own.
+   */
+  awaitsCash?: boolean
   userId?: string
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
@@ -188,7 +197,10 @@ export function DetailsModal({
   // AN HDFC PAYMENT IS VERIFIED AGAINST THE BANK (20270516000000): its Verify is on
   // the bank match in this window, so this list offers only the other two decisions.
   const verifiedAtTheBank = isBankAccountMode(r.payment_mode)
-  const decisions = verifiedAtTheBank ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS
+  // A PNB / PAYTM / CANARA PAYMENT WHOSE CASH IS NOT AT THE COMPANY has no Verify either:
+  // it is Confirmed when the company's cash custodian accepts it (20270612000000).
+  const waitingForCash = !!awaitsCash && !verifiedAtTheBank
+  const decisions = verifiedAtTheBank || waitingForCash ? DECISIONS.filter(d => d.key !== 'approve') : DECISIONS
   // A PENDING HDFC PAYMENT, FOR SOMEBODY WHO MAY DECIDE IT, HAS ONE JOB: is this the
   // same money? The comparison is the whole window, every fact appears once, and what
   // is left of the record waits behind Details.
@@ -431,6 +443,11 @@ export function DetailsModal({
           {verifiedAtTheBank && (
             <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               An HDFC payment is verified against its bank credit, which needs access to Bank Statements.
+            </div>
+          )}
+          {waitingForCash && (
+            <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+              {CONFIRMED_WHEN_CASH_ARRIVES}: the company’s cash custodian accepts it, and it moves into Confirmed Payments. You can still send it back or reject it.
             </div>
           )}
           <div role="radiogroup" aria-label="Decision" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

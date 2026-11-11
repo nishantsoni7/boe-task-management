@@ -77,7 +77,7 @@ import { HandoverModal } from '@/components/finance/HandoverModal'
 import { CASH_JOURNEYS_PATH } from '@/components/finance/UnclosedFundsCard'
 import { formatINR } from '@/lib/currency'
 import { handoverPaymentCount, handoverRole, waitingFor, type Handover } from '@/lib/finance/handover'
-import { sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
+import { ACCEPT_CONFIRMS_NOTE, sumAmounts, totalsByHolder, waitingAge, type CashPayment } from '@/lib/finance/cashJourney'
 import {
   EMPTY_SNOOZE, isHidden, itemKeys, readSnooze, snoozeAll, snoozeStorageKey, type SnoozeState,
 } from '@/lib/modules/forYouSnooze'
@@ -636,7 +636,7 @@ function AcceptCard({ h, onAccepted }: { h: Handover; onAccepted?: () => void })
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
             Accept only after the cash is in your hands. You are confirming that you received{' '}
             <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> for {handoverPaymentCount(h)}.
-            You will then be the holder of these payments in the custody trail.
+            You will then be the holder of these payments in the custody trail. {ACCEPT_CONFIRMS_NOTE}
           </p>
         </HandoverConfirmDialog>
       )}

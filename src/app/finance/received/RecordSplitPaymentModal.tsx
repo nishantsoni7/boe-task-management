@@ -207,7 +207,7 @@ export function RecordSplitPaymentModal({
 
   // ── Where is this money now (20270413000000), for PNB, Paytm and Canara ──
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
-  // CANARA asks for the paying account instead of the question (owner 2026-11-11).
+  // CANARA also asks for the paying account (owner 2026-11-11), above the question.
   const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
   type Recorded = { requestNumber: string; allocationCount: number; verified?: boolean }
   // Saved, but the handover to the chosen person did not go through.
@@ -558,9 +558,9 @@ export function RecordSplitPaymentModal({
       : destination === 'suspense' ? 'Suspense Entry' : null,
   ].filter(Boolean).join(' · ')
 
-  // One extra numbered step before the targets: the question (PNB, Paytm) or
-  // the paying account (Canara).
-  const carriesCustody = asksMoneyNow || isCanara
+  // Numbered steps before the targets: the question (PNB, Paytm, Canara), and for
+  // Canara the paying account above it.
+  const firstTargetStep = 3 + (asksMoneyNow ? 1 : 0) + (isCanara ? 1 : 0)
 
   return (
     <>
@@ -664,20 +664,7 @@ export function RecordSplitPaymentModal({
         />
       )}
 
-      {/* ── 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara. ── */}
-      {asksMoneyNow && (
-        <FormStep number={3} title="Where is this money now?">
-          <WhereIsMoneyNowField
-            paymentMode={paymentMode}
-            value={moneyNow}
-            onChange={setMoneyNow}
-            recorderId={userId ?? null}
-            problem={custodyError}
-          />
-        </FormStep>
-      )}
-
-      {/* ── 3. CANARA — the account the money came from, no question. ── */}
+      {/* ── 3. CANARA — the account the money came from. ── */}
       {isCanara && (
         <FormStep number={3} title="Account details">
           <CanaraAccountFields
@@ -689,9 +676,22 @@ export function RecordSplitPaymentModal({
         </FormStep>
       )}
 
+      {/* ── WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara. ── */}
+      {asksMoneyNow && (
+        <FormStep number={isCanara ? 4 : 3} title="Where is this money now?">
+          <WhereIsMoneyNowField
+            paymentMode={paymentMode}
+            value={moneyNow}
+            onChange={setMoneyNow}
+            recorderId={userId ?? null}
+            problem={custodyError}
+          />
+        </FormStep>
+      )}
+
       {/* ── The targets, when the destination has any ── */}
       {targetKind && (
-        <FormStep number={carriesCustody ? 4 : 3} title={destination === 'pi_draft' ? 'Divide it across PI Drafts' : 'Divide it across Orders'}>
+        <FormStep number={firstTargetStep} title={destination === 'pi_draft' ? 'Divide it across PI Drafts' : 'Divide it across Orders'}>
           <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Anything not allocated stays as an available balance on the payment.
           </p>

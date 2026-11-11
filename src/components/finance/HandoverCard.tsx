@@ -6,6 +6,7 @@ import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatINR } from '@/lib/currency'
 import { formatDateTime, formatFullDate } from '@/lib/ui'
 import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { ACCEPT_CONFIRMS_NOTE } from '@/lib/finance/cashJourney'
 import { useHandoverActions } from '@/hooks/queries/useHandovers'
 import {
   HANDOVER_REASON_MAX,
@@ -219,7 +220,7 @@ export function HandoverCard({
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
             Accept only after the cash is in your hands. You are confirming that you received{' '}
             <strong>{formatINR(h.totalAmount)}</strong> from <strong>{h.giverName}</strong> for {handoverPaymentCount(h)}.
-            You will then be the holder of these payments in the custody trail.
+            You will then be the holder of these payments in the custody trail. {ACCEPT_CONFIRMS_NOTE}
           </p>
         </HandoverConfirmDialog>
       )}
