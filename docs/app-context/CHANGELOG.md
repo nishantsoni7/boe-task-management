@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-11 — Shell and task lists warm routes on intent only (branch `perf/prefetch-cleanup`) · no migration
+- **Owner ask.** After #649 the console still logged "preloaded but not used" on task pages and the Dashboard ("it never seems to be ending"), and the owner said it happens when clicking View Task Page in the task preview drawer.
+- **Measured in the owner's Chrome (live build, 2026-11-11).** View Task Page is a normal in-app move (a window marker survived it). Every page using `DashboardLayout` prefetched `/modules` on mount, so the launcher's stylesheet was preloaded and never applied: one warning per page opened. Opening the drawer on `/tasks/my` had already requested every task page in the list (13 tasks, 26+ requests; `/tasks/assigned-by-me`: 8 tasks, 16). The red "message channel closed" error is a Chrome extension (no `chrome.runtime` in the repo or in 30 live bundles). NOT found: what prefetches `/orders` (the `adminDashboard` stylesheet in the owner's last screenshot); not reproducible in that Chrome.
+- **Changed.** New `src/hooks/useIntentWarm.ts` (`warmOnRest` after 250 ms, `warmNow` for focus and touch, `cancel`). `DashboardLayout` drops its mount effect `router.prefetch('/modules')`; its Home button warms the launcher on intent. `/tasks/my` and `/tasks/assigned-by-me` drop the fifteen-row warm-up (and `warmedHrefs`); each row warms its own `?returnTo` href when the pointer rests on it. The drawer's View Task Page link still prefetches when the drawer opens, so a quick click stays warm.
+- **Not changed.** The Dashboard's load-time warm-up of `/tasks/my` and `/notifications` (same module, no unused stylesheet seen), `NotificationsView`, Quick Actions.
+- **Proof.** The 872 tests that read these files pass; `tsc` and eslint clean. NOT checked live yet: after deploy, open My Tasks and then a task drawer and count `_rsc` requests (expect 0-2, not 26+), and open a task page (no `/modules` prefetch at load).
+- **Rollback.** Revert the PR; no data involved.
+
 ## 2026-11-11 — Modules launcher: a card warms its route only after the pointer rests 250 ms (#649 merged as 19250a90 at 11:53 IST, 2026-11-11) · no migration
 - **Owner ask.** The console again showed 56 "resource ... was preloaded using link preload but not used within a few seconds" warnings (source `modules:1`, owner on `/sales/my-day`), and they asked how to avoid them.
 - **Cause, reproduced in the owner's Chrome.** Loading `/modules` alone leaves no unused style preload. Hovering four cards without clicking left four (two were the owner's `0mn.s1bn975w.css` and `0vpo57o72-4do.css`): the 2026-10-19 fix warmed a module's route on pointer-enter, so every card the pointer crossed on the way to Sales preloaded a stylesheet the launcher never applies.

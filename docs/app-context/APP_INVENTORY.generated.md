@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `19250a90` — Modules: a card warms its route only after the pointer rests 250 ms (#649)
-- Commits on this branch: 1213
+- Commit: `f57ec063` — Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
+- Commits on this branch: 1214
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
-- Test files: 782   Next.js 16.2.6, React 19.2.4
+- Test files: 783   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 - `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
 - `74be747e` 2026-11-10 Sales: chats on WhatsApp become leads (migration 20270609000000, apply first) (#647)
@@ -38,7 +39,6 @@
 - `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
 - `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 - `a3d6b523` 2026-11-06 Docs: the payslip review credits card merged (#625 as aa1f4b46), deployed (#626)
-- `aa1f4b46` 2026-11-06 Payroll: the payslip lists the month's approved reviews and their credits (no SQL) (#625)
 
 ## Pages by top-level area
 
@@ -165,7 +165,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 23 source, 37 test
+- `src/lib/tasks` — 23 source, 38 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test

@@ -1,0 +1,51 @@
+import { describe, it } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+
+// GUARD: the app shell and the task lists warm other routes on INTENT, never on
+// load, and never for a pointer that merely crosses something.
+//
+// Measured in the owner's Chrome on 2026-11-11: every page that used the shell
+// prefetched the launcher (`/modules`) on mount, so its stylesheet was preloaded
+// and never applied (one "preloaded but not used" warning per page opened), and
+// opening the drawer on My Tasks had already requested every task page in the
+// list (13 tasks, 26+ requests). See src/app/modules/intentPrefetch.test.ts for
+// the same rule on the Modules cards.
+
+const read = (...p: string[]) => readFileSync(path.join(process.cwd(), ...p), 'utf8')
+
+const HOOK = read('src', 'hooks', 'useIntentWarm.ts')
+const SHELL = read('src', 'components', 'layout', 'DashboardLayout.tsx')
+
+describe('useIntentWarm', () => {
+  it('waits for the pointer to rest before it warms, and cancels on leave and unmount', () => {
+    assert.ok(HOOK.includes('timer.current = setTimeout(() => router.prefetch(href), INTENT_DWELL_MS)'))
+    assert.ok(HOOK.includes('const cancel = useCallback(() => clearTimeout(timer.current), [])'))
+    assert.ok(HOOK.includes('useEffect(() => cancel, [cancel])'))
+  })
+
+  it('rests long enough to ignore a crossing pointer, short enough to stay useful', () => {
+    const ms = Number(/export const INTENT_DWELL_MS = (\d+)/.exec(HOOK)?.[1])
+    assert.ok(ms >= 150 && ms <= 500, `dwell ${ms} ms should be 150-500`)
+  })
+
+  it('warms focus and touch at once — they are deliberate', () => {
+    assert.ok(HOOK.includes('const warmNow = useCallback((href: string) => router.prefetch(href), [router])'))
+  })
+})
+
+describe('the module shell does not warm the launcher on load', () => {
+  it('has no router.prefetch call of its own', () => {
+    const code = SHELL.split(/\r?\n/).filter(l => !l.trim().startsWith('//')).join('\n')
+    assert.equal(code.includes('router.prefetch('), false)
+  })
+
+  it('warms the launcher from the Home button on intent only', () => {
+    assert.ok(SHELL.includes("const { warmOnRest, warmNow, cancel: cancelWarm } = useIntentWarm()"))
+    assert.ok(SHELL.includes("onPointerEnter={() => warmOnRest('/modules')}"))
+    assert.ok(SHELL.includes('onPointerLeave={cancelWarm}'))
+    assert.ok(SHELL.includes("onFocus={() => warmNow('/modules')}"))
+    assert.ok(SHELL.includes("onTouchStart={() => warmNow('/modules')}"))
+  })
+})
