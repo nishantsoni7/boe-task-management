@@ -20,9 +20,9 @@ Branch `feat/quotations-module`, 2026-11-12 (night). Migration `20270614000000_q
 | Database, in-memory Postgres (`supabase/tests/quotations_pglite.mjs`, the real migration over Supabase-style default grants) | **20 of 20 checks pass** |
 | Arithmetic (`src/lib/quotations/math.test.ts`) | **11 of 11 pass**, including the real Resort Shamshabad quote QT-MVTPTT9W to the rupee: ₹2,01,79,800 + CGST ₹18,16,182 + SGST ₹18,16,182 = ₹2,38,12,164; IGST ₹36,32,364, same total; 669 pieces |
 | Printed quotation, registration, privacy (`src/components/quotations/quotations.test.tsx`) | **12 of 12 pass** |
-| Full test suite (`npm test`) | RUN2_RESULT |
+| Full test suite (`npm test`) | **20,537 pass, 0 fail**, 9 skipped (20,546 tests), run from clean after the last code change |
 | TypeScript (`tsc --noEmit`) | clean |
-| Lint (`eslint .`) | LINT_RESULT |
+| Lint (`eslint .`) | 0 errors, 0 warnings (the one existing warning on main, an unused id map in a test, is fixed in this PR) |
 | Production build (`next build`) | passes; `/quotations`, `/quotations/[id]`, `/quotations/[id]/print`, `/q/[token]` compiled |
 | Vercel preview build (required check) | see the pull request |
 
