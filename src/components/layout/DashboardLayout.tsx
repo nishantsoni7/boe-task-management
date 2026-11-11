@@ -20,6 +20,7 @@ import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailContro
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
+import { useIntentWarm } from '@/hooks/useIntentWarm'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
@@ -138,8 +139,11 @@ export function DashboardLayout({
     subjectPermissionsByModule: subjectPermissions,
   } = useDisplaySubject()
 
-  // Getting back to the launcher should not begin with a chunk download.
-  useEffect(() => { router.prefetch('/modules') }, [router])
+  // Getting back to the launcher should not begin with a chunk download, but it
+  // is warmed on INTENT (the Home button), not on every page load: the launcher's
+  // stylesheet is never applied here, so a load-time warm-up made Chrome log
+  // "preloaded but not used" once for every page opened.
+  const { warmOnRest, warmNow, cancel: cancelWarm } = useIntentWarm()
 
   // Effective user for nav counts: the viewed user in View As mode, otherwise
   // the real logged-in user. Used as the query key so counts are cached per
@@ -241,6 +245,10 @@ export function DashboardLayout({
           <button
             className="boe-rail-label"
             onClick={() => navTo('/modules')}
+            onPointerEnter={() => warmOnRest('/modules')}
+            onPointerLeave={cancelWarm}
+            onFocus={() => warmNow('/modules')}
+            onTouchStart={() => warmNow('/modules')}
             title="BOE One Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',

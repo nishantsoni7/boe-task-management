@@ -13,6 +13,7 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { MyTaskViewTabs, MyTaskViewSelect, MY_TASK_VIEW_TABS, ALL_ACTIVE_TASKS_LABEL } from '@/components/tasks/MyTaskViewTabs'
 import { PhoneChips, PhoneSearchFilter } from '@/components/ui/PhoneFilters'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useIntentWarm } from '@/hooks/useIntentWarm'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
@@ -134,6 +135,7 @@ const LIST_PARAMS = {
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
   isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy, drag, onMoveTop, rowRef,
+  onWarm, onWarmCancel,
 }: {
   task: Task
   accentColor: string
@@ -154,6 +156,10 @@ function TaskCard({
   /** Jump to the top of this task's group; absent when it already is there. */
   onMoveTop?: () => void
   rowRef?: (el: HTMLDivElement | null) => void
+  /** Pointer entered the row: the page warms its detail route once it RESTS. */
+  onWarm?: () => void
+  /** Pointer left the row: cancels that wait. */
+  onWarmCancel?: () => void
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -186,6 +192,8 @@ function TaskCard({
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onPointerEnter={onWarm}
+        onPointerLeave={onWarmCancel}
         onClick={onClick}
         style={{
           background: cardBackground,
@@ -295,6 +303,8 @@ function TaskCard({
       data-task-row={task.id}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onPointerEnter={onWarm}
+      onPointerLeave={onWarmCancel}
       onClick={onClick}
       style={{
         display: 'grid',
@@ -1306,36 +1316,15 @@ function MyTasksContent() {
     resetOverrides()
   }, [allTasksRaw])
 
-  // Warm the detail route for the rows in view — AT THE URL THAT WILL ACTUALLY
-  // BE OPENED. It warmed `/tasks/<id>` while every row opens
-  // `/tasks/<id>?returnTo=…`, and Next keys its route cache on pathname AND
-  // search (client/components/segment-cache/cache-key), so not one of those
-  // fifteen requests could ever be used: the list paid for them on every
-  // arrival and opening a task still started cold, which is precisely what
-  // tasks/[id]/loading.tsx was added to prevent. Same count, same cost, now
-  // spent on the thing that is asked for — the rule NotificationsView already
-  // follows and taskReturnPath.test.ts already pins.
-  //
-  // `returnTo` is deliberately NOT a dependency. It changes with every tab,
-  // filter and committed search term, and re-running on each would turn one
-  // batch of fifteen into a batch per keystroke — paying more to warm a route
-  // the reader has not asked for. Once per arrival, for the view they arrived
-  // on, is the trade the old code was already making.
-  //
-  // EACH HREF IS WARMED ONCE PER ARRIVAL. `allTasksRaw` changes identity on every
-  // refetch (focus, the 30s stale window, any mutation), and this effect re-ran
-  // the whole batch each time — measured on production as the same fifteen task
-  // pages requested again two seconds after the first pass.
-  const warmedHrefs = useRef(new Set<string>())
-  useEffect(() => {
-    if (allTasksRaw.length === 0) return
-    allTasksRaw.slice(0, 15).forEach(t => {
-      const href = taskDetailHref(t.id, returnTo)
-      if (warmedHrefs.current.has(href)) return
-      warmedHrefs.current.add(href)
-      router.prefetch(href)
-    })
-  }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Warm a task's detail route on INTENT — the pointer RESTING on its row — AT
+  // THE URL THAT WILL ACTUALLY BE OPENED (`/tasks/<id>?returnTo=…`: Next keys its
+  // route cache on pathname AND search, so a bare path is never the one asked
+  // for; see taskReturnPath.test.ts). It used to warm the first fifteen rows on
+  // every arrival: about thirty server requests per visit, and each page the
+  // reader never opened left an unused stylesheet preload that Chrome reported
+  // as "preloaded but not used". The drawer's own View Task Page link also
+  // prefetches as soon as the drawer opens, so a quick click is still warm.
+  const { warmOnRest, cancel: cancelWarm } = useIntentWarm()
 
   // ── THE FIX FOR THE FALSE EMPTY STATE ────────────────────────────────────
   //
@@ -2034,6 +2023,8 @@ function MyTasksContent() {
                     userId={userId}
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+                    onWarm={() => warmOnRest(taskDetailHref(task.id, returnTo))}
+                    onWarmCancel={cancelWarm}
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
                     onComplete={!viewAsUserId && canMarkComplete(task, userId) ? () => handleQuickComplete(task) : undefined}

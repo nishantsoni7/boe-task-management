@@ -170,21 +170,24 @@ describe('/tasks/my does not re-read itself merely for mounting', () => {
   })
 })
 
-describe('the lists prefetch the URL they will actually open', () => {
+describe('the lists warm the URL they will actually open, on intent only', () => {
   for (const [name, code] of [['/tasks/my', MY], ['/tasks/assigned-by-me', ABM]] as const) {
-    test(`${name} warms the href its rows navigate to`, () => {
-      assert.ok(code.includes('const href = taskDetailHref(t.id, returnTo)'))
-      assert.ok(code.includes('router.prefetch(href)'))
+    test(`${name} warms the href its rows open, once the pointer rests on a row`, () => {
+      assert.ok(code.includes('onWarm={() => warmOnRest(taskDetailHref(task.id, returnTo))}'))
+      assert.ok(code.includes('onWarmCancel={cancelWarm}'))
+      assert.ok(code.includes('onPointerEnter={onWarm}'))
+      assert.ok(code.includes('onPointerLeave={onWarmCancel}'))
       assert.equal(code.includes('router.prefetch(`/tasks/${t.id}`)'), false,
         'the router cache is keyed by the full href — a bare path is never the one asked for')
     })
 
-    test(`${name} warms each href once per arrival, not once per refetch`, () => {
-      // allTasksRaw changes identity on every refetch; without the set the whole
-      // batch of fifteen was requested again each time.
-      assert.ok(code.includes('const warmedHrefs = useRef(new Set<string>())'))
-      assert.ok(code.includes('if (warmedHrefs.current.has(href)) return'))
-      assert.ok(code.includes('warmedHrefs.current.add(href)'))
+    test(`${name} does not warm a batch of task pages on arrival`, () => {
+      // Fifteen pages per arrival was about thirty server requests per visit, and
+      // every page the reader never opened left an unused stylesheet preload that
+      // Chrome reported as "preloaded but not used".
+      assert.equal(code.includes('router.prefetch('), false)
+      assert.equal(code.includes('.slice(0, 15)'), false)
+      assert.equal(code.includes('warmedHrefs'), false)
     })
   }
 })
