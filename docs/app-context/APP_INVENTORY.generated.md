@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `1c5f1930` — Orders: a PI Operations flagged is an action for who must answer it (#657)
-- Commits on this branch: 1223
+- Commit: `846f2a75` — Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
+- Commits on this branch: 1225
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 427 (first `20260530_create_positions.sql`, latest `20270611000000_my_flagged_pis.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 954   Enums: 0
-- Test files: 789   Next.js 16.2.6, React 19.2.4
+- Test files: 791   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `846f2a75` 2026-11-11 Dashboard: Quotation Requests card is a table with how long pending, priority and sales person
+- `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 - `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
 - `0da0e1d6` 2026-11-11 Finance and Orders side menus: warm a page on intent, not every page on load (#658)
@@ -37,8 +39,6 @@
 - `4981893b` 2026-11-07 Payment Requests: merge a duplicate Sales request into the payment already confirmed (migration 20270608000000, apply first) (#639)
 - `b00b78c0` 2026-11-07 Docs: Excel preview merged (#637 as 354119f6), deployed (#638)
 - `354119f6` 2026-11-07 Attachments: Excel previews drawn by BOE as in Excel, with pictures (no SQL) (#637)
-- `0a4b806f` 2026-11-07 Docs: the punch-in strip merged (#635 as 5aa5448f), deployed, route live (#636)
-- `5aa5448f` 2026-11-07 Modules: a punch-in strip at the top of the page for every employee (no SQL) (#635)
 
 ## Pages by top-level area
 
@@ -165,7 +165,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 24 source, 40 test
+- `src/lib/tasks` — 25 source, 41 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test

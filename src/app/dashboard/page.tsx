@@ -21,6 +21,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { GlanceBar } from './GlanceBar'
+import { QuotationRequestsList } from './QuotationRequestsList'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -597,6 +598,7 @@ export default function DashboardPage() {
               <QuotationPanel
                 tasks={quotationTasks}
                 userMap={mergedUserMap}
+                now={now}
                 isMobile={isMobile}
                 onOpen={task => router.push(taskDetailHref(task.id, pathname))}
                 onViewAll={() => router.push('/tasks/quotation-requests')}
@@ -1237,12 +1239,14 @@ function UnacknowledgedPanel({
 function QuotationPanel({
   tasks,
   userMap,
+  now,
   isMobile,
   onOpen,
   onViewAll,
 }: {
   tasks: Task[]
   userMap: Record<string, string>
+  now: Date
   isMobile: boolean
   onOpen: (task: Task) => void
   onViewAll: () => void
@@ -1257,7 +1261,7 @@ function QuotationPanel({
       {tasks.length === 0 ? (
         <PanelEmptyState headline="No active requests" detail="Quotation requests will appear here" />
       ) : (
-        <QuotationRequestsSection tasks={tasks} userMap={userMap} onOpen={onOpen} />
+        <QuotationRequestsList tasks={tasks} userMap={userMap} onOpen={onOpen} now={now.getTime()} />
       )}
     </AttentionPanel>
   )
@@ -1294,100 +1298,6 @@ function OverdueTasksPanel({
         <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onSelectTask} compact />
       )}
     </AttentionPanel>
-  )
-}
-
-// ── QuotationRequestsSection ──────────────────────────────────────────────────
-
-function QuotationRequestsSection({
-  tasks,
-  userMap,
-  onOpen,
-}: {
-  tasks: Task[]
-  userMap: Record<string, string>
-  onOpen: (task: Task) => void
-}) {
-  const now          = new Date()
-  const todayStart   = new Date(now); todayStart.setHours(0, 0, 0, 0)
-  const yesterdayStart = new Date(todayStart.getTime() - 86400000)
-  const tomorrowStart  = new Date(todayStart.getTime() + 86400000)
-
-  return (
-    <div>
-      {tasks.slice(0, 8).map((task, idx) => {
-        const isLast        = idx === Math.min(tasks.length, 8) - 1
-        const requesterName = userMap[task.created_by] ?? 'Unknown'
-        const dueDate       = task.due_date ? new Date(task.due_date) : null
-        const isToday       = dueDate ? dueDate.toDateString() === now.toDateString() : false
-        const isDueOverdue  = dueDate ? dueDate < todayStart && !isToday : false
-        const isTomorrow    = dueDate ? dueDate >= tomorrowStart && dueDate < new Date(tomorrowStart.getTime() + 86400000) : false
-        const dueDateStr    = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
-
-        // Date/created text, with a days-remaining framing for near-term due dates
-        let dateText: string | null = null
-        let dateColor = '#686D6C'
-        if (dueDate) {
-          if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#B42332' }
-          else if (isToday)    { dateText = 'Due today';               dateColor = '#805B0D' }
-          else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#686D6C' }
-          else {
-            const daysLeft = Math.round((dueDate.getTime() - todayStart.getTime()) / 86_400_000)
-            dateText = daysLeft <= 7 ? `${daysLeft} days left` : `Due ${dueDateStr}`
-            dateColor = '#686D6C'
-          }
-        } else {
-          const created = new Date(task.created_at)
-          if (created >= todayStart)        { dateText = 'Created today';     dateColor = '#686D6C' }
-          else if (created >= yesterdayStart) { dateText = 'Created yesterday'; dateColor = '#686D6C' }
-        }
-
-        const priorityLower  = task.priority?.toLowerCase() ?? ''
-        const priorityLabel  = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
-        const priorityPill   = PRIORITY_PILL[priorityLower] ?? PRIORITY_PILL.low
-
-        // Creator/assigner → Due/Overdue → Priority — only these three metadata items
-        const metaSegments: MetaSegment[] = []
-        if (requesterName && requesterName !== 'Unknown') {
-          metaSegments.push({ text: requesterName, color: '#686D6C' })
-        }
-        if (dateText) metaSegments.push({ text: dateText, color: dateColor })
-        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
-
-        return (
-          <div
-            key={task.id}
-            onClick={() => onOpen(task)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && onOpen(task)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '8px 16px 8px 20px',
-              borderBottom: isLast ? 'none' : '1px solid #F1EEE9',
-              cursor: 'pointer',
-              transition: 'background 0.12s',
-              minHeight: '52px',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
-            onMouseLeave={e => { e.currentTarget.style.background = '' }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: '14px', fontWeight: 600, color: '#303536',
-                letterSpacing: '-0.01em', lineHeight: 1.35,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: '3px',
-              }}>
-                {task.customer_name ?? task.title}
-              </div>
-              <MetaLine segments={metaSegments} />
-            </div>
-            <ChevronRightIcon />
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
