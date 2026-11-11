@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-11 — SEO: every figure in the discussion brief carries its proof (PR open, branch feat/seo-brief-proof-links) · no migration
+- **Owner request.** Every figure must show a source link that proves it, comparisons must come with something to show the SEO person, biggest points first, and only what helps the discussion, plus points for working on a freelance basis. Plan v3 approved the same day.
+- **Changed.** Each part of the case brief can list "Check it yourself": the report, page or file behind it, what it shows and whether it needs a sign-in. New parts: what else went wrong (biggest first), his own plan point by point, and why the work can be freelance. Quarter headings open their reports and show clicks under each position. A link at the top opens the private evidence pack of dated screenshots.
+- **Data check.** Proof links must be https; anything else is refused. All new parts are optional, so older briefs still pass.
+- **Order.** Merge first, then send the new brief: an older build ignores the proofs and draws the brief without them.
+- **Proof.** New tests for the https check and for links opening in a new tab. The real document checked by the door's own check and drawn with the app's stylesheets at desktop and phone width. Not seen signed in.
+
 ## 2026-11-11 — PNB, Paytm and Canara payments are Confirmed only when their cash is with the company; Canara gets its journey back (PR #662, branch `feat/non-hdfc-confirm-on-accept`) · migration `20270612000000` (APPLIED 2026-11-11 (evening IST, after the 18:04-18:16 backup) before the merge, alone)
 - **Owner ask.** A payment that did not land in HDFC PRI or SEC must not go straight to Confirmed Payments. The payer says who it was handed to; when that person accepts, it is Confirmed and moves into Confirmed Payments. Canara "will also have a journey" showing how it moved and who holds it.
 - **Owner decisions (chat, 2026-11-11).** (1) Accepting confirms it, in the same action, with no separate Finance Verify for these three modes: this REVERSES the 2026-10-24 rule "accepting custody never approves". (2) Any employee can be picked as the receiver, but only the company cash custodian (Nitish today) accepting confirms; anyone else accepting just holds it and hands on. (3) Canara gets "Where is this money now?" and the handover journey back AND keeps the required paying-account fields of #653. (4) Pulling already-Confirmed ones back is wanted too, but only after the owner signs off a list (NOT in this change).

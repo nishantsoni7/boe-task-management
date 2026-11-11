@@ -355,6 +355,21 @@
 .talkTwo { padding: 12px 20px 16px; }
 .careBox { padding: 12px 14px; border: 1px solid var(--boe-border); border-radius: 10px; min-width: 0; }
 
+/* "Check it yourself": each figure's report or page, one row per link. */
+.proofs { padding: 10px 20px 14px; border-top: 1px solid var(--boe-border); display: grid; gap: 6px; }
+.claim .proofs, .counter .proofs, .line .proofs { padding: 4px 0 0; border-top: 0; }
+.proofList { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.proofList li { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) auto; gap: 2px 12px; align-items: baseline; padding: 6px 10px; border-radius: 8px; background: var(--boe-surface-quiet); }
+.proofLink { font-size: 13px; font-weight: 600; color: var(--boe-brand-ink); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.proofLink:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; border-radius: 3px; }
+.proofHow { font-size: 12px; color: var(--boe-text-muted); white-space: nowrap; }
+.counter .proofList li { grid-template-columns: minmax(0, 1fr); }
+.counter .proofHow { white-space: normal; }
+.evidence { display: inline-block; margin-top: 12px; }
+.findingNumber { margin: 0; font: 700 15px/1.45 var(--boe-font-heading); color: var(--boe-text); }
+.qClicks { display: block; font-size: 11px; color: var(--boe-text-muted); }
+.planTable td:last-child { white-space: nowrap; }
+
 @media (max-width: 1380px) {
   .causes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cause:nth-child(3) { border-left: 0; }
@@ -520,6 +535,9 @@
   .riser:first-child { border-top: 0; }
   .trendGrid, .flow, .padded, .claim, .missItem, .counter, .riser, .talk, .talkTwo { padding-left: 16px; padding-right: 16px; }
   .risks { padding-left: 34px; padding-right: 16px; }
+  .proofs { padding-left: 16px; padding-right: 16px; }
+  .proofList li { grid-template-columns: minmax(0, 1fr); }
+  .proofHow { white-space: normal; }
   .flowItem { flex-basis: 100%; }
   .arrow { display: none; }
 }

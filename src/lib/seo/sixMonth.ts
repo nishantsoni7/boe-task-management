@@ -57,23 +57,33 @@ export type DiscussionBrief = {
   foot: string
 } & Partial<BriefCase>
 
+/** Where a figure can be checked: a link to the report or page (https only), or a named file with no link. */
+export type BriefProof = { label: string; url?: string; shows: string; how: string }
+type Proofs = { proofs?: BriefProof[] }
+
 /** The case for a decision about the role (November 2026). A brief with `claims` is drawn as a case; one without, as a review. */
 export type BriefCase = {
   headline: { title: string; items: { label: string; note: string; value: string; tone?: SeoTone }[] }
-  trend: Titled & { months: string[]; series: { label: string; values: number[] }[]; events: { month: number; text: string }[]; takeaway: string }
-  quarters: Titled & {
+  evidence: { text: string; url: string }
+  findings: { tag: SeoTag; title: string; number: string; example?: string; proofs: BriefProof[] }[]
+  trend: Titled & Proofs & { months: string[]; series: { label: string; values: number[] }[]; events: { month: number; text: string }[]; takeaway: string }
+  quarters: Titled & Proofs & {
     columns: string[]
-    rows: { keyword: string; demand: string; values: (number | null)[] }[]
+    /** One link per column, to the report behind that quarter. */
+    links?: string[]
+    rows: { keyword: string; demand: string; values: (number | null)[]; clicks?: (number | null)[] }[]
     totals: { label: string; values: string[] }[]
     caveat: string
     takeaway: string
   }
-  leads: { title: string; steps: { label: string; value: string; note: string; tone?: SeoTone }[]; head: string[]; rows: string[][]; takeaway: string }
-  base: Titled & { head: string[]; rows: string[][]; takeaway: string }
-  risers: Titled & { rows: { site: string; from: string; to: string; text: string }[]; fair: string }
-  claims: { claim: string; tag: SeoTag; data: string[]; research: string[]; say: string }[]
-  counters: { says: string; answer: string }[]
+  leads: Proofs & { title: string; steps: { label: string; value: string; note: string; tone?: SeoTone }[]; head: string[]; rows: string[][]; takeaway: string }
+  base: Titled & Proofs & { head: string[]; rows: string[][]; takeaway: string }
+  risers: Titled & Proofs & { rows: { site: string; from: string; to: string; text: string }[]; fair: string }
+  claims: (Proofs & { claim: string; tag: SeoTag; data: string[]; research: string[]; say: string })[]
+  hisPlan: Titled & Proofs & { rows: { point: string; answer: string; tag: SeoTag }[] }
+  counters: (Proofs & { says: string; answer: string })[]
   missed: { title: string; text: string; tag: SeoTag }[]
+  freelance: Titled & { rows: (Proofs & { title: string; text: string })[] }
   plan: Titled & { rows: { task: string; who: string; when: string }[]; risks: string[] }
   talk: Titled & { steps: { title: string; text: string; say?: string }[]; avoid: string[]; care: string[] }
   sources: string[]
@@ -82,7 +92,7 @@ export type BriefCase = {
 export type SixMonthRow = { period_end: string; body: SixMonthReview }
 export type DiscussionBriefRow = { period_end: string; body: DiscussionBrief }
 
-type Spec = 'text' | 'text?' | 'number' | 'number?' | 'tag' | 'tone?' | 'bool?' | 'direction?' | readonly [Spec] | { readonly [key: string]: Spec }
+type Spec = 'text' | 'text?' | 'number' | 'number?' | 'url' | 'url?' | 'tag' | 'tone?' | 'bool?' | 'direction?' | readonly [Spec] | { readonly [key: string]: Spec }
 
 // A whole section that may be left out. An object with the single key '?' is never a real section.
 const optional = <S extends Spec>(spec: S) => ({ '?': spec }) as const
@@ -91,6 +101,8 @@ const TITLED = { title: 'text', note: 'text' } as const
 const FINDING = { value: 'text', title: 'text', tag: 'tag', lines: [{ label: 'text?', text: 'text' }] } as const
 const MOVER = { term: 'text', was: 'number', now: 'number' } as const
 const TABLE = { head: ['text'], rows: [['text']] } as const
+const PROOF_LIST = [{ label: 'text', url: 'url?', shows: 'text', how: 'text' }] as const
+const PROOFS = optional(PROOF_LIST)
 
 const REVIEW_SPEC = {
   period: 'text',
@@ -137,21 +149,27 @@ const BRIEF_SPEC = {
   proof: { ...TITLED, chart: 'text', bars: [{ month: 'text', value: 'number', recent: 'bool?' }], axis: ['text'], table: TABLE },
   foot: 'text',
   headline: optional({ title: 'text', items: [{ label: 'text', note: 'text', value: 'text', tone: 'tone?' }] }),
-  trend: optional({ ...TITLED, months: ['text'], series: [{ label: 'text', values: ['number'] }], events: [{ month: 'number', text: 'text' }], takeaway: 'text' }),
+  evidence: optional({ text: 'text', url: 'url' }),
+  findings: optional([{ tag: 'tag', title: 'text', number: 'text', example: 'text?', proofs: PROOF_LIST }]),
+  trend: optional({ ...TITLED, months: ['text'], series: [{ label: 'text', values: ['number'] }], events: [{ month: 'number', text: 'text' }], takeaway: 'text', proofs: PROOFS }),
   quarters: optional({
     ...TITLED,
     columns: ['text'],
-    rows: [{ keyword: 'text', demand: 'text', values: ['number?'] }],
+    links: optional(['url']),
+    rows: [{ keyword: 'text', demand: 'text', values: ['number?'], clicks: optional(['number?']) }],
     totals: [{ label: 'text', values: ['text'] }],
     caveat: 'text',
     takeaway: 'text',
+    proofs: PROOFS,
   }),
-  leads: optional({ title: 'text', steps: [{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }], ...TABLE, takeaway: 'text' }),
-  base: optional({ ...TITLED, ...TABLE, takeaway: 'text' }),
-  risers: optional({ ...TITLED, rows: [{ site: 'text', from: 'text', to: 'text', text: 'text' }], fair: 'text' }),
-  claims: optional([{ claim: 'text', tag: 'tag', data: ['text'], research: ['text'], say: 'text' }]),
-  counters: optional([{ says: 'text', answer: 'text' }]),
+  leads: optional({ title: 'text', steps: [{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }], ...TABLE, takeaway: 'text', proofs: PROOFS }),
+  base: optional({ ...TITLED, ...TABLE, takeaway: 'text', proofs: PROOFS }),
+  risers: optional({ ...TITLED, rows: [{ site: 'text', from: 'text', to: 'text', text: 'text' }], fair: 'text', proofs: PROOFS }),
+  claims: optional([{ claim: 'text', tag: 'tag', data: ['text'], research: ['text'], say: 'text', proofs: PROOFS }]),
+  hisPlan: optional({ ...TITLED, rows: [{ point: 'text', answer: 'text', tag: 'tag' }], proofs: PROOFS }),
+  counters: optional([{ says: 'text', answer: 'text', proofs: PROOFS }]),
   missed: optional([{ title: 'text', text: 'text', tag: 'tag' }]),
+  freelance: optional({ ...TITLED, rows: [{ title: 'text', text: 'text', proofs: PROOFS }] }),
   plan: optional({ ...TITLED, rows: [{ task: 'text', who: 'text', when: 'text' }], risks: ['text'] }),
   talk: optional({ ...TITLED, steps: [{ title: 'text', text: 'text', say: 'text?' }], avoid: ['text'], care: ['text'] }),
   sources: optional(['text']),
@@ -163,9 +181,11 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 /** The first thing wrong with a document, or null. */
 function problem(value: unknown, spec: Spec, where: string): string | null {
   if (isObject(spec) && '?' in spec) return value === undefined ? null : problem(value, spec['?'] as Spec, where)
-  const mayBeMissing = spec === 'text?' || spec === 'number?' || spec === 'tone?' || spec === 'bool?' || spec === 'direction?'
+  const mayBeMissing = spec === 'text?' || spec === 'number?' || spec === 'url?' || spec === 'tone?' || spec === 'bool?' || spec === 'direction?'
   if (mayBeMissing && value === undefined) return null
   if (spec === 'text' || spec === 'text?') return typeof value === 'string' ? null : `${where} must be text`
+  // Links open from an Admin page, so only https ones are accepted: no javascript:, data: or plain http.
+  if (spec === 'url' || spec === 'url?') return typeof value === 'string' && URL.canParse(value) && new URL(value).protocol === 'https:' ? null : `${where} must be an https link`
   if (spec === 'number') return typeof value === 'number' && Number.isFinite(value) ? null : `${where} must be a number`
   // A blank cell, such as a quarter with no reading.
   if (spec === 'number?') return value === null || (typeof value === 'number' && Number.isFinite(value)) ? null : `${where} must be a number or blank`

@@ -55,6 +55,23 @@ describe('what the door accepts as a review or a brief', () => {
     assert.equal(briefProblem(brief), 'quarters.rows[0].values[0] must be a number or blank')
   })
 
+  test('a proof link must be https; a proof with no link is a named file', () => {
+    type Linked = { url?: string; how?: string }
+    type Doc = { findings: { proofs: Linked[] }[]; quarters: { links: string[] }; evidence: { url: string }; claims: { proofs: Linked[] }[] }
+    const at = (mutate: (brief: Doc) => void) => {
+      const brief = copy(SAMPLE_CASE) as unknown as Doc
+      mutate(brief)
+      return briefProblem(brief)
+    }
+    assert.equal(at(b => { delete b.findings[0].proofs[0].url }), null)
+    for (const url of ['http://example.com', 'javascript:alert(1)', 'data:text/html,hi', '/seo/brief', 'not a link']) {
+      assert.equal(at(b => { b.findings[0].proofs[0].url = url }), 'findings[0].proofs[0].url must be an https link', url)
+    }
+    assert.equal(at(b => { b.quarters.links[1] = 'ftp://example.com' }), 'quarters.links[1] must be an https link')
+    assert.equal(at(b => { b.evidence.url = 'http://example.com' }), 'evidence.url must be an https link')
+    assert.equal(at(b => { delete b.claims[0].proofs[0].how }), 'claims[0].proofs[0].how must be text')
+  })
+
   test('something that is not a document is refused', () => {
     assert.equal(sixMonthProblem(null), ' must be an object')
     assert.equal(briefProblem([]), ' must be an object')
