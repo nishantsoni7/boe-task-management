@@ -353,7 +353,7 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
     `supabase db push --linked` silently report "up to date" (unverified, from memory).
 13. `vercel link` pulls `.env.local` (production credentials). Never give test suites `.env.local`: the only configured
     project is production and live-DB suites write fixtures.
-14. Cross-module `router.prefetch` runs on INTENT only (pointer-enter / focus / touch-start on Module cards and Quick Actions), never in a load effect: a prefetched route brings its CSS, which the browser preloads and then reports as "preloaded but not used". Guard: `src/app/modules/intentPrefetch.test.ts`.
+14. Cross-module `router.prefetch` runs on INTENT only, never in a load effect: a prefetched route brings its CSS, which the browser preloads and then reports as "preloaded but not used". On Module cards intent is the pointer RESTING for 250 ms (`INTENT_DWELL_MS`; leaving or unmounting cancels), keyboard focus, or touch-start. Raw pointer-enter was not enough (2026-11-11: hovering four cards on the way to Sales left four unused preloads). Quick Actions still warm on pointer-enter. Guard: `src/app/modules/intentPrefetch.test.ts`.
 
 ## 10. Tests that guard it
 
