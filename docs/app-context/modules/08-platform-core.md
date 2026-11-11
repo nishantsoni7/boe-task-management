@@ -205,6 +205,10 @@ Modules launcher (`src/app/modules/page.tsx`):
        `canViewAllFinance` (`approve` alone gives no read of other people's payments). Own payments are left out
        unless `verify_own_payment`. Review -> `/finance?tab=pending&request=<id>`, which opens the payment. It leaves
        when decided or sent back; a resubmitted payment returns (`updated_at` is in its Clear all key).
+     - A PI Operations flagged (owner 2026-11-11, `pi_flagged_by_operations`, ALWAYS ON by default): `my_flagged_pis()`
+       (20270611000000) is the one read; the card is urgent-styled, "Respond" opens `/orders/<id>`, where the red banner holds
+       Respond and resubmit. Whoever the answer door lets answer sees it (PI creator/submitter with orders.create, or an
+       active admin); it leaves when answered, accepted, replaced or cancelled. A database without the function shows nothing.
      - Four more, OFF by default, added from Control Center: Payment sent back to you (own `needs_clarification`),
        PI waiting for approval (`orders.approve_order`), Order change request (admins, because the Order page offers
        the review to an acting admin alone), PI waiting for Operations (own `awaiting` handoff, cancelled Orders dropped).
@@ -219,12 +223,12 @@ Modules launcher (`src/app/modules/page.tsx`):
     (`src/lib/modules/forYouSnooze.ts`, localStorage `boe.forYou.cleared.<userId>`; a key names the thing AND what it
     says, so a new or changed item shows at once; a timer brings everything back at `until`; an event keeps the panel
     and the strip in step). Nothing is deleted, decided or marked read.
-  - Which items show (owner 2026-10-31; `src/lib/modules/forYouCatalogue.ts`, the one list of 13 items, each with its
+  - Which items show (owner 2026-10-31; `src/lib/modules/forYouCatalogue.ts`, the one list of 14 items, each with its
     words, default and who it applies to). Control Center › For you sets each item Off, Optional or Always on through
     `set_for_you_item_mode` (active admin, database-enforced), stored in `for_you_item_settings`; no row = the default
     in the list, so a new item needs no seed. Each person turns Optional items off in Account Settings
     (`ForYouChoicesCard`, `user_for_you_preferences`, own row only); the sliders button in the panel header links there
-    because an empty panel is not drawn. Always on ignores the person's choice. "Cash handed to you" defaults to Always
+    because an empty panel is not drawn. Always on ignores the person's choice. "Cash handed to you" and "PI flagged by Operations" default to Always
     on (owner). THESE SETTINGS ONLY HIDE: they grant nothing and no guard reads them. Until both are known the panel
     shows nothing, so nothing flashes and no read runs for an item that is off. A failed read = the defaults, so the
     launcher never breaks; the two editing screens refuse to save over something they could not read. Control Center

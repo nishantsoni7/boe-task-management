@@ -6,9 +6,12 @@ import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import type { ForYouAccess, ForYouItemKey } from '@/lib/modules/forYouCatalogue'
 import { itemApplies } from '@/lib/modules/forYouCatalogue'
+import { readFlaggedPis, type FlaggedPi } from '@/lib/orders/flaggedPis'
+import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
 import {
   FOR_YOU_READ_LIMIT,
   changeRequestCard,
+  flaggedCard,
   isOpenForOperations,
   operationsCard,
   paymentRequestCard,
@@ -118,6 +121,14 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
     .order('approved_at', { ascending: true })
     .limit(FOR_YOU_READ_LIMIT) as unknown as PromiseLike<Answer>)
 
+  // The ONE definition of who must answer a flagged PI is the database's (my_flagged_pis, 20270611000000); a
+  // database without it answers nothing. Oldest first: the longest-held Order leads.
+  const flagged = useWorkRead<FlaggedPi>('pi_flagged_by_operations', userId, wanted('pi_flagged_by_operations'), () => createClient()
+    .rpc('my_flagged_pis')
+    .then(({ data, error }: { data: unknown; error: { code?: string; message?: string } | null }) => (isDashboardFunctionMissing(error)
+      ? { data: [], count: 0, error: null }
+      : { data: error ? null : readFlaggedPis(data), count: null, error })) as unknown as PromiseLike<Answer>)
+
   const unread = (read: WorkRead<unknown> | undefined) => Math.max(0, (read?.total ?? 0) - (read?.rows.length ?? 0))
 
   const groups: WorkGroup[] = [
@@ -147,6 +158,15 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
       moreLabel: n => `${n} more ${n === 1 ? 'PI' : 'PIs'} waiting →`,
       failed: piApprovals.isError,
       failedLabel: 'PIs waiting for approval',
+    },
+    {
+      item: 'pi_flagged_by_operations',
+      cards: (flagged.data?.rows ?? []).map(flaggedCard),
+      unread: 0,
+      moreHref: '/orders',
+      moreLabel: n => `${n} more flagged →`,
+      failed: flagged.isError,
+      failedLabel: 'PIs flagged by Operations',
     },
     {
       item: 'order_change_request',

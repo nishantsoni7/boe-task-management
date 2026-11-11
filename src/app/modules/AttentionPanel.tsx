@@ -59,7 +59,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone,
-  MessageCircleQuestion, SlidersHorizontal, Undo2, Wallet,
+  MessageCircleQuestion, SlidersHorizontal, TriangleAlert, Undo2, Wallet,
 } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import { useHandoverActions, useOpenHandovers } from '@/hooks/queries/useHandovers'
@@ -543,6 +543,7 @@ const WORK_ICON: Record<WorkItemKey, typeof Banknote> = {
   pi_waiting_approval: FileCheck,
   order_change_request: FilePen,
   pi_waiting_operations: ClipboardCheck,
+  pi_flagged_by_operations: TriangleAlert,
 }
 
 function WorkCards({ item, cards, unread, moreHref, moreLabel, failed, failedLabel }: {
@@ -567,8 +568,8 @@ function WorkCards({ item, cards, unread, moreHref, moreLabel, failed, failedLab
   return (
     <>
       {listed.map(card => (
-        <li key={card.key} className={styles.card}>
-          <span className={styles.cardLabel}>
+        <li key={card.key} className={card.urgent ? `${styles.card} ${styles.cardUrgent}` : styles.card}>
+          <span className={card.urgent ? styles.cardLabelUrgent : styles.cardLabel}>
             <Icon size={13} strokeWidth={2} aria-hidden="true" />
             {card.label}
           </span>

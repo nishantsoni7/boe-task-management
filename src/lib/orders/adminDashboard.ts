@@ -13,6 +13,7 @@
 
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { FLAGGED_KIND_LABEL, flaggedHref, flaggedLabel, reasonLine, type FlaggedPi } from '@/lib/orders/flaggedPis'
 import {
   SUBMISSION_STATUS_LABEL,
   categoriesLabel,
@@ -84,7 +85,7 @@ export function paymentChip(
 
 // ── One list of decisions ────────────────────────────────────────────────────
 
-export type DecisionKind = 'pi_review' | 'pi_revision' | 'documents'
+export type DecisionKind = 'pi_review' | 'pi_revision' | 'documents' | 'pi_flagged'
 
 export type DecisionRow = {
   key: string
@@ -134,6 +135,21 @@ export function revisionRow(r: RevisionSource, byName: string | null): DecisionR
     ref: `Order ${r.orderNumber} · PI V${r.versionNumber}`,
     by: byName, sinceIso: r.uploadedAt, waitSeconds: 0, value: null,
     chip: { tone: 'info', label: `Revised PI · V${r.versionNumber}`, sub: r.reason ? `“${r.reason}”` : 'Awaiting your decision' },
+  }
+}
+
+/**
+ * A PI Operations flagged ("cannot accept") that THIS reader must answer (my_flagged_pis, 20270611000000).
+ * The row opens the Order, where Respond and resubmit is; Operations' reason is the sub-line.
+ */
+export function flaggedRow(r: FlaggedPi): DecisionRow {
+  return {
+    key: `flag-${r.handoffId}`, kind: 'pi_flagged', kindLabel: FLAGGED_KIND_LABEL,
+    href: withReturnTo(flaggedHref(r.orderId), '/orders'),
+    client: r.clientName || 'Client not recorded',
+    ref: `Order ${r.orderNumber} · PI V${r.versionNumber}`,
+    by: r.byName, sinceIso: r.since, waitSeconds: 0, value: null,
+    chip: { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
   }
 }
 

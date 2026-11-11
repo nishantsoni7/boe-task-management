@@ -139,6 +139,42 @@ A second delivery of rows already in `notifications`; it creates no rows, adds n
 - **Traps.** The guard test `notificationSystemActivity.test.ts` allowlists exactly this migration for a trigger on notifications and an outbound call, and asserts it never inserts a notification. Both migration ledgers in `participantAndOrderTotalSecurity.test.ts` list it. A new notification type follows the `*_NOTIFICATION_TYPES` lists automatically; if the inbox hides it, also add it to the trigger's skip list and `shouldPushNotification`. iPhone needs iOS 16.4+ and the Home Screen app. Sample Tracking (own table) is NOT covered. Not seen on a real phone.
 - **Tests.** `src/lib/push/push.test.ts`.
 
+## 8e. Action events register (2026-11-11, owner ask; the Orders slice is built, the rest is the to-do list)
+
+**Why.** Operations flagged PI V1 of Order 546 and it reached the owner only as one notification and a small count link at the foot of the Orders dashboard; the salesperson was told nothing. The owner: anything that needs a decision or an action from a person must be on that person's own dashboard, "so it cannot be missed in any way". A notification is not a place to keep an obligation: it is read once and scrolls away.
+
+**The rule (also in `02_MASTER_INSTRUCTION_SHEET.md` §3 and `04_NEW_MODULE_CHECKLIST.md` §B).** An event that waits on a named person needs ALL of: (1) ONE database read whose "who must act" is the same function the action's own door asks, never a second hand-copied rule (the models are `my_flagged_pis()` calling `can_propose_order_pi_edit()`, and `my_returned_pis()`); (2) ONE entry in `FOR_YOU_ITEMS` (`src/lib/modules/forYouCatalogue.ts`), default **Always on** when it must not be missed, with its card builder in `forYouWork.ts` and its read in `useForYouWork.ts`; (3) a row or strip on the owning module's own dashboard where that module has one; (4) a test that it LEAVES when the state changes and that a failed read is said, never "nothing waits". The For you settings only hide cards; no card is shown to someone who cannot act on it (grants, not role inheritance).
+
+**Register, from reading the code at origin/main b0f4ff3e (not run; production apply state not checked).** "Home" = the Modules For you column, or a module dashboard card that lists the item for the person who must act.
+
+| Event (table.status) | Who must act | Home today? |
+|---|---|---|
+| PI flagged by Operations (`order_operations_handoffs` `clarification_needed`) | PI creator/submitter with orders.create, or an active admin | **YES since 2026-11-11**: Orders "Needs your decision" (approver), strip on the other Orders dashboards, For you `pi_flagged_by_operations` (Always on). Before: a foot-of-page count link and one notice to the approver of that version only |
+| PI submitted, awaiting approval | `orders.approve_order` holders | Yes: Needs your decision; For you `pi_waiting_approval` (default Off); Control Center Action Queue |
+| PI revision pending (V2+); Design Files / Client PO awaiting admin | approvers | Yes: Needs your decision |
+| PI returned for changes | the PI's salesperson / creator / submitter | Yes: salesperson strip + For you `pi_returned` |
+| PI version awaiting Operations review | the one assigned reviewer | Queue link on /orders, Operations dashboard; For you `pi_waiting_operations` (default Off) |
+| Order change / cancellation request | admins | For you `order_change_request` (default Off); Action Queue |
+| Payment awaiting verification | `finance.approve` (+ `view_all`; HDFC also `reconcile`) | For you `payment_request` (Optional); Action Queue (admin). The notice goes to role=admin only |
+| Payment sent back | the recorder | For you `payment_sent_back` (default Off); Action Queue |
+| Cash handed to you / you hold / not with the company | recipient / holder / custodian | Yes: For you (handed to you is Always on) |
+| Leave and late-arrival requests | an admin other than the requester | Yes: For you `leave_late` |
+| Announcement unread | named recipient | Yes: For you `announcement` |
+| Unacknowledged task; quotation requests | assignee; admin | Yes: Tasks dashboard "Needs Your Attention" |
+| Task submitted for approval | task creator | **No**: Assigned-By-Me "For Approval" tab only |
+| Early-departure / time-out requests | admin | **No**: Attendance overview chip and list |
+| Employee-record issues ("Raise Issue") | admin | **No**: correction log and the bell |
+| Customer-review custom submission to verify | `customer_review_requests.verify` holder | **No**: sidebar count only; a rejected review sends no notification at all |
+| Asset handover to accept; asset change requests | new custodian; `assets_access:manage` | **No**: My Assets button; requests view. Request notices go to admins only |
+| Inventory booking pending | `inventory:approve` or admin | **No**: count in the Inventory layout |
+| Sample dispatch approval; QR submitted | admin; `sample_tracking:dispatch` | **No** (the tile badge counts unread only); the QR notice goes to admins only |
+| Sales lead not allotted; first call / follow-up due | admin or `sales:assign`; the assigned salesperson | **No**: Lead Master queue; /sales/my-day only |
+| Bank credits unmatched; bank check pending; verified payment not allocated | `finance.reconcile`; `finance.allocate` | **No** for non-admins (list pages; allocation only in the admin Action Queue) |
+| Pendency approvals; expenses needing details or reimbursement | order approvers; the author / `finance.reimburse` | **No**: list pages only; no notification |
+| Payroll lock, credits month close, meetings follow-ups, exhibition and vendor follow-ups | admin / departments / owners | **No**; silent |
+
+Next slices (each needs the owner's yes, one small PR each, ordered by how easily they are missed): task approval; early-departure and time-out requests with employee-record issues; customer-review verification; asset handover and requests; inventory bookings; sample approval; unallotted leads; Finance queues for non-admins. Routing gaps to re-check before acting (reported by a read-only survey, not re-verified): payment-submitted, asset-request and sample-QR notices reach admins only; a rejected review notifies nobody. Four decision-like For you items still default Off (PI waiting approval, payment sent back, Order change request, PI waiting for Operations): an administrator can switch any of them on in Control Center › For you with no code. This dossier's feed and enum lists still omit the `sales` category (six types) and `attendance_machine_stopped`.
+
 ## 9. Known traps / gotchas / unfixed defects
 
 1. **FIXED 2026-10-19 (code only): these types are now in `ORDER_NOTIFICATION_TYPES` and filed under Orders by `getNotificationMeta` (test `hiddenOrderTypes.test.ts`). Original note:** Some written types are not in any feed list. `pi_exception_requested/approved/rejected`, `pi_revision_proposed/approved/rejected` and

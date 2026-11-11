@@ -38,8 +38,9 @@ describe('the list', () => {
     }
   })
 
-  test('only one item starts Always on', () => {
-    assert.deepEqual(FOR_YOU_ITEMS.filter(i => i.defaultMode === 'always').map(i => i.key), ['cash_handed_to_you'])
+  test('only the two items that must not be missed start Always on: cash handed to you, a PI Operations flagged (owner, 2026-11-11)', () => {
+    assert.deepEqual(FOR_YOU_ITEMS.filter(i => i.defaultMode === 'always').map(i => i.key),
+      ['cash_handed_to_you', 'pi_flagged_by_operations'])
   })
 
   test('every card that existed before keeps showing by default', () => {
@@ -94,6 +95,7 @@ describe('never wider than access', () => {
       ['payment_sent_back', { finance: true }],
       ['order_change_request', { admin: true }],
       ['pi_waiting_operations', { orders: true }],
+      ['pi_flagged_by_operations', { orders: true }],
     ]
     for (const [key, access] of cases) {
       assert.equal(itemApplies(key, all()), false, `${key} is closed without access`)

@@ -6,6 +6,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   changeRequestCard,
+  flaggedCard,
   isOpenForOperations,
   operationsCard,
   paymentRequestCard,
@@ -111,5 +112,34 @@ describe('a PI waiting for Operations', () => {
   test('a cancelled Order has nothing left to accept', () => {
     assert.equal(isOpenForOperations(handoff), true)
     assert.equal(isOpenForOperations({ ...handoff, order: { ...handoff.order!, status: 'cancelled' } }), false)
+  })
+})
+
+describe('a PI flagged by Operations', () => {
+  const flagged = {
+    handoffId: 'h9', orderId: 'o546', orderNumber: '546', clientName: 'Qavaali', versionNumber: 1,
+    reason: 'As per mohit... client wanted a visit from our side before aligning the order', byName: 'Nitish Bansal',
+    since: NOW, waitingSeconds: 0,
+  }
+
+  test('names the Order and client, says what Operations could not accept, and opens the Order to answer', () => {
+    const card = flaggedCard(flagged)
+    assert.match(card.label, /^PI flagged by Operations · /)
+    assert.equal(card.brief, 'Order 546 · Qavaali')
+    assert.match(card.detail, /^Operations cannot accept PI V1 · “As per mohit/)
+    assert.equal(card.action, 'Respond')
+    assert.equal(card.href, '/orders/o546')
+  })
+
+  test('is drawn urgent: the Order waits until somebody answers', () => {
+    assert.equal(flaggedCard(flagged).urgent, true)
+  })
+
+  test('flagged again later is a new item, shown at once after Clear all', () => {
+    assert.notEqual(flaggedCard(flagged).key, flaggedCard({ ...flagged, since: '2030-01-01T00:00:00.000Z' }).key)
+  })
+
+  test('a long reason is cut to one line on the card', () => {
+    assert.ok(flaggedCard({ ...flagged, reason: 'x'.repeat(900) }).detail.length < 220)
   })
 })
