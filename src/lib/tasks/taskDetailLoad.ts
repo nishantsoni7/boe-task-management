@@ -19,6 +19,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Task, LogEntry, TaskAttachment } from '@/lib/types'
+import { isHiddenActivity } from '@/lib/ui'
 
 type ReadError = { message: string; code?: string | null }
 
@@ -86,7 +87,9 @@ export function buildActivityLog(
     if (!att.activity_log_id) taskLevelAttachments.push(att)
     else (byLogId[att.activity_log_id] ??= []).push(att)
   }
-  const log = rows.map(e => ({
+  // Old auto-escalation lines stay in the table but are never drawn; dropping them here also stops
+  // one from being "the newest entry" and taking Edit/Delete away from a person's own update.
+  const log = rows.filter(e => !isHiddenActivity(e.action)).map(e => ({
     ...e,
     actor_name:     e.users?.full_name ?? null,
     old_val:        e.old_val ?? null,

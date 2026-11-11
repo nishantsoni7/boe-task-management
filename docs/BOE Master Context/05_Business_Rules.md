@@ -1540,3 +1540,13 @@ Verified against `src/app/dashboard/page.tsx`,
 `supabase/migrations/20261015000000_task_health_check_stops_notifying.sql`,
 `docs/proposals/run_task_health_check.production.sql` and
 `src/lib/notifications.ts` on `main` at commit `ebc801c` (2026-09-04).
+
+**Update 2026-11-11 — owner decision on mechanism 1.** The owner asked for the
+automatic escalation to be removed. Migration
+`20270610000000_task_health_check_stops_escalating.sql` takes the 24-hour and
+72-hour `task_activity_log` writes out of `run_task_health_check()`; only the
+stale flag remains in the job. Old lines are kept in the table and hidden in the
+task's Activity. Mechanism 2 (the dashboard's admin-only view, and the Manager
+"Silent 72h+" filter) was not part of the request and is unchanged. The written
+24/48/72-hour rule above is therefore no longer implemented anywhere as a
+recorded event.

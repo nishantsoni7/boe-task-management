@@ -50,6 +50,8 @@ export const MEANINGFUL_ACTIONS: ReadonlySet<string> = new Set([
   'working',
   'task_copied',
   'delegated',
+  // Written by the old hourly job under the task CREATOR's name; nothing writes it since migration
+  // 20270610000000. Kept so the days those rows already gave are not changed after the fact.
   'escalated',
 ])
 

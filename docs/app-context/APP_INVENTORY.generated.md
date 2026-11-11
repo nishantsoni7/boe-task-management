@@ -8,7 +8,7 @@
 - Commit: `b0f4ff3e` — Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
 - Commits on this branch: 1216
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
-- Migrations: 425 (first `20260530_create_positions.sql`, latest `20270609000000_sales_whatsapp_capture.sql`)
+- Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
 - Test files: 784   Next.js 16.2.6, React 19.2.4
 
@@ -454,7 +454,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270516000100_finance_bank_old_routes_closed.sql`
 - `20270517000000_finance_bank_line_ids_and_match_search.sql`
 - `20270517000100_orders_advance_percent.sql`
 - `20270518000000_register_seo_module.sql`
@@ -484,6 +483,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
 - `20270609000000_sales_whatsapp_capture.sql`
+- `20270610000000_task_health_check_stops_escalating.sql`
 
 ## All SQL function names
 
