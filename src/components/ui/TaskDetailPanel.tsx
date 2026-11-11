@@ -4,9 +4,11 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging, taskStatusLabel } from '@/lib/ui'
+import { isOverdue, formatShortDate, formatDateTime, timeAgo, getTaskAging } from '@/lib/ui'
+import { headlineOf, statusReasonOf, latestUpdatesOf } from '@/lib/tasks/taskDrawerBrief'
 import { createClient } from '@/lib/supabase/client'
 import { MultilineText } from '@/components/ui/MultilineText'
+import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CheckCircle } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -43,31 +45,40 @@ const STATUS_COLOR: Record<string, string> = {
 
 // View Task Page — one look whether it renders as a link or a button.
 const FULL_PAGE_BUTTON: React.CSSProperties = {
-  width: '100%', padding: '9px 14px', borderRadius: '8px',
+  width: '100%', minHeight: '44px', padding: '9px 14px', borderRadius: '8px',
   border: 'none',
   background: colors.brand,
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '13px', fontWeight: 600,
+  fontSize: '14px', fontWeight: 600,
   transition: 'opacity 0.12s',
 }
 
-// ─── Meta row ─────────────────────────────────────────────────────────────────
+// ─── Small pieces ─────────────────────────────────────────────────────────────
 
-function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+const SECTION_LABEL: React.CSSProperties = {
+  fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
+  letterSpacing: '0.07em', color: colors.muted, margin: '0 0 7px',
+}
+
+// "Show more" only appears under a text that runs long. 44 px to tap, but the
+// negative margin keeps the gap under the text from growing by the same amount.
+const SHOW_MORE: React.CSSProperties = {
+  minHeight: '44px', display: 'flex', alignItems: 'center', margin: '-10px 0',
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minHeight: '22px' }}>
-      <span style={{
-        flexShrink: 0, width: '90px',
-        fontSize: '12px', fontWeight: 600,
-        textTransform: 'uppercase', letterSpacing: '0.06em',
-        color: colors.muted, paddingTop: '1px',
+    <div style={{ minWidth: 0 }}>
+      <div style={{
+        fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
+        letterSpacing: '0.06em', color: colors.muted, marginBottom: '3px',
       }}>
         {label}
-      </span>
-      <span style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.5 }}>
+      </div>
+      <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.45, overflowWrap: 'anywhere' }}>
         {children}
-      </span>
+      </div>
     </div>
   )
 }
@@ -83,27 +94,35 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
   const [acknowledging, setAcknowledging] = useState(false)
   const [activityLog,   setActivityLog] = useState<LogEntry[]>([])
   const [logLoading,    setLogLoading]  = useState(true)
+  const [logFailed,     setLogFailed]   = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
 
   // Reload log when a different task is opened
   useEffect(() => {
+    // A slow answer for the task just left must not paint over the one now open:
+    // the headline's reason is read from these rows.
+    let stale = false
     const loadLog = () => {
       setActivityLog([])
       setLogLoading(true)
+      setLogFailed(false)
 
       supabase
         .from('task_activity_log')
-        .select('id, action, note, from_status, to_status, created_at, actor_id')
+        .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id')
         .eq('task_id', task.id)
         .order('created_at', { ascending: false })
         .limit(20)
-        .then(({ data }: { data: LogEntry[] | null }) => {
+        .then(({ data, error }: { data: LogEntry[] | null; error: unknown }) => {
+          if (stale) return
           if (data) setActivityLog(data)
+          setLogFailed(Boolean(error) || !data)
           setLogLoading(false)
         })
     }
     loadLog()
+    return () => { stale = true }
   }, [task.id, task.status, supabase])
 
   const [isMobile, setIsMobile] = useState(false)
@@ -141,6 +160,18 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
   const assignedByName = isSelfAssigned
     ? 'Self'
     : (userMap?.[task.created_by] ?? '—')
+  const nameOf         = (id: string) => userMap?.[id] ?? 'Someone'
+
+  // The brief: read off the task and the log rows already loaded above.
+  const headline = headlineOf(task, {
+    userMap, currentUserId, today: new Date().toISOString().slice(0, 10),
+  })
+  const statusReason = statusReasonOf(task, activityLog)
+  // The update that set the status is already said, with its reason, in the
+  // headline card above; its line keeps who and when but not the same words twice.
+  const updates      = latestUpdatesOf(activityLog).map(u => u.id === statusReason.id ? { ...u, detail: null } : u)
+  const aging        = getTaskAging(task)
+  const agingColor   = aging?.severity === 'danger' ? colors.red : colors.amber
 
   const desktopTransform = open ? 'translateX(0)' : 'translateX(100%)'
   const mobileTransform  = open ? 'translateY(0)' : 'translateY(100%)'
@@ -211,7 +242,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           alignItems:   'flex-start',
           gap:          '10px',
         }}>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             {task.is_urgent && (
               <div style={{
                 fontSize: '12px', fontWeight: 600,
@@ -224,6 +255,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             <p style={{
               fontSize: '15px', fontWeight: 600,
               color: colors.primary, lineHeight: 1.45, margin: 0,
+              overflowWrap: 'anywhere',
             }}>
               {task.title}
             </p>
@@ -234,13 +266,13 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             style={{
               background: 'none', border: 'none',
               color: colors.muted, cursor: 'pointer',
-              fontSize: '18px', lineHeight: 1,
+              fontSize: '20px', lineHeight: 1,
               padding: '8px', flexShrink: 0,
-              minWidth: '40px', minHeight: '40px',
+              minWidth: '44px', minHeight: '44px',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: '6px',
               transition: 'color 0.14s, background 0.14s',
-              marginRight: '-6px',
+              margin: '-6px -8px -6px 0',
             }}
             onMouseEnter={e => { e.currentTarget.style.color = colors.primary; e.currentTarget.style.background = colors.float }}
             onMouseLeave={e => { e.currentTarget.style.color = colors.muted; e.currentTarget.style.background = 'none' }}
@@ -253,94 +285,51 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
         <div style={{
           flex:           1,
           overflowY:      'auto',
+          overscrollBehavior: 'contain',
           scrollbarWidth: 'thin',
           scrollbarColor: `rgba(0,0,0,0.08) transparent`,
-          padding:        '12px 16px',
+          padding:        '14px 16px',
           display:        'flex',
           flexDirection:  'column',
-          gap:            '10px',
+          gap:            '14px',
         }}>
 
-          {/* Metadata */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-
-            <MetaRow label="Status">
-              <span style={{
-                display: 'inline-block',
-                fontSize: '12px', fontWeight: 600, textTransform: 'capitalize',
-                color: statusColor,
-                background: `${statusColor}14`,
-                padding: '2px 8px', borderRadius: '6px',
-              }}>
-                {taskStatusLabel(task.status)}
-              </span>
-            </MetaRow>
-
-            <MetaRow label="Priority">
-              <span style={{
-                display: 'inline-block',
-                fontSize: '12px', fontWeight: 600,
-                color: priority.color, background: priority.bg,
-                padding: '2px 8px', borderRadius: '6px',
-              }}>
-                {priority.label}
-              </span>
-            </MetaRow>
-
-            <MetaRow label="Due Date">
-              {task.due_date ? (
-                <span style={{
-                  fontSize: '12.5px',
-                  color: overdue ? colors.red : colors.secondary,
-                  fontWeight: overdue ? 600 : 400,
-                }}>
-                  {formatShortDate(task.due_date)}
-                  {overdue && (
-                    <span style={{ marginLeft: '5px', fontSize: '12px', color: colors.red }}>
-                      Overdue
-                    </span>
-                  )}
-                </span>
-              ) : '—'}
-            </MetaRow>
-
-            <MetaRow label="Assigned By">{assignedByName}</MetaRow>
-
-            <MetaRow label="Last Update">
-              {task.last_update_at
-                ? <span title={formatDateTime(task.last_update_at)}>{timeAgo(task.last_update_at)}</span>
-                : <span title={formatDateTime(task.created_at)}>{timeAgo(task.created_at)} (created)</span>
-              }
-            </MetaRow>
-
-            {(() => {
-              const aging = getTaskAging(task)
-              if (!aging) return null
-              const color = aging.severity === 'danger' ? '#B42332' : '#805B0D'
-              return (
-                <MetaRow label="Aging">
-                  <span style={{
-                    fontSize: '12px', fontWeight: 700,
-                    color,
-                    background: `${color}12`,
-                    border: `1px solid ${color}30`,
-                    padding: '2px 8px', borderRadius: '6px',
-                  }}>
-                    {aging.label}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#686D6C', marginLeft: '6px' }}>
-                    {aging.message}
-                  </span>
-                </MetaRow>
-              )
-            })()}
-
+          {/* Where the task stands: status, when it is due, who holds it — and why. */}
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '8px',
+            background: colors.raised,
+            border: `1px solid ${colors.border}`,
+            borderLeft: `4px solid ${statusColor}`,
+          }}>
+            <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: colors.secondary }}>
+              <strong style={{ fontWeight: 700, color: statusColor }}>{headline.status}</strong>
+              {' · '}
+              <span style={overdue ? { color: colors.red, fontWeight: 600 } : undefined}>{headline.due}</span>
+              {headline.who && <>{' · '}{headline.who}</>}
+            </p>
+            {statusReason.reason && (
+              <ExpandableText
+                clampLines={3}
+                moreLabel="Show more"
+                toggleStyle={SHOW_MORE}
+                style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.55, margin: '8px 0 0' }}
+              >
+                {statusReason.reason}
+              </ExpandableText>
+            )}
+            {statusReason.actorId && statusReason.at && (
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: colors.muted }}>
+                Set by {nameOf(statusReason.actorId)}{' · '}
+                <span title={formatDateTime(statusReason.at)}>{timeAgo(statusReason.at)}</span>
+              </p>
+            )}
           </div>
 
           {/* Waiting On — shown when task is in waiting status */}
           {task.status === 'waiting' && (task.waiting_on_type) && (
             <div style={{
-              padding: '8px 10px',
+              padding: '10px 12px',
               borderRadius: '8px',
               background: `${colors.amber}0d`,
               border: `1.5px solid ${colors.amber}40`,
@@ -354,7 +343,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                 Waiting On
               </div>
               <p style={{
-                fontSize: '12.5px', color: colors.amber,
+                fontSize: '13px', color: colors.amber,
                 margin: 0, lineHeight: 1.55,
               }}>
                 {task.waiting_on_type === 'team_member'
@@ -368,10 +357,10 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             </div>
           )}
 
-          {/* Blocker reason — prominent section, visible above Note */}
+          {/* Blocker reason — prominent section, visible above everything else */}
           {task.status === 'blocked' && task.blocker_reason && (
             <div style={{
-              padding: '8px 10px',
+              padding: '10px 12px',
               borderRadius: '8px',
               background: `${colors.red}0d`,
               border: `1.5px solid ${colors.red}40`,
@@ -385,7 +374,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                 Blocker Reason
               </div>
               <MultilineText style={{
-                fontSize: '12.5px', color: colors.red,
+                fontSize: '13px', color: colors.red,
                 margin: 0, lineHeight: 1.55,
               }}>
                 {task.blocker_reason}
@@ -393,42 +382,11 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             </div>
           )}
 
-          {/* Divider */}
-          <div style={{ height: '1px', background: colors.border }} />
-
-          {/* Task Description */}
-          <div>
-            <div style={{
-              fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '0.07em', color: colors.muted, marginBottom: '7px',
-            }}>
-              Task Description
-            </div>
-            <div style={{
-              padding: '7px 10px', borderRadius: '6px',
-              background: colors.raised,
-              border: `1px solid ${colors.border}`,
-            }}>
-              {task.note ? (
-                <MultilineText style={{
-                  fontSize: '12.5px', color: colors.secondary,
-                  lineHeight: 1.6, margin: 0,
-                }}>
-                  {task.note}
-                </MultilineText>
-              ) : (
-                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                  No task description provided.
-                </p>
-              )}
-            </div>
-          </div>
-
           {/* Acknowledge Task — delegated, unacknowledged, assignee only */}
           {onAcknowledge && !task.acknowledged_at && task.status !== 'completed'
             && currentUserId === task.assigned_to && task.created_by !== currentUserId && (
             <div style={{
-              padding: '9px 10px',
+              padding: '10px 12px',
               borderRadius: '8px',
               border: `1.5px solid ${colors.amber}60`,
               background: `${colors.amber}0a`,
@@ -447,12 +405,12 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                   try { await onAcknowledge() } finally { setAcknowledging(false) }
                 }}
                 style={{
-                  width: '100%', padding: '8px 14px', borderRadius: '6px',
+                  width: '100%', minHeight: '44px', padding: '8px 14px', borderRadius: '8px',
                   border: `1.5px solid ${colors.amber}`,
                   background: acknowledging ? colors.float : colors.amberTint,
                   color: acknowledging ? colors.muted : '#92600A',
                   cursor: acknowledging ? 'not-allowed' : 'pointer',
-                  fontSize: '12.5px', fontWeight: 600,
+                  fontSize: '13px', fontWeight: 600,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   transition: 'background 0.12s',
                 }}
@@ -465,77 +423,139 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             </div>
           )}
 
-          {/* Divider */}
-          <div style={{ height: '1px', background: colors.border }} />
-
-          {/* Recent Update */}
-          <div>
-            <div style={{
-              fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
-            }}>
-              Recent Update
-            </div>
-
+          {/* Latest updates — the last few real ones; system lines are skipped */}
+          <section aria-label="Latest updates">
+            <h3 style={SECTION_LABEL}>Latest updates</h3>
             {logLoading ? (
-              <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading…</p>
-            ) : activityLog.length === 0 ? (
-              <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                No activity recorded yet.
+              <p style={{ fontSize: '13px', color: colors.muted, margin: 0 }}>Loading…</p>
+            ) : logFailed ? (
+              <p style={{ fontSize: '13px', color: colors.muted, margin: 0 }}>
+                Could not load the updates. Open the task page to see them.
               </p>
-            ) : (() => {
-              const entry = activityLog[0]
-              const actorName = userMap?.[entry.actor_id] ?? 'Someone'
-              const label     = formatLogAction(entry.action, entry.from_status, entry.to_status)
-              return (
-                <div style={{
-                  padding: '8px 10px', borderRadius: '6px',
-                  background: colors.raised,
-                  border: `1px solid ${colors.borderSoft}`,
-                }}>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'flex-start', gap: '8px', marginBottom: entry.note ? '4px' : 0,
+            ) : updates.length === 0 ? (
+              <p style={{ fontSize: '13px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                No updates yet.
+              </p>
+            ) : (
+              <ol style={{
+                listStyle: 'none', margin: 0, padding: 0,
+                borderRadius: '8px', background: colors.raised,
+                border: `1px solid ${colors.border}`,
+              }}>
+                {updates.map((u, i) => (
+                  <li key={u.id} style={{
+                    padding: '10px 12px',
+                    borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
                   }}>
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: colors.secondary }}>
-                      {label}
-                    </span>
-                    <span style={{
-                      fontSize: '12px', color: colors.muted,
-                      whiteSpace: 'nowrap', flexShrink: 0,
-                    }}
-                      title={formatDateTime(entry.created_at)}
-                    >
-                      {timeAgo(entry.created_at)}
-                    </span>
-                  </div>
-                  {entry.note && (
-                    <MultilineText style={{
-                      fontSize: '12px', color: colors.muted,
-                      margin: '0 0 3px', lineHeight: 1.5,
-                    }}>
-                      {entry.note}
-                    </MultilineText>
-                  )}
-                  <span style={{ fontSize: '12px', color: colors.muted }}>
-                    by {actorName}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.45, color: colors.secondary, minWidth: 0 }}>
+                        <strong style={{ fontWeight: 600, color: colors.primary }}>{nameOf(u.actorId)}</strong>{' '}{u.what}
+                      </p>
+                      <span
+                        title={formatDateTime(u.at)}
+                        style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap', flexShrink: 0, paddingTop: '1px' }}
+                      >
+                        {timeAgo(u.at)}
+                      </span>
+                    </div>
+                    {u.detail && (
+                      <ExpandableText
+                        clampLines={3}
+                        moreLabel="Show more"
+                        toggleStyle={SHOW_MORE}
+                        style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.5, margin: '4px 0 0' }}
+                      >
+                        {u.detail}
+                      </ExpandableText>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          {/* Facts */}
+          <section aria-label="Task facts">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Fact label="Priority">
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '12px', fontWeight: 600,
+                  color: priority.color, background: priority.bg,
+                  padding: '2px 8px', borderRadius: '6px',
+                }}>
+                  {priority.label}
+                </span>
+              </Fact>
+              <Fact label="Due">
+                {task.due_date ? (
+                  <span style={{ color: overdue ? colors.red : colors.secondary, fontWeight: overdue ? 600 : 400 }}>
+                    {formatShortDate(task.due_date)}
+                    {overdue && <span style={{ marginLeft: '5px', fontSize: '12px' }}>Overdue</span>}
                   </span>
-                </div>
-              )
-            })()}
-          </div>
+                ) : '—'}
+              </Fact>
+              <Fact label="Assigned by">{assignedByName}</Fact>
+              <Fact label="Last update">
+                {task.last_update_at
+                  ? <span title={formatDateTime(task.last_update_at)}>{timeAgo(task.last_update_at)}</span>
+                  : <span title={formatDateTime(task.created_at)}>{timeAgo(task.created_at)} (created)</span>
+                }
+              </Fact>
+            </div>
+            {aging && (
+              <p style={{ margin: '10px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+                <span style={{
+                  fontWeight: 700,
+                  color: agingColor,
+                  background: `${agingColor}12`,
+                  border: `1px solid ${agingColor}30`,
+                  padding: '2px 8px', borderRadius: '6px',
+                }}>
+                  {aging.label}
+                </span>
+                {' '}{aging.message}
+              </p>
+            )}
+          </section>
+
+          {/* Task Description — three lines, then "Show more" */}
+          <section aria-label="Task description">
+            <h3 style={SECTION_LABEL}>Task Description</h3>
+            <div style={{
+              padding: '8px 12px', borderRadius: '8px',
+              background: colors.raised,
+              border: `1px solid ${colors.border}`,
+            }}>
+              {task.note ? (
+                <ExpandableText
+                  clampLines={3}
+                  moreLabel="Show more"
+                  toggleStyle={SHOW_MORE}
+                  style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6, margin: 0 }}
+                >
+                  {task.note}
+                </ExpandableText>
+              ) : (
+                <p style={{ fontSize: '13px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                  No task description provided.
+                </p>
+              )}
+            </div>
+          </section>
 
         </div>
 
         {/* Sticky footer */}
         <div style={{
-          padding:       '10px 14px',
-          borderTop:     `1px solid ${colors.border}`,
+          // Bottom padding clears a phone's home bar.
+          padding:       '10px 14px max(10px, env(safe-area-inset-bottom))',
+          borderTop:    `1px solid ${colors.border}`,
           background:    colors.raised,
           flexShrink:    0,
           display:       'flex',
           flexDirection: 'column',
-          gap:           '7px',
+          gap:           '8px',
         }}>
           {/* View Task Page as a LINK. What it does that close-then-router.push
               did not:
@@ -560,7 +580,8 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               }}
               style={{
                 ...FULL_PAGE_BUTTON,
-                display: 'block', boxSizing: 'border-box',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxSizing: 'border-box',
                 textAlign: 'center', textDecoration: 'none',
                 cursor: opening ? 'progress' : 'pointer',
                 opacity: opening ? 0.8 : 1,
@@ -583,12 +604,12 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           <button
             onClick={onClose}
             style={{
-              width: '100%', padding: '7px 14px', borderRadius: '8px',
+              width: '100%', minHeight: '44px', padding: '7px 14px', borderRadius: '8px',
               border: `1px solid ${colors.borderSoft}`,
               background: 'transparent',
               color: colors.secondary,
               cursor: 'pointer',
-              fontSize: '12px', fontWeight: 500,
+              fontSize: '14px', fontWeight: 500,
               transition: 'background 0.12s',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
