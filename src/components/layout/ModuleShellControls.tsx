@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Home, RefreshCw } from 'lucide-react'
+import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
 
 // The three controls OrdersLayout and FinanceLayout draw identically — the
 // sidebar destination, the BOE OS Home door and the header Refresh. They were
@@ -11,8 +13,11 @@ import { Home, RefreshCw } from 'lucide-react'
 //
 //   * a DESTINATION is an <a> (Next <Link>). It opens in a new tab, shows its
 //     address on hover, announces itself with aria-current, and Next prefetches
-//     its code while it is on screen, so the click lands on a route that is
-//     already in hand;
+//     its code once the person shows INTENT (the pointer RESTING on it, focus,
+//     touch), so the click lands on a route that is already in hand. Not while
+//     the item is merely on screen: that prefetched every page of the menu on
+//     every load and preloaded stylesheets of pages never opened (measured
+//     2026-11-11: /finance/founders on every Finance page);
 //   * an ACTION (Refresh) stays a <button>, and says what it is to a screen
 //     reader rather than relying on a tooltip.
 //
@@ -28,9 +33,21 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
   /** A badge, drawn after the label. */
   trailing?: React.ReactNode
 }) {
+  // Next's own hover-prefetch pattern: off until the person shows intent, then
+  // back to the default. The pointer must REST (INTENT_DWELL_MS), so crossing
+  // the menu on the way elsewhere warms nothing; focus and touch are deliberate.
+  const [warm, setWarm] = useState(false)
+  const rest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(rest.current), [])
+
   return (
     <Link
       href={href}
+      prefetch={warm ? null : false}
+      onPointerEnter={() => { clearTimeout(rest.current); rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS) }}
+      onPointerLeave={() => clearTimeout(rest.current)}
+      onFocus={() => setWarm(true)}
+      onTouchStart={() => setWarm(true)}
       className={`boe-nav-item${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
       onClick={onNavigate}

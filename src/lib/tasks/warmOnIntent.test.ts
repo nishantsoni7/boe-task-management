@@ -12,7 +12,9 @@ import path from 'node:path'
 // opening the drawer on My Tasks had already requested every task page in the
 // list (13 tasks, 26+ requests). The Orders / Finance switch did the same from
 // the Finance header: its Link prefetched `/orders` on every Finance page, so
-// the Orders stylesheet was preloaded and never applied. See
+// the Orders stylesheet was preloaded and never applied. The Finance and Orders
+// side menus did it for every one of their own pages (`/finance/founders` left
+// its stylesheet unused on every other Finance page). See
 // src/app/modules/intentPrefetch.test.ts for the same rule on the Modules cards.
 
 const read = (...p: string[]) => readFileSync(path.join(process.cwd(), ...p), 'utf8')
@@ -20,6 +22,22 @@ const read = (...p: string[]) => readFileSync(path.join(process.cwd(), ...p), 'u
 const HOOK = read('src', 'hooks', 'useIntentWarm.ts')
 const SHELL = read('src', 'components', 'layout', 'DashboardLayout.tsx')
 const SWITCH = read('src', 'components', 'layout', 'ModuleSwitchButton.tsx')
+const MENU = read('src', 'components', 'layout', 'ModuleShellControls.tsx')
+
+describe('the Finance and Orders side menus warm a page only on intent', () => {
+  it('keeps prefetch off until the person shows intent', () => {
+    assert.ok(MENU.includes('prefetch={warm ? null : false}'))
+    assert.ok(MENU.includes('const [warm, setWarm] = useState(false)'))
+  })
+
+  it('waits for the pointer to rest, cancels on leave and unmount, and treats focus and touch as deliberate', () => {
+    assert.ok(MENU.includes('rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS)'))
+    assert.ok(MENU.includes('onPointerLeave={() => clearTimeout(rest.current)}'))
+    assert.ok(MENU.includes('useEffect(() => () => clearTimeout(rest.current), [])'))
+    assert.ok(MENU.includes('onFocus={() => setWarm(true)}'))
+    assert.ok(MENU.includes('onTouchStart={() => setWarm(true)}'))
+  })
+})
 
 describe('the Orders / Finance switch does not prefetch the other module on every page', () => {
   it('turns viewport prefetch off and warms on intent only', () => {

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `06167f61` — Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
-- Commits on this branch: 1219
+- Commit: `44b194ba` — Orders / Finance switch: warm the other module on intent, not on every page (#656)
+- Commits on this branch: 1220
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `44b194ba` 2026-11-11 Orders / Finance switch: warm the other module on intent, not on every page (#656)
 - `06167f61` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
 - `8ff4dafd` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free) (#652)
 - `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
@@ -38,7 +39,6 @@
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
-- `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
 
 ## Pages by top-level area
 
