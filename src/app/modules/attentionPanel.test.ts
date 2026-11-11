@@ -2,8 +2,8 @@
  * The Modules launcher's "For you" panel (owner, 2026-10-29): a 280px column
  * docked to the window's right edge, holding only a new announcement, a PI
  * returned to you (owner, 2026-10-30), your own cash as it passes hand to hand (handed to you, waiting for the person you
- * gave it to, held by you), everybody else's cash not with the company, and
- * leave and late-arrival
+ * gave it to, held by you), each payment of everybody else's still on its way
+ * to the company with who it is pending from, and leave and late-arrival
  * requests — each one brief card with one action — plus Clear all. With
  * nothing to show it is not drawn and the tiles take the whole width.
  *
@@ -35,7 +35,7 @@ describe('only what was asked for', () => {
   })
 
   test('the cards, in order: announcement, handed to you, cash, leave and late', () => {
-    const order = ['<AnnouncementCard', '<AcceptCard', 'Not with the company ·', '<PendingApprovals']
+    const order = ['<AnnouncementCard', '<AcceptCard', '<PendingFromCard', '<PendingApprovals']
       .map(s => PANEL.indexOf(s))
     assert.ok(order.every(i => i >= 0), 'each kind of card exists')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'and in this order')
@@ -65,7 +65,7 @@ describe('cash handed to you — for everyone', () => {
 
 describe('your cash, hand to hand until a custodian accepts it (owner, 2026-10-29)', () => {
   test('cards in order: handed to you, waiting for the recipient, you hold', () => {
-    const order = ['<AcceptCard', '<WaitingCard', 'You hold {formatINR(s.held.amount)}', 'Not with the company ·']
+    const order = ['<AcceptCard', '<WaitingCard', 'You hold {formatINR(s.held.amount)}', '<PendingFromCard']
       .map(s => PANEL.indexOf(s))
     assert.ok(order.every(i => i >= 0), 'each card exists')
     assert.deepEqual([...order].sort((a, b) => a - b), order)
@@ -106,18 +106,20 @@ describe('your cash, hand to hand until a custodian accepts it (owner, 2026-10-2
 })
 
 describe('cash not with the company', () => {
-  test("reads Finance's own list, one card per person holding money", () => {
+  test("reads Finance's own list, one card per PAYMENT saying who it is pending from (owner, 2026-11-11)", () => {
     assert.match(PANEL, /const unclosed = useUnclosedFunds\(\)/)
-    assert.match(PANEL, /totalsByHolder\(payments\)/)
+    assert.match(PANEL, /pendingFromCards\(payments\)/)
+    // No longer one card per person ("Dhruv holds ₹21,91,600").
+    assert.equal(/totalsByHolder|holds \$\{/.test(PANEL.replace(/\/\/.*$/gm, '')), false)
   })
 
   test('cash on its way to the viewer is not listed twice', () => {
     assert.match(PANEL, /\.filter\(p => !\(p\.openHandover && p\.openHandover\.recipientId === viewerId\)\)/)
   })
 
-  test('Review opens Cash journeys only for somebody who may open Finance', () => {
+  test('it is news, not a task: no button unless the viewer may record receiving it, and only for Finance users', () => {
     assert.match(PAGE, /financeAllowed: mayOpenFinance,/)
-    assert.match(PANEL, /\{financeAllowed && \(\s*<Link\s*href=\{`\$\{CASH_JOURNEYS_PATH\}\?holder=/)
+    assert.match(PANEL, /\{card\.canReceive && financeAllowed && \(\s*<Link\s*href=\{card\.holderId \? `\$\{CASH_JOURNEYS_PATH\}\?holder=/)
   })
 })
 

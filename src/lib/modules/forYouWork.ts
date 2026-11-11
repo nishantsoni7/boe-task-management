@@ -12,6 +12,7 @@
 // Pure, so the test runner can execute it.
 
 import { formatINR } from '@/lib/currency'
+import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
 import { customerDisplayName, paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { itemKeys } from '@/lib/modules/forYouSnooze'
 import type { ForYouItemKey } from '@/lib/modules/forYouCatalogue'
@@ -51,6 +52,7 @@ export type PaymentRequestRow = {
   payment_mode: string | null
   created_at: string
   updated_at: string | null
+  submitted_by: string | null
   submitted_by_user: Person
 }
 
@@ -99,6 +101,38 @@ const money = (amount: number | string, client: string | null) =>
 const orderBrief = (number: string | null | undefined, client: string | null | undefined) => {
   const label = displayOrderNumber(number)
   return [label ? `Order ${label}` : 'Order', client].filter(Boolean).join(' · ')
+}
+
+/** How many pending payments the verify read looks at: it is filtered by who may act on each, so it reads wider than the cards shown. */
+export const FOR_YOU_PAYMENT_SCAN_LIMIT = 100
+
+export type VerifyContext = {
+  userId: string
+  decidesOwnPayments: boolean
+  /** A company cash custodian: a cash-route payment that reached the company came to one. */
+  viewerIsCustodian: boolean
+  /** Ids of the cash-route payments still on their way, or null while that list is not known. */
+  inTransit: ReadonlySet<string> | null
+}
+
+/**
+ * Whether a pending payment gets a verify card for this viewer (owner,
+ * 2026-11-11): only a payment they can act on. A bank (HDFC) payment has no
+ * cash chain, so every verifier is told. A cash-route payment is told only once
+ * its cash has reached the company, and only to whoever recorded it or is a
+ * custodian; while it is still on its way, who it is pending from is the news
+ * (forYouPending.ts). Not knowing yet whether it is on its way means not shown.
+ * A display rule: Finance still lets any verifier open and decide any payment.
+ */
+export function verifyCardApplies(
+  r: Pick<PaymentRequestRow, 'id' | 'payment_mode' | 'submitted_by'>,
+  ctx: VerifyContext,
+): boolean {
+  const own = r.submitted_by === ctx.userId
+  if (own && !ctx.decidesOwnPayments) return false
+  if (!isTrackedPaymentMode(r.payment_mode)) return true
+  if (!ctx.inTransit || ctx.inTransit.has(r.id)) return false
+  return own || ctx.viewerIsCustodian
 }
 
 export function paymentRequestCard(r: PaymentRequestRow): WorkCard {

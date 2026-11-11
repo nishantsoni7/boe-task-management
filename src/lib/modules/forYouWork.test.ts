@@ -12,8 +12,10 @@ import {
   paymentRequestCard,
   piApprovalCard,
   sentBackCard,
+  verifyCardApplies,
   type OperationsRow,
   type PaymentRequestRow,
+  type VerifyContext,
 } from './forYouWork'
 
 const NOW = new Date().toISOString()
@@ -25,6 +27,7 @@ const payment: PaymentRequestRow = {
   payment_mode: 'cash',
   created_at: NOW,
   updated_at: NOW,
+  submitted_by: 'dhruv',
   submitted_by_user: { full_name: 'Dhruv' },
 }
 
@@ -58,6 +61,48 @@ describe('a new payment request', () => {
   test('resubmitted after Clear all, it is a new item', () => {
     const later = paymentRequestCard({ ...payment, updated_at: '2030-01-01T00:00:00Z' })
     assert.notEqual(paymentRequestCard(payment).key, later.key)
+  })
+})
+
+// Whether a pending payment gets a verify card at all (owner, 2026-11-11): the
+// owner is an admin who verifies, but is in no cash chain, so money on its way
+// to the company is not his to verify.
+describe('who is told to verify a payment', () => {
+  const ctx = (over: Partial<VerifyContext> = {}): VerifyContext => ({
+    userId: 'owner', decidesOwnPayments: false, viewerIsCustodian: false, inTransit: new Set<string>(), ...over,
+  })
+  const pnb = { id: 'p1', payment_mode: 'pnb', submitted_by: 'mohit' }
+  const hdfc = { id: 'p2', payment_mode: 'hdfc', submitted_by: 'mohit' }
+
+  test('a cash-route payment still on its way is not for a verifier: it is news, not a task', () => {
+    assert.equal(verifyCardApplies(pnb, ctx({ inTransit: new Set(['p1']), viewerIsCustodian: true })), false)
+  })
+
+  test('until the list of payments on their way is known, a cash-route payment is not judged', () => {
+    assert.equal(verifyCardApplies(pnb, ctx({ inTransit: null, viewerIsCustodian: true })), false)
+  })
+
+  test('once its cash reached the company, a custodian is told', () => {
+    assert.equal(verifyCardApplies(pnb, ctx({ viewerIsCustodian: true })), true)
+  })
+
+  test('an admin in no chain, who did not record it, is not told', () => {
+    assert.equal(verifyCardApplies(pnb, ctx()), false)
+  })
+
+  test('the one who recorded it is told, if they may decide their own', () => {
+    const own = { ...pnb, submitted_by: 'owner' }
+    assert.equal(verifyCardApplies(own, ctx({ decidesOwnPayments: true })), true)
+    assert.equal(verifyCardApplies(own, ctx({ decidesOwnPayments: false })), false)
+  })
+
+  test('a bank payment has no chain: every verifier is told, whether or not the list is known', () => {
+    assert.equal(verifyCardApplies(hdfc, ctx({ inTransit: null })), true)
+    assert.equal(verifyCardApplies({ ...hdfc, payment_mode: 'cash' }, ctx()), true)
+  })
+
+  test('a bank payment they recorded themselves still needs the right to decide it', () => {
+    assert.equal(verifyCardApplies({ ...hdfc, submitted_by: 'owner' }, ctx()), false)
   })
 })
 
