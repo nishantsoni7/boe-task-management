@@ -23,6 +23,24 @@ import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
 //
 // Colours, sizes and hover values are the ones the two layouts already used.
 
+// Next's own hover-prefetch pattern: off until the person shows intent, then back
+// to the default. The pointer must REST (INTENT_DWELL_MS), so crossing the menu
+// on the way elsewhere warms nothing; focus and touch are deliberate. Local state
+// rather than useIntentWarm: ordersFinanceUsability.test.tsx renders these links
+// outside the app router, where useRouter would throw.
+function useWarmOnRest() {
+  const [warm, setWarm] = useState(false)
+  const rest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(rest.current), [])
+  return {
+    prefetch: warm ? null : false,
+    onPointerEnter: () => { clearTimeout(rest.current); rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS) },
+    onPointerLeave: () => clearTimeout(rest.current),
+    onFocus: () => setWarm(true),
+    onTouchStart: () => setWarm(true),
+  }
+}
+
 export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }: {
   href: string
   label: string
@@ -33,21 +51,12 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
   /** A badge, drawn after the label. */
   trailing?: React.ReactNode
 }) {
-  // Next's own hover-prefetch pattern: off until the person shows intent, then
-  // back to the default. The pointer must REST (INTENT_DWELL_MS), so crossing
-  // the menu on the way elsewhere warms nothing; focus and touch are deliberate.
-  const [warm, setWarm] = useState(false)
-  const rest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(rest.current), [])
+  const warmProps = useWarmOnRest()
 
   return (
     <Link
       href={href}
-      prefetch={warm ? null : false}
-      onPointerEnter={() => { clearTimeout(rest.current); rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS) }}
-      onPointerLeave={() => clearTimeout(rest.current)}
-      onFocus={() => setWarm(true)}
-      onTouchStart={() => setWarm(true)}
+      {...warmProps}
       className={`boe-nav-item${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
       onClick={onNavigate}
@@ -64,9 +73,15 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
 }
 
 export function ShellHomeLink() {
+  // Hidden while the rail is collapsed and drawn when it opens on hover, so a
+  // viewport prefetch fired the moment the pointer touched the rail and left the
+  // launcher's stylesheet unused (measured 2026-11-11).
+  const warmProps = useWarmOnRest()
+
   return (
     <Link
       href="/modules"
+      {...warmProps}
       title="BOE One Home"
       aria-label="BOE One Home"
       className="boe-shell-home boe-rail-label"

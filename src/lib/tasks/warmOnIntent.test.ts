@@ -26,16 +26,23 @@ const MENU = read('src', 'components', 'layout', 'ModuleShellControls.tsx')
 
 describe('the Finance and Orders side menus warm a page only on intent', () => {
   it('keeps prefetch off until the person shows intent', () => {
-    assert.ok(MENU.includes('prefetch={warm ? null : false}'))
+    assert.ok(MENU.includes('prefetch: warm ? null : false'))
     assert.ok(MENU.includes('const [warm, setWarm] = useState(false)'))
   })
 
   it('waits for the pointer to rest, cancels on leave and unmount, and treats focus and touch as deliberate', () => {
     assert.ok(MENU.includes('rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS)'))
-    assert.ok(MENU.includes('onPointerLeave={() => clearTimeout(rest.current)}'))
+    assert.ok(MENU.includes('onPointerLeave: () => clearTimeout(rest.current)'))
     assert.ok(MENU.includes('useEffect(() => () => clearTimeout(rest.current), [])'))
-    assert.ok(MENU.includes('onFocus={() => setWarm(true)}'))
-    assert.ok(MENU.includes('onTouchStart={() => setWarm(true)}'))
+    assert.ok(MENU.includes('onFocus: () => setWarm(true)'))
+    assert.ok(MENU.includes('onTouchStart: () => setWarm(true)'))
+  })
+
+  it('applies that to the menu items AND to the Home link that appears when the rail opens', () => {
+    // The Home link is drawn only once the rail expands on hover; a viewport
+    // prefetch fired the moment the pointer touched the rail (measured 2026-11-11).
+    assert.equal(MENU.split('{...warmProps}').length - 1, 2)
+    assert.equal(MENU.split('const warmProps = useWarmOnRest()').length - 1, 2)
   })
 })
 
