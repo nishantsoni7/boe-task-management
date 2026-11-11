@@ -50,9 +50,12 @@ describe('Record Payment', () => {
     assert.equal(/<select/.test(src), false)
   })
 
-  test('the custody step exists only for the modes that carry a trail', () => {
-    assert.ok(/\{carriesCustody && \(/.test(src))
-    assert.ok(src.includes('const carriesCustody = modeRequiresCustodyTrail(paymentMode)'))
+  test('the custody step exists only for the modes that ask it; Canara asks for the paying account instead', () => {
+    assert.ok(/\{asksMoneyNow && \(/.test(src))
+    assert.ok(src.includes('const asksMoneyNow = modeAsksWhereMoneyIs(paymentMode)'))
+    assert.ok(/\{isCanara && \(/.test(src))
+    // The one numbered step before the targets, whichever of the two it is.
+    assert.ok(src.includes('const carriesCustody = asksMoneyNow || isCanara'))
   })
 
   test('Record is never greyed out by an unfinished form', () => {

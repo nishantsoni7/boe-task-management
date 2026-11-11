@@ -280,6 +280,18 @@ export function modeRequiresCustodyTrail(value: string | null | undefined): bool
   return key === 'pnb' || key === 'paytm' || key === 'canara'
 }
 
+/**
+ * Does the form ASK "Where is this money now?" PNB and Paytm do. CANARA DOES
+ * NOT (owner 2026-11-11): its money is in a bank account, so there is no
+ * hand-to-hand journey to record. The payment is still tracked
+ * (modeRequiresCustodyTrail) until the company cash custodian accepts it.
+ * Every form gates the question, and the handover it can start, on this.
+ */
+export function modeAsksWhereMoneyIs(value: string | null | undefined): boolean {
+  const key = (value ?? '').trim()
+  return key === 'pnb' || key === 'paytm'
+}
+
 // ── The customer, which is never typed ───────────────────────────────────────
 //
 // client_name is nullable since 20261013000000 §1, and null means exactly one

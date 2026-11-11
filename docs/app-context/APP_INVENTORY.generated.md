@@ -5,21 +5,16 @@
 
 ## Snapshot
 
-- Commit: `d042c600` — Docs: the merged drawer already skips the old escalation lines
-- Commits on this branch: 1220
+- Commit: `0c664c3a` — Payments: Canara asks for the paying account, no "Where is this money now?"
+- Commits on this branch: 1215
 - Pages (`page.tsx`): 182   API routes (`route.ts`): 189
 - Migrations: 426 (first `20260530_create_positions.sql`, latest `20270610000000_task_health_check_stops_escalating.sql`)
 - Tables ever created: 226 (dropped at some point: 7)   SQL functions: 953   Enums: 0
-- Test files: 785   Next.js 16.2.6, React 19.2.4
+- Test files: 786   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `d042c600` 2026-11-11 Docs: the merged drawer already skips the old escalation lines
-- `03c2db3a` 2026-11-11 Docs: record PR #652 for the auto-escalation removal
-- `ac94007f` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free)
-- `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
-- `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
-- `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
+- `0c664c3a` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?"
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 - `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
 - `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
@@ -39,6 +34,11 @@
 - `fd117893` 2026-11-07 Docs: the Old Order destination merged (#633 as 937a6914), migration 20270607000000 applied (#634)
 - `937a6914` 2026-11-06 Payment Request: an Old Order destination (migration 20270607000000, apply first) (#633)
 - `22f3042d` 2026-11-06 Lead Master: filter by day or range of days, and one Person button for Allotted to (#632)
+- `f00edfe1` 2026-11-06 Docs: the Salary Sheet CSV download merged (#630 as 028e4f21), deployed (#631)
+- `028e4f21` 2026-11-06 Payroll: Download CSV on the Salary Processing Report, in the accounts department's format (no SQL) (#630)
+- `f0803e8b` 2026-11-06 Lists: Quick range month presets on date filters (#629)
+- `29f12593` 2026-11-06 Docs: open review months follow the target merged (#627 as ad44cccd), migration 20270605000000 applied (#628)
+- `ad44cccd` 2026-11-06 BOE Credits: a review month that is still open follows the saved monthly target (migration 20270605000000, apply first) (#627)
 
 ## Pages by top-level area
 
@@ -145,7 +145,7 @@
 - `src/lib/customerReviews` — 29 source, 40 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
-- `src/lib/finance` — 58 source, 72 test
+- `src/lib/finance` — 59 source, 73 test
 - `src/lib/imageEditor` — 17 source, 15 test
 - `src/lib/inventory` — 7 source, 3 test
 - `src/lib/meetings` — 16 source, 18 test

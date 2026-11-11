@@ -95,10 +95,12 @@ import {
   SUSPENSE_NOTICE,
   destinationTargetKind,
   paymentModeLabel,
+  modeAsksWhereMoneyIs,
   type PaymentDestination,
 } from '@/lib/finance/paymentEntry'
-import { modeRequiresCustodyTrail } from '@/lib/finance/custodyTrail'
 import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
+import { CanaraAccountFields } from '@/app/finance/components/CanaraAccountFields'
+import { EMPTY_CANARA_ACCOUNT, canaraAccountIsEmpty, canaraAccountProblems, composeCanaraNote, isCanaraMode, type CanaraAccount } from '@/lib/finance/canaraAccount'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import {
   SubmissionAttempt,
@@ -205,6 +207,8 @@ export function RecordSplitPaymentModal({
 
   // ── Where is this money now (20270413000000), for PNB, Paytm and Canara ──
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
+  // CANARA asks for the paying account instead of the question (owner 2026-11-11).
+  const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
   type Recorded = { requestNumber: string; allocationCount: number; verified?: boolean }
   // Saved, but the handover to the chosen person did not go through.
   const [handoverNotice, setHandoverNotice] = useState<{ paymentId: string; recipientId: string; message: string; summary: Recorded } | null>(null)
@@ -290,7 +294,13 @@ export function RecordSplitPaymentModal({
   const totals     = splitPaymentTotals({ amount, rows })
   const duplicates = duplicateTargetKeys(rows)
   // "Handed to" needs a person; create_cash_handover decides everything again.
-  const custodyError = modeRequiresCustodyTrail(paymentMode) ? moneyNowError(moneyNow, userId ?? null) : null
+  const asksMoneyNow = modeAsksWhereMoneyIs(paymentMode)
+  const custodyError = asksMoneyNow ? moneyNowError(moneyNow, userId ?? null) : null
+  const isCanara = isCanaraMode(paymentMode)
+  const canaraProblems = isCanara ? canaraAccountProblems(canara) : {}
+  const canaraBlocked = Object.keys(canaraProblems).length > 0
+    ? 'Enter the account holder name and account number for this Canara payment.'
+    : null
 
   // SEVERAL CUSTOMERS IN ONE PAYMENT is allowed and never silent: the warning
   // lists them and the entry waits for an explicit tick, which is tied to this
@@ -300,7 +310,7 @@ export function RecordSplitPaymentModal({
   const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerSignature(customers)
 
   const blocked    = splitPaymentBlockedReason({ destination, amount, paymentDate, paymentMode, rows })
-    ?? custodyError ?? attachError
+    ?? custodyError ?? canaraBlocked ?? attachError
     ?? (handoverNotice ? 'This payment is already saved.' : null)
     ?? (mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null)
 
@@ -319,7 +329,7 @@ export function RecordSplitPaymentModal({
     defaultPaymentMode: DEFAULT_PAYMENT_MODE,
     reference,
     remarks,
-    custodyCount: moneyNow.choice === 'with_me' ? 0 : 1,
+    custodyCount: (moneyNow.choice === 'with_me' ? 0 : 1) + (canaraAccountIsEmpty(canara) ? 0 : 1),
     hasAttachment: attachFile !== null,
     rows,
     baseline: dirtyBaseline,
@@ -369,7 +379,7 @@ export function RecordSplitPaymentModal({
   // A failed handover never undoes the payment: it is shown as with the
   // recorder, and the notice offers one retry before the form closes.
   const finishRecording = async (paymentId: string | undefined, summary: Recorded) => {
-    if (paymentId && modeRequiresCustodyTrail(paymentMode) && moneyNow.choice === 'handed_to') {
+    if (paymentId && asksMoneyNow && moneyNow.choice === 'handed_to') {
       const failed = await handOverAfterRecording(supabase, paymentId, moneyNow.recipientId)
       if (failed) {
         setHandoverNotice({ paymentId, recipientId: moneyNow.recipientId, message: failed, summary })
@@ -457,7 +467,7 @@ export function RecordSplitPaymentModal({
       // stated", which is true — nothing is fabricated to fill it.
       p_received_in:  null,
       p_reference:    reference.trim() || null,
-      p_remarks:      remarks.trim() || null,
+      p_remarks:      composeCanaraNote(paymentMode, canara, remarks) || null,
       // A SUSPENSE ENTRY IS AN EMPTY LIST, not a hidden one. There is no branch
       // here that could send a row the person cannot see.
       p_allocations:  targetKind ? toRpcAllocationsWithLegacy(rows) : [],
@@ -548,7 +558,9 @@ export function RecordSplitPaymentModal({
       : destination === 'suspense' ? 'Suspense Entry' : null,
   ].filter(Boolean).join(' · ')
 
-  const carriesCustody = modeRequiresCustodyTrail(paymentMode)
+  // One extra numbered step before the targets: the question (PNB, Paytm) or
+  // the paying account (Canara).
+  const carriesCustody = asksMoneyNow || isCanara
 
   return (
     <>
@@ -628,7 +640,7 @@ export function RecordSplitPaymentModal({
           date={paymentDate}
           onDate={v => { setPaymentDate(v); setError(null) }}
           mode={paymentMode}
-          onMode={v => { setPaymentMode(v); setError(null) }}
+          onMode={v => { setPaymentMode(v); setError(null); if (isCanaraMode(v)) setProofOpen(true) }}
           disabled={saving}
           amountProblem={amountProblem}
           dateProblem={dateProblem}
@@ -653,7 +665,7 @@ export function RecordSplitPaymentModal({
       )}
 
       {/* ── 3. WHERE IS THIS MONEY NOW — for PNB, Paytm and Canara. ── */}
-      {carriesCustody && (
+      {asksMoneyNow && (
         <FormStep number={3} title="Where is this money now?">
           <WhereIsMoneyNowField
             paymentMode={paymentMode}
@@ -661,6 +673,18 @@ export function RecordSplitPaymentModal({
             onChange={setMoneyNow}
             recorderId={userId ?? null}
             problem={custodyError}
+          />
+        </FormStep>
+      )}
+
+      {/* ── 3. CANARA — the account the money came from, no question. ── */}
+      {isCanara && (
+        <FormStep number={3} title="Account details">
+          <CanaraAccountFields
+            value={canara}
+            onChange={setCanara}
+            problems={showProblems ? canaraProblems : null}
+            disabled={saving}
           />
         </FormStep>
       )}

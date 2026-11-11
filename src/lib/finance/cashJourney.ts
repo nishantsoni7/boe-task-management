@@ -13,6 +13,8 @@
 // decided by the database (create/accept_cash_handover, receive_cash_directly)
 // and echoed as the can_* flags of finance_cash_payment_state.
 
+import { isCanaraMode } from './canaraAccount'
+
 export const CASH_STATES = ['with_holder', 'waiting', 'disputed', 'with_company'] as const
 export type CashState = typeof CASH_STATES[number]
 
@@ -132,7 +134,11 @@ export function readCashPayment(raw: unknown): CashPayment | null {
     ageHours: num(o.age_hours),
     openHandover: readOpenHandover(o.open_handover),
     canAccept: o.can_accept === true,
-    canHandOver: o.can_hand_over === true,
+    // CANARA IS NEVER HANDED OVER (owner 2026-11-11): its money is in a bank
+    // account, so the recorder is not "holding" anything. The company cash
+    // custodian accepts it (Receive). The server still allows a handover of an
+    // old Canara payment; no screen offers one.
+    canHandOver: o.can_hand_over === true && !isCanaraMode(str(o.payment_mode)),
     canReceive: o.can_receive === true,
     orderException: readOrderException(o.order_exception),
   }
@@ -198,12 +204,13 @@ export function readJourney(raw: unknown): PaymentJourney | null {
 // ── Words ────────────────────────────────────────────────────────────────────
 
 /** The one phrase for where a payment's money is. */
-export function cashStateLabel(p: Pick<CashPayment, 'state' | 'holderName' | 'openHandover'>): string {
+export function cashStateLabel(p: Pick<CashPayment, 'state' | 'holderName' | 'openHandover'> & { paymentMode?: string }): string {
   switch (p.state) {
     case 'with_company': return 'With company'
     case 'waiting':      return `Waiting for ${p.openHandover?.recipientName ?? 'the receiver'} to accept`
     case 'disputed':     return `Not received by ${p.openHandover?.recipientName ?? 'the receiver'}`
-    case 'with_holder':  return `With ${p.holderName ?? 'someone'}`
+    // A Canara payment nobody carries is waiting for the company, not "with" its recorder.
+    case 'with_holder':  return isCanaraMode(p.paymentMode) ? 'Waiting for the company to accept' : `With ${p.holderName ?? 'someone'}`
   }
 }
 

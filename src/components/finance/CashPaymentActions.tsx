@@ -7,6 +7,7 @@ import { useHandoverActions } from '@/hooks/queries/useHandovers'
 import { useCashJourneyActions } from '@/hooks/queries/useCashJourneys'
 import { PaymentJourneyButton } from '@/components/finance/PaymentJourneyDialog'
 import type { CashPayment } from '@/lib/finance/cashJourney'
+import { isCanaraMode } from '@/lib/finance/canaraAccount'
 
 /**
  * The one action a person can take on a tracked payment, wherever it is shown
@@ -31,6 +32,9 @@ export function CashPaymentActions({ payment, onHandOver, quietJourney = false, 
   const { receive } = useCashJourneyActions()
   const busy = accept.isPending || receive.isPending
   const giver = payment.openHandover?.giverName ?? payment.holderName ?? 'the giver'
+  // Canara: nobody carried it, so the custodian ACCEPTS that the money reached the
+  // company (the same Receive call). Finance still verifies the payment itself.
+  const canara = isCanaraMode(payment.paymentMode)
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null)
@@ -49,7 +53,7 @@ export function CashPaymentActions({ payment, onHandOver, quietJourney = false, 
       {payment.canReceive && !payment.canAccept && (
         <button type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 32, padding: '4px 12px' }} disabled={busy}
           onClick={() => { setError(null); setNote(''); setDialog('receive') }}>
-          Receive
+          {canara ? 'Accept' : 'Receive'}
         </button>
       )}
       {payment.canHandOver && onHandOver && (
@@ -80,15 +84,24 @@ export function CashPaymentActions({ payment, onHandOver, quietJourney = false, 
       )}
 
       {dialog === 'receive' && (
-        <FinanceModal title="Receive for the company" onClose={() => setDialog(null)} width="460px" closeOnBackdropClick={false}>
+        <FinanceModal title={canara ? 'Accept for the company' : 'Receive for the company'} onClose={() => setDialog(null)} width="460px" closeOnBackdropClick={false}>
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-            Confirm that you have received <strong>{formatINR(payment.amount)}</strong> ({payment.humanPaymentId ?? 'this payment'})
-            {payment.holderName ? <> from <strong>{payment.holderName}</strong></> : null}. Its journey closes, and any handover still waiting for it is closed too.
+            {canara ? (
+              <>
+                Confirm that <strong>{formatINR(payment.amount)}</strong> ({payment.humanPaymentId ?? 'this payment'}) has reached the company.
+                Finance still verifies the payment separately.
+              </>
+            ) : (
+              <>
+                Confirm that you have received <strong>{formatINR(payment.amount)}</strong> ({payment.humanPaymentId ?? 'this payment'})
+                {payment.holderName ? <> from <strong>{payment.holderName}</strong></> : null}. Its journey closes, and any handover still waiting for it is closed too.
+              </>
+            )}
           </p>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600 }}>
             Note (optional)
             <input type="text" value={note} maxLength={500} onChange={e => setNote(e.target.value)}
-              placeholder="e.g. handed to me at the office"
+              placeholder={canara ? 'e.g. seen in the bank account' : 'e.g. handed to me at the office'}
               style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #686D6C', font: 'inherit', fontWeight: 400 }} />
           </label>
           {error && <div className="boe-handover-error" role="alert">{error}</div>}
@@ -96,7 +109,7 @@ export function CashPaymentActions({ payment, onHandOver, quietJourney = false, 
             <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setDialog(null)} disabled={busy}>Cancel</button>
             <button type="button" className="boe-btn boe-btn-primary" disabled={busy} aria-busy={receive.isPending}
               onClick={() => void run(() => receive.mutateAsync({ paymentIds: [payment.paymentId], note }))}>
-              {receive.isPending ? 'Saving…' : 'Yes, I received it'}
+              {receive.isPending ? 'Saving…' : canara ? 'Yes, it reached the company' : 'Yes, I received it'}
             </button>
           </div>
         </FinanceModal>

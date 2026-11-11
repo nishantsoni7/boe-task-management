@@ -452,7 +452,9 @@ describe('every surface that should carry the trail does', () => {
   test('both decide by the mode, send no activity, and offer the handover after the save', () => {
     for (const file of [REQUEST_PAGE, RECORD_FORM]) {
       const src = read(file)
-      assert.ok(src.includes('modeRequiresCustodyTrail('), `${file} must decide by the mode`)
+      // modeAsksWhereMoneyIs = PNB and Paytm; Canara is asked for the paying account
+      // instead and never starts a handover (owner 2026-11-11).
+      assert.ok(src.includes('modeAsksWhereMoneyIs('), `${file} must decide by the mode`)
       assert.equal(src.includes('toRpcCustodyEvents('), false,
         `${file} must not send a handed-over activity with the payment`)
       assert.ok(src.includes('p_custody_events'), `${file} still passes the (empty) list to the door`)

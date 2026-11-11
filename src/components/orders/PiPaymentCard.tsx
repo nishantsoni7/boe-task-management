@@ -29,10 +29,12 @@ import {
   scrollToFirstProblem,
 } from '@/app/finance/components/PaymentFormParts'
 import Link from 'next/link'
-import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+import { modeAsksWhereMoneyIs, paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
-import { isTrackedPaymentMode, moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
+import { moneyNowError, type MoneyNow } from '@/lib/finance/cashJourney'
+import { CanaraAccountFields } from '@/app/finance/components/CanaraAccountFields'
+import { EMPTY_CANARA_ACCOUNT, canaraAccountProblems, composeCanaraNote, isCanaraMode, type CanaraAccount } from '@/lib/finance/canaraAccount'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
 import { AvailableMoneyPanel } from '@/components/finance/AvailableMoneyPanel'
 import type { AvailablePayment } from '@/lib/finance/availableMoney'
@@ -235,10 +237,15 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
   const [touched, setTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [extrasOpen, setExtrasOpen] = useState(false)
-  // Where is this money now (20270413000000): for PNB, Paytm and Canara.
+  // Where is this money now (20270413000000): asked for PNB and Paytm. CANARA asks
+  // for the paying account instead (owner 2026-11-11): no question, no handover.
   const [moneyNow, setMoneyNow] = useState<MoneyNow>({ choice: 'with_me' })
-  const tracked = isTrackedPaymentMode(form.paymentMode)
+  const [canara, setCanara] = useState<CanaraAccount>(EMPTY_CANARA_ACCOUNT)
+  const tracked = modeAsksWhereMoneyIs(form.paymentMode)
   const moneyNowProblem = tracked ? moneyNowError(moneyNow, recorderId) : null
+  const isCanara = isCanaraMode(form.paymentMode)
+  const canaraProblems = isCanara ? canaraAccountProblems(canara) : {}
+  const canaraBlocked = Object.keys(canaraProblems).length > 0
   const formRef = useRef<HTMLDivElement>(null)
   // Belt and braces alongside `saving`: a second click that lands in the same
   // tick, before the parent's saving state has propagated, is still refused.
@@ -261,7 +268,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
   // is sent.
   const submit = async () => {
     if (submittedRef.current || saving) return
-    if (!allowed || moneyNowProblem) {
+    if (!allowed || moneyNowProblem || canaraBlocked) {
       setTouched(true)
       scrollToFirstProblem(formRef.current)
       return
@@ -269,7 +276,11 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
     submittedRef.current = true
     setSubmitted(true)
     setError(null)
-    const err = await onSubmit(form, proof, tracked && moneyNow.choice === 'handed_to' ? moneyNow.recipientId : null)
+    const err = await onSubmit(
+      { ...form, remarks: composeCanaraNote(form.paymentMode, canara, form.remarks) },
+      proof,
+      tracked && moneyNow.choice === 'handed_to' ? moneyNow.recipientId : null,
+    )
     if (err) {
       // A failure returns the form to the user with what they typed intact.
       submittedRef.current = false
@@ -314,7 +325,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
             date={form.paymentDate}
             onDate={set('paymentDate')}
             mode={form.paymentMode}
-            onMode={set('paymentMode')}
+            onMode={v => { set('paymentMode')(v); if (isCanaraMode(v)) setExtrasOpen(true) }}
             disabled={busy}
             amountLabel="Amount received"
             amountProblem={amountMessage}
@@ -342,6 +353,17 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit, recorde
               onChange={setMoneyNow}
               recorderId={recorderId}
               problem={touched ? moneyNowProblem : null}
+            />
+          </FormStep>
+        )}
+
+        {isCanara && (
+          <FormStep number={2} title="Account details">
+            <CanaraAccountFields
+              value={canara}
+              onChange={setCanara}
+              problems={touched ? canaraProblems : null}
+              disabled={busy}
             />
           </FormStep>
         )}
