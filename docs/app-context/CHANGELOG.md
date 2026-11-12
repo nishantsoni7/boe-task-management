@@ -4,11 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR open, branch `feat/seo-brief-rankings`) · no migration
+## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR #691, squash-merged 2026-11-12 14:32 IST as `e9901386`) · no migration
 - **Owner ask.** The ranking table is what matters: the top 5 searches in each business category (24 categories plus banquet), quarter by quarter; then how much of the traffic growth went to blog posts against business searches; then the rest in order, with nothing repeated. Plan v4 approved the same day.
 - **Changed.** Quarter rows can carry a category and Google's impressions per quarter: grouped tables show a category heading with summed clicks, a summary above, a "Since" column, and grey positions from fewer than 20 showings (left out of the change). New optional "where the visitors came from" part: three figures and a month-by-month table. Rankings now come first, the traffic split second. The worksheet chart is optional, and credit and fairness hide when empty, so the conversation part can carry them.
 - **Order.** Merge first, then send: the brief now on production requires the worksheet chart, so the new document would be refused until this is live.
-- **Proof.** New tests for grouping, summed clicks, the change rule, grey thin readings, the traffic part and the optional chart; 40 of 40 pass in the two files. The real document passes the door's check and was drawn with the app's stylesheets at desktop and phone width. Not seen signed in.
+- **Proof.** New tests for grouping, summed clicks, the change rule, grey thin readings, the traffic part and the optional chart; 40 of 40 pass in the two files. The real document passes the door's check and was drawn with the app's stylesheets at desktop and phone width. After the merge: production deploy succeeded 14:34 IST, the new brief was sent, and `/seo/brief` was read signed in as Admin with every part, link and grey reading in place. Not seen on a phone signed in.
 
 ## 2026-11-12 — Quotations, phase 5: the pricing desk (price hints and price approval) (PR #687, squash-merged 2026-11-12 14:19 IST as `e55e01aa`, deployed 14:22 IST) · `20270617000000` → APPLIED 2026-11-12 (about 14:10 IST, BEFORE the merge, alone, after a verified backup)
 - **Owner approval (2026-11-12).** Hints for everyone who makes quotations; approval when the discount is above 5% or a product is below 90% of its last ordered price; the administrator changes the limits.
