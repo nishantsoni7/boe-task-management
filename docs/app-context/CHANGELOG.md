@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations, phase 2: Confirm → PI draft, and Download in PI format (PR pending, branch `feat/quotation-confirm-pi-draft`) · `20270615000000` → NOT YET APPLIED
+## 2026-11-12 — Quotations, phase 2: Confirm → PI draft, and Download in PI format (PR #674, branch `feat/quotation-confirm-pi-draft`) · `20270615000000` → NOT YET APPLIED
 - **Owner ask.** "On confirmation it should take to PI Drafts" (plan phase 2, approved 2026-11-12). Leads stay manual (owner, same day): Lead Board rule 8 stands.
 - **Built.** On a Sent or Negotiating quotation, "Confirm → make PI draft" writes the saved quotation as a PI workbook (`src/lib/quotations/piWorkbook.ts`) and sends it through the existing Upload PI path as the person (`create_order_submission` → `order-files` → `process-draft`), then `quotation_link_pi` links it and marks the quotation Confirmed, and the PI draft opens. What blocks it (no name, quantity, price or picture) is listed product by product first. "Download in PI format (.xlsx)" uses the same workbook. History shows "Confirmed into PI draft PID-…". The plain status button is now "Confirmed, no PI".
 - **Database.** `quotations.pi_submission_id` (FK to `order_submissions`, `on delete set null`, unique), `pi_linked_at`; `quotation_get` returns `pi`; `quotation_link_pi`; event kind `converted`. No Orders table, function or screen changed.
