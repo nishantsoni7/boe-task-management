@@ -15,7 +15,8 @@ import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
 import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumListParam, idParam, pageParam } from '@/lib/listState'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { useQueryClient } from '@tanstack/react-query'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
 import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 const TASK_COLUMNS = [
@@ -77,6 +78,7 @@ function ViewAllTasksContent() {
   const [isMobile, setIsMobile] = useState(false)
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const { state, setState } = useListUrlState(LIST_PARAMS, { pageKey: 'page' })
   const page = state.page
@@ -103,8 +105,8 @@ function ViewAllTasksContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: profileData } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      // The shell has usually read this row already; this reuses it instead of asking again.
+      const profileData = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id))
       if (!profileData) { router.push('/login'); return }
 
       const p = profileData as UserProfile

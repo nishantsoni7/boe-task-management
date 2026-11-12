@@ -10,6 +10,45 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Order.** Older builds ignore `falls`, so the brief with the 14 additions can be sent before the merge; the falls table shows once this is live.
 - **Proof.** Tests for the falls table and its place; 40 of 40 pass in the two files; `tsc` and eslint clean. The real document passes the door and was drawn with the app's stylesheets. Not seen signed in.
 
+## 2026-11-12 — Pricing: the price book and the suggested price (Quotations plan phase 7A) (PR #698, squash-merged 2026-11-12 18:05 IST as `f88d7033`, deployed 18:07 IST) · `20270620000000` → SQL APPLIED 2026-11-12 about 17:30 IST (first numbered 20270619000000, which #696 also used; renumbered before merge), 20270620000000 recorded with migration repair about 17:45 IST
+- **Owner choice (2026-11-12).** Price book + suggested price first, learned from data already in BOE One; Admin and people granted Pricing open the module; the cost estimator later.
+- **Built.** The Pricing tile now opens the Price book: every product family with its suggested price, range and confidence, last ordered price, approved PIs, won and lost, and every price point behind it; search and CSV. Each quotation line shows "Suggested ₹X (confidence, range)" with Use. The suggestion is computed from the points each time, so it updates itself with every new approved PI and every quotation won or lost.
+- **Database.** Read-only functions only (`pricing_all_points`, `pricing_points_for`, `pricing_price_book`; `quotation_price_hints` re-created with the points); the Pricing description changes in both tables.
+- **Proof.** `suggest.test.ts` (6), PGlite 38 checks (3 new), the coming-soon registration tests updated, `tsc`, eslint, full `npm test`, `next build`.
+
+## 2026-11-12 — Fewer repeated requests: the Orders page (PR open, branch `perf/orders-dedupe-requests`) · no SQL
+- **Owner ask.** "remove the duplicate requests to make it faster", with the owner's Network screenshot of /orders: 36 requests. This is PR 2 of 2; PR 1 (#697) covers the page frame and Task Management.
+- **Changed.**
+  - `OrdersGuard` resolves the signed-in person's `usePermissionContext()`. The rule is unchanged: admin by role, otherwise Orders `view`, and a missing profile or failed read denies.
+  - `/orders` reads `profile`, `role` and the Orders permissions from that cache. `OrdersLayout`'s own resolution is now a cache hit instead of a third resolution after the page drew.
+  - Gone: `users.role`, `resolve_permission`, the `USER_PROFILE_COLUMNS` read and `resolve_effective_permissions(orders)`.
+  - Approvers: `DecisionQueue` and `DocumentActionQueue` share one read of `order_pi_versions` and one of `order_document_submissions`.
+- **Tests.** Restated, each with the rule it protects kept:
+  - `orderStartupShape`: the guard asks nothing itself and keeps the rule and the loading block; the dashboard waits only for its own data; query counts GUARD 2→0, DASHBOARD 7→5.
+  - `importAccess`: module entry; capabilities from the resolved permissions; deny in place.
+  - `ordersFinanceUsability`: the guard and the module switch ask the same question.
+  - `enforcement`, `moduleParentGate`: Orders `view` still resolved.
+  - `uiEnforcement`: `deriveOrdersCapabilities(null, [])` equals `NO_ORDERS_CAPABILITIES`.
+  - `adminDashboard`: the shared reads, with no service role.
+  - New `openQueueReads.test.ts` (2).
+
+## 2026-11-12 — Fewer repeated requests: the page frame and Task Management (PR open, branch `perf/dedupe-shell-task-requests`) · no SQL
+- **Owner ask.** "remove the duplicate requests to make it faster", then "and do it for the complete task management module". Counted live on the owner's account:
+  - the signed-in person's own `users` row was read 4-6 times on every Task Management page;
+  - Assigned By Me fetched `/api/tasks/people` twice.
+- **Changed.**
+  - `LoginAsMemberWidget` reads `role` once per signed-in person. It used to read on every auth event, 2-3 times on every page of every module.
+  - `useProfile` joins a `usePermissionContext` read already on its way; this fixes the double read on a hard load of /notifications.
+  - `profileQueryOptions` lets effect-loaded screens reuse the cached row: the two Cancelled archives, All Tasks, New quotation request.
+  - `NotificationsNavItem` skips the Task count where a module passes its own: Orders, Finance, Assets, Inventory, Sales, Reviews.
+  - `fetchTaskPeople` shares a request already on its way.
+  - Task Details reads Meetings `view` from the resolved permission context instead of `resolve_permission`.
+- **Not changed.** These stay on purpose:
+  - UserMenu's `position, designation_level` read, which the shared profile must not carry;
+  - the Dashboard's active-staff list next to the all-people name list (two different lists);
+  - the Dashboard's My Tasks data warm-up.
+- **Tests.** New `src/hooks/queries/sharedReads.test.ts` (4 tests): a shell read already on its way is joined; a missing or failed one falls back to the page's own read; the staff list is shared while on its way and fetched again afterwards. `discussionFlow.test.ts` now checks the permission-context read. The 47 test files that read the changed files pass: 1,357 tests.
+
 ## 2026-11-12 — Orders: send a PI back to the salesperson with a comment (PR #696, squash-merged 2026-11-12 17:12 IST as `49770c22`, deployed 17:14 IST) · `20270619000000` → APPLIED 2026-11-12 (about 16:55 IST, BEFORE the merge, alone, after a verified backup and a rolled-back rehearsal)
 - **Owner ask (urgent, Order 547).** Operations had the PI; the approver held it and wanted to send it back to the salesperson with their own comment. Plan approved the same day ("Yes, build it").
 - **Built.** "Send back to salesperson" on the Operations strip of the Confirmed Order, for an administrator or PI approver, while the PI version in force is flagged or still waiting. A dialog takes the comment (required, up to 1,000 characters, Operations' reason shown above it). One database function `send_order_handoff_to_sales` writes one history entry and one notice (existing type `order_operations_review_decided`, badge "Returned to Sales") to the Order's salesperson and the PI's submitter / creator, never the sender. The strip then shows who sent it back, when, and the comment.

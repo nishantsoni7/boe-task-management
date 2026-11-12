@@ -30,7 +30,8 @@ export function ComingSoonNotice({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-export function ComingSoonModule({ moduleKey, title }: { moduleKey: string; title: string }) {
+// With children (Pricing, from phase 7A) the same shell holds the module's first real page instead of the notice.
+export function ComingSoonModule({ moduleKey, title, navLabel = 'Overview', children }: { moduleKey: string; title: string; navLabel?: string; children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const { profile } = usePermissionContext()
@@ -81,7 +82,7 @@ export function ComingSoonModule({ moduleKey, title }: { moduleKey: string; titl
             <span style={{ color: '#37352F', display: 'flex', alignItems: 'center' }}>
               <LayoutDashboard size={15} strokeWidth={1.8} />
             </span>
-            <span className="boe-rail-label">Overview</span>
+            <span className="boe-rail-label">{navLabel}</span>
           </button>
         </div>
 
@@ -100,7 +101,7 @@ export function ComingSoonModule({ moduleKey, title }: { moduleKey: string; titl
         </div>
         <div className="boe-page-body">
           <ViewModeBanner />
-          <ComingSoonNotice moduleKey={moduleKey} />
+          {children ?? <ComingSoonNotice moduleKey={moduleKey} />}
         </div>
       </div>
     </div>
