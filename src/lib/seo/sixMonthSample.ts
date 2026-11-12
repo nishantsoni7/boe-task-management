@@ -98,6 +98,7 @@ export const SAMPLE_CASE = {
     note: 'Average position',
     columns: ['Q1', 'Q2', 'Q3'],
     links: ['https://example.com/q1', 'https://example.com/q2', 'https://example.com/q3'],
+    falls: { title: 'Sample falls', head: ['Search', 'Demand', 'Then', 'Now'], rows: [['sample fallen search', '100 a month', '5.0', '15.0']], note: 'Sample falls note.' },
     summary: [{ label: 'Sample summary line', values: ['2 of 3', '1 of 3', '1 of 3'] }],
     rows: [
       { keyword: 'sample keyword', demand: '100', values: [2.9, 10.9, null], clicks: [1, 26, null], shown: [50, 50, null], group: 'Sample group' },

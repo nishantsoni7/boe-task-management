@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — SEO brief: the biggest falls first in the ranking part, and 14 more searches (PR open, branch `feat/seo-brief-falls`) · no migration
+- **Owner ask.** A list of the well-searched business searches whose ranking fell a lot, at the top of part 1; and relevant searches with good volume that were missing.
+- **Changed.** `quarters.falls` (title, head, rows, note) draws first in part 1. The brief data adds 14 searches with 100+ Ahrefs India volume (one new group, furniture makers by place). The selection rule lives in the brief data and the dossier.
+- **Order.** Older builds ignore `falls`, so the brief with the 14 additions can be sent before the merge; the falls table shows once this is live.
+- **Proof.** Tests for the falls table and its place; 40 of 40 pass in the two files; `tsc` and eslint clean. The real document passes the door and was drawn with the app's stylesheets. Not seen signed in.
+
 ## 2026-11-12 — Pricing: the price book and the suggested price (Quotations plan phase 7A) (PR #698, squash-merged 2026-11-12 18:05 IST as `f88d7033`, deployed 18:07 IST) · `20270620000000` → SQL APPLIED 2026-11-12 about 17:30 IST (first numbered 20270619000000, which #696 also used; renumbered before merge), 20270620000000 recorded with migration repair about 17:45 IST
 - **Owner choice (2026-11-12).** Price book + suggested price first, learned from data already in BOE One; Admin and people granted Pricing open the module; the cost estimator later.
 - **Built.** The Pricing tile now opens the Price book: every product family with its suggested price, range and confidence, last ordered price, approved PIs, won and lost, and every price point behind it; search and CSV. Each quotation line shows "Suggested ₹X (confidence, range)" with Use. The suggestion is computed from the points each time, so it updates itself with every new approved PI and every quotation won or lost.

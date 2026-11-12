@@ -74,6 +74,8 @@ export type BriefCase = {
     links?: string[]
     /** Lines drawn above the table, one value per column, such as how many searches were on page 1. */
     summary?: { label: string; values: string[] }[]
+    /** A short list drawn first in this part: the searches that fell furthest, and how to read them. */
+    falls?: { title: string; head: string[]; rows: string[][]; note: string }
     /**
      * `group` puts a row under a category heading that adds up its clicks; grouped tables also show the change since
      * the first column. `shown` is how often Google showed us in each column: under 20 times, the position is greyed.
@@ -166,6 +168,7 @@ const BRIEF_SPEC = {
     columns: ['text'],
     links: optional(['url']),
     summary: optional([{ label: 'text', values: ['text'] }]),
+    falls: optional({ title: 'text', ...TABLE, note: 'text' }),
     rows: [{ keyword: 'text', demand: 'text', values: ['number?'], clicks: optional(['number?']), group: 'text?', shown: optional(['number?']) }],
     totals: [{ label: 'text', values: ['text'] }],
     caveat: 'text',

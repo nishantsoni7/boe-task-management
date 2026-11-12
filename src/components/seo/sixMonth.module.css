@@ -328,6 +328,9 @@
 .qBetter { color: var(--boe-completed-fg); font-weight: 600; white-space: nowrap; }
 .qSummary td { padding: 8px 10px; }
 .qSummary { margin-bottom: 4px; }
+/* The biggest falls, first in part 1, set off from the full table below. */
+.falls { border-bottom: 2px solid var(--boe-border); margin-bottom: 8px; }
+.fallsTitle { margin: 0; padding: 14px 20px 8px; font: 700 15px/1.35 var(--boe-font-heading); color: var(--boe-blocked-fg); }
 .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px 20px 6px; }
 .tile { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--boe-border); border-radius: 10px; background: var(--boe-surface-quiet); min-width: 0; }
 .tile b { font: 800 24px/1.1 var(--boe-font-heading); font-variant-numeric: tabular-nums; color: var(--boe-text); }
