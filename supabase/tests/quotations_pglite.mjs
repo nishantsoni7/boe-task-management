@@ -76,11 +76,13 @@ await db.exec(mig('20270614000000_quotations_module.sql'))
 await db.exec(`create table public.order_submissions (id uuid primary key default gen_random_uuid(), created_by uuid,
   status text not null default 'draft', draft_reference text, approved_at timestamptz);
   create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id) on delete cascade,
-  product_name text, cost_per_piece numeric(12,2) not null, quantity numeric(12,2) not null default 1);`)
+  product_name text, cost_per_piece numeric(12,2) not null, quantity numeric(12,2) not null default 1,
+  dimensions text, material text, customization text);`)
 await db.exec(mig('20270615000000_quotation_pi_link.sql'))
 await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 await db.exec(mig('20270618000000_quotation_reports.sql'))
 await db.exec(mig('20270620000000_pricing_price_book.sql'))
+await db.exec(mig('20270621000000_pricing_model_v2.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -463,5 +465,20 @@ for (const fn of ['pricing_all_points(uuid)', 'pricing_points_for(text[],uuid)']
   assert.equal(r.rows[0].a, false, fn)
 }
 ok('the point functions are internal; nothing in the price book names a client')
+
+// ── Pricing model v2: the price pool (20270621000000) ───────────────────────
+await fails(U.nobody, `select public.pricing_pool($1::text[], null)`, [['bed']], /PRICING_FORBIDDEN/)
+await fails(null, `select public.pricing_pool($1::text[], null)`, [['bed']], /PRICING_FORBIDDEN/)
+await fails(U.sales, `select public.pricing_pool($1::text[], null)`, [[]], /PRICING_INVALID/)
+const pool = await rpc(U.sales, 'pricing_pool', ['bed', 'cot'], null)
+assert.ok(pool.length > 0)
+assert.ok(pool.some(x => x.k === 'order' && x.name === 'King bed with storage' && 'dims' in x && 'material' in x), 'approved PI lines come with their parameters')
+assert.ok(pool.every(x => !('client_name' in x) && !('quote_no' in x)), 'no client names or numbers')
+assert.ok(!pool.some(x => Number(x.p) === 1000 || Number(x.p) === 99999), 'drafts and PIs older than three years are left out')
+assert.ok(pool.every((x, i) => i === 0 || x.at <= pool[i - 1].at), 'newest first')
+const qline = pool.find(x => x.k !== 'order')
+assert.ok(qline && 'client_type' in qline, 'quotation lines carry the client type')
+assert.ok((await rpc(U.manager, 'pricing_pool', ['bed'], null)).length > 0, 'a person with Pricing (and no Quotations edit) may read it')
+ok('the price pool gives every price of a product type with its parameters, to people who may open Quotations or Pricing, never client names')
 
 console.log(`all ${checks} checks passed`)

@@ -24,6 +24,8 @@ Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `2
 
 - **Phase 7A, the price book and suggested price** (owner approved 2026-11-12; LIVE: PR #698 squash-merged 18:05 IST as `f88d7033`, deployed 18:07 IST; migration `20270620000000_pricing_price_book.sql`, APPLIED 2026-11-12; first numbered 20270619000000, which #696 also used, renumbered before merge). Lives in the **Pricing** module (dossier 24): the Price book page, plus a "Suggested ₹X (confidence, range)" line above the price hints on every quotation line, with Use. See dossier 24's update of 2026-11-12 for the model.
 
+- **Pricing model v2** (owner approved 2026-11-12 evening; branch `feat/pricing-model-v2`; migration `20270621000000_pricing_model_v2.sql`, NOT YET APPLIED; read-only). Each quotation line's suggestion now comes from the per-type parameter model (size, material, finish, quantity, client type) with its reasons, falling back to the v1 history suggestion; see dossier 24.
+
 ## 3. The model
 
 - **Quotation** (`quotations`): number `QT-<initials>-<5 digits>` from 01001 (Base44 numbers reached QT-NS-00005, QT-AK-00019, QT-SS-00047, so they never repeat); client, project, contact (name, phone, role), client type, delivery state, GST mode, discount %, fabric and packing amounts (₹), transport note, validity days (7), client notes, internal notes; owner; status.

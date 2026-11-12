@@ -13,6 +13,7 @@ import { istDateOf } from '@/lib/istDate'
 import { formatDateIN } from '@/lib/quotations/math'
 import { downloadCsv, toCsv } from '@/lib/quotations/report'
 import { suggestPrice, type PricePoint, type Suggestion } from '@/lib/pricing/suggest'
+import { HowPricesAreMade } from './HowPricesAreMade'
 import s from '@/components/quotations/quotations.module.css'
 
 type Family = { key: string; name: string; variants: number; orders: number; won: number; lost: number; open_quotes: number; last_at: string; points: PricePoint[] }
@@ -25,6 +26,7 @@ export function PriceBook() {
   const [typed, setTyped] = useState('')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState<string | null>(null)
+  const [view, setView] = useState<'book' | 'how'>('book')
   useEffect(() => { const t = setTimeout(() => setSearch(typed.trim()), 400); return () => clearTimeout(t) }, [typed])
   const q = useQuery({
     queryKey: ['pricing', 'book', search],
@@ -46,6 +48,11 @@ export function PriceBook() {
   return (
     <div className={s.wrap}>
       <div className={s.card}>
+        <div className={s.tabs} role="tablist">
+          <button className={s.tab} role="tab" aria-selected={view === 'book'} onClick={() => setView('book')}>Price book</button>
+          <button className={s.tab} role="tab" aria-selected={view === 'how'} onClick={() => setView('how')}>How prices are made</button>
+        </div>
+        {view === 'how' ? <HowPricesAreMade supabase={supabase} /> : <>
         <div className={s.toolbar}>
           <label className={s.search} style={{ position: 'relative' }}>
             <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--boe-text-muted)' }} aria-hidden />
@@ -88,6 +95,7 @@ export function PriceBook() {
             </table>
           </div>
         )}
+        </>}
       </div>
     </div>
   )

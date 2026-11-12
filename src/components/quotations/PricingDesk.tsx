@@ -11,6 +11,7 @@ import type { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import { formatDateIN } from '@/lib/quotations/math'
 import { suggestPrice } from '@/lib/pricing/suggest'
+import type { ModelSuggestion } from '@/lib/pricing/model'
 import { istDateOf } from '@/lib/istDate'
 import {
   errorText, fetchPriceQueue, fetchPriceSettings, savePriceSettings,
@@ -21,16 +22,17 @@ import s from './quotations.module.css'
 type Supabase = ReturnType<typeof createClient>
 
 /** "Last ordered ₹60,000 · ₹56,000–₹60,000 over 2 orders · last quoted ₹54,000  [Use]" */
-export function PriceHintLine({ hint, price, editable, onUse }: { hint?: PriceHint; price: number | null; editable: boolean; onUse: (p: number) => void }) {
-  if (!hint || (!hint.ordered && !hint.quoted)) return null
-  const o = hint.ordered
-  const sug = hint.points ? suggestPrice(hint.points) : null
-  const last = sug ? sug.price : o ? Number(o.last) : Number(hint.quoted!.last)
+export function PriceHintLine({ hint, model, price, editable, onUse }: { hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void }) {
+  if (!model && (!hint || (!hint.ordered && !hint.quoted))) return null
+  const o = hint?.ordered ?? null
+  const sug = model ?? (hint?.points ? suggestPrice(hint.points) : null)
+  const last = sug ? sug.price : o ? Number(o.last) : Number(hint!.quoted!.last)
   return (
     <div className={`${s.small} ${s.muted}`} style={{ lineHeight: 1.35 }}>
       {sug && <div title={`From ${sug.basis}`}>Suggested <b>{formatINR(sug.price)}</b> ({sug.confidence}{sug.low !== sug.high ? `, ${formatINR(sug.low)}–${formatINR(sug.high)}` : ''})</div>}
+      {model && model.reasons.length > 0 && <div>{model.reasons.join(' · ')}</div>}
       {o && <>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count}</>}</>}
-      {hint.quoted && <>{o ? ' · ' : ''}last quoted {formatINR(Number(hint.quoted.last))}</>}
+      {hint?.quoted && <>{o ? ' · ' : ''}last quoted {formatINR(Number(hint.quoted.last))}</>}
       {editable && price !== last && <> <button type="button" className={s.linkBtn} onClick={() => onUse(last)}>Use</button></>}
     </div>
   )
