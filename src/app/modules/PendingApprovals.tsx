@@ -18,7 +18,7 @@
 // oldest five, then a link to the full queue.
 
 import { useCallback, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { IntentLink as Link } from '@/components/ui/IntentLink'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'

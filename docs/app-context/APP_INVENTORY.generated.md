@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `3d9faa0d` — Docs: record the merge of #676 (backup copy to the external drive)
+- Commit: `c7998743` — Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - Commits on this branch: 1242
 - Pages (`page.tsx`): 187   API routes (`route.ts`): 190
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `3d9faa0d` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive)
+- `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
 - `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
 - `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)

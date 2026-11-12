@@ -58,7 +58,9 @@
 // verifies it (20270417000000).
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
+// Every link here points at another module's page; default prefetch would load
+// each of them as soon as the card shows (see src/hooks/useWarmOnRest.ts).
+import { IntentLink as Link } from '@/components/ui/IntentLink'
 import {
   ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone,
   MessageCircleQuestion, SlidersHorizontal, TriangleAlert, Undo2, Wallet,

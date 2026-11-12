@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Home, RefreshCw } from 'lucide-react'
-import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
+import { useWarmOnRest } from '@/hooks/useWarmOnRest'
 
 // The three controls OrdersLayout and FinanceLayout draw identically — the
 // sidebar destination, the BOE OS Home door and the header Refresh. They were
@@ -22,24 +21,6 @@ import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
 //     reader rather than relying on a tooltip.
 //
 // Colours, sizes and hover values are the ones the two layouts already used.
-
-// Next's own hover-prefetch pattern: off until the person shows intent, then back
-// to the default. The pointer must REST (INTENT_DWELL_MS), so crossing the menu
-// on the way elsewhere warms nothing; focus and touch are deliberate. Local state
-// rather than useIntentWarm: ordersFinanceUsability.test.tsx renders these links
-// outside the app router, where useRouter would throw.
-function useWarmOnRest() {
-  const [warm, setWarm] = useState(false)
-  const rest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(rest.current), [])
-  return {
-    prefetch: warm ? null : false,
-    onPointerEnter: () => { clearTimeout(rest.current); rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS) },
-    onPointerLeave: () => clearTimeout(rest.current),
-    onFocus: () => setWarm(true),
-    onTouchStart: () => setWarm(true),
-  }
-}
 
 export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }: {
   href: string
