@@ -36,6 +36,8 @@ const MARKETING_MIGRATION = read('supabase/migrations/20270522000000_marketing_m
 const SALES_MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql')
 const FIRST_MARKETING_DESCRIPTION = 'Marketing module. Coming soon.'
 const FIRST_SALES_DESCRIPTION = 'Sales module. Coming soon.'
+const FIRST_PRICING_DESCRIPTION = 'Pricing module. Coming soon.'
+const PRICING_MIGRATION = read('supabase/migrations/20270619000000_pricing_price_book.sql')
 const LAUNCHER = read('src/app/modules/page.tsx')
 
 const view = (allowed: boolean): EffectivePermission[] =>
@@ -69,13 +71,13 @@ describe('registration', () => {
     test(`${key}: the database says what the code says`, () => {
       const mod = getRegisteredModule(key)
       // The first registration holds the description the module was born with.
-      const bornWith = key === 'marketing' ? FIRST_MARKETING_DESCRIPTION : key === 'sales' ? FIRST_SALES_DESCRIPTION : mod!.description
+      const bornWith = key === 'marketing' ? FIRST_MARKETING_DESCRIPTION : key === 'sales' ? FIRST_SALES_DESCRIPTION : FIRST_PRICING_DESCRIPTION
       assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}', '/${key}', 'live', null,`), 'app_modules')
       assert.ok(MIGRATION.includes(`('${key}', '${title}', '${bornWith}')`), 'permission_modules')
-      if (key === 'marketing' || key === 'sales') {
+      if (key === 'marketing' || key === 'sales' || key === 'pricing') {
         // ...and the later migration changes it to what the code says now, in both tables.
         assert.notEqual(mod!.description, bornWith)
-        const later = key === 'marketing' ? MARKETING_MIGRATION : SALES_MIGRATION
+        const later = key === 'marketing' ? MARKETING_MIGRATION : key === 'sales' ? SALES_MIGRATION : PRICING_MIGRATION
         assert.equal(later.split(`set description = '${mod!.description}'`).length - 1, 2, 'both tables')
       }
     })
@@ -95,7 +97,7 @@ describe('the routes and the launcher', () => {
       assert.ok(layout.includes(`<ModuleGuard moduleKey="${key}" deniedRoute="/modules">`))
     })
 
-    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'My day' : 'the Coming soon shell for this module'}`, () => {
+    test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'My day' : 'the price book in the module shell'}`, () => {
       const page = read(`src/app/${key}/page.tsx`)
       if (key === 'marketing') {
         assert.ok(page.includes('<MetaOverview />'))
@@ -104,7 +106,8 @@ describe('the routes and the launcher', () => {
         assert.ok(page.includes("redirect('/sales/my-day')"))
         assert.ok(!page.includes('ComingSoonModule'))
       } else {
-        assert.ok(page.includes(`<ComingSoonModule moduleKey="${key}" title="${title}" />`))
+        assert.ok(page.includes(`<ComingSoonModule moduleKey="${key}" title="${title}" navLabel="Price book">`))
+        assert.ok(page.includes('<PriceBook />'))
       }
     })
 

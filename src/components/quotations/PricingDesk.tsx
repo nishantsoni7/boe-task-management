@@ -10,6 +10,7 @@ import { BadgeCheck } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import { formatDateIN } from '@/lib/quotations/math'
+import { suggestPrice } from '@/lib/pricing/suggest'
 import { istDateOf } from '@/lib/istDate'
 import {
   errorText, fetchPriceQueue, fetchPriceSettings, savePriceSettings,
@@ -23,9 +24,11 @@ type Supabase = ReturnType<typeof createClient>
 export function PriceHintLine({ hint, price, editable, onUse }: { hint?: PriceHint; price: number | null; editable: boolean; onUse: (p: number) => void }) {
   if (!hint || (!hint.ordered && !hint.quoted)) return null
   const o = hint.ordered
-  const last = o ? Number(o.last) : Number(hint.quoted!.last)
+  const sug = hint.points ? suggestPrice(hint.points) : null
+  const last = sug ? sug.price : o ? Number(o.last) : Number(hint.quoted!.last)
   return (
     <div className={`${s.small} ${s.muted}`} style={{ lineHeight: 1.35 }}>
+      {sug && <div title={`From ${sug.basis}`}>Suggested <b>{formatINR(sug.price)}</b> ({sug.confidence}{sug.low !== sug.high ? `, ${formatINR(sug.low)}–${formatINR(sug.high)}` : ''})</div>}
       {o && <>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count}</>}</>}
       {hint.quoted && <>{o ? ' · ' : ''}last quoted {formatINR(Number(hint.quoted.last))}</>}
       {editable && price !== last && <> <button type="button" className={s.linkBtn} onClick={() => onUse(last)}>Use</button></>}

@@ -59,6 +59,8 @@ export type PriceHint = {
   name: string
   ordered: { last: number; last_at: string; min: number; max: number; count: number } | null
   quoted: { last: number; last_at: string } | null
+  /** Every price point the suggestion learns from (20270619000000); absent before that migration. */
+  points?: import('@/lib/pricing/suggest').PricePoint[]
 }
 export type QueueRow = {
   id: string; quote_no: string; client_name: string; project_name: string | null; owner_name: string | null
