@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — SEO brief: the biggest falls first in the ranking part, and 14 more searches (PR open, branch `feat/seo-brief-falls`) · no migration
+- **Owner ask.** A list of the well-searched business searches whose ranking fell a lot, at the top of part 1; and relevant searches with good volume that were missing.
+- **Changed.** `quarters.falls` (title, head, rows, note) draws first in part 1. The brief data adds 14 searches with 100+ Ahrefs India volume (one new group, furniture makers by place). The selection rule lives in the brief data and the dossier.
+- **Order.** Older builds ignore `falls`, so the brief with the 14 additions can be sent before the merge; the falls table shows once this is live.
+- **Proof.** Tests for the falls table and its place; 40 of 40 pass in the two files; `tsc` and eslint clean. The real document passes the door and was drawn with the app's stylesheets. Not seen signed in.
+
 ## 2026-11-12 — Orders: send a PI back to the salesperson with a comment (PR #696, squash-merged 2026-11-12 17:12 IST as `49770c22`, deployed 17:14 IST) · `20270619000000` → APPLIED 2026-11-12 (about 16:55 IST, BEFORE the merge, alone, after a verified backup and a rolled-back rehearsal)
 - **Owner ask (urgent, Order 547).** Operations had the PI; the approver held it and wanted to send it back to the salesperson with their own comment. Plan approved the same day ("Yes, build it").
 - **Built.** "Send back to salesperson" on the Operations strip of the Confirmed Order, for an administrator or PI approver, while the PI version in force is flagged or still waiting. A dialog takes the comment (required, up to 1,000 characters, Operations' reason shown above it). One database function `send_order_handoff_to_sales` writes one history entry and one notice (existing type `order_operations_review_decided`, badge "Returned to Sales") to the Order's salesperson and the PI's submitter / creator, never the sender. The strip then shows who sent it back, when, and the comment.

@@ -107,6 +107,8 @@ describe('the 6-month review and the discussion brief', () => {
 
   test('searches sit under their category, which adds up its clicks; thin readings are grey and left out of the change', () => {
     const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    assert.ok(page.indexOf('Sample quarters') < page.indexOf('Sample falls') && page.indexOf('Sample falls') < page.indexOf('Sample summary line'), 'the biggest falls come first in the part')
+    assert.ok(page.includes('sample fallen search') && page.includes('Sample falls note.'))
     assert.ok(page.indexOf('Sample summary line') < page.indexOf('Sample group'), 'the summary sits above the table')
     assert.ok(page.indexOf('Sample group') < page.indexOf('sample keyword') && page.indexOf('second keyword') < page.indexOf('Second group'))
     assert.ok(page.includes('>1 click<') && page.includes('>26 clicks<'), 'the category row adds its clicks')

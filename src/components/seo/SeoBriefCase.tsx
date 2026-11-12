@@ -195,6 +195,18 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
   const groupClicks = (group: string) => quarters.columns.map((_, i) => quarters.rows.filter(r => r.group === group).reduce((t, r) => t + (r.clicks?.[i] ?? 0), 0))
   return (
     <>
+      {quarters.falls && (
+        <div className={s.falls}>
+          <h3 className={s.fallsTitle}>{quarters.falls.title}</h3>
+          <PhoneTableCards className={s.tableWrapFlat}>
+            <table className={`${s.qTable} ${s.qSummary}`}>
+              <thead><tr>{quarters.falls.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
+              <tbody>{quarters.falls.rows.map(row => <tr key={row[0]}>{row.map((c, i) => <td key={`${i}-${c}`}>{c}</td>)}</tr>)}</tbody>
+            </table>
+          </PhoneTableCards>
+          <Takeaway text={quarters.falls.note} label="How to read it" />
+        </div>
+      )}
       {quarters.summary && (
         <PhoneTableCards className={s.tableWrapFlat}>
           <table className={`${s.qTable} ${s.qSummary}`}>
