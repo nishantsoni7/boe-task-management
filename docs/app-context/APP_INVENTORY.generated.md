@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1278cc6a` — Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
-- Commits on this branch: 1245
+- Commit: `f2081805` — Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
+- Commits on this branch: 1247
 - Pages (`page.tsx`): 187   API routes (`route.ts`): 191
 - Migrations: 432 (first `20260530_create_positions.sql`, latest `20270616000000_order_line_flags.sql`)
 - Tables ever created: 232 (dropped at some point: 7)   SQL functions: 980   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
+- `89a913b0` 2026-11-12 Docs: Operations line flags merged (#683, 1278cc6a) and 20270616000000 applied (#685)
 - `1278cc6a` 2026-11-12 Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
 - `1841dc82` 2026-11-12 Quotations, phase 4: Improve picture (Clean up, Change it, crop & rotate) · no migration (#681)
 - `ff585879` 2026-11-12 Pages load on click: no page is loaded in advance, anywhere (#682)
@@ -37,8 +39,6 @@
 - `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 - `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
-- `4c44f95a` 2026-11-11 Finance and Orders Home link: warm the launcher on intent, not when the rail opens (#659)
-- `0da0e1d6` 2026-11-11 Finance and Orders side menus: warm a page on intent, not every page on load (#658)
 
 ## Pages by top-level area
 
