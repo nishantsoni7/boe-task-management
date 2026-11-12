@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `a1cfc6ea` — Orders: a PI sent back to the salesperson shows the status "Returned to Sales"
+- Commit: `8eb156e4` — Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
 - Commits on this branch: 1276
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 198
 - Migrations: 438 (first `20260530_create_positions.sql`, latest `20270622000000_day_close.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `a1cfc6ea` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales"
+- `8eb156e4` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
 - `b3f0ac27` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
 - `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
 - `3e26083e` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
