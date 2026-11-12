@@ -1247,6 +1247,7 @@ describe('the applied migrations are frozen', () => {
       '20270613000000_sales_whatsapp_classify.sql',
       // Quotations, phase 1: four tables closed to clients, checked functions, the client link, a public picture bucket
       '20270614000000_quotations_module.sql',
+      '20270615000000_quotation_pi_link.sql',
     ])
   })
 
@@ -1738,6 +1739,7 @@ describe('the applied migrations are frozen', () => {
       '20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql',
       '20270613000000_sales_whatsapp_classify.sql',
       '20270614000000_quotations_module.sql',
+      '20270615000000_quotation_pi_link.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

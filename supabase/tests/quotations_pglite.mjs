@@ -1,4 +1,4 @@
-// Database regression suite for 20270614000000 (Quotations, phase 1). Runs the REAL migration in an in-memory
+// Database regression suite for 20270614000000 (Quotations, phase 1) and 20270615000000 (phase 2, Confirm -> PI draft). Runs the REAL migration in an in-memory
 // Postgres (PGlite) against small stubs of the platform objects it depends on (users, auth.uid(),
 // module_entry_open, resolve_permission, storage), with Supabase's default grants to anon and authenticated
 // in place first, so the migration's own revokes are what close the tables. Run:
@@ -70,8 +70,12 @@ await db.exec(`
     ('${U.editor}', 'quotations', 'view'), ('${U.editor}', 'quotations', 'edit'), ('${U.editor}', 'quotations', 'view_all');
 `)
 
-// The migration under test, whole.
+// The migrations under test, whole. Phase 2 (20270615000000) only references order_submissions, so a stub of the
+// columns it reads stands in for the Orders table; every phase 1 check below runs on the phase 2 schema.
 await db.exec(mig('20270614000000_quotations_module.sql'))
+await db.exec(`create table public.order_submissions (id uuid primary key default gen_random_uuid(), created_by uuid,
+  status text not null default 'draft', draft_reference text);`)
+await db.exec(mig('20270615000000_quotation_pi_link.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -269,5 +273,58 @@ for (const fn of ['quotation_list(text)', 'quotation_save(uuid,jsonb)', 'quotati
 const pubGrant = await db.query(`select has_function_privilege('anon', 'public.quotation_public(text)', 'execute') b`)
 assert.equal(pubGrant.rows[0].b, true)
 ok('internal helpers are closed to clients; only quotation_public is open to anon')
+
+// ── Phase 2: Confirm → PI draft (20270615000000) ───────────────────────────
+const draft = async (by, status = 'draft') => (await db.query(
+  `insert into public.order_submissions (created_by, status, draft_reference) values ($1, $2, 'PID-' || lpad((floor(random() * 99999))::int::text, 5, '0')) returning id, draft_reference`,
+  [by, status])).rows[0]
+const link = (uid, q, s) => as(uid, `select public.quotation_link_pi($1::uuid, $2::uuid) as r`, [q, s])
+const linkFails = (uid, q, s, pattern) => assert.rejects(() => link(uid, q, s), pattern)
+
+const salesDraft = await draft(U.sales)
+const otherDraft = await draft(U.sales2)
+await linkFails(U.sales, qa, otherDraft.id, /QUOTATION_INVALID: that PI draft is not yours/)
+await linkFails(U.sales, qa, crypto.randomUUID(), /QUOTATION_INVALID: that PI draft is not yours/)
+await linkFails(U.manager, qa, salesDraft.id, /QUOTATIONS_FORBIDDEN/)
+await linkFails(U.sales2, qa, otherDraft.id, /QUOTATION_NOT_FOUND/)
+await linkFails(U.sales2, qb, otherDraft.id, /only a Sent or Negotiating quotation/)
+await linkFails(U.sales, qa, (await draft(U.sales, 'submitted')).id, /no longer a draft/)
+await linkFails(null, qa, salesDraft.id, /QUOTATIONS_FORBIDDEN/)
+ok('a link is refused for somebody else\'s PI draft, a PI that is no longer a draft, a Draft quotation, or a person who may not edit it')
+
+const linked = (await link(U.sales, qa, salesDraft.id)).rows[0].r
+assert.deepEqual(linked, { status: 'confirmed', pi_submission_id: salesDraft.id, draft_reference: salesDraft.draft_reference })
+const gl = await rpc(U.sales, 'quotation_get', qa)
+assert.equal(gl.quotation.status, 'confirmed')
+assert.equal(gl.quotation.pi_submission_id, salesDraft.id)
+assert.deepEqual(gl.pi, { id: salesDraft.id, draft_reference: salesDraft.draft_reference, status: 'draft' })
+assert.equal(gl.events[0].kind, 'converted')
+assert.equal(gl.events[0].detail.from, 'negotiating')
+assert.deepEqual((await link(U.sales, qa, salesDraft.id)).rows[0].r, linked)
+await linkFails(U.sales, qa, (await draft(U.sales)).id, /already linked to a PI/)
+await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [qa, doc()], /QUOTATION_LOCKED/)
+assert.equal((await rpc(U.manager, 'quotation_get', qa)).pi.draft_reference, salesDraft.draft_reference)
+ok('confirming links the quotation to its PI draft, marks it Confirmed and records it; asking again returns the same; it is then locked')
+
+const qc = await rpc(U.sales, 'quotation_create', { client_name: 'Another Hotel' })
+await rpc(U.sales, 'quotation_save', qc, doc())
+await rpc(U.sales, 'quotation_share', qc, true)
+await linkFails(U.sales, qc, salesDraft.id, /already belongs to another quotation/)
+ok('one PI draft belongs to one quotation')
+
+await db.query(`delete from public.order_submissions where id = $1`, [salesDraft.id])
+const gone = await rpc(U.sales, 'quotation_get', qa)
+assert.equal(gone.quotation.pi_submission_id, null)
+assert.equal(gone.pi, null)
+assert.equal(gone.quotation.status, 'confirmed')
+ok('a PI draft that is deleted clears the link; the quotation stays Confirmed for an administrator to reopen')
+
+const linkGrant = await db.query(`select has_function_privilege('anon', 'public.quotation_link_pi(uuid,uuid)', 'execute') b, has_function_privilege('authenticated', 'public.quotation_link_pi(uuid,uuid)', 'execute') a`)
+assert.equal(linkGrant.rows[0].b, false)
+assert.equal(linkGrant.rows[0].a, true)
+const tokC = await rpc(U.sales, 'quotation_share', qc, true)
+const pubC = (await as(null, `select public.quotation_public($1) as r`, [tokC], 'anon')).rows[0].r
+for (const k of ['pi_submission_id', 'pi_linked_at', 'pi']) assert.ok(!(k in pubC), `client view must not carry ${k}`)
+ok('the link function is closed to anon, and the client link never shows the PI')
 
 console.log(`all ${checks} checks passed`)

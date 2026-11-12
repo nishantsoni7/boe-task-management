@@ -109,6 +109,9 @@ describe('the save document and errors', () => {
     ])
     assert.deepEqual([a.qty_mode, a.qty, a.unit_price, a.tax_rate], ['per_unit', 1, 56000, 18])
     assert.deepEqual([b.qty_mode, b.qty, b.unit_price, b.tax_rate, b.is_optional], ['fixed', 39, null, 12, true])
+    // A 0% line stays 0% (it used to read back as 18%).
+    const [c] = toLines([{ id: 'z', area_id: null, name: 'Book', size_text: null, material: null, finish: null, qty_per_unit: null, qty_fixed: '1', unit_price: '100', tax_rate: '0.00', image_path: null, is_optional: false, client_note: null }])
+    assert.equal(c.tax_rate, 0)
   })
   test('before the migration is applied, the screens say "being set up", not a raw error', () => {
     assert.equal(classifyError({ code: 'PGRST202', message: 'Could not find the function public.quotation_my_access' }).kind, 'not_set_up')
