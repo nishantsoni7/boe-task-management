@@ -1,4 +1,9 @@
--- 20270623000000_day_close_in_tasks.sql
+-- 20270624000000_day_close_in_tasks.sql
+--
+-- RENUMBERED from 20270623000000, which #714 (quotation_versions) also used: two files on one version means
+-- the migration history can record only one of them. Written to be SAFE TO RUN AGAIN (if not exists,
+-- create or replace, drop-then-create triggers), so it applies correctly whether or not the copy under the
+-- old number already ran.
 --
 -- Day Close moves INTO Task Management (owner, 2026-11-12): "My Day" duplicated Self Tasks, so the day's
 -- plan is now the person's own tasks, and Day Close keeps only the rules around them.
@@ -27,20 +32,29 @@ begin
      or to_regclass('public.task_attachments') is null then
     raise exception 'DEPENDENCY MISSING: day_plans (20270622000000), task_activity_log and task_attachments must exist';
   end if;
-  if to_regclass('public.day_plan_items') is not null and exists (select 1 from public.day_plan_items) then
+end $$;
+
+-- Asked through dynamic SQL so that a second run, after the table is gone, does not fail on the name.
+do $$
+declare
+  v_rows boolean := false;
+begin
+  if to_regclass('public.day_plan_items') is not null then
+    execute 'select exists (select 1 from public.day_plan_items)' into v_rows;
+  end if;
+  if v_rows then
     raise exception 'day_plan_items holds rows: Day Close was used. Stop and decide before dropping it.';
   end if;
 end $$;
 
 -- ═══ 1. The plan is the person's tasks ══════════════════════════════════════
 
-drop trigger if exists day_plan_items_closed_guard on public.day_plan_items;
 drop table if exists public.day_plan_items;
 
 alter table public.day_plans
-  add column planned_task_ids uuid[] not null default '{}'::uuid[];
+  add column if not exists planned_task_ids uuid[] not null default '{}'::uuid[];
 
-create table public.day_close_carryovers (
+create table if not exists public.day_close_carryovers (
   id          uuid primary key default gen_random_uuid(),
   plan_id     uuid not null references public.day_plans(id),
   task_id     uuid not null references public.tasks(id),
@@ -49,7 +63,7 @@ create table public.day_close_carryovers (
   created_at  timestamptz not null default now(),
   constraint day_close_carryovers_once unique (plan_id, task_id)
 );
-create index day_close_carryovers_task_idx on public.day_close_carryovers (task_id);
+create index if not exists day_close_carryovers_task_idx on public.day_close_carryovers (task_id);
 
 -- The closed-day guard (20270622000000) now covers the carry-overs instead of the items.
 create or replace function public.day_close_closed_guard()
@@ -78,6 +92,7 @@ end;
 $$;
 revoke all on function public.day_close_closed_guard() from public, anon, authenticated;
 
+drop trigger if exists day_close_carryovers_closed_guard on public.day_close_carryovers;
 create trigger day_close_carryovers_closed_guard
   before insert or update or delete on public.day_close_carryovers
   for each row execute function public.day_close_closed_guard();
@@ -129,6 +144,7 @@ end;
 $$;
 revoke all on function public.day_close_task_proof_check() from public, anon, authenticated;
 
+drop trigger if exists tasks_day_close_proof on public.tasks;
 create constraint trigger tasks_day_close_proof
   after update of status on public.tasks
   deferrable initially deferred

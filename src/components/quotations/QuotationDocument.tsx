@@ -13,6 +13,7 @@ import { Pic } from './Pic'
 
 export type DocData = {
   quote_no: string
+  version_no?: number | null
   issued_at: string
   valid_days: number
   client_name: string
@@ -43,7 +44,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
     <article className={d.doc}>
       <header className={d.brand}>
         <div><div className={d.wordmark}>BEST OF EXPORTS</div><div className={d.tag}>Hospitality furniture, made in bulk to your design</div></div>
-        <div className={d.meta}><div className={d.label}>Quotation</div><div className={d.no}>{doc.quote_no}</div></div>
+        <div className={d.meta}><div className={d.label}>Quotation</div><div className={d.no}>{doc.quote_no}{doc.version_no ? ` · v${doc.version_no}` : ''}</div></div>
       </header>
 
       <section className={d.facts}>

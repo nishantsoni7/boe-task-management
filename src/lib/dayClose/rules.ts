@@ -7,7 +7,7 @@
 //           their Self Tasks included. Filing keeps the list as it was. Somebody who arrives late gets
 //           30 minutes from their arrival instead.
 //   day     tasks are finished in Task Management. Finishing one needs proof posted on the task (a file
-//           or a link), enforced by the database (20270623000000, tasks_day_close_proof).
+//           or a link), enforced by the database (20270624000000, tasks_day_close_proof).
 //   18:00   "Close my day" opens, on the Task Management dashboard. Every task of the day is handed in
 //           (submitted or completed) or carried over with a reason and a new date; the end-of-day
 //           summary is written there and files the EOD log. Closed BEFORE the punch-out on the machine.

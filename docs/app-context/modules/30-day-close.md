@@ -2,7 +2,7 @@
 
 **History.**
 - First built as a separate "My Day" list: PR #713, merged as `2466d96`, migration `20270622000000`. The owner said it was **APPLIED 2026-11-12, before that merge**; this was not re-checked from the cloud session.
-- Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270623000000_day_close_in_tasks.sql`, which **must be applied before that PR is merged**.
+- Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270624000000_day_close_in_tasks.sql`, which **must be applied before that PR is merged**.
 
 The code is the truth; re-verify before relying on this page.
 
@@ -75,7 +75,7 @@ The owner's ask (2026-11-12): staff work 2–3 hours of an 8½-hour day, nothing
 
 All tables are closed to the browser; the service-role routes take the actor from the token.
 
-**`20270623000000` (this change):**
+**`20270624000000` (this change):**
 - Drops `day_plan_items`. It refuses to if any row exists.
 - Adds `day_plans.planned_task_ids uuid[]`.
 - New table `day_close_carryovers`: plan, task, reason, next date. Unique per plan and task, guarded by `day_close_closed_guard`, closed to the browser.
@@ -107,7 +107,7 @@ The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave que
 
 ## 6. Traps
 
-1. **Apply `20270623000000` before merging.** Without it the routes read `planned_task_ids` and `day_close_carryovers`, which don't exist yet.
+1. **Apply `20270624000000` before merging.** Without it the routes read `planned_task_ids` and `day_close_carryovers`, which don't exist yet.
 2. The proof trigger **also applies to the quick-complete on My Tasks**: a member must post the proof first. Any other path that completes a member's task under their own session, now or later, is checked too.
 3. Proof is per task, not per day. An update with a link posted last week on the same task still counts.
 4. The machine is the only clock for "left". No machine ID or no punch means no `closed_after_leaving` and no judged day.
@@ -121,7 +121,7 @@ The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave que
 | `src/lib/dayClose/rules.test.ts` | Times, the judgement, the prompt, the task-based day, carry-overs, the summary, leave rules |
 | `src/lib/dayClose/leaveLock.test.ts` | The real attendance-request handlers and the nightly check, over MemorySupabase |
 | `supabase/tests/day_close_pglite.mjs` | 13 checks on `20270622000000` |
-| `supabase/tests/day_close_in_tasks_pglite.mjs` | 10 checks on `20270623000000`: the drop guard, carry-overs, and proof in every case, including the attachment written after the status in one transaction |
+| `supabase/tests/day_close_in_tasks_pglite.mjs` | 10 checks on `20270624000000`: the drop guard, carry-overs, and proof in every case, including the attachment written after the status in one transaction |
 
 ## 8. Recheck before changing
 

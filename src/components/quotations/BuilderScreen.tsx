@@ -25,6 +25,7 @@ import { DEFAULT_CLIENT_NOTE } from '@/lib/quotations/terms'
 import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
+import { VersionsCard } from './VersionsCard'
 import { PriceCard, PriceHintLine } from './PricingDesk'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
@@ -345,6 +346,7 @@ export default function BuilderScreen() {
                 onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
             ) : null
           })()}
+          <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
           <PriceCard price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
             onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
             onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
@@ -398,6 +400,7 @@ function describe(e: { kind: string; detail: Record<string, unknown> }): string 
     case 'unshared': return 'Client link turned off'
     case 'opened': return 'Opened by the client'
     case 'converted': return `Confirmed into PI draft ${e.detail.draft_reference ?? ''}`.trim()
+    case 'version': return `Sent as v${e.detail.version_no}${e.detail.note ? `: ${e.detail.note}` : ''}`
     case 'price': return e.detail.decision === 'requested' ? 'Price approval asked' : e.detail.decision === 'approved' ? 'Prices approved' : `Prices sent back${e.detail.note ? `: ${e.detail.note}` : ''}`
     default: return e.kind
   }

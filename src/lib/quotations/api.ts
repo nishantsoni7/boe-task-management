@@ -72,6 +72,8 @@ export type PublicQuotation = {
   quote_no: string; status: QuotationStatus; client_name: string; project_name: string | null; contact_name: string | null
   gst_mode: GstMode; discount_pct: number; fabric_amount: number; packing_amount: number; transport_note: string | null
   valid_days: number; notes: string | null; issued_at: string; salesperson: string | null
+  /** The version the client is seeing (20270623000000); null for a link shared before versions existed. */
+  version_no?: number | null
   areas: QuoteArea[]; lines: QuoteLine[]
 }
 

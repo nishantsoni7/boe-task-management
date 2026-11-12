@@ -1,5 +1,5 @@
-// Database regression suite for 20270623000000 (Day Close moves into Task Management). Runs the REAL migrations
-// 20270622000000 then 20270623000000 in an in-memory Postgres (PGlite) over small stubs of tasks, the task
+// Database regression suite for 20270624000000 (Day Close moves into Task Management). Runs the REAL migrations
+// 20270622000000 then 20270624000000 in an in-memory Postgres (PGlite) over small stubs of tasks, the task
 // activity log and attachments. Run:
 //   node supabase/tests/day_close_in_tasks_pglite.mjs <dir with @electric-sql/pglite installed>
 // Expected last line: "all N checks passed".
@@ -55,14 +55,14 @@ const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
   await used.exec(mig('20270622000000_day_close.sql'))
   const plan = (await used.query(`insert into public.day_plans (employee_id, work_date) values ($1, '2026-11-13') returning id`, [U.rakesh])).rows[0].id
   await used.query(`insert into public.day_plan_items (plan_id, employee_id, source, title) values ($1, $2, 'own', 'Post a reel')`, [plan, U.rakesh])
-  await assert.rejects(() => used.exec(mig('20270623000000_day_close_in_tasks.sql')), /day_plan_items holds rows/)
+  await assert.rejects(() => used.exec(mig('20270624000000_day_close_in_tasks.sql')), /day_plan_items holds rows/)
   ok('the migration refuses to drop day_plan_items when it holds a row')
 }
 
 const db = new PGlite()
 await db.exec(PLATFORM)
 await db.exec(mig('20270622000000_day_close.sql'))
-await db.exec(mig('20270623000000_day_close_in_tasks.sql'))
+await db.exec(mig('20270624000000_day_close_in_tasks.sql'))
 
 const one = async (sql, params = []) => (await db.query(sql, params)).rows[0]
 // One transaction as a signed-in person (the deferred proof check runs at COMMIT, as in a PostgREST request).
@@ -159,6 +159,15 @@ const setStatus = (id, s) => [`update public.tasks set status = $2 where id = $1
   const off = await task(U.rakesh, U.rakesh)
   await asTx(U.rakesh, [setStatus(off, 'completed')])
   ok('not checked: somebody not switched on, the service role, other statuses, or after being switched off')
+}
+
+// ── Safe to run again (renumbered from 20270623000000, which #714 also used) ──
+{
+  await db.exec(mig('20270624000000_day_close_in_tasks.sql'))
+  const n = await one(`select count(*)::int n from pg_trigger where tgname = 'tasks_day_close_proof'`)
+  assert.equal(n.n, 1)
+  assert.equal((await one(`select count(*)::int n from public.day_close_carryovers`)).n, 1, 'carry-overs kept')
+  ok('running the migration a second time changes nothing and keeps the data')
 }
 
 console.log(`all ${checks} checks passed`)
