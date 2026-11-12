@@ -10,8 +10,6 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Database.** One read-only function `quotation_report(from, to, scope)`; no table, no write.
 - **Proof.** PGlite 35 checks (3 new), `report.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
 
-## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR open, branch `feat/seo-brief-rankings`) · no migration
-
 ## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR open, branch `test/no-prefetch-guard-hardening`) · no SQL
 - **Why.** The owner asked: "Is there anything which can generate similar kind of errors in future then do work on it and solve it". A read-only sweep of about 38 pages in the owner's Chrome found:
   - pages covered: every module home, plus the Orders, Finance, Tasks and Sales sub-pages;
