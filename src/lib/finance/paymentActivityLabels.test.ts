@@ -257,6 +257,27 @@ describe('a duplicate request merged into a confirmed payment (20270608000000)',
   })
 })
 
+describe('an old order\'s client corrected (20270701000000)', () => {
+  test('the trail says which old order, from whom, to whom', () => {
+    assert.equal(
+      paymentActivityLabel(row('allocation_legacy_client_corrected', {
+        legacy_order_no: 'AB-12', previous_client_name: 'Hotel Sunrise', legacy_client_name: 'Hotel Sunrise Pvt Ltd',
+      })),
+      'Client of old order AB-12 corrected from Hotel Sunrise to Hotel Sunrise Pvt Ltd')
+  })
+
+  test('it still reads when the payload is thin', () => {
+    assert.equal(paymentActivityLabel(row('allocation_legacy_client_corrected', {})), 'Client of an old order corrected')
+    assert.equal(paymentActivityLabel(row('allocation_legacy_client_corrected', { legacy_order_no: 'AB-12', legacy_client_name: 'Acme' })),
+      'Client of old order AB-12 corrected to Acme')
+  })
+
+  test('it has its own marker colour in the timeline', () => {
+    const timeline = readFileSync(join(process.cwd(), 'src/components/PaymentRequestActivity.tsx'), 'utf8')
+    assert.ok(timeline.includes("row.event_type === 'allocation_legacy_client_corrected'"))
+  })
+})
+
 describe('no label leaks an internal identifier', () => {
   const EVERY_EVENT = [
     'request_submitted', 'target_changed', 'order_linked', 'order_unlinked',
@@ -264,6 +285,7 @@ describe('no label leaks an internal identifier', () => {
     'status_changed', 'collection_details_updated', 'cash_handover_recorded',
     'allocation_created', 'allocation_reversed', 'allocation_moved',
     'request_deleted', 'request_merged', 'request_merged_in',
+    'allocation_legacy_client_corrected',
     'an_event_from_the_future',
   ]
 

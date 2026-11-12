@@ -10,6 +10,8 @@ import { paymentModeLabel, customerDisplayName } from '@/lib/finance/paymentEntr
 import { FormDialog, OptionalDisclosure, PaymentDetailsFields, scrollToFirstProblem } from '@/app/finance/components/PaymentFormParts'
 import { PaymentRequest, friendlyDbErrorMessage, ErrorBanner } from './receivedPaymentsModel'
 import { PaymentCashLockNotice, usePaymentCashLock } from '@/components/finance/PaymentCashLockNotice'
+import type { LegacyOrderRow } from '@/lib/finance/allocatedAgainst'
+import { LEGACY_CLIENT_NAME_MAX, LEGACY_ORDER_WORD, normalizeLegacyClientName } from '@/lib/finance/legacyOrderAllocation'
 
 // Quiet, Notion-like type: labels small and muted, values larger and darker.
 const LABEL_STYLE: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: colors.muted }
@@ -32,23 +34,36 @@ function QuietField({ label, children }: { label: string; children: React.ReactN
 
 export function EditPaymentModal({
   request: r,
+  legacyOrders = [],
   supabase,
   onClose,
   onSaved,
 }: {
   request: PaymentRequest
+  /**
+   * The ACTIVE old orders this payment is allocated to (Confirmed Payments only).
+   * The client typed with each can be corrected here — correct_legacy_order_client,
+   * 20270701000000 — because an old order is not a record anywhere else, so this
+   * is the only place its client lives. Empty: no "Old orders" section.
+   */
+  legacyOrders?: LegacyOrderRow[]
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onSaved: () => void
 }) {
-  const [form, setForm] = useState({
+  const initialForm = {
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: r.payment_mode,
     proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
-  })
+  }
+  const [form, setForm] = useState(initialForm)
+  // The client of each old order, by allocation id, as the person is typing it.
+  const [legacyClients, setLegacyClients] = useState<Record<string, string>>(
+    () => Object.fromEntries(legacyOrders.map(o => [o.allocationId, o.clientName])),
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   // A payment in an open or accepted cash handover cannot be corrected at all
@@ -65,6 +80,15 @@ export function EditPaymentModal({
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
+
+  // The old orders whose client was changed, and whether anything about the
+  // PAYMENT itself was. A client-only change never writes the payment row, so a
+  // payment locked by a cash handover (20270415000000) can still have one corrected.
+  const legacyChanges = legacyOrders
+    .map(o => ({ ...o, next: normalizeLegacyClientName(legacyClients[o.allocationId]) }))
+    .filter(o => o.next !== o.clientName)
+  const paymentChanged = (Object.keys(initialForm) as (keyof typeof initialForm)[]).some(k => form[k] !== initialForm[k])
+  const clientOnly = legacyChanges.length > 0 && !paymentChanged
 
   const canSubmit = isValidAmount(form.amount) && form.paymentDate
 
@@ -91,6 +115,24 @@ export function EditPaymentModal({
     if (!canSubmit) return
     setSaving(true)
     setError(null)
+
+    // The old orders' clients first: each is its own audited correction, safe to
+    // repeat, and a refusal stops here with nothing else saved.
+    for (const change of legacyChanges) {
+      if (change.next === '') { setSaving(false); setError(`Enter the client for old order ${change.orderNo}.`); return }
+      const { error: rpcError } = await supabase.rpc('correct_legacy_order_client', {
+        p_allocation_id: change.allocationId,
+        p_client_name: change.next,
+      })
+      if (rpcError) {
+        setSaving(false)
+        setError(`Old order ${change.orderNo}: ${friendlyDbErrorMessage(rpcError).replace(/^[A-Z][A-Z_]{3,}:\s*/, '')}`)
+        return
+      }
+    }
+    // Nothing but a client changed: the payment row is not written at all.
+    if (clientOnly) { setSaving(false); onSaved(); return }
+
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -140,7 +182,7 @@ export function EditPaymentModal({
       actions={
         <>
           <button onClick={onClose} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
-          <button onClick={reviewAndSave} disabled={saving || !!cashLock}
+          <button onClick={reviewAndSave} disabled={saving || (!!cashLock && !clientOnly)}
             className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
@@ -161,6 +203,29 @@ export function EditPaymentModal({
             reverse an allocation to change it.
           </span>
         </section>
+
+        {legacyOrders.length > 0 && (
+          <section aria-label="Old orders" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h3 style={SECTION_STYLE}>Old orders</h3>
+            {legacyOrders.map(o => (
+              <QuietField key={o.allocationId} label={`${LEGACY_ORDER_WORD} ${o.orderNo} · client`}>
+                <input
+                  className="boe-input"
+                  value={legacyClients[o.allocationId] ?? ''}
+                  maxLength={LEGACY_CLIENT_NAME_MAX}
+                  onChange={e => setLegacyClients(prev => ({ ...prev, [o.allocationId]: e.target.value }))}
+                  disabled={saving}
+                  placeholder="Client the old order belongs to"
+                  style={{ width: '100%' }}
+                />
+              </QuietField>
+            ))}
+            <span style={HELP_STYLE}>
+              The client typed with each old order. A change is saved on its own and
+              recorded in this payment&apos;s history{cashLock ? '; it is allowed even while the payment is locked' : ''}.
+            </span>
+          </section>
+        )}
 
         <section aria-label="Payment" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <h3 style={SECTION_STYLE}>Payment</h3>
