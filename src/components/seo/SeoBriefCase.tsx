@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
 import type { BriefCase, BriefProof, DiscussionBrief } from '@/lib/seo/sixMonth'
 import { Head, Tag } from './SeoSixMonth'
@@ -8,7 +8,7 @@ import s from './sixMonth.module.css'
 
 type Case = DiscussionBrief & Partial<BriefCase>
 
-export function Proof({ proof }: { proof: DiscussionBrief['proof'] }) {
+export function Proof({ proof }: { proof: NonNullable<DiscussionBrief['proof']> }) {
   const most = Math.max(...proof.bars.map(b => b.value), 1)
   return (
     <section className="boe-panel" aria-label={proof.title}>
@@ -168,10 +168,41 @@ function Trend({ trend }: { trend: BriefCase['trend'] }) {
 
 // Under 11 is page 1, because 10.9 shows as 10 in Search Console.
 const cell = (v: number | null) => (v === null ? s.qNone : v < 4 ? s.qTop : v < 11 ? s.qPage1 : v < 21 ? s.qPage2 : s.qLow)
+// A position from fewer showings than this moves by chance, so it is drawn grey and left out of the change.
+export const FEW_SHOWINGS = 20
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** How far a search moved from the first column to the last one with a reading, or null when either end is missing or too thin. */
+export function positionChange(row: BriefCase['quarters']['rows'][number]): number | null {
+  const firm = (i: number) => (row.values[i] !== null && (row.shown?.[i] ?? FEW_SHOWINGS) >= FEW_SHOWINGS ? row.values[i] : null)
+  const first = firm(0)
+  let last: number | null = null
+  for (let i = row.values.length - 1; i > 0 && last === null; i--) last = firm(i)
+  return first === null || last === null ? null : last - first
+}
+
+function Change({ row }: { row: BriefCase['quarters']['rows'][number] }) {
+  const d = positionChange(row)
+  if (d === null) return <td className={s.muted}>—</td>
+  if (Math.abs(d) < 2) return <td className={s.muted}>about the same</td>
+  return d > 0
+    ? <td className={s.qWorse}>▼ {d.toFixed(1)} places</td>
+    : <td className={s.qBetter}>▲ {(-d).toFixed(1)} places</td>
+}
 
 function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
+  const grouped = quarters.rows.some(row => row.group)
+  const groupClicks = (group: string) => quarters.columns.map((_, i) => quarters.rows.filter(r => r.group === group).reduce((t, r) => t + (r.clicks?.[i] ?? 0), 0))
   return (
     <>
+      {quarters.summary && (
+        <PhoneTableCards className={s.tableWrapFlat}>
+          <table className={`${s.qTable} ${s.qSummary}`}>
+            <thead><tr><th>All {quarters.rows.length} searches</th>{quarters.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>{quarters.summary.map(line => <tr key={line.label}><td>{line.label}</td>{line.values.map((v, i) => <td key={quarters.columns[i]}>{v}</td>)}</tr>)}</tbody>
+          </table>
+        </PhoneTableCards>
+      )}
       <PhoneTableCards className={s.tableWrapFlat}>
         <table className={s.qTable}>
           <thead>
@@ -181,29 +212,46 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
                 const link = quarters.links?.[i]
                 return <th key={c}>{link ? <a href={link} target="_blank" rel="noopener noreferrer" className={s.proofLink}>{c}<span className="sr-only"> (opens the report in a new tab)</span></a> : c}</th>
               })}
+              {grouped && <th>Since {quarters.columns[0]}</th>}
             </tr>
           </thead>
           <tbody>
-            {quarters.rows.map(row => (
-              <tr key={row.keyword}>
-                <td>{row.keyword}</td>
-                <td className={s.muted}>{row.demand}</td>
-                {row.values.map((v, i) => {
-                  const clicks = row.clicks?.[i]
-                  return (
-                    <td key={quarters.columns[i]}>
-                      <span className={`${s.qCell} ${cell(v)}`}>{v === null ? '—' : v.toFixed(1)}</span>
-                      {clicks !== undefined && clicks !== null && <small className={s.qClicks}>{clicks} {clicks === 1 ? 'click' : 'clicks'}</small>}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
+            {quarters.rows.map((row, r) => {
+              const heading = row.group && row.group !== quarters.rows[r - 1]?.group
+              return (
+                <Fragment key={row.keyword}>
+                {heading && (
+                  <tr className={s.qGroup}>
+                    <td colSpan={2}>{row.group}</td>
+                    {groupClicks(row.group as string).map((v, i) => <td key={quarters.columns[i]}>{plural(v, 'click')}</td>)}
+                    <td />
+                  </tr>
+                )}
+                <tr>
+                  <td>{row.keyword}</td>
+                  <td className={s.muted}>{row.demand}</td>
+                  {row.values.map((v, i) => {
+                    const clicks = row.clicks?.[i]
+                    const shown = row.shown?.[i]
+                    const few = v !== null && shown !== undefined && shown !== null && shown < FEW_SHOWINGS
+                    return (
+                      <td key={quarters.columns[i]}>
+                        <span className={`${s.qCell} ${few ? s.qFew : cell(v)}`} title={few ? `Shown only ${plural(shown, 'time')}: this position moves by chance` : undefined}>{v === null ? '—' : v.toFixed(1)}</span>
+                        {clicks !== undefined && clicks !== null && <small className={s.qClicks}>{plural(clicks, 'click')}</small>}
+                      </td>
+                    )
+                  })}
+                  {grouped && <Change row={row} />}
+                </tr>
+                </Fragment>
+              )
+            })}
             {quarters.totals.map(total => (
               <tr key={total.label} className={s.qTotal}>
                 <td>{total.label}</td>
                 <td />
                 {total.values.map((v, i) => <td key={quarters.columns[i]}>{v}</td>)}
+                {grouped && <td />}
               </tr>
             ))}
           </tbody>
@@ -211,10 +259,32 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
       </PhoneTableCards>
       <div className={s.legend}>
         <span><s className={s.qTop} />Top 3</span><span><s className={s.qPage1} />Page 1</span><span><s className={s.qPage2} />Page 2</span><span><s className={s.qLow} />Page 3 or lower</span>
+        {quarters.rows.some(row => row.shown) && <span><s className={s.qFew} />Shown fewer than {FEW_SHOWINGS} times</span>}
+        <span>— Google did not show us</span>
       </div>
       <Takeaway text={quarters.caveat} label="Read this first" />
       <Takeaway text={quarters.takeaway} />
       <Proofs proofs={quarters.proofs} />
+    </>
+  )
+}
+
+function Traffic({ traffic }: { traffic: BriefCase['traffic'] }) {
+  return (
+    <>
+      <div className={s.tiles}>
+        {traffic.tiles.map(tile => (
+          <div key={tile.label} className={s.tile}><span className={s.small}>{tile.label}</span><b>{tile.value}</b><span className={s.small}>{tile.note}</span></div>
+        ))}
+      </div>
+      <PhoneTableCards className={s.tableWrapFlat}>
+        <table className={`${s.qTable} ${s.qSummary}`}>
+          <thead><tr>{traffic.head.map(h => <th key={h}>{h}</th>)}</tr></thead>
+          <tbody>{traffic.rows.map(row => <tr key={row[0]}>{row.map((c, i) => <td key={`${i}-${c}`}>{c}</td>)}</tr>)}</tbody>
+        </table>
+      </PhoneTableCards>
+      <Takeaway text={traffic.takeaway} />
+      <Proofs proofs={traffic.proofs} />
     </>
   )
 }
@@ -275,8 +345,9 @@ export function CaseBrief({ brief }: { brief: Case }) {
         )}
       </section>
 
-      {brief.trend && <section className="boe-panel" aria-label={brief.trend.title}><Head title={brief.trend.title} note={brief.trend.note} /><Trend trend={brief.trend} /></section>}
       {brief.quarters && <section className="boe-panel" aria-label={brief.quarters.title}><Head title={brief.quarters.title} note={brief.quarters.note} /><Quarters quarters={brief.quarters} /></section>}
+      {brief.traffic && <section className="boe-panel" aria-label={brief.traffic.title}><Head title={brief.traffic.title} note={brief.traffic.note} /><Traffic traffic={brief.traffic} /></section>}
+      {brief.trend && <section className="boe-panel" aria-label={brief.trend.title}><Head title={brief.trend.title} note={brief.trend.note} /><Trend trend={brief.trend} /></section>}
       {brief.leads && <section className="boe-panel" aria-label={brief.leads.title}><Head title={brief.leads.title} note="Not to scale" /><Leads leads={brief.leads} /></section>}
 
       {brief.findings && (
@@ -385,10 +456,12 @@ export function CaseBrief({ brief }: { brief: Case }) {
         </section>
       )}
 
-      <section className={s.two} aria-label="Credit and fairness">
-        <div className="boe-panel"><Head title="Give credit first" note="True, and worth saying" /><Lines items={brief.credit} /></div>
-        <div className="boe-panel"><Head title="Be fair: not on him" /><Lines items={brief.fair} /></div>
-      </section>
+      {(brief.credit.length > 0 || brief.fair.length > 0) && (
+        <section className={s.two} aria-label="Credit and fairness">
+          <div className="boe-panel"><Head title="Give credit first" note="True, and worth saying" /><Lines items={brief.credit} /></div>
+          <div className="boe-panel"><Head title="Be fair: not on him" /><Lines items={brief.fair} /></div>
+        </section>
+      )}
 
       {brief.plan && (
         <section className="boe-panel" aria-label={brief.plan.title}>
@@ -420,7 +493,7 @@ export function CaseBrief({ brief }: { brief: Case }) {
         </section>
       )}
 
-      <Proof proof={brief.proof} />
+      {brief.proof && <Proof proof={brief.proof} />}
       <p className={s.foot}>{brief.foot}{brief.sources?.length ? ` Sources. ${brief.sources.join(' ')}` : ''}</p>
     </div>
   )
