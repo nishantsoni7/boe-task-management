@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721) · `20270624000000` → apply before the merge
+## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Version clash found before merging.** The migration was first numbered `20270623000000`; #714 (`quotation_versions`) merged with the same number minutes earlier, and the history can record only one of them. Renumbered to `20270624000000` and made safe to run again. The owner must confirm in the database which of the two actually ran.
 - **Owner ask.** "My Day is very similar to Self Tasks… it will create confusion." Decided:
   - proof on every task a member finishes;
