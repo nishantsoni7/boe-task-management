@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `36d31d3` — Docs: Day Close migration 20270622000000 applied by the owner before the merge
-- Commits on this branch: 53
+- Commit: `2466d960` — Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
+- Commits on this branch: 1274
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 198
 - Migrations: 438 (first `20260530_create_positions.sql`, latest `20270622000000_day_close.sql`)
 - Tables ever created: 240 (dropped at some point: 7)   SQL functions: 999   Enums: 0
@@ -14,31 +14,31 @@
 
 ## Latest 25 commits
 
-- `36d31d3` 2026-11-12 Docs: Day Close migration 20270622000000 applied by the owner before the merge
-- `67f3d40` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, not yet applied)
-- `72c5797` 2026-11-12 Other modules read your own row once (#711)
-- `8ea2511` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
-- `cccdf39` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
-- `f92dd80` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
-- `3ff36f7` 2026-11-12 Fewer repeated requests: Finance (#707)
-- `9665229` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
-- `5635226` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
-- `b46b60f` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
-- `b30d3b7` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
-- `a266a00` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
-- `7f60c71` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
-- `f88f2ad` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
-- `f88d703` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
-- `202cbaf` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
-- `6019f0e` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
-- `49770c2` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
-- `126dc1f` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
-- `8f8c9ba` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
-- `46adaca` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
-- `b7b7f32` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
-- `05bec6e` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
-- `e990138` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
-- `e55e01a` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
+- `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
+- `3e26083e` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
+- `72c57977` 2026-11-12 Other modules read your own row once (#711)
+- `8ea2511c` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
+- `cccdf395` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
+- `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
+- `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
+- `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
+- `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
+- `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
+- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
+- `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
+- `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
+- `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
+- `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
+- `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
+- `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
+- `8f8c9ba1` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
+- `46adaca3` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
+- `b7b7f320` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
+- `05bec6ef` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
+- `e9901386` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
+- `e55e01aa` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
 
 ## Pages by top-level area
 

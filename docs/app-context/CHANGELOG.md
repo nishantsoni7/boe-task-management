@@ -21,7 +21,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - The nav test updated; `tsc`, eslint.
 - **Not seen signed in.** No browser test (owner's rule).
 - **Rollback.** In the migration header; remove the cron entry.
-## 2026-11-12 — Permissions looked up once in Meetings, Review Workflow, Sample Tracking and Assets (PR open, branch `perf/modules-permissions-once`) · no SQL
+## 2026-11-12 — Permissions looked up once in Meetings, Review Workflow, Sample Tracking and Assets (PR #712, squash-merged 2026-11-12 22:13 IST as `3e26083e`, deployed 22:16 IST) · no SQL
 - **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 2 of 2; PR 1 (#711) reads your own row once.
 - **Measured live before.** Each module's gate already loads the profile and the permissions; these screens loaded them again.
   - Review Workflow: the profile 3 more times and the permissions 3 more. The gate asked twice, and the landing page started `useCustomerReviews` twice.
@@ -39,8 +39,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - New: three checks of `cachedModulePermissions` in `sharedReads.test.ts` (a fresh copy; an empty map is no grant; stale or missing asks again).
   - Restated to the new code with the same rules: `adminBypass` (the gate reads no role; a failed resolve is an empty map), `testCardPurge`, `customerReviewOutreach` (the route guard), `enforcement` (Meetings still resolves permissions).
   - Full suite: 20,640 tests, 0 failed, 9 skipped. `tsc` and eslint are clean.
+- **Live recount 2026-11-12 ~22:30 IST** (production `3e26083e`, full page loads in Chrome, counted once the page was quiet for 3 s). Every page reads your own row 3 times (profile, role, designation) and looks permissions up once (`_for_user`), with 0 exact repeats and 0 failed requests.
+  - Meetings 7 requests (before: the role read twice and a separate lookup).
+  - Review Workflow 13 (before: the profile 3 more times and 3 more lookups). Its three `customer_review_custom_submissions` reads are three different queries, not a repeat.
+  - Sample Tracking 15, Assets & Access 13.
 
-## 2026-11-12 — Other modules read your own row once (PR open, branch `perf/modules-profile-once`) · no SQL
+## 2026-11-12 — Other modules read your own row once (PR #711, squash-merged 2026-11-12 22:04 IST as `72c57977`, deployed 22:06 IST) · no SQL
 - **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 1 of 2; PR 2 covers the permission lookups in Meetings, Review Workflow, Sample Tracking and Assets.
 - **Measured live, full page loads.** The baseline is 3 own-row reads and 1 `_for_user`.
   - Already clean: Sales My day, Marketing, Pricing, SEO, Control Center.
@@ -56,6 +60,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - New `showroomModuleRow.test.ts` (2).
   - Restated: `inquiryOwnership` (no users query on the inquiry page: the caller's profile is the cached copy), `payroll/how-it-works/guide` and `payrollGuideAccess` (the only own-row read is keyed by the session's id).
   - 116 test files touching these screens and modules pass: 2,721 tests. `tsc` and eslint are clean.
+- **Live recount 2026-11-12 ~22:30 IST** (production `3e26083e`, same method).
+  - Quotations 10 requests, Vendors 8, Inventory 10, Exhibition Leads (add) 8, Image Editor 7, Performance 7, Showroom QR 9 (its module row once, was twice): 3 own-row reads each (was 4), 1 permission lookup, 0 repeats, 0 failed.
+  - Payroll 10 requests with 4 own-row reads (was 5); My Attendance, My Credits and My Payroll 10 each, with 4.
+  - The one repeat left on those four: the page is not behind a ModuleGuard, so it reads the 8-column row first, and the shell's permission context reads the identical row about 1.2 s later, because it does not reuse the profile cache. Not fixed here.
+  - The automation tab stalled on some loads: Chrome held script requests for up to 31 s before sending them, and the server then answered in about 5 ms. Those loads were recounted; the stall is in the browser, not BOE.
 
 ## 2026-11-12 — Pricing model v2: prices from parameters, with reasons (PR #709, squash-merged 2026-11-12 20:54 IST as `cccdf395`, deployed 20:56 IST) · `20270621000000` → APPLIED 2026-11-12 (before the merge, alone; read-only, so no backup under the owner's 12 Nov rule)
 - **Owner ask (evening).** "Build pricing model v2" after the 7/10 review (pricing scored 5: it matched names only). Approved; salespeople see the reasons.
