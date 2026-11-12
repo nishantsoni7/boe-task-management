@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (branch `feat/pi-returned-to-sales-status`, PR pending) · no migration
+- **Owner ask.** "Whenever I send it back to the salesperson it does not change the status": it should show, to the approver and the sales team, that the PI is with Sales and that they must make the requested changes and resubmit. Plan approved the same evening ("Yes, build it"); the salesperson edits through Edit PI.
+- **Changed.** While the newest send-back stands (`salesReturnStage`), the Order banner reads "PI V<n> returned to Sales" (amber) with the instruction first ("The approved PI cannot be edited in place … Edit PI … resubmits; the revised PI goes to Operations once it is approved"), then Operations' reason and the sent line; the ERP card reads "Returned to Sales for changes."; once a revised PI waits for approval it reads "… revised PI waiting for approval". The salesperson's flagged-PI card reads "Returned to you: make the changes and resubmit PI V<n> with Edit PI"; the approver's Needs your decision row turns into "Returned to Sales: waiting for the revised PI" with the comment (no longer a red decision).
+- **Derived, not stored.** From the send-back history entry, the handoff and the pending revision. It ends by itself when Operations flags again or accepts, when the PI's owner answers Operations after it, or when the revised PI is approved (new version). No database change. Not built: locking Operations' buttons, a list column, a stored status.
+- **Proof.** New `returnedToSales.test.tsx`; three pins updated (ERP line, card wording, the shared history read); `tsc`, eslint, full `npm test`, `next build`. Not seen signed in or on a phone.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-12 — Day Close: plan, proof, close before punch-out, strikes, leave lock (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270622000000` → APPLIED 2026-11-12 by the owner, before the merge
 - **Owner ask.** Staff waste about half the day, with no defined work and no accountability; leave is taken at will. Wanted from tomorrow: today's work is defined, finished or explained before going home, and leave is blocked while work is pending. Named: Dhruv, Rakesh (social media), the SEO person, sales, Jasvi ("all of team").
 - **Decisions.** Strikes only (no money for now). Plan due 10:30, closing opens 18:00, office 10:00–18:30, Monday to Saturday. Leave with work pending is blocked except by the owner. The owner alone reviews.

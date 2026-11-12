@@ -98,7 +98,8 @@ describe('the card', () => {
     assert.match(out, /data-sent-back="true"/)
     assert.match(out, /Nishant Soni sent it back to you: “Check the details which needs to be modified and resubmit with modifications\.”/)
     assert.match(out, /price too low/, 'Operations\' reason is still there')
-    assert.match(out, /Flagged by Nitish Bansal/)
+    // Sent back after the flag, so the card now says it is returned to them (returnedToSales.test.tsx).
+    assert.match(out, /Returned to you: make the changes and resubmit PI V1 with Edit PI/)
   })
 
   test('is exactly as it was when there is no comment', () => {
@@ -115,7 +116,8 @@ describe('the strip that loads it', () => {
   const src = read('src/components/orders/dashboard/FlaggedPiStrip.tsx')
 
   test('reads the history only for the PIs it already lists, and never lets it change or fail the list', () => {
-    assert.match(src, /\.from\('order_activity_log'\)[\s\S]*?\.eq\('event_type', 'operations_handoff_sent_to_sales'\)[\s\S]*?\.in\('order_id', ids\)/)
+    assert.match(src, /loadSentBackComments\(sentBackHistoryRead\(supabase\), rows\)/)
+    assert.match(read('src/lib/orders/flaggedPis.ts'), /\.from\('order_activity_log'\)[\s\S]*?\.eq\('event_type', 'operations_handoff_sent_to_sales'\)[\s\S]*?\.in\('order_id', ids\)/)
     assert.match(src, /if \(!rows \|\| rows\.length === 0\) return/)
     // The list is drawn first; the comment only ever adds `sent` to the same rows.
     assert.ok(src.indexOf("setState(rows ? { kind: 'ready', rows } : { kind: 'failed' })") < src.indexOf('await loadSentBackComments('))

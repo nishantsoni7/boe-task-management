@@ -29,7 +29,7 @@ import {
   type PersistedDocumentSubmission,
 } from '@/lib/orders/orderDocumentSubmissions'
 import { splitRevisionQueue } from '@/lib/orders/orderPiVersions'
-import { FLAGGED_LOAD_FAILED, loadFlaggedPis } from '@/lib/orders/flaggedPis'
+import { FLAGGED_LOAD_FAILED, loadFlaggedPis, loadSentBackComments, sentBackHistoryRead } from '@/lib/orders/flaggedPis'
 import {
   documentRow,
   flaggedRow,
@@ -106,12 +106,14 @@ export async function loadDecisionRows(
 
   // loadPiPaymentSummary wants a promise from rpc(); the client's builder is a thenable, so await it here.
   const rpcClient = { rpc: async (fn: string, args: Record<string, unknown>) => supabase.rpc(fn, args) }
-  const [names, summaries] = await Promise.all([
+  const [names, summaries, sent] = await Promise.all([
     ids.size === 0
       ? Promise.resolve(new Map<string, string>())
       : supabase.from('users').select('id, full_name').in('id', [...ids]).then(({ data }) =>
           new Map(((data ?? []) as { id: string; full_name: string }[]).map(u => [u.id, u.full_name] as const))),
     Promise.all(reviews.slice(0, CHIP_READS).map(r => loadPiPaymentSummary(rpcClient, r.id))),
+    // Which flagged PIs were returned to Sales (no read when none is flagged; a failed read changes nothing).
+    loadSentBackComments(sentBackHistoryRead(supabase), flagged ?? []),
   ])
   const nameOf = (id: string | null) => (id ? names.get(id) ?? null : null)
 
@@ -119,7 +121,7 @@ export async function loadDecisionRows(
     ...reviews.map((r, i) => reviewRow(r, nameOf(r.submitted_by), paymentChip(summaries[i] ?? null))),
     ...myRevisions.map(r => revisionRow(r, nameOf(r.uploadedBy))),
     ...myDocuments.map(r => documentRow(r, nameOf(r.submission.submitted_by))),
-    ...(flagged ?? []).map(flaggedRow),
+    ...(flagged ?? []).map(r => flaggedRow(r, sent[r.handoffId])),
   ], Date.now())
   return { rows, flaggedFailed: flagged === null }
 }

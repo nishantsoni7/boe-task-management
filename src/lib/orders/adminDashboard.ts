@@ -13,7 +13,10 @@
 
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { draftDetailHref } from '@/lib/orders/draftsView'
-import { FLAGGED_KIND_LABEL, flaggedHref, flaggedLabel, reasonLine, type FlaggedPi } from '@/lib/orders/flaggedPis'
+import {
+  FLAGGED_KIND_LABEL, RETURNED_TO_SALES_LABEL, commentLine, flaggedHref, flaggedLabel, isReturnedToSales, reasonLine,
+  type FlaggedPi, type SentBack,
+} from '@/lib/orders/flaggedPis'
 import {
   SUBMISSION_STATUS_LABEL,
   categoriesLabel,
@@ -142,14 +145,18 @@ export function revisionRow(r: RevisionSource, byName: string | null): DecisionR
  * A PI Operations flagged ("cannot accept") that THIS reader must answer (my_flagged_pis, 20270611000000).
  * The row opens the Order, where Respond and resubmit is; Operations' reason is the sub-line.
  */
-export function flaggedRow(r: FlaggedPi): DecisionRow {
+export function flaggedRow(r: FlaggedPi, sent?: SentBack): DecisionRow {
+  // Returned to Sales: still listed, but it no longer asks the approver for a decision.
+  const returned = isReturnedToSales(r, sent)
   return {
     key: `flag-${r.handoffId}`, kind: 'pi_flagged', kindLabel: FLAGGED_KIND_LABEL,
     href: withReturnTo(flaggedHref(r.orderId), '/orders'),
     client: r.clientName || 'Client not recorded',
     ref: `Order ${r.orderNumber} · PI V${r.versionNumber}`,
     by: r.byName, sinceIso: r.since, waitSeconds: 0, value: null,
-    chip: { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
+    chip: returned && sent
+      ? { tone: 'info', label: RETURNED_TO_SALES_LABEL, sub: `${sent.by ?? 'You'}: “${commentLine(sent.text)}”` }
+      : { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
   }
 }
 

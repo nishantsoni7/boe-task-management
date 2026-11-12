@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `2466d960` — Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
-- Commits on this branch: 1274
+- Commit: `a1cfc6ea` — Orders: a PI sent back to the salesperson shows the status "Returned to Sales"
+- Commits on this branch: 1276
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 198
 - Migrations: 438 (first `20260530_create_positions.sql`, latest `20270622000000_day_close.sql`)
 - Tables ever created: 240 (dropped at some point: 7)   SQL functions: 999   Enums: 0
-- Test files: 812   Next.js 16.2.6, React 19.2.4
+- Test files: 813   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a1cfc6ea` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales"
+- `b3f0ac27` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
 - `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
 - `3e26083e` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
 - `72c57977` 2026-11-12 Other modules read your own row once (#711)
@@ -37,8 +39,6 @@
 - `46adaca3` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
 - `b7b7f320` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
 - `05bec6ef` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
-- `e9901386` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
-- `e55e01aa` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
 
 ## Pages by top-level area
 
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 107 source, 165 test
+- `src/lib/orders` — 107 source, 166 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
