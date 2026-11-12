@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c7998743` — Docs: record the merge of #676 (backup copy to the external drive) (#680)
-- Commits on this branch: 1242
-- Pages (`page.tsx`): 187   API routes (`route.ts`): 190
+- Commit: `ff585879` — Pages load on click: no page is loaded in advance, anywhere (#682)
+- Commits on this branch: 1243
+- Pages (`page.tsx`): 187   API routes (`route.ts`): 191
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
 - Tables ever created: 231 (dropped at some point: 7)   SQL functions: 977   Enums: 0
-- Test files: 796   Next.js 16.2.6, React 19.2.4
+- Test files: 797   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `ff585879` 2026-11-12 Pages load on click: no page is loaded in advance, anywhere (#682)
 - `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
 - `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
@@ -38,7 +39,6 @@
 - `0da0e1d6` 2026-11-11 Finance and Orders side menus: warm a page on intent, not every page on load (#658)
 - `44b194ba` 2026-11-11 Orders / Finance switch: warm the other module on intent, not on every page (#656)
 - `06167f61` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
-- `8ff4dafd` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free) (#652)
 
 ## Pages by top-level area
 
@@ -122,7 +122,7 @@
 - **performance-metrics** (2): ` [GET]`, `/team [GET]`
 - **permanently-delete-user** (1): ` [POST]`
 - **push** (3): `/dispatch [POST]`, `/preferences [GET,PUT]`, `/subscription [DELETE,POST]`
-- **quotations** (1): `/import [POST]`
+- **quotations** (2): `/import [POST]`, `/picture [POST]`
 - **reset-password** (1): ` [POST]`
 - **restore-task** (1): ` [POST]`
 - **restore-user** (1): ` [POST]`
@@ -162,7 +162,7 @@
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 8 source, 3 test
+- `src/lib/quotations` — 9 source, 4 test
 - `src/lib/salesLeads` — 14 source, 13 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
@@ -194,7 +194,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `CRON_SECRET` (12 reads)
 - `EXHIBITION_SCAN_MODEL` (2 reads)
 - `EXPENSE_BRANCH_SCOPE_GUARD` (1 reads)
-- `FAL_KEY` (6 reads)
+- `FAL_KEY` (7 reads)
 - `IMAGE_EDITOR_REFERENCE_BUCKET` (1 reads)
 - `LOCALAPPDATA` (1 reads)
 - `META_ACCESS_TOKEN` (3 reads)
