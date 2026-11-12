@@ -138,10 +138,12 @@ function rowOf(html: string, id: string): string {
 
 describe('desktop: the owner\'s columns (2026-10)', () => {
   test('headers in the required order', () => {
-    // Payment ID, Amount, Client, Received on, Payment mode, Added by,
-    // Allocation status, Actions (named for screen readers only).
+    // Payment ID, Amount, Client, Order / PI, Received on, Payment mode, Added by,
+    // Allocation status, Actions (the last two named for screen readers only).
     const headers = [...desktop.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(m => m[1].replace(/<[^>]+>/g, ''))
-    assert.deepEqual(headers, ['Payment ID', 'Amount', 'Client', 'Received on', 'Payment mode', 'Added by', 'Allocation status', 'Actions'])
+    assert.deepEqual(headers, ['Payment ID', 'Amount', 'Client', 'Order / PI', 'Received on', 'Payment mode', 'Added by', 'Allocation status', 'Actions'])
+    assert.ok(/<th[^>]*><span class="boe-sr-only">Allocation status<\/span><\/th>/.test(desktop),
+      'the status column is an icon: its header is read by screen readers only')
   })
 
   test('Added by names who recorded it; Approved By stays out of the row', () => {
@@ -159,10 +161,37 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
     assert.ok(!r.includes('More actions'), 'no menu: every action is its own icon')
   })
 
-  test('where the money went is no longer a row column', () => {
+  test('Order / PI: every destination of the payment, one line each with its own amount', () => {
+    // Owner 2026-11-12: the table says which Order / PI Draft / old order each
+    // payment was recorded against, several lines when it is split.
     const r = rowOf(desktop, '0003')
-    assert.ok(!r.includes('Order 0425'), 'the targets live in the allocation popup')
+    assert.equal([...r.matchAll(/role="listitem"/g)].length, 3, 'one line per destination (duplicates combined)')
+    assert.ok(/Order 0425<\/a>.*?₹2,00,000\.00/.test(r), 'the two 0425 rows summed, and a link: this reader may open it')
+    assert.ok(/Order 0431<\/span>.*?₹1,50,000\.00/.test(r), 'plain text where the reader may not open it')
+    assert.ok(/PI Draft · Hotel ABC\.xlsx<\/span>.*?₹50,000\.00/.test(r))
+    assert.ok(r.includes('3 allocations'))
     assert.ok(!r.includes('0999'), 'the obsolete single-Order field is not read')
+  })
+
+  test('Order / PI: an unallocated payment says so, and a single Order shows once', () => {
+    assert.ok(rowOf(desktop, '0001').includes('Not allocated'))
+    const one = rowOf(desktop, '0002')
+    assert.equal([...one.matchAll(/role="listitem"/g)].length, 1)
+    assert.ok(/Order 0425<\/a>.*?₹5,00,000\.00/.test(one))
+  })
+
+  test('Allocation status is one small icon in the table: the words are in its name, not on screen', () => {
+    for (const [id, words] of [['0001', 'Zero Allocated'], ['0002', 'Fully Allocated'], ['0004', 'Partially Allocated'], ['0005', 'Over-allocated']] as const) {
+      const r = rowOf(desktop, id)
+      assert.ok(r.includes('fin-status-icon'), `${id}: the compact icon`)
+      assert.ok(!r.includes('fin-pill'), `${id}: no word pill in the table`)
+      assert.ok(r.includes(`aria-label="${words}`), `${id}: the accessible name carries "${words}"`)
+      assert.ok(r.includes(`View allocation details for P-AA-${id}`), `${id}: and names the payment it opens`)
+    }
+    // Four states, four colours (the pill key) and four shapes.
+    for (const id of ['0001', '0002', '0004', '0005']) assert.ok(/<svg /.test(rowOf(desktop, id)))
+    // The phone cards keep the word pill: width is not a problem there.
+    assert.ok(rowOf(mobile, '0002').includes('fin-pill'))
   })
 
   test('every column has a fixed width sized to the data, Client included; no sideways scroll', () => {
@@ -172,8 +201,8 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
     const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>(.*?)<\/th>/g)]
       .map(m => [m[2].replace(/<[^>]+>/g, ''), /(?:^|;)width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
     assert.deepEqual(widths, [
-      ['Payment ID', '100px'], ['Amount', '128px'], ['Client', '180px'], ['Received on', '100px'],
-      ['Payment mode', '104px'], ['Added by', '132px'], ['Allocation status', '156px'], ['Actions', '140px'],
+      ['Payment ID', '100px'], ['Amount', '128px'], ['Client', '180px'], ['Order / PI', '190px'], ['Received on', '100px'],
+      ['Payment mode', '104px'], ['Added by', '132px'], ['Allocation status', '48px'], ['Actions', '140px'],
     ])
     assert.ok(desktop.includes('class="fin-table"'), 'and the table lays out by them (.fin-table is table-layout: fixed)')
   })

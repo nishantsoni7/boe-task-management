@@ -32,6 +32,7 @@ import {
   piDraftSafeName,
   PI_DRAFT_NAME_COLUMNS,
   allocationBadgeState,
+  oldOrderClientOf,
   allocationStatusFromTotal,
   buildAllocatedAgainst,
   type AllocationTargetRow,
@@ -596,5 +597,50 @@ describe('the Paid date range fits a 320px phone', () => {
     const phone = css.slice(css.indexOf('@media (max-width: 480px) {\n  .boe-list-search'))
     assert.ok(phone.slice(0, phone.indexOf('\n}\n')).includes('.boe-list-date { flex: 1 1 100%; }'),
       'and on a phone each bound takes its own full line')
+  })
+})
+
+// ── The client of a payment that sits only on old orders (owner, 2026-11-12) ──
+//
+// An old order is not a record here: the client typed with it is the only
+// customer the payment has. The payment's own stored name is written once at
+// entry, so a payment allocated to an old order afterwards read "Not identified".
+
+describe('oldOrderClientOf — the client typed with an old order', () => {
+  const legacy = (no: string, client: string | null, amount: string) =>
+    row({ target_type: 'legacy_order', target_id: null, target_reference: no, allocated_amount: amount, target_client_name: client })
+
+  test('one old order: its client', () => {
+    const view = buildAllocatedAgainst(payment('1000'), [legacy('AB-12', 'Hotel Sunrise', '1000')], covered)
+    assert.equal(oldOrderClientOf(view), 'Hotel Sunrise')
+  })
+
+  test('several old orders of the same client (spelling and spacing aside): that client', () => {
+    const view = buildAllocatedAgainst(payment('1000'), [
+      legacy('AB-12', 'Hotel Sunrise', '400'), legacy('AB-13', '  hotel   sunrise ', '600'),
+    ], covered)
+    assert.equal(oldOrderClientOf(view), 'Hotel Sunrise')
+  })
+
+  test('old orders of different clients, or any Order / PI Draft among the lines: nobody (the stored name stays in charge)', () => {
+    const two = buildAllocatedAgainst(payment('1000'), [
+      legacy('AB-12', 'Hotel Sunrise', '400'), legacy('CD-9', 'Cafe Moon', '600'),
+    ], covered)
+    assert.equal(oldOrderClientOf(two), null)
+    const mixed = buildAllocatedAgainst(payment('1000'), [
+      legacy('AB-12', 'Hotel Sunrise', '400'), order(ORDER_425, '0425', '600'),
+    ], covered)
+    assert.equal(oldOrderClientOf(mixed), null)
+  })
+
+  test('nothing allocated, a failed read or a read still in flight: nobody', () => {
+    assert.equal(oldOrderClientOf(buildAllocatedAgainst(payment('1000'), [], covered)), null)
+    assert.equal(oldOrderClientOf(buildAllocatedAgainst(payment('1000'), null)), null)
+    assert.equal(oldOrderClientOf(buildAllocatedAgainst(payment('1000'), [], { readFailed: true })), null)
+  })
+
+  test('an old order whose client did not come back never invents one', () => {
+    const view = buildAllocatedAgainst(payment('1000'), [legacy('AB-12', null, '1000')], covered)
+    assert.equal(oldOrderClientOf(view), null)
   })
 })

@@ -118,6 +118,20 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
 export const CONFIRMED_CLIENT_MIN_PX = 180
 
 /**
+ * Order / PI at the narrowest table: "Order 0425 · ₹11,91,600.00" fits whole;
+ * a longer PI Draft name ends in "…" with its full text in the tooltip, and the
+ * amount never truncates.
+ */
+export const CONFIRMED_ORDER_PX = 190
+
+/**
+ * The Allocation status column is ONE SMALL ICON (owner, 2026-11-12): a 20px
+ * mark in a 28px hit area plus the cell padding. The words live in its tooltip
+ * and screen-reader name, and the four summary cards above the list are the key.
+ */
+export const CONFIRMED_STATUS_ICON_PX = 48
+
+/**
  * SEVEN COLUMNS, IN THIS ORDER, AND NO OTHERS.
  *
  * The table carried eleven and was honestly wide: at 1024px it either scrolled
@@ -184,13 +198,18 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   // Who paid, from the payment's own client_name ("Not identified" for Suspense).
   // A width like the rest, so it no longer swallows the spare room.
   { key: 'client',       label: 'Client',            align: 'left',  width: `${CONFIRMED_CLIENT_MIN_PX}px` },
+  // Where the money went: every Order, PI Draft and old order the payment is
+  // allocated to, one line each with its own amount (owner, 2026-11-12). Drawn
+  // from the complete allocation read the status icon already uses.
+  { key: 'order',        label: 'Order / PI',        align: 'left',  width: `${CONFIRMED_ORDER_PX}px` },
   // When the money arrived (payment_date, not created_at).
   { key: 'date',         label: 'Received on',       align: 'left',  width: '100px' },
   { key: 'mode',         label: 'Payment mode',      align: 'left',  width: '104px' },
   // Who recorded the payment (submitted_by_name).
   { key: 'added_by',     label: 'Added by',          align: 'left',  width: '132px' },
-  // A status pill that opens the allocation details; labels never wrap.
-  { key: 'status',       label: 'Allocation status', align: 'left',  width: '156px' },
+  // A small status icon that opens the allocation details. The header is read
+  // by screen readers only (the icon says the rest).
+  { key: 'status',       label: 'Allocation status', align: 'left',  width: `${CONFIRMED_STATUS_ICON_PX}px` },
   // WIDTH IS COMPUTED, NOT CHOSEN — see ACTIONS_COLUMN_WIDTH_PX in
   // lib/finance/rowActions.ts, which finds the widest row by enumerating the
   // visibility rules rather than trusting a count made by eye.
@@ -335,8 +354,14 @@ export const PAYMENTS_TABLE_BREAKPOINT = 1024
  * = 1040px, rounded up to 1045. With the 64px hover rail (#475) that is a
  * window of about 1155px or wider; with the sidebar pinned open (260px), about
  * 1350px or wider. Narrower windows get the cards.
+ *
+ * REVISED 2026-11-12 (Order / PI column added, status shrunk to an icon):
+ * Allocation status 156px -> 48px and Order / PI +190px, so 942px of fixed
+ * columns + 180px for Client = 1122px, rounded up to 1125. About 80px wider
+ * than before: a window of about 1235px or wider on the hover rail, about
+ * 1430px with the sidebar pinned open. Narrower windows get the cards.
  */
-export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 1045
+export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 1125
 
 /**
  * The floor Allocated Against keeps when the table is at its narrowest. Every

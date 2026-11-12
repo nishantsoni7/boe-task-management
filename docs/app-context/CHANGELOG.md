@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (branch `feat/confirmed-payments-orders`, PR 1 of 2) · no SQL
+- **Owner ask.** The Confirmed Payments list should show the Order number / PI number each payment was recorded against, several for a split payment; the Allocation status should shrink to small icons; the client of an old order was not shown ("Not identified"). PR 2 (migration) adds search by order number with a confirmed total and editing an old order's client.
+- **Built.**
+  - New **Order / PI** column after Client (190px): one line per Order, PI Draft (reference and reserved number) or old order with its own amount; links where the reader may open the record. No new query: it reads the complete allocation targets the page already loads once per page.
+  - **Allocation status** is one small icon (column 156px to 48px): ring, half, tick, "!" in the pill colours, words in the tooltip and accessible name. Phone cards keep the word pill.
+  - **Old-order client:** a payment whose money is only on old orders of one client shows that client (display only; no write).
+  - The table is about 80px wider: `CONFIRMED_TABLE_MIN_CONTAINER_PX` 1045 to 1125. A 1366px laptop with the sidebar pinned open now gets cards (the hover rail still gets the table).
+- **Proof.** `tsc`; eslint on the changed files; 3,203 finance, navigation and UI tests, 0 failures (offline env). `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx` and `allocatedAgainst.test.ts` updated and extended.
+- **Not seen signed in.** No browser test (owner's rule).
+- **Rollback.** Revert the PR; nothing in the database changed.
 ## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270626000000` → NOT applied (apply before the merge)
 - **Owner ask.** "Start building the team vote and owner rating."
 - **Built.**

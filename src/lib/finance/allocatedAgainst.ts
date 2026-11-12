@@ -35,7 +35,7 @@ import {
 } from './exactMoney'
 import type { ConfirmedAllocationStatus } from './paymentSurfaces'
 import type { PaymentAllocationSummary } from './paymentAllocations'
-import { legacyOrderLabel } from './legacyOrderAllocation'
+import { legacyOrderLabel, normalizeLegacyClientName } from './legacyOrderAllocation'
 
 /** One row of received_payment_allocation_targets(). */
 export type AllocationTargetRow = {
@@ -66,6 +66,8 @@ export type AllocatedAgainstLine = {
   amount: string
   /** How many active allocation rows were combined into this line. */
   allocationCount: number
+  /** An old order's client, as typed with it. Null for an Order or PI Draft. */
+  clientName: string | null
 }
 
 export type AllocatedAgainstView =
@@ -240,6 +242,7 @@ export function buildAllocatedAgainst(
     label: allocationTargetLabel(t.row),
     amount: exactToString(t.total),
     allocationCount: t.n,
+    clientName: t.row.target_type === 'legacy_order' ? (t.row.target_client_name?.trim() || null) : null,
   }))
 
   const comparison = amount ? compareExact(allocated, amount) : 0
@@ -268,6 +271,26 @@ export function allocationStatusFromTotal(
   if (compareExact(activeTotal, ZERO) <= 0) return 'zero'
   const c = compareExact(activeTotal, amount)
   return c > 0 ? 'over' : c === 0 ? 'full' : 'partial'
+}
+
+/**
+ * The client of a payment whose money sits ONLY on old orders that all name the
+ * same client — null otherwise. An old order is not a record here, so the client
+ * typed with it is the only customer the payment has; the payment's own stored
+ * name is written once at entry and stays empty when the payment was allocated
+ * afterwards (the list read "Not identified"). Several different clients, or any
+ * Order / PI Draft among the lines, leave the stored name in charge.
+ */
+export function oldOrderClientOf(view: AllocatedAgainstView): string | null {
+  if (view.kind !== 'targets') return null
+  let first: string | null = null
+  for (const line of view.lines) {
+    const name = normalizeLegacyClientName(line.clientName)
+    if (line.targetType !== 'legacy_order' || !name) return null
+    if (first === null) first = name
+    else if (first.toLowerCase() !== name.toLowerCase()) return null
+  }
+  return first
 }
 
 /**

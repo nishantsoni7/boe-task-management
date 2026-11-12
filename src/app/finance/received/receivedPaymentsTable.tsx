@@ -12,6 +12,7 @@ import { PaymentIdChip } from '../components/PaymentIdChip'
 import { FinancePerson } from '../components/FinanceListParts'
 import { PaymentRequest, fmtDate, fmtAmount } from './receivedPaymentsModel'
 import { rowActionMeta, PaymentRowActions, type RowActionMeta } from './receivedPaymentsRowActions'
+import { StatusIcon } from './receivedPaymentsStatusIcon'
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ export const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'su
  * different (red/amber) tone and a tooltip explaining why, never the
  * reassuring green "Fully Allocated" look.
  */
-export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
+export function ConfirmedAllocationBadge({ status, paymentId, onOpen, compact }: {
   /**
    * From allocationBadgeState(): the status of the SAME complete read the
    * Allocated Against cell is drawn from, or 'loading' / 'unavailable' — never
@@ -73,9 +74,23 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   paymentId?: string | null
   /** Opens the payment's detail record. Omit to render a plain, inert badge. */
   onOpen?: () => void
+  /**
+   * ONE SMALL ICON instead of the word pill (the table's Allocation status
+   * column, owner 2026-11-12). The words move into the tooltip and the
+   * accessible name; the shape differs per state so colour is never the only cue.
+   */
+  compact?: boolean
 }) {
   if (status === 'loading') {
     return <span aria-label="Loading allocation status" style={{ fontSize: '12px', color: colors.muted }}>…</span>
+  }
+  if (compact && (!status || status === 'unavailable')) {
+    return (
+      <span title="The complete allocation status could not be loaded. Open the payment for details."
+            aria-label="Status unavailable" style={{ fontSize: '12px', color: colors.muted }}>
+        –
+      </span>
+    )
   }
   if (!status || status === 'unavailable') {
     return (
@@ -106,6 +121,29 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   void style
   const chip: React.CSSProperties = { padding: '2px 10px', borderRadius: '999px' }
   const pillClass = `fin-pill fin-pill--${status}`
+
+  if (compact) {
+    const mark = <StatusIcon status={status} />
+    if (!onOpen) {
+      return <span title={overTitle ?? meta.label} role="img" aria-label={`Allocation: ${meta.label}`} className={`fin-status-icon fin-status-icon--${status}`}>{mark}</span>
+    }
+    return (
+      <button
+        type="button"
+        className="boe-allocation-badge"
+        // The words are the accessible name: the icon alone says nothing to a
+        // screen reader, and it must still name WHICH payment it opens.
+        aria-label={`${meta.label}. View allocation details for ${paymentId ?? 'this payment'}`}
+        title={overTitle ?? `${meta.label} · view allocation details`}
+        onClick={event => {
+          event.stopPropagation()
+          onOpen()
+        }}
+      >
+        <span aria-hidden="true" className={`fin-status-icon fin-status-icon--${status}`}>{mark}</span>
+      </button>
+    )
+  }
 
   if (!onOpen) return <span title={overTitle} className={pillClass} style={chip}>{meta.label}</span>
 
@@ -293,6 +331,8 @@ export function ReceivedPaymentsTable({
   canDeleteRow,
   onDelete,
   allocatedAgainst,
+  targetHref,
+  onOpenTarget,
   onShowAllocation,
 }: {
   rows: PaymentRequest[]
@@ -363,7 +403,7 @@ export function ReceivedPaymentsTable({
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
               <th key={column.key} style={{ ...TH, ...align(column.align), ...(column.key === 'client' ? AFTER_AMOUNT : {}), ...('width' in column ? { width: column.width } : {}) }}>
-                {column.key === 'actions' ? <span className="boe-sr-only">{column.label}</span> : column.label}
+                {column.key === 'actions' || column.key === 'status' ? <span className="boe-sr-only">{column.label}</span> : column.label}
               </th>
             ))}
           </tr>
@@ -401,6 +441,19 @@ export function ReceivedPaymentsTable({
                     </span>
                   </td>
 
+                  {/* ORDER / PI — every destination of the payment, one line each
+                      with its own amount: an Order, a PI Draft (its reference and
+                      the Order number reserved for it) or an old order. The
+                      complete read the status icon uses; a name is a link only
+                      where this reader may open it. */}
+                  <td style={{ ...TD, overflow: 'visible', whiteSpace: 'normal' }}>
+                    <AllocatedAgainstCell
+                      view={allocatedAgainst(r)}
+                      hrefFor={targetHref}
+                      onOpen={onOpenTarget}
+                    />
+                  </td>
+
                   {/* THE PAYMENT DATE, not created_at — when the money moved. */}
                   <td style={TD} className="fin-muted">{fmtDate(r.payment_date)}</td>
 
@@ -411,11 +464,12 @@ export function ReceivedPaymentsTable({
                     <FinancePerson name={r.submitted_by_name} />
                   </td>
 
-                  {/* THE PILL IS THE DOOR TO WHERE THE MONEY WENT. It opens the
+                  {/* THE ICON IS THE DOOR TO WHERE THE MONEY WENT. It opens the
                       allocation popup: every Order / PI Draft it is allocated
                       to, with amounts, and what is left. */}
                   <td style={{ ...TD, overflow: 'visible' }} onClick={e => e.stopPropagation()}>
                     <ConfirmedAllocationBadge
+                      compact
                       status={allocationBadgeState(allocatedAgainst(r))}
                       paymentId={r.human_payment_id}
                       onOpen={() => onShowAllocation(r)}
