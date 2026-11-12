@@ -159,6 +159,9 @@ import { useProductCosts } from '@/components/orders/useProductCosts'
 import type { OrderProductView } from '@/components/orders/ProductViews'
 import { buildDispatchLedger } from '@/lib/orders/dispatch'
 import { useOrderDispatch } from './useOrderDispatch'
+import { useOrderLineFlags } from './useOrderLineFlags'
+import { OrderLineReviewModal } from './OrderLineReview'
+import { describeLineFlagFailure, LINE_FLAG_KIND_LABEL, markFromFlag, reasonLabel, type LineFlagPayload } from '@/lib/orders/lineFlags'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
 import {
@@ -1010,6 +1013,10 @@ export default function OrderDetailPage() {
   // Dispatched and pending (20270520000000). Read beside the Order, not awaited
   // by it; null when this person has no sight of them, and the tab is not drawn.
   const orderDispatch = useOrderDispatch(order?.id ?? null, costSubmissionId !== null)
+  // Operations' line flags on the live PI review (20270616000000), read again whenever that review moves.
+  const liveReview = splitOperationsHandoffs(handoffs).live
+  const lineFlagsRead = useOrderLineFlags(order?.id ?? null, `${liveReview?.id ?? ''}:${liveReview?.status ?? ''}`)
+  const [lineReviewOpen, setLineReviewOpen] = useState(false)
   const dispatchLedger = useMemo(() => (orderDispatch ? buildDispatchLedger(orderDispatch) : null), [orderDispatch])
 
   // ── Design Files and Client PO submissions (20270112000000) ──
@@ -1974,6 +1981,27 @@ export default function OrderDetailPage() {
       // re-read, and the trail with the row. Nothing else changed.
       // Accepting the version also accepts the documents sent with the PI
       // (20270112000000 §11e), so those are re-read with it.
+      await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
+  // Operations flags lines of the PI under review (20270616000000). flag_order_lines() hands the decision
+  // to decide_order_operations_handoff() unchanged (any Cannot make flags the PI, comments only accept
+  // it), so the same rows are re-read as after a decision.
+  const flagLines = async (lines: LineFlagPayload[]) => {
+    const live = splitOperationsHandoffs(handoffs).live
+    if (!order || handoffBusy || !live) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('flag_order_lines', { p_handoff_id: live.id, p_lines: lines })
+      if (error) { setHandoffError(describeLineFlagFailure(error) ?? describeHandoffFailure(error)); return }
+      setLineReviewOpen(false)
+      if (profile?.id && profile.full_name) {
+        setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
+      }
       await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
     } finally {
       setHandoffBusy(false)
@@ -3116,6 +3144,7 @@ export default function OrderDetailPage() {
       representativeThumbnail={representativeThumbnail}
       customizationThumbnails={customizationThumbnails}
       unresolvedImages={piImages.unresolved}
+      lineFlags={new Map((lineFlagsRead?.flags ?? []).flatMap(f => (f.itemId ? [[f.itemId, f] as const] : [])))}
       views={costSubmissionId ? {
         submissionId: costSubmissionId,
         view: productView,
@@ -3389,6 +3418,9 @@ export default function OrderDetailPage() {
                   busy={handoffBusy}
                   onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
                   onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+                  onFlagLines={lineFlagsRead?.available && piProducts.length > 0
+                    ? () => { setHandoffError(null); setLineReviewOpen(true) }
+                    : undefined}
                   acceptBlockedReason={advanceAttentionLabel(advance)}
                   heldForAdvance={!!advance?.hold}
                   realignOffered={operationsRealignOffered}
@@ -4079,11 +4111,38 @@ export default function OrderDetailPage() {
           alsoAccepts={initialDocumentsAwaiting}
         />
       )}
+      {lineReviewOpen && operationsView?.kind === 'recorded' && (
+        <OrderLineReviewModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          lines={piProducts.map(p => ({
+            itemId: p.id,
+            code: p.orderProductCode ?? p.itemSequence ?? '—',
+            name: p.productName ?? 'Product',
+            detail: [`${p.quantity ?? '—'} × ${formatInr(p.costPerPiece)}`, p.material, p.dimensions].filter(Boolean).join(' · '),
+            thumbnail: representativeThumbnail(p.row),
+          }))}
+          initial={new Map((lineFlagsRead?.flags ?? [])
+            .filter(f => f.itemId && f.handoffId === liveReview?.id)
+            .map(f => [f.itemId as string, markFromFlag(f)]))}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setLineReviewOpen(false) }}
+          onAccept={() => { setLineReviewOpen(false); setHandoffError(null); setHandoffDialog('accepted') }}
+          onOtherReason={() => { setLineReviewOpen(false); setHandoffError(null); setHandoffDialog('clarification_needed') }}
+          onConfirm={lines => flagLines(lines)}
+        />
+      )}
       {respondOpen && operationsView?.kind === 'recorded' && (
         <RespondToOperationsModal
           orderNumber={order.display_number}
           versionLabel={operationsView.versionLabel}
           objection={operationsView.decision?.note ?? null}
+          lines={(lineFlagsRead?.flags ?? []).map(f => ({
+            key: f.itemId ?? `${f.lineCode}-${f.flaggedAt}`,
+            label: [f.lineCode, f.lineTitle].filter(Boolean).join(' ') || 'Product',
+            flagged: `${LINE_FLAG_KIND_LABEL[f.kind]}: ${f.reasons.map(reasonLabel).join(', ')}. ${f.note}`,
+          }))}
           saving={handoffBusy}
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setRespondOpen(false) }}

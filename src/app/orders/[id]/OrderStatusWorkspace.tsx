@@ -66,6 +66,7 @@ import {
   type DesignFilesDocument,
 } from '@/lib/orders/orderDocumentsPanel'
 import OrderPendencies from './OrderPendencies'
+import { FLAG_LINES_LABEL } from '@/lib/orders/lineFlags'
 import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
@@ -913,13 +914,19 @@ export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
 export const ALIGN_AGAIN_LABEL = 'Align production again'
 
 export function OperationsReviewActions({
-  view, busy, onAccept, onCannotAccept, acceptBlockedReason = null, heldForAdvance = false,
+  view, busy, onAccept, onCannotAccept, onFlagLines, acceptBlockedReason = null, heldForAdvance = false,
   realignOffered = false, recoverOffered = false, onRecover,
 }: {
   view: OperationsHandoffView | null
   busy: boolean
   onAccept: () => void
   onCannotAccept: () => void
+  /**
+   * Line-by-line review (20270616000000). Given only when this database has it and the PI has lines:
+   * the Cannot accept button then reads "Flag lines…" and opens the review; the whole-PI reason stays
+   * one click away inside it.
+   */
+  onFlagLines?: () => void
   /**
    * Why accepting cannot align production now (the 40% advance on the amended
    * value, 20270116000000). The button says so instead of failing on press;
@@ -960,8 +967,8 @@ export function OperationsReviewActions({
   return (
     <>
       {view.actions.cannotAccept && (
-        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onCannotAccept} disabled={busy}>
-          {CANNOT_ACCEPT_LABEL}
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onFlagLines ?? onCannotAccept} disabled={busy}>
+          {onFlagLines ? FLAG_LINES_LABEL : CANNOT_ACCEPT_LABEL}
         </button>
       )}
       {view.actions.accept && (

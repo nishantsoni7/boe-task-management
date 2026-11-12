@@ -391,7 +391,10 @@ describe('no Order screen waits more than it must', () => {
       // page's existing Promise.all via loadAdvance — one more read, no more waits.
       // ALL 7 -> 8 (20270528000000): the Factory Status line's one read, orders_dispatch_progress, issued INSIDE the
       // same Promise.all via loadDispatch — one more read, no more waits; a failed read just draws no line.
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 8, [DETAIL]: 45,
+      // DETAIL 45 -> 46 (20270616000000): flag_order_lines, the operations reviewer's line-by-line
+      // review, on a press of Send back to Sales / Accept with comments. The flags themselves are read
+      // by useOrderLineFlags (its own file, nothing awaits it), so the startup path is unchanged.
+      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 8, [DETAIL]: 46,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
