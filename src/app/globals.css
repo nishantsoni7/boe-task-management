@@ -12406,6 +12406,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-notice-sent-head { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .order-notice-sent-head svg { color: #15803D; flex: 0 0 auto; }
 .order-notice-sent-comment { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+/* Operations' decision while the PI is with Sales: a plain note where the buttons were (2026-11-12). */
+.order-notice-locked { max-width: 320px; font-size: 13px; font-weight: 600; line-height: 1.4; }
 .order-notice-actions { margin-left: auto; flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .order-notice--amber { background: #FFF7E6; border-color: #F6D9A0; border-left-color: #E08A00; color: #7A3E05; }
 .order-notice--blue { background: #EEF4FF; border-color: #C9DBFF; border-left-color: #2F6BFF; color: #173B9C; }
