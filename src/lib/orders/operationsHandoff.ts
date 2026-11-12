@@ -696,6 +696,43 @@ export function sentBackLine(
 /** The button once a comment has gone: it says so, and offers another. */
 export const SEND_BACK_AGAIN_LABEL = 'Send another comment'
 
+// ── "Returned to Sales": the status a send-back puts the PI in (owner, 2026-11-12) ──
+//
+// Derived, not stored: the newest send-back for the LIVE handoff, still standing. It ends by itself when
+// Operations flags the version anew or accepts it, when the PI's owner answers Operations with remarks
+// after it, or when a revised PI is approved (the handoff is superseded). While a revised PI the
+// salesperson resubmitted waits for approval, it reads "resubmitted".
+
+export type SalesReturnStage = 'with_sales' | 'resubmitted'
+
+export function salesReturnStage(input: {
+  live: Pick<PersistedOperationsHandoff, 'status' | 'superseded_at' | 'clarification_at'> | null
+  sent: Pick<HandoffSentBack, 'atIso'> | null
+  answer: Pick<HandoffAnswer, 'atIso'> | null
+  pendingRevision: boolean
+}): SalesReturnStage | null {
+  const { live, sent, answer } = input
+  if (!live || !sent || live.superseded_at !== null || live.status === 'accepted') return null
+  const at = Date.parse(sent.atIso)
+  if (live.clarification_at && Date.parse(live.clarification_at) > at) return null
+  if (answer && Date.parse(answer.atIso) > at) return null
+  return input.pendingRevision ? 'resubmitted' : 'with_sales'
+}
+
+export const SALES_RETURN_TITLE: Record<SalesReturnStage, (v: number) => string> = {
+  with_sales: v => `PI V${v} returned to Sales`,
+  resubmitted: v => `PI V${v} returned to Sales: revised PI waiting for approval`,
+}
+export const SALES_RETURN_INSTRUCTION: Record<SalesReturnStage, string> = {
+  with_sales: 'The approved PI cannot be edited in place. The salesperson makes the requested changes with Edit PI and resubmits; the revised PI goes to Operations once it is approved.',
+  resubmitted: 'The salesperson has resubmitted a revised PI. Once it is approved it goes to Operations as a new version.',
+}
+/** The ERP card's one line while the PI is with Sales. */
+export const SALES_RETURN_SUMMARY: Record<SalesReturnStage, string> = {
+  with_sales: 'Returned to Sales for changes.',
+  resubmitted: 'Revised PI waiting for approval.',
+}
+
 export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: string): DecisionCheck {
   const reason = raw.trim() === '' ? null : raw.trim()
   if (reason !== null && reason.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) {

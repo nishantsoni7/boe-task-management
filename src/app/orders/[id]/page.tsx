@@ -226,6 +226,8 @@ import {
   sentBackLine,
   RESPOND_BUTTON_LABEL,
   SEND_BACK_AGAIN_LABEL,
+  SALES_RETURN_SUMMARY,
+  salesReturnStage,
   SEND_BACK_BUTTON_LABEL,
   describeOperationsHandoff,
   latestRealignment,
@@ -2913,6 +2915,14 @@ export default function OrderDetailPage() {
   // THE APPROVER'S COMMENT TO THE SALESPERSON (20270619000000), from the history already loaded.
   const operationsSent = operationsSplit.live ? latestSentToSales(activity, operationsSplit.live.id) : null
   const operationsSentLine = sentBackLine(operationsSent, iso => (iso ? fmtDateTime(iso) : '—'), order.assigned_to_name ?? null)
+  // RETURNED TO SALES (owner, 2026-11-12): the status a send-back puts the PI in, until it is answered,
+  // decided again by Operations, or replaced by an approved revision.
+  const salesReturn = salesReturnStage({
+    live: operationsSplit.live,
+    sent: operationsSent,
+    answer: operationsSplit.live ? latestHandoffAnswer(activity, operationsSplit.live.id) : null,
+    pendingRevision: piHistory.pending !== null,
+  })
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -2978,7 +2988,7 @@ export default function OrderDetailPage() {
     productionLabel: handoffAlignment?.label ?? production?.label ?? '—',
     // THE SUMMARY SAYS WHERE PRODUCTION STANDS NOW; who accepted which version
     // and every re-alignment are in Activity and the Main PI row.
-    productionLine: handoffAlignment ? handoffAlignment.summary : (production?.line ?? null),
+    productionLine: salesReturn ? SALES_RETURN_SUMMARY[salesReturn] : handoffAlignment ? handoffAlignment.summary : (production?.line ?? null),
   })
 
   /**
@@ -3042,6 +3052,7 @@ export default function OrderDetailPage() {
           versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned,
           reasonLine: operationsClarificationLine,
           sentBack: operationsSentLine,
+          returned: salesReturn,
         }
       : null,
     alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning

@@ -12,6 +12,7 @@
 // answer unreadable (the screen then says so), never a silently shorter list. A database without the
 // function answers [], like my_returned_pis() before it: nothing is invented.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
 
@@ -109,6 +110,22 @@ export function readSentBackComments(raw: unknown, rows: readonly Pick<FlaggedPi
 
 type HistoryRead = (orderIds: string[]) => PromiseLike<{ data: unknown; error: { message?: string } | null }>
 
+/** The one history read both cards use: send-back entries of these Orders, newest first. */
+export const sentBackHistoryRead = (supabase: SupabaseClient): HistoryRead => ids => supabase
+  .from('order_activity_log')
+  .select('order_id, payload, created_at, actor:users!actor_id(full_name)')
+  .eq('event_type', 'operations_handoff_sent_to_sales')
+  .in('order_id', ids)
+  .order('created_at', { ascending: false })
+
+/**
+ * "Returned to Sales": the approver sent this flagged PI back AFTER Operations flagged it. A send-back
+ * older than the flag (Operations flagged it again since) does not count.
+ */
+export function isReturnedToSales(r: Pick<FlaggedPi, 'since'>, sent: Pick<SentBack, 'atIso'> | undefined): boolean {
+  return !!sent && (!r.since || Date.parse(sent.atIso) >= Date.parse(r.since))
+}
+
 /** The comments for these flagged PIs; {} when none, or when the read fails (the card is then as it was). */
 export async function loadSentBackComments(read: HistoryRead, rows: readonly FlaggedPi[]): Promise<Record<string, SentBack>> {
   if (rows.length === 0) return {}
@@ -131,6 +148,11 @@ export function commentLine(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length <= COMMENT_CLIP ? flat : `${flat.slice(0, COMMENT_CLIP - 1).trimEnd()}…`
 }
+
+/** On the salesperson's card, for a PI returned to them. */
+export const returnedToYou = (r: Pick<FlaggedPi, 'versionNumber'>): string => `Returned to you: make the changes and resubmit PI V${r.versionNumber} with Edit PI`
+/** On the approver's row, for a PI they returned: no decision waits on them. */
+export const RETURNED_TO_SALES_LABEL = 'Returned to Sales: waiting for the revised PI'
 
 export const FLAGGED_KIND_LABEL = 'Flagged by Operations'
 export const FLAGGED_LOAD_FAILED = 'PIs flagged by Operations could not be loaded, so one waiting for you may be missing. Refresh to try again.'

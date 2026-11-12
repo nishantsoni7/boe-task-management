@@ -279,7 +279,8 @@ describe('the redundant surfaces are gone', () => {
     // version, every re-alignment) stays on the Main PI row and in Activity.
     const ws = read('src/lib/orders/orderWorkspace.ts')
     assert.ok(ws.includes('line: production?.detail ?? null'))
-    assert.ok(page.includes('productionLine: handoffAlignment ? handoffAlignment.summary : (production?.line ?? null)'))
+    // Still one short line; a PI returned to Sales says so instead (owner, 2026-11-12).
+    assert.ok(page.includes('productionLine: salesReturn ? SALES_RETURN_SUMMARY[salesReturn] : handoffAlignment ? handoffAlignment.summary : (production?.line ?? null)'))
     assert.ok(page.includes('productionHeld: !!handoffAlignment?.held,'))
   })
 

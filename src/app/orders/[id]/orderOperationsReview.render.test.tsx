@@ -368,7 +368,8 @@ describe('the page draws ONE production decision', () => {
 
   test('the Production summary row states where alignment stands in one short line (the acceptance is in Activity and the Main PI row)', () => {
     assert.match(page, /productionLabel: handoffAlignment\?\.label \?\? production\?\.label \?\? '—'/)
-    assert.match(page, /productionLine: handoffAlignment \? handoffAlignment.summary : \(production\?\.line \?\? null\)/)
+    // A PI returned to Sales says so instead (owner, 2026-11-12).
+    assert.match(page, /productionLine: salesReturn \? SALES_RETURN_SUMMARY\[salesReturn\] : handoffAlignment \? handoffAlignment.summary : \(production\?\.line \?\? null\)/)
   })
 
   test('a decision re-reads the handoff AND the Order row, because acceptance moves the alignment columns', () => {

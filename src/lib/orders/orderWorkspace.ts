@@ -20,6 +20,8 @@
 // the capabilities the database resolved; this only decides which of the
 // controls it was told about is the primary one and where the rest sit.
 
+import { SALES_RETURN_INSTRUCTION, SALES_RETURN_TITLE } from './operationsHandoff'
+
 export type WorkspaceTone = 'neutral' | 'blue' | 'green' | 'amber' | 'red'
 
 /** The statuses under which an Order is no longer being worked. The overdue
@@ -104,6 +106,8 @@ export type OrderAttentionInput = {
     reasonLine?: string | null
     /** The approver's comment when the PI was sent back to the salesperson (sentBackLine); its own line under the reason. */
     sentBack?: { head: string; comment: string } | null
+    /** The PI was sent back to Sales and is still with them (salesReturnStage); the item then says so. */
+    returned?: 'with_sales' | 'resubmitted' | null
   } | null
   /** Production was aligned before this PI version was approved. */
   alignmentPredatesVersion?: number | null
@@ -214,17 +218,25 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
     }
     items.push({
       key: 'operations_review',
-      label: r.status === 'clarification_needed'
-        ? `PI V${r.versionNumber} flagged by operations: clarification needed`
-        : `PI V${r.versionNumber} awaiting operations review`,
-      tone: r.status === 'clarification_needed' ? 'red' : 'amber',
-      title: r.status === 'clarification_needed'
-        ? `PI V${r.versionNumber} flagged by operations`
-        : `PI V${r.versionNumber} awaiting operations review`,
-      detail: r.status === 'clarification_needed'
-        ? (r.reasonLine ?? 'Operations needs a clarification before it can accept this PI.')
-        // A resubmitted version carries the answer to Operations' objection.
-        : (r.reasonLine ?? 'Operations has not accepted this PI version yet.'),
+      label: r.returned
+        ? SALES_RETURN_TITLE[r.returned](r.versionNumber)
+        : r.status === 'clarification_needed'
+          ? `PI V${r.versionNumber} flagged by operations: clarification needed`
+          : `PI V${r.versionNumber} awaiting operations review`,
+      tone: r.returned ? 'amber' : r.status === 'clarification_needed' ? 'red' : 'amber',
+      title: r.returned
+        ? SALES_RETURN_TITLE[r.returned](r.versionNumber)
+        : r.status === 'clarification_needed'
+          ? `PI V${r.versionNumber} flagged by operations`
+          : `PI V${r.versionNumber} awaiting operations review`,
+      // With Sales, what they must do comes first; Operations' reason stays after it.
+      detail: [
+        r.returned ? SALES_RETURN_INSTRUCTION[r.returned] : null,
+        r.status === 'clarification_needed'
+          ? (r.reasonLine ?? 'Operations needs a clarification before it can accept this PI.')
+          // A resubmitted version carries the answer to Operations' objection.
+          : (r.reasonLine ?? 'Operations has not accepted this PI version yet.'),
+      ].filter(Boolean).join(' '),
       ...(r.sentBack ? { sent: r.sentBack } : {}),
     })
   }
