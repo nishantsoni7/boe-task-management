@@ -26,6 +26,9 @@ import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { PriceCard, PriceHintLine } from './PricingDesk'
+import { productType } from '@/lib/pricing/features'
+import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
+import { fetchPool, poolWords } from '@/lib/pricing/pool'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
 
@@ -63,6 +66,9 @@ export default function BuilderScreen() {
   }, [lines])
   const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && hintNames !== '', staleTime: 300_000, retry: false })
   const hintFor = useMemo(() => new Map<string, PriceHint>((hintsQ.data ?? []).map(h => [h.name, h])), [hintsQ.data])
+  // Pricing model v2: one pool for every product type on screen, then each line priced for its own parameters.
+  const typeWords = useMemo(() => poolWords(hintNames.split('\n').map(productType).filter((t): t is string => !!t)).join(' '), [hintNames])
+  const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && typeWords !== '', staleTime: 300_000, retry: false })
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
@@ -77,6 +83,12 @@ export default function BuilderScreen() {
 
   const editable = !!base?.may_edit && !!base && !LOCKED.includes(base.status)
   const totals = useMemo(() => (h ? computeTotals(h, areas, lines) : null), [h, areas, lines])
+  const modelFor = useMemo(() => {
+    const m = new Map<string, ModelSuggestion | null>()
+    if (!poolQ.data || !totals) return m
+    for (const l of lines) m.set(l.key, priceLine(poolQ.data, { name: l.name, size: l.size_text, material: l.material, finish: l.finish, spec: l.spec, qty: totals.lineQty[l.key], clientType: h?.client_type }))
+    return m
+  }, [poolQ.data, lines, totals, h?.client_type])
   const touch = () => { setDirty(true); setMsg(m => (m?.tone === 'ok' ? null : m)) }
   const updH = <K extends keyof Header>(k: K, v: Header[K]) => { setH(p => (p ? { ...p, [k]: v } : p)); touch() }
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }
@@ -260,7 +272,7 @@ export default function BuilderScreen() {
                 {g.lines.map((l, li) => (
                   <LineRow key={l.key} l={l} area={g.area} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                     first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
-                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} hint={hintFor.get(l.name.trim())} onRemove={() => removeLine(l.key)}
+                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} onRemove={() => removeLine(l.key)}
                     onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
                 ))}
               </div>
@@ -438,9 +450,9 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
   )
 }
 
-function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, hint, onRemove, onMove, onDuplicate }: {
+function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, hint, model, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; hint?: PriceHint
+  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; hint?: PriceHint; model?: ModelSuggestion | null
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -481,7 +493,7 @@ function LineRow({ l, area, editable, qty, total, first, last, url, onChange, on
           ) : <span className={`${s.small} ${s.muted}`} style={{ alignSelf: 'center' }}>pieces</span>}
         </div>
         <input aria-label="Unit price (₹, before GST)" className={`${s.input} ${s.money}`} type="number" min={0} placeholder="Price ₹" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} />
-        <PriceHintLine hint={hint} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })} />
+        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })} />
         <div className={s.row} style={{ justifyContent: 'space-between' }}>
           <select aria-label="GST rate" className={s.input} style={{ width: 86 }} value={l.tax_rate} onChange={e => onChange({ tax_rate: Number(e.target.value) })} disabled={!editable}>{GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}</select>
           <label className={s.small}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
