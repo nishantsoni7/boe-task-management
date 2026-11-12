@@ -221,4 +221,4 @@ Below 768px only; desktop and tablet unchanged. Shared pieces in `src/components
 - `ObjectionQueue` (correction log, payroll monthly review, payroll results): a card per issue, 44px Resolve / Reject / History.
 - Header text buttons (Monthly review, Requests, Employee directory, Attendance sync, Incoming) are in the ⋯ / + menu on a phone.
 
-- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `/my-attendance` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.
+- **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/my-attendance` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

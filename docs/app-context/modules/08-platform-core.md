@@ -139,12 +139,16 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
   - `NotificationsNavItem` no longer fetches the Task count when a module passes its own `count`.
   - Kept apart on purpose: UserMenu's `position, designation_level` read (the shared profile must not carry it), and the
     launcher's `payroll_active, is_deleted` read.
-  - Extended to other modules (2026-11-12, branch `perf/modules-profile-once`): 28 own-row reads now go through
+  - Extended to other modules (2026-11-12, #711 merged as `72c57977`): 28 own-row reads now go through
     `ensureQueryData(profileQueryOptions(qc, session.user.id))`. They cover the Quotations, Vendors, Inventory and
     Exhibition Leads hooks, Image Editor, Performance, My Attendance, the Payroll family, My Credits, My Payroll and the
     seven Showroom QR pages. The baseline per page is 3 own-row reads (profile, role, designation) and 1 `_for_user`
-    call.
-  - Module hooks reuse the gate's permission answer (2026-11-12, branch `perf/modules-permissions-once`): `cachedModulePermissions(qc, userId,
+    call. Verified live 2026-11-12 ~22:30 IST.
+  - Still repeated (found in that recount, not fixed): on Payroll, My Attendance, My Credits and My Payroll the page is
+    not behind a ModuleGuard, so it reads the 8-column row before the shell's `usePermissionContext` starts. The
+    context's queryFn always reads the row itself (it does not reuse `['profile', uid]`), so the identical row is read
+    again about 1.2 s later: 4 own-row reads on those pages instead of 3.
+  - Module hooks reuse the gate's permission answer (2026-11-12, #712 merged as `3e26083e`): `cachedModulePermissions(qc, userId,
     moduleKey)` returns a copy of one module's rows from `['permission-context', uid]` only while it is under
     `PERMISSION_STALE_MS` (30 s) old, else null and the caller asks the database. Used on first load by `useMeetings`,
     `useCustomerReviews`, Samples and Assets. The Meetings and Review Workflow gates now read the context, like Orders.
