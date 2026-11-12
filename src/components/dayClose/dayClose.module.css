@@ -1,0 +1,212 @@
+/* ── Day Close: My Day and Team Today ──────────────────────────────────────────
+   Phone first (most staff use phones): one column, 44px touch targets, nothing wider than the screen.
+   Status pairs are the app's own: completed green, waiting amber, blocked red, working blue.
+   Terracotta (the brand) only on the one action that matters on the screen. LIGHT ONLY. */
+
+.page {
+  max-width: 880px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #686D6C;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--boe-font-heading);
+  font-size: 17px;
+  font-weight: 700;
+  color: #303536;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: #686D6C;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.bannerRed { background: #FBE9EC; border-color: #E9B9C1; color: #A12438; }
+.bannerAmber { background: #FAF0DA; border-color: #E6D2A0; color: #805B0D; }
+.bannerGreen { background: #E8F2EC; border-color: #BCD8C8; color: #276247; }
+.bannerBlue { background: #E9EFF6; border-color: #C2D2E5; color: #335A86; }
+.bannerTitle { margin: 0; font-weight: 700; font-size: 15px; }
+.bannerText { margin: 2px 0 0; color: #4C5352; font-size: 13px; }
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 13px;
+  color: #4C5352;
+}
+.facts strong { color: #303536; }
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item {
+  border: 1px solid #E4DED7;
+  border-radius: 10px;
+  padding: 12px;
+  background: #FBFAF8;
+}
+.itemDone { border-color: #BCD8C8; background: #F3F8F5; }
+.itemNotDone { border-color: #E6D2A0; background: #FCF7EC; }
+
+.itemHead {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.itemTitle { margin: 0; font-weight: 600; font-size: 14.5px; color: #303536; overflow-wrap: anywhere; }
+.itemSub { margin: 3px 0 0; font-size: 12.5px; color: #686D6C; overflow-wrap: anywhere; }
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.chipGreen { background: rgba(39, 98, 71, 0.12); color: #276247; }
+.chipAmber { background: rgba(196, 138, 26, 0.16); color: #805B0D; }
+.chipRed { background: rgba(180, 35, 50, 0.10); color: #B42332; }
+.chipBlue { background: rgba(51, 90, 134, 0.12); color: #335A86; }
+.chipGrey { background: rgba(104, 109, 108, 0.14); color: #4C5352; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.actions :global(.boe-btn) { min-height: 40px; }
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4C5352;
+}
+
+.input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #CFC7BD;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 15px;
+  background: #fff;
+  color: #303536;
+  box-sizing: border-box;
+}
+.input:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #B42332;
+}
+
+.proofLink { color: #335A86; font-weight: 600; overflow-wrap: anywhere; }
+.proofPhoto {
+  display: block;
+  margin-top: 6px;
+  max-width: 180px;
+  max-height: 140px;
+  border-radius: 8px;
+  border: 1px solid #E4DED7;
+  object-fit: cover;
+}
+
+.wide { width: 100%; }
+
+/* Team Today */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  gap: 10px;
+}
+.stat { border: 1px solid #E4DED7; border-radius: 10px; padding: 10px 12px; background: #fff; }
+.statNum { font-size: 22px; font-weight: 700; color: #303536; font-variant-numeric: tabular-nums; }
+.statLabel { font-size: 12px; color: #686D6C; }
+
+.person { display: flex; flex-direction: column; gap: 8px; }
+.personHead { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.personName { margin: 0; font-weight: 700; font-size: 15px; color: #303536; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #335A86;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  text-align: left;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #F1EEE9;
+  font-size: 14px;
+}
+.memberRow:last-child { border-bottom: none; }

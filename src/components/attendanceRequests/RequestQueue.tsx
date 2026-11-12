@@ -44,6 +44,8 @@ export function RequestQueue({ getToken, focusId = null }: {
   const [filter, setFilter] = useState<FilterKey>(focusId ? 'all' : 'pending')
   const [rows, setRows] = useState<QueueRow[]>([])
   const [punches, setPunches] = useState<Record<string, Punch>>({})
+  // Day Close: requests sent while work was pending, by id → the words ("2 overdue tasks").
+  const [workPending, setWorkPending] = useState<Record<string, string>>({})
   const [shift, setShift] = useState<Shift | null>(null)
   const [viewerId, setViewerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -67,6 +69,7 @@ export function RequestQueue({ getToken, focusId = null }: {
       else {
         setRows(json.requests ?? [])
         setPunches(json.punches ?? {})
+        setWorkPending(json.work_pending ?? {})
         setShift(json.shift ?? null)
         setViewerId(json.viewer_id ?? null)
         setError(null)
@@ -200,6 +203,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                         </td>
                         <td>
                           <span className={styles.badge} style={{ background: tone.bg, color: tone.fg }}>{REQUEST_STATUS_LABEL[r.status]}</span>
+                          {workPending[r.id] && <WorkPendingBadge words={workPending[r.id]} />}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <button
@@ -235,6 +239,7 @@ export function RequestQueue({ getToken, focusId = null }: {
                     </div>
                     <span className={styles.badge} style={{ background: tone.bg, color: tone.fg }}>{REQUEST_STATUS_LABEL[r.status]}</span>
                   </div>
+                  {workPending[r.id] && <WorkPendingBadge words={workPending[r.id]} />}
                   <div style={{ fontSize: 13.5 }}>
                     <strong>{REQUEST_TYPE_LABEL[r.request_type]}</strong> · {requestSummary(r)}
                   </div>
@@ -275,6 +280,19 @@ export function RequestQueue({ getToken, focusId = null }: {
         />
       )}
 
+    </div>
+  )
+}
+
+// Day Close (owner, 2026-11-12): leave asked for while work was pending. Only the Day Close reviewer can
+// approve it; the server refuses anybody else (src/lib/dayClose/server.ts leaveDecisionGate).
+function WorkPendingBadge({ words }: { words: string }) {
+  return (
+    <div
+      style={{ marginTop: 4, fontSize: 12, fontWeight: 600, color: '#A12438' }}
+      title="Sent while work was pending. Only the Day Close reviewer can approve it."
+    >
+      <span aria-hidden="true">🔒 </span>Work pending: {words}
     </div>
   )
 }

@@ -48,6 +48,7 @@ import { periodLockStateByMonth, isLocked } from '@/lib/payroll/lockGuard'
 import { applyAttendanceCorrection } from '@/lib/payroll/attendanceCorrectionService'
 import { fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 import { istToday } from '@/lib/istDate'
+import { leaveDecisionGate, leaveLocksFor, lockLeaveIfPending, releaseLeaveLock } from '@/lib/dayClose/server'
 
 export type HandlerResult = { status: number; body: Record<string, unknown> }
 const ok = (body: Record<string, unknown>, status = 200): HandlerResult => ({ status, body })
@@ -123,7 +124,9 @@ export async function listRequests(caller: Caller, scope: string | null, status:
   }
 
   const shift = await currentShiftWindow(caller.svc)
-  return ok({ requests: rows, punches, shift, viewer_id: caller.id })
+  // Day Close: which of these were sent while work was pending (only the reviewer may approve them).
+  const locks = await leaveLocksFor(caller.svc, rows.map(r => r.id))
+  return ok({ requests: rows, punches, shift, viewer_id: caller.id, work_pending: Object.fromEntries(locks) })
 }
 
 export async function submitRequest(caller: Caller, body: Record<string, unknown> | null, now: string): Promise<HandlerResult> {
@@ -213,8 +216,16 @@ export async function submitRequest(caller: Caller, body: Record<string, unknown
     return fail(mapped.status, mapped.error)
   }
   const row = data as unknown as AttendanceRequestRow
+  // Day Close (owner, 2026-11-12): leave sent while work is pending is marked, and only the reviewer may
+  // approve it. It is still sent: the employee is told, never stopped from asking.
+  let workPending: string | null = null
+  try {
+    workPending = await lockLeaveIfPending(caller.svc, row, istToday(new Date(now)))
+  } catch (lockError) {
+    console.error('[attendance-requests] pending-work check failed:', lockError instanceof Error ? lockError.message : 'unknown error')
+  }
   await notifyAdminsOfRequest(caller.svc, row, (me.full_name as string | null) ?? null, !!replacesId)
-  return ok({ request: row }, 201)
+  return ok({ request: row, ...(workPending ? { work_pending: workPending } : {}) }, 201)
 }
 
 export async function cancelRequest(caller: Caller, id: string, body: Record<string, unknown>, now: string): Promise<HandlerResult> {
@@ -259,6 +270,15 @@ export async function decideRequest(caller: Caller, id: string, body: Record<str
   const v = validateDecision(body, current.status)
   if (!v.ok) return fail(400, v.error)
 
+  // Day Close: approving leave sent while work was pending is the reviewer's alone. A failed check refuses.
+  let gate: { status: number; error: string } | null
+  try {
+    gate = await leaveDecisionGate(caller.svc, caller.id, id, v.value.status)
+  } catch {
+    gate = { status: 500, error: 'Pending work could not be checked. Try again.' }
+  }
+  if (gate) return fail(gate.status, gate.error, { work_pending: true })
+
   const { data: updated, error } = await caller.svc.from('attendance_requests')
     .update({
       status: v.value.status,
@@ -278,6 +298,7 @@ export async function decideRequest(caller: Caller, id: string, body: Record<str
   }
   if (!updated) return fail(409, 'This request was changed by someone else a moment ago. Reload.')
 
+  if (v.value.status === 'approved') await releaseLeaveLock(caller.svc, caller.id, id, now)
   await notifyEmployeeOfDecision(caller.svc, updated as unknown as AttendanceRequestRow)
   return ok({ request: updated })
 }
