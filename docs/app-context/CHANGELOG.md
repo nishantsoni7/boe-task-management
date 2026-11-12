@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (branch `feat/send-back-status-clarity`, PR pending) · no migration
+## 2026-11-12 — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (PR #704, squash-merged 2026-11-12 19:12 IST as `b30d3b7b`, deployed 19:14 IST) · no migration
 - **Owner report (same evening).** "Trying to send back to sales person but it is not working." A read-only check showed it WAS working: four presses (17:28, 17:59, 18:04:32, 18:04:40 IST) = four history entries and three notices to the salesperson, all unread (the fourth was inside the two-minute no-repeat rule). But nothing on the sender's screen changed, the comment sat at the end of one long red paragraph, and the salesperson's dashboard card showed only Operations' reason.
 - **Changed.** The Order strip draws the send-back as its OWN green-edged line under Operations' reason ("Sent back to <salesperson> · <when> · by <sender>", then the comment); the button reads "Send another comment" once one has gone. The flagged-PI card on the salesperson's (and any non-approver's) Orders dashboard now also reads "<sender> sent it back to you: “comment”", read from the Order history only for the PIs it already lists; a failed read draws nothing extra and never changes the list.
 - **Not changed.** No database change, no new notice, the two-minute rule, who may send, the item staying in Needs your decision, Operations not locked out.

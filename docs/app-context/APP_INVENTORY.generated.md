@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a266a005` — SEO brief: the biggest falls first in the ranking part (#701)
-- Commits on this branch: 1263
+- Commit: `b30d3b7b` — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- Commits on this branch: 1264
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 436 (first `20260530_create_positions.sql`, latest `20270620000000_pricing_price_book.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 997   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
 - `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
 - `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
 - `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
@@ -38,7 +39,6 @@
 - `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
 - `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
-- `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
 
 ## Pages by top-level area
 
