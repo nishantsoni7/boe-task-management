@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5ef0fea7` — Merge branch 'main' into docs/seo-brief-rankings-merged
-- Commits on this branch: 1254
+- Commit: `b7b7f320` — Docs: record the merge of #691 (SEO brief rankings) (#692)
+- Commits on this branch: 1253
 - Pages (`page.tsx`): 188   API routes (`route.ts`): 191
 - Migrations: 433 (first `20260530_create_positions.sql`, latest `20270617000000_quotation_pricing_desk.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 992   Enums: 0
@@ -14,9 +14,8 @@
 
 ## Latest 25 commits
 
-- `5ef0fea7` 2026-11-12 Merge branch 'main' into docs/seo-brief-rankings-merged
+- `b7b7f320` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
 - `05bec6ef` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
-- `6cfa34fa` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings), the send and the signed-in read
 - `e9901386` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
 - `e55e01aa` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
 - `879a792a` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
@@ -39,6 +38,7 @@
 - `670dfbcc` 2026-11-11 Docs: record the merge of #669 (SEO brief proof links), the send and the signed-in read (#670)
 - `b2dd6175` 2026-11-11 SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
 - `715d807a` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment) (#667)
+- `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
 
 ## Pages by top-level area
 
