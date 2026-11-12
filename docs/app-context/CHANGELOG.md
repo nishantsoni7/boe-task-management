@@ -16,7 +16,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Database.** Read-only functions only (`pricing_all_points`, `pricing_points_for`, `pricing_price_book`; `quotation_price_hints` re-created with the points); the Pricing description changes in both tables.
 - **Proof.** `suggest.test.ts` (6), PGlite 38 checks (3 new), the coming-soon registration tests updated, `tsc`, eslint, full `npm test`, `next build`.
 
-## 2026-11-12 — Fewer repeated requests: the Orders page (PR open, branch `perf/orders-dedupe-requests`) · no SQL
+## 2026-11-12 — Fewer repeated requests: the Orders page (PR #699, squash-merged 2026-11-12 17:52 IST as `202cbaf8`, deployed 17:55 IST; the squash also carries #697) · no SQL
 - **Owner ask.** "remove the duplicate requests to make it faster", with the owner's Network screenshot of /orders: 36 requests. This is PR 2 of 2; PR 1 (#697) covers the page frame and Task Management.
 - **Changed.**
   - `OrdersGuard` resolves the signed-in person's `usePermissionContext()`. The rule is unchanged: admin by role, otherwise Orders `view`, and a missing profile or failed read denies.
@@ -31,8 +31,9 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `uiEnforcement`: `deriveOrdersCapabilities(null, [])` equals `NO_ORDERS_CAPABILITIES`.
   - `adminDashboard`: the shared reads, with no service role.
   - New `openQueueReads.test.ts` (2).
+- **Verified live (18:00 IST, owner's account).** No page repeats a request. /orders on a full load: 17 data requests and one permission RPC (`resolve_effective_permissions_for_user`). Opened by a click from Modules: 12 data requests; no permission lookup and no own-row read (both already cached), no Task count, and PI versions and documents read once each. The owner's earlier screenshot of the same kind of click had about 21 data requests, 3 permission lookups, the own row 4 times, and PI versions and documents twice each. Not tried by hand: a non-admin with Orders `view`, and one without it.
 
-## 2026-11-12 — Fewer repeated requests: the page frame and Task Management (PR open, branch `perf/dedupe-shell-task-requests`) · no SQL
+## 2026-11-12 — Fewer repeated requests: the page frame and Task Management (PR #697, closed: its commit was stacked under #699 and landed in that squash, `202cbaf8`, 17:52 IST) · no SQL
 - **Owner ask.** "remove the duplicate requests to make it faster", then "and do it for the complete task management module". Counted live on the owner's account:
   - the signed-in person's own `users` row was read 4-6 times on every Task Management page;
   - Assigned By Me fetched `/api/tasks/people` twice.
@@ -48,6 +49,20 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - the Dashboard's active-staff list next to the all-people name list (two different lists);
   - the Dashboard's My Tasks data warm-up.
 - **Tests.** New `src/hooks/queries/sharedReads.test.ts` (4 tests): a shell read already on its way is joined; a missing or failed one falls back to the page's own read; the staff list is shared while on its way and fetched again afterwards. `discussionFlow.test.ts` now checks the permission-context read. The 47 test files that read the changed files pass: 1,357 tests.
+- **Verified live (18:00 IST, owner's account, full page loads).**
+
+  | Page | Requests | Own-row reads | Notes |
+  |---|---|---|---|
+  | Dashboard | 23→21 | 4→3 | |
+  | My Tasks | 17→16 | 5→3 | |
+  | Assigned By Me | 17→16 | 4→3 | `/api/tasks/people` 2→1 |
+  | Notifications | 13→11 | 5→3 | |
+  | Task Details | 17→15 | 5→3 | |
+
+  No page repeats a request. The three reads left on each page are kept on purpose:
+  - the 8-column profile;
+  - `role`, read once by the Login-as-member button;
+  - UserMenu's designation.
 
 ## 2026-11-12 — Orders: send a PI back to the salesperson with a comment (PR #696, squash-merged 2026-11-12 17:12 IST as `49770c22`, deployed 17:14 IST) · `20270619000000` → APPLIED 2026-11-12 (about 16:55 IST, BEFORE the merge, alone, after a verified backup and a rolled-back rehearsal)
 - **Owner ask (urgent, Order 547).** Operations had the PI; the approver held it and wanted to send it back to the salesperson with their own comment. Plan approved the same day ("Yes, build it").
@@ -62,7 +77,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Database.** One read-only function `quotation_report(from, to, scope)`; no table, no write.
 - **Proof.** PGlite 35 checks (3 new), `report.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
 
-## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR open, branch `test/no-prefetch-guard-hardening`) · no SQL
+## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR #693, squash-merged 2026-11-12 15:45 IST as `46adaca3`) · no SQL
 - **Why.** The owner asked: "Is there anything which can generate similar kind of errors in future then do work on it and solve it". A read-only sweep of about 38 pages in the owner's Chrome found:
   - pages covered: every module home, plus the Orders, Finance, Tasks and Sales sub-pages;
   - 0 console errors or warnings from BOE, 0 failed requests and 0 unused stylesheets;
