@@ -6,7 +6,7 @@ import type { SeoData } from '@/lib/seo/report'
 import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
 import { BoardBody } from './SeoBoard'
 import { BriefBody } from './SeoBrief'
-import { axisTicks } from './SeoBriefCase'
+import { axisTicks, positionChange } from './SeoBriefCase'
 import { CompetitorsBody } from './SeoCompetitors'
 import { OverviewBody } from './SeoOverview'
 import { RankingsBody } from './SeoRankings'
@@ -75,7 +75,7 @@ describe('the 6-month review and the discussion brief', () => {
 
   test('a brief with claims is drawn as a case: evidence, then the claims, then the conversation', () => {
     const page = html(<BriefBody brief={SAMPLE_CASE} />)
-    const order = [SAMPLE_CASE.message, 'Sample trend', 'Sample quarters', 'Sample flow', 'Sample finding', 'Sample base', 'Sample risers', 'Sample claim', 'Sample his plan', 'Sample miss', 'Sample counter', 'Sample freelance', 'Give credit first', 'Sample plan', 'Sample talk', 'Proof', 'Sample source.']
+    const order = [SAMPLE_CASE.message, 'Sample quarters', 'Sample traffic', 'Sample trend', 'Sample flow', 'Sample finding', 'Sample base', 'Sample risers', 'Sample claim', 'Sample his plan', 'Sample miss', 'Sample counter', 'Sample freelance', 'Give credit first', 'Sample plan', 'Sample talk', 'Proof', 'Sample source.']
     order.forEach((text, i) => {
       assert.ok(page.includes(text), text)
       if (i) assert.ok(page.indexOf(order[i - 1]) < page.indexOf(text), `${order[i - 1]} before ${text}`)
@@ -103,6 +103,34 @@ describe('the 6-month review and the discussion brief', () => {
     assert.ok(page.includes('Sample file'))
     assert.equal(/<a[^>]*>Sample file/.test(page), false, 'a proof with no link is not a link')
     assert.ok(page.includes('1 click<') && page.includes('26 clicks<'), 'clicks sit under each quarter')
+  })
+
+  test('searches sit under their category, which adds up its clicks; thin readings are grey and left out of the change', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    assert.ok(page.indexOf('Sample summary line') < page.indexOf('Sample group'), 'the summary sits above the table')
+    assert.ok(page.indexOf('Sample group') < page.indexOf('sample keyword') && page.indexOf('second keyword') < page.indexOf('Second group'))
+    assert.ok(page.includes('>1 click<') && page.includes('>26 clicks<'), 'the category row adds its clicks')
+    assert.ok(page.includes('▼ 8.0 places'), '2.9 to 10.9 is 8 places worse')
+    assert.ok(page.includes('▲ 7.5 places'), '11 to 3.5 is 7.5 places better')
+    assert.ok(page.includes('class="qCell qFew"'), 'a position from 3 showings is grey')
+    assert.ok(page.includes('Since Q1'))
+    assert.equal(positionChange(SAMPLE_CASE.quarters.rows[2]), null, 'a thin first reading gives no change')
+    assert.equal(positionChange({ keyword: 'k', demand: '', values: [5, null, 7], shown: [20, null, 25] }), 2)
+  })
+
+  test('the traffic split draws its figures and table after the rankings', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    assert.ok(page.includes('+100') && page.includes('Sample tile note') && page.includes('To blog posts'))
+    assert.ok(page.indexOf('Sample quarters') < page.indexOf('Sample traffic'))
+  })
+
+  test('a case may leave out the worksheet chart, credit and fairness', () => {
+    const { proof: _chart, ...rest } = SAMPLE_CASE
+    void _chart
+    const page = html(<BriefBody brief={{ ...rest, credit: [], fair: [] }} />)
+    assert.equal(page.includes('Give credit first'), false)
+    assert.equal(page.includes(`aria-label="${SAMPLE_BRIEF.proof.title}"`), false)
+    assert.ok(page.includes('Sample talk'))
   })
 
   test('the chart axis rounds up to an easy number', () => {

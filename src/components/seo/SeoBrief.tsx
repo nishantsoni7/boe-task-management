@@ -98,7 +98,7 @@ export function BriefBody({ brief }: { brief: DiscussionBrief }) {
         </div>
       </div>
 
-      <Proof proof={brief.proof} />
+      {brief.proof && <Proof proof={brief.proof} />}
 
       <p className={s.foot}>{brief.foot}</p>
     </div>

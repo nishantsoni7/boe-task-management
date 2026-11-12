@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `39890049` — Docs: migration 20270610000000 (escalation removal) applied (#686)
-- Commits on this branch: 1248
+- Commit: `879a792a` — Sales: WhatsApp Connection page for the company number (coexistence) (#688)
+- Commits on this branch: 1249
 - Pages (`page.tsx`): 188   API routes (`route.ts`): 191
 - Migrations: 432 (first `20260530_create_positions.sql`, latest `20270616000000_order_line_flags.sql`)
 - Tables ever created: 232 (dropped at some point: 7)   SQL functions: 980   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `879a792a` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
 - `39890049` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
 - `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
 - `89a913b0` 2026-11-12 Docs: Operations line flags merged (#683, 1278cc6a) and 20270616000000 applied (#685)
@@ -38,7 +39,6 @@
 - `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
 - `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
-- `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
 
 ## Pages by top-level area
 
