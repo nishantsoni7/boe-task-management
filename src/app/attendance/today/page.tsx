@@ -7,7 +7,7 @@
 // admins only, like every screen under /attendance.
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'

@@ -155,8 +155,7 @@ Statuses and transitions:
   toast -> 800 ms -> `noteListReturn()` -> `router.replace(target)`. Back button uses `appHistory.ts` (`noteDocumentEntry` sampled in `Providers`) so a task opened in a new
   tab still has a Back that goes somewhere.
 - Navigation caching (#322, #182, #181, #147): Dashboard warms My Tasks list + shared names table once (never under View As) with one option object shared by page and
-  warm-up; My Tasks reads names from the shared table; My Tasks / Assigned By Me warm a task's href only when the pointer RESTS on its row (250 ms, `src/hooks/useIntentWarm.ts`; they used to warm the first 15 rows on every arrival, which Notifications also stopped doing: module 12 trap 15) with the full `?returnTo` href (the
-  router cache is keyed by full href); `/tasks/[id]/loading.tsx` makes prefetch work for the dynamic route; My Tasks must not invalidate its own cache on mount.
+  warm-up; My Tasks reads names from the shared table; no task page is loaded in advance (2026-11-12, module 08 trap 14: they used to warm the first 15 rows on every arrival, then the row under a resting pointer); task links carry the full `?returnTo` href; `/tasks/[id]/loading.tsx` is the skeleton shown while a task page loads; My Tasks must not invalidate its own cache on mount.
 - Activity text: one "Send Update" writes ONE `note_added` row whether it carried text, files or both; heading is read from the row (`activityHeadings.ts`:
   `attachmentPhrase`, `commentHeadingRest`). "Read more" appears only when text actually overflows 8 lines.
 - Attachments: private bucket; legacy rows are resolved to `storage://task-attachments/...` canonical refs; "Download all images (ZIP)" via `fflate`.

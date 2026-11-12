@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { formatRupees } from '@/lib/payroll/money'
 import { useRouter, useParams } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'

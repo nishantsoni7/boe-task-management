@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { BookOpen, CalendarCheck, ChevronRight, Coins, MessageSquareHeart, Trophy, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'

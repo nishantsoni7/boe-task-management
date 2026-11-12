@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'

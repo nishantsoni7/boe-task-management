@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { Pencil, RotateCcw, StickyNote, Trash2 } from 'lucide-react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { colors } from '@/lib/tokens'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
 import { canDeleteOwnPaymentRequest } from '@/lib/finance/ownPaymentRequestDeletion'

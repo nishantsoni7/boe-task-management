@@ -2,7 +2,7 @@
 
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -1017,30 +1017,18 @@ export default function AllOrdersPage() {
                          animation is on the small dot in the note and nowhere
                          else. */
                       className={[updateNote && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
-                      /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
-                         about to be opened, and prefetching the Order detail
-                         route on it means the code for that screen is already
-                         in hand when the click lands. It fetches the ROUTE, not
-                         the Order: no record, no permission and no file is read
-                         until the page mounts and asks under the reader's own
-                         session, so this can neither leak a row nor show a
-                         stale one. Next de-duplicates repeated prefetches, so
-                         moving down a list of forty costs forty cache hits. */
-                      onMouseEnter={() => router.prefetch(`/orders/${o.id}`)}
                     >
                       <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateNote ? 800 : undefined }}>
                         <span className="orders-code-line">
                           {/* The row is clickable for a pointer; THIS is the
                               real link — reachable by Tab, opens in a new tab,
-                              shows its address. prefetch={false}: the row's
-                              hover already prefetches the route, and forty
-                              visible links must not mean forty prefetches. */}
+                              shows its address. Nothing loads the Order page in
+                              advance (AppLink: the page loads on click). */}
                           <Link
                             href={orderHref(o.id)}
                             prefetch={false}
                             className="orders-row-link"
                             onClick={e => e.stopPropagation()}
-                            onFocus={() => router.prefetch(`/orders/${o.id}`)}
                           >
                             {displayOrderNumber(o.display_number)}
                           </Link>

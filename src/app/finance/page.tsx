@@ -1,7 +1,7 @@
 'use client'
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { pageParam } from '@/lib/listState'
 import { useMirrorToUrl } from '@/hooks/useMirrorToUrl'

@@ -1,11 +1,10 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { ArrowLeftRight } from 'lucide-react'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
-import { useIntentWarm } from '@/hooks/useIntentWarm'
 
 type SwitchTarget = 'finance' | 'orders'
 
@@ -39,10 +38,10 @@ const TARGET_META: Record<SwitchTarget, { label: string; short: string; route: s
  * STILL A CONVENIENCE, NOT A GATE. It fails closed — nothing is drawn until the
  * answer is in — and the target's own guard remains authoritative.
  *
- * A LINK, so it can be opened in a new tab. The target is warmed on INTENT
- * (pointer resting, focus, touch), not by Next's viewport prefetch: that
- * preloaded the other module's stylesheet on every Finance and Orders page and
- * Chrome logged "preloaded but not used" each time (measured 2026-11-11).
+ * A LINK, so it can be opened in a new tab. The other module loads when it is
+ * clicked, never in advance (AppLink, owner 2026-11-12): a prefetch preloaded
+ * the other module's stylesheet on every Finance and Orders page and Chrome
+ * logged "preloaded but not used" each time (measured 2026-11-11).
  */
 /**
  * Whether the switch is offered, with its words and route. The header button
@@ -70,7 +69,6 @@ export function useModuleSwitch(target: SwitchTarget): { visible: boolean; label
 
 export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
   const { visible, label, short, route } = useModuleSwitch(target)
-  const { warmOnRest, warmNow, cancel } = useIntentWarm()
   if (!visible) return null
 
   // On a phone the full sentence pushed the page's own primary action onto a
@@ -80,10 +78,6 @@ export function ModuleSwitchButton({ target }: { target: SwitchTarget }) {
     <Link
       href={route}
       prefetch={false}
-      onPointerEnter={() => warmOnRest(route)}
-      onPointerLeave={cancel}
-      onFocus={() => warmNow(route)}
-      onTouchStart={() => warmNow(route)}
       // On a phone it is an item of the header's ⋯ menu instead.
       className="boe-btn boe-btn-ghost boe-module-switch boe-desktop-only"
       title={label}

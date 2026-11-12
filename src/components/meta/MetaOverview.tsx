@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { costPerChat, dayLabel, money, plural, rupees, rupeesWhole, type AdSetLine } from '@/lib/meta/report'
 import { istMonthStart } from '@/lib/istDate'
 import { LOSING_OVER_TARGET, MIN_CHATS, MIN_SPEND_PAISE, VERDICT_BADGE, VERDICT_LABEL, type Verdict } from '@/lib/meta/verdict'

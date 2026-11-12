@@ -301,16 +301,15 @@ describe('every entry point passes its own view (8–12)', () => {
     assert.ok(code.includes('onOpen={task => router.push(taskDetailHref(task.id, pathname))}'))
   })
 
-  test('Notifications: row open and title link carry the page; the warm-up gets the full href from the card', () => {
+  test('Notifications: row open and title link carry the page', () => {
+    // No warm-up any more: a task page loads on click (2026-11-12,
+    // src/lib/navigation/noBackgroundPrefetch.test.ts).
     const view = codeOf(read('src/components/notifications/NotificationsView.tsx'))
     assert.ok(view.includes('const href = withTaskReturnTo(getNotificationMeta(n).href, pathname)'))
-    assert.ok(view.includes('router.prefetch(href)'))
-    assert.ok(view.includes('onWarmTask={warmTask}'))
     assert.ok(view.includes('returnTo={pathname}'))
     const group = codeOf(read('src/components/notifications/NotificationTaskGroup.tsx'))
     assert.ok(group.includes('const taskHref = withTaskReturnTo(href, returnTo)'))
     assert.ok(group.includes('href={taskHref}'))
-    assert.ok(group.includes('onWarmTask(taskHref)'))
   })
 
   test('list pages read their view from the URL they are showing', () => {
@@ -330,8 +329,8 @@ describe('scroll restore treats the return like Back', () => {
 describe('PR #147 opening behaviour is untouched (17–18)', () => {
   const panel = codeOf(read('src/components/ui/TaskDetailPanel.tsx'))
 
-  test('the drawer still opens Task Detail through the prefetched Link', () => {
-    assert.ok(panel.includes("import Link from 'next/link'"))
+  test('the drawer still opens Task Detail through a real Link', () => {
+    assert.ok(panel.includes("import { AppLink as Link } from '@/components/ui/AppLink'"))
     assert.ok(panel.includes('href={fullPageHref}'))
     assert.ok(panel.includes("{opening ? 'Opening task…' : 'View Task Page ↗'}"))
     assert.ok(panel.includes('if (openingRef.current) { e.preventDefault(); return }'))

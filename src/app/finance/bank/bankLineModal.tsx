@@ -11,7 +11,7 @@
 // in this file verifies, rejects or edits a payment, and it never sends an amount.
 
 import { useMemo, useState, type ReactNode } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'

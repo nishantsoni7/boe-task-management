@@ -5,7 +5,7 @@
 // /api/attendance/overview and the rules are in src/lib/attendance/attendanceScore.ts.
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { AlertTriangle, Check, ChevronRight } from 'lucide-react'
 import { Badge, MONTH_NAMES, StatusFilter, ui, type Tone } from '@/components/attendancePayroll/ui'
 import {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter } from 'next/navigation'
 import { ClipboardList, Home, LayoutGrid, Plus } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'

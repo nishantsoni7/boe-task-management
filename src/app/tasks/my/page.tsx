@@ -13,7 +13,6 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { MyTaskViewTabs, MyTaskViewSelect, MY_TASK_VIEW_TABS, ALL_ACTIVE_TASKS_LABEL } from '@/components/tasks/MyTaskViewTabs'
 import { PhoneChips, PhoneSearchFilter } from '@/components/ui/PhoneFilters'
 import { useViewAs } from '@/hooks/useViewAs'
-import { useIntentWarm } from '@/hooks/useIntentWarm'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
@@ -135,7 +134,6 @@ const LIST_PARAMS = {
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
   isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy, drag, onMoveTop, rowRef,
-  onWarm, onWarmCancel,
 }: {
   task: Task
   accentColor: string
@@ -156,10 +154,6 @@ function TaskCard({
   /** Jump to the top of this task's group; absent when it already is there. */
   onMoveTop?: () => void
   rowRef?: (el: HTMLDivElement | null) => void
-  /** Pointer entered the row: the page warms its detail route once it RESTS. */
-  onWarm?: () => void
-  /** Pointer left the row: cancels that wait. */
-  onWarmCancel?: () => void
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -192,8 +186,6 @@ function TaskCard({
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onPointerEnter={onWarm}
-        onPointerLeave={onWarmCancel}
         onClick={onClick}
         style={{
           background: cardBackground,
@@ -303,8 +295,6 @@ function TaskCard({
       data-task-row={task.id}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onPointerEnter={onWarm}
-      onPointerLeave={onWarmCancel}
       onClick={onClick}
       style={{
         display: 'grid',
@@ -1316,15 +1306,10 @@ function MyTasksContent() {
     resetOverrides()
   }, [allTasksRaw])
 
-  // Warm a task's detail route on INTENT — the pointer RESTING on its row — AT
-  // THE URL THAT WILL ACTUALLY BE OPENED (`/tasks/<id>?returnTo=…`: Next keys its
-  // route cache on pathname AND search, so a bare path is never the one asked
-  // for; see taskReturnPath.test.ts). It used to warm the first fifteen rows on
-  // every arrival: about thirty server requests per visit, and each page the
-  // reader never opened left an unused stylesheet preload that Chrome reported
-  // as "preloaded but not used". The drawer's own View Task Page link also
-  // prefetches as soon as the drawer opens, so a quick click is still warm.
-  const { warmOnRest, cancel: cancelWarm } = useIntentWarm()
+  // NO PREFETCH OF TASK PAGES. A task page loads when it is opened (AppLink,
+  // owner 2026-11-12). It used to warm the first fifteen rows on every arrival,
+  // then the row under a resting pointer; every page the reader never opened
+  // left an unused stylesheet preload that Chrome reported over and over.
 
   // ── THE FIX FOR THE FALSE EMPTY STATE ────────────────────────────────────
   //
@@ -2023,8 +2008,6 @@ function MyTasksContent() {
                     userId={userId}
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    onWarm={() => warmOnRest(taskDetailHref(task.id, returnTo))}
-                    onWarmCancel={cancelWarm}
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
                     onComplete={!viewAsUserId && canMarkComplete(task, userId) ? () => handleQuickComplete(task) : undefined}

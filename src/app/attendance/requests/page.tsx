@@ -13,7 +13,7 @@
 // /my-attendance, and every API behind this page checks requireAdmin itself.
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'

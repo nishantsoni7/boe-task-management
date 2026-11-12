@@ -14,7 +14,7 @@
 // It looks like the "returned to you" strip (the same classes), because it is the same kind of thing.
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {

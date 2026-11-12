@@ -14,7 +14,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Check, MessageSquare, X } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withReturnTo } from '@/lib/navigation/recordReturn'

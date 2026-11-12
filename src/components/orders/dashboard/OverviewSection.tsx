@@ -16,8 +16,7 @@
 // chooses which list to show.
 
 import { useId, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
   BOARD_COPY,
@@ -158,7 +157,6 @@ export function ActionBoard({ summary, active, onSelect }: {
   active: BoardKey
   onSelect: (key: BoardKey) => void
 }) {
-  const router = useRouter()
   const panelId = useId()
   const [expanded, setExpanded] = useState<BoardKey | null>(null)
   if (!summary.overview) return null
@@ -195,8 +193,6 @@ export function ActionBoard({ summary, active, onSelect }: {
                       href={withReturnTo(`/orders/${r.orderId}`, '/orders')}
                       className="od-order-link"
                       prefetch={false}
-                      onMouseEnter={() => router.prefetch(`/orders/${r.orderId}`)}
-                      onFocus={() => router.prefetch(`/orders/${r.orderId}`)}
                     >
                       {r.displayNumber}
                     </Link>

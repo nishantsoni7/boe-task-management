@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'

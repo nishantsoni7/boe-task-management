@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Bell, Megaphone } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 

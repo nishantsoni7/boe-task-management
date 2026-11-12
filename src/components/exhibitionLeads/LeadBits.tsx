@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Phone, MessageCircle } from 'lucide-react'
 import {
   STATUSES, labelOf, isTerminalStatus, leadTypeLabel, type Lead,

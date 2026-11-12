@@ -16,7 +16,7 @@
 // by ./piDetailView; what a figure means is decided by the shared PI helpers.
 // These draw the answers.
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowRight, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, ChevronUp,

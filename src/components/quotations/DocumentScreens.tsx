@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Printer } from 'lucide-react'

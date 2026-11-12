@@ -273,14 +273,6 @@ function EditProductContent() {
     [sequence.codes, productCode],
   )
 
-  // Warm both neighbours' routes so a click renders immediately instead of
-  // waiting on the route bundle. Only the two adjacent products — never the run
-  // — so this stays two prefetches regardless of how large the category is.
-  useEffect(() => {
-    for (const code of [neighbors.previous, neighbors.next]) {
-      if (code) router.prefetch(productEditHref(code, listSearch))
-    }
-  }, [neighbors.previous, neighbors.next, listSearch, router])
 
   const dirty = baseline !== null && baseline !== formSnapshot({
     code, name, category, description, specs, images, dims, mrp,

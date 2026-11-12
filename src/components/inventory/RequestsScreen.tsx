@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ClipboardList, Loader2, MessageCircle, Phone, RotateCcw, X } from 'lucide-react'

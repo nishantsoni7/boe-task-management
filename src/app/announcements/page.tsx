@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { ChevronRight, FileText } from 'lucide-react'
 import { AnnouncementsShell } from './AnnouncementsShell'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'

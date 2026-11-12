@@ -3,7 +3,7 @@
 // Split out of page.tsx (it had grown past 3,000 lines). Nothing here changed.
 
 import { useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { ArrowUpRight, ChevronDown, ChevronUp, CircleCheck, CircleX, Info, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { createClient } from '@/lib/supabase/client'

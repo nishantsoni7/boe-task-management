@@ -8,7 +8,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import styles from './detail.module.css'

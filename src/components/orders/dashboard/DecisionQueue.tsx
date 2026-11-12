@@ -18,7 +18,7 @@
 // a PI whose summary could not be read simply has no chip.
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { ChevronRight, CircleCheck, FileText, TriangleAlert, Clock } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadPiPaymentSummary } from '@/lib/finance/piPaymentView'

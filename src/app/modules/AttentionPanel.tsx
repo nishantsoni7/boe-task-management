@@ -58,7 +58,7 @@
 // verifies it (20270417000000).
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import {
   ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone,
   MessageCircleQuestion, SlidersHorizontal, TriangleAlert, Undo2, Wallet,

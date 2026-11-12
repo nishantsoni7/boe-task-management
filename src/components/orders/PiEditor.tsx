@@ -21,7 +21,7 @@
 // the one the modal used; only the layout changed.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ArrowLeft, FileSpreadsheet, ImagePlus, Paperclip, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'

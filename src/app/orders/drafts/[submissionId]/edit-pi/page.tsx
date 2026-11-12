@@ -8,7 +8,7 @@
 // already an Order is edited from its Order, as a proposed version.
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'

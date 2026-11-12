@@ -19,7 +19,7 @@
 // routes behind both views check requireAdmin themselves.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'

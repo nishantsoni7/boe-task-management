@@ -28,7 +28,7 @@ import {
   PaymentDetailsFields,
   scrollToFirstProblem,
 } from '@/app/finance/components/PaymentFormParts'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { modeAsksWhereMoneyIs, paymentModeLabel } from '@/lib/finance/paymentEntry'
 import { WhereIsMoneyNowField } from '@/components/finance/WhereIsMoneyNowField'
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { isOverdue, formatShortDate, formatDateTime, timeAgo, getTaskAging } from '@/lib/ui'

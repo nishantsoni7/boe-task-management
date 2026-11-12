@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, ExternalLink, Info } from 'lucide-react'

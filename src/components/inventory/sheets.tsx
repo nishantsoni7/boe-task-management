@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, ClipboardList, Copy, Loader2, MessageCircle, Send } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'

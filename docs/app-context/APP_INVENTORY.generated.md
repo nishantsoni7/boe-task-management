@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `3d9faa0d` — Docs: record the merge of #676 (backup copy to the external drive)
+- Commit: `c7998743` — Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - Commits on this branch: 1242
 - Pages (`page.tsx`): 187   API routes (`route.ts`): 190
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
 - Tables ever created: 231 (dropped at some point: 7)   SQL functions: 977   Enums: 0
-- Test files: 798   Next.js 16.2.6, React 19.2.4
+- Test files: 796   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `3d9faa0d` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive)
+- `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
 - `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
 - `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
@@ -155,8 +155,8 @@
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 6 source, 7 test
-- `src/lib/navigation` — 4 source, 6 test
-- `src/lib/notifications` — 7 source, 24 test
+- `src/lib/navigation` — 4 source, 7 test
+- `src/lib/notifications` — 7 source, 23 test
 - `src/lib/orders` — 106 source, 161 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
@@ -169,7 +169,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 11 source, 11 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 25 source, 41 test
+- `src/lib/tasks` — 25 source, 40 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test

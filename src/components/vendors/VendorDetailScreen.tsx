@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, MapPin, MessageCircle, Pencil, Phone, Plus } from 'lucide-react'

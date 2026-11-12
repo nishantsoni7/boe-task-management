@@ -170,24 +170,19 @@ describe('/tasks/my does not re-read itself merely for mounting', () => {
   })
 })
 
-describe('the lists warm the URL they will actually open, on intent only', () => {
+describe('the lists do not load task pages in advance', () => {
+  // OWNER DECISION 2026-11-12 ("Yes, load on click"). Fifteen pages per arrival,
+  // then the row under a resting pointer: every page the reader never opened
+  // left an unused stylesheet preload that Chrome kept reporting. A task page
+  // now loads when it is opened. App-wide rule:
+  // src/lib/navigation/noBackgroundPrefetch.test.ts.
   for (const [name, code] of [['/tasks/my', MY], ['/tasks/assigned-by-me', ABM]] as const) {
-    test(`${name} warms the href its rows open, once the pointer rests on a row`, () => {
-      assert.ok(code.includes('onWarm={() => warmOnRest(taskDetailHref(task.id, returnTo))}'))
-      assert.ok(code.includes('onWarmCancel={cancelWarm}'))
-      assert.ok(code.includes('onPointerEnter={onWarm}'))
-      assert.ok(code.includes('onPointerLeave={onWarmCancel}'))
-      assert.equal(code.includes('router.prefetch(`/tasks/${t.id}`)'), false,
-        'the router cache is keyed by the full href — a bare path is never the one asked for')
-    })
-
-    test(`${name} does not warm a batch of task pages on arrival`, () => {
-      // Fifteen pages per arrival was about thirty server requests per visit, and
-      // every page the reader never opened left an unused stylesheet preload that
-      // Chrome reported as "preloaded but not used".
+    test(`${name} warms no task page, on arrival or on hover`, () => {
       assert.equal(code.includes('router.prefetch('), false)
       assert.equal(code.includes('.slice(0, 15)'), false)
       assert.equal(code.includes('warmedHrefs'), false)
+      assert.equal(code.includes('warmOnRest'), false)
+      assert.equal(code.includes('onWarm'), false)
     })
   }
 })

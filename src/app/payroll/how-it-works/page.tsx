@@ -22,7 +22,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import {
   ArrowRight, CalendarDays, ClipboardCheck, Coins, FileCheck2,
   Scale, Sigma, UploadCloud, Wallet,

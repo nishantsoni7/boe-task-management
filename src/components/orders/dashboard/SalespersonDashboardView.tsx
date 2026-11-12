@@ -33,7 +33,7 @@
 // waiting, the chips (phones only) jumping to each list.
 
 import type { ReactNode } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
   SP_ADVANCE_BELOW_NONE_KNOWN,

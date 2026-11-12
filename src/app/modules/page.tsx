@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo, useReducer } from 'react'
+import { useEffect, useState, useMemo, useReducer } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -842,17 +842,10 @@ export default function BoeOsHomePage() {
     return () => { active = false }
   }, [permsReady, userId, mayOpenSample])
 
-  // Warm a module's route when the person shows intent to open it (pointer
-  // RESTING on the card for INTENT_DWELL_MS, keyboard focus, or the start of a
-  // touch) — NOT for every card on mount, and not for a pointer merely passing
-  // over. Warming all of them at load fetched the page of every other module,
-  // and with each page comes its stylesheet: the browser preloaded CSS files
-  // this page never applies and logged "preloaded but not used within a few
-  // seconds" (Control Center, Inventory, Exhibition Leads), while the burst of
-  // requests competed with the launcher's own data. Intent keeps the click fast
-  // and the console clean. Only authorized destinations have a card, so an
-  // unauthorized route is still never warmed.
-  const warmModule = (href: string) => { router.prefetch(href) }
+  // NO PREFETCH OF A MODULE'S PAGE, neither on load nor on hover: it loads when
+  // the card is clicked (owner, 2026-11-12; see src/components/ui/AppLink.tsx).
+  // Each warmed page brought a stylesheet this launcher never applies, which
+  // Chrome reported as "preloaded but not used" over and over.
 
   // One tile. `position` is its 1-based place in the whole list; in edit mode
   // the handle announces it out of `modules.length`, as it did before the
@@ -871,7 +864,6 @@ export default function BoeOsHomePage() {
       // tabIndex and has no click handler to fire, so there is nothing for a
       // stray tap at the end of a drag to trigger.
       onClick={editingOrder ? null : () => router.push(mod.href)}
-      onIntent={editingOrder ? undefined : () => warmModule(mod.href)}
       dragging={orderEdit.dragging === mod.key}
       handle={editingOrder ? (
         <ModuleDragHandle
@@ -1057,18 +1049,11 @@ export default function BoeOsHomePage() {
 // TWO SIZES, ONE COMPONENT. `essential` is the larger row tile of the three
 // featured modules; `compact` is the smaller tile of the grid beneath. Every
 // state — rest, hover, focus, pressed, editing, held — is a stylesheet rule.
-// How long the pointer must REST on a card before its route is warmed. Heading
-// for one card crosses others, and each warmed route brings a stylesheet this
-// page never applies (Chrome: "preloaded but not used"). Crossing is faster.
-const INTENT_DWELL_MS = 250
-
-function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle = null }: {
+function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: {
   mod: ModuleDef
   variant: 'essential' | 'compact'
   /** null in edit mode: the card does not navigate. */
   onClick: (() => void) | null
-  /** Pointer resting (INTENT_DWELL_MS), focus or touch start: warm the route behind this card. */
-  onIntent?: () => void
   /** This card is the one currently held by a pointer. */
   dragging?: boolean
   /** The drag handle, in edit mode only. */
@@ -1082,11 +1067,6 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
   // means every one of these is undefined — no handler, no role, no tabIndex, no
   // Enter — so a drag has nothing to end in. See moduleCardPressProps.
   const press = moduleCardPressProps(onClick)
-
-  // The pointer's dwell timer. Focus and touch are deliberate, so they warm at once.
-  const dwell = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const stopDwell = () => clearTimeout(dwell.current)
-  useEffect(() => () => clearTimeout(dwell.current), [])
 
   const className = [
     styles.card,
@@ -1107,10 +1087,6 @@ function ModuleCard({ mod, variant, onClick, onIntent, dragging = false, handle 
       // while arranging: the card is not a button then, and a label on a plain
       // div is not announced.
       aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} unread` : mod.title}
-      onPointerEnter={onIntent && (() => { stopDwell(); dwell.current = setTimeout(onIntent, INTENT_DWELL_MS) })}
-      onPointerLeave={stopDwell}
-      onFocus={onIntent}
-      onTouchStart={onIntent}
       className={className}
     >
       {handle}
