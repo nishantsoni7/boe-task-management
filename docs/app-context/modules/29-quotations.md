@@ -11,7 +11,7 @@ Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `2
 ## 2. Status
 
 - Built 2026-11-12 (phase 1). Checked by: the in-memory Postgres suite `supabase/tests/quotations_pglite.mjs` (20 checks), `src/lib/quotations/math.test.ts` (11, including the real Resort Shamshabad quote to the rupee), `quotations.test.tsx` (12), `tsc`, eslint, the full `npm test`, `next build`. **Not seen signed in**: no browser session can sign in from here.
-- Before 20270614000000 is applied, the tile shows for Admin only (as every new module) and every page says "Quotations is being set up". Merging before applying is safe.
+- LIVE 2026-11-12: PR #672 squash-merged 05:35 IST as `7f491957` (deployed 05:37 IST); 20270614000000 applied alone about 06:00 IST and recorded (`migration list` shows it remote; 20270610000000 still pending on purpose). The tile shows for Admin only until the module is granted in Control Center.
 
 ## 3. The model
 
