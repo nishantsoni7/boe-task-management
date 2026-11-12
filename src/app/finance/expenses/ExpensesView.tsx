@@ -39,8 +39,7 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { Toast, useToast } from '@/components/ui/toast'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney, localTodayIso } from '@/lib/finance/piPaymentView'
 import type { UserProfile } from '@/lib/types'
@@ -222,6 +221,8 @@ function fmtDate(value: string): string {
 export function ExpensesView() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this screen renders: a cache hit, not a request (2026-11-12).
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
   const { toast, show, dismiss } = useToast()
 
   const [pageLoading, setPageLoading] = useState(true)
@@ -463,8 +464,8 @@ export function ExpensesView() {
       setUserId(session.user.id)
 
       const [{ data: me }, perms] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        Promise.resolve({ data: sessionProfile }),
+        Promise.resolve(permissionsByModule.get('finance') ?? []),
         loadCategories(),
         loadExpenses(),
         loadDrafts(),

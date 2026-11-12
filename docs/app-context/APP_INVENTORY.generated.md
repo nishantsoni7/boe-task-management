@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f540d9e7` — Docs: WhatsApp Connection page merged (#688)
-- Commits on this branch: 1250
+- Commit: `96652298` — Docs: WhatsApp Connection page merged (#688) (#689)
+- Commits on this branch: 1267
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 436 (first `20260530_create_positions.sql`, latest `20270620000000_pricing_price_book.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 997   Enums: 0
@@ -14,7 +14,24 @@
 
 ## Latest 25 commits
 
-- `f540d9e7` 2026-11-12 Docs: WhatsApp Connection page merged (#688)
+- `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
+- `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
+- `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
+- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
+- `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
+- `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
+- `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
+- `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
+- `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
+- `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
+- `8f8c9ba1` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
+- `46adaca3` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
+- `b7b7f320` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
+- `05bec6ef` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
+- `e9901386` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
+- `e55e01aa` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
 - `879a792a` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
 - `39890049` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
 - `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
@@ -22,23 +39,6 @@
 - `1278cc6a` 2026-11-12 Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
 - `1841dc82` 2026-11-12 Quotations, phase 4: Improve picture (Clean up, Change it, crop & rotate) · no migration (#681)
 - `ff585879` 2026-11-12 Pages load on click: no page is loaded in advance, anywhere (#682)
-- `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
-- `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
-- `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
-- `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
-- `23f27a7e` 2026-11-12 Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
-- `370f512f` 2026-11-12 Quotations, phase 2: Confirm → PI draft, and Download in PI format (migration 20270615000000, apply before merge) (#674)
-- `8de7aded` 2026-11-12 Docs: Quotations phase 1 merged (7f491957) and 20270614000000 applied (#673)
-- `7f491957` 2026-11-12 Quotations, phase 1: build by room type, price, print, share a client link (migration 20270614000000, not yet applied) (#672)
-- `ac1da7ea` 2026-11-11 Docs: record the merge of #668 (a WhatsApp chat is judged before it becomes a lead) (#671)
-- `20395a5f` 2026-11-11 Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, applied first) (#668)
-- `670dfbcc` 2026-11-11 Docs: record the merge of #669 (SEO brief proof links), the send and the signed-in read (#670)
-- `b2dd6175` 2026-11-11 SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
-- `715d807a` 2026-11-11 Docs: record the merge of #666 (For you: Pending from per payment) (#667)
-- `308feb65` 2026-11-11 Payments: PNB, Paytm and Canara are Confirmed only when their cash is with the company (#662)
-- `be27a582` 2026-11-11 For you: "Pending from <name>" per payment, verify card only where you can act (#666)
-- `61b3c98d` 2026-11-11 Docs: record the merge of #663 (Dashboard Quotation Requests table) (#665)
-- `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 
 ## Pages by top-level area
 

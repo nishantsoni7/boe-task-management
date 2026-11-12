@@ -22,8 +22,7 @@ import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { Toast, useToast } from '@/components/ui/toast'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { mayRecordReimbursement } from '@/lib/finance/expenseReimbursements'
 import {
@@ -50,6 +49,8 @@ function fmtDate(value: string | null | undefined): string {
 
 export function ReimbursementsView() {
   const supabase = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this screen renders: a cache hit, not a request (2026-11-12).
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
   const router = useRouter()
   const { toast, show, dismiss } = useToast()
 
@@ -83,8 +84,8 @@ export function ReimbursementsView() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       const [{ data: me }, perms] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        Promise.resolve({ data: sessionProfile }),
+        Promise.resolve(permissionsByModule.get('finance') ?? []),
       ])
       if (!alive) return
       setProfile(me as UserProfile)
@@ -92,7 +93,7 @@ export function ReimbursementsView() {
       setBooting(false)
     })()
     return () => { alive = false }
-  }, [supabase, router])
+  }, [supabase, router, sessionProfile, permissionsByModule])
 
   // The search box waits for a pause in typing before it asks the database.
   useEffect(() => {

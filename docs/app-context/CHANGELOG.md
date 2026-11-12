@@ -4,6 +4,24 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Fewer repeated requests: Finance (PR open, branch `perf/finance-dedupe-requests`) · no SQL
+- **Found.** The live check after #699 found that Finance still repeated who-you-are on a full load. Counted on the owner's account:
+  - Payment Requests: the profile and `resolve_effective_permissions_for_user` twice each, one after the other.
+  - Received: the profile 3 times and permissions 3 times.
+  - Bank, Expenses and Founders: the profile twice and permissions twice each.
+  - Handovers was already clean.
+- **Owner ask.** "Yes, fix Finance".
+- **Changed.** Seven screens read `profile` and `permissionsByModule` from the Finance ModuleGuard's `usePermissionContext()`, which is already resolved before they render, instead of asking again:
+  - `page.tsx`, `ReceivedPaymentsView`, `BankStatementsView`, `ExpensesView`, `expenses/new`, `FounderPayoutsView`, `ReimbursementsView`;
+  - the same pattern #699 gave Orders;
+  - the rule is unchanged: capabilities start from none, come from the database's answer, and fail closed.
+- **Tests.** Restated, each with its rule kept:
+  - `financeStartupFewerReads`: the startup reads only the rows; permissions come from the context and fail closed;
+  - `ordersFinanceUsability`: the Orders link comes from the same single read;
+  - `uiEnforcement`: both screens still derive capabilities from resolved permissions.
+
+  `tsc` and eslint are clean. Every test under finance, permissions and navigation, plus the files reading these screens, passes: 4,291.
+
 ## 2026-11-12 — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (PR #704, squash-merged 2026-11-12 19:12 IST as `b30d3b7b`, deployed 19:14 IST) · no migration
 - **Owner report (same evening).** "Trying to send back to sales person but it is not working." A read-only check showed it WAS working: four presses (17:28, 17:59, 18:04:32, 18:04:40 IST) = four history entries and three notices to the salesperson, all unread (the fourth was inside the two-minute no-repeat rule). But nothing on the sender's screen changed, the comment sat at the end of one long red paragraph, and the salesperson's dashboard card showed only Operations' reason.
 - **Changed.** The Order strip draws the send-back as its OWN green-edged line under Operations' reason ("Sent back to <salesperson> · <when> · by <sender>", then the comment); the button reads "Send another comment" once one has gone. The flagged-PI card on the salesperson's (and any non-approver's) Orders dashboard now also reads "<sender> sent it back to you: “comment”", read from the Order history only for the PIs it already lists; a failed read draws nothing extra and never changes the list.

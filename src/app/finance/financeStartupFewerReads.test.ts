@@ -18,10 +18,14 @@ const PAGE = readFileSync(join(__dirname, 'page.tsx'), 'utf8').replace(/\r/g, ''
 const INIT = PAGE.slice(PAGE.indexOf('const cutoffIso = archiveCutoffIso(Date.now())\n      setCutoffMs'), PAGE.indexOf('void loadCounts(cutoffIso)') + 40)
 
 describe('the first group of reads', () => {
-  test('is the profile, one permissions read for all modules, and the rows: nothing else', () => {
-    assert.ok(INIT.length > 400, 'the startup block was found')
-    assert.equal((INIT.match(/getEffectivePermissionsForUser\(/g) ?? []).length, 1)
-    assert.equal(/getEffectivePermissions\(/.test(INIT), false, 'no per-module permission read is left in the group')
+  // 2026-11-12: the profile and the one permissions read for every module are the Finance
+  // ModuleGuard's (usePermissionContext), resolved before this page renders, so the page itself
+  // reads only its rows. Before, it asked for both again beside the rows.
+  test('is the rows only: the profile and the permissions come from the ModuleGuard\'s context', () => {
+    assert.ok(INIT.length > 300, 'the startup block was found')
+    assert.equal(/getEffectivePermissions(ForUser)?\(/.test(INIT), false, 'no permission read is left in the group')
+    assert.equal(/\.from\('users'\)/.test(INIT), false, 'no profile read is left in the group')
+    assert.match(PAGE, /const \{ profile: sessionProfile, permissionsByModule \} = usePermissionContext\(\)/)
     assert.equal((INIT.match(/loadRequests\(cutoffIso\)/g) ?? []).length, 1)
     assert.equal(/reload\(\)|loadCounts\(cutoffIso\),/.test(INIT.slice(0, INIT.indexOf('setPageLoading(false)'))), false, 'the badge counts are not in the group')
   })
@@ -32,9 +36,9 @@ describe('the first group of reads', () => {
   })
 
   test('both modules are still taken from the database\'s answer and fail closed', () => {
-    assert.match(INIT, /\.catch\(\(\) => new Map<string, EffectivePermission\[\]>\(\)\)/)
-    assert.match(INIT, /permsByModule\.get\('finance'\) \?\? \[\]/)
-    assert.match(INIT, /permsByModule\.get\('orders'\) \?\? \[\]/)
+    // usePermissionContext fails closed: a failed permissions read is an empty map, so no capability.
+    assert.match(INIT, /permissionsByModule\.get\('finance'\) \?\? \[\]/)
+    assert.match(INIT, /permissionsByModule\.get\('orders'\) \?\? \[\]/)
     assert.match(INIT, /deriveFinanceCapabilities\(me\?\.role, financePerms\)/)
   })
 
