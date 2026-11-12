@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `8de7aded` — Docs: Quotations phase 1 merged (7f491957) and 20270614000000 applied (#673)
-- Commits on this branch: 1236
-- Pages (`page.tsx`): 187   API routes (`route.ts`): 189
+- Commit: `23f27a7e` — Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
+- Commits on this branch: 1238
+- Pages (`page.tsx`): 187   API routes (`route.ts`): 190
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
 - Tables ever created: 231 (dropped at some point: 7)   SQL functions: 977   Enums: 0
-- Test files: 797   Next.js 16.2.6, React 19.2.4
+- Test files: 798   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `23f27a7e` 2026-11-12 Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
+- `370f512f` 2026-11-12 Quotations, phase 2: Confirm → PI draft, and Download in PI format (migration 20270615000000, apply before merge) (#674)
 - `8de7aded` 2026-11-12 Docs: Quotations phase 1 merged (7f491957) and 20270614000000 applied (#673)
 - `7f491957` 2026-11-12 Quotations, phase 1: build by room type, price, print, share a client link (migration 20270614000000, not yet applied) (#672)
 - `ac1da7ea` 2026-11-11 Docs: record the merge of #668 (a WhatsApp chat is judged before it becomes a lead) (#671)
@@ -37,8 +39,6 @@
 - `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
 - `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
 - `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
-- `19250a90` 2026-11-11 Modules: a card warms its route only after the pointer rests 250 ms (#649)
-- `00a3b163` 2026-11-10 Docs: WhatsApp chats are live; the Meta app is published (record of #647, no code) (#648)
 
 ## Pages by top-level area
 
@@ -122,6 +122,7 @@
 - **performance-metrics** (2): ` [GET]`, `/team [GET]`
 - **permanently-delete-user** (1): ` [POST]`
 - **push** (3): `/dispatch [POST]`, `/preferences [GET,PUT]`, `/subscription [DELETE,POST]`
+- **quotations** (1): `/import [POST]`
 - **reset-password** (1): ` [POST]`
 - **restore-task** (1): ` [POST]`
 - **restore-user** (1): ` [POST]`
@@ -161,7 +162,7 @@
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 5 source, 2 test
+- `src/lib/quotations` — 8 source, 3 test
 - `src/lib/salesLeads` — 14 source, 13 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
@@ -178,7 +179,7 @@
 
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
-- `ANTHROPIC_API_KEY` (20 reads)
+- `ANTHROPIC_API_KEY` (21 reads)
 - `BACKUP_RETRY_WAIT_MS` (1 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
@@ -206,11 +207,12 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (12 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (154 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (13 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (155 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
+- `QUOTATION_IMPORT_MODEL` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)
 - `SALES_CAPTURE_SECRET` (1 reads)
 - `SEO_INGEST_SECRET` (5 reads)

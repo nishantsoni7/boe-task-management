@@ -114,3 +114,8 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
   .mobileOnly { display: block; }
   .input { font-size: 16px; }
 }
+
+/* import review */
+.importTable td { padding: 6px 6px; }
+.importTable .input { min-width: 110px; height: 32px; font-size: 13px; }
+.doubt { background: var(--boe-waiting-bg) !important; border-color: var(--boe-warning-border) !important; }
