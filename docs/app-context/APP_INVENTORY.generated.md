@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8ea2511c` — Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
-- Commits on this branch: 1271
+- Commit: `72c57977` — Other modules read your own row once (#711)
+- Commits on this branch: 1272
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 437 (first `20260530_create_positions.sql`, latest `20270621000000_pricing_model_v2.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 998   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `72c57977` 2026-11-12 Other modules read your own row once (#711)
 - `8ea2511c` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
 - `cccdf395` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
 - `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
@@ -38,7 +39,6 @@
 - `e55e01aa` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
 - `879a792a` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
 - `39890049` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
-- `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
 
 ## Pages by top-level area
 

@@ -18,6 +18,8 @@ import { SamplesLayout, TABS, type TabKey } from '@/components/layout/SamplesLay
 import { QRCodeSVG } from 'qrcode.react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { cachedModulePermissions } from '@/hooks/queries/usePermissionContext'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
 import { Pagination } from '@/components/ui/Pagination'
 import { useSamplePage, useSampleTabCounts } from '@/hooks/queries/useSampleRequests'
 import { ownRequestsOnly } from '@/lib/samples/listQuery'
@@ -147,13 +149,12 @@ export default function SamplesPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
+      // The profile and the permissions come from what the module shell already read when it is
+      // fresh (2026-11-12); a refresh more than 30 s later asks the database again, as before.
       const [{ data: profileData }, myEffective, countRes] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', session.user.id)
-          .single(),
-        getEffectivePermissions(supabase, session.user.id, 'sample_tracking').catch(() => []),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
+        cachedModulePermissions(queryClient, session.user.id, 'sample_tracking')
+          ?? getEffectivePermissions(supabase, session.user.id, 'sample_tracking').catch(() => []),
         fetch('/api/samples/notifications?count=1'),
       ])
 
@@ -166,7 +167,7 @@ export default function SamplesPage() {
       setLoading(false)
     }
     init()
-  }, [refreshKey, router, supabase])
+  }, [refreshKey, router, supabase, queryClient])
 
   useEffect(() => {
     const loadViewAsPermissions = () => {

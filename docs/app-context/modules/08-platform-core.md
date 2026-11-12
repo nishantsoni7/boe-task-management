@@ -144,6 +144,10 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
     Exhibition Leads hooks, Image Editor, Performance, My Attendance, the Payroll family, My Credits, My Payroll and the
     seven Showroom QR pages. The baseline per page is 3 own-row reads (profile, role, designation) and 1 `_for_user`
     call.
+  - Module hooks reuse the gate's permission answer (2026-11-12, branch `perf/modules-permissions-once`): `cachedModulePermissions(qc, userId,
+    moduleKey)` returns a copy of one module's rows from `['permission-context', uid]` only while it is under
+    `PERMISSION_STALE_MS` (30 s) old, else null and the caller asks the database. Used on first load by `useMeetings`,
+    `useCustomerReviews`, Samples and Assets. The Meetings and Review Workflow gates now read the context, like Orders.
 - `Providers.tsx` (`AuthIdentityBoundary`): one auth listener. `SIGNED_OUT` -> `queryClient.clear()` +
   `clearPersistedUnreadCounts()`. `SIGNED_IN` for the SAME user (session recovery) is ignored. A different user in the same
   tab -> `queryClient.clear()`. `USER_UPDATED` same user -> invalidate `['permission-context']` and `['signed-in-user-id']`
