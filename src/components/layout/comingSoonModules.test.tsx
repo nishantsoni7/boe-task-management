@@ -37,7 +37,7 @@ const SALES_MIGRATION = read('supabase/migrations/20270525000000_sales_lead_boar
 const FIRST_MARKETING_DESCRIPTION = 'Marketing module. Coming soon.'
 const FIRST_SALES_DESCRIPTION = 'Sales module. Coming soon.'
 const FIRST_PRICING_DESCRIPTION = 'Pricing module. Coming soon.'
-const PRICING_MIGRATION = read('supabase/migrations/20270619000000_pricing_price_book.sql')
+const PRICING_MIGRATION = read('supabase/migrations/20270620000000_pricing_price_book.sql')
 const LAUNCHER = read('src/app/modules/page.tsx')
 
 const view = (allowed: boolean): EffectivePermission[] =>

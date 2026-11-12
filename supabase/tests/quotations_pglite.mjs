@@ -80,7 +80,7 @@ await db.exec(`create table public.order_submissions (id uuid primary key defaul
 await db.exec(mig('20270615000000_quotation_pi_link.sql'))
 await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 await db.exec(mig('20270618000000_quotation_reports.sql'))
-await db.exec(mig('20270619000000_pricing_price_book.sql'))
+await db.exec(mig('20270620000000_pricing_price_book.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -436,7 +436,7 @@ await rpc(U.sales, 'quotation_set_status', old, 'negotiating', null)
 assert.equal((await report(U.sales, 'mine')).opened_no_followup.length, 0)
 ok('a quotation the client opened over two days ago with nothing done since is listed, and leaves the list once followed up')
 
-// ── Phase 7A: the price book (20270619000000) ──────────────────────────────
+// ── Phase 7A: the price book (20270620000000) ──────────────────────────────
 const hints7 = await rpc(U.sales, 'quotation_price_hints', ['King bed'], null)
 const kinds = hints7[0].points.map(x => x.k)
 assert.ok(kinds.includes('order'), 'approved PI prices are points')

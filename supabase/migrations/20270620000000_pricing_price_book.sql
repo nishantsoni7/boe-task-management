@@ -1,4 +1,4 @@
--- 20270619000000_pricing_price_book.sql
+-- 20270620000000_pricing_price_book.sql
 --
 -- Pricing module, phase 7A: the price book and the suggested price. Approved by the owner on 2026-11-12 ("A: price
 -- book + suggestion first"; the cost estimator comes later). Read-only: no table, no write to any business data.

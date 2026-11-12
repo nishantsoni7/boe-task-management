@@ -4,7 +4,7 @@
 //   won    the price on a quotation that was CONFIRMED
 //   lost   the price on a quotation that was LOST (a ceiling the client would not pay)
 //   quote  a price that was quoted and is still open (weakest)
-// The points come from the database (pricing_points_for / pricing_price_book, 20270619000000); this file decides.
+// The points come from the database (pricing_points_for / pricing_price_book, 20270620000000); this file decides.
 
 export type PointKind = 'order' | 'won' | 'lost' | 'quote'
 export type PricePoint = { p: number; at: string; k: PointKind; q: number | null }

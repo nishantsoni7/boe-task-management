@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Pricing: the price book and the suggested price (Quotations plan phase 7A) (PR #698, branch `feat/pricing-price-book`) · `20270620000000` → NOT YET APPLIED
+## 2026-11-12 — Pricing: the price book and the suggested price (Quotations plan phase 7A) (PR #698, branch `feat/pricing-price-book`) · `20270620000000` → SQL APPLIED 2026-11-12 about 17:30 IST (first numbered 20270619000000, which #696 also used; renumbered before merge), 20270620000000 recorded with migration repair about 17:45 IST
 - **Owner choice (2026-11-12).** Price book + suggested price first, learned from data already in BOE One; Admin and people granted Pricing open the module; the cost estimator later.
 - **Built.** The Pricing tile now opens the Price book: every product family with its suggested price, range and confidence, last ordered price, approved PIs, won and lost, and every price point behind it; search and CSV. Each quotation line shows "Suggested ₹X (confidence, range)" with Use. The suggestion is computed from the points each time, so it updates itself with every new approved PI and every quotation won or lost.
 - **Database.** Read-only functions only (`pricing_all_points`, `pricing_points_for`, `pricing_price_book`; `quotation_price_hints` re-created with the points); the Pricing description changes in both tables.
