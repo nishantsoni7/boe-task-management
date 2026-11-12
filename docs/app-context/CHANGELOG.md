@@ -110,7 +110,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** PGlite 32 checks (7 new), `tsc`, eslint, full `npm test`, `next build`.
 - **Rollback.** In the migration header.
 
-## 2026-11-12 — Sales: WhatsApp Connection page for the company number (branch `feat/whatsapp-connection-page`, not yet merged) · no migration
+## 2026-11-12 — Sales: WhatsApp Connection page for the company number (PR #688, squash-merged 2026-11-12 14:12 IST as `879a792a`) · no migration
 - **Owner ask.** Connect the company number (+91 87691 13712, in the WhatsApp Business app on the phone) so its chats become leads, keeping the app on the phone; "Yes, plan it", plan approved 2026-11-12.
 - **Built.** Control Center > Records & Data > **WhatsApp Connection**: loads Meta's JS SDK and opens Embedded Signup with WhatsApp Business app onboarding (coexistence); shows the account and phone number IDs, a cancel, Meta's error, or a refused WRONG flow (a plain Cloud API finish takes the number off the phone). `src/lib/salesLeads/connectSignup.ts` reads Meta's messages. Sends nothing, stores nothing, calls no Meta address (the WhatsApp guards pass unchanged); our app is subscribed to the new account once by hand. Two PUBLIC env values: `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (unset = "Setup missing").
 - **Not yet usable.** Needs Meta App Review approval for the two WhatsApp permissions (the app is live), the Embedded Signup configuration and allowed domain in the Meta app, and the two values in Vercel. The real test is in dossier 28 §11.
