@@ -126,3 +126,8 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 
 /* pricing desk */
 .linkBtn { background: none; border: 0; padding: 0; color: var(--boe-brand-ink); font: 600 12px var(--boe-font-body); cursor: pointer; text-decoration: underline; }
+
+/* reports */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { border: 1px solid var(--boe-border); border-radius: 10px; padding: 10px 12px; background: var(--boe-surface-quiet); }
+.kpiValue { font: 700 22px var(--boe-font-heading); color: var(--boe-text); font-variant-numeric: tabular-nums; }

@@ -79,6 +79,7 @@ await db.exec(`create table public.order_submissions (id uuid primary key defaul
   product_name text, cost_per_piece numeric(12,2) not null);`)
 await db.exec(mig('20270615000000_quotation_pi_link.sql'))
 await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
+await db.exec(mig('20270618000000_quotation_reports.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -400,5 +401,38 @@ for (const fn of ['quotation_price_history(text[],uuid)', 'quotation_price_check
   assert.equal(r.rows[0].a, false, fn)
 }
 ok('the review log cannot be changed; the pricing tables and internal functions are closed to clients')
+
+// ── Phase 6: reports (20270618000000) ──────────────────────────────────────
+const today = (await db.query(`select (now() at time zone 'Asia/Kolkata')::date::text d`)).rows[0].d
+const report = (uid, scope) => rpc(uid, 'quotation_report', today, today, scope)
+await fails(U.nobody, `select public.quotation_report($1::date, $1::date, 'all')`, [today], /QUOTATIONS_FORBIDDEN/)
+await fails(U.sales, `select public.quotation_report($1::date, ($1::date - 1), 'mine')`, [today], /up to two years/)
+const countWhere = async (where, params = []) => Number((await db.query(`select count(*)::int n from public.quotations q where ${where}`, params)).rows[0].n)
+const mineAsked = await report(U.sales, 'all')
+assert.equal(mineAsked.scope, 'mine')
+assert.equal(mineAsked.funnel.made.n, await countWhere('q.owner_id = $1 or q.created_by = $1', [U.sales]))
+const team = await report(U.manager, 'all')
+assert.equal(team.scope, 'all')
+assert.equal(team.funnel.made.n, await countWhere('true'))
+assert.equal(team.funnel.confirmed.n, await countWhere(`q.status = 'confirmed'`))
+ok('a salesperson always gets their own numbers; a manager gets the whole team; the funnel matches the quotations')
+
+await rpc(U.sales2, 'quotation_set_status', qb, 'lost', 'Price too high')
+const afterLoss = await report(U.manager, 'all')
+assert.ok(afterLoss.lost_reasons.some(r => r.reason === 'Price too high' && r.n === 1))
+assert.equal(afterLoss.funnel.lost.n, await countWhere(`q.status = 'lost'`))
+const decided = afterLoss.discount.reduce((t, b) => t + b.decided, 0)
+assert.equal(decided, await countWhere(`q.status in ('confirmed', 'lost')`))
+assert.equal(afterLoss.ageing.reduce((t, b) => t + b.n, 0), await countWhere(`q.status in ('draft', 'sent', 'negotiating')`))
+ok('lost reasons, the discount buckets and open-by-age add up to the quotations they come from')
+
+const old = (await db.query(`insert into public.quotations (quote_no, status, client_name, owner_id, created_by, sent_at, created_at, share_token)
+  values ('QT-MS-09999', 'sent', 'Quiet Client', $1, $1, now() - interval '6 days', now() - interval '7 days', $2) returning id`, [U.sales, 'a'.repeat(32)])).rows[0].id
+await db.query(`insert into public.quotation_events (quotation_id, actor_id, kind, at) values ($1, $2, 'shared', now() - interval '6 days'), ($1, null, 'opened', now() - interval '3 days')`, [old, U.sales])
+const quiet = await report(U.sales, 'mine')
+assert.deepEqual(quiet.opened_no_followup.map(x => x.quote_no), ['QT-MS-09999'])
+await rpc(U.sales, 'quotation_set_status', old, 'negotiating', null)
+assert.equal((await report(U.sales, 'mine')).opened_no_followup.length, 0)
+ok('a quotation the client opened over two days ago with nothing done since is listed, and leaves the list once followed up')
 
 console.log(`all ${checks} checks passed`)
