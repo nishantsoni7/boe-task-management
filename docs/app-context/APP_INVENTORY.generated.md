@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `159fdace` — Orders: the approver can send a PI back to the salesperson with a comment
+- Commit: `49770c22` — Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
 - Commits on this branch: 1257
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 435 (first `20260530_create_positions.sql`, latest `20270619000000_order_handoff_send_to_sales.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `159fdace` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment
+- `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
 - `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
 - `8f8c9ba1` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
 - `46adaca3` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
