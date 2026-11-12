@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Quotations, phase 6: Reports (PR pending, branch `feat/quotation-reports`) · `20270618000000` → NOT YET APPLIED
+- **Owner approval (2026-11-12).** A Reports page computed from recorded data only; managers see the whole team, everyone else their own; the weekly summary on the page for now.
+- **Built.** `/quotations/reports`: This week, funnel with values, by salesperson / client type / source, speed, open by age, opened but not followed up, lost reasons, discount against wins, price approvals waiting; period filter and a CSV per section.
+- **Database.** One read-only function `quotation_report(from, to, scope)`; no table, no write.
+- **Proof.** PGlite 35 checks (3 new), `report.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
+
+## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR open, branch `feat/seo-brief-rankings`) · no migration
+
 ## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR open, branch `test/no-prefetch-guard-hardening`) · no SQL
 - **Why.** The owner asked: "Is there anything which can generate similar kind of errors in future then do work on it and solve it". A read-only sweep of about 38 pages in the owner's Chrome found:
   - pages covered: every module home, plus the Orders, Finance, Tasks and Sales sub-pages;
