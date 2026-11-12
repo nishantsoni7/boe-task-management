@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Quotations, phase 5: the pricing desk (price hints and price approval) (PR #687, branch `feat/quotation-pricing-desk`) · `20270617000000` → NOT YET APPLIED
+- **Owner approval (2026-11-12).** Hints for everyone who makes quotations; approval when the discount is above 5% or a product is below 90% of its last ordered price; the administrator changes the limits.
+- **Built.** Under each price: last ordered price, range and count from approved PIs, last quoted price, and Use. A Price approval card: ask, approve or send back with a note; the client link and Confirm → PI wait until approved; a change of prices needs asking again. The desk's "Waiting for price approval" list and the limits on the Quotations page.
+- **Database.** Tables `quotation_price_settings` (one row, 5 / 90) and `quotation_price_reviews` (append-only), both closed to clients; functions for hints, check, state, ask, decide, queue and limits; `quotation_get`, `quotation_share`, `quotation_link_pi` re-created with the price state. Orders tables only read.
+- **Proof.** PGlite 32 checks (7 new), `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** In the migration header.
+
 ## 2026-11-12 — Sales: WhatsApp Connection page for the company number (branch `feat/whatsapp-connection-page`, not yet merged) · no migration
 - **Owner ask.** Connect the company number (+91 87691 13712, in the WhatsApp Business app on the phone) so its chats become leads, keeping the app on the phone; "Yes, plan it", plan approved 2026-11-12.
 - **Built.** Control Center > Records & Data > **WhatsApp Connection**: loads Meta's JS SDK and opens Embedded Signup with WhatsApp Business app onboarding (coexistence); shows the account and phone number IDs, a cancel, Meta's error, or a refused WRONG flow (a plain Cloud API finish takes the number off the phone). `src/lib/salesLeads/connectSignup.ts` reads Meta's messages. Sends nothing, stores nothing, calls no Meta address (the WhatsApp guards pass unchanged); our app is subscribed to the new account once by hand. Two PUBLIC env values: `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (unset = "Setup missing").

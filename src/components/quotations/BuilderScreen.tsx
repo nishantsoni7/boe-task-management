@@ -15,7 +15,7 @@ import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
   CLIENT_TYPES, STATUS_LABEL, errorKind, errorText, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation,
-  setStatus as setStatusRpc, shareQuotation, uploadPicture, type Header, type Quotation, type QuotationStatus,
+  setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
 } from '@/lib/quotations/api'
 import {
   GST_RATES, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, sizeInInches, validUntil, whatsappLink,
@@ -25,6 +25,7 @@ import { DEFAULT_CLIENT_NOTE } from '@/lib/quotations/terms'
 import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
+import { PriceCard, PriceHintLine } from './PricingDesk'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
 
@@ -54,6 +55,14 @@ export default function BuilderScreen() {
   const [copied, setCopied] = useState(false)
   const [piStage, setPiStage] = useState<PiStage | null>(null)
   const [studioFor, setStudioFor] = useState<string | null>(null)
+  // Price hints for the names on screen, asked for once typing pauses.
+  const [hintNames, setHintNames] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setHintNames([...new Set(lines.map(l => l.name.trim()).filter(n => n.length >= 3))].sort().slice(0, 80).join('\n')), 600)
+    return () => clearTimeout(t)
+  }, [lines])
+  const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && hintNames !== '', staleTime: 300_000, retry: false })
+  const hintFor = useMemo(() => new Map<string, PriceHint>((hintsQ.data ?? []).map(h => [h.name, h])), [hintsQ.data])
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
@@ -251,7 +260,7 @@ export default function BuilderScreen() {
                 {g.lines.map((l, li) => (
                   <LineRow key={l.key} l={l} area={g.area} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                     first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
-                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onRemove={() => removeLine(l.key)}
+                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} hint={hintFor.get(l.name.trim())} onRemove={() => removeLine(l.key)}
                     onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
                 ))}
               </div>
@@ -309,7 +318,7 @@ export default function BuilderScreen() {
               {base.may_edit && (dirty ? <div className={`${s.small} ${s.dirty}`}>Save first, then share.</div>
                 : base.share_token
                   ? <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => act(() => shareQuotation(supabase, id, false), 'The client link is off.')}>Turn the link off</button>
-                  : <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || lines.length === 0 || base.status === 'archived'} onClick={() => act(() => shareQuotation(supabase, id, true), 'The client link is on.')}><Link2 size={15} aria-hidden /> Create client link</button>)}
+                  : <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || lines.length === 0 || base.status === 'archived' || !!base.price?.blocked} title={base.price?.blocked ? 'Waiting for price approval' : undefined} onClick={() => act(() => shareQuotation(supabase, id, true), 'The client link is on.')}><Link2 size={15} aria-hidden /> Create client link</button>)}
             </div>
           </section>
 
@@ -324,6 +333,9 @@ export default function BuilderScreen() {
                 onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
             ) : null
           })()}
+          <PriceCard price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
+            onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
+            onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
           <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
 
           {base.may_edit && (
@@ -374,6 +386,7 @@ function describe(e: { kind: string; detail: Record<string, unknown> }): string 
     case 'unshared': return 'Client link turned off'
     case 'opened': return 'Opened by the client'
     case 'converted': return `Confirmed into PI draft ${e.detail.draft_reference ?? ''}`.trim()
+    case 'price': return e.detail.decision === 'requested' ? 'Price approval asked' : e.detail.decision === 'approved' ? 'Prices approved' : `Prices sent back${e.detail.note ? `: ${e.detail.note}` : ''}`
     default: return e.kind
   }
 }
@@ -392,6 +405,7 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
 }) {
   const problems = conversionProblems(base.areas, base.lines)
   const canConfirm = base.may_edit && !base.pi && (base.status === 'sent' || base.status === 'negotiating')
+  const priceBlocked = !!base.price?.blocked
   if (!base.pi && !canConfirm && base.lines.length === 0) return null
   return (
     <section className={s.card}>
@@ -408,10 +422,11 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
             {problems.length > 0
               ? <div className={`${s.notice} ${s.noticeWarn}`}><b>Before it can become a PI:</b>{problems.map(p => <div key={p.code}>{PROBLEM_TEXT[p.code]}{p.lines.length ? `: ${p.lines.slice(0, 6).join(', ')}${p.lines.length > 6 ? ` and ${p.lines.length - 6} more` : ''}` : ''}</div>)}</div>
               : <div className={s.small}>Makes a PI draft in Orders from the saved quotation, through the same checks as an uploaded PI, then opens it. Optional products are left out.</div>}
-            <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || dirty || problems.length > 0} onClick={onConfirm}>
+            <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || dirty || problems.length > 0 || priceBlocked} onClick={onConfirm}>
               <FileCheck2 size={15} aria-hidden /> {stage ? PI_STAGE_LABEL[stage] : 'Confirm → make PI draft'}
             </button>
             {dirty && <div className={`${s.small} ${s.dirty}`}>Save first, then confirm.</div>}
+            {priceBlocked && <div className={`${s.small} ${s.muted}`}>Waiting for price approval (see Price approval).</div>}
           </>
         )}
         {!base.pi && !canConfirm && base.may_edit && base.status === 'draft' && <div className={`${s.small} ${s.muted}`}>Send it (or mark it Negotiating) before confirming it into a PI.</div>}
@@ -423,9 +438,9 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
   )
 }
 
-function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onRemove, onMove, onDuplicate }: {
+function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, hint, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void
+  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; hint?: PriceHint
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -466,6 +481,7 @@ function LineRow({ l, area, editable, qty, total, first, last, url, onChange, on
           ) : <span className={`${s.small} ${s.muted}`} style={{ alignSelf: 'center' }}>pieces</span>}
         </div>
         <input aria-label="Unit price (₹, before GST)" className={`${s.input} ${s.money}`} type="number" min={0} placeholder="Price ₹" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} />
+        <PriceHintLine hint={hint} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })} />
         <div className={s.row} style={{ justifyContent: 'space-between' }}>
           <select aria-label="GST rate" className={s.input} style={{ width: 86 }} value={l.tax_rate} onChange={e => onChange({ tax_rate: Number(e.target.value) })} disabled={!editable}>{GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}</select>
           <label className={s.small}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
