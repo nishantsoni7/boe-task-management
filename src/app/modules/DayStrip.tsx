@@ -8,6 +8,8 @@
 //   red    "Your plan was due at 10:30 am"                 after the due time
 //   red    "Close your day before you punch out"           from 6:00 pm until the day is closed
 //
+// "Open Task Management" goes to the dashboard, whose Today card holds the plan and Close my day.
+//
 // It cannot be hidden: it leaves when the thing is done. THE SERVER DECIDES (GET /api/day-close/prompt,
 // src/lib/dayClose/rules.ts dayPrompt); this only draws it. Nothing for anybody not switched on, while
 // loading, or if the read fails. A placement and nothing else: no write goes anywhere from here.
@@ -28,12 +30,12 @@ export function DayStrip({ userId, enabled }: { userId: string | null; enabled: 
   if (p.kind === 'file_plan') {
     tone = p.late ? styles.missing : styles.late
     title = p.late ? `Your plan was due at ${p.due}` : `File today’s plan by ${p.due}`
-    detail = 'Write what you will get done today. A late or missing plan is recorded as a strike.'
+    detail = 'Your plan is your tasks due today, on the Task Management dashboard. A late or missing plan is recorded as a strike.'
   } else if (p.kind === 'close_day') {
     tone = styles.missing
     title = 'Close your day before you punch out'
     detail = p.open > 0
-      ? `${p.open} ${p.open === 1 ? 'item is' : 'items are'} still open. Leaving without closing is recorded as a strike.`
+      ? `${p.open} ${p.open === 1 ? 'task is' : 'tasks are'} still open: finish or carry them over. Leaving without closing is recorded as a strike.`
       : 'Leaving without closing is recorded as a strike.'
   } else {
     return null
@@ -47,7 +49,7 @@ export function DayStrip({ userId, enabled }: { userId: string | null; enabled: 
         <p className={styles.title}>{title}</p>
         <p className={styles.detail}>{detail}</p>
       </div>
-      <Link href="/my-day" className={styles.hide} style={{ textDecoration: 'none' }}>Open My Day</Link>
+      <Link href="/dashboard" className={styles.hide} style={{ textDecoration: 'none' }}>Open Task Management</Link>
     </section>
   )
 }

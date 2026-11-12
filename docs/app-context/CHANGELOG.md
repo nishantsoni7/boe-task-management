@@ -4,6 +4,25 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270623000000` → NOT applied (apply before the merge)
+- **Owner ask.** "My Day is very similar to Self Tasks… it will create confusion." Decided:
+  - proof on every task a member finishes;
+  - "Close my day" also files the EOD log;
+  - Team Today goes inside Task Management.
+- **Changed.**
+  - The day's plan is now the person's own tasks due today (Self Tasks included). It shows in a "Today" card on the Task Management dashboard: **File today's plan**, then **Close my day**, where anything not finished gets a reason and a new date, plus the summary that is written as the EOD log.
+  - Team Today moved to `/tasks/team-today` (admin sidebar).
+  - Removed: `/my-day`, its nav entry, `/attendance/day-close`, `/api/day-close/proof`.
+- **Database.**
+  - `day_plan_items` dropped; the migration refuses if any row exists.
+  - New: `day_plans.planned_task_ids`, and the table `day_close_carryovers`.
+  - New deferred constraint trigger `tasks_day_close_proof`: a member's own move to Completed or Pending approval needs proof they posted on the task (a file or a link), checked at commit.
+- **Proof.**
+  - `day_close_in_tasks_pglite.mjs`: 10 checks.
+  - `rules.test.ts` rewritten; `leaveLock.test.ts`.
+  - 1,400 tests across tasks, layout, modules and dashboard; `tsc` and eslint.
+- **Rollback.** In the migration header.
+
 ## 2026-11-12 — Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (branch `feat/pi-returned-to-sales-status`, PR pending) · no migration
 - **Owner ask.** "Whenever I send it back to the salesperson it does not change the status": it should show, to the approver and the sales team, that the PI is with Sales and that they must make the requested changes and resubmit. Plan approved the same evening ("Yes, build it"); the salesperson edits through Edit PI.
 - **Changed.** While the newest send-back stands (`salesReturnStage`), the Order banner reads "PI V<n> returned to Sales" (amber) with the instruction first ("The approved PI cannot be edited in place … Edit PI … resubmits; the revised PI goes to Operations once it is approved"), then Operations' reason and the sent line; the ERP card reads "Returned to Sales for changes."; once a revised PI waits for approval it reads "… revised PI waiting for approval". The salesperson's flagged-PI card reads "Returned to you: make the changes and resubmit PI V<n> with Edit PI"; the approver's Needs your decision row turns into "Returned to Sales: waiting for the revised PI" with the comment (no longer a red decision).

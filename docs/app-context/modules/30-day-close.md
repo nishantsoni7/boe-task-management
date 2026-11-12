@@ -1,47 +1,54 @@
 # 30 - Day Close (staff accountability: plan, proof, close, strikes)
 
-Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270622000000_day_close.sql` was **APPLIED 2026-11-12 by the owner, before the merge** (owner's word in the session; not re-checked with `supabase migration list --linked` from the cloud session). The code is the truth; re-verify before relying on this page.
+**History.**
+- First built as a separate "My Day" list: PR #713, merged as `2466d96`, migration `20270622000000`. The owner said it was **APPLIED 2026-11-12, before that merge**; this was not re-checked from the cloud session.
+- Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270623000000_day_close_in_tasks.sql`, which **must be applied before that PR is merged**.
+
+The code is the truth; re-verify before relying on this page.
 
 ## 1. Purpose & users
 
-The owner's ask (2026-11-12): staff work 2–3 hours of an 8½-hour day, nothing defines the day's work, and nobody is accountable. The aim is accountability without threats. Everyone knows what today's work is, closes it with proof before going home, and cannot take leave with work pending unless the owner allows it.
+The owner's ask (2026-11-12): staff work 2–3 hours of an 8½-hour day, nothing defines the day's work, and nobody is accountable. The aim is accountability without threats:
+- everyone knows what today's work is;
+- everyone finishes it with proof, or explains it, before going home;
+- nobody takes leave with work pending unless the owner allows it.
+
+**There is no second list.** The day's work is the person's own tasks in Task Management. Day Close adds only the rules around them.
 
 | Who | What they do |
 |---|---|
-| A member (any employee the owner switches on) | `/my-day`. Files the day's plan by 10:30, closes each item as Done (proof) or Not done (reason + new date), and closes the day before punching out |
+| A member (an employee the owner switches on) | Works on the **Task Management dashboard**, "Today" card:<br>- their tasks due today or overdue (Self Tasks included)<br>- **File today's plan** by 10:30<br>- finish tasks as usual, **with proof**<br>- **Close my day**: a reason and new date for anything not finished, and the day's summary, which **is the EOD log** |
 | The reviewer (`day_close_settings.reviewer_id`, the owner alone) | Decides every strike (Uphold / Waive with a note). Is the only person who may approve leave sent while work was pending |
-| Administrators | `/attendance/day-close` (Team Today) to read, plus who takes part |
+| Administrators | **Team Today** (`/tasks/team-today`, Task Management sidebar) to read; who takes part |
 
-Named in the ask: Dhruv (business development), Rakesh (social media), the SEO person, the sales team, and Jasvi. The owner said "all of team".
-
-## 2. Status
-
-Built and tested; migration applied 2026-11-12; merged the same day (see CHANGELOG for the PR and SHA). Phase 1 of the plan agreed in the session:
-- **Phase 2 (not built):** a content calendar for social media and a monthly scorecard.
-- **Phase 3 (not built):** call-log sync from the company Android phones, and the WhatsApp Business app "coexistence" with the Cloud API, so every message on the company number reaches BOE.
-
-## 3. Owner decisions (2026-11-12)
+## 2. Owner decisions (2026-11-12)
 
 | Decision | Value |
 |---|---|
-| Consequence | **Strikes only**, no money (credits/salary may come later) |
-| Office | 10:00–18:30 IST, **Monday to Saturday** (Sunday off) |
-| Plan due | **10:30**. A late arrival gets 30 minutes after their first punch (`planDueMinutes`) |
-| Closing opens | **18:00**. The day must be closed **before the last punch** on the machine (5 minutes' tolerance) |
-| Leave | Full-day and half-day leave sent with work pending is **still sent but locked**: only the reviewer can approve it; anybody may reject it |
-| "Work pending" | Overdue tasks (due before today, not submitted / completed / cancelled) **or** a `day_not_closed` strike in the last 7 days that was not waived |
-| Who reviews | **The owner only** (the reviewer seat; an administrator takes it once from Team Today) |
-| Who takes part | Everyone the owner switches on; "Add everyone" adds every active non-admin |
+| Consequence | **Strikes only**, no money. They feed the planned Scoreboard (Discipline points) |
+| Office | 10:00–18:30 IST, **Monday to Saturday** |
+| Plan due | **10:30**, or 30 minutes after a late first punch |
+| Closing | Opens **18:00**. The day must be closed **before the last punch** on the machine (5 minutes' tolerance) |
+| Proof | **Every task a member finishes**: a self task to Completed, or a delegated task to Pending approval. The proof is a file or photo on an update or status change, or a link in an update, posted **by them** on that task. Approving a submitted task needs nothing more |
+| EOD | "Close my day" also writes `daily_work_logs` (summary), so staff do one evening action |
+| Team Today | Inside Task Management, not Attendance |
+| Leave | Full-day or half-day leave sent with work pending (overdue tasks, or an unwaived `day_not_closed` in the last 7 days) is **sent but locked**: only the reviewer approves; anybody may reject |
 
-## 4. Rules (src/lib/dayClose/rules.ts, pure)
+## 3. Rules (`src/lib/dayClose/rules.ts`, pure)
 
-- **The plan.** It holds the tasks somebody else assigned that are due today or overdue and not closed: copied in by the server, marked with a lock, and not removable. It also holds the member's own items (title + expected output, at most 15). Filing needs at least one item. Own items can be removed only before filing.
-- **Done.**
-  - An own item needs an http(s) link or a photo (JPEG under 5 MB, shrunk in the browser, private bucket `day-proof`, path `{employee}/{uuid}.jpg`, checked to be the caller's own).
-  - An assigned item is Done only when its task is `pending_approval` or `completed` in Task Management. Day Close never changes a task.
-- **Not done.** A reason (3+ characters) and a new date, after today and at most 60 days ahead.
-- **Close day.** Allowed only with no open items. Assigned tasks already handed in are marked Done automatically. Closing before 18:00 is allowed after a confirm (leaving early with permission), and the time shows.
-- **Strikes** (the nightly check at 23:15 IST, `/api/day-close/evaluate`):
+- **The day's list (`dayTaskList`).**
+  - Before filing: open tasks (not completed or cancelled) assigned to the person, due today or before.
+  - After filing: the tasks named in `day_plans.planned_task_ids` (whatever happened to them since, except cancelled), plus any open task that became due later that day.
+  - **Filing** needs at least one task. If nothing is due, the person adds a Self Task due today.
+- **States (`dayTaskState`).**
+  - `done` = `pending_approval` or `completed`.
+  - `carried` = a reason and a new date were given at closing.
+  - Otherwise `open`.
+- **Close my day.**
+  - Every open task needs a carry-over: a reason of 3+ characters and a date after today, within 60 days.
+  - The summary is required and is upserted as that day's EOD.
+  - Closing before 18:00 needs an in-page confirm ("leaving early with permission"), and the time shows.
+- **Strikes:** the nightly check, 23:15 IST, `/api/day-close/evaluate`.
 
   | Strike | When |
   |---|---|
@@ -50,87 +57,73 @@ Built and tested; migration applied 2026-11-12; merged the same day (see CHANGEL
   | `day_not_closed` | Never closed |
   | `closed_after_leaving` | Closed more than 5 minutes after the last punch |
 
-  **Never** a strike on a Sunday, a `payroll_holidays` date, a day of approved `full_day_leave`, or a day with **no punch** (absence is Attendance's job, and a machine fault must never become a strike). A strike is written once (unique per person, day and kind), and a decided one is never touched.
+  **Never** a strike on a Sunday, a holiday, approved full-day leave, or a day with no punch.
 
-## 5. Database (`20270622000000_day_close.sql`)
+## 4. Database
 
-Every table is **closed to the browser**: RLS is on, there are no policies, and all privileges are revoked. All access goes through the service-role API routes, which take the actor from the bearer token.
+**`20270622000000` (#713):**
 
-| Table | What it holds |
+| Object | What it holds |
 |---|---|
-| `day_close_settings` | Singleton: `reviewer_id`, `plan_due_minutes` 630, `close_opens_minutes` 1080 |
-| `day_close_members` | `employee_id` pk, `active`, who added or removed them |
-| `day_plans` | Unique (employee, date). `submitted_at`, `closed_at` (only after filing), `close_note` |
-| `day_plan_items` | `source` assigned/own (assigned ⇔ `task_id`). `status` open/done/not_done. CHECKs: done needs proof (own), not done needs reason + date, closed_at ⇔ resolved. Unique (plan, task) |
-| `day_strikes` | Unique (employee, date, kind). `status` open/upheld/waived; a decision needs who and when; waiving needs a note |
-| `day_close_leave_locks` | One per `attendance_requests.id`: counts, words, released by/at |
+| `day_close_settings` | Reviewer and times |
+| `day_close_members` | Who takes part |
+| `day_plans` | Unique per person and day |
+| `day_strikes` | Strikes and their decisions |
+| `day_close_leave_locks` | One per locked leave request |
+| `day_close_closed_guard` | Trigger: a closed day is immutable |
+| Bucket `day-proof` | Private. **Now unused** (proof lives on tasks). Empty; can be deleted |
 
-The trigger `day_close_closed_guard` makes a closed day immutable (plan and items). A plan is never deleted.
+All tables are closed to the browser; the service-role routes take the actor from the token.
 
-The storage bucket `day-proof` is private, JPEG only, 5 MB, with no `storage.objects` policy; only the service role writes to it and signs links.
+**`20270623000000` (this change):**
+- Drops `day_plan_items`. It refuses to if any row exists.
+- Adds `day_plans.planned_task_ids uuid[]`.
+- New table `day_close_carryovers`: plan, task, reason, next date. Unique per plan and task, guarded by `day_close_closed_guard`, closed to the browser.
+- **Proof trigger** `tasks_day_close_proof`: a deferred constraint trigger, `after update of status`, checked at COMMIT. It is deferred because `change_task_status()` writes the status before the history row that carries the attachment.
+  - It applies only when `auth.uid()` is the assignee, the person is an active member, and the task moves into `completed` (not from `pending_approval`) or into `pending_approval`.
+  - Proof must be posted by the assignee: a `task_activity_log` row with `attachment_url`, a note containing `http(s)://…`, or a `task_attachments` row hanging off one of their log rows.
+  - The creator's brief (task-level attachments, their notes) does not count.
+  - The refusal is `DAY_CLOSE_PROOF_REQUIRED` (P0001), shown as written by `statusChange.ts` (a "refused" outcome).
 
-**Rollback:** in the migration header. Nothing else references these objects.
-
-## 6. Routes and screens
+## 5. Routes and screens
 
 | Route | Who | What |
 |---|---|---|
-| `GET/POST /api/day-close/me` | Member (own day only) | Load; `add_item`, `remove_item`, `file_plan`, `close_item`, `close_day` |
+| `GET/POST /api/day-close/me` | Member (own day only) | Load; `file_plan`; `close_day { summary, carryovers[] }` |
 | `GET /api/day-close/prompt` | Anyone (silent if not a member) | The Modules-page strip |
-| `POST /api/day-close/proof` | Member | Raw JPEG → `{ path }` |
 | `GET /api/day-close/team?date=` | Admin or reviewer | Team Today |
-| `POST /api/day-close/strikes/[id]` | Reviewer only | `{ decision: upheld \| waived, note }` |
-| `GET/POST /api/day-close/members` | Admin or reviewer | `add`, `remove`, `add_everyone`, `become_reviewer` (admin, while empty) |
-| `GET /api/day-close/evaluate` | Vercel cron `45 17 * * *` (23:15 IST), `CRON_SECRET` | `?date=` re-runs a past day |
+| `POST /api/day-close/strikes/[id]` | Reviewer only | Uphold or waive a strike |
+| `GET/POST /api/day-close/members` | Admin or reviewer | Who takes part |
+| `GET /api/day-close/evaluate` | Vercel cron 23:15 IST, `CRON_SECRET` | Writes the night's strikes |
 
 **Screens**
-- `/my-day`: employee sidebar "My Day", in the Attendance & Payroll shell.
-- `/attendance/day-close`: the admin Attendance section's "Day Close" tab, behind AttendanceGuard.
+- `src/components/dayClose/DayCard.tsx`: first on `/dashboard` (hidden under View As).
+- `/tasks/team-today`: `TeamTodayScreen`. The sidebar entry is shown to admins, not while previewing.
+- `src/app/modules/DayStrip.tsx`: the strip on `/modules`. It opens Task Management.
 
-**Who must act** (§8e of dossier 12)
-- **Member:** the Day strip on `/modules` (`src/app/modules/DayStrip.tsx`) shows, and cannot be hidden:
-  - amber "File today's plan by 10:30";
-  - red after the due time;
-  - red "Close your day before you punch out" from 18:00 until the day is closed.
+**Removed with this change:** `/my-day`, the "My Day" employee nav entry, `/attendance/day-close` and its Attendance tab, `/api/day-close/proof`.
 
-  It leaves when the thing is done. A For you catalogue item was not added: the strip is the always-on placement.
-- **Reviewer:** "Strikes to review" at the top of Team Today, and the 🔒 "Work pending" mark on the leave queue (`RequestQueue.tsx`).
+The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave queue are unchanged.
 
-**Leave integration:** `src/lib/attendance/requestHandlers.ts`.
-- `submitRequest` calls `lockLeaveIfPending` after the insert. The response carries `work_pending`, and the request form alerts the employee.
-- `decideRequest` calls `leaveDecisionGate` before an approval: 409 for anyone but the reviewer, 500 if the check fails. After an approval, `releaseLeaveLock`.
-- `listRequests` (queue) returns `work_pending` by request id.
+## 6. Traps
 
-Team Today shows, per member:
-- the machine's first and last punch;
-- the plan's filed time; when the day was closed;
-- done / not done / open, with proof links and photos;
-- calls and WhatsApp messages **logged** on the Lead Board that day (`sales_lead_activities`, self-reported: not proof of a real call yet);
-- overdue tasks; the day's strikes; strikes this month (not waived).
+1. **Apply `20270623000000` before merging.** Without it the routes read `planned_task_ids` and `day_close_carryovers`, which don't exist yet.
+2. The proof trigger **also applies to the quick-complete on My Tasks**: a member must post the proof first. Any other path that completes a member's task under their own session, now or later, is checked too.
+3. Proof is per task, not per day. An update with a link posted last week on the same task still counts.
+4. The machine is the only clock for "left". No machine ID or no punch means no `closed_after_leaving` and no judged day.
+5. Calls and WhatsApp counts on Team Today are what salespeople logged, not phone records.
+6. MemorySupabase has no `.not()`. Code exercised by `leaveLock.test.ts` (pending work, the nightly check) must not use it.
 
-## 7. Traps
-
-1. **Merge only after the migration is applied.** The routes read the new tables. Before that, every Day Close screen, the strip and the leave queue's lock read fail:
-   - `leaveLocksFor` returns empty on error;
-   - `lockLeaveIfPending` is wrapped;
-   - `leaveDecisionGate` fails closed with 500 **only when a lock read throws**. With the table missing, `leaveLocksFor` swallows the error, so approvals still work.
-2. **The machine is the only clock for "left".** A member with no Machine ID is never struck for closing after leaving, and a day with no punch is never judged.
-3. Calls and WhatsApp counts are what salespeople logged, not phone records. Phase 3 (call-log sync, WhatsApp coexistence) is what makes them proof.
-4. `add_everyone` excludes administrators by role. Switch an admin on individually if wanted.
-5. Strikes are written at 23:15 IST. Somebody who closes the day at 23:30 still has `day_not_closed`, and the reviewer waives it.
-6. MemorySupabase (tests) has no `.not()`. `pendingWorkFor` filters overdue tasks in TypeScript for that reason. Keep it that way, or extend the mock.
-
-## 8. Tests
+## 7. Tests
 
 | Test | Checks |
 |---|---|
-| `src/lib/dayClose/rules.test.ts` | Times, the judgement, the prompt, item validation, overdue and lock rules |
-| `src/lib/dayClose/leaveLock.test.ts` | The real attendance-request handlers + the nightly check over MemorySupabase: lock written, other admin refused, reject allowed, reviewer approves and releases, no lock when not pending / not a member / not leave, the unclosed-day rule, a waived strike ignored, no strike without a punch, two strikes written once |
-| `supabase/tests/day_close_pglite.mjs` (13 checks on the real migration) | `node supabase/tests/day_close_pglite.mjs <dir with @electric-sql/pglite>` |
-| `src/components/layout/attendancePayrollNav.test.tsx` | Updated for the new tab and nav entry |
+| `src/lib/dayClose/rules.test.ts` | Times, the judgement, the prompt, the task-based day, carry-overs, the summary, leave rules |
+| `src/lib/dayClose/leaveLock.test.ts` | The real attendance-request handlers and the nightly check, over MemorySupabase |
+| `supabase/tests/day_close_pglite.mjs` | 13 checks on `20270622000000` |
+| `supabase/tests/day_close_in_tasks_pglite.mjs` | 10 checks on `20270623000000`: the drop guard, carry-overs, and proof in every case, including the attachment written after the status in one transaction |
 
-## 9. Recheck before changing
+## 8. Recheck before changing
 
-- `ls supabase/migrations | grep day_close` and the latest definition of each table.
-- `grep -rn "dayClose" src` for every caller, including `requestHandlers.ts` and `RequestQueue.tsx`.
-- `vercel.json` still lists `/api/day-close/evaluate`.
+- `grep -rn "dayClose\|day-close\|day_close" src supabase/migrations`.
+- The latest `change_task_status` and `transition_task_review` definitions: a new completion path must still pass through `tasks` under the user's session for the proof check to apply.

@@ -2,12 +2,15 @@
 //
 // Office is 10:00 to 18:30 IST, Monday to Saturday. For every person the owner switches on:
 //
-//   10:30   the day's plan is filed: the tasks somebody else gave them that are due (copied in by the
-//           server, cannot be removed) and their own items, each with the output they expect.
-//           Somebody who arrives late gets 30 minutes from their arrival instead.
-//   day     every item ends Done (an own item needs a link or a photo; an assigned task is done when it
-//           has been submitted in Task Management) or Not done (a reason and the day it will be done).
-//   18:00   "Close your day" opens. The day must be closed BEFORE the punch-out on the machine.
+//   10:30   the day's plan is filed. THE PLAN IS THE PERSON'S OWN TASKS in Task Management (owner,
+//           2026-11-12: no second list): every open task assigned to them that is due today or overdue,
+//           their Self Tasks included. Filing keeps the list as it was. Somebody who arrives late gets
+//           30 minutes from their arrival instead.
+//   day     tasks are finished in Task Management. Finishing one needs proof posted on the task (a file
+//           or a link), enforced by the database (20270623000000, tasks_day_close_proof).
+//   18:00   "Close my day" opens, on the Task Management dashboard. Every task of the day is handed in
+//           (submitted or completed) or carried over with a reason and a new date; the end-of-day
+//           summary is written there and files the EOD log. Closed BEFORE the punch-out on the machine.
 //   night   the check writes strikes (no money, owner 2026-11-12):
 //             no_plan               came in, never filed a plan
 //             plan_late             filed after the due time
@@ -35,14 +38,6 @@ export const CLOSE_AFTER_PUNCH_TOLERANCE_MINUTES = 5
 /** Days looked back for a day that was not closed, when a leave request is judged. */
 export const UNCLOSED_LOOKBACK_DAYS = 7
 
-export const ITEM_TITLE_MAX = 300
-export const ITEM_OUTPUT_MAX = 500
-export const REASON_MAX = 1000
-export const NOTE_MAX = 1000
-export const URL_MAX = 1000
-/** A plan holds at most this many own items: it is a day, not a backlog. */
-export const MAX_OWN_ITEMS = 15
-
 /** Task statuses that mean the assignee has handed the work in. */
 export const TASK_HANDED_IN = ['pending_approval', 'completed'] as const
 /** Task statuses that are not work any more. */
@@ -53,33 +48,11 @@ export const LOCKED_LEAVE_TYPES = ['full_day_leave', 'half_day'] as const
 
 export type StrikeKind = 'no_plan' | 'plan_late' | 'day_not_closed' | 'closed_after_leaving'
 export type StrikeStatus = 'open' | 'upheld' | 'waived'
-export type ItemStatus = 'open' | 'done' | 'not_done'
-export type ItemSource = 'assigned' | 'own'
-
 export const STRIKE_LABEL: Record<StrikeKind, string> = {
   no_plan: 'No plan filed',
   plan_late: 'Plan filed late',
   day_not_closed: 'Day not closed',
   closed_after_leaving: 'Closed after leaving',
-}
-
-export type PlanItem = {
-  id: string
-  source: ItemSource
-  task_id: string | null
-  title: string
-  expected_output: string | null
-  status: ItemStatus
-  proof_url: string | null
-  proof_photo_path: string | null
-  proof_note: string | null
-  reason: string | null
-  next_date: string | null
-  closed_at: string | null
-  created_at: string
-  /** Live, for an assigned item: the task's current status. */
-  task_status?: string | null
-  task_due_date?: string | null
 }
 
 export type Plan = {
@@ -89,6 +62,7 @@ export type Plan = {
   submitted_at: string | null
   closed_at: string | null
   close_note: string | null
+  planned_task_ids?: string[]
 }
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
@@ -119,101 +93,87 @@ export function planDueMinutes(checkInAt: string | null, date: string, dueMinute
   return Math.max(dueMinutes, arrived + PLAN_GRACE_AFTER_ARRIVAL_MINUTES)
 }
 
-/** An assigned item is done when its task has been handed in. */
-export function assignedItemHandedIn(item: Pick<PlanItem, 'source' | 'task_status'>): boolean {
-  return item.source === 'assigned' && !!item.task_status
-    && (TASK_HANDED_IN as readonly string[]).includes(item.task_status)
+// ─── The day's tasks ─────────────────────────────────────────────────────────
+
+export type DayTask = {
+  id: string
+  title: string
+  status: string
+  priority: string | null
+  due_date: string | null
+  assigned_to: string
+  created_by: string
 }
 
-/** What an item counts as right now: an assigned task handed in counts as done even before it is marked. */
-export function effectiveStatus(item: PlanItem): ItemStatus {
-  if (item.status !== 'open') return item.status
-  return assignedItemHandedIn(item) ? 'done' : 'open'
+export type Carryover = { task_id: string; reason: string; next_date: string }
+
+/** Handed in: submitted for approval or completed. The assignee's part is done. */
+export function isHandedIn(status: string): boolean {
+  return (TASK_HANDED_IN as readonly string[]).includes(status)
 }
 
-export function countItems(items: readonly PlanItem[]) {
-  let done = 0, notDone = 0, open = 0
-  for (const item of items) {
-    const s = effectiveStatus(item)
+export type DayTaskState = 'done' | 'carried' | 'open'
+
+export function dayTaskState(task: Pick<DayTask, 'id' | 'status'>, carried: ReadonlySet<string>): DayTaskState {
+  if (isHandedIn(task.status)) return 'done'
+  if (carried.has(task.id)) return 'carried'
+  return 'open'
+}
+
+/**
+ * The day's list: before filing, the open tasks due today or before; after filing, the tasks that were
+ * planned (whatever happened to them since) and any open task that became due later in the day.
+ * Cancelled tasks leave the list.
+ */
+export function dayTaskList(tasks: readonly DayTask[], today: string, planned: readonly string[] | null): DayTask[] {
+  const plannedSet = new Set(planned ?? [])
+  return tasks
+    .filter(t => t.status !== 'cancelled')
+    .filter(t => plannedSet.has(t.id) || isTaskDueForPlan(t, today))
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? '') || a.title.localeCompare(b.title))
+}
+
+export function countDay(tasks: readonly DayTask[], carried: ReadonlySet<string>) {
+  let done = 0, carriedN = 0, open = 0
+  for (const t of tasks) {
+    const s = dayTaskState(t, carried)
     if (s === 'done') done++
-    else if (s === 'not_done') notDone++
+    else if (s === 'carried') carriedN++
     else open++
   }
-  return { total: items.length, done, notDone, open }
+  return { total: tasks.length, done, carried: carriedN, open }
 }
 
 // ─── Validation of what a person sends ───────────────────────────────────────
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string }
 const bad = (error: string): Result<never> => ({ ok: false, error })
+const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 
-function text(v: unknown): string {
-  return typeof v === 'string' ? v.trim() : ''
+export const REASON_MAX = 1000
+export const SUMMARY_MAX = 4000
+
+/** One task carried to another day: a reason and a day after today, within 60 days. */
+export function validateCarryover(body: unknown, today: string): Result<Carryover> {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const taskId = text(b.task_id)
+  const reason = text(b.reason)
+  const next = text(b.next_date)
+  if (!/^[0-9a-f-]{36}$/i.test(taskId)) return bad('Unknown task.')
+  if (reason.length < 3) return bad('Say why it is not finished (at least 3 characters).')
+  if (reason.length > REASON_MAX) return bad(`Keep the reason under ${REASON_MAX} characters.`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return bad('Choose the day it will be done.')
+  if (next <= today) return bad('The new date must be after today.')
+  if (next > istAddDays(today, 60)) return bad('Choose a day within the next 60 days.')
+  return { ok: true, value: { task_id: taskId, reason, next_date: next } }
 }
 
-export function validateNewItem(body: Record<string, unknown>): Result<{ title: string; expected_output: string | null }> {
-  const title = text(body.title)
-  const output = text(body.expected_output)
-  if (title.length < 2) return bad('Write what you will do (at least 2 characters).')
-  if (title.length > ITEM_TITLE_MAX) return bad(`Keep the item under ${ITEM_TITLE_MAX} characters.`)
-  if (output.length > ITEM_OUTPUT_MAX) return bad(`Keep the expected output under ${ITEM_OUTPUT_MAX} characters.`)
-  return { ok: true, value: { title, expected_output: output || null } }
-}
-
-export function isHttpUrl(v: string): boolean {
-  if (!/^https?:\/\//i.test(v) || v.length > URL_MAX) return false
-  try { new URL(v); return true } catch { return false }
-}
-
-const PHOTO_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/
-
-/** A proof photo path is the caller's own folder: '{caller}/{uuid}.jpg'. */
-export function isOwnPhotoPath(path: string, employeeId: string): boolean {
-  return PHOTO_PATH.test(path) && path.startsWith(`${employeeId}/`)
-}
-
-export type ItemClose =
-  | { status: 'done'; proof_url: string | null; proof_photo_path: string | null; proof_note: string | null }
-  | { status: 'not_done'; reason: string; next_date: string }
-
-/**
- * Closing one item. Done: an own item needs a link or a photo; an assigned item needs its task handed in
- * (pending approval or completed) in Task Management. Not done: a reason and a day from today on.
- */
-export function validateItemClose(
-  body: Record<string, unknown>,
-  item: Pick<PlanItem, 'source' | 'task_status'>,
-  employeeId: string,
-  today: string,
-): Result<ItemClose> {
-  const status = body.status
-  if (status === 'done') {
-    const url = text(body.proof_url)
-    const photo = text(body.proof_photo_path)
-    const note = text(body.proof_note)
-    if (url && !isHttpUrl(url)) return bad('The proof link must start with http:// or https://.')
-    if (photo && !isOwnPhotoPath(photo, employeeId)) return bad('That photo is not one you uploaded.')
-    if (note.length > NOTE_MAX) return bad(`Keep the note under ${NOTE_MAX} characters.`)
-    if (item.source === 'assigned') {
-      if (!assignedItemHandedIn(item)) {
-        return bad('Submit this task in Task Management first. Until then, close it as Not done with a reason.')
-      }
-    } else if (!url && !photo) {
-      return bad('Add proof: a link or a photo of the work.')
-    }
-    return { ok: true, value: { status: 'done', proof_url: url || null, proof_photo_path: photo || null, proof_note: note || null } }
-  }
-  if (status === 'not_done') {
-    const reason = text(body.reason)
-    const next = text(body.next_date)
-    if (reason.length < 3) return bad('Say why it is not done (at least 3 characters).')
-    if (reason.length > REASON_MAX) return bad(`Keep the reason under ${REASON_MAX} characters.`)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return bad('Choose the day it will be done.')
-    if (next <= today) return bad('The new date must be after today.')
-    if (next > istAddDays(today, 60)) return bad('Choose a day within the next 60 days.')
-    return { ok: true, value: { status: 'not_done', reason, next_date: next } }
-  }
-  return bad('Choose Done or Not done.')
+/** The end-of-day summary, which is also the EOD log (owner, 2026-11-12: one evening action). */
+export function validateSummary(v: unknown): Result<string> {
+  const s = text(v)
+  if (s.length < 3) return bad('Write a line or two about your day: what got done, what is stuck.')
+  if (s.length > SUMMARY_MAX) return bad(`Keep the summary under ${SUMMARY_MAX} characters.`)
+  return { ok: true, value: s }
 }
 
 // ─── The night's judgement ───────────────────────────────────────────────────
