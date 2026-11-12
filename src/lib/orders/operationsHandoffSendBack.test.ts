@@ -16,6 +16,8 @@ import {
   ORDER_OPERATIONS_HANDOFF_COLUMNS,
   OPERATIONS_HANDOFF_EVENT_LABEL,
   OPERATIONS_HANDOFF_EVENT_TONE,
+  SEND_BACK_AGAIN_LABEL,
+  SEND_BACK_BUTTON_LABEL,
   canSendBackToSales,
   describeHandoffFailure,
   describeOperationsHandoffEvent,
@@ -106,22 +108,35 @@ describe('the rules the page uses', () => {
 
   test('the strip says who sent it back, when, and the comment', () => {
     const when = (iso: string | null) => (iso ? '12 Nov, 3:40 pm' : '—')
-    assert.equal(sentBackLine({ by: 'Nishant', atIso: '2026-11-12T10:10:00Z', text: 'Revise the price.' }, when),
-      'Nishant sent it back to the salesperson on 12 Nov, 3:40 pm: “Revise the price.”')
-    assert.match(sentBackLine({ by: null, atIso: '2026-11-12T10:10:00Z', text: 'x' }, when) ?? '', /^The approver sent it back/)
-    assert.equal(sentBackLine(null, when), null)
+    assert.deepEqual(sentBackLine({ by: 'Nishant', atIso: '2026-11-12T10:10:00Z', text: 'Revise the price.' }, when, 'Ashok Choudhary'),
+      { head: 'Sent back to Ashok Choudhary · 12 Nov, 3:40 pm · by Nishant', comment: 'Revise the price.' })
+    assert.deepEqual(sentBackLine({ by: null, atIso: '2026-11-12T10:10:00Z', text: 'x' }, when, null),
+      { head: 'Sent back to the salesperson · 12 Nov, 3:40 pm', comment: 'x' })
+    assert.equal(sentBackLine(null, when, 'Ashok Choudhary'), null)
   })
 
-  test('the strip keeps Operations\' reason and adds the send-back after it, for a flagged and a waiting version', () => {
+  test('once a comment has gone the button says so and offers another', () => {
+    assert.equal(SEND_BACK_AGAIN_LABEL, 'Send another comment')
+    assert.notEqual(SEND_BACK_AGAIN_LABEL, SEND_BACK_BUTTON_LABEL)
+  })
+
+  test('the strip keeps Operations\' reason as it is and gives the send-back its OWN line, flagged or waiting', () => {
     const base = {
       status: 'open', productionAligned: false, hasSalesperson: true, hasDueDate: true, hasLeadSource: true, isOverdue: false,
       awaitingVerificationCount: 0, pendingChangeRequests: 0, pendingPiRevision: false,
     }
     const find = (r: Parameters<typeof orderAttentionItems>[0]['operationsReview']) =>
       orderAttentionItems({ ...base, operationsReview: r } as Parameters<typeof orderAttentionItems>[0]).find(i => i.key === 'operations_review')
-    assert.equal(find({ versionNumber: 1, status: 'clarification_needed', unassigned: false, reasonLine: 'Price is low.', salesLine: 'Sent back.' })?.detail, 'Price is low. Sent back.')
-    assert.equal(find({ versionNumber: 1, status: 'awaiting', unassigned: false, salesLine: 'Sent back.' })?.detail, 'Operations has not accepted this PI version yet. Sent back.')
-    assert.equal(find({ versionNumber: 1, status: 'awaiting', unassigned: false })?.detail, 'Operations has not accepted this PI version yet.')
+    const sent = { head: 'Sent back to Ashok · 6:04 pm', comment: 'Revise it.' }
+    const flagged = find({ versionNumber: 1, status: 'clarification_needed', unassigned: false, reasonLine: 'Price is low.', sentBack: sent })
+    assert.equal(flagged?.detail, 'Price is low.')
+    assert.deepEqual(flagged?.sent, sent)
+    const waiting = find({ versionNumber: 1, status: 'awaiting', unassigned: false, sentBack: sent })
+    assert.equal(waiting?.detail, 'Operations has not accepted this PI version yet.')
+    assert.deepEqual(waiting?.sent, sent)
+    const none = find({ versionNumber: 1, status: 'awaiting', unassigned: false })
+    assert.equal(none?.detail, 'Operations has not accepted this PI version yet.')
+    assert.equal(none?.sent, undefined)
   })
 
   test('the history says it in words', () => {

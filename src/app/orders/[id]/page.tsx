@@ -225,6 +225,7 @@ import {
   latestSentToSales,
   sentBackLine,
   RESPOND_BUTTON_LABEL,
+  SEND_BACK_AGAIN_LABEL,
   SEND_BACK_BUTTON_LABEL,
   describeOperationsHandoff,
   latestRealignment,
@@ -2910,9 +2911,8 @@ export default function OrderDetailPage() {
       ? `${operationsView.response.by ?? 'The PI owner'} responded${operationsView.response.at ? ` on ${operationsView.response.at}` : ''}: “${operationsView.response.text}”`
       : null
   // THE APPROVER'S COMMENT TO THE SALESPERSON (20270619000000), from the history already loaded.
-  const operationsSalesLine = operationsSplit.live
-    ? sentBackLine(latestSentToSales(activity, operationsSplit.live.id), iso => (iso ? fmtDateTime(iso) : '—'))
-    : null
+  const operationsSent = operationsSplit.live ? latestSentToSales(activity, operationsSplit.live.id) : null
+  const operationsSentLine = sentBackLine(operationsSent, iso => (iso ? fmtDateTime(iso) : '—'), order.assigned_to_name ?? null)
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -3041,7 +3041,7 @@ export default function OrderDetailPage() {
       ? {
           versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned,
           reasonLine: operationsClarificationLine,
-          salesLine: operationsSalesLine,
+          sentBack: operationsSentLine,
         }
       : null,
     alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning
@@ -3484,7 +3484,7 @@ export default function OrderDetailPage() {
               {sendBackOffered && (
                 <button type="button" className="boe-btn" disabled={handoffBusy}
                   onClick={() => { setHandoffError(null); setSendBackOpen(true) }}>
-                  {SEND_BACK_BUTTON_LABEL}
+                  {operationsSent ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}
                 </button>
               )}
             </>

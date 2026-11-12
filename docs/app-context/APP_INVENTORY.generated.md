@@ -5,20 +5,21 @@
 
 ## Snapshot
 
-- Commit: `4b674f77` — Merge main into feat/seo-brief-falls (docs conflicts: keep both changelog entries, take main's row 24, regenerate inventory)
-- Commits on this branch: 1263
+- Commit: `b30d3b7b` — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- Commits on this branch: 1264
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 436 (first `20260530_create_positions.sql`, latest `20270620000000_pricing_price_book.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 997   Enums: 0
-- Test files: 807   Next.js 16.2.6, React 19.2.4
+- Test files: 808   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `4b674f77` 2026-11-12 Merge main into feat/seo-brief-falls (docs conflicts: keep both changelog entries, take main's row 24, regenerate inventory)
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
+- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
 - `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
 - `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
 - `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
-- `37dfb21a` 2026-11-12 SEO brief: the biggest falls first in the ranking part
 - `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
 - `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
 - `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
@@ -38,7 +39,6 @@
 - `c7998743` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive) (#680)
 - `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
 - `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
-- `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
 
 ## Pages by top-level area
 
@@ -157,7 +157,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 107 source, 164 test
+- `src/lib/orders` — 107 source, 165 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

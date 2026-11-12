@@ -58,6 +58,11 @@ export type OrderAttentionItem = {
   title?: string
   detail?: string
   /**
+   * The approver's "sent back to the salesperson", drawn as its own line under the detail so it
+   * cannot be mistaken for part of Operations' reason: who it went to and when, then the comment.
+   */
+  sent?: { head: string; comment: string }
+  /**
    * Red for a genuinely overdue Order, a flagged PI or a date that looks wrong;
    * blue for a changed PI waiting on a decision; every other gap is amber.
    */
@@ -97,8 +102,8 @@ export type OrderAttentionInput = {
      * Awaiting after a response: the remarks sent back to them.
      */
     reasonLine?: string | null
-    /** The approver's comment when the PI was sent back to the salesperson (sentBackLine); added after the reason. */
-    salesLine?: string | null
+    /** The approver's comment when the PI was sent back to the salesperson (sentBackLine); its own line under the reason. */
+    sentBack?: { head: string; comment: string } | null
   } | null
   /** Production was aligned before this PI version was approved. */
   alignmentPredatesVersion?: number | null
@@ -216,13 +221,11 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
       title: r.status === 'clarification_needed'
         ? `PI V${r.versionNumber} flagged by operations`
         : `PI V${r.versionNumber} awaiting operations review`,
-      detail: [
-        r.status === 'clarification_needed'
-          ? (r.reasonLine ?? 'Operations needs a clarification before it can accept this PI.')
-          // A resubmitted version carries the answer to Operations' objection.
-          : (r.reasonLine ?? 'Operations has not accepted this PI version yet.'),
-        r.salesLine,
-      ].filter(Boolean).join(' '),
+      detail: r.status === 'clarification_needed'
+        ? (r.reasonLine ?? 'Operations needs a clarification before it can accept this PI.')
+        // A resubmitted version carries the answer to Operations' objection.
+        : (r.reasonLine ?? 'Operations has not accepted this PI version yet.'),
+      ...(r.sentBack ? { sent: r.sentBack } : {}),
     })
   }
   if (input.pendingChangeRequests > 0) {

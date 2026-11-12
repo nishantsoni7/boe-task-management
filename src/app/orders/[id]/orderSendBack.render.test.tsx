@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { SendBackToSalesModal } from './OrderRevisionModals'
+import { OrderAttentionBar } from './OrderWorkspace'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -45,8 +46,10 @@ describe('the page', () => {
 
   test('draws the button on the Operations strip, for an administrator or an approver, never under View As', () => {
     assert.match(page, /const sendBackOffered = operationsReviewOpen && canSendBackToSales\(\{[\s\S]*?maySend: actingAsAdmin \|\| mayDecidePiAsAdmin,[\s\S]*?viewingAs: !!viewAsUserId,/)
-    assert.ok(body.indexOf('<OrderAttentionBar') < body.indexOf('{SEND_BACK_BUTTON_LABEL}'))
-    assert.ok(body.indexOf('{SEND_BACK_BUTTON_LABEL}') < body.indexOf('<OrderStatusStrip'))
+    // After a send the same button says so and offers another (owner, 2026-11-12: four presses looked like nothing).
+    const label = '{operationsSent ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}'
+    assert.ok(body.indexOf('<OrderAttentionBar') < body.indexOf(label))
+    assert.ok(body.indexOf(label) < body.indexOf('<OrderStatusStrip'))
     assert.match(body, /onClick=\{\(\) => \{ setHandoffError\(null\); setSendBackOpen\(true\) \}\}/)
   })
 
@@ -58,6 +61,30 @@ describe('the page', () => {
 
   test('the comment reaches the strip from the history, so it works before and after a reload', () => {
     assert.match(page, /latestSentToSales\(activity, operationsSplit\.live\.id\)/)
-    assert.match(page, /salesLine: operationsSalesLine,/)
+    assert.match(page, /sentBack: operationsSentLine,/)
+    assert.match(page, /sentBackLine\(operationsSent, iso => \(iso \? fmtDateTime\(iso\) : '—'\), order\.assigned_to_name \?\? null\)/)
+  })
+})
+
+describe('the strip after a send', () => {
+  const view = (sent?: { head: string; comment: string }) => renderToStaticMarkup(
+    <OrderAttentionBar items={[{
+      key: 'operations_review', label: 'PI V1 flagged by operations: clarification needed', tone: 'red',
+      title: 'PI V1 flagged by operations', detail: 'Nitish Bansal cannot accept PI V1 yet. Reason: price too low.',
+      ...(sent ? { sent } : {}),
+    }]} actions={<button type="button">Send another comment</button>} />,
+  )
+
+  test('says it went: its own line, with who it went to, when, and the comment, apart from Operations\' reason', () => {
+    const html = view({ head: 'Sent back to Ashok Choudhary · 12 Nov 2026, 06:04 pm · by Nishant Soni', comment: 'Check the details and resubmit.' })
+    assert.match(html, /data-sent-back="true"/)
+    assert.match(html, /order-notice-sent-head[^>]*>[\s\S]*?Sent back to Ashok Choudhary · 12 Nov 2026, 06:04 pm · by Nishant Soni/)
+    assert.match(html, /order-notice-sent-comment[^>]*>“Check the details and resubmit\.”/)
+    assert.ok(html.indexOf('order-notice-detail') < html.indexOf('order-notice-sent'), 'Operations\' reason first, the send-back under it')
+    assert.match(html, /<button[^>]*>Send another comment/)
+  })
+
+  test('draws nothing extra when nothing was sent', () => {
+    assert.doesNotMatch(view(), /order-notice-sent|data-sent-back/)
   })
 })
