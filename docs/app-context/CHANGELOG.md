@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations, phase 6: Reports (PR pending, branch `feat/quotation-reports`) · `20270618000000` → NOT YET APPLIED
+## 2026-11-12 — Quotations, phase 6: Reports (PR #694, branch `feat/quotation-reports`) · `20270618000000` → NOT YET APPLIED
 - **Owner approval (2026-11-12).** A Reports page computed from recorded data only; managers see the whole team, everyone else their own; the weekly summary on the page for now.
 - **Built.** `/quotations/reports`: This week, funnel with values, by salesperson / client type / source, speed, open by age, opened but not followed up, lost reasons, discount against wins, price approvals waiting; period filter and a CSV per section.
 - **Database.** One read-only function `quotation_report(from, to, scope)`; no table, no write.
