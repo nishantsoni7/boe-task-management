@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `749a436a` — Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
-- Commits on this branch: 1239
+- Commit: `3d9faa0d` — Docs: record the merge of #676 (backup copy to the external drive)
+- Commits on this branch: 1242
 - Pages (`page.tsx`): 187   API routes (`route.ts`): 190
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
 - Tables ever created: 231 (dropped at some point: 7)   SQL functions: 977   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `3d9faa0d` 2026-11-12 Docs: record the merge of #676 (backup copy to the external drive)
+- `0f5d203a` 2026-11-12 Docs: Quotations phase 3 (Import) merged as 749a436a (#678)
+- `26e8e2f1` 2026-11-12 Backup: the copy to the external drive now updates moved git branches (#676)
 - `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
 - `23f27a7e` 2026-11-12 Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
 - `370f512f` 2026-11-12 Quotations, phase 2: Confirm → PI draft, and Download in PI format (migration 20270615000000, apply before merge) (#674)
@@ -36,9 +39,6 @@
 - `44b194ba` 2026-11-11 Orders / Finance switch: warm the other module on intent, not on every page (#656)
 - `06167f61` 2026-11-11 Payments: Canara asks for the paying account, no "Where is this money now?" (#653)
 - `8ff4dafd` 2026-11-11 Tasks: remove automatic escalation (migration 20270610000000, apply order free) (#652)
-- `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
-- `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
-- `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
 
 ## Pages by top-level area
 
