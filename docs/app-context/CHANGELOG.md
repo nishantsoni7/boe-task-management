@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Sales: WhatsApp Connection page for the company number (branch `feat/whatsapp-connection-page`, not yet merged) · no migration
+- **Owner ask.** Connect the company number (+91 87691 13712, in the WhatsApp Business app on the phone) so its chats become leads, keeping the app on the phone; "Yes, plan it", plan approved 2026-11-12.
+- **Built.** Control Center > Records & Data > **WhatsApp Connection**: loads Meta's JS SDK and opens Embedded Signup with WhatsApp Business app onboarding (coexistence); shows the account and phone number IDs, a cancel, Meta's error, or a refused WRONG flow (a plain Cloud API finish takes the number off the phone). `src/lib/salesLeads/connectSignup.ts` reads Meta's messages. Sends nothing, stores nothing, calls no Meta address (the WhatsApp guards pass unchanged); our app is subscribed to the new account once by hand. Two PUBLIC env values: `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (unset = "Setup missing").
+- **Not yet usable.** Needs Meta App Review approval for the two WhatsApp permissions (the app is live), the Embedded Signup configuration and allowed domain in the Meta app, and the two values in Vercel. The real test is in dossier 28 §11.
+- **Tests.** `connectSignup.test.ts` (5), `controlCenterNav.test.ts` lists the section; `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** Revert the PR; nothing on Meta's side depends on the page once a number is connected.
+
 ## 2026-11-12 — Tasks: automatic escalation removal applied (PR #652, merged 2026-11-11 as `8ff4dafd`) · `20270610000000` → APPLIED 2026-11-12 13:00 IST
 - **Before.** The owner said yes after the read-only check in the PR read, on production: one hourly job `task-health-check` (`0 * * * *`, active), function writes escalation lines `true`, notifications `false`, stale flag `true`, 1,031 old `escalated` lines on 900 tasks. The live function was `SECURITY INVOKER`, no `SET`, owner `postgres`, so `CREATE OR REPLACE` changes no property. Its body equals `20261015000000` except CRLF line endings, so the planned rollback stands; the exact live text was also saved outside the repo.
 - **Applied.** Backup 12:45–12:59 IST (241 tables, 464,077 rows, 0 errors; `verify-backups`: all required layers fresh). `db push --linked --dry-run --include-all` listed only this file; `db push --linked --include-all` applied it at 13:00 IST; `migration list` shows it remote.

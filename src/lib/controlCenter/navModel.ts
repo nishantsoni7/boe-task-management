@@ -180,6 +180,11 @@ export const NAV_HUBS: readonly NavHub[] = [
         description: 'Member-wise task reporting and permanent task deletion.',
         keywords: ['tasks', 'delete task', 'super admin', 'task report'],
       },
+      {
+        id: 'whatsapp-connection', label: 'WhatsApp Connection', href: `${MAIN_PATH}/whatsapp-connection`,
+        description: 'Connect the company WhatsApp number to the Lead Master. It stays on the phone.',
+        keywords: ['whatsapp', 'company number', 'coexistence', 'meta', 'connect number', 'leads'],
+      },
     ],
   },
 ]
