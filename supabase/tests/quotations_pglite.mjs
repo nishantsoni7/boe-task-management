@@ -76,10 +76,11 @@ await db.exec(mig('20270614000000_quotations_module.sql'))
 await db.exec(`create table public.order_submissions (id uuid primary key default gen_random_uuid(), created_by uuid,
   status text not null default 'draft', draft_reference text, approved_at timestamptz);
   create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id) on delete cascade,
-  product_name text, cost_per_piece numeric(12,2) not null);`)
+  product_name text, cost_per_piece numeric(12,2) not null, quantity numeric(12,2) not null default 1);`)
 await db.exec(mig('20270615000000_quotation_pi_link.sql'))
 await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 await db.exec(mig('20270618000000_quotation_reports.sql'))
+await db.exec(mig('20270620000000_pricing_price_book.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -434,5 +435,33 @@ assert.deepEqual(quiet.opened_no_followup.map(x => x.quote_no), ['QT-MS-09999'])
 await rpc(U.sales, 'quotation_set_status', old, 'negotiating', null)
 assert.equal((await report(U.sales, 'mine')).opened_no_followup.length, 0)
 ok('a quotation the client opened over two days ago with nothing done since is listed, and leaves the list once followed up')
+
+// ── Phase 7A: the price book (20270620000000) ──────────────────────────────
+const hints7 = await rpc(U.sales, 'quotation_price_hints', ['King bed'], null)
+const kinds = hints7[0].points.map(x => x.k)
+assert.ok(kinds.includes('order'), 'approved PI prices are points')
+assert.ok(hints7[0].points.every(x => Number(x.p) > 0 && x.at), 'every point has a price and a date')
+assert.ok(!hints7[0].points.some(x => Number(x.p) === 1000 || Number(x.p) === 99999), 'draft PIs and PIs older than three years are not points')
+assert.ok(hints7[0].points.length <= 30)
+ok('price hints now carry the points the suggestion learns from: approved PIs and quotations, newest first')
+
+await fails(U.sales, `select public.pricing_price_book(null, 50)`, [], /PRICING_FORBIDDEN/)
+await fails(null, `select public.pricing_price_book(null, 50)`, [], /PRICING_FORBIDDEN/)
+await db.query(`insert into public.grants values ($1, 'pricing', 'view')`, [U.manager])
+const book = await rpc(U.manager, 'pricing_price_book', null, 50)
+const kingBed = book.find(f => f.key === 'bed king')
+assert.ok(kingBed, 'King bed is a family')
+assert.equal(kingBed.orders, 1) // "King bed with storage" is a family of its own (exact words); the draft and the old PI are not counted
+assert.ok(book.find(f => f.key === 'bed king storage'))
+assert.ok(book.every((f, i) => i === 0 || f.last_at <= book[i - 1].last_at), 'newest activity first')
+const searched = await rpc(U.admin, 'pricing_price_book', 'king', 50)
+assert.ok(searched.length > 0 && searched.every(f => f.key.split(' ').includes('king')))
+ok('the price book opens for Admin and people granted Pricing only, one row per product family, searchable')
+
+for (const fn of ['pricing_all_points(uuid)', 'pricing_points_for(text[],uuid)']) {
+  const r = await db.query(`select has_function_privilege('authenticated', 'public.${fn}', 'execute') a`)
+  assert.equal(r.rows[0].a, false, fn)
+}
+ok('the point functions are internal; nothing in the price book names a client')
 
 console.log(`all ${checks} checks passed`)

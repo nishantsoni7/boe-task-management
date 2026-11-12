@@ -522,7 +522,7 @@ registerModule({
 registerModule({
   moduleKey: 'pricing',
   displayName: 'Pricing',
-  description: 'Pricing module. Coming soon.',
+  description: 'Pricing: the price book and suggested prices, learned from approved PIs and quotations.',
   actions: [{ actionKey: 'view', displayName: 'View' }],
 })
 
