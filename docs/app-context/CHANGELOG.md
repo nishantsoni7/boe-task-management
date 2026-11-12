@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Backup: the copy to the external drive now updates moved branches (PR #676) · no migration
+- **Found.** The owner asked for a backup on the hard disk (D:) on 2026-11-12. After the copy, 20 of 2,398 refs in the drive's git mirror (`main` included) still named their old commit. The second-copy step skipped any file already on the drive with the same size, and every git ref is a 41-byte file, so a branch that moved was never updated. Objects were always copied, so no commit was missing, but a restore from the drive alone would have opened on old branch tips. The nightly task would have repeated it every night.
+- **Fixed.** `copyGitMirror` (`scripts/backup/lib.mjs`) copies objects first (skipped when already there: they never change), then refs, HEAD and the rest always, so a ref never lands before its commit. `backup-all.mjs` uses it for `git/boe-task-management.git`; the other layers copy as before (storage stays incremental by size).
+- **Proof.** Two new tests in `lib.test.mjs` (a moved ref with the same size reaches the drive; an object already there is left alone). The old rule, run on the same kind of fixture, leaves the stale ref. All 32 backup tests pass. Run on the real mirror against D:: 2,398 refs equal to local, no tip missing.
+- **After the merge.** Re-run `node scripts/backup/install-backup-system.mjs` so the installed tools in `BOE-Development\backups\tools` get the fix; the 9:30 pm task uses those.
+- **Rollback.** Revert the commit and reinstall the tools.
+
 ## 2026-11-12 — Quotations, phase 3: Import a client file (PR #677, branch `feat/quotation-import`) · no migration
 - **Owner ask / approval.** Client requirements arrive as Excel, PDF and photos; import them into the quotation (plan phase 3, approved 2026-11-12). The owner allowed BOQ PDFs and photos to go to the AI reader.
 - **Built.** "Import client file" on the builder: Excel, CSV and pasted rows read in the browser (headings by name, room-title rows, per-room quantities, .xlsx pictures); PDF and photos read by `POST /api/quotations/import` (Claude, fixed schema, not stored, no names, phones or prices copied). A review table to edit, untick and check shaded cells, then Add: room types and products without prices, saved with the quotation's own Save.

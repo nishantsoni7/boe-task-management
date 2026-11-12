@@ -1,6 +1,9 @@
-import test from 'node:test'
+import test, { after } from 'node:test'
 import assert from 'node:assert/strict'
-import { countCopyRows, mergedSince } from './lib.mjs'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { copyGitMirror, countCopyRows, mergedSince } from './lib.mjs'
 
 // The COPY block of an empty table is only its COPY line and the terminator. The first version of the pg_dump
 // step counted rows with a pattern that searched for the terminator, ran past the empty table's own terminator
@@ -57,4 +60,37 @@ test('a merge before the backup began is covered, and one at or after that momen
 test('the waiting list is oldest first and is empty when everything is covered', () => {
   assert.deepEqual(mergedSince(merges, '2026-11-01T00:00:00.000Z').map((p) => p.number), [1, 2, 3])
   assert.deepEqual(mergedSince(merges, '2026-11-01T18:00:00.000Z'), [])
+})
+
+// The second-drive copy skipped any file already there with the same size. Every git ref is a 41-byte file, so a branch
+// that moved (main too) stayed on its old commit on the drive (20 of 2398 refs, 2026-11-12).
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'boe-git-copy-test-'))
+after(() => fs.rmSync(tmp, { recursive: true, force: true }))
+const put = (root, rel, text) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) }
+const get = (root, rel) => fs.readFileSync(path.join(root, rel), 'utf8')
+const sha = (c) => c.repeat(40) + '\n'
+
+test('a moved branch reaches the drive even though its ref file keeps the same size', () => {
+  const src = path.join(tmp, 'src'), dst = path.join(tmp, 'dst')
+  put(src, 'HEAD', 'ref: refs/heads/main\n')
+  put(src, 'refs/heads/main', sha('a'))
+  put(src, 'objects/aa/one', 'AAAA')
+  copyGitMirror(src, dst)
+  assert.equal(get(dst, 'refs/heads/main'), sha('a'))
+
+  put(src, 'refs/heads/main', sha('b'))
+  put(src, 'refs/github/pull/7', sha('c'))
+  put(src, 'objects/bb/two', 'BBBB')
+  copyGitMirror(src, dst)
+  assert.equal(get(dst, 'refs/heads/main'), sha('b'))
+  assert.equal(get(dst, 'refs/github/pull/7'), sha('c'))
+  assert.equal(get(dst, 'objects/bb/two'), 'BBBB')
+})
+
+test('an object already on the drive is left alone, because objects never change', () => {
+  const src = path.join(tmp, 'src2'), dst = path.join(tmp, 'dst2')
+  put(src, 'objects/aa/one', 'AAAA')
+  put(dst, 'objects/aa/one', 'keep') // same size as the source file, so it counts as already copied
+  copyGitMirror(src, dst)
+  assert.equal(get(dst, 'objects/aa/one'), 'keep')
 })
