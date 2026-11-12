@@ -121,9 +121,12 @@ function useUnreadCount(category: NotificationCategory, enabled = true): number 
   return useUnreadCountState(category, enabled).count ?? 0
 }
 
-/** Task Management's unread badge count — the default for every module sidebar. */
-export function useUnreadNotifications(): number {
-  return useUnreadCount('task')
+/**
+ * Task Management's unread badge count — the default for every module sidebar.
+ * `enabled = false` skips the request, for a sidebar that shows its own module's count instead.
+ */
+export function useUnreadNotifications(enabled = true): number {
+  return useUnreadCount('task', enabled)
 }
 
 /** Finance-scoped unread badge count. */

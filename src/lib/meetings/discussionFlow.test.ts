@@ -195,9 +195,10 @@ describe('capabilities decide what is drawn, and the database decides the rest',
   })
 
   test('Add to Meeting is denied by default until the check answers', () => {
-    assert.match(TASK_PAGE, /const \[canAddToMeeting,\s*setCanAddToMeeting\]\s*=\s*useState\(false\)/)
-    assert.match(TASK_PAGE, /hasPermission\(supabase, signedInUserId, 'meetings', 'view'\)/)
-    assert.match(TASK_PAGE, /\.catch\(\(\) => \{ if \(active\) setCanAddToMeeting\(false\) \}\)/)
+    // Read from the permissions the shell already resolved; empty until they are known, so it denies.
+    assert.match(TASK_PAGE, /const canAddToMeeting = !!signedInUserId && \(/)
+    assert.match(TASK_PAGE, /\(permissionsByModule\.get\('meetings'\) \?\? \[\]\)\.some\(p => p\.actionKey === 'view' && p\.allowed\)/)
+    assert.doesNotMatch(TASK_PAGE, /hasPermission\(/)
   })
 
   test('the target-meeting list offers only meetings the RPC will accept', () => {

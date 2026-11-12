@@ -7,12 +7,9 @@ import { Pin, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import {
   deriveOrdersCapabilities,
-  NO_ORDERS_CAPABILITIES,
   type OrdersCapabilities,
 } from '@/lib/permissions/orders'
 import {
@@ -84,12 +81,17 @@ type OperationsState =
 
 export default function OrdersDashboardPage() {
   const [pageLoading, setPageLoading] = useState(true)
-  const [profile,     setProfile]     = useState<UserProfile | null>(null)
-  // Drives the Upload PI entry point. Starts empty so
+  // The signed-in person's row and permissions, resolved once by the Orders gate
+  // (usePermissionContext) and read here from that cache rather than asked again.
+  const { profile, role, permissionsByModule } = usePermissionContext()
+  // Drives the Upload PI entry point. Empty until the permissions are known, so
   // it cannot flash for somebody who is not allowed it; /orders/import and
   // the review controls each enforce their own grant server-side, because hiding
   // a control is not access control.
-  const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
+  const ordersCaps = useMemo<OrdersCapabilities>(
+    () => deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? []),
+    [role, permissionsByModule],
+  )
   const [summary,     setSummary]     = useState<SummaryState>({ kind: 'loading' })
   const [personal,    setPersonal]    = useState<PersonalState>({ kind: 'loading' })
   const [operations,  setOperations]  = useState<OperationsState>({ kind: 'loading' })
@@ -204,28 +206,14 @@ export default function OrdersDashboardPage() {
     })
   }
 
+  // The profile and the Orders capabilities are already known when this page
+  // mounts: the Orders gate (layout.tsx) resolved them before rendering it, so
+  // only the dashboard's own data is read here. pageLoading still holds every
+  // control back until that has landed.
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
-      // ONE ROUND TRIP, NOT THREE. The profile, the Orders permission resolver
-      // and the dashboard's own data each need only the session's user id, so
-      // they run together. The capabilities are still resolved by
-      // resolve_effective_permissions in the database and applied before any
-      // control renders — pageLoading is not cleared until all have landed.
-      const [{ data: me }, ordersPerms] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
-        loadData(session.user.id),
-      ])
-
-      setProfile(me as UserProfile)
-      setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
+      if (!profile) return
+      await loadData(profile.id)
       setPageLoading(false)
     }
     init()

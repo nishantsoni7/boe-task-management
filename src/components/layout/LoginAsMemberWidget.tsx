@@ -67,6 +67,10 @@ export default function LoginAsMemberWidget() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  // The role is read once per signed-in person. supabase-js replays INITIAL_SESSION to every new
+  // listener and fires TOKEN_REFRESHED and SIGNED_IN again on its own, so reading on every event
+  // fetched the same row 2-3 times on every page. A different person (a login-as swap) reads again.
+  const roleRead = useRef<{ userId: string; isAdmin: Promise<boolean> } | null>(null)
 
   // Identity: a real admin, or a stash proving we are mid-impersonation.
   useEffect(() => {
@@ -85,8 +89,17 @@ export default function LoginAsMemberWidget() {
       }
       if (!session) { setIsAdmin(false); return }
       if (s && session.user.id === s.target.id) { setIsAdmin(false); return }
-      const { data } = await supabase.from('users').select('role').eq('id', session.user.id).maybeSingle()
-      if (!cancelled) setIsAdmin(data?.role === 'admin')
+      const userId = session.user.id
+      let entry = roleRead.current
+      if (!entry || entry.userId !== userId) {
+        const read = Promise.resolve(supabase.from('users').select('role').eq('id', userId).maybeSingle())
+        const fresh = { userId, isAdmin: read.then(({ data }) => data?.role === 'admin') }
+        // A failed read is not remembered, so the next auth event asks again.
+        void read.then(({ error }) => { if (error && roleRead.current === fresh) roleRead.current = null })
+        roleRead.current = entry = fresh
+      }
+      const admin = await entry.isAdmin
+      if (!cancelled) setIsAdmin(admin)
     }
     void sync()
     const { data: sub } = supabase.auth.onAuthStateChange(() => { void sync() })

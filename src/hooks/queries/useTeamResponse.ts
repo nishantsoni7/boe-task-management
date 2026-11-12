@@ -39,6 +39,8 @@ export function useTeamResponse(userId: string | null | undefined) {
     queryFn: async () => {
       const supabase = createClient()
       const since = new Date(Date.now() - CLOSED_TASK_DAYS * 86_400_000).toISOString()
+      // Asked first, so it runs beside the reads below and shares the page's name-list request.
+      const peopleRequest = fetchTaskPeople()
 
       const tasks = unwrapPagedRows('team response tasks', await fetchAllRows<ResponseTask>((from, to) =>
         supabase
@@ -64,7 +66,7 @@ export function useTeamResponse(userId: string | null | undefined) {
             .order('id')
             .range(from, to) as unknown as PromiseLike<{ data: ResponseEvent[] | null; error: { message: string } | null }>))))
 
-      const people = await fetchTaskPeople()
+      const people = await peopleRequest
       return buildTeamResponse({
         tasks, events: eventPages.flat(), people,
         viewerId: userId as string,
