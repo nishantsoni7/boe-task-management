@@ -2,7 +2,7 @@
 
 **History.**
 - First built as a separate "My Day" list: PR #713, merged as `2466d96`, migration `20270622000000`. The owner said it was **APPLIED 2026-11-12, before that merge**; this was not re-checked from the cloud session.
-- Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270624000000_day_close_in_tasks.sql`, which **must be applied before that PR is merged**.
+- Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270624000000_day_close_in_tasks.sql` (PR #721, merged as `db54a23`; the owner said it was applied before the merge).
 
 The code is the truth; re-verify before relying on this page.
 

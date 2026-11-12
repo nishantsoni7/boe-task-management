@@ -4,7 +4,20 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270625000000` → NOT applied (apply before the merge)
+- **Owner ask.** Replace the Performance numbers with one monthly score that people see twice a day, with rewards and reviews. Plan and decisions are in dossier 31.
+- **Built.**
+  - The score, six parts and two tracks, month-to-date as points earned out of points possible (`src/lib/scoreboard/score.ts`).
+  - `scoreboard_daily`: a frozen nightly record, Vercel cron at 23:30 IST, with a 40-day backfill for the November trial.
+  - The morning card on `/modules` and the Task Management dashboard: score, change, trend, breakdown, fastest way up, top 5.
+  - The evening line under "Day closed".
+  - Per-person tracks and targets on Team Today.
+- **Not yet built.** The team vote, the owner's rating, the monthly review and awards screen, the Star Seller's Factory Focus slot, and retiring the old Performance pages.
+- **Proof.**
+  - `score.test.ts` (14 tests) and `scoreboard_pglite.mjs` (4 checks).
+  - `scoreEveryone` has no test (MemorySupabase cannot run its filters).
+
+## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721, squash-merged 2026-11-12 as `db54a23`) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Version clash found before merging.** The migration was first numbered `20270623000000`; #714 (`quotation_versions`) merged with the same number minutes earlier, and the history can record only one of them. Renumbered to `20270624000000` and made safe to run again. The owner must confirm in the database which of the two actually ran.
 - **Owner ask.** "My Day is very similar to Self Tasks… it will create confusion." Decided:
   - proof on every task a member finishes;
