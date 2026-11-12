@@ -218,3 +218,22 @@ function publishProfile(qc: QueryClient, userId: string, profile: UserProfile | 
   if (!profile) return
   qc.setQueryData(profileKey(userId), profile)
 }
+
+/**
+ * One module's effective permissions from the signed-in person's permission context, when a
+ * module shell resolved it within the last PERMISSION_STALE_MS; null otherwise, so the caller
+ * asks the database itself. Lets a screen's first capability check reuse the shell's answer
+ * instead of a second request (2026-11-12). A failed resolve was cached as an empty map, which
+ * gives an empty list here: no capability, exactly as a failed request of its own would.
+ */
+export function cachedModulePermissions(
+  qc: QueryClient,
+  userId: string,
+  moduleKey: string,
+): EffectivePermission[] | null {
+  const state = qc.getQueryState<{ permissionsByModule: ReadonlyMap<string, readonly EffectivePermission[]> }>(
+    ['permission-context', userId],
+  )
+  if (!state?.data || Date.now() - state.dataUpdatedAt > PERMISSION_STALE_MS) return null
+  return [...(state.data.permissionsByModule.get(moduleKey) ?? [])]
+}

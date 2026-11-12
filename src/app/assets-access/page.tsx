@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AssetsLayout, type AssetsView } from '@/components/layout/AssetsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -10,6 +12,8 @@ import { colors } from '@/lib/tokens'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useViewAs } from '@/hooks/useViewAs'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { cachedModulePermissions } from '@/hooks/queries/usePermissionContext'
+import type { EffectivePermission } from '@/lib/permissions/types'
 import {
   deriveAssetsAccessCapabilities,
   NO_ASSETS_ACCESS_CAPABILITIES,
@@ -1588,6 +1592,8 @@ function AssetsAccessScreen() {
   const [caps, setCaps] = useState<AssetsAccessCapabilities>(NO_ASSETS_ACCESS_CAPABILITIES)
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<AssetsView | null>(null)
+  // The view start-up just resolved capabilities for (see the re-resolve effect below).
+  const justResolvedFor = useRef<AssetsView | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   /**
    * A press of the area's primary action, waiting for the view that owns the
@@ -1604,6 +1610,7 @@ function AssetsAccessScreen() {
   const searchParams = useSearchParams()
   const requestedView = searchParams.get('view')
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId } = useViewAs()
   const inViewMode = !!viewAsUserId
 
@@ -1618,8 +1625,10 @@ function AssetsAccessScreen() {
   // engine, not from a role literal. Always resolved for the SIGNED-IN user,
   // never the impersonated one — View As shows another person's records, it
   // does not lend them your authority.
-  const refreshCapabilities = useCallback(async (prof: UserProfile) => {
-    const effective = await getEffectivePermissions(supabase, prof.id, 'assets_access').catch(() => [])
+  // `known`: the module gate's fresh answer (first load), so it is not asked twice.
+  // Opening the inventory later, and every focus, asks the database again.
+  const refreshCapabilities = useCallback(async (prof: UserProfile, known?: EffectivePermission[] | null) => {
+    const effective = known ?? await getEffectivePermissions(supabase, prof.id, 'assets_access').catch(() => [])
     const resolved = deriveAssetsAccessCapabilities(prof.role, effective)
     setCaps(resolved)
     return resolved
@@ -1631,11 +1640,7 @@ function AssetsAccessScreen() {
       if (!session) { router.push('/login'); return }
 
       const [{ data: p }, { data: empData }] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-          .eq('id', session.user.id)
-          .single(),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
         supabase
           .from('users')
           .select('id, full_name, role, team')
@@ -1648,14 +1653,16 @@ function AssetsAccessScreen() {
       setProfile(prof)
       setEmployees((empData ?? []) as Employee[])
 
-      const resolved = await refreshCapabilities(prof)
+      const resolved = await refreshCapabilities(prof, cachedModulePermissions(queryClient, prof.id, 'assets_access'))
 
       // ?view= lets the module's sub-pages and its notification deep links land
       // on a specific screen. It is validated against what this person may
       // actually see: a URL is a request, not an authorization, and an
       // unrecognised or unpermitted value falls back to the normal landing view
       // rather than rendering a screen the reader has no rights to.
-      setView(resolveInitialView(requestedView, resolved, inViewMode))
+      const initialView = resolveInitialView(requestedView, resolved, inViewMode)
+      justResolvedFor.current = initialView
+      setView(initialView)
       setLoading(false)
     }
     init()
@@ -1669,10 +1676,14 @@ function AssetsAccessScreen() {
   // whenever the inventory is opened and whenever the tab regains focus, so a
   // permission change takes effect on the next glance rather than the next
   // login.
+  // The view the start-up just resolved capabilities for is not re-resolved a moment later
+  // (it used to be: two identical requests on every load of the inventory views, 2026-11-12).
   useEffect(() => {
     if (!profile) return
     const refresh = () => { refreshCapabilities(profile) }
-    if (view === 'asset-inventory' || view === 'asset-requests' || view === 'asset-catalogue') refresh()
+    const justResolved = justResolvedFor.current === view
+    justResolvedFor.current = null
+    if (!justResolved && (view === 'asset-inventory' || view === 'asset-requests' || view === 'asset-catalogue')) refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   // eslint-disable-next-line react-hooks/exhaustive-deps

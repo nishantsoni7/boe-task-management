@@ -2,8 +2,10 @@ import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { QueryClient } from '@tanstack/react-query'
 import { loadProfile } from './useProfile'
+import { cachedModulePermissions } from './usePermissionContext'
 import { fetchTaskPeople } from '@/lib/tasks/taskPeople'
 import type { UserProfile } from '@/lib/types'
+import type { EffectivePermission } from '@/lib/permissions/types'
 
 // The same request asked twice on one page load (2026-11-12, "remove the duplicate requests").
 
@@ -59,5 +61,34 @@ describe('the staff list is fetched once when two parts of a page ask together',
     assert.deepEqual(a, b)
     await fetchTaskPeople()
     assert.equal(calls, 2, 'nothing is kept after the answer')
+  })
+})
+
+describe("a module hook reuses the gate's permission answer only while it is fresh", () => {
+  const VIEW: EffectivePermission = { actionKey: 'view', allowed: true, source: 'employee_override' }
+  const seed = (qc: QueryClient, map: Map<string, EffectivePermission[]>) =>
+    qc.setQueryData(['permission-context', ME], { profile: ROW, permissionsByModule: map })
+
+  it('returns a copy of the fresh answer for that module', () => {
+    const qc = new QueryClient()
+    const meetings = [VIEW]
+    seed(qc, new Map([['meetings', meetings]]))
+    const got = cachedModulePermissions(qc, ME, 'meetings')
+    assert.deepEqual(got, [VIEW])
+    assert.notEqual(got, meetings, 'a copy, so the caller cannot change the cache')
+  })
+
+  it('a module with no rows (or a failed resolve, cached as an empty map) is no grant', () => {
+    const qc = new QueryClient()
+    seed(qc, new Map())
+    assert.deepEqual(cachedModulePermissions(qc, ME, 'meetings'), [])
+  })
+
+  it('asks the database again when there is no answer, or it is older than 30 seconds', () => {
+    const qc = new QueryClient()
+    assert.equal(cachedModulePermissions(qc, ME, 'meetings'), null)
+    qc.setQueryData(['permission-context', ME], { profile: ROW, permissionsByModule: new Map([['meetings', [VIEW]]]) },
+      { updatedAt: Date.now() - 31_000 })
+    assert.equal(cachedModulePermissions(qc, ME, 'meetings'), null)
   })
 })

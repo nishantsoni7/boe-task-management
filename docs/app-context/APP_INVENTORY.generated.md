@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `72c5797` — Other modules read your own row once (#711)
-- Commits on this branch: 51
+- Commit: `36d31d3` — Docs: Day Close migration 20270622000000 applied by the owner before the merge
+- Commits on this branch: 53
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 198
 - Migrations: 438 (first `20260530_create_positions.sql`, latest `20270622000000_day_close.sql`)
 - Tables ever created: 240 (dropped at some point: 7)   SQL functions: 999   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `36d31d3` 2026-11-12 Docs: Day Close migration 20270622000000 applied by the owner before the merge
+- `67f3d40` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, not yet applied)
 - `72c5797` 2026-11-12 Other modules read your own row once (#711)
 - `8ea2511` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
 - `cccdf39` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
@@ -37,8 +39,6 @@
 - `05bec6e` 2026-11-12 Docs: Quotations phase 5 (pricing desk) merged as e55e01aa, 20270617000000 applied (#690)
 - `e990138` 2026-11-12 SEO brief: rankings of the business searches by category first, then where the traffic came from (#691)
 - `e55e01a` 2026-11-12 Quotations, phase 5: pricing desk, price hints and approval (migration 20270617000000, apply before merge) (#687)
-- `879a792` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
-- `3989004` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
 
 ## Pages by top-level area
 

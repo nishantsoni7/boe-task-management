@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import type { EffectivePermission } from '@/lib/permissions/types'
+import { cachedModulePermissions } from '@/hooks/queries/usePermissionContext'
 import {
   deriveCustomerReviewCapabilities,
   NO_CUSTOMER_REVIEW_CAPABILITIES,
   type CustomerReviewCapabilities,
 } from '@/lib/permissions/customerReviewOutreach'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // Signed-in profile + Customer Review Outreach capabilities, shared by every
 // page in the module. Same shape and the same two guarantees as useMeetings:
@@ -33,13 +36,16 @@ export function useCustomerReviews(): {
 } {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [caps, setCaps] = useState<CustomerReviewCapabilities>(NO_CUSTOMER_REVIEW_CAPABILITIES)
   const [loading, setLoading] = useState(true)
 
-  const refreshCapabilities = useCallback(async (prof: UserProfile) => {
-    const effective = await getEffectivePermissions(supabase, prof.id, 'customer_review_requests')
+  // `known`: the module gate's fresh answer (first load), so it is not asked twice.
+  // On focus there is none, and the database is asked again.
+  const refreshCapabilities = useCallback(async (prof: UserProfile, known?: EffectivePermission[] | null) => {
+    const effective = known ?? await getEffectivePermissions(supabase, prof.id, 'customer_review_requests')
       .catch(() => [])
     setCaps(deriveCustomerReviewCapabilities(prof.role, effective))
   }, [supabase])
@@ -50,18 +56,14 @@ export function useCustomerReviews(): {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: p } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       if (!active) return
       if (!p) { router.push('/login'); return }
 
       const prof = p as UserProfile
       setProfile(prof)
-      await refreshCapabilities(prof)
+      await refreshCapabilities(prof, cachedModulePermissions(queryClient, prof.id, 'customer_review_requests'))
       if (active) setLoading(false)
     }
     init()

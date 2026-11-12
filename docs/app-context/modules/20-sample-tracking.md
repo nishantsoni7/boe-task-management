@@ -46,7 +46,7 @@ API (`src/app/api/samples/`): `POST /notify` (events: sample_request_created, _a
 
 ## 7. Key components & lib files
 
-`src/app/samples/page.tsx` (RequestCard with `act()` helper, handlers handleApprove/handleDispatchWithDetails/handleVerifyReceived/handleConfirmLost/handleReapply), `src/app/samples/dispatch/[id]/page.tsx`, `src/app/samples/notifications/page.tsx`, `src/lib/sampleNotificationDeletes.ts`, `src/lib/permissions/resolver.ts` (`getEffectivePermissions`), `src/lib/notifications.ts` (comment explains the separate system), layout `ModuleGuard`.
+`src/app/samples/page.tsx` (RequestCard with `act()` helper, handlers handleApprove/handleDispatchWithDetails/handleVerifyReceived/handleConfirmLost/handleReapply), `src/app/samples/dispatch/[id]/page.tsx`, `src/app/samples/notifications/page.tsx`, `src/lib/sampleNotificationDeletes.ts`, `src/lib/permissions/resolver.ts` (`getEffectivePermissions`), `src/lib/notifications.ts` (comment explains the separate system), layout `ModuleGuard`. Start-up (2026-11-12, branch `perf/modules-permissions-once`): the page takes the profile from the shared copy and the `sample_tracking` permissions from ModuleGuard's answer when it is under 30 s old (`cachedModulePermissions`); a later refresh asks the database.
 
 ## 8. Decisions made & why
 

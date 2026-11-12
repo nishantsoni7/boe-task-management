@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { hasPermission } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 
 // Server-side authorization is the boundary — every table in this module is
 // behind RLS, every status change behind a SECURITY DEFINER guard, and every
@@ -19,55 +18,41 @@ import { hasPermission } from '@/lib/permissions/resolver'
 // Entry is `use` OR `verify` — a verifier who could not open the module could
 // not verify anything, and a `use` holder who could not open it could not raise
 // a request. See src/lib/permissions/customerReviewOutreach.ts.
+//
+// 2026-11-12: read from the signed-in person's permission context (profile +
+// resolve_effective_permissions_for_user, one RPC for every module) instead of
+// a users read and up to two resolve_permission calls; useCustomerReviews then
+// reuses the same answer. The rule below is unchanged.
 
 export default function CustomerReviewsGuard({ children }: { children: React.ReactNode }) {
-  const [authorized, setAuthorized] = useState(false)
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
+  const { ready, userId, profile, permissionsByModule } = usePermissionContext()
+
+  // ONLY is_active IS READ from the profile, so entry cannot be decided by
+  // anything else on it here or by a later edit to this file. A failed profile
+  // read denies: an unidentified caller holding a stale permission row is
+  // exactly the case that must not be admitted.
+  const active = profile?.is_active === true
+
+  // ENTRY IS `use` OR `verify`, RESOLVED — and nothing else. An administrator
+  // with both permissions revoked is not let in. A permission question that
+  // could not be answered is not a yes: a failed resolve is an empty map here.
+  const reviews = permissionsByModule.get('customer_review_requests') ?? []
+  const allowed = active && (
+    reviews.some(p => p.actionKey === 'use' && p.allowed) ||
+    reviews.some(p => p.actionKey === 'verify' && p.allowed)
+  )
 
   useEffect(() => {
-    const check = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
+    if (!ready) return
+    if (!userId) router.replace('/login')
+    // The legacy test-card purge page exception is retired with the generated-review
+    // frontend: /customer-reviews/<id> redirects to the landing page for everybody.
+    else if (!allowed) router.replace('/coming-soon')
+  }, [ready, userId, allowed, router])
 
-      // ONLY is_active IS READ. The role column is not selected, so entry
-      // cannot be decided by it here or by a later edit to this file.
-      const { data: profile } = await supabase
-        .from('users')
-        .select('is_active')
-        .eq('id', session.user.id)
-        .single()
-
-      // A failed profile read denies. An unidentified caller holding a stale
-      // permission row is exactly the case that must not be admitted.
-      if (!profile || profile.is_active !== true) { router.replace('/coming-soon'); return }
-
-      // ENTRY IS `use` OR `verify`, RESOLVED — and nothing else.
-      //
-      // `profile.role === 'admin' ||` used to lead this expression, and being
-      // first it short-circuited: an administrator with both permissions
-      // revoked was let into a module where every list is empty and every
-      // action refused. The engine decides now, so revoking both genuinely
-      // closes the door.
-      //
-      // Both catches deny rather than admit. A permission question that could
-      // not be answered is not a yes.
-      const allowed =
-        (await hasPermission(supabase, session.user.id, 'customer_review_requests', 'use').catch(() => false)) ||
-        (await hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify').catch(() => false))
-
-      // The legacy test-card purge page exception is retired with the generated-review
-      // frontend: /customer-reviews/<id> redirects to the landing page for everybody.
-      if (!allowed) { router.replace('/coming-soon'); return }
-
-      setAuthorized(true)
-    }
-    check()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // `children` render in no state but `authorized`, so a child that fetches on
+  // `children` render in no state but allowed, so a child that fetches on
   // mount cannot start before the check finishes.
-  if (!authorized) return <LoadingScreen />
+  if (!ready || !userId || !allowed) return <LoadingScreen />
   return <>{children}</>
 }

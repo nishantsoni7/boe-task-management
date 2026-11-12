@@ -559,11 +559,12 @@ describe('an admin without verify reaches the purge, and only the purge', () => 
 
   test('the layout no longer admits anyone to a card page: the purge frontend exception is retired', () => {
     const layout = code(LAYOUT)
-    // Ordinary entry is unchanged: use OR verify, both catches denying.
-    assert.ok(layout.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'use').catch(() => false)"))
-    assert.ok(layout.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify').catch(() => false)"))
+    // Ordinary entry is unchanged: use OR verify, resolved from the shared
+    // permission context (2026-11-12), where a failed resolve is an empty map.
+    assert.ok(layout.includes("reviews.some(p => p.actionKey === 'use' && p.allowed)"))
+    assert.ok(layout.includes("reviews.some(p => p.actionKey === 'verify' && p.allowed)"))
     assert.equal(/PURGE_PAGE|can_purge_customer_review_test_cards|purgeOnly|outsidePurgePage/.test(layout), false)
-    assert.ok(layout.includes("if (!allowed) { router.replace('/coming-soon'); return }"))
+    assert.ok(layout.includes("else if (!allowed) router.replace('/coming-soon')"))
     assert.equal(/role/.test(layout), false, 'the layout reads a role')
     // The card page itself redirects for everybody; the API and database purge remain.
     assert.ok(read('src/app/customer-reviews/[id]/page.tsx').includes("redirect('/customer-reviews')"))

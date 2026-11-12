@@ -52,6 +52,7 @@ Rules (UI `deriveAssetsAccessCapabilities` in `src/lib/permissions/assetsAccess.
 - Catalogue: `manage_asset_catalogue` gives nothing else (no inventory sight, no asset writes, no access records).
 - Grants are per employee (no role inheritance). Live drift found 2026-08-03: Aditya holds overrides view+create+assign+edit+manage (accepted by user; his `manage` makes him a request reviewer) (from memory).
 - View As does NOT lend permissions: `useAssetsAccess` resolves for the signed-in user, so non-admin visibility needs a real non-admin login.
+- Start-up requests (2026-11-12, branch `perf/modules-permissions-once`): the main page takes the profile from the shared copy and its first capabilities from ModuleGuard's answer (`cachedModulePermissions`, under 30 s old), and does not re-resolve the view it just opened. Switching to inventory, requests or catalogue later, and every focus, still ask the database. `useAssetsAccess` (Notifications and the single-asset page) is unchanged.
 
 ## 6. Business rules
 

@@ -456,19 +456,22 @@ describe('the route guard', () => {
   })
 
   test('it resolves the module’s own two actions, never `view`', () => {
-    assert.ok(guard.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'use')"))
-    assert.ok(guard.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify')"))
+    // Read from the shared permission context since 2026-11-12.
+    assert.ok(guard.includes("permissionsByModule.get('customer_review_requests')"))
+    assert.ok(guard.includes("p.actionKey === 'use' && p.allowed"))
+    assert.ok(guard.includes("p.actionKey === 'verify' && p.allowed"))
     assert.equal(guard.includes("'view'"), false)
   })
 
   test('it fails closed on a missing profile, an inactive account and a signed-out caller', () => {
-    assert.ok(guard.includes("if (!session) { router.replace('/login'); return }"))
-    assert.ok(guard.includes('if (!profile || profile.is_active !== true)'))
-    assert.ok(guard.includes(".catch(() => false)"))
+    assert.ok(guard.includes("if (!userId) router.replace('/login')"))
+    // No profile (a failed read included) is not active, and inactive is not allowed.
+    assert.ok(guard.includes('const active = profile?.is_active === true'))
+    assert.ok(guard.includes('const allowed = active && ('))
   })
 
   test('children never render before the check finishes', () => {
-    assert.ok(guard.includes('if (!authorized) return <LoadingScreen />'))
+    assert.ok(guard.includes('if (!ready || !userId || !allowed) return <LoadingScreen />'))
   })
 })
 

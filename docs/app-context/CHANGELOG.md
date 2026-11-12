@@ -21,6 +21,25 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - The nav test updated; `tsc`, eslint.
 - **Not seen signed in.** No browser test (owner's rule).
 - **Rollback.** In the migration header; remove the cron entry.
+## 2026-11-12 — Permissions looked up once in Meetings, Review Workflow, Sample Tracking and Assets (PR open, branch `perf/modules-permissions-once`) · no SQL
+- **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 2 of 2; PR 1 (#711) reads your own row once.
+- **Measured live before.** Each module's gate already loads the profile and the permissions; these screens loaded them again.
+  - Review Workflow: the profile 3 more times and the permissions 3 more. The gate asked twice, and the landing page started `useCustomerReviews` twice.
+  - Meetings: the role read twice, and the permissions looked up by its hand-written gate.
+  - Assets & Access: the profile once more and the permissions twice more (start-up, then an immediate re-resolve of the same view).
+  - Sample Tracking: the profile once more and the permissions once more.
+- **Changed.**
+  - The Meetings and Review Workflow gates read the signed-in person's permission context (`usePermissionContext`: the profile plus one `resolve_effective_permissions_for_user` call for every module), as the Orders gate has since `202cbaf8`.
+  - Same rules. Meetings: admin, or `view`, or `manage`. Review Workflow: an active account with `use` or `verify`, no admin short-circuit. A failed profile read or a failed permission lookup still refuses.
+  - New `cachedModulePermissions(qc, userId, moduleKey)` returns the gate's answer for one module only while it is under 30 seconds old; otherwise the caller asks the database as before. `useMeetings`, `useCustomerReviews`, the Samples page and the Assets page use it on first load. Focus refreshes still ask the database.
+  - The Review Workflow landing page renders `CustomReviewsScreen` directly instead of running `useCustomerReviews` a second time only to wait for it.
+  - Assets does not re-resolve the view it was just opened on; switching views later still re-resolves.
+  - The four screens read the profile through `profileQueryOptions`. Assets used to add `position`, which nothing on the page read.
+- **Tests.**
+  - New: three checks of `cachedModulePermissions` in `sharedReads.test.ts` (a fresh copy; an empty map is no grant; stale or missing asks again).
+  - Restated to the new code with the same rules: `adminBypass` (the gate reads no role; a failed resolve is an empty map), `testCardPurge`, `customerReviewOutreach` (the route guard), `enforcement` (Meetings still resolves permissions).
+  - Full suite: 20,640 tests, 0 failed, 9 skipped. `tsc` and eslint are clean.
+
 ## 2026-11-12 — Other modules read your own row once (PR open, branch `perf/modules-profile-once`) · no SQL
 - **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 1 of 2; PR 2 covers the permission lookups in Meetings, Review Workflow, Sample Tracking and Assets.
 - **Measured live, full page loads.** The baseline is 3 own-row reads and 1 `_for_user`.
