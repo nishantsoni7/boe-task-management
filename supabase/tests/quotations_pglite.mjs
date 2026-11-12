@@ -83,6 +83,7 @@ await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 await db.exec(mig('20270618000000_quotation_reports.sql'))
 await db.exec(mig('20270620000000_pricing_price_book.sql'))
 await db.exec(mig('20270621000000_pricing_model_v2.sql'))
+await db.exec(mig('20270622000000_quotation_versions.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -480,5 +481,49 @@ const qline = pool.find(x => x.k !== 'order')
 assert.ok(qline && 'client_type' in qline, 'quotation lines carry the client type')
 assert.ok((await rpc(U.manager, 'pricing_pool', ['bed'], null)).length > 0, 'a person with Pricing (and no Quotations edit) may read it')
 ok('the price pool gives every price of a product type with its parameters, to people who may open Quotations or Pricing, never client names')
+
+// ── Quotation versions (20270622000000) ────────────────────────────────────
+const qv = await rpc(U.sales, 'quotation_create', { client_name: 'Version Hotel' })
+const vdoc = (price, discount = 0) => ({ header: { ...doc().header, client_name: 'Version Hotel', discount_pct: discount, internal_notes: 'secret margin note' },
+  areas: [{ key: 'a', name: 'Deluxe room', style: '', multiplier: 10, unit_label: 'rooms' }],
+  lines: [{ area_key: 'a', name: 'Queen bed', qty_per_unit: 1, unit_price: price, tax_rate: 18, internal_note: 'cost 30k' }] })
+await rpc(U.sales, 'quotation_save', qv, vdoc(70000))
+await fails(U.sales, `select public.quotation_version_create($1::uuid, 'early')`, [qv], /turn the client link on first/)
+const tokV = await rpc(U.sales, 'quotation_share', qv, true)
+let vs = await rpc(U.sales, 'quotation_versions', qv)
+assert.deepEqual(vs.map(v => [v.version_no, v.note, Number(v.value_before_gst)]), [[1, 'First sent', 700000]])
+ok('turning the client link on freezes v1, with its value')
+
+await rpc(U.sales, 'quotation_save', qv, vdoc(65000, 5))
+let pubV = (await as(null, `select public.quotation_public($1) as r`, [tokV], 'anon')).rows[0].r
+assert.equal(pubV.version_no, 1)
+assert.equal(Number(pubV.lines[0].unit_price), 70000, 'the client still sees v1 while the salesperson edits')
+assert.equal(Number(pubV.discount_pct), 0)
+for (const k of ['internal_notes', 'share_token', 'owner_id']) assert.ok(!(k in pubV), `client view must not carry ${k}`)
+assert.ok(!('internal_note' in pubV.lines[0]))
+ok('the client link shows the latest SENT version, never a half-finished edit or an internal note')
+
+assert.equal(await rpc(U.sales, 'quotation_version_create', qv, 'Client asked for 5% off'), 2)
+pubV = (await as(null, `select public.quotation_public($1) as r`, [tokV], 'anon')).rows[0].r
+assert.deepEqual([pubV.version_no, Number(pubV.lines[0].unit_price), Number(pubV.discount_pct)], [2, 65000, 5])
+await fails(U.sales, `select public.quotation_version_create($1::uuid, 'again')`, [qv], /nothing has changed since v2/)
+vs = await rpc(U.sales, 'quotation_versions', qv)
+assert.deepEqual(vs.map(v => v.version_no), [2, 1])
+const v1 = await rpc(U.sales, 'quotation_version_get', qv, 1)
+const now0 = await rpc(U.sales, 'quotation_version_get', qv, 0)
+assert.equal(Number(v1.lines[0].unit_price), 70000)
+assert.equal(Number(now0.lines[0].unit_price), 65000)
+assert.equal((await rpc(U.sales, 'quotation_get', qv)).events[0].kind, 'version')
+ok('sending a new version moves the link to it; nothing-changed is refused; every version can be read back and compared')
+
+await fails(U.sales2, `select public.quotation_version_create($1::uuid, null)`, [qv], /QUOTATION_NOT_FOUND/)
+await fails(U.manager, `select public.quotation_version_create($1::uuid, null)`, [qv], /QUOTATIONS_FORBIDDEN/)
+assert.equal((await rpc(U.manager, 'quotation_versions', qv)).length, 2, 'see-all reads the versions')
+await rpc(U.sales, 'quotation_save', qv, vdoc(65000, 10)) // a 10% discount needs the desk (limit 5%)
+await fails(U.sales, `select public.quotation_version_create($1::uuid, null)`, [qv], /approval before they are sent/)
+await assert.rejects(() => db.query(`update public.quotation_versions set note = 'x' where quotation_id = $1`, [qv]), /APPEND_ONLY/)
+await assert.rejects(() => db.query(`delete from public.quotation_versions where quotation_id = $1`, [qv]), /APPEND_ONLY/)
+await fails(U.sales, `select count(*) from public.quotation_versions`, [], /permission denied/)
+ok('only the people who may edit send versions; prices waiting for the desk cannot be sent; versions cannot be changed or deleted')
 
 console.log(`all ${checks} checks passed`)
