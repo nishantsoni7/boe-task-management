@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `96652298` — Docs: WhatsApp Connection page merged (#688) (#689)
-- Commits on this branch: 1267
+- Commit: `3ff36f7a` — Fewer repeated requests: Finance (#707)
+- Commits on this branch: 1268
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 436 (first `20260530_create_positions.sql`, latest `20270620000000_pricing_price_book.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 997   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
 - `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
 - `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
 - `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
@@ -38,7 +39,6 @@
 - `89a913b0` 2026-11-12 Docs: Operations line flags merged (#683, 1278cc6a) and 20270616000000 applied (#685)
 - `1278cc6a` 2026-11-12 Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
 - `1841dc82` 2026-11-12 Quotations, phase 4: Improve picture (Clean up, Change it, crop & rotate) · no migration (#681)
-- `ff585879` 2026-11-12 Pages load on click: no page is loaded in advance, anywhere (#682)
 
 ## Pages by top-level area
 

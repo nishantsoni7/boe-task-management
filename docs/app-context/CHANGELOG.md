@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Fewer repeated requests: Finance (PR open, branch `perf/finance-dedupe-requests`) · no SQL
+## 2026-11-12 — Fewer repeated requests: Finance (PR #707, squash-merged 2026-11-12 20:03 IST as `3ff36f7a`, deployed 20:05 IST) · no SQL
 - **Found.** The live check after #699 found that Finance still repeated who-you-are on a full load. Counted on the owner's account:
   - Payment Requests: the profile and `resolve_effective_permissions_for_user` twice each, one after the other.
   - Received: the profile 3 times and permissions 3 times.
@@ -21,6 +21,17 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `uiEnforcement`: both screens still derive capabilities from resolved permissions.
 
   `tsc` and eslint are clean. Every test under finance, permissions and navigation, plus the files reading these screens, passes: 4,291.
+- **Verified live (20:10 IST, owner's account, full page loads).**
+
+  | Screen | Requests | Own-row reads | Permission lookups |
+  |---|---|---|---|
+  | Payment Requests | 17→16 | 4→3 | 2→1 |
+  | Received | 21→16 | 5→3 | 3→1 |
+  | Bank | 20→18 | 4→3 | 2→1 |
+  | Expenses | 19→16 | 4→3 | 2→1 |
+  | Founders | 12→10 | 4→3 | 2→1 |
+
+  No repeated request, no failed request and no console message on any of them. The three own-row reads kept on purpose are the 8-column profile, `role` (read once by the Login-as-member button) and UserMenu's designation. Not checked live: Reimbursements and New expense.
 
 ## 2026-11-12 — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (PR #704, squash-merged 2026-11-12 19:12 IST as `b30d3b7b`, deployed 19:14 IST) · no migration
 - **Owner report (same evening).** "Trying to send back to sales person but it is not working." A read-only check showed it WAS working: four presses (17:28, 17:59, 18:04:32, 18:04:40 IST) = four history entries and three notices to the salesperson, all unread (the fourth was inside the two-minute no-repeat rule). But nothing on the sender's screen changed, the comment sat at the end of one long red paragraph, and the salesperson's dashboard card showed only Operations' reason.
