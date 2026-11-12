@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4f45c6d` — Day Close in Task Management: the code, migration, tests and docs of the previous commit
-- Commits on this branch: 57
+- Commit: `9835e03` — Merge main; renumber the Day Close migration to 20270624000000 and make it safe to re-run
+- Commits on this branch: 60
 - Pages (`page.tsx`): 190   API routes (`route.ts`): 197
 - Migrations: 440 (first `20260530_create_positions.sql`, latest `20270624000000_day_close_in_tasks.sql`)
 - Tables ever created: 242 (dropped at some point: 8)   SQL functions: 1007   Enums: 0
@@ -14,8 +14,11 @@
 
 ## Latest 25 commits
 
+- `9835e03` 2026-11-12 Merge main; renumber the Day Close migration to 20270624000000 and make it safe to re-run
+- `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
 - `4f45c6d` 2026-11-12 Day Close in Task Management: the code, migration, tests and docs of the previous commit
 - `97d08c4` 2026-11-12 Day Close moves into Task Management; proof on every finished task (migration 20270623000000, apply before merge)
+- `210e60f` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
 - `8eb156e` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
 - `b3f0ac2` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
 - `2466d96` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
@@ -36,9 +39,6 @@
 - `202cbaf` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
 - `6019f0e` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
 - `49770c2` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
-- `126dc1f` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
-- `8f8c9ba` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
-- `46adaca` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
 
 ## Pages by top-level area
 
