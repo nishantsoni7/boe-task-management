@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3ff36f7a` — Fewer repeated requests: Finance (#707)
-- Commits on this branch: 1268
+- Commit: `e2517d83` — Docs: PR number for pricing model v2 (#709)
+- Commits on this branch: 1271
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 437 (first `20260530_create_positions.sql`, latest `20270621000000_pricing_model_v2.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 998   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `e2517d83` 2026-11-12 Docs: PR number for pricing model v2 (#709)
+- `bf1516af` 2026-11-12 Pricing model v2: prices from parameters, with reasons
+- `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
 - `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
 - `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
 - `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
@@ -36,9 +39,6 @@
 - `879a792a` 2026-11-12 Sales: WhatsApp Connection page for the company number (coexistence) (#688)
 - `39890049` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
 - `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
-- `89a913b0` 2026-11-12 Docs: Operations line flags merged (#683, 1278cc6a) and 20270616000000 applied (#685)
-- `1278cc6a` 2026-11-12 Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
-- `1841dc82` 2026-11-12 Quotations, phase 4: Improve picture (Clean up, Change it, crop & rotate) · no migration (#681)
 
 ## Pages by top-level area
 
