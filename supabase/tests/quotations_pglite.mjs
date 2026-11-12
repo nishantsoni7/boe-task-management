@@ -74,8 +74,11 @@ await db.exec(`
 // columns it reads stands in for the Orders table; every phase 1 check below runs on the phase 2 schema.
 await db.exec(mig('20270614000000_quotations_module.sql'))
 await db.exec(`create table public.order_submissions (id uuid primary key default gen_random_uuid(), created_by uuid,
-  status text not null default 'draft', draft_reference text);`)
+  status text not null default 'draft', draft_reference text, approved_at timestamptz);
+  create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id) on delete cascade,
+  product_name text, cost_per_piece numeric(12,2) not null);`)
 await db.exec(mig('20270615000000_quotation_pi_link.sql'))
+await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -326,5 +329,76 @@ const tokC = await rpc(U.sales, 'quotation_share', qc, true)
 const pubC = (await as(null, `select public.quotation_public($1) as r`, [tokC], 'anon')).rows[0].r
 for (const k of ['pi_submission_id', 'pi_linked_at', 'pi']) assert.ok(!(k in pubC), `client view must not carry ${k}`)
 ok('the link function is closed to anon, and the client link never shows the PI')
+
+// ── Phase 5: the pricing desk (20270617000000) ─────────────────────────────
+const approvedPi = async (daysAgo, items, status = 'approved') => {
+  const sub = (await db.query(`insert into public.order_submissions (created_by, status, draft_reference, approved_at) values ($1, $2, 'PID-T', $3) returning id`,
+    [U.sales2, status, status === 'approved' ? new Date(Date.now() - daysAgo * 86400000).toISOString() : null])).rows[0].id
+  for (const [name, price] of items) await db.query(`insert into public.order_submission_items (submission_id, product_name, cost_per_piece) values ($1, $2, $3)`, [sub, name, price])
+}
+await approvedPi(10, [['Boho room · King bed', 56000], ['Bedside table', 9000]])
+await approvedPi(5, [['King bed with storage', 60000]])
+await approvedPi(1, [['King bed', 1000]], 'draft')
+await approvedPi(2000, [['King bed', 99999]])
+const hints = await rpc(U.sales, 'quotation_price_hints', ['King bed', 'Teapoy'], null)
+const kb = hints.find(h => h.name === 'King bed')
+assert.deepEqual([Number(kb.ordered.last), Number(kb.ordered.min), Number(kb.ordered.max), kb.ordered.count], [60000, 56000, 60000, 2])
+assert.equal(hints.find(h => h.name === 'Teapoy').ordered, null)
+await fails(U.nobody, `select public.quotation_price_hints($1::text[], null)`, [['King bed']], /QUOTATIONS_FORBIDDEN/)
+ok('price hints: approved PIs of the last three years with a similar name (drafts and old PIs left out), prices only')
+
+const qp = await rpc(U.sales, 'quotation_create', { client_name: 'Pricing Hotel' })
+const priced = (price, discount = 0) => ({ header: { ...doc().header, client_name: 'Pricing Hotel', discount_pct: discount }, areas: [],
+  lines: [{ area_key: null, name: 'King bed', qty_fixed: 10, unit_price: price, tax_rate: 18 }] })
+await rpc(U.sales, 'quotation_save', qp, priced(50000))
+let g = await rpc(U.sales, 'quotation_get', qp)
+assert.equal(g.price.state, 'to_ask'); assert.equal(g.price.blocked, true)
+assert.deepEqual(g.price.reasons.map(r => [r.kind, Number(r.last), Number(r.limit)]), [['below', 60000, 90]])
+await fails(U.sales, `select public.quotation_share($1::uuid, true)`, [qp], /approval before the client link/)
+ok('a price under 90% of the last ordered price needs approval, and the client link stays off until then')
+
+await fails(U.sales, `select public.quotation_price_queue()`, [], /only the pricing desk/)
+assert.equal((await rpc(U.sales, 'quotation_price_request', qp)).state, 'requested')
+const queue = await rpc(U.editor, 'quotation_price_queue')
+assert.deepEqual(queue.map(x => x.quote_no), [g.quotation.quote_no])
+await fails(U.sales, `select public.quotation_price_decide($1::uuid, true, null)`, [qp], /only the pricing desk approves/)
+await fails(U.editor, `select public.quotation_price_decide($1::uuid, false, $2)`, [qp, ''], /say what to change/)
+const back = await rpc(U.editor, 'quotation_price_decide', qp, false, 'Hold at 55,000 at least')
+assert.deepEqual([back.state, back.blocked, back.note, back.by], ['returned', true, 'Hold at 55,000 at least', 'Pricing Desk'])
+assert.equal((await rpc(U.editor, 'quotation_price_queue')).length, 0)
+ok('the salesperson asks; the desk sees it in its list and sends it back with a note; only the desk decides')
+
+await rpc(U.sales, 'quotation_save', qp, priced(55000))
+assert.equal((await rpc(U.sales, 'quotation_get', qp)).price.state, 'not_needed')
+await rpc(U.sales, 'quotation_save', qp, priced(55000, 10))
+g = await rpc(U.sales, 'quotation_get', qp)
+assert.deepEqual([g.price.state, g.price.reasons[0].kind], ['to_ask', 'discount'])
+await rpc(U.sales, 'quotation_price_request', qp)
+assert.equal((await rpc(U.admin, 'quotation_price_decide', qp, true, null)).state, 'approved')
+assert.match(await rpc(U.sales, 'quotation_share', qp, true), /^[0-9a-f]{32}$/)
+ok('changing the prices asks again; a discount above 5% needs approval; once approved the link turns on')
+
+await rpc(U.sales, 'quotation_save', qp, priced(55000, 12))
+assert.equal((await rpc(U.sales, 'quotation_get', qp)).price.state, 'to_ask')
+await rpc(U.sales, 'quotation_set_status', qp, 'negotiating', null)
+const pd = await draft(U.sales)
+await linkFails(U.sales, qp, pd.id, /approval before a PI is made/)
+ok('an approval belongs to the prices it was given for: a new discount needs asking again, and Confirm -> PI waits')
+
+await fails(U.sales, `select public.quotation_price_settings_set(10, 80)`, [], /only an administrator/)
+await fails(U.admin, `select public.quotation_price_settings_set(5, 0)`, [], /QUOTATION_INVALID/)
+const off = await rpc(U.admin, 'quotation_price_settings_set', null, null)
+assert.deepEqual([off.max_discount_pct, off.min_price_pct], [null, null])
+assert.equal((await rpc(U.sales, 'quotation_get', qp)).price.state, 'not_needed')
+await rpc(U.admin, 'quotation_price_settings_set', 5, 90)
+ok('only an administrator sets the limits; empty limits switch approval off')
+
+await assert.rejects(() => db.query(`delete from public.quotation_price_reviews`), /APPEND_ONLY/)
+await fails(U.sales, `select count(*) from public.quotation_price_reviews`, [], /permission denied/)
+for (const fn of ['quotation_price_history(text[],uuid)', 'quotation_price_check(uuid)', 'quotation_price_state(uuid)', 'quotation_price_fingerprint(uuid)']) {
+  const r = await db.query(`select has_function_privilege('authenticated', 'public.${fn}', 'execute') a`)
+  assert.equal(r.rows[0].a, false, fn)
+}
+ok('the review log cannot be changed; the pricing tables and internal functions are closed to clients')
 
 console.log(`all ${checks} checks passed`)
