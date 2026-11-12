@@ -1,17 +1,19 @@
 'use client'
 
-// The shell both Day Close pages share: the signed-in profile for the Attendance & Payroll layout, and
-// sign-out. The content decides nothing about access: its API routes do.
+// Team Today (Day Close, owner 2026-11-12), inside Task Management: everybody's plan, tasks done or carried
+// over, punches, calls logged and strikes for a day. Administrators and the Day Close reviewer:
+// /api/day-close/team refuses everybody else, and this page says so plainly.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { TeamTodayScreen } from '@/components/dayClose/TeamTodayScreen'
 
-export function DayClosePage({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+export default function TeamTodayPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -19,7 +21,7 @@ export function DayClosePage({ title, subtitle, children }: { title: string; sub
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace(`/login?redirect=${encodeURIComponent(window.location.pathname)}`); return }
+      if (!session) { router.replace('/login?redirect=%2Ftasks%2Fteam-today'); return }
       const { data: prof } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
       if (!prof) { router.replace('/login'); return }
       setProfile(prof as UserProfile)
@@ -34,8 +36,8 @@ export function DayClosePage({ title, subtitle, children }: { title: string; sub
 
   if (!profile) return <LoadingScreen />
   return (
-    <AttendancePayrollLayout profile={profile} title={title} subtitle={subtitle} onSignOut={handleSignOut}>
-      {children}
-    </AttendancePayrollLayout>
+    <DashboardLayout profile={profile} title="Team Today" subtitle="Who planned, who finished, who closed the day, and the strikes to review." onSignOut={handleSignOut}>
+      <TeamTodayScreen />
+    </DashboardLayout>
   )
 }

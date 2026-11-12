@@ -10,27 +10,23 @@
 //
 // Server-side only: it holds the service role.
 
-import { randomUUID } from 'node:crypto'
 import type { Caller, ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
 import { istAddDays, istDayEndUtc, istDayStartUtc, istToday } from '@/lib/istDate'
 import { buildMachineDay, machineDateOf } from '@/lib/minop/machineDay'
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
 import {
-  CLOSE_OPENS_MINUTES, MAX_OWN_ITEMS, PLAN_DUE_MINUTES, STRIKE_LABEL, UNCLOSED_LOOKBACK_DAYS,
-  countItems, dayPrompt, effectiveStatus, hasPendingWork, isLockedLeaveType, isSunday, isTaskDueForPlan,
-  isTaskOverdue, judgeDay, pendingWorkWords, validateItemClose, validateNewItem,
-  type DayPrompt, type PendingWork, type Plan, type PlanItem, type StrikeKind, type StrikeStatus,
+  CLOSE_OPENS_MINUTES, PLAN_DUE_MINUTES, STRIKE_LABEL, UNCLOSED_LOOKBACK_DAYS,
+  countDay, dayPrompt, dayTaskList, dayTaskState, hasPendingWork, isLockedLeaveType, isSunday, isTaskDueForPlan,
+  isTaskOverdue, judgeDay, pendingWorkWords, validateCarryover, validateSummary,
+  type Carryover, type DayTask, type PendingWork, type Plan, type StrikeKind, type StrikeStatus,
 } from './rules'
-
-export const DAY_PROOF_BUCKET = 'day-proof'
-const SIGNED_URL_SECONDS = 60 * 30
 
 export type Result = { status: number; body: Record<string, unknown> }
 const ok = (body: Record<string, unknown>, status = 200): Result => ({ status, body })
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}): Result => ({ status, body: { error, ...extra } })
 
-const PLAN_COLUMNS = 'id, employee_id, work_date, submitted_at, closed_at, close_note'
-const ITEM_COLUMNS = 'id, plan_id, source, task_id, title, expected_output, status, proof_url, proof_photo_path, proof_note, reason, next_date, closed_at, created_at'
+const PLAN_COLUMNS = 'id, employee_id, work_date, submitted_at, closed_at, close_note, planned_task_ids'
+const TASK_COLUMNS = 'id, title, status, priority, due_date, assigned_to, created_by'
 
 // ─── Settings, roles, membership ─────────────────────────────────────────────
 
@@ -155,79 +151,47 @@ async function ensurePlan(svc: ServiceClient, employeeId: string, date: string):
   return plan
 }
 
-type TaskRow = { id: string; title: string; status: string; due_date: string | null; created_by: string; assigned_to: string }
-
-/** Tasks somebody else gave this person that are due today or overdue and not closed. */
-async function dueAssignedTasks(svc: ServiceClient, employeeId: string, today: string): Promise<TaskRow[]> {
-  const { data, error } = await svc.from('tasks')
-    .select('id, title, status, due_date, created_by, assigned_to')
-    .eq('assigned_to', employeeId)
-    .neq('created_by', employeeId)
-    .lte('due_date', today)
-    .not('status', 'in', '(completed,cancelled)')
-  if (error) throw new Error(error.message)
-  return ((data ?? []) as TaskRow[]).filter(t => isTaskDueForPlan(t, today))
-}
-
-/** Copies due assigned tasks into an open plan. A closed day is never touched. */
-async function syncAssigned(svc: ServiceClient, plan: Plan, today: string): Promise<void> {
-  if (plan.closed_at || plan.work_date !== today) return
-  const tasks = await dueAssignedTasks(svc, plan.employee_id, today)
-  if (tasks.length === 0) return
-  const rows = tasks.map(t => ({
-    plan_id: plan.id,
-    employee_id: plan.employee_id,
-    source: 'assigned',
-    task_id: t.id,
-    title: (t.title ?? '').trim().length >= 2 ? t.title.trim().slice(0, 300) : 'Task',
-  }))
-  const { error } = await svc.from('day_plan_items').upsert(rows, { onConflict: 'plan_id,task_id', ignoreDuplicates: true })
-  // A race with a second open tab is harmless: the unique index keeps one row per task.
-  if (error && error.code !== '23505') throw new Error(error.message)
-}
-
-async function readItems(svc: ServiceClient, planIds: string[]): Promise<(PlanItem & { plan_id: string })[]> {
-  if (planIds.length === 0) return []
-  const { data, error } = await svc.from('day_plan_items').select(ITEM_COLUMNS)
-    .in('plan_id', planIds).order('created_at', { ascending: true })
-  if (error) throw new Error(error.message)
-  const items = (data ?? []) as (PlanItem & { plan_id: string })[]
-  const taskIds = items.map(i => i.task_id).filter((id): id is string => !!id)
-  if (taskIds.length > 0) {
-    const tasks = await svc.from('tasks').select('id, status, due_date').in('id', taskIds)
-    if (tasks.error) throw new Error(tasks.error.message)
-    const byId = new Map((tasks.data ?? []).map(t => [String(t.id), t as { status: string; due_date: string | null }]))
-    for (const item of items) {
-      if (!item.task_id) continue
-      item.task_status = byId.get(item.task_id)?.status ?? null
-      item.task_due_date = byId.get(item.task_id)?.due_date ?? null
-    }
+/**
+ * The tasks a day can hold for these people: open tasks due on or before the date, and the tasks a filed
+ * plan named. Two reads; the list itself is decided by dayTaskList (rules.ts).
+ */
+async function tasksForDay(svc: ServiceClient, ids: string[], date: string, plannedIds: string[]): Promise<DayTask[]> {
+  if (ids.length === 0) return []
+  const due = await svc.from('tasks').select(TASK_COLUMNS)
+    .in('assigned_to', ids).lte('due_date', date).not('status', 'in', '(completed,cancelled)')
+  if (due.error) throw new Error(due.error.message)
+  const rows = new Map(((due.data ?? []) as DayTask[]).map(t => [t.id, t]))
+  const missing = plannedIds.filter(id => !rows.has(id))
+  if (missing.length) {
+    const planned = await svc.from('tasks').select(TASK_COLUMNS).in('id', missing)
+    if (planned.error) throw new Error(planned.error.message)
+    for (const t of (planned.data ?? []) as DayTask[]) rows.set(t.id, t)
   }
-  return items
+  return [...rows.values()]
 }
 
-async function signPhotos(svc: ServiceClient, items: PlanItem[]): Promise<Record<string, string>> {
-  const paths = items.map(i => i.proof_photo_path).filter((p): p is string => !!p)
-  if (paths.length === 0) return {}
-  const { data, error } = await svc.storage.from(DAY_PROOF_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
-  if (error) return {}
-  const out: Record<string, string> = {}
-  for (const row of data ?? []) if (row.path && row.signedUrl) out[row.path] = row.signedUrl
-  return out
+async function readCarryovers(svc: ServiceClient, planIds: string[]): Promise<(Carryover & { plan_id: string })[]> {
+  if (planIds.length === 0) return []
+  const { data, error } = await svc.from('day_close_carryovers').select('plan_id, task_id, reason, next_date').in('plan_id', planIds)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as (Carryover & { plan_id: string })[]
 }
 
-export type MyDay = {
-  member: boolean
-  today: string
-  workingDay: boolean
-  planDue: number
-  closeOpens: number
-  plan: Plan | null
-  items: (PlanItem & { effective: string; photo_url: string | null })[]
-  counts: ReturnType<typeof countItems>
-  prompt: DayPrompt
-  punch: MachineTimes
-  reviewerName: string | null
+type DayView = {
+  tasks: (DayTask & { state: string; self: boolean; carryover: Carryover | null })[]
+  counts: ReturnType<typeof countDay>
+}
+
+function dayView(all: DayTask[], employeeId: string, date: string, plan: Plan | null, carry: Carryover[]): DayView {
+  const list = dayTaskList(all.filter(t => t.assigned_to === employeeId), date, plan?.submitted_at ? plan.planned_task_ids ?? [] : null)
+  const byTask = new Map(carry.map(c => [c.task_id, c]))
+  const carried = new Set(byTask.keys())
+  return {
+    tasks: list.map(t => ({
+      ...t, state: dayTaskState(t, carried), self: t.created_by === t.assigned_to, carryover: byTask.get(t.id) ?? null,
+    })),
+    counts: countDay(list, carried),
+  }
 }
 
 export async function loadMyDay(caller: Caller, now: Date = new Date()): Promise<Result> {
@@ -241,41 +205,31 @@ export async function loadMyDay(caller: Caller, now: Date = new Date()): Promise
   const me = await svc.from('users').select('minop_user_id').eq('id', caller.id).maybeSingle()
   if (me.error) throw new Error(me.error.message)
   const minopId = (me.data?.minop_user_id as string | null) ?? null
-  const [holiday, leave, times] = await Promise.all([
+  const [holiday, leave, times, plan] = await Promise.all([
     isHoliday(svc, today),
     onFullDayLeave(svc, [caller.id], today),
     minopId ? machineTimes(svc, [minopId], today) : Promise.resolve(new Map<string, MachineTimes>()),
+    readPlan(svc, caller.id, today),
   ])
   const workingDay = !isSunday(today) && !holiday && !leave.has(caller.id)
   const punch = (minopId && times.get(minopId)) || { checkInAt: null, checkOutAt: null }
-
-  // The plan exists from the first look on a working day; on a day off nothing is created.
-  let plan = await readPlan(svc, caller.id, today)
-  if (!plan && workingDay) plan = await ensurePlan(svc, caller.id, today)
-  if (plan) await syncAssigned(svc, plan, today)
-  const items = plan ? await readItems(svc, [plan.id]) : []
-  const photos = await signPhotos(svc, items)
-  const counts = countItems(items)
-
-  let reviewerName: string | null = null
-  if (settings.reviewer_id) {
-    const r = await svc.from('users').select('full_name').eq('id', settings.reviewer_id).maybeSingle()
-    reviewerName = (r.data?.full_name as string | null) ?? null
-  }
+  const [all, carry] = await Promise.all([
+    tasksForDay(svc, [caller.id], today, plan?.planned_task_ids ?? []),
+    plan ? readCarryovers(svc, [plan.id]) : Promise.resolve([]),
+  ])
+  const view = dayView(all, caller.id, today, plan, carry)
 
   return ok({
     ...base,
     member: true,
     workingDay,
     plan,
-    items: items.map(i => ({ ...i, effective: effectiveStatus(i), photo_url: i.proof_photo_path ? photos[i.proof_photo_path] ?? null : null })),
-    counts,
+    ...view,
     prompt: dayPrompt({
-      now, date: today, workingDay, plan, openItems: counts.open, checkInAt: punch.checkInAt,
+      now, date: today, workingDay, plan, openItems: view.counts.open, checkInAt: punch.checkInAt,
       planDueMinutes: settings.plan_due_minutes, closeOpensMinutes: settings.close_opens_minutes,
     }),
     punch,
-    reviewerName,
   })
 }
 
@@ -285,6 +239,8 @@ export async function loadMyPrompt(caller: Caller, now: Date = new Date()): Prom
   if (r.status !== 200 || !r.body.member) return ok({ today: istToday(now), prompt: { kind: 'none' } })
   return ok({ today: r.body.today, prompt: r.body.prompt, counts: r.body.counts })
 }
+
+const isResult = (v: unknown): v is Result => !!v && typeof v === 'object' && 'status' in v && 'body' in v
 
 async function memberPlanForToday(caller: Caller, now: Date): Promise<{ plan: Plan; today: string } | Result> {
   const settings = await readSettings(caller.svc)
@@ -296,112 +252,71 @@ async function memberPlanForToday(caller: Caller, now: Date): Promise<{ plan: Pl
   return { plan, today }
 }
 
-const isResult = (v: unknown): v is Result => !!v && typeof v === 'object' && 'status' in v && 'body' in v
-
-export async function addOwnItem(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
-  const ctx = await memberPlanForToday(caller, now)
-  if (isResult(ctx)) return ctx
-  const v = validateNewItem(body)
-  if (!v.ok) return fail(400, v.error)
-  const { count, error: countError } = await caller.svc.from('day_plan_items')
-    .select('id', { count: 'exact', head: true }).eq('plan_id', ctx.plan.id).eq('source', 'own')
-  if (countError) throw new Error(countError.message)
-  if ((count ?? 0) >= MAX_OWN_ITEMS) return fail(409, `A day holds at most ${MAX_OWN_ITEMS} of your own items.`)
-  const { error } = await caller.svc.from('day_plan_items').insert({
-    plan_id: ctx.plan.id, employee_id: caller.id, source: 'own', ...v.value,
-  })
-  if (error) throw new Error(error.message)
-  return ok({ saved: true }, 201)
-}
-
-/** Only an own item, only before the plan is filed. After that it must be closed. */
-export async function removeOwnItem(caller: Caller, itemId: string, now: Date = new Date()): Promise<Result> {
-  const ctx = await memberPlanForToday(caller, now)
-  if (isResult(ctx)) return ctx
-  if (ctx.plan.submitted_at) return fail(409, 'The plan is filed. Close the item as Not done instead.')
-  const { data, error } = await caller.svc.from('day_plan_items').delete()
-    .eq('id', itemId).eq('plan_id', ctx.plan.id).eq('source', 'own').select('id')
-  if (error) throw new Error(error.message)
-  if ((data ?? []).length === 0) return fail(404, 'Item not found.')
-  return ok({ removed: true })
-}
-
+/** Filing keeps the list of open tasks due today or before, as it is now. At least one is needed. */
 export async function filePlan(caller: Caller, now: Date = new Date()): Promise<Result> {
   const ctx = await memberPlanForToday(caller, now)
   if (isResult(ctx)) return ctx
   if (ctx.plan.submitted_at) return ok({ filed: true, duplicate: true })
-  await syncAssigned(caller.svc, ctx.plan, ctx.today)
-  const { count, error: countError } = await caller.svc.from('day_plan_items')
-    .select('id', { count: 'exact', head: true }).eq('plan_id', ctx.plan.id)
-  if (countError) throw new Error(countError.message)
-  if ((count ?? 0) === 0) return fail(400, 'Add at least one item: what will you get done today?')
+  const tasks = (await tasksForDay(caller.svc, [caller.id], ctx.today, []))
+    .filter(t => t.assigned_to === caller.id && isTaskDueForPlan(t, ctx.today))
+  if (tasks.length === 0) {
+    return fail(400, 'Nothing is due today. Add a Self Task for what you will do today (due today), then file your plan.')
+  }
   const { data, error } = await caller.svc.from('day_plans')
-    .update({ submitted_at: now.toISOString() })
+    .update({ submitted_at: now.toISOString(), planned_task_ids: tasks.map(t => t.id) })
     .eq('id', ctx.plan.id).is('submitted_at', null).select('id')
   if (error) throw new Error(error.message)
-  return ok({ filed: true, duplicate: (data ?? []).length === 0 })
-}
-
-export async function closeItem(caller: Caller, itemId: string, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
-  const ctx = await memberPlanForToday(caller, now)
-  if (isResult(ctx)) return ctx
-  if (!ctx.plan.submitted_at) return fail(409, 'File your plan first.')
-  const items = await readItems(caller.svc, [ctx.plan.id])
-  const item = items.find(i => i.id === itemId)
-  if (!item) return fail(404, 'Item not found.')
-  if (item.status !== 'open') return fail(409, 'This item is already closed.')
-  const v = validateItemClose(body, item, caller.id, ctx.today)
-  if (!v.ok) return fail(400, v.error)
-  const { data, error } = await caller.svc.from('day_plan_items')
-    .update({ ...v.value, closed_at: now.toISOString() })
-    .eq('id', itemId).eq('status', 'open').select('id')
-  if (error) throw new Error(error.message)
-  if ((data ?? []).length === 0) return fail(409, 'This item changed a moment ago. Reload.')
-  return ok({ closed: true })
+  return ok({ filed: true, count: tasks.length, duplicate: (data ?? []).length === 0 })
 }
 
 /**
- * Closing the day: every item must be resolved. An assigned task already handed in is marked done here.
+ * Closing the day, on the Task Management dashboard: every task of the day is handed in or carried to
+ * another day with a reason; the summary is written and also files the day's EOD log (owner, 2026-11-12).
  * Before the closing time it still closes (somebody leaving early with permission), and the time shows.
  */
 export async function closeDay(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
   const ctx = await memberPlanForToday(caller, now)
   if (isResult(ctx)) return ctx
   if (!ctx.plan.submitted_at) return fail(409, 'File your plan first.')
-  await syncAssigned(caller.svc, ctx.plan, ctx.today)
-  const items = await readItems(caller.svc, [ctx.plan.id])
-  const stillOpen = items.filter(i => effectiveStatus(i) === 'open')
-  if (stillOpen.length > 0) {
-    return fail(409, `Close every item first: ${stillOpen.length} still open.`, { open_item_ids: stillOpen.map(i => i.id) })
+  const summary = validateSummary(body.summary)
+  if (!summary.ok) return fail(400, summary.error)
+
+  const sent: Carryover[] = []
+  for (const raw of Array.isArray(body.carryovers) ? body.carryovers : []) {
+    const v = validateCarryover(raw, ctx.today)
+    if (!v.ok) return fail(400, v.error)
+    sent.push(v.value)
   }
-  const handedIn = items.filter(i => i.status === 'open' && effectiveStatus(i) === 'done').map(i => i.id)
-  if (handedIn.length > 0) {
-    const { error } = await caller.svc.from('day_plan_items')
-      .update({ status: 'done', closed_at: now.toISOString(), proof_note: 'Submitted in Task Management' })
-      .in('id', handedIn).eq('status', 'open')
+  const [all, existing] = await Promise.all([
+    tasksForDay(caller.svc, [caller.id], ctx.today, ctx.plan.planned_task_ids ?? []),
+    readCarryovers(caller.svc, [ctx.plan.id]),
+  ])
+  const before = dayView(all, caller.id, ctx.today, ctx.plan, existing)
+  const known = new Set(before.tasks.map(t => t.id))
+  const strangers = sent.filter(c => !known.has(c.task_id))
+  if (strangers.length) return fail(400, 'One of those tasks is not in your day.')
+
+  const after = dayView(all, caller.id, ctx.today, ctx.plan, [...existing, ...sent])
+  const open = after.tasks.filter(t => t.state === 'open')
+  if (open.length > 0) {
+    return fail(409, `Finish or carry over every task first: ${open.length} still open.`, { open_task_ids: open.map(t => t.id) })
+  }
+
+  const handedInNow = new Set(after.tasks.filter(t => t.state === 'done').map(t => t.id))
+  const rows = sent.filter(c => !handedInNow.has(c.task_id)).map(c => ({ plan_id: ctx.plan.id, ...c }))
+  if (rows.length) {
+    const { error } = await caller.svc.from('day_close_carryovers').upsert(rows, { onConflict: 'plan_id,task_id' })
     if (error) throw new Error(error.message)
   }
-  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 2000) : ''
+  // The day's EOD log, from the same words (Performance and the old EOD screen keep reading it).
+  const eod = await caller.svc.from('daily_work_logs')
+    .upsert({ user_id: caller.id, log_date: ctx.today, summary: summary.value }, { onConflict: 'user_id,log_date' })
+  if (eod.error) throw new Error(eod.error.message)
   const { error } = await caller.svc.from('day_plans')
-    .update({ closed_at: now.toISOString(), close_note: note || null })
+    .update({ closed_at: now.toISOString(), close_note: summary.value.slice(0, 2000) })
     .eq('id', ctx.plan.id).is('closed_at', null)
   if (error) throw new Error(error.message)
   return ok({ closed: true })
-}
-
-/** A proof photo: already a JPEG shrunk by the browser. Stored under the caller's own folder. */
-export async function uploadProof(caller: Caller, bytes: ArrayBuffer, type: string): Promise<Result> {
-  const settings = await readSettings(caller.svc)
-  const viewer = await viewerOf(caller, settings)
-  if (!viewer.isMember) return fail(403, 'Day Close is not switched on for you.')
-  if (type !== 'image/jpeg') return fail(400, 'Send the photo as a JPEG.')
-  if (bytes.byteLength === 0 || bytes.byteLength > 5 * 1024 * 1024) return fail(400, 'The photo must be under 5 MB.')
-  const head = new Uint8Array(bytes.slice(0, 3))
-  if (head[0] !== 0xff || head[1] !== 0xd8 || head[2] !== 0xff) return fail(400, 'That file is not a JPEG photo.')
-  const path = `${caller.id}/${randomUUID()}.jpg`
-  const { error } = await caller.svc.storage.from(DAY_PROOF_BUCKET).upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
-  if (error) throw new Error(error.message)
-  return ok({ path }, 201)
 }
 
 // ─── Team Today (admins and the reviewer) ────────────────────────────────────
@@ -429,17 +344,18 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
   const ids = people.map(p => p.id)
   const minopIds = people.map(p => p.minop_user_id).filter((v): v is string => !!v)
   const monthStart = `${date.slice(0, 7)}-01`
+  const none = Promise.resolve({ data: [], error: null })
 
   const [holiday, leave, times, plansRead, strikesRead, monthStrikesRead, openStrikesRead, callsRead, overdueRead, reviewerRead] = await Promise.all([
     isHoliday(svc, date),
     onFullDayLeave(svc, ids, date),
     machineTimes(svc, minopIds, date),
-    ids.length ? svc.from('day_plans').select(PLAN_COLUMNS).eq('work_date', date).in('employee_id', ids) : Promise.resolve({ data: [], error: null }),
-    ids.length ? svc.from('day_strikes').select('id, employee_id, work_date, kind, detail, status, decided_at, decision_note').eq('work_date', date).in('employee_id', ids) : Promise.resolve({ data: [], error: null }),
-    ids.length ? svc.from('day_strikes').select('employee_id, status').gte('work_date', monthStart).lte('work_date', date).in('employee_id', ids).neq('status', 'waived') : Promise.resolve({ data: [], error: null }),
+    ids.length ? svc.from('day_plans').select(PLAN_COLUMNS).eq('work_date', date).in('employee_id', ids) : none,
+    ids.length ? svc.from('day_strikes').select('id, employee_id, work_date, kind, detail, status, decided_at, decision_note').eq('work_date', date).in('employee_id', ids) : none,
+    ids.length ? svc.from('day_strikes').select('employee_id, status').gte('work_date', monthStart).lte('work_date', date).in('employee_id', ids).neq('status', 'waived') : none,
     svc.from('day_strikes').select('id, employee_id, work_date, kind, detail, status, decided_at, decision_note').eq('status', 'open').order('work_date', { ascending: false }).limit(200),
-    ids.length ? svc.from('sales_lead_activities').select('actor, kind').in('actor', ids).in('kind', ['call', 'whatsapp']).is('undone_at', null).gte('at', istDayStartUtc(date)).lte('at', istDayEndUtc(date)) : Promise.resolve({ data: [], error: null }),
-    ids.length ? svc.from('tasks').select('assigned_to, status, due_date').in('assigned_to', ids).lt('due_date', date).not('status', 'in', '(completed,cancelled,pending_approval)') : Promise.resolve({ data: [], error: null }),
+    ids.length ? svc.from('sales_lead_activities').select('actor, kind').in('actor', ids).in('kind', ['call', 'whatsapp']).is('undone_at', null).gte('at', istDayStartUtc(date)).lte('at', istDayEndUtc(date)) : none,
+    ids.length ? svc.from('tasks').select('assigned_to, status, due_date').in('assigned_to', ids).lt('due_date', date).not('status', 'in', '(completed,cancelled,pending_approval)') : none,
     settings.reviewer_id ? svc.from('users').select('full_name').eq('id', settings.reviewer_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ])
   for (const r of [plansRead, strikesRead, monthStrikesRead, openStrikesRead, callsRead, overdueRead]) {
@@ -448,10 +364,12 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
 
   const plans = (plansRead.data ?? []) as Plan[]
   const planByPerson = new Map(plans.map(p => [p.employee_id, p]))
-  const items = await readItems(svc, plans.map(p => p.id))
-  const photos = await signPhotos(svc, items)
-  const itemsByPlan = new Map<string, typeof items>()
-  for (const i of items) itemsByPlan.set(i.plan_id, [...(itemsByPlan.get(i.plan_id) ?? []), i])
+  const [all, carry] = await Promise.all([
+    tasksForDay(svc, ids, date, plans.flatMap(p => p.planned_task_ids ?? [])),
+    readCarryovers(svc, plans.map(p => p.id)),
+  ])
+  const carryByPlan = new Map<string, Carryover[]>()
+  for (const c of carry) carryByPlan.set(c.plan_id, [...(carryByPlan.get(c.plan_id) ?? []), c])
 
   const strikesByPerson = new Map<string, StrikeRow[]>()
   for (const s of (strikesRead.data ?? []) as StrikeRow[]) strikesByPerson.set(s.employee_id, [...(strikesByPerson.get(s.employee_id) ?? []), s])
@@ -480,7 +398,6 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
 
   const rows = people.map(p => {
     const plan = planByPerson.get(p.id) ?? null
-    const its = plan ? itemsByPlan.get(plan.id) ?? [] : []
     const punch = (p.minop_user_id && times.get(p.minop_user_id)) || { checkInAt: null, checkOutAt: null }
     return {
       id: p.id,
@@ -489,8 +406,7 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
       onLeave: leave.has(p.id),
       punch,
       plan,
-      counts: countItems(its),
-      items: its.map(i => ({ ...i, effective: effectiveStatus(i), photo_url: i.proof_photo_path ? photos[i.proof_photo_path] ?? null : null })),
+      ...dayView(all, p.id, date, plan, plan ? carryByPlan.get(plan.id) ?? [] : []),
       strikes: strikesByPerson.get(p.id) ?? [],
       monthStrikes: monthCount.get(p.id) ?? 0,
       calls: calls.get(p.id) ?? { call: 0, whatsapp: 0 },
@@ -615,9 +531,6 @@ export async function evaluateDay(svc: ServiceClient, date: string): Promise<{ d
   ])
   if (plansRead.error) throw new Error(plansRead.error.message)
   const plans = new Map(((plansRead.data ?? []) as Plan[]).map(p => [p.employee_id, p]))
-  const items = await readItems(svc, [...plans.values()].map(p => p.id))
-  const openByPlan = new Map<string, number>()
-  for (const i of items) if (effectiveStatus(i) === 'open') openByPlan.set(i.plan_id, (openByPlan.get(i.plan_id) ?? 0) + 1)
 
   const rows: { employee_id: string; work_date: string; kind: StrikeKind; detail: Record<string, unknown> }[] = []
   let judged = 0
@@ -627,7 +540,7 @@ export async function evaluateDay(svc: ServiceClient, date: string): Promise<{ d
     const drafts = judgeDay({
       date, holiday, fullDayLeave: leave.has(p.id),
       checkInAt: punch.checkInAt, checkOutAt: punch.checkOutAt,
-      plan, openItems: plan ? openByPlan.get(plan.id) ?? 0 : 0,
+      plan, openItems: 0,
       planDueMinutes: settings.plan_due_minutes,
     })
     if (drafts.length || punch.checkInAt || punch.checkOutAt) judged++

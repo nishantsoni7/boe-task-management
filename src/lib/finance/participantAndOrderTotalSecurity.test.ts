@@ -1256,6 +1256,7 @@ describe('the applied migrations are frozen', () => {
       '20270621000000_pricing_model_v2.sql',
       '20270622000000_day_close.sql',
       '20270623000000_quotation_versions.sql',
+      '20270624000000_day_close_in_tasks.sql',
     ])
   })
 
@@ -1756,6 +1757,7 @@ describe('the applied migrations are frozen', () => {
       '20270621000000_pricing_model_v2.sql',
       '20270622000000_day_close.sql',
       '20270623000000_quotation_versions.sql',
+      '20270624000000_day_close_in_tasks.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

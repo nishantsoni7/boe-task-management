@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   ChevronRight,
-  Home, Bell, RefreshCw, FileText, Plus,
+  Home, Bell, RefreshCw, FileText, Plus, UsersRound,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
@@ -24,6 +24,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 import { shouldShowTaskCreateActions } from '@/lib/tasks/taskCreateActions'
+import { offersTeamToday } from '@/lib/dayClose/access'
 import { PhoneHeaderMenu } from './PhoneHeaderMenu'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
@@ -346,6 +347,17 @@ export function DashboardLayout({
               active={pathname === '/tasks/quotation-requests'}
               onClick={() => navTo('/tasks/quotation-requests')}
               badge={navCounts.quotationActive || undefined}
+            />
+          )}
+
+          {/* 4c. Team Today (Day Close, owner 2026-11-12): administrators only, never while previewing.
+              The route checks again (/api/day-close/team: an administrator or the Day Close reviewer). */}
+          {!inViewMode && offersTeamToday(profile?.role) && (
+            <NavLeaf
+              label="Team Today"
+              icon={<UsersRound size={15} strokeWidth={1.8} />}
+              active={pathname === '/tasks/team-today'}
+              onClick={() => navTo('/tasks/team-today')}
             />
           )}
 

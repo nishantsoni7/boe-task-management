@@ -3,7 +3,7 @@
 // TEAM TODAY (owner, 2026-11-12): one screen for the owner at the end of the day.
 //
 //   strikes to review     every open strike, oldest decision first: Uphold or Waive (reviewer only)
-//   the day, per person   punch in and out from the machine, plan filed (late?), items done / not done /
+//   the day, per person   punch in and out from the machine, plan filed (late?), tasks done / carried over /
 //                         open with each proof one tap away, calls and WhatsApp logged on the Lead Board,
 //                         overdue tasks, today's strikes, this month's strikes
 //   who takes part        switch people on or off; "Add everyone"
@@ -14,6 +14,7 @@
 import { useCallback, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { istAddDays } from '@/lib/istDate'
 import { clock } from '@/lib/dayClose/rules'
 import { dayCloseFetch, dayLabel, istClock } from './api'
@@ -31,18 +32,14 @@ type Strike = {
   decision_note: string | null
 }
 
-type Item = {
+type DayTaskRow = {
   id: string
-  source: 'assigned' | 'own'
   title: string
-  expected_output: string | null
-  effective: 'open' | 'done' | 'not_done'
-  proof_url: string | null
-  proof_note: string | null
-  photo_url: string | null
-  reason: string | null
-  next_date: string | null
-  closed_at: string | null
+  status: string
+  due_date: string | null
+  state: 'done' | 'carried' | 'open'
+  self: boolean
+  carryover: { reason: string; next_date: string } | null
 }
 
 type Row = {
@@ -52,8 +49,8 @@ type Row = {
   onLeave: boolean
   punch: { checkInAt: string | null; checkOutAt: string | null }
   plan: { submitted_at: string | null; closed_at: string | null; close_note: string | null } | null
-  counts: { total: number; done: number; notDone: number; open: number }
-  items: Item[]
+  counts: { total: number; done: number; carried: number; open: number }
+  tasks: DayTaskRow[]
   strikes: Strike[]
   monthStrikes: number
   calls: { call: number; whatsapp: number }
@@ -137,7 +134,7 @@ export function TeamTodayScreen() {
         <Stat n={team.rows.length} label="Taking part" />
         <Stat n={totals.filed} label="Plans filed" />
         <Stat n={totals.closed} label="Days closed" />
-        <Stat n={totals.open} label="Items still open" />
+        <Stat n={totals.open} label="Tasks still open" />
         <Stat n={totals.strikes} label="Strikes this day" />
       </div>
 
@@ -199,46 +196,40 @@ function PersonCard({ row }: { row: Row }) {
       <div className={styles.facts}>
         <span>In <strong>{row.machineLinked ? istClock(row.punch.checkInAt) : 'no machine ID'}</strong></span>
         <span>Out <strong>{istClock(row.punch.checkOutAt)}</strong></span>
-        <span><strong>{row.counts.done}</strong>/{row.counts.total} done</span>
-        {row.counts.notDone > 0 && <span><strong>{row.counts.notDone}</strong> not done</span>}
+        <span><strong>{row.counts.done}</strong>/{row.counts.total} tasks done</span>
+        {row.counts.carried > 0 && <span><strong>{row.counts.carried}</strong> carried over</span>}
         {row.counts.open > 0 && <span style={{ color: '#B42332' }}><strong>{row.counts.open}</strong> open</span>}
         <span>Calls <strong>{row.calls.call}</strong> · WhatsApp <strong>{row.calls.whatsapp}</strong></span>
         {row.overdueTasks > 0 && <span style={{ color: '#B42332' }}>Overdue tasks <strong>{row.overdueTasks}</strong></span>}
         <span>Strikes this month <strong>{row.monthStrikes}</strong></span>
       </div>
-      {row.items.length > 0 && (
+      {row.tasks.length > 0 && (
         <button type="button" className={styles.toggle} onClick={() => setOpen(o => !o)} aria-expanded={open}>
           {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-          {' '}{open ? 'Hide' : 'Show'} the {row.items.length} {row.items.length === 1 ? 'item' : 'items'} and proof
+          {' '}{open ? 'Hide' : 'Show'} the {row.tasks.length} {row.tasks.length === 1 ? 'task' : 'tasks'}
         </button>
       )}
       {open && (
         <ul className={styles.items}>
-          {row.items.map(i => (
-            <li key={i.id} className={i.effective === 'done' ? `${styles.item} ${styles.itemDone}` : i.effective === 'not_done' ? `${styles.item} ${styles.itemNotDone}` : styles.item}>
+          {row.tasks.map(t => (
+            <li key={t.id} className={t.state === 'done' ? `${styles.item} ${styles.itemDone}` : t.state === 'carried' ? `${styles.item} ${styles.itemNotDone}` : styles.item}>
               <div className={styles.itemHead}>
                 <div>
-                  <p className={styles.itemTitle}>{i.source === 'assigned' ? 'Given: ' : ''}{i.title}</p>
-                  {i.expected_output && <p className={styles.itemSub}>Output: {i.expected_output}</p>}
-                  {i.proof_url && <p className={styles.itemSub}><a href={i.proof_url} target="_blank" rel="noreferrer" className={styles.proofLink}>{i.proof_url}</a></p>}
-                  {i.proof_note && <p className={styles.itemSub}>{i.proof_note}</p>}
-                  {i.photo_url && (
-                    <a href={i.photo_url} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={i.photo_url} alt={`Proof for ${i.title}`} className={styles.proofPhoto} />
-                    </a>
-                  )}
-                  {i.effective === 'not_done' && <p className={styles.itemSub}>Why: {i.reason} · New date {i.next_date ? dayLabel(i.next_date) : '—'}</p>}
+                  <p className={styles.itemTitle}>
+                    <Link href={`/tasks/${t.id}`} className={styles.proofLink}>{t.title}</Link>
+                  </p>
+                  <p className={styles.itemSub}>{t.self ? 'Self task' : 'Given to them'}{t.due_date ? ` · due ${dayLabel(t.due_date)}` : ''} · open the task for its proof</p>
+                  {t.carryover && <p className={styles.itemSub}>Why not finished: {t.carryover.reason} · New date {dayLabel(t.carryover.next_date)}</p>}
                 </div>
-                <span className={`${styles.chip} ${i.effective === 'done' ? styles.chipGreen : i.effective === 'not_done' ? styles.chipAmber : styles.chipGrey}`}>
-                  {i.effective === 'done' ? 'Done' : i.effective === 'not_done' ? 'Not done' : 'Open'}
+                <span className={`${styles.chip} ${t.state === 'done' ? styles.chipGreen : t.state === 'carried' ? styles.chipAmber : styles.chipGrey}`}>
+                  {t.state === 'done' ? 'Done' : t.state === 'carried' ? 'Carried over' : 'Open'}
                 </span>
               </div>
             </li>
           ))}
         </ul>
       )}
-      {plan?.close_note && <p className={styles.itemSub}>Note: {plan.close_note}</p>}
+      {plan?.close_note && <p className={styles.itemSub}>End of day: {plan.close_note}</p>}
     </article>
   )
 }
@@ -249,7 +240,7 @@ function strikeDetail(s: Strike): string {
     return `Due ${String(d.due ?? '')}${d.filed_at ? `, filed ${istClock(String(d.filed_at))}` : ''}`
   }
   if (s.kind === 'day_not_closed') {
-    return `${d.punch_out_at ? `Last punch ${istClock(String(d.punch_out_at))}` : 'No punch-out'}${typeof d.open_items === 'number' ? `, ${d.open_items} open` : ''}`
+    return d.punch_out_at ? `Last punch ${istClock(String(d.punch_out_at))}` : 'No punch-out'
   }
   if (s.kind === 'closed_after_leaving') {
     return `Last punch ${istClock(String(d.punch_out_at ?? ''))}, closed ${istClock(String(d.closed_at ?? ''))}`

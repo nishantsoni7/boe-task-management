@@ -3,21 +3,19 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CLOSE_OPENS_MINUTES, PLAN_DUE_MINUTES, clock, countItems, dayPrompt, effectiveStatus, hasPendingWork,
-  isLockedLeaveType, isOwnPhotoPath, isSunday, isTaskDueForPlan, isTaskOverdue, judgeDay, pendingWorkWords,
-  planDueMinutes, validateItemClose, validateNewItem, type PlanItem,
+  CLOSE_OPENS_MINUTES, PLAN_DUE_MINUTES, clock, countDay, dayPrompt, dayTaskList, dayTaskState, hasPendingWork,
+  isHandedIn, isLockedLeaveType, isSunday, isTaskDueForPlan, isTaskOverdue, judgeDay, pendingWorkWords,
+  planDueMinutes, validateCarryover, validateSummary, type DayTask,
 } from './rules'
 
 const ME = '00000000-0000-0000-0000-0000000000b2'
-const PHOTO = `${ME}/11111111-2222-4333-8444-555555555555.jpg`
 // 13 Nov 2026 is a Friday; 15 Nov a Sunday; 14 Nov a Saturday (a working day).
 const FRI = '2026-11-13'
 const ist = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+05:30`).toISOString()
 
-const item = (over: Partial<PlanItem> = {}): PlanItem => ({
-  id: 'i1', source: 'own', task_id: null, title: 'Post 1 reel', expected_output: null, status: 'open',
-  proof_url: null, proof_photo_path: null, proof_note: null, reason: null, next_date: null, closed_at: null,
-  created_at: ist(FRI, '10:05'), ...over,
+const task = (over: Partial<DayTask> = {}): DayTask => ({
+  id: 'aaaaaaaa-0000-0000-0000-000000000001', title: 'Post 1 reel', status: 'working', priority: 'medium',
+  due_date: FRI, assigned_to: ME, created_by: ME, ...over,
 })
 
 describe('times', () => {
@@ -106,48 +104,47 @@ describe('what to do now', () => {
   })
 })
 
-describe('items', () => {
-  test('a new item needs words', () => {
-    assert.equal(validateNewItem({ title: ' ' }).ok, false)
-    assert.deepEqual(validateNewItem({ title: ' Post 1 reel ', expected_output: '' }), { ok: true, value: { title: 'Post 1 reel', expected_output: null } })
+describe('the day is the person’s own tasks', () => {
+  const T = (n: number, over: Partial<DayTask> = {}) => task({ id: `aaaaaaaa-0000-0000-0000-00000000000${n}`, title: `T${n}`, ...over })
+
+  test('before filing: open tasks due today or before, not later ones, not closed ones', () => {
+    const list = dayTaskList([
+      T(1), T(2, { due_date: '2026-11-10' }), T(3, { due_date: '2026-11-20' }),
+      T(4, { status: 'completed' }), T(5, { status: 'cancelled' }), T(6, { due_date: null }),
+    ], FRI, null)
+    assert.deepEqual(list.map(t => t.title), ['T2', 'T1'])
   })
 
-  test('an own item is Done only with proof', () => {
-    assert.equal(validateItemClose({ status: 'done' }, item(), ME, FRI).ok, false)
-    assert.equal(validateItemClose({ status: 'done', proof_url: 'javascript:alert(1)' }, item(), ME, FRI).ok, false)
-    assert.equal(validateItemClose({ status: 'done', proof_url: 'https://www.instagram.com/p/abc' }, item(), ME, FRI).ok, true)
-    assert.equal(validateItemClose({ status: 'done', proof_photo_path: PHOTO }, item(), ME, FRI).ok, true)
+  test('after filing: the planned tasks stay, even once completed or moved; a cancelled one leaves', () => {
+    const planned = [T(1).id, T(2).id, T(3).id]
+    const list = dayTaskList([
+      T(1, { status: 'completed' }), T(2, { due_date: '2026-11-20' }), T(3, { status: 'cancelled' }), T(4),
+    ], FRI, planned)
+    assert.deepEqual(list.map(t => t.title).sort(), ['T1', 'T2', 'T4'])
   })
 
-  test('a photo must be the caller’s own', () => {
-    const other = '00000000-0000-0000-0000-0000000000c3'
-    assert.equal(isOwnPhotoPath(PHOTO, ME), true)
-    assert.equal(isOwnPhotoPath(PHOTO, other), false)
-    assert.equal(validateItemClose({ status: 'done', proof_photo_path: PHOTO }, item(), other, FRI).ok, false)
+  test('done = submitted or completed; carried = a reason was given; otherwise open', () => {
+    const carried = new Set([T(2).id])
+    assert.equal(isHandedIn('pending_approval'), true)
+    assert.equal(isHandedIn('working'), false)
+    assert.equal(dayTaskState(T(1, { status: 'pending_approval' }), carried), 'done')
+    assert.equal(dayTaskState(T(2), carried), 'carried')
+    assert.equal(dayTaskState(T(3), carried), 'open')
+    assert.deepEqual(countDay([T(1, { status: 'completed' }), T(2), T(3)], carried), { total: 3, done: 1, carried: 1, open: 1 })
   })
 
-  test('an assigned task is Done only once it is submitted in Task Management', () => {
-    const assigned = item({ source: 'assigned', task_id: 't1', task_status: 'working' })
-    assert.equal(validateItemClose({ status: 'done' }, assigned, ME, FRI).ok, false)
-    assert.equal(validateItemClose({ status: 'done' }, { ...assigned, task_status: 'pending_approval' }, ME, FRI).ok, true)
-    assert.equal(effectiveStatus({ ...assigned, task_status: 'completed' }), 'done')
-    assert.equal(effectiveStatus(assigned), 'open')
+  test('carrying a task over needs a reason and a later date', () => {
+    const id = T(1).id
+    assert.equal(validateCarryover({ task_id: id, reason: 'x', next_date: '2026-11-14' }, FRI).ok, false)
+    assert.equal(validateCarryover({ task_id: id, reason: 'Waiting for photos', next_date: FRI }, FRI).ok, false)
+    assert.equal(validateCarryover({ task_id: 'nope', reason: 'Waiting for photos', next_date: '2026-11-14' }, FRI).ok, false)
+    assert.deepEqual(validateCarryover({ task_id: id, reason: ' Waiting for photos ', next_date: '2026-11-14' }, FRI),
+      { ok: true, value: { task_id: id, reason: 'Waiting for photos', next_date: '2026-11-14' } })
   })
 
-  test('Not done needs a reason and a later date', () => {
-    assert.equal(validateItemClose({ status: 'not_done', reason: 'x', next_date: '2026-11-14' }, item(), ME, FRI).ok, false)
-    assert.equal(validateItemClose({ status: 'not_done', reason: 'Waiting for photos', next_date: FRI }, item(), ME, FRI).ok, false)
-    assert.equal(validateItemClose({ status: 'not_done', reason: 'Waiting for photos', next_date: '2026-11-14' }, item(), ME, FRI).ok, true)
-  })
-
-  test('counts use the effective status', () => {
-    const c = countItems([
-      item({ status: 'done' }),
-      item({ status: 'not_done' }),
-      item(),
-      item({ source: 'assigned', task_id: 't', task_status: 'pending_approval' }),
-    ])
-    assert.deepEqual(c, { total: 4, done: 2, notDone: 1, open: 1 })
+  test('the end-of-day summary is required (it is the EOD log)', () => {
+    assert.equal(validateSummary('').ok, false)
+    assert.deepEqual(validateSummary(' 3 reels posted, 1 waiting '), { ok: true, value: '3 reels posted, 1 waiting' })
   })
 })
 

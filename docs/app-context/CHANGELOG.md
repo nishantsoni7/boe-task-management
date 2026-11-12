@@ -4,6 +4,28 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+- **Version clash found before merging.** The migration was first numbered `20270623000000`; #714 (`quotation_versions`) merged with the same number minutes earlier, and the history can record only one of them. Renumbered to `20270624000000` and made safe to run again. The owner must confirm in the database which of the two actually ran.
+- **Owner ask.** "My Day is very similar to Self Tasks… it will create confusion." Decided:
+  - proof on every task a member finishes;
+  - "Close my day" also files the EOD log;
+  - Team Today goes inside Task Management.
+- **Changed.**
+  - The day's plan is now the person's own tasks due today (Self Tasks included). It shows in a "Today" card on the Task Management dashboard: **File today's plan**, then **Close my day**, where anything not finished gets a reason and a new date, plus the summary that is written as the EOD log.
+  - Team Today moved to `/tasks/team-today` (admin sidebar).
+  - Removed: `/my-day`, its nav entry, `/attendance/day-close`, `/api/day-close/proof`.
+- **Database.**
+  - `day_plan_items` dropped; the migration refuses if any row exists.
+  - New: `day_plans.planned_task_ids`, and the table `day_close_carryovers`.
+  - New deferred constraint trigger `tasks_day_close_proof`: a member's own move to Completed or Pending approval needs proof they posted on the task (a file or a link), checked at commit.
+- **Proof.**
+  - `day_close_in_tasks_pglite.mjs`: 10 checks.
+  - `rules.test.ts` rewritten; `leaveLock.test.ts`.
+  - 1,400 tests across tasks, layout, modules and dashboard; `tsc` and eslint.
+- **Rollback.** In the migration header.
+
+## 2026-11-12 — Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (branch `feat/pi-returned-to-sales-status`, PR pending) · no migration
+## 2026-11-12 — Quotations: versions and compare; the client link shows the latest sent version (PR #714, branch `feat/quotation-versions`) · `20270623000000` → NOT YET APPLIED
 ## 2026-11-12 — Quotations: versions and compare; the client link shows the latest sent version (PR #714, squash-merged 2026-11-12 23:38 IST as `3c4c8605`, deployed 23:41 IST) · `20270623000000` → APPLIED 2026-11-12 (after a verified backup, before the merge; first numbered 20270622000000, which Day Close #713 also used, so renumbered and recorded as 20270623000000)
 - **Owner ask / approval (~21:15 IST).** Versions and compare, from the 7/10 review; the client link shows the latest SENT version, not the latest save.
 - **Built.** v1 when the link is first turned on; "Send as new version (vN)" with a note; a Versions card with compare (terms, changed products field by field, added, removed, totals and the change in ₹ and %), including unsent changes since the last version; the client link and its validity follow the latest version, shown as "· vN".
