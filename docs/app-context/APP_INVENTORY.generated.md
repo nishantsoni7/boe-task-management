@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `23f27a7e` — Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
-- Commits on this branch: 1238
+- Commit: `749a436a` — Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
+- Commits on this branch: 1239
 - Pages (`page.tsx`): 187   API routes (`route.ts`): 190
 - Migrations: 431 (first `20260530_create_positions.sql`, latest `20270615000000_quotation_pi_link.sql`)
 - Tables ever created: 231 (dropped at some point: 7)   SQL functions: 977   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `749a436a` 2026-11-12 Quotations, phase 3: Import a client file (Excel, CSV, paste, PDF, photo) · no migration (#677)
 - `23f27a7e` 2026-11-12 Docs: Quotations phase 2 merged (370f512f) and 20270615000000 applied (#675)
 - `370f512f` 2026-11-12 Quotations, phase 2: Confirm → PI draft, and Download in PI format (migration 20270615000000, apply before merge) (#674)
 - `8de7aded` 2026-11-12 Docs: Quotations phase 1 merged (7f491957) and 20270614000000 applied (#673)
@@ -38,7 +39,6 @@
 - `d61be67e` 2026-11-11 Docs: record the merge of #654 (task preview drawer briefs the task) (#655)
 - `b0f4ff3e` 2026-11-11 Tasks: the preview drawer briefs the task (status sentence + reason, last 3 real updates) (#654)
 - `9f3a3965` 2026-11-11 Shell and task lists: warm other routes on intent, not on every page load (#651)
-- `f57ec063` 2026-11-11 Docs: record the merge of #649 (Modules card dwell prefetch) (#650)
 
 ## Pages by top-level area
 

@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BACKUP_ROOT, assertNotDesktop, ensureDir, log, readStatus, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, assertNotDesktop, copyGitMirror, copyMissing, ensureDir, log, readStatus, writeStatus } from './lib.mjs'
 import { holdLockUntilExit } from './lock.mjs'
 
 // Only one backup-all at a time (status/backup-all.lock). A refused run touches no status file. Quick git-hook runs are not locked.
@@ -29,9 +29,6 @@ if (!args.includes('--skip-db')) res.database = run('backup-database.mjs', args.
 // does not undo the backup itself.
 if (!args.length && res.code && res.database && readStatus('code-full')?.steps?.mirrorGithub === 'ok') writeStatus('covered', { through: startedAt })
 
-// Copy a tree, skipping files already present with the same size (git objects are read-only and immutable).
-const copyMissing = (src, dst) => fs.cpSync(src, dst, { recursive: true, filter: (s, d) => !(fs.existsSync(d) && fs.statSync(s).isFile() && fs.statSync(d).size === fs.statSync(s).size) })
-
 const copyTo = process.env.BOE_BACKUP_COPY_TO
 if (copyTo) {
   assertNotDesktop(copyTo)
@@ -46,7 +43,7 @@ if (copyTo) {
     copyMissing(path.join(BACKUP_ROOT, dir, n), path.join(dest, dir, n))
     if (dir === 'bundles') fs.cpSync(path.join(BACKUP_ROOT, dir, n + '.sha256'), path.join(dest, dir, n + '.sha256'))
   }
-  copyMissing(path.join(BACKUP_ROOT, 'git'), path.join(dest, 'git'))
+  copyGitMirror(path.join(BACKUP_ROOT, 'git', 'boe-task-management.git'), path.join(dest, 'git', 'boe-task-management.git'))
   // Uploaded files: cumulative mirror, copied in full (skips files already present with the same size).
   const sroot = path.join(BACKUP_ROOT, 'storage')
   if (fs.existsSync(sroot)) {

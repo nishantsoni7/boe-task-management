@@ -24,6 +24,18 @@ export const stamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, '').re
 export const log = (...a) => console.log(`[${new Date().toISOString()}]`, ...a)
 export function ensureDir(p) { assertNotDesktop(p); fs.mkdirSync(p, { recursive: true }); return p }
 
+// Copy a tree, skipping files already present with the same size. Right only for files that never change in place.
+export const copyMissing = (src, dst) => fs.cpSync(src, dst, { recursive: true, filter: (s, d) => !(fs.existsSync(d) && fs.statSync(s).isFile() && fs.statSync(d).size === fs.statSync(s).size) })
+
+// Copy the bare git mirror to the second drive. Objects are named by their hash and never change, so one already there is
+// skipped. Refs, HEAD and packed-refs DO change in place, and every ref is a 41-byte file, so the size check left a moved
+// branch (main too) on its old commit on the drive (20 of 2398 refs, found 2026-11-12). Objects go first, so a ref never
+// lands before the commit it names.
+export function copyGitMirror(src, dst) {
+  copyMissing(path.join(src, 'objects'), path.join(dst, 'objects'))
+  fs.cpSync(src, dst, { recursive: true, filter: (s) => path.relative(src, s).split(path.sep)[0] !== 'objects' })
+}
+
 // Git hooks export GIT_DIR/GIT_INDEX_FILE etc.; left in place they redirect every git call here into the hooked repository.
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|PREFIX|QUARANTINE_PATH)$/.test(k)))
 
