@@ -213,7 +213,7 @@ describe('every engine-gated module has a route guard', () => {
         )
       } else {
         // Orders and Meetings keep their own hand-written guards. They are the
-        // controls: if either stops resolving the engine, this fails. Orders reads
+        // controls: if either stops resolving the engine, this fails. Both read
         // view from the resolved permission context since 2026-11-12.
         assert.ok(
           (source.includes('hasPermission') && source.includes(`'${moduleKey}', 'view'`))

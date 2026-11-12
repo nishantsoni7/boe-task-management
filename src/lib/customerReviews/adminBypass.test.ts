@@ -257,10 +257,16 @@ describe('an admin with both permissions revoked is outside the module', () => {
     // it short-circuited before either permission was consulted.
     const layout = executable(read('src/app/customer-reviews/layout.tsx'))
     assert.equal(/role/.test(layout), false, 'the entry gate still reads a role')
-    assert.ok(layout.includes("'customer_review_requests', 'use'"))
-    assert.ok(layout.includes("'customer_review_requests', 'verify'"))
-    // A permission question that could not be answered is not a yes.
-    assert.equal((layout.match(/catch\(\(\) => false\)/g) ?? []).length, 2)
+    assert.ok(layout.includes("permissionsByModule.get('customer_review_requests') ?? []"))
+    assert.ok(layout.includes("reviews.some(p => p.actionKey === 'use' && p.allowed)"))
+    assert.ok(layout.includes("reviews.some(p => p.actionKey === 'verify' && p.allowed)"))
+    // A permission question that could not be answered is not a yes. Since
+    // 2026-11-12 the gate reads the shared permission context, where a failed
+    // resolve becomes an empty map, so it reaches this gate as no grant at all.
+    assert.equal(/hasPermission/.test(layout), false)
+    const context = read('src/hooks/queries/usePermissionContext.ts')
+    assert.ok(context.includes('getEffectivePermissionsForUser(supabase, userId).catch('))
+    assert.ok(context.includes('() => new Map<string, EffectivePermission[]>()'))
   })
 
   test('AND THE DATABASE ENTRY PREDICATE AGREES', () => {

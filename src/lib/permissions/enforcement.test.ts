@@ -167,7 +167,8 @@ describe('the claims still match the code', () => {
 
   test('Meetings is "partial": its layout and capabilities resolve, but nothing reads export', () => {
     const guard = read('src/app/meetings/layout.tsx')
-    assert.ok(guard.includes('hasPermission'), 'the Meetings guard no longer resolves permissions')
+    // Resolved from the shared permission context since 2026-11-12.
+    assert.ok(guard.includes("permissionsByModule.get('meetings')"), 'the Meetings guard no longer resolves permissions')
     const caps = read('src/lib/permissions/meetings.ts')
     assert.ok(caps.includes('deriveMeetingsCapabilities'))
     assert.equal(caps.includes("'export'"), false, 'if Meetings starts reading export, promote the entry to enforced')

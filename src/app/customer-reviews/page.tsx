@@ -2,7 +2,6 @@
 
 import { Suspense } from 'react'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { CustomReviewsScreen } from './CustomReviewsScreen'
 
 // The module landing page, and it is the same for everybody with Reviews access:
@@ -13,11 +12,10 @@ import { CustomReviewsScreen } from './CustomReviewsScreen'
 // sidebar.
 //
 // The Suspense boundary is kept: the layout reads search params for navigation.
+// CustomReviewsScreen runs useCustomerReviews and shows the loading screen itself;
+// a second instance here only to wait for it read the profile and the permissions
+// twice (2026-11-12).
 export default function CustomerReviewsPage() {
-  const { loading } = useCustomerReviews()
-
-  if (loading) return <LoadingScreen />
-
   return (
     <Suspense fallback={<LoadingScreen />}>
       <CustomReviewsScreen />
