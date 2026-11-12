@@ -227,6 +227,7 @@ import {
   RESPOND_BUTTON_LABEL,
   SEND_BACK_AGAIN_LABEL,
   SALES_RETURN_SUMMARY,
+  OPERATIONS_LOCKED_FOR_SALES,
   salesReturnStage,
   SEND_BACK_BUTTON_LABEL,
   describeOperationsHandoff,
@@ -3074,7 +3075,12 @@ export default function OrderDetailPage() {
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
   // strip names the review, and only to whom view.actions offers it.
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
-  const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
+  // RETURNED TO SALES LOCKS OPERATIONS' DECISION (owner, 2026-11-12): the reviewer gets a note instead of
+  // Accept / Cannot accept / Flag lines until the return ends (a revised PI approved, or an answer). Screen only;
+  // decide_order_operations_handoff() itself is unchanged.
+  const operationsLockedForSales = operationsReviewOpen && !!salesReturn && operationsView?.kind === 'recorded'
+    && (operationsView.actions.accept || operationsView.actions.cannotAccept)
+  const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded' && !salesReturn
     && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered || operationsRecoverOffered
   // THE OWNER'S (OR AN ADMINISTRATOR'S) ANSWER to a flagged version, on the same
   // notification: remarks only, same PI version, back to the reviewer.
@@ -3468,8 +3474,11 @@ export default function OrderDetailPage() {
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
-          actions={operationsDecisionOffered || respondOffered || sendBackOffered ? (
+          actions={operationsDecisionOffered || respondOffered || sendBackOffered || operationsLockedForSales ? (
             <>
+              {operationsLockedForSales && (
+                <span className="order-notice-locked" data-locked-for-sales="true">{OPERATIONS_LOCKED_FOR_SALES}</span>
+              )}
               {operationsDecisionOffered && (
                 <OperationsReviewActions
                   view={operationsView}

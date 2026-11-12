@@ -727,6 +727,9 @@ export const SALES_RETURN_INSTRUCTION: Record<SalesReturnStage, string> = {
   with_sales: 'The approved PI cannot be edited in place. The salesperson makes the requested changes with Edit PI and resubmits; the revised PI goes to Operations once it is approved.',
   resubmitted: 'The salesperson has resubmitted a revised PI. Once it is approved it goes to Operations as a new version.',
 }
+/** What the operations reviewer sees in place of Accept / Cannot accept / Flag lines while the PI is with Sales. */
+export const OPERATIONS_LOCKED_FOR_SALES = 'With Sales for changes. Operations reviews the revised PI once it is approved.'
+
 /** The ERP card's one line while the PI is with Sales. */
 export const SALES_RETURN_SUMMARY: Record<SalesReturnStage, string> = {
   with_sales: 'Returned to Sales for changes.',
