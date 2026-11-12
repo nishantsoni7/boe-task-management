@@ -1,6 +1,6 @@
 'use client'
 
-// Versions (20270622000000): what was sent to the client and when, "Send as new version", and a compare of any two
+// Versions (20270623000000): what was sent to the client and when, "Send as new version", and a compare of any two
 // (or of the last version with the unsent saved copy). The client's link always shows the latest version.
 
 import { useState } from 'react'

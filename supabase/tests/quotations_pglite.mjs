@@ -83,7 +83,7 @@ await db.exec(mig('20270617000000_quotation_pricing_desk.sql'))
 await db.exec(mig('20270618000000_quotation_reports.sql'))
 await db.exec(mig('20270620000000_pricing_price_book.sql'))
 await db.exec(mig('20270621000000_pricing_model_v2.sql'))
-await db.exec(mig('20270622000000_quotation_versions.sql'))
+await db.exec(mig('20270623000000_quotation_versions.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -482,7 +482,7 @@ assert.ok(qline && 'client_type' in qline, 'quotation lines carry the client typ
 assert.ok((await rpc(U.manager, 'pricing_pool', ['bed'], null)).length > 0, 'a person with Pricing (and no Quotations edit) may read it')
 ok('the price pool gives every price of a product type with its parameters, to people who may open Quotations or Pricing, never client names')
 
-// ── Quotation versions (20270622000000) ────────────────────────────────────
+// ── Quotation versions (20270623000000) ────────────────────────────────────
 const qv = await rpc(U.sales, 'quotation_create', { client_name: 'Version Hotel' })
 const vdoc = (price, discount = 0) => ({ header: { ...doc().header, client_name: 'Version Hotel', discount_pct: discount, internal_notes: 'secret margin note' },
   areas: [{ key: 'a', name: 'Deluxe room', style: '', multiplier: 10, unit_label: 'rooms' }],

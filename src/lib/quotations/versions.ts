@@ -1,4 +1,4 @@
-// Quotation versions (20270622000000): reading them, and comparing any two (or a version with the unsent saved copy).
+// Quotation versions (20270623000000): reading them, and comparing any two (or a version with the unsent saved copy).
 // Line ids change on every save, so products are matched by room type + name, in order.
 
 import type { createClient } from '@/lib/supabase/client'
