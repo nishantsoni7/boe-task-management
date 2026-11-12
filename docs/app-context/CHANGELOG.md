@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Quotations, phase 4: Improve picture (Image studio) (PR #681, branch `feat/quotation-image-studio`) · no migration
+- **Owner ask / approval.** Regenerate unclear client pictures (original request); plan phase 4 approved 2026-11-12.
+- **Built.** "Improve picture" under each product picture: Clean up (sharp white-background catalogue picture of the same design) and Change it (typed change, optional reference) via `POST /api/quotations/picture` (the Edit PI image model, one paid request per press, never retried, JPEG stored as the caller); Crop & rotate on the device. Result beside the original; Use / Try again / Keep original; saved with Save.
+- **Proof.** `pictureStudio.test.ts` (4), `tsc`, eslint, full `npm test`, `next build`. Not run against the real image provider from here (FAL_KEY is only on Vercel).
+
 ## 2026-11-12 — Pages load on click: no page is loaded in advance, anywhere (branch `perf/load-on-click`) · no migration
 - **Owner decision.** "Yes, load on click" (2026-11-12), after the console kept filling with "preloaded but not used" on every page ("this has really become too common").
 - **Why the earlier fixes could not end it.** The owner's screenshots held 72 and then 173 warnings but only 2-3 distinct files (Control Center `0mn.s1bn975w.css`, Orders `0vpo57o72-4do.css`, Attendance & Payroll `0-se8gau-3wku.css`, Pricing's `01yo0_929s3t8.css`, the Dashboard's `0w~i7isy3ru4c.css`). Chrome re-reports every still-unused preloaded file as the person moves around a long-open tab, so any page loaded in advance and not opened (a For-you card, a menu item, a card the pointer rested on) multiplies. #649, #651, #656, #658 and #659 narrowed WHEN pages loaded; this removes it.

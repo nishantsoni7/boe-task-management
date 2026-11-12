@@ -24,6 +24,7 @@ import {
 import { DEFAULT_CLIENT_NOTE } from '@/lib/quotations/terms'
 import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
+import { StudioDialog } from './StudioDialog'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
 
@@ -52,6 +53,7 @@ export default function BuilderScreen() {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [piStage, setPiStage] = useState<PiStage | null>(null)
+  const [studioFor, setStudioFor] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
@@ -249,7 +251,7 @@ export default function BuilderScreen() {
                 {g.lines.map((l, li) => (
                   <LineRow key={l.key} l={l} area={g.area} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                     first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
-                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onRemove={() => removeLine(l.key)}
+                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onRemove={() => removeLine(l.key)}
                     onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
                 ))}
               </div>
@@ -315,6 +317,13 @@ export default function BuilderScreen() {
             <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
               onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added]); touch(); setImporting(false); setMsg({ tone: 'ok', text: `Added ${added.length} products. Check them, add prices, then Save.` }) }} />
           )}
+          {studioFor && profile && (() => {
+            const line = lines.find(x => x.key === studioFor)
+            return line?.image_path ? (
+              <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={p => pictureUrl(supabase, p)} onClose={() => setStudioFor(null)}
+                onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
+            ) : null
+          })()}
           <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
 
           {base.may_edit && (
@@ -414,9 +423,9 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
   )
 }
 
-function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onRemove, onMove, onDuplicate }: {
+function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void
+  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -428,6 +437,7 @@ function LineRow({ l, area, editable, qty, total, first, last, url, onChange, on
         {l.image_path
           ? <button type="button" onClick={() => editable && fileRef.current?.click()} style={{ padding: 0, border: 0, background: 'none', cursor: editable ? 'pointer' : 'default' }} aria-label="Change picture"><Pic className={s.pic} src={url(l.image_path)} alt={l.name || 'Product picture'} /></button>
           : <button type="button" className={s.picEmpty} onClick={() => fileRef.current?.click()} disabled={!editable}><span><ImagePlus size={16} aria-hidden /><br />Picture</span></button>}
+        {editable && l.image_path && <button type="button" className={s.improve} onClick={onImprove}>Improve picture</button>}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { onUpload(e.target.files?.[0]); e.target.value = '' }} />
         {editable && l.image_path && <button type="button" className={`${s.btn} ${s.btnSm}`} style={{ marginTop: 4, width: 76 }} onClick={() => onChange({ image_path: null })}>Remove</button>}
       </div>
