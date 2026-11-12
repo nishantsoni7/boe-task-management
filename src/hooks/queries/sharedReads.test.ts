@@ -2,7 +2,7 @@ import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { QueryClient } from '@tanstack/react-query'
 import { loadProfile } from './useProfile'
-import { cachedModulePermissions } from './usePermissionContext'
+import { cachedModulePermissions, profileForFirstResolve } from './usePermissionContext'
 import { fetchTaskPeople } from '@/lib/tasks/taskPeople'
 import type { UserProfile } from '@/lib/types'
 import type { EffectivePermission } from '@/lib/permissions/types'
@@ -90,5 +90,32 @@ describe("a module hook reuses the gate's permission answer only while it is fre
     qc.setQueryData(['permission-context', ME], { profile: ROW, permissionsByModule: new Map([['meetings', [VIEW]]]) },
       { updatedAt: Date.now() - 31_000 })
     assert.equal(cachedModulePermissions(qc, ME, 'meetings'), null)
+  })
+})
+
+describe("the shell's first permission read reuses the row the page just read", () => {
+  it('reuses a row read in the last 30 seconds when the context has never resolved', () => {
+    const qc = new QueryClient()
+    qc.setQueryData(['profile', ME], ROW)
+    assert.equal(profileForFirstResolve(qc, ME), ROW)
+  })
+
+  it('reads again on a refetch, so a role change still reaches an open page', () => {
+    const qc = new QueryClient()
+    qc.setQueryData(['profile', ME], ROW)
+    qc.setQueryData(['permission-context', ME], { profile: ROW, permissionsByModule: new Map() })
+    assert.equal(profileForFirstResolve(qc, ME), null)
+  })
+
+  it('reads again when the row is missing, older than 30 seconds or marked stale', async () => {
+    const qc = new QueryClient()
+    assert.equal(profileForFirstResolve(qc, ME), null)
+    qc.setQueryData(['profile', ME], null)
+    assert.equal(profileForFirstResolve(qc, ME), null, 'a failed or missing row is not reused')
+    qc.setQueryData(['profile', ME], ROW, { updatedAt: Date.now() - 31_000 })
+    assert.equal(profileForFirstResolve(qc, ME), null)
+    qc.setQueryData(['profile', ME], ROW)
+    await qc.invalidateQueries({ queryKey: ['profile', ME], refetchType: 'none' })
+    assert.equal(profileForFirstResolve(qc, ME), null)
   })
 })

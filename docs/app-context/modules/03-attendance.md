@@ -221,4 +221,5 @@ Below 768px only; desktop and tablet unchanged. Shared pieces in `src/components
 - `ObjectionQueue` (correction log, payroll monthly review, payroll results): a card per issue, 44px Resolve / Reject / History.
 - Header text buttons (Monthly review, Requests, Employee directory, Attendance sync, Incoming) are in the ⋯ / + menu on a phone.
 
+- **The shell no longer reads it again (2026-11-12, branch `perf/context-reuses-profile`, no SQL).** These pages are not behind a ModuleGuard, so the page reads the profile first; the shell's permission context now reuses that row on its first resolve instead of reading it again (see dossier 08).
 - **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/my-attendance` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

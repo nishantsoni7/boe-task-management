@@ -142,10 +142,11 @@ export function usePermissionContext(): PermissionContext {
       }
 
       const supabase = createClient()
+      const cached = profileForFirstResolve(qc, userId)
 
       // Independent failure, per rule 2.
       const [profileResult, permissionsByModule] = await Promise.all([
-        supabase.from('users').select(PROFILE_COLUMNS).eq('id', userId).single(),
+        cached ? { data: cached, error: null } : supabase.from('users').select(PROFILE_COLUMNS).eq('id', userId).single(),
         // A permissions failure must NOT take an admin's access away: they pass
         // on the role short-circuit alone, exactly as before. So this half
         // degrades to an empty map rather than failing the whole query.
@@ -217,6 +218,20 @@ export function usePermissionContext(): PermissionContext {
 function publishProfile(qc: QueryClient, userId: string, profile: UserProfile | null): void {
   if (!profile) return
   qc.setQueryData(profileKey(userId), profile)
+}
+
+/**
+ * The profile row a screen read within the last PERMISSION_STALE_MS, for this context's FIRST
+ * resolve only; null otherwise, so the context reads the row itself. Pages without a ModuleGuard
+ * (Payroll, My Attendance, My Credits, My Payroll) read the row before the shell's context starts,
+ * and the context then fetched the identical row again (2026-11-12). A refetch always reads, so a
+ * role change still reaches an open page within 30 s; a null row (failed or missing) is not reused.
+ */
+export function profileForFirstResolve(qc: QueryClient, userId: string): UserProfile | null {
+  if (qc.getQueryState(['permission-context', userId])?.data !== undefined) return null
+  const row = qc.getQueryState<UserProfile | null>(profileKey(userId))
+  if (!row?.data || row.isInvalidated || Date.now() - row.dataUpdatedAt > PERMISSION_STALE_MS) return null
+  return row.data
 }
 
 /**

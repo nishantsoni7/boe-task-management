@@ -144,10 +144,13 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
     Exhibition Leads hooks, Image Editor, Performance, My Attendance, the Payroll family, My Credits, My Payroll and the
     seven Showroom QR pages. The baseline per page is 3 own-row reads (profile, role, designation) and 1 `_for_user`
     call. Verified live 2026-11-12 ~22:30 IST.
-  - Still repeated (found in that recount, not fixed): on Payroll, My Attendance, My Credits and My Payroll the page is
-    not behind a ModuleGuard, so it reads the 8-column row before the shell's `usePermissionContext` starts. The
-    context's queryFn always reads the row itself (it does not reuse `['profile', uid]`), so the identical row is read
-    again about 1.2 s later: 4 own-row reads on those pages instead of 3.
+  - Found in that recount: on Payroll, My Attendance, My Credits and My Payroll the page is not behind a ModuleGuard, so
+    it reads the 8-column row before the shell's `usePermissionContext` starts, and the context read the identical row
+    again about 1.2 s later (4 own-row reads instead of 3). Fixed (branch `perf/context-reuses-profile`): `profileForFirstResolve(qc, uid)`
+    hands the context's FIRST resolve a `['profile', uid]` row read in the last `PERMISSION_STALE_MS` (30 s) and not
+    invalidated. A refetch always reads the row itself, so a role change still reaches an open page within 30 s, and a
+    null row is never reused, so a failed read still denies. The two directions cannot wait on each other: the
+    context only reuses a settled row, never one still being read.
   - Module hooks reuse the gate's permission answer (2026-11-12, #712 merged as `3e26083e`): `cachedModulePermissions(qc, userId,
     moduleKey)` returns a copy of one module's rows from `['permission-context', uid]` only while it is under
     `PERMISSION_STALE_MS` (30 s) old, else null and the caller asks the database. Used on first load by `useMeetings`,

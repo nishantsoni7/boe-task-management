@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9835e03` — Merge main; renumber the Day Close migration to 20270624000000 and make it safe to re-run
-- Commits on this branch: 60
+- Commit: `db54a236` — Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
+- Commits on this branch: 1280
 - Pages (`page.tsx`): 190   API routes (`route.ts`): 197
 - Migrations: 440 (first `20260530_create_positions.sql`, latest `20270624000000_day_close_in_tasks.sql`)
 - Tables ever created: 242 (dropped at some point: 8)   SQL functions: 1007   Enums: 0
@@ -14,31 +14,31 @@
 
 ## Latest 25 commits
 
-- `9835e03` 2026-11-12 Merge main; renumber the Day Close migration to 20270624000000 and make it safe to re-run
-- `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
-- `4f45c6d` 2026-11-12 Day Close in Task Management: the code, migration, tests and docs of the previous commit
-- `97d08c4` 2026-11-12 Day Close moves into Task Management; proof on every finished task (migration 20270623000000, apply before merge)
-- `210e60f` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
-- `8eb156e` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
-- `b3f0ac2` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
-- `2466d96` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
-- `3e26083` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
-- `72c5797` 2026-11-12 Other modules read your own row once (#711)
-- `8ea2511` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
-- `cccdf39` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
-- `f92dd80` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
-- `3ff36f7` 2026-11-12 Fewer repeated requests: Finance (#707)
-- `9665229` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
-- `5635226` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
-- `b46b60f` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
-- `b30d3b7` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
-- `a266a00` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
-- `7f60c71` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
-- `f88f2ad` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
-- `f88d703` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
-- `202cbaf` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
-- `6019f0e` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
-- `49770c2` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
+- `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
+- `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
+- `3c4c8605` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
+- `210e60f8` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
+- `8eb156e4` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
+- `b3f0ac27` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
+- `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
+- `3e26083e` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
+- `72c57977` 2026-11-12 Other modules read your own row once (#711)
+- `8ea2511c` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
+- `cccdf395` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
+- `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
+- `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
+- `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
+- `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
+- `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
+- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
+- `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
+- `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
+- `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
+- `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
+- `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
+- `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
 
 ## Pages by top-level area
 
