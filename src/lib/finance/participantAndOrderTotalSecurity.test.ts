@@ -1254,6 +1254,7 @@ describe('the applied migrations are frozen', () => {
       '20270619000000_order_handoff_send_to_sales.sql',
       '20270620000000_pricing_price_book.sql',
       '20270621000000_pricing_model_v2.sql',
+      '20270622000000_day_close.sql',
     ])
   })
 
@@ -1752,6 +1753,7 @@ describe('the applied migrations are frozen', () => {
       '20270619000000_order_handoff_send_to_sales.sql',
       '20270620000000_pricing_price_book.sql',
       '20270621000000_pricing_model_v2.sql',
+      '20270622000000_day_close.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -29,7 +29,7 @@
 
 import {
   Banknote, BookOpen, ClipboardList, CalendarDays, LayoutDashboard,
-  MessageSquareWarning, SlidersHorizontal, Users, Coins,
+  MessageSquareWarning, SlidersHorizontal, Users, Coins, ListChecks,
 } from 'lucide-react'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { MY_CREDITS_PATH } from '@/lib/boeCredits/paths'
@@ -116,6 +116,7 @@ export const ATTENDANCE_PAYROLL_ADMIN_SECTIONS: AttendancePayrollSection[] = [
     // Nothing under /attendance/* that another section owns.
     alsoActiveFor: [
       '/attendance/records', '/attendance/upload', '/attendance/monthly-review', '/attendance/requests',
+      '/attendance/day-close',
     ],
     icon: <CalendarDays size={15} strokeWidth={1.8} />,
     tabs: [
@@ -124,6 +125,8 @@ export const ATTENDANCE_PAYROLL_ADMIN_SECTIONS: AttendancePayrollSection[] = [
       { label: 'Upload',         path: '/attendance/upload' },
       { label: 'Monthly Review', path: '/attendance/monthly-review' },
       { label: 'Requests',       path: '/attendance/requests' },
+      // Team Today: everybody's plan, proof, punch-out and strikes (Day Close, owner 2026-11-12).
+      { label: 'Day Close',      path: '/attendance/day-close' },
     ],
   },
   {
@@ -182,6 +185,9 @@ export const ATTENDANCE_PAYROLL_ADMIN_SECTIONS: AttendancePayrollSection[] = [
  * record, which is why the exception is safe.
  */
 export const ATTENDANCE_PAYROLL_EMPLOYEE_NAV: AttendancePayrollNavItem[] = [
+  // The day's plan and closing it before punching out (Day Close, owner 2026-11-12). The page says so
+  // plainly to somebody who is not switched on; its API derives the person from the token.
+  { label: 'My Day',        path: '/my-day',        icon: <ListChecks size={15} strokeWidth={1.8} /> },
   { label: 'My Attendance', path: '/my-attendance', icon: <CalendarDays size={15} strokeWidth={1.8} /> },
   { label: 'My Payroll',    path: '/my-payroll',    icon: <ClipboardList size={15} strokeWidth={1.8} /> },
   // Balance, uses, this month's review progress, history — and the guide

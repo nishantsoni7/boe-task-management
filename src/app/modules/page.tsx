@@ -51,6 +51,7 @@ import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import { participatesInPayroll } from '@/lib/payroll/participation'
 import { AttentionPanel, AttentionStrip, type AttentionSources } from './AttentionPanel'
 import { PunchStrip } from './PunchStrip'
+import { DayStrip } from './DayStrip'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -943,6 +944,8 @@ export default function BoeOsHomePage() {
               else, whose punch the admin must not be shown, nor while
               arranging the cards. See PunchStrip.tsx. */}
           {!editingOrder && <PunchStrip userId={userId} enabled={!viewMode} />}
+          {/* Day Close (owner, 2026-11-12): file the plan, close the day. Silent for anybody not switched on. */}
+          {!editingOrder && <DayStrip userId={userId} enabled={!viewMode} />}
 
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is

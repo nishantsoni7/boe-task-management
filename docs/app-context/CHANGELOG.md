@@ -4,6 +4,23 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Day Close: plan, proof, close before punch-out, strikes, leave lock (branch `claude/boe1-employee-monitoring-t5ypei`, PR not yet opened) · `20270622000000` → NOT applied (apply before the merge)
+- **Owner ask.** Staff waste about half the day, with no defined work and no accountability; leave is taken at will. Wanted from tomorrow: today's work is defined, finished or explained before going home, and leave is blocked while work is pending. Named: Dhruv, Rakesh (social media), the SEO person, sales, Jasvi ("all of team").
+- **Decisions.** Strikes only (no money for now). Plan due 10:30, closing opens 18:00, office 10:00–18:30, Monday to Saturday. Leave with work pending is blocked except by the owner. The owner alone reviews.
+- **Built.**
+  - `/my-day`: the plan, items closed with a link or photo or a reason, and close the day.
+  - `/attendance/day-close`, Team Today: punches, plans, proof, calls logged, overdue tasks, strikes; who takes part; the reviewer seat.
+  - A Day strip on `/modules`.
+  - A nightly check (Vercel cron 23:15 IST).
+  - A leave lock in the attendance-request handlers, with a 🔒 mark on the queue.
+- **Database.** Six tables closed to the browser, a closed-day guard trigger, and the private bucket `day-proof`.
+- **Proof.**
+  - `rules.test.ts` (24 tests).
+  - `leaveLock.test.ts`: the real handlers over MemorySupabase.
+  - `day_close_pglite.mjs`: 13 checks on the real migration.
+  - The nav test updated; `tsc`, eslint.
+- **Not seen signed in.** No browser test (owner's rule).
+- **Rollback.** In the migration header; remove the cron entry.
 ## 2026-11-12 — Other modules read your own row once (PR open, branch `perf/modules-profile-once`) · no SQL
 - **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 1 of 2; PR 2 covers the permission lookups in Meetings, Review Workflow, Sample Tracking and Assets.
 - **Measured live, full page loads.** The baseline is 3 own-row reads and 1 `_for_user`.

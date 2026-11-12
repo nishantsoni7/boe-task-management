@@ -32,7 +32,7 @@ export async function postAttendanceRequest(
   token: string | null,
   payload: RequestPayload,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ error: string | null; request?: AttendanceRequestRow }> {
+): Promise<{ error: string | null; request?: AttendanceRequestRow; workPending?: string }> {
   if (!token) return { error: 'Your session has expired. Sign in again to send this request.' }
   try {
     const res = await fetchImpl('/api/attendance-requests', {
@@ -42,7 +42,7 @@ export async function postAttendanceRequest(
     })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) return { error: json.error ?? 'Could not send your request. Try again.' }
-    return { error: null, request: json.request }
+    return { error: null, request: json.request, ...(typeof json.work_pending === 'string' ? { workPending: json.work_pending } : {}) }
   } catch {
     return { error: 'Could not reach BOE. Check your connection and try again — what you entered is still here.' }
   }
@@ -71,7 +71,12 @@ export function AttendanceRequestFlow({
   }, [getToken, supabase])
 
   const submit = useCallback(async (payload: RequestPayload) => {
-    const { error } = await postAttendanceRequest(await token(), payload)
+    const { error, workPending } = await postAttendanceRequest(await token(), payload)
+    // Day Close (owner, 2026-11-12): sent, but with work pending only the owner can approve it. Said
+    // plainly once, so nobody is surprised when the usual approver cannot.
+    if (!error && workPending && typeof window !== 'undefined') {
+      window.alert(`Your request is sent, but you have work pending (${workPending}). Only the owner can approve leave while work is pending. Finish or hand over the work first.`)
+    }
     if (!error) onSent?.()
     return error
   }, [token, onSent])
