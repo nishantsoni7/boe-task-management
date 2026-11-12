@@ -138,7 +138,7 @@ describe('the admin sidebar is exactly six sections', () => {
   test('the grouped sections carry the agreed tabs', () => {
     const tabs = (key: string) =>
       ATTENDANCE_PAYROLL_ADMIN_SECTIONS.find(s => s.key === key)?.tabs?.map(t => t.label)
-    assert.deepEqual(tabs('attendance'), ['Today', 'Records', 'Upload', 'Monthly Review', 'Requests', 'Day Close'])
+    assert.deepEqual(tabs('attendance'), ['Today', 'Records', 'Upload', 'Monthly Review', 'Requests'])
     assert.deepEqual(tabs('payroll'), ['Monthly Preview', 'Payroll Runs', 'BOE Credits'])
     assert.deepEqual(tabs('settings'), ['Payroll Rules', 'Holidays'])
     assert.deepEqual(tabs('issues'), ['Attendance Sync', 'Incoming Minop data'])
@@ -240,10 +240,10 @@ describe('every navigation path is a real route', () => {
 // ─── 5. The employee list is self-service only ───────────────────────────────
 
 describe('the employee navigation', () => {
-  test('is exactly the six self-service destinations', () => {
+  test('is exactly the five self-service destinations', () => {
     assert.deepEqual(
       ATTENDANCE_PAYROLL_EMPLOYEE_NAV.map(i => i.path),
-      ['/my-day', '/my-attendance', '/my-payroll', '/my-credits', '/my-issues', '/payroll/how-it-works'],
+      ['/my-attendance', '/my-payroll', '/my-credits', '/my-issues', '/payroll/how-it-works'],
     )
   })
 
