@@ -470,7 +470,13 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   }
 
   if (type.startsWith('order')) {
-    const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
+    let badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
+    // The approver's "sent back to you" (send_order_handoff_to_sales, 20270619000000)
+    // rides the Operations-decided type; its badge follows the title, as the PI
+    // review notices' do, so it does not read as an Operations decision.
+    if (type === 'order_operations_review_decided' && /sent PI V\d+ back to you/i.test(n.title ?? '')) {
+      badge = { label: 'Returned to Sales', color: colors.amber, bg: colors.amberTint }
+    }
     // AN ORDER UPDATE'S entity_id IS THE CONFIRMED ORDER, so it opens the Order
     // itself — the same destination order_converted has always used, and the
     // page whose Activity trail explains what the sentence said. Opening it is
