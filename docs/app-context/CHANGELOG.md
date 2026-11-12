@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Quotations: versions and compare; the client link shows the latest sent version (PR #714, branch `feat/quotation-versions`) · `20270623000000` → NOT YET APPLIED
+- **Owner ask / approval (~21:15 IST).** Versions and compare, from the 7/10 review; the client link shows the latest SENT version, not the latest save.
+- **Built.** v1 when the link is first turned on; "Send as new version (vN)" with a note; a Versions card with compare (terms, changed products field by field, added, removed, totals and the change in ₹ and %), including unsent changes since the last version; the client link and its validity follow the latest version, shown as "· vN".
+- **Database.** Table `quotation_versions` (closed, append-only); `quotation_client_doc`, `quotation_version_create`, `quotation_versions`, `quotation_version_get`; `quotation_share` and `quotation_public` re-created; event kind `version`.
+- **Proof.** PGlite 43 checks (4 new), `versions.test.ts` (4), `tsc`, eslint, full `npm test`, `next build`.
+
 ## 2026-11-12 — Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (PR #716, squash-merged 2026-11-12 23:12 IST as `8eb156e4`, deployed 23:14 IST) · no migration
 - **Owner ask.** "Whenever I send it back to the salesperson it does not change the status": it should show, to the approver and the sales team, that the PI is with Sales and that they must make the requested changes and resubmit. Plan approved the same evening ("Yes, build it"); the salesperson edits through Edit PI.
 - **Changed.** While the newest send-back stands (`salesReturnStage`), the Order banner reads "PI V<n> returned to Sales" (amber) with the instruction first ("The approved PI cannot be edited in place … Edit PI … resubmits; the revised PI goes to Operations once it is approved"), then Operations' reason and the sent line; the ERP card reads "Returned to Sales for changes."; once a revised PI waits for approval it reads "… revised PI waiting for approval". The salesperson's flagged-PI card reads "Returned to you: make the changes and resubmit PI V<n> with Edit PI"; the approver's Needs your decision row turns into "Returned to Sales: waiting for the revised PI" with the comment (no longer a red decision).
