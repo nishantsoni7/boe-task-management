@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Pricing model v2: prices from parameters, with reasons (PR #709, branch `feat/pricing-model-v2`) · `20270621000000` → NOT YET APPLIED
+## 2026-11-12 — Pricing model v2: prices from parameters, with reasons (PR #709, squash-merged 2026-11-12 20:54 IST as `cccdf395`, deployed 20:56 IST) · `20270621000000` → APPLIED 2026-11-12 (before the merge, alone; read-only, so no backup under the owner's 12 Nov rule)
 - **Owner ask (evening).** "Build pricing model v2" after the 7/10 review (pricing scored 5: it matched names only). Approved; salespeople see the reasons.
 - **Built.** The model reads each line's parameters (type, size, material, finish, quantity band, client type), learns per product type how each moves the price from approved PIs, won quotations, desk approvals and open quotes, and prices a line for its own parameters with a range, a confidence and up to three reasons; it refits every time and falls back to the history suggestion with too little data. Pricing gains "How prices are made".
 - **Database.** One read-only function, `pricing_pool`.
