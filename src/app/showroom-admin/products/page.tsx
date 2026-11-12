@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { showroomModuleQuery } from '@/lib/showroom/showroomModuleRow'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import type { ShowroomProduct } from '@/lib/types'
 import { AlertBanner, EmptyState, LoadingScreen } from '@/components/ui/atoms'
@@ -82,6 +85,7 @@ function ShowroomProductsContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile } = useViewAs()
 
   // Same query the sidebar badges read — TanStack serves both from one fetch.
@@ -181,16 +185,8 @@ function ShowroomProductsContent() {
       if (!session) { router.push('/login'); return }
 
       const [{ data: p }, { data: mod }] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-          .eq('id', session.user.id)
-          .single(),
-        supabase
-          .from('app_modules')
-          .select('visibility_type, allowed_department, allowed_user_ids')
-          .eq('module_key', 'showroom_qr')
-          .single(),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
+        queryClient.ensureQueryData(showroomModuleQuery(supabase)).then(data => ({ data })),
       ])
 
       setShowroomMod(mod ?? null)

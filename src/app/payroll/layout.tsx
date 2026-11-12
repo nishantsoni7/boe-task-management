@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { resolveManagementAccess } from '@/lib/moduleAccess'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
@@ -22,6 +24,7 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const check = async () => {
@@ -29,7 +32,7 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
       if (!session) { router.replace('/login'); return }
 
       const [{ data: profile }, { data: mod }] = await Promise.all([
-        supabase.from('users').select('id, role, team').eq('id', session.user.id).single(),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
         supabase
           .from('app_modules')
           .select('visibility_type, allowed_department, allowed_user_ids')

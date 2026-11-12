@@ -10,6 +10,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -23,7 +25,6 @@ import {
   DeductionExplanationModal,
   type ExplanationDayContext,
 } from './DeductionExplanationModal'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { useObjections } from '@/components/objections/useObjections'
 import { ObjectionReviewPanel } from '@/components/objections/ObjectionReviewPanel'
@@ -158,6 +159,7 @@ export default function PayrollResultDetailPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   /** Returns whether the payslip was actually refreshed, so a caller cannot
    *  report success on the back of a reload that failed. */
@@ -178,11 +180,7 @@ export default function PayrollResultDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       // Module access is decided once, by the route guard in
       // src/app/{attendance,payroll}/layout.tsx, through

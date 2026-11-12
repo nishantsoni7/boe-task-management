@@ -15,12 +15,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Badge, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import styles from './settings.module.css'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   SETTINGS_FIELDS,
   MAX_PAID_LEAVE_BANDS,
@@ -116,6 +117,7 @@ export default function PayrollSettingsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   // The same request the page always made, kept in a function so a failed load
   // can be tried again without leaving the page.
@@ -147,11 +149,7 @@ export default function PayrollSettingsPage() {
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
 

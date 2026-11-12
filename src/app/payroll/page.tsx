@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -24,7 +26,6 @@ import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
 import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollModal'
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
@@ -156,6 +157,7 @@ function PayrollPeriodsPage() {
   const router  = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   /**
    * A Payroll-issue notification lands here carrying the objection id, and this
@@ -223,11 +225,7 @@ function PayrollPeriodsPage() {
 
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       // Nothing to re-decide here: PayrollGuard (src/app/payroll/layout.tsx)
       // wraps this route and has already resolved module access through

@@ -298,8 +298,9 @@ describe('role handling', () => {
     ]) {
       assert.equal(PAGE.includes(table), false, `the guide queries ${table}`)
     }
-    // The only row it reads is the caller's own profile, for the layout header.
-    assert.match(PAGE, /\.eq\('id', session\.user\.id\)/)
+    // The only row it reads is the caller's own profile, for the layout header
+    // (the shared cached copy since 2026-11-12, keyed by the session's own id).
+    assert.match(PAGE, /profileQueryOptions\(queryClient, session\.user\.id\)/)
     for (const route of ['/api/payroll/results', '/api/payroll/my-result', '/api/payroll/periods']) {
       assert.equal(PAGE.includes(route), false, `the guide calls ${route}`)
     }

@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import { PerformanceLayout } from '@/components/layout/PerformanceLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
@@ -1010,6 +1012,7 @@ export default function PerformancePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, exitViewMode } = useViewAs()
 
   // Team Performance is what makes somebody else's report legible here, so it is
@@ -1067,11 +1070,7 @@ export default function PerformancePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
-      const { data: callerProfile } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const { data: callerProfile } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       // A stale View As target held by somebody who may not read other people's
       // performance is dropped — and they stay HERE, on their own report, rather
       // than being thrown out to /dashboard. They are entitled to this page; the

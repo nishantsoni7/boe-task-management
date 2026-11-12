@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { ClipboardList, QrCode, Tag, Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -14,6 +14,8 @@ import { ProductLookup } from '@/components/layout/ProductLookup'
 import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
 import { useShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
 import { isProductRoute, productCategoryHref, resolveParentClick } from '@/lib/showroom/productNav'
+import { showroomModuleQuery } from '@/lib/showroom/showroomModuleRow'
+import { useQuery } from '@tanstack/react-query'
 
 type ShowroomAdminLayoutProps = {
   profile: UserProfile | null
@@ -30,7 +32,6 @@ type ShowroomAdminLayoutProps = {
   children: React.ReactNode
 }
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
@@ -38,7 +39,6 @@ export function ShowroomAdminLayout({
   profile, title, subtitle, activeProductCategory: activeCategory = '', onSignOut, children,
 }: ShowroomAdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
   // Desktop-with-a-mouse only: the sidebar rests as an icon rail and opens over
   // the page on hover, unless pinned. Elsewhere this changes nothing.
   const [railPinned, toggleRailPinned] = useSidebarPinned()
@@ -52,15 +52,9 @@ export function ShowroomAdminLayout({
 
   // Sidebar nav needs the same Control-Center-driven permission the
   // showroom-admin route guards use, so "Product Master" isn't hidden from
-  // a department that's allowed into the module but isn't an admin.
-  useEffect(() => {
-    supabase
-      .from('app_modules')
-      .select('visibility_type, allowed_department, allowed_user_ids')
-      .eq('module_key', 'showroom_qr')
-      .single()
-      .then((res: { data: ModVisRow | null }) => setShowroomMod(res.data ?? null))
-  }, [supabase])
+  // a department that's allowed into the module but isn't an admin. The same
+  // cached read the page inside already made (2026-11-12), not a second one.
+  const { data: showroomMod = null } = useQuery(showroomModuleQuery(supabase))
 
   const canManageProducts = isAdmin || resolveModuleAccess('showroom_qr', showroomMod, effectiveProfile ?? null, teamFallback(effectiveProfile?.team),
   )

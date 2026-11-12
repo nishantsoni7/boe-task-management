@@ -15,10 +15,11 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { RefreshCw } from 'lucide-react'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -148,6 +149,7 @@ export default function MyAttendancePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const load = useCallback(async (y: number, m: number) => {
     setBusy(true)
@@ -252,11 +254,7 @@ export default function MyAttendancePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       if (!prof) { router.push('/login'); return }
       setProfile(prof)

@@ -20,12 +20,13 @@ import { useRouter } from 'next/navigation'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { BookOpen, CalendarCheck, ChevronRight, Coins, MessageSquareHeart, Trophy, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatRupees } from '@/lib/payroll/money'
 import { istToday, istMonthStart } from '@/lib/istDate'
 import { formatCredits, reviewMonthLabel, REWARD_STATUS_LABELS, creditTransactionTone } from '@/lib/boeCredits/ledger'
@@ -74,17 +75,14 @@ export default function MyCreditsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       if (!prof) { router.push('/login'); return }
       setProfile(prof as UserProfile)
       setLoading(false)

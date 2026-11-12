@@ -106,3 +106,5 @@ Rollback (documented in the migration header): drop the four tables and `invento
 - `inventory_items.price` = STANDARD price (product with basic packaging; column unchanged). New `retail_price` = RETAIL price (taxes, transportation and packaging included), NOT NULL, CHECK `retail_price >= price`; existing rows backfilled retail = price, so the manager must set real retail prices.
 - `inventory_save_item` requires both (`price`, `retail_price`); `inventory_bookings_list` returns both. UI shows both everywhere; sort, stats value, booking totals and the WhatsApp "Price" line use the RETAIL price.
 - Applied to prod 2026-10-22; SQL suites pass on a disposable DB.
+
+- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `useInventory` (every Inventory screen) reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

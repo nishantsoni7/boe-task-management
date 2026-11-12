@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
 import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { accessKey, fetchAccess, fetchPendingCount, pendingKey } from '@/lib/inventory/api'
 import type { InventoryAccess } from '@/lib/inventory/constants'
 
@@ -18,6 +18,7 @@ export function useInventory() {
   const router = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -29,14 +30,14 @@ export function useInventory() {
         router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
         return
       }
-      const { data: p } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: p } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       if (!active) return
       if (!p) { router.replace('/login'); return }
       setProfile(p as UserProfile)
       setLoading(false)
     })()
     return () => { active = false }
-  }, [supabase, router, pathname])
+  }, [supabase, router, pathname, queryClient])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
