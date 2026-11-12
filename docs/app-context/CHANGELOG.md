@@ -4,11 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Backup: the copy to the external drive now updates moved branches (PR #676) · no migration
+## 2026-11-12 — Backup: the copy to the external drive now updates moved branches (PR #676, squash-merged 2026-11-12 10:20 IST as `26e8e2f1`) · no migration
 - **Found.** The owner asked for a backup on the hard disk (D:) on 2026-11-12. After the copy, 20 of 2,398 refs in the drive's git mirror (`main` included) still named their old commit. The second-copy step skipped any file already on the drive with the same size, and every git ref is a 41-byte file, so a branch that moved was never updated. Objects were always copied, so no commit was missing, but a restore from the drive alone would have opened on old branch tips. The nightly task would have repeated it every night.
 - **Fixed.** `copyGitMirror` (`scripts/backup/lib.mjs`) copies objects first (skipped when already there: they never change), then refs, HEAD and the rest always, so a ref never lands before its commit. `backup-all.mjs` uses it for `git/boe-task-management.git`; the other layers copy as before (storage stays incremental by size).
 - **Proof.** Two new tests in `lib.test.mjs` (a moved ref with the same size reaches the drive; an object already there is left alone). The old rule, run on the same kind of fixture, leaves the stale ref. All 32 backup tests pass. Run on the real mirror against D:: 2,398 refs equal to local, no tip missing.
-- **After the merge.** Re-run `node scripts/backup/install-backup-system.mjs` so the installed tools in `BOE-Development\backups\tools` get the fix; the 9:30 pm task uses those.
+- **Installed.** 2026-11-12 10:20 IST, from the merged `main`: all 16 tools and 4 hooks in `BOE-Development\backups` are byte-equal to the repo, and the 32 backup tests pass from the installed folder. The old tools are kept in `BOE-Development\temporary\backup-tools-before-pr676`. The first nightly with the fix is 9:30 pm on 2026-11-12, and it copies to D: only if the drive is plugged in.
 - **Rollback.** Revert the commit and reinstall the tools.
 
 ## 2026-11-12 — Quotations, phase 3: Import a client file (PR #677, squash-merged by the owner 2026-11-12 10:08 IST as `749a436a`, deployed 10:10 IST) · no migration
