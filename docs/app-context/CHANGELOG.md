@@ -11,7 +11,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** New `flaggedPisSentBack.test.tsx` (10), changed and extended `operationsHandoffSendBack.test.ts` and `orderSendBack.render.test.tsx`; `tsc`, eslint, full `npm test`, `next build`. Not seen signed in or on a phone.
 - **Rollback.** Revert the PR.
 
-## 2026-11-12 — SEO brief: the biggest falls first in the ranking part, and 14 more searches (PR open, branch `feat/seo-brief-falls`) · no migration
+## 2026-11-12 — SEO brief: the biggest falls first in the ranking part, and 14 more searches (PR #701, merged 2026-11-12 18:44 IST as `a266a005`) · no migration
 - **Owner ask.** A list of the well-searched business searches whose ranking fell a lot, at the top of part 1; and relevant searches with good volume that were missing.
 - **Changed.** `quarters.falls` (title, head, rows, note) draws first in part 1. The brief data adds 14 searches with 100+ Ahrefs India volume (one new group, furniture makers by place). The selection rule lives in the brief data and the dossier.
 - **Order.** Older builds ignore `falls`, so the brief with the 14 additions can be sent before the merge; the falls table shows once this is live.
