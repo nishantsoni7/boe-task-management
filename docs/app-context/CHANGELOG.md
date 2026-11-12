@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Day Close: plan, proof, close before punch-out, strikes, leave lock (branch `claude/boe1-employee-monitoring-t5ypei`, PR not yet opened) · `20270622000000` → NOT applied (apply before the merge)
+## 2026-11-12 — Day Close: plan, proof, close before punch-out, strikes, leave lock (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270622000000` → APPLIED 2026-11-12 by the owner, before the merge
 - **Owner ask.** Staff waste about half the day, with no defined work and no accountability; leave is taken at will. Wanted from tomorrow: today's work is defined, finished or explained before going home, and leave is blocked while work is pending. Named: Dhruv, Rakesh (social media), the SEO person, sales, Jasvi ("all of team").
 - **Decisions.** Strikes only (no money for now). Plan due 10:30, closing opens 18:00, office 10:00–18:30, Monday to Saturday. Leave with work pending is blocked except by the owner. The owner alone reviews.
 - **Built.**

@@ -1,6 +1,6 @@
 # 30 - Day Close (staff accountability: plan, proof, close, strikes)
 
-Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270622000000_day_close.sql` is **NOT applied** yet: it must be applied before the merge, or every Day Close screen returns 500. The code is the truth; re-verify before relying on this page.
+Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270622000000_day_close.sql` was **APPLIED 2026-11-12 by the owner, before the merge** (owner's word in the session; not re-checked with `supabase migration list --linked` from the cloud session). The code is the truth; re-verify before relying on this page.
 
 ## 1. Purpose & users
 
@@ -16,7 +16,7 @@ Named in the ask: Dhruv (business development), Rakesh (social media), the SEO p
 
 ## 2. Status
 
-Built and tested on the branch; not merged; migration not applied. Phase 1 of the plan agreed in the session:
+Built and tested; migration applied 2026-11-12; merged the same day (see CHANGELOG for the PR and SHA). Phase 1 of the plan agreed in the session:
 - **Phase 2 (not built):** a content calendar for social media and a monthly scorecard.
 - **Phase 3 (not built):** call-log sync from the company Android phones, and the WhatsApp Business app "coexistence" with the Cloud API, so every message on the company number reaches BOE.
 
