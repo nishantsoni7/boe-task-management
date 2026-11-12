@@ -128,6 +128,17 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
 - Fail closed, independently: profile read fails -> role null -> everyone (even admins) denied; permission RPC fails ->
   empty map -> non-admins denied, admin passes on role alone. Background refetch rejects rather than overwriting a good
   answer with a fail-closed one. `ready` is not `allowed`: render nothing until `ready`.
+- ONE READ OF THE SIGNED-IN ROW PER PAGE (2026-11-12, owner: "remove the duplicate requests"). Before this, a page load
+  read the person's own `users` row 4-6 times. What changed:
+  - `useProfile` / `loadProfile` join a `['permission-context', uid]` read that is already on its way instead of asking
+    again. On a hard load both start in the same render. The key literal is duplicated in `useProfile.ts` because
+    `usePermissionContext` imports that file.
+  - Screens that load in an effect use `queryClient.ensureQueryData(profileQueryOptions(qc, uid))`.
+  - `LoginAsMemberWidget` reads `role` once per signed-in person, kept in a ref; a failed read is not kept. It used to
+    read again on every auth event, because supabase-js replays INITIAL_SESSION to each new listener.
+  - `NotificationsNavItem` no longer fetches the Task count when a module passes its own `count`.
+  - Kept apart on purpose: UserMenu's `position, designation_level` read (the shared profile must not carry it), and the
+    launcher's `payroll_active, is_deleted` read.
 - `Providers.tsx` (`AuthIdentityBoundary`): one auth listener. `SIGNED_OUT` -> `queryClient.clear()` +
   `clearPersistedUnreadCounts()`. `SIGNED_IN` for the SAME user (session recovery) is ignored. A different user in the same
   tab -> `queryClient.clear()`. `USER_UPDATED` same user -> invalidate `['permission-context']` and `['signed-in-user-id']`
@@ -370,7 +381,7 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
     `supabase db push --linked` silently report "up to date" (unverified, from memory).
 13. `vercel link` pulls `.env.local` (production credentials). Never give test suites `.env.local`: the only configured
     project is production and live-DB suites write fixtures.
-14. **NO PAGE IS LOADED IN ADVANCE (owner decision 2026-11-12, "Yes, load on click").** A page loads when it is clicked. Every link is `AppLink` (`src/components/ui/AppLink.tsx`: `next/link` with `prefetch={false}` forced after the caller's props), imported as `import { AppLink as Link } from '@/components/ui/AppLink'`; nothing else may import `next/link`, and nothing calls `router.prefetch`. WHY: a prefetched page brings its stylesheet, which the current page never applies; Chrome logs "preloaded but not used" and keeps re-reporting every still-unused file as the person moves around a long-open tab, so 2-3 files became 40-170 warnings on every page. Narrowing WHEN pages loaded (#649 Modules cards on a 250 ms rest, #651 shell Home button and task lists, #656 Orders/Finance switch, #658 side menus, #659 rail Home link) cut it down but could not end it: any rest without a click left one more file. COST, accepted by the owner: the first click to a page waits for it (its `loading.tsx` skeleton shows) instead of being ready. React Query DATA warm-ups (`prefetchQuery`, e.g. the Dashboard's `warmMyTasksCaches`) are not page loads, bring no stylesheet, and stay. Guard: `src/lib/navigation/noBackgroundPrefetch.test.ts`.
+14. **NO PAGE IS LOADED IN ADVANCE (owner decision 2026-11-12, "Yes, load on click").** A page loads when it is clicked. Every link is `AppLink` (`src/components/ui/AppLink.tsx`: `next/link` with `prefetch={false}` forced after the caller's props), imported as `import { AppLink as Link } from '@/components/ui/AppLink'`; nothing else may import `next/link`, and nothing calls `router.prefetch`. WHY: a prefetched page brings its stylesheet, which the current page never applies; Chrome logs "preloaded but not used" and keeps re-reporting every still-unused file as the person moves around a long-open tab, so 2-3 files became 40-170 warnings on every page. Narrowing WHEN pages loaded (#649 Modules cards on a 250 ms rest, #651 shell Home button and task lists, #656 Orders/Finance switch, #658 side menus, #659 rail Home link) cut it down but could not end it: any rest without a click left one more file. COST, accepted by the owner: the first click to a page waits for it (its `loading.tsx` skeleton shows) instead of being ready. React Query DATA warm-ups (`prefetchQuery`, e.g. the Dashboard's `warmMyTasksCaches`) are not page loads, bring no stylesheet, and stay. Guard: `src/lib/navigation/noBackgroundPrefetch.test.ts`, tightened 2026-11-12 after a full console sweep found 0 BOE errors. It fails on `next/link` in any spelling (single or double quotes, `import()`, `require()`) outside AppLink; any `next/form`, which also loads its target page early; `router.prefetch`, including `?.(`; and any hand-written `rel="preload|prefetch|modulepreload"` or React `preload()`/`preinit()`. The two fonts are preloaded by next/font in `src/app/layout.tsx` and are used on every page.
 
 ## 10. Tests that guard it
 

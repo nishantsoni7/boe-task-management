@@ -31,7 +31,8 @@ export function NotificationsNavItem({
   onNavigate, count, href = '/notifications',
 }: { onNavigate?: () => void; count?: number; href?: string }) {
   const pathname = usePathname()
-  const total    = useUnreadNotifications()
+  // A module that passes its own count never shows the task total, so it is not fetched.
+  const total    = useUnreadNotifications(count === undefined)
   const unread   = count ?? total
   const active   = pathname === href
 

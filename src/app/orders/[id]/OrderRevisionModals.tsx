@@ -74,6 +74,12 @@ import {
   WITHDRAW_DIALOG_TITLE,
   validateHandoffDecision,
   validateHandoffResponse,
+  SEND_BACK_COMMENT_LABEL,
+  SEND_BACK_COMMENT_PLACEHOLDER,
+  SEND_BACK_CONFIRM_LABEL,
+  SEND_BACK_DIALOG_TITLE,
+  SEND_BACK_NOTE,
+  validateSendBackComment,
   RESPOND_CONFIRM_LABEL,
   RESPOND_DIALOG_TITLE,
   RESPOND_NOTE,
@@ -470,6 +476,59 @@ export function RespondToOperationsModal({
         saving={saving}
         disabled={touched && !check.ok}
         saveLabel={RESPOND_CONFIRM_LABEL}
+      />
+    </OrderModal>
+  )
+}
+
+/**
+ * THE APPROVER'S (OR AN ADMINISTRATOR'S) COMMENT TO THE SALESPERSON
+ * (20270619000000): the PI version goes back to Sales with these words and
+ * nothing in the PI changes. send_order_handoff_to_sales() re-derives who may
+ * and whether the version can still be sent back; this dialog only collects
+ * the words, with Operations' own objection shown above the box when there is one.
+ */
+export function SendBackToSalesModal({
+  orderNumber, versionLabel, objection, saving, failure, onClose, onConfirm,
+}: {
+  orderNumber: string
+  versionLabel: string
+  /** What Operations said, when the version is flagged. */
+  objection: string | null
+  saving: boolean
+  failure: string | null
+  onClose: () => void
+  onConfirm: (comment: string) => void
+}) {
+  const [text, setText] = useState('')
+  const [touched, setTouched] = useState(false)
+  const check = validateSendBackComment(text)
+  return (
+    <OrderModal title={SEND_BACK_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose}>
+      <OrderModalNotice tone="info">{SEND_BACK_NOTE}</OrderModalNotice>
+      {objection && <OrderModalNotice tone="warning">Operations said: “{objection}”</OrderModalNotice>}
+      <OrderField label={SEND_BACK_COMMENT_LABEL} error={touched && !check.ok ? check.message : undefined}>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={SEND_BACK_COMMENT_PLACEHOLDER}
+          maxLength={OPERATIONS_HANDOFF_REASON_MAX_LENGTH}
+          disabled={saving}
+          rows={4}
+          style={TEXTAREA}
+        />
+      </OrderField>
+      {failure && <OrderModalError message={failure} />}
+      <OrderModalActions
+        onClose={onClose}
+        onSave={() => {
+          setTouched(true)
+          if (!check.ok || saving) return
+          onConfirm(check.comment)
+        }}
+        saving={saving}
+        disabled={touched && !check.ok}
+        saveLabel={SEND_BACK_CONFIRM_LABEL}
       />
     </OrderModal>
   )

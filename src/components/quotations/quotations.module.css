@@ -123,3 +123,11 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 /* image studio */
 .studioPic { width: 100%; max-height: 320px; object-fit: contain; border: 1px solid var(--boe-border); border-radius: 8px; background: #fff; display: block; }
 .improve { margin-top: 4px; width: 76px; font: 600 11.5px var(--boe-font-body); color: var(--boe-brand-ink); background: none; border: 0; cursor: pointer; padding: 2px 0; }
+
+/* pricing desk */
+.linkBtn { background: none; border: 0; padding: 0; color: var(--boe-brand-ink); font: 600 12px var(--boe-font-body); cursor: pointer; text-decoration: underline; }
+
+/* reports */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { border: 1px solid var(--boe-border); border-radius: 10px; padding: 10px 12px; background: var(--boe-surface-quiet); }
+.kpiValue { font: 700 22px var(--boe-font-heading); color: var(--boe-text); font-variant-numeric: tabular-nums; }

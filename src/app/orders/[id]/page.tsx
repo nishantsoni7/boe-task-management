@@ -207,6 +207,7 @@ import {
   ApproveRevisionModal,
   OperationsHandoffDecisionModal,
   RespondToOperationsModal,
+  SendBackToSalesModal,
   ProductionRecoveryModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
@@ -219,8 +220,13 @@ import {
   WITHDRAW_ACCEPTANCE_LABEL,
   describeHandoffFailure,
   canRespondToHandoff,
+  canSendBackToSales,
   latestHandoffAnswer,
+  latestSentToSales,
+  sentBackLine,
   RESPOND_BUTTON_LABEL,
+  SEND_BACK_AGAIN_LABEL,
+  SEND_BACK_BUTTON_LABEL,
   describeOperationsHandoff,
   latestRealignment,
   splitOperationsHandoffs,
@@ -990,6 +996,8 @@ export default function OrderDetailPage() {
   const [handoffs,      setHandoffs]      = useState<PersistedOperationsHandoff[]>([])
   const [handoffDialog, setHandoffDialog] = useState<OperationsHandoffStatus | null>(null)
   const [respondOpen, setRespondOpen] = useState(false)
+  // The approver's comment to the salesperson (20270619000000).
+  const [sendBackOpen, setSendBackOpen] = useState(false)
   // An administrator's recovery of a held Order no reviewer can realign (review R1).
   const [recoverOpen, setRecoverOpen] = useState(false)
   const [handoffBusy,   setHandoffBusy]   = useState(false)
@@ -1868,6 +1876,33 @@ export default function OrderDetailPage() {
         setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
       }
       await Promise.all([reloadHandoffs(), reloadOrderRow()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
+  /**
+   * Send the PI version back to the salesperson with the approver's comment
+   * (20270619000000). The RPC re-derives who may and that the version is still
+   * live and not accepted; it writes one history entry and one notice, so only
+   * the history is re-read.
+   */
+  const sendBackToSales = async (comment: string) => {
+    const live = splitOperationsHandoffs(handoffs).live
+    if (!order || handoffBusy || !live) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('send_order_handoff_to_sales', {
+        p_handoff_id: live.id,
+        p_comment: comment,
+      })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setSendBackOpen(false)
+      if (profile?.id && profile.full_name) {
+        setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
+      }
+      await Promise.all([reloadHandoffs(), reloadActivity()])
     } finally {
       setHandoffBusy(false)
     }
@@ -2875,6 +2910,9 @@ export default function OrderDetailPage() {
     : operationsView?.kind === 'recorded' && operationsView.status === 'awaiting' && operationsView.response
       ? `${operationsView.response.by ?? 'The PI owner'} responded${operationsView.response.at ? ` on ${operationsView.response.at}` : ''}: “${operationsView.response.text}”`
       : null
+  // THE APPROVER'S COMMENT TO THE SALESPERSON (20270619000000), from the history already loaded.
+  const operationsSent = operationsSplit.live ? latestSentToSales(activity, operationsSplit.live.id) : null
+  const operationsSentLine = sentBackLine(operationsSent, iso => (iso ? fmtDateTime(iso) : '—'), order.assigned_to_name ?? null)
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -3003,6 +3041,7 @@ export default function OrderDetailPage() {
       ? {
           versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned,
           reasonLine: operationsClarificationLine,
+          sentBack: operationsSentLine,
         }
       : null,
     alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning
@@ -3032,6 +3071,14 @@ export default function OrderDetailPage() {
     handoff: splitOperationsHandoffs(handoffs).live,
     orderStatus: order.status,
     mayRespond: mayProposeRevision,
+    viewingAs: !!viewAsUserId,
+  })
+  // THE APPROVER'S (OR AN ADMINISTRATOR'S) COMMENT TO THE SALESPERSON, on the
+  // same notification, while the version is flagged or still waiting.
+  const sendBackOffered = operationsReviewOpen && canSendBackToSales({
+    handoff: splitOperationsHandoffs(handoffs).live,
+    orderStatus: order.status,
+    maySend: actingAsAdmin || mayDecidePiAsAdmin,
     viewingAs: !!viewAsUserId,
   })
 
@@ -3410,7 +3457,7 @@ export default function OrderDetailPage() {
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
-          actions={operationsDecisionOffered || respondOffered ? (
+          actions={operationsDecisionOffered || respondOffered || sendBackOffered ? (
             <>
               {operationsDecisionOffered && (
                 <OperationsReviewActions
@@ -3432,6 +3479,12 @@ export default function OrderDetailPage() {
                 <button type="button" className="boe-btn boe-btn-primary" disabled={handoffBusy}
                   onClick={() => { setHandoffError(null); setRespondOpen(true) }}>
                   {RESPOND_BUTTON_LABEL}
+                </button>
+              )}
+              {sendBackOffered && (
+                <button type="button" className="boe-btn" disabled={handoffBusy}
+                  onClick={() => { setHandoffError(null); setSendBackOpen(true) }}>
+                  {operationsSent ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}
                 </button>
               )}
             </>
@@ -4147,6 +4200,17 @@ export default function OrderDetailPage() {
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setRespondOpen(false) }}
           onConfirm={remark => respondToHandoff(remark)}
+        />
+      )}
+      {sendBackOpen && operationsView?.kind === 'recorded' && (
+        <SendBackToSalesModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          objection={operationsView.status === 'clarification_needed' ? (operationsView.decision?.note ?? null) : null}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setSendBackOpen(false) }}
+          onConfirm={comment => sendBackToSales(comment)}
         />
       )}
       {recoverOpen && operationsView?.kind === 'recorded' && (

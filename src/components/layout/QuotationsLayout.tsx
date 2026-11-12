@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { FileText, Home, Plus } from 'lucide-react'
+import { BarChart3, FileText, Home, Plus } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import type { QuotationAccess } from '@/lib/quotations/api'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -32,7 +32,8 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, on
 
   const items = [
     ...(access.create ? [{ href: `${BASE}?new=1`, label: 'New quotation', icon: Plus, active: false, primary: true }] : []),
-    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || pathname.startsWith(`${BASE}/`), primary: false },
+    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`)), primary: false },
+    { href: `${BASE}/reports`, label: 'Reports', icon: BarChart3, active: pathname.startsWith(`${BASE}/reports`), primary: false },
   ]
 
   return (

@@ -145,8 +145,10 @@ describe('the claims still match the code', () => {
 
   test('Orders is "partial" — entry, PI review, manage and delete resolve; edit does not', () => {
     const guard = read('src/app/orders/layout.tsx')
+    // Since 2026-11-12 from the signed-in person's resolved permission context
+    // (resolve_effective_permissions_for_user), not its own resolve_permission call.
     assert.ok(
-      guard.includes("hasPermission(supabase, session.user.id, 'orders', 'view')"),
+      guard.includes("(permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"),
       'the Orders guard no longer resolves view — update MODULE_ENFORCEMENT.orders',
     )
 

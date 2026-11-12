@@ -25,7 +25,6 @@ import { loadPiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { formatRupees, formatWaiting } from '@/lib/orders/orderDashboardSummary'
 import {
-  ORDER_DOCUMENT_SUBMISSION_SELECT,
   splitDocumentQueue,
   type PersistedDocumentSubmission,
 } from '@/lib/orders/orderDocumentSubmissions'
@@ -46,7 +45,7 @@ import {
   type ReviewSource,
   type RevisionSource,
 } from '@/lib/orders/adminDashboard'
-import { OPEN_STATUSES } from '@/components/orders/DocumentActionQueue'
+import { readOpenDocumentSubmissions, readOpenPiRevisions } from '@/components/orders/DocumentActionQueue'
 import { TONE_ICON, ToneChip } from './AdminChip'
 import styles from './adminDashboard.module.css'
 
@@ -73,20 +72,9 @@ export async function loadDecisionRows(
       .eq('status', 'submitted')
       .order('submitted_at', { ascending: true })
       .limit(200),
-    supabase
-      .from('order_pi_versions')
-      .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, revision_reason, order:orders!order_id(display_number, client_name)')
-      .in('status', ['pending', 'admin_approved'])
-      .order('uploaded_at', { ascending: true })
-      .limit(100),
-    supabase
-      .from('order_document_submissions')
-      .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number, client_name)`)
-      .in('status', OPEN_STATUSES)
-      // Documents sent with a PI ride with the PI review and the handoff.
-      .eq('stage', 'amendment')
-      .order('submitted_at', { ascending: false })
-      .limit(200),
+    // Shared with the documents list below, which loads at the same moment from the same two tables.
+    readOpenPiRevisions(supabase),
+    readOpenDocumentSubmissions(supabase),
     // The ONE definition of "a flagged PI that waits on me": the database's (20270611000000).
     loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }),
   ])

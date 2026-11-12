@@ -130,34 +130,28 @@ function queryCount(path: string): number {
 // ══ 1. The guard every Order screen waits behind ═════════════════════════════
 
 describe('the Orders layout guard', () => {
-  const body = startup(GUARD)
+  const source = stripComments(read(GUARD))
 
-  test('asks its two questions TOGETHER', () => {
+  test('asks nothing itself: it reads the ONE permission context the page and the frame share (2026-11-12)', () => {
     // It renders a loading state instead of its children, so every round trip it
-    // spends is spent by all nine Order routes.
-    assert.match(body, /await Promise\.all\(\[/)
-    assert.equal(waits(body), 2, 'the session, then both questions at once')
+    // spends is spent by all nine Order routes. It used to read the role and call
+    // resolve_permission; the dashboard then read the profile and
+    // resolve_effective_permissions again, and the Orders frame resolved the
+    // context a third time. All three now read this one cached answer.
+    assert.equal(queryCount(GUARD), 0)
+    assert.match(source, /usePermissionContext\(\)/)
   })
 
-  test('and it is still exactly two queries, not one', () => {
-    assert.equal(queryCount(GUARD), 2)
-  })
-
-  test('and still asks BOTH of them', () => {
-    assert.match(body, /\.from\('users'\)/)
-    assert.match(body, /hasPermission\(supabase, session\.user\.id, 'orders', 'view'\)/)
-  })
-
-  test('THE RULE IS UNCHANGED: admin by role, everybody else by resolve_permission', () => {
-    assert.match(body, /profile\.role === 'admin' \|\| viewAllowed/)
-    // A failed permission read still denies, and a missing profile still denies.
-    assert.match(body, /\.catch\(\(\) => false\)/)
-    assert.match(body, /!!profile &&/)
+  test('THE RULE IS UNCHANGED: admin by role, everybody else by Orders view', () => {
+    assert.match(source, /role === 'admin'/)
+    assert.ok(source.includes("(permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"))
+    // A missing profile still denies; a failed permission read leaves the map empty, which denies.
+    assert.match(source, /const allowed = !!profile && \(/)
   })
 
   test('and it still blocks its children until it has answered', () => {
-    const source = stripComments(read(GUARD))
-    assert.match(source, /if \(!authorized\) return <LoadingScreen \/>/)
+    assert.match(source, /if \(!ready \|\| !userId\) return <LoadingScreen \/>/)
+    assert.match(source, /if \(ready && !userId\) router\.replace\('\/login'\)/)
   })
 })
 
@@ -188,8 +182,10 @@ describe('the Orders layout guard', () => {
  * same two-wait shape: the session, then one parallel group holding the profile
  * and the provenance lookup.
  */
+// THE ORDERS DASHBOARD LEFT THIS TABLE ON 2026-11-12: it has no startup path of
+// its own any more. Its profile and capabilities come from the guard's
+// permission context, so it waits only for its own data (pinned below).
 const SCREENS: { path: string; label: string; waits: number; before: number }[] = [
-  { path: DASHBOARD,      label: 'the Orders dashboard', waits: 2, before: 4 },
   { path: ALL,            label: 'All Orders',           waits: 2, before: 3 },
   { path: DETAIL,         label: 'the Order detail',     waits: 3, before: 5 },
   { path: DRAFTS,         label: 'PI Drafts',            waits: 3, before: 4 },
@@ -206,6 +202,14 @@ describe('no Order screen waits more than it must', () => {
       assert.ok(screen.waits < screen.before, 'and it must not have gone back up')
     })
   }
+
+  test('the Orders dashboard waits only for its own data (2026-11-12)', () => {
+    const source = stripComments(read(DASHBOARD))
+    assert.match(source, /const \{ profile, role, permissionsByModule \} = usePermissionContext\(\)/)
+    assert.match(source, /await loadData\(profile\.id\)\s*\n\s*setPageLoading\(false\)/)
+    assert.ok(!source.includes(".from('users')"), 'its own row comes from the guard')
+    assert.ok(!source.includes('getEffectivePermissions('), 'its capabilities come from the guard')
+  })
 
   test('and every one of them opens with Promise.all', () => {
     for (const screen of SCREENS) {
@@ -394,7 +398,14 @@ describe('no Order screen waits more than it must', () => {
       // DETAIL 45 -> 46 (20270616000000): flag_order_lines, the operations reviewer's line-by-line
       // review, on a press of Send back to Sales / Accept with comments. The flags themselves are read
       // by useOrderLineFlags (its own file, nothing awaits it), so the startup path is unchanged.
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 8, [DETAIL]: 46,
+      // DETAIL 46 -> 47 (20270619000000): send_order_handoff_to_sales, the approver's (or an Admin's)
+      // comment to the salesperson — a SAVE on a click, never on the startup path.
+      // GUARD 2 -> 0 and DASHBOARD 7 -> 5 (2026-11-12, owner: "remove the duplicate requests"): the
+      // guard's role read and resolve_permission, and the dashboard's profile read and
+      // resolve_effective_permissions, were the same answers the Orders frame's permission context
+      // fetched again. All three now read that one context (resolve_effective_permissions_for_user),
+      // so these four reads are gone, not moved; the dashboard's own data reads are unchanged.
+      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 47,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -549,18 +560,25 @@ describe('what did NOT change', () => {
   })
 
   test('every capability is still resolved by the database, never inferred', () => {
-    for (const path of [DASHBOARD, DETAIL, DRAFTS, PI_DETAIL, IMPORT]) {
+    for (const path of [DETAIL, DRAFTS, PI_DETAIL, IMPORT]) {
       const source = stripComments(read(path))
       assert.ok(source.includes('getEffectivePermissions('), path)
       // Never a role literal standing in for a permission.
       assert.ok(!/canApprove\w*\s*=\s*.*role === 'admin'/.test(source), path)
     }
+    // The dashboard's come from the guard's permission context, which the database
+    // resolves too (resolve_effective_permissions_for_user, the same merge).
+    const dashboard = stripComments(read(DASHBOARD))
+    assert.ok(dashboard.includes("deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? [])"))
+    assert.ok(!/canApprove\w*\s*=\s*.*role === 'admin'/.test(dashboard))
   })
 
   test('the loading gate still waits for the capabilities before it clears', () => {
     // A page that drew before its permissions landed would flash controls the
     // viewer may not have — which is worse than the latency this removed.
-    for (const path of [DASHBOARD, DETAIL]) {
+    // The dashboard cannot: the guard renders it only once the permission
+    // context is ready (pinned above), and its capabilities are derived from it.
+    for (const path of [DETAIL]) {
       const body = startup(path)
       const permsAt = body.indexOf('deriveOrdersCapabilities(')
       const clearAt = body.indexOf('setPageLoading(false)')

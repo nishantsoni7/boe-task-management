@@ -614,6 +614,88 @@ export function validateHandoffResponse(raw: string): ResponseCheck {
   return { ok: true, remark }
 }
 
+// ── Sending the PI back to the salesperson, with a comment (20270619000000) ──
+
+export const SEND_BACK_BUTTON_LABEL = 'Send back to salesperson'
+export const SEND_BACK_DIALOG_TITLE = 'Send back to the salesperson'
+export const SEND_BACK_CONFIRM_LABEL = 'Send to salesperson'
+export const SEND_BACK_NOTE =
+  'The salesperson is notified with your comment, and it stays on this Order. Nothing in the PI changes: they revise it with Edit PI, and the new version goes to Operations.'
+export const SEND_BACK_COMMENT_LABEL = 'Your comment for the salesperson'
+export const SEND_BACK_COMMENT_PLACEHOLDER = 'What should the salesperson change or explain?'
+export const SEND_BACK_COMMENT_REQUIRED = 'Write your comment for the salesperson before sending.'
+
+/** What the history says about a PI sent back to the salesperson. */
+export type HandoffSentBack = { by: string | null; atIso: string; text: string }
+
+/**
+ * Whether the page offers "Send back to salesperson": the live version, not
+ * accepted, on an open Order, to an approver or administrator (the page's
+ * `maySend`), never under View As. The database asks again
+ * (actor_has_module_permission orders/approve_order + can_read_order_detail).
+ */
+export function canSendBackToSales(input: {
+  handoff: { status: OperationsHandoffStatus; superseded_at: string | null } | null
+  orderStatus: string
+  maySend: boolean
+  viewingAs: boolean
+}): boolean {
+  return !!input.handoff && input.handoff.status !== 'accepted' && input.handoff.superseded_at === null
+    && input.orderStatus !== 'cancelled' && input.maySend && !input.viewingAs
+}
+
+export type SendBackCheck = { ok: true; comment: string } | { ok: false; message: string }
+
+export function validateSendBackComment(raw: string): SendBackCheck {
+  const comment = raw.trim()
+  if (comment === '') return { ok: false, message: SEND_BACK_COMMENT_REQUIRED }
+  if (comment.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) return { ok: false, message: OPERATIONS_HANDOFF_REASON_TOO_LONG }
+  return { ok: true, comment }
+}
+
+/**
+ * The newest "sent back to the salesperson" entry for THIS handoff, read from
+ * the Order's history rows the page already holds (the comment lives in the
+ * entry's payload, so no handoff column is read).
+ */
+export function latestSentToSales(
+  entries: readonly { event_type: string; payload: Record<string, unknown>; created_at: string; actor_name?: string }[],
+  handoffId: string,
+): HandoffSentBack | null {
+  let best: HandoffSentBack | null = null
+  for (const e of entries) {
+    if (e.event_type !== 'operations_handoff_sent_to_sales') continue
+    if (e.payload?.handoff_id !== handoffId || typeof e.payload?.comment !== 'string' || e.payload.comment === '') continue
+    if (!best || Date.parse(e.created_at) > Date.parse(best.atIso)) {
+      best = { by: e.actor_name ?? null, atIso: e.created_at, text: e.payload.comment }
+    }
+  }
+  return best
+}
+
+/** The strip's own "sent" line: who it went to and when, and the comment beneath it. */
+export type SentBackLine = { head: string; comment: string }
+
+/**
+ * What the strip says once the PI has been sent back — its OWN line under Operations' reason, so a
+ * sender can see at a glance that it went (owner, 2026-11-12: four presses looked like nothing).
+ * `salespersonName` is the Order's salesperson; "the salesperson" when it is not on the page.
+ */
+export function sentBackLine(
+  sent: HandoffSentBack | null,
+  formatWhen: (iso: string | null) => string,
+  salespersonName: string | null,
+): SentBackLine | null {
+  if (!sent) return null
+  return {
+    head: `Sent back to ${salespersonName ?? 'the salesperson'} · ${formatWhen(sent.atIso)}${sent.by ? ` · by ${sent.by}` : ''}`,
+    comment: sent.text,
+  }
+}
+
+/** The button once a comment has gone: it says so, and offers another. */
+export const SEND_BACK_AGAIN_LABEL = 'Send another comment'
+
 export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: string): DecisionCheck {
   const reason = raw.trim() === '' ? null : raw.trim()
   if (reason !== null && reason.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) {
@@ -655,6 +737,14 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   }
   if (m.includes('Only an administrator can recover')) {
     return 'Only an active administrator can recover a production alignment.'
+  }
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_SEND_BACK_COMMENT_REQUIRED')) return SEND_BACK_COMMENT_REQUIRED
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_SEND_BACK_COMMENT_TOO_LONG')) return OPERATIONS_HANDOFF_REASON_TOO_LONG
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_SEND_BACK_NO_SALESPERSON')) {
+    return 'There is no other active salesperson on this Order to send it to.'
+  }
+  if (m.includes('Only an administrator or a PI approver')) {
+    return 'Only an administrator or a PI approver can send a PI back to the salesperson.'
   }
   if (m.includes('ORDER_OPERATIONS_HANDOFF_RESPONSE_REQUIRED')) return RESPOND_REMARKS_REQUIRED
   if (m.includes('ORDER_OPERATIONS_HANDOFF_RESPONSE_TOO_LONG')) return OPERATIONS_HANDOFF_REASON_TOO_LONG
@@ -769,6 +859,7 @@ export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_handoff_accepted:              'Accepted for production by operations',
   operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
   operations_handoff_clarification_answered: 'Responded to Operations and resubmitted',
+  operations_handoff_sent_to_sales:         'Sent back to the salesperson',
   operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
   operations_handoff_realigned:             'Operations aligned production again',
   operations_handoff_realigned_by_admin:    'Administrator recovered the production alignment',
@@ -781,6 +872,7 @@ export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone
   operations_handoff_accepted:              'green',
   operations_handoff_clarification_needed:  'red',
   operations_handoff_clarification_answered: 'amber',
+  operations_handoff_sent_to_sales:         'amber',
   operations_handoff_acceptance_withdrawn:  'red',
   operations_handoff_realigned:             'green',
   operations_handoff_realigned_by_admin:    'amber',
@@ -813,6 +905,8 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
     case 'operations_handoff_clarification_needed':
     case 'operations_handoff_acceptance_withdrawn':
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null
+    case 'operations_handoff_sent_to_sales':
+      return [v, text(p.comment)].filter(Boolean).join(' · ') || null
     case 'operations_handoff_realigned':
       return [v, 'after a production hold', text(p.note)].filter(Boolean).join(' · ')
     case 'operations_handoff_realigned_by_admin':

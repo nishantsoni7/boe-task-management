@@ -48,7 +48,8 @@ export type DiscussionBrief = {
   others?: { title: string; text: string }[]
   yours?: { title: string; text: string }
   next?: { title: string; rows: { tag: SeoTag; text: string }[] }
-  proof: Titled & {
+  /** The worksheet chart at the foot. Older briefs always have it; a case may leave it out. */
+  proof?: Titled & {
     chart: string
     bars: { month: string; value: number; recent?: boolean }[]
     axis: string[]
@@ -71,11 +72,21 @@ export type BriefCase = {
     columns: string[]
     /** One link per column, to the report behind that quarter. */
     links?: string[]
-    rows: { keyword: string; demand: string; values: (number | null)[]; clicks?: (number | null)[] }[]
+    /** Lines drawn above the table, one value per column, such as how many searches were on page 1. */
+    summary?: { label: string; values: string[] }[]
+    /** A short list drawn first in this part: the searches that fell furthest, and how to read them. */
+    falls?: { title: string; head: string[]; rows: string[][]; note: string }
+    /**
+     * `group` puts a row under a category heading that adds up its clicks; grouped tables also show the change since
+     * the first column. `shown` is how often Google showed us in each column: under 20 times, the position is greyed.
+     */
+    rows: { keyword: string; demand: string; values: (number | null)[]; clicks?: (number | null)[]; group?: string; shown?: (number | null)[] }[]
     totals: { label: string; values: string[] }[]
     caveat: string
     takeaway: string
   }
+  /** Where the visitors came from: a few headline figures, then the same split month by month. */
+  traffic: Titled & Proofs & { tiles: { label: string; value: string; note: string }[]; head: string[]; rows: string[][]; takeaway: string }
   leads: Proofs & { title: string; steps: { label: string; value: string; note: string; tone?: SeoTone }[]; head: string[]; rows: string[][]; takeaway: string }
   base: Titled & Proofs & { head: string[]; rows: string[][]; takeaway: string }
   risers: Titled & Proofs & { rows: { site: string; from: string; to: string; text: string }[]; fair: string }
@@ -146,7 +157,7 @@ const BRIEF_SPEC = {
   others: optional([{ title: 'text', text: 'text' }]),
   yours: optional({ title: 'text', text: 'text' }),
   next: optional({ title: 'text', rows: [{ tag: 'tag', text: 'text' }] }),
-  proof: { ...TITLED, chart: 'text', bars: [{ month: 'text', value: 'number', recent: 'bool?' }], axis: ['text'], table: TABLE },
+  proof: optional({ ...TITLED, chart: 'text', bars: [{ month: 'text', value: 'number', recent: 'bool?' }], axis: ['text'], table: TABLE }),
   foot: 'text',
   headline: optional({ title: 'text', items: [{ label: 'text', note: 'text', value: 'text', tone: 'tone?' }] }),
   evidence: optional({ text: 'text', url: 'url' }),
@@ -156,12 +167,15 @@ const BRIEF_SPEC = {
     ...TITLED,
     columns: ['text'],
     links: optional(['url']),
-    rows: [{ keyword: 'text', demand: 'text', values: ['number?'], clicks: optional(['number?']) }],
+    summary: optional([{ label: 'text', values: ['text'] }]),
+    falls: optional({ title: 'text', ...TABLE, note: 'text' }),
+    rows: [{ keyword: 'text', demand: 'text', values: ['number?'], clicks: optional(['number?']), group: 'text?', shown: optional(['number?']) }],
     totals: [{ label: 'text', values: ['text'] }],
     caveat: 'text',
     takeaway: 'text',
     proofs: PROOFS,
   }),
+  traffic: optional({ ...TITLED, tiles: [{ label: 'text', value: 'text', note: 'text' }], ...TABLE, takeaway: 'text', proofs: PROOFS }),
   leads: optional({ title: 'text', steps: [{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }], ...TABLE, takeaway: 'text', proofs: PROOFS }),
   base: optional({ ...TITLED, ...TABLE, takeaway: 'text', proofs: PROOFS }),
   risers: optional({ ...TITLED, rows: [{ site: 'text', from: 'text', to: 'text', text: 'text' }], fair: 'text', proofs: PROOFS }),

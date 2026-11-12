@@ -1,5 +1,6 @@
 'use client'
 
+import { PriceLimits, PriceQueue } from './PricingDesk'
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -57,6 +58,8 @@ export default function ListScreen() {
       <div className={s.wrap}>
         {notSetUp && <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet. Once it is, this page fills in by itself.</div>}
         {!notSetUp && accessError && <div className={`${s.notice} ${s.noticeBad}`}>{errorText(accessError)}</div>}
+        {!notSetUp && accessLoaded && (access.admin || (access.edit && access.view_all)) && <PriceQueue supabase={supabase} />}
+        {!notSetUp && accessLoaded && access.admin && <PriceLimits supabase={supabase} />}
         {!notSetUp && accessLoaded && (
           <div className={s.card}>
             {(access.view_all || access.admin) && (

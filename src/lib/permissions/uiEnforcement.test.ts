@@ -21,7 +21,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deriveFinanceCapabilities } from './finance'
-import { deriveOrdersCapabilities } from './orders'
+import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from './orders'
 import { presetAllowedActions } from './levels'
 import type { EffectivePermission } from './types'
 import { readScreenSource } from '@/lib/testing/readScreenSource'
@@ -181,9 +181,11 @@ describe('Orders controls ask the capability helper', () => {
   })
 
   test('every Orders screen starts from no capabilities', () => {
-    for (const path of [ORDERS_LIST, ORDER_DETAIL]) {
-      assert.ok(read(path).includes('NO_ORDERS_CAPABILITIES'), `${path} must fail closed while loading`)
-    }
+    assert.ok(read(ORDER_DETAIL).includes('NO_ORDERS_CAPABILITIES'), `${ORDER_DETAIL} must fail closed while loading`)
+    // The dashboard derives them from the permission context (2026-11-12). Before that is
+    // known the role is null and the list empty, which is exactly no capabilities.
+    assert.ok(read(ORDERS_LIST).includes("deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? [])"))
+    assert.deepEqual(deriveOrdersCapabilities(null, []), NO_ORDERS_CAPABILITIES)
   })
 
   test('the primary new-Order action is Upload PI, and it needs orders.create', () => {

@@ -23,8 +23,18 @@ export function toTaskPeople(rows: readonly PersonRow[]): TaskPerson[] {
     .map(r => ({ id: r.id, full_name: r.full_name as string, is_active: r.is_active === true }))
 }
 
+// The request already on its way. Two hooks on one page (the name list and Team response on
+// Assigned By Me) ask at the same moment; they share it. Nothing is kept once it answers, so no
+// list outlives its request and none is carried over to whoever signs in next.
+let inFlight: Promise<TaskPerson[] | null> | null = null
+
 /** Null when the route could not answer, so the caller can fall back rather than draw nobody. */
-export async function fetchTaskPeople(): Promise<TaskPerson[] | null> {
+export function fetchTaskPeople(): Promise<TaskPerson[] | null> {
+  inFlight ??= requestTaskPeople().finally(() => { inFlight = null })
+  return inFlight
+}
+
+async function requestTaskPeople(): Promise<TaskPerson[] | null> {
   try {
     const res = await fetch('/api/tasks/people')
     if (!res.ok) return null

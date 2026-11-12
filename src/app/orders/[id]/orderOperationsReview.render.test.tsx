@@ -346,7 +346,8 @@ describe('the page draws ONE production decision', () => {
     assert.match(page, /const operationsReviewOpen = attention\.some\(item => item\.key === 'operations_review'\)/)
     assert.match(body, /id=\{operationsReviewOpen \? OPERATIONS_REVIEW_ANCHOR : undefined\}/)
     // The owner's "Respond and resubmit" rides on the same strip item (20270422000000).
-    assert.match(body, /actions=\{operationsDecisionOffered \|\| respondOffered \?/)
+    // So does the approver's "Send back to salesperson" (20270619000000).
+    assert.match(body, /actions=\{operationsDecisionOffered \|\| respondOffered \|\| sendBackOffered \?/)
   })
 
   test('the strip opens the SAME dialog the card did, clearing the last failure first', () => {

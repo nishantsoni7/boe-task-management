@@ -659,7 +659,7 @@ export default function BoeOsHomePage() {
       key: 'pricing',
       title: 'Pricing',
       // The registered module description, verbatim.
-      description: 'Pricing module. Coming soon.',
+      description: 'Pricing: the price book and suggested prices, learned from approved PIs and quotations.',
       href: '/pricing',
       icon: <Tag size={26} strokeWidth={1.8} />,
       notificationCount: null,

@@ -193,7 +193,7 @@ describe('the route gate, not just the button', () => {
   })
 
   test('the module parent gate is still in front of it', () => {
-    assert.ok(read(ORDERS_LAYOUT).includes("hasPermission(supabase, session.user.id, 'orders', 'view')"),
+    assert.ok(read(ORDERS_LAYOUT).includes("(permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"),
       'the Orders layout must still require module entry')
   })
 })
@@ -207,8 +207,11 @@ describe('the Upload PI entry point', () => {
     assert.ok(source.includes('NEW_ORDER_ACTION.href'), 'and lead to the import route')
     assert.ok(read('src/lib/orders/orderDashboard.ts').includes("href: UPLOAD_PI_PATH"))
     assert.ok(read('src/lib/orders/orderDashboard.ts').includes("export const UPLOAD_PI_PATH = '/orders/import'"))
-    assert.ok(source.includes('NO_ORDERS_CAPABILITIES'),
-      'capabilities must start empty so the button cannot flash before they resolve')
+    // Capabilities are derived from the guard's permission context, and the guard renders
+    // this page only once that is ready, so the button cannot flash before they resolve.
+    assert.ok(source.includes("deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? [])"),
+      'capabilities must come from the resolved permissions')
+    assert.ok(read(ORDERS_LAYOUT).includes('if (!ready || !userId) return <LoadingScreen />'))
   })
 
   test('it is called Upload PI, not New Order', () => {
@@ -1523,7 +1526,7 @@ describe('the Orders guard denies in place', () => {
   test('no redirect to /coming-soon; its own message and a way back', () => {
     const guard = readFileSync(join(process.cwd(), 'src/app/orders/layout.tsx'), 'utf8')
     assert.ok(!guard.includes("router.replace('/coming-soon')"))
-    assert.ok(guard.includes('if (denied) return <OrdersAccessDenied'))
+    assert.ok(guard.includes('if (!allowed) return <OrdersAccessDenied'))
     assert.ok(guard.includes('Order Management is not enabled for your account'))
     assert.ok(!/Attendance/.test(guard.replace(/\/\/.*$/gm, '')), 'no other module is named')
   })

@@ -1,69 +1,47 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Lock } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
-import { hasPermission } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 
 export default function OrdersGuard({ children }: { children: React.ReactNode }) {
-  const [authorized, setAuthorized] = useState(false)
-  const [denied, setDenied] = useState(false)
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
+
+  // ── ONE ANSWER FOR THE GATE, THE PAGE AND THE FRAME (2026-11-12) ──
+  //
+  // THIS GUARD IS ON THE CRITICAL PATH OF EVERY ORDER SCREEN: nothing below it
+  // begins until it answers. It used to read the role and call resolve_permission
+  // itself; the page then read the profile and resolve_effective_permissions
+  // again, and the Orders frame resolved the permission context a third time,
+  // after the page had drawn. It now resolves the signed-in person's context
+  // (profile + resolve_effective_permissions_for_user, one RPC for every module),
+  // which the page and the frame below read from the cache.
+  //
+  // THE RULE IS UNCHANGED, and is still the database's: an admin passes on the
+  // role, anybody else on Orders `view` (the same merge resolve_permission reads),
+  // and a failed read of either denies (usePermissionContext fails closed).
+  const { ready, userId, profile, role, permissionsByModule } = usePermissionContext()
 
   useEffect(() => {
-    const check = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
+    if (ready && !userId) router.replace('/login')
+  }, [ready, userId, router])
 
-      // ── THE TWO QUESTIONS ARE ASKED TOGETHER ──
-      //
-      // THIS GUARD IS ON THE CRITICAL PATH OF EVERY ORDER SCREEN. It renders a
-      // loading state instead of its children, so nothing below it — not one
-      // query on any Order page — begins until it answers. Every round trip it
-      // spends is spent by all nine routes.
-      //
-      // It used to spend two in series: read the role, and only then, for a
-      // non-admin, resolve orders.view. Neither needs the other's answer; both
-      // need only the session's user id. The short-circuit saved an admin one
-      // RPC and cost every non-admin a full round trip, and non-admins are who
-      // this gate is for.
-      //
-      // THE RULE IS UNCHANGED, and is still the database's: an admin passes on
-      // the role, anybody else passes on resolve_permission's answer, and a
-      // failed read of either denies. Only the waiting changed.
-      const [{ data: profile }, viewAllowed] = await Promise.all([
-        supabase
-          .from('users')
-          .select('role')
-          .eq('id', session.user.id)
-          .single(),
-        hasPermission(supabase, session.user.id, 'orders', 'view').catch(() => false),
-      ])
+  if (!ready || !userId) return <LoadingScreen />
 
-      // Admin always has access; otherwise defer to Control Center's
-      // Order Management access level (view = can open this module at all).
-      const allowed = !!profile && (profile.role === 'admin' || viewAllowed)
+  // Admin always has access; otherwise defer to Control Center's
+  // Order Management access level (view = can open this module at all).
+  const allowed = !!profile && (
+    role === 'admin'
+    || (permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)
+  )
 
-      // DENIED IN PLACE. This used to redirect to /coming-soon, a hard-coded
-      // ATTENDANCE placeholder, so somebody without Orders access was told a
-      // different module was "under development". The rule is unchanged.
-      if (!allowed) {
-        setDenied(true)
-        return
-      }
-
-      setAuthorized(true)
-    }
-    check()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  if (denied) return <OrdersAccessDenied onBack={() => router.push('/modules')} />
-  if (!authorized) return <LoadingScreen />
+  // DENIED IN PLACE. This used to redirect to /coming-soon, a hard-coded
+  // ATTENDANCE placeholder, so somebody without Orders access was told a
+  // different module was "under development". The rule is unchanged.
+  if (!allowed) return <OrdersAccessDenied onBack={() => router.push('/modules')} />
   return <>{children}</>
 }
 

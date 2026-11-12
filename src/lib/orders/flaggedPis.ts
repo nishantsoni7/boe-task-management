@@ -73,7 +73,64 @@ export async function loadFlaggedPis(client: RpcLike): Promise<FlaggedPi[] | nul
   }
 }
 
+// ── The approver's comment, on the card of who it was sent to (2026-11-12) ───────
+//
+// "Send back to salesperson" (20270619000000) writes ONE Order history entry with the comment and rings
+// the salesperson's bell. The bell alone was not enough (owner, Order 547: three notices, none opened),
+// so the same comment is drawn on the flagged-PI card the salesperson already has. It is read from the
+// history the salesperson may already read on the Order page; a failed or empty read draws nothing extra,
+// and never changes the list itself (that stays the database's).
+
+export type SentBack = { by: string | null; atIso: string; text: string }
+
+/**
+ * The newest send-back comment per flagged handoff, from history rows (any order). Rows about another
+ * handoff (an older PI version) or without a readable comment are ignored.
+ */
+export function readSentBackComments(raw: unknown, rows: readonly Pick<FlaggedPi, 'handoffId'>[]): Record<string, SentBack> {
+  const out: Record<string, SentBack> = {}
+  if (!Array.isArray(raw)) return out
+  const wanted = new Set(rows.map(r => r.handoffId))
+  for (const x of raw) {
+    if (typeof x !== 'object' || x === null) continue
+    const o = x as Record<string, unknown>
+    const p = (typeof o.payload === 'object' && o.payload !== null ? o.payload : {}) as Record<string, unknown>
+    const handoff = typeof p.handoff_id === 'string' ? p.handoff_id : ''
+    const comment = typeof p.comment === 'string' ? p.comment.trim() : ''
+    const at = typeof o.created_at === 'string' ? o.created_at : ''
+    if (!wanted.has(handoff) || comment === '' || Number.isNaN(Date.parse(at))) continue
+    const actor = o.actor as { full_name?: unknown } | null | undefined
+    const by = typeof actor?.full_name === 'string' && actor.full_name.trim() !== '' ? actor.full_name.trim() : null
+    const best = out[handoff]
+    if (!best || Date.parse(at) > Date.parse(best.atIso)) out[handoff] = { by, atIso: at, text: comment }
+  }
+  return out
+}
+
+type HistoryRead = (orderIds: string[]) => PromiseLike<{ data: unknown; error: { message?: string } | null }>
+
+/** The comments for these flagged PIs; {} when none, or when the read fails (the card is then as it was). */
+export async function loadSentBackComments(read: HistoryRead, rows: readonly FlaggedPi[]): Promise<Record<string, SentBack>> {
+  if (rows.length === 0) return {}
+  try {
+    const { data, error } = await read([...new Set(rows.map(r => r.orderId))])
+    return error ? {} : readSentBackComments(data, rows)
+  } catch {
+    return {}
+  }
+}
+
 // ── Words ─────────────────────────────────────────────────────────────────────
+
+/** `Nishant Soni sent it back to you`. */
+export const sentBackBy = (s: Pick<SentBack, 'by'>): string => `${s.by ?? 'The approver'} sent it back to you`
+
+/** The comment on one line of the card; the Order page carries all of it. */
+export const COMMENT_CLIP = 200
+export function commentLine(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length <= COMMENT_CLIP ? flat : `${flat.slice(0, COMMENT_CLIP - 1).trimEnd()}…`
+}
 
 export const FLAGGED_KIND_LABEL = 'Flagged by Operations'
 export const FLAGGED_LOAD_FAILED = 'PIs flagged by Operations could not be loaded, so one waiting for you may be missing. Refresh to try again.'

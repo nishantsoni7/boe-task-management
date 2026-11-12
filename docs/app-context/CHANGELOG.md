@@ -4,6 +4,112 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (PR #704, squash-merged 2026-11-12 19:12 IST as `b30d3b7b`, deployed 19:14 IST) · no migration
+- **Owner report (same evening).** "Trying to send back to sales person but it is not working." A read-only check showed it WAS working: four presses (17:28, 17:59, 18:04:32, 18:04:40 IST) = four history entries and three notices to the salesperson, all unread (the fourth was inside the two-minute no-repeat rule). But nothing on the sender's screen changed, the comment sat at the end of one long red paragraph, and the salesperson's dashboard card showed only Operations' reason.
+- **Changed.** The Order strip draws the send-back as its OWN green-edged line under Operations' reason ("Sent back to <salesperson> · <when> · by <sender>", then the comment); the button reads "Send another comment" once one has gone. The flagged-PI card on the salesperson's (and any non-approver's) Orders dashboard now also reads "<sender> sent it back to you: “comment”", read from the Order history only for the PIs it already lists; a failed read draws nothing extra and never changes the list.
+- **Not changed.** No database change, no new notice, the two-minute rule, who may send, the item staying in Needs your decision, Operations not locked out.
+- **Proof.** New `flaggedPisSentBack.test.tsx` (10), changed and extended `operationsHandoffSendBack.test.ts` and `orderSendBack.render.test.tsx`; `tsc`, eslint, full `npm test`, `next build`. Not seen signed in or on a phone.
+- **Rollback.** Revert the PR.
+
+## 2026-11-12 — SEO brief: the biggest falls first in the ranking part, and 14 more searches (PR open, branch `feat/seo-brief-falls`) · no migration
+- **Owner ask.** A list of the well-searched business searches whose ranking fell a lot, at the top of part 1; and relevant searches with good volume that were missing.
+- **Changed.** `quarters.falls` (title, head, rows, note) draws first in part 1. The brief data adds 14 searches with 100+ Ahrefs India volume (one new group, furniture makers by place). The selection rule lives in the brief data and the dossier.
+- **Order.** Older builds ignore `falls`, so the brief with the 14 additions can be sent before the merge; the falls table shows once this is live.
+- **Proof.** Tests for the falls table and its place; 40 of 40 pass in the two files; `tsc` and eslint clean. The real document passes the door and was drawn with the app's stylesheets. Not seen signed in.
+
+## 2026-11-12 — Pricing: the price book and the suggested price (Quotations plan phase 7A) (PR #698, squash-merged 2026-11-12 18:05 IST as `f88d7033`, deployed 18:07 IST) · `20270620000000` → SQL APPLIED 2026-11-12 about 17:30 IST (first numbered 20270619000000, which #696 also used; renumbered before merge), 20270620000000 recorded with migration repair about 17:45 IST
+- **Owner choice (2026-11-12).** Price book + suggested price first, learned from data already in BOE One; Admin and people granted Pricing open the module; the cost estimator later.
+- **Built.** The Pricing tile now opens the Price book: every product family with its suggested price, range and confidence, last ordered price, approved PIs, won and lost, and every price point behind it; search and CSV. Each quotation line shows "Suggested ₹X (confidence, range)" with Use. The suggestion is computed from the points each time, so it updates itself with every new approved PI and every quotation won or lost.
+- **Database.** Read-only functions only (`pricing_all_points`, `pricing_points_for`, `pricing_price_book`; `quotation_price_hints` re-created with the points); the Pricing description changes in both tables.
+- **Proof.** `suggest.test.ts` (6), PGlite 38 checks (3 new), the coming-soon registration tests updated, `tsc`, eslint, full `npm test`, `next build`.
+
+## 2026-11-12 — Fewer repeated requests: the Orders page (PR #699, squash-merged 2026-11-12 17:52 IST as `202cbaf8`, deployed 17:55 IST; the squash also carries #697) · no SQL
+- **Owner ask.** "remove the duplicate requests to make it faster", with the owner's Network screenshot of /orders: 36 requests. This is PR 2 of 2; PR 1 (#697) covers the page frame and Task Management.
+- **Changed.**
+  - `OrdersGuard` resolves the signed-in person's `usePermissionContext()`. The rule is unchanged: admin by role, otherwise Orders `view`, and a missing profile or failed read denies.
+  - `/orders` reads `profile`, `role` and the Orders permissions from that cache. `OrdersLayout`'s own resolution is now a cache hit instead of a third resolution after the page drew.
+  - Gone: `users.role`, `resolve_permission`, the `USER_PROFILE_COLUMNS` read and `resolve_effective_permissions(orders)`.
+  - Approvers: `DecisionQueue` and `DocumentActionQueue` share one read of `order_pi_versions` and one of `order_document_submissions`.
+- **Tests.** Restated, each with the rule it protects kept:
+  - `orderStartupShape`: the guard asks nothing itself and keeps the rule and the loading block; the dashboard waits only for its own data; query counts GUARD 2→0, DASHBOARD 7→5.
+  - `importAccess`: module entry; capabilities from the resolved permissions; deny in place.
+  - `ordersFinanceUsability`: the guard and the module switch ask the same question.
+  - `enforcement`, `moduleParentGate`: Orders `view` still resolved.
+  - `uiEnforcement`: `deriveOrdersCapabilities(null, [])` equals `NO_ORDERS_CAPABILITIES`.
+  - `adminDashboard`: the shared reads, with no service role.
+  - New `openQueueReads.test.ts` (2).
+- **Verified live (18:00 IST, owner's account).** No page repeats a request. /orders on a full load: 17 data requests and one permission RPC (`resolve_effective_permissions_for_user`). Opened by a click from Modules: 12 data requests; no permission lookup and no own-row read (both already cached), no Task count, and PI versions and documents read once each. The owner's earlier screenshot of the same kind of click had about 21 data requests, 3 permission lookups, the own row 4 times, and PI versions and documents twice each. Not tried by hand: a non-admin with Orders `view`, and one without it.
+
+## 2026-11-12 — Fewer repeated requests: the page frame and Task Management (PR #697, closed: its commit was stacked under #699 and landed in that squash, `202cbaf8`, 17:52 IST) · no SQL
+- **Owner ask.** "remove the duplicate requests to make it faster", then "and do it for the complete task management module". Counted live on the owner's account:
+  - the signed-in person's own `users` row was read 4-6 times on every Task Management page;
+  - Assigned By Me fetched `/api/tasks/people` twice.
+- **Changed.**
+  - `LoginAsMemberWidget` reads `role` once per signed-in person. It used to read on every auth event, 2-3 times on every page of every module.
+  - `useProfile` joins a `usePermissionContext` read already on its way; this fixes the double read on a hard load of /notifications.
+  - `profileQueryOptions` lets effect-loaded screens reuse the cached row: the two Cancelled archives, All Tasks, New quotation request.
+  - `NotificationsNavItem` skips the Task count where a module passes its own: Orders, Finance, Assets, Inventory, Sales, Reviews.
+  - `fetchTaskPeople` shares a request already on its way.
+  - Task Details reads Meetings `view` from the resolved permission context instead of `resolve_permission`.
+- **Not changed.** These stay on purpose:
+  - UserMenu's `position, designation_level` read, which the shared profile must not carry;
+  - the Dashboard's active-staff list next to the all-people name list (two different lists);
+  - the Dashboard's My Tasks data warm-up.
+- **Tests.** New `src/hooks/queries/sharedReads.test.ts` (4 tests): a shell read already on its way is joined; a missing or failed one falls back to the page's own read; the staff list is shared while on its way and fetched again afterwards. `discussionFlow.test.ts` now checks the permission-context read. The 47 test files that read the changed files pass: 1,357 tests.
+- **Verified live (18:00 IST, owner's account, full page loads).**
+
+  | Page | Requests | Own-row reads | Notes |
+  |---|---|---|---|
+  | Dashboard | 23→21 | 4→3 | |
+  | My Tasks | 17→16 | 5→3 | |
+  | Assigned By Me | 17→16 | 4→3 | `/api/tasks/people` 2→1 |
+  | Notifications | 13→11 | 5→3 | |
+  | Task Details | 17→15 | 5→3 | |
+
+  No page repeats a request. The three reads left on each page are kept on purpose:
+  - the 8-column profile;
+  - `role`, read once by the Login-as-member button;
+  - UserMenu's designation.
+
+## 2026-11-12 — Orders: send a PI back to the salesperson with a comment (PR #696, squash-merged 2026-11-12 17:12 IST as `49770c22`, deployed 17:14 IST) · `20270619000000` → APPLIED 2026-11-12 (about 16:55 IST, BEFORE the merge, alone, after a verified backup and a rolled-back rehearsal)
+- **Owner ask (urgent, Order 547).** Operations had the PI; the approver held it and wanted to send it back to the salesperson with their own comment. Plan approved the same day ("Yes, build it").
+- **Built.** "Send back to salesperson" on the Operations strip of the Confirmed Order, for an administrator or PI approver, while the PI version in force is flagged or still waiting. A dialog takes the comment (required, up to 1,000 characters, Operations' reason shown above it). One database function `send_order_handoff_to_sales` writes one history entry and one notice (existing type `order_operations_review_decided`, badge "Returned to Sales") to the Order's salesperson and the PI's submitter / creator, never the sender. The strip then shows who sent it back, when, and the comment.
+- **Not changed.** The handoff, the PI, the Order and its alignment; Operations is not locked out; the item stays in Needs your decision until Operations accepts, it is answered or a revised PI is approved; a second send within two minutes is recorded but does not ring the bell twice.
+- **Proof.** PGlite 12 checks on the real migration; `operationsHandoffSendBack.test.ts` (15), `orderSendBack.render.test.tsx` (5), one existing page pin updated; `tsc`, eslint, full `npm test`, `next build`. Rehearsed on the live database in a transaction that always rolls back (a non-approver refused, a blank comment refused, a real send wrote one history entry and one notice to the salesperson and none to the sender, handoff status and alignment unchanged, zero residue afterwards). Applied alone after `backup-all` (243 tables, 464,172 rows, `verify-backups`: all required layers fresh) via `db query --file` and `migration repair`; `migration list` shows it on both sides; the function exists, `SECURITY DEFINER`, `search_path = public, pg_temp`, anon cannot call it, signed-in users can. After the merge: the GitHub Production deployment for `49770c22` reported success at 17:14 IST (the live bundle was not grepped). The full `npm test` on the final code: 20,599 passed, 0 failed, 9 skipped; the three GitHub checks passed. Still not seen signed in or on a phone: the first real use is Order 547, whose V1 is awaiting Operations.
+- **Rollback.** `drop function public.send_order_handoff_to_sales(uuid, text);` and revert the PR.
+
+## 2026-11-12 — Quotations, phase 6: Reports (PR #694, squash-merged 2026-11-12 15:59 IST as `8f8c9ba1`, deployed 16:01 IST) · `20270618000000` → APPLIED 2026-11-12 (about 15:48 IST, BEFORE the merge, alone, after a verified backup)
+- **Owner approval (2026-11-12).** A Reports page computed from recorded data only; managers see the whole team, everyone else their own; the weekly summary on the page for now.
+- **Built.** `/quotations/reports`: This week, funnel with values, by salesperson / client type / source, speed, open by age, opened but not followed up, lost reasons, discount against wins, price approvals waiting; period filter and a CSV per section.
+- **Database.** One read-only function `quotation_report(from, to, scope)`; no table, no write.
+- **Proof.** PGlite 35 checks (3 new), `report.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
+
+## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR #693, squash-merged 2026-11-12 15:45 IST as `46adaca3`) · no SQL
+- **Why.** The owner asked: "Is there anything which can generate similar kind of errors in future then do work on it and solve it". A read-only sweep of about 38 pages in the owner's Chrome found:
+  - pages covered: every module home, plus the Orders, Finance, Tasks and Sales sub-pages;
+  - 0 console errors or warnings from BOE, 0 failed requests and 0 unused stylesheets;
+  - what remained came from outside BOE: a Chrome extension; the Vercel Toolbar, which the owner sees because of the `__vercel_toolbar` cookie; and the owner's network stalling some page loads 6-19 s before any request left Chrome.
+- **Changed (test only).** `noBackgroundPrefetch.test.ts` now also fails on:
+  - `next/link` outside AppLink when written with double quotes or loaded by `import()`/`require()`;
+  - any `next/form`;
+  - `router.prefetch?.(`;
+  - any hand-written preload: `rel="preload|prefetch|modulepreload"`, React `preload()`/`preinit()`.
+- **Checks.** A sixth case proves the patterns catch each spelling and leave `prefetchQuery`, `preconnect()` and `rel="stylesheet"` alone. A deliberately bad file made 4 of the 6 cases fail; the old guard would have passed it.
+- **Not changed.** Polled refreshes (For you and handovers, every 60 s) already retry once (`retry: 1` in Providers). A dropped connection therefore adds at most two failed-request lines per refresh, so they are left as they are.
+
+## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR #691, squash-merged 2026-11-12 14:32 IST as `e9901386`) · no migration
+- **Owner ask.** The ranking table is what matters: the top 5 searches in each business category (24 categories plus banquet), quarter by quarter; then how much of the traffic growth went to blog posts against business searches; then the rest in order, with nothing repeated. Plan v4 approved the same day.
+- **Changed.** Quarter rows can carry a category and Google's impressions per quarter: grouped tables show a category heading with summed clicks, a summary above, a "Since" column, and grey positions from fewer than 20 showings (left out of the change). New optional "where the visitors came from" part: three figures and a month-by-month table. Rankings now come first, the traffic split second. The worksheet chart is optional, and credit and fairness hide when empty, so the conversation part can carry them.
+- **Order.** Merge first, then send: the brief now on production requires the worksheet chart, so the new document would be refused until this is live.
+- **Proof.** New tests for grouping, summed clicks, the change rule, grey thin readings, the traffic part and the optional chart; 40 of 40 pass in the two files. The real document passes the door's check and was drawn with the app's stylesheets at desktop and phone width. After the merge: production deploy succeeded 14:34 IST, the new brief was sent, and `/seo/brief` was read signed in as Admin with every part, link and grey reading in place. Not seen on a phone signed in.
+
+## 2026-11-12 — Quotations, phase 5: the pricing desk (price hints and price approval) (PR #687, squash-merged 2026-11-12 14:19 IST as `e55e01aa`, deployed 14:22 IST) · `20270617000000` → APPLIED 2026-11-12 (about 14:10 IST, BEFORE the merge, alone, after a verified backup)
+- **Owner approval (2026-11-12).** Hints for everyone who makes quotations; approval when the discount is above 5% or a product is below 90% of its last ordered price; the administrator changes the limits.
+- **Built.** Under each price: last ordered price, range and count from approved PIs, last quoted price, and Use. A Price approval card: ask, approve or send back with a note; the client link and Confirm → PI wait until approved; a change of prices needs asking again. The desk's "Waiting for price approval" list and the limits on the Quotations page.
+- **Database.** Tables `quotation_price_settings` (one row, 5 / 90) and `quotation_price_reviews` (append-only), both closed to clients; functions for hints, check, state, ask, decide, queue and limits; `quotation_get`, `quotation_share`, `quotation_link_pi` re-created with the price state. Orders tables only read.
+- **Proof.** PGlite 32 checks (7 new), `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** In the migration header.
+
 ## 2026-11-12 — Sales: WhatsApp Connection page for the company number (PR #688, squash-merged 2026-11-12 14:12 IST as `879a792a`) · no migration
 - **Owner ask.** Connect the company number (+91 87691 13712, in the WhatsApp Business app on the phone) so its chats become leads, keeping the app on the phone; "Yes, plan it", plan approved 2026-11-12.
 - **Built.** Control Center > Records & Data > **WhatsApp Connection**: loads Meta's JS SDK and opens Embedded Signup with WhatsApp Business app onboarding (coexistence); shows the account and phone number IDs, a cancel, Meta's error, or a refused WRONG flow (a plain Cloud API finish takes the number off the phone). `src/lib/salesLeads/connectSignup.ts` reads Meta's messages. Sends nothing, stores nothing, calls no Meta address (the WhatsApp guards pass unchanged); our app is subscribed to the new account once by hand. Two PUBLIC env values: `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (unset = "Setup missing").

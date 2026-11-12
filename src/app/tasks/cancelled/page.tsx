@@ -3,7 +3,9 @@
 import { useAllUserNames } from '@/hooks/queries/useMyTasks'
 import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -82,6 +84,7 @@ function MyCancelledTasksContent() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -114,8 +117,9 @@ function MyCancelledTasksContent() {
       // LIMIT/OFFSET, which promises nothing about row order unless the ordering
       // is unique, so two rows sharing a timestamp could swap between pages —
       // showing one twice and losing the other.
-      const [{ data: profileData }, taskResult] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
+      const [profileData, taskResult] = await Promise.all([
+        // The shell has usually read this row already; this reuses it instead of asking again.
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, uid)),
         fetchAllRows<Task>((from, to) => supabase.from('tasks').select(TASK_COLUMNS)
           .eq('status', 'cancelled')
           .or(`assigned_to.eq.${uid},created_by.eq.${uid}`)
@@ -131,7 +135,7 @@ function MyCancelledTasksContent() {
       setLoading(false)
     }
     init()
-  }, [viewAsUserId, router, supabase])
+  }, [viewAsUserId, router, supabase, queryClient])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
