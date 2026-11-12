@@ -20,7 +20,7 @@
 // approved PI screen. This adds no new design; it puts the agreed treatment on
 // a second screen so the two cannot look like two different products.
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ChevronRight, Download, FileSpreadsheet, Truck, Upload } from 'lucide-react'
 import {
   APPROVE_REVISION_BUTTON_LABEL,
@@ -45,6 +45,9 @@ import {
   type ProductViewRow,
 } from '@/components/orders/ProductViews'
 import { OrderDispatchLedger, OrderDispatchRecords } from './OrderDispatch'
+import { LineFlagBand } from './OrderLineReview'
+import bandStyles from './lineFlags.module.css'
+import type { LineFlag } from '@/lib/orders/lineFlags'
 import type { DispatchData, DispatchLedger } from '@/lib/orders/dispatch'
 import {
   PiCard,
@@ -600,9 +603,11 @@ function OrderProductTableHead() {
 }
 
 export function OrderPiProducts({
-  products, isMobile, representativeThumbnail, customizationThumbnails, unresolvedImages, views,
+  products, isMobile, representativeThumbnail, customizationThumbnails, unresolvedImages, views, lineFlags,
 }: {
   products: readonly PersistedProduct[]
+  /** Operations' flags on the live PI review, by item id (20270616000000). Drawn under each flagged row. */
+  lineFlags?: ReadonlyMap<string, LineFlag>
   isMobile: boolean
   representativeThumbnail: (row: number) => PiThumbnailProps
   customizationThumbnails: (row: number) => { key: string; props: PiThumbnailProps }[]
@@ -784,6 +789,7 @@ export function OrderPiProducts({
                   {formatInr(p.lineTotal)}
                 </span>
               </div>
+              {lineFlags?.get(p.id) && <LineFlagBand flag={lineFlags.get(p.id)!} />}
             </div>
           ))}
         </div>
@@ -804,8 +810,10 @@ export function OrderPiProducts({
             </colgroup>
             <OrderProductTableHead />
             <tbody>
-              {products.map(p => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+              {products.map(p => {
+                const flag = lineFlags?.get(p.id)
+                return (<Fragment key={p.id}>
+                <tr style={{ borderBottom: flag ? 'none' : `1px solid ${colors.border}` }}>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {/* THE COLUMN A READER SCANS DOWN. Heavier, darker and a
                         size up from the prose beside it, so a code can be found
@@ -851,7 +859,13 @@ export function OrderPiProducts({
                     {formatInr(p.lineTotal)}
                   </td>
                 </tr>
-              ))}
+                {flag && (
+                  <tr className={bandStyles.bandRow} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td colSpan={9}><LineFlagBand flag={flag} /></td>
+                  </tr>
+                )}
+                </Fragment>)
+              })}
             </tbody>
           </table>
         </div>

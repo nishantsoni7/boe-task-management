@@ -81,6 +81,7 @@ import {
   RESPOND_REMARKS_PLACEHOLDER,
   type OperationsHandoffStatus,
 } from '@/lib/orders/operationsHandoff'
+import { composeLineRemarks, RESPOND_GENERAL_LABEL, RESPOND_LINE_PLACEHOLDER } from '@/lib/orders/lineFlags'
 
 const TEXTAREA: React.CSSProperties = {
   padding: '8px 10px', borderRadius: '8px',
@@ -409,25 +410,45 @@ export function OperationsHandoffDecisionModal({
  * and whether the version is still flagged; this dialog only collects the words.
  */
 export function RespondToOperationsModal({
-  orderNumber, versionLabel, objection, saving, failure, onClose, onConfirm,
+  orderNumber, versionLabel, objection, lines = [], saving, failure, onClose, onConfirm,
 }: {
   orderNumber: string
   versionLabel: string
   /** Operations' own words, shown above the box so the answer is written to them. */
   objection: string | null
+  /**
+   * The lines Operations flagged (20270616000000): one box each, so a line kept as quoted is answered
+   * line by line. The boxes are joined into the one remark the door takes ("700-BE0002 Dining Chair: …").
+   */
+  lines?: readonly { key: string; label: string; flagged: string }[]
   saving: boolean
   failure: string | null
   onClose: () => void
   onConfirm: (remark: string) => void
 }) {
   const [text, setText] = useState('')
+  const [perLine, setPerLine] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState(false)
-  const check = validateHandoffResponse(text)
+  const check = validateHandoffResponse(lines.length > 0
+    ? composeLineRemarks(lines.map(l => ({ label: l.label, text: perLine[l.key] ?? '' })), text)
+    : text)
   return (
-    <OrderModal title={RESPOND_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose}>
+    <OrderModal title={RESPOND_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose} width={lines.length > 0 ? 560 : undefined}>
       <OrderModalNotice tone="info">{RESPOND_NOTE}</OrderModalNotice>
-      {objection && <OrderModalNotice tone="warning">Operations said: “{objection}”</OrderModalNotice>}
-      <OrderField label={RESPOND_REMARKS_LABEL} error={touched && !check.ok ? check.message : undefined}>
+      {objection && lines.length === 0 && <OrderModalNotice tone="warning">Operations said: “{objection}”</OrderModalNotice>}
+      {lines.map(l => (
+        <OrderField key={l.key} label={l.label} hint={l.flagged}>
+          <textarea
+            value={perLine[l.key] ?? ''}
+            onChange={e => setPerLine(prev => ({ ...prev, [l.key]: e.target.value }))}
+            placeholder={RESPOND_LINE_PLACEHOLDER}
+            disabled={saving}
+            rows={2}
+            style={TEXTAREA}
+          />
+        </OrderField>
+      ))}
+      <OrderField label={lines.length > 0 ? RESPOND_GENERAL_LABEL : RESPOND_REMARKS_LABEL} error={touched && !check.ok ? check.message : undefined}>
         <textarea
           value={text}
           onChange={e => setText(e.target.value)}

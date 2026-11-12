@@ -8,6 +8,7 @@
  *   npx tsx --test "src/app/orders/[id]/orderPiHistory.render.test.tsx"
  */
 
+import '@/lib/testing/cssModuleStub'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'

@@ -15,6 +15,7 @@
  *   npx tsx --test "src/app/orders/*\/orderPiHandoff.render.test.tsx"
  */
 
+import '@/lib/testing/cssModuleStub'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

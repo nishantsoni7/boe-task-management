@@ -150,6 +150,7 @@ A second delivery of rows already in `notifications`; it creates no rows, adds n
 | Event (table.status) | Who must act | Home today? |
 |---|---|---|
 | PI flagged by Operations (`order_operations_handoffs` `clarification_needed`) | PI creator/submitter with orders.create, or an active admin | **YES since 2026-11-11**: Orders "Needs your decision" (approver), strip on the other Orders dashboards, For you `pi_flagged_by_operations` (Always on). Before: a foot-of-page count link and one notice to the approver of that version only |
+| PI lines flagged by Operations (`order_line_flags`, 20270616000000, applied 2026-11-12) | same as the row above: the flag is the same handoff state | **YES**: nothing new to register. `flag_order_lines` composes a reason ("2 lines cannot be made as quoted: 700-BE0002 Dining Chair (price too low, should be ₹7000); …") and hands it to `decide_order_operations_handoff`, so the three homes above show it, and the salesperson's notice from `order_operations_handoff_notify` (20270401000000) carries it. Comments only accept the version and reach the salesperson through the same trigger. |
 | PI submitted, awaiting approval | `orders.approve_order` holders | Yes: Needs your decision; For you `pi_waiting_approval` (default Off); Control Center Action Queue |
 | PI revision pending (V2+); Design Files / Client PO awaiting admin | approvers | Yes: Needs your decision |
 | PI returned for changes | the PI's salesperson / creator / submitter | Yes: salesperson strip + For you `pi_returned` |
