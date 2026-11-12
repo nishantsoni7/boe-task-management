@@ -9,7 +9,7 @@
 // pendencyOverview.ts and the database.
 
 import { useEffect, useRef } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { X } from 'lucide-react'
 import {
   PENDENCY_ALL_APPROVED, pendencyCountLabel, type OrderPendencyOverview,

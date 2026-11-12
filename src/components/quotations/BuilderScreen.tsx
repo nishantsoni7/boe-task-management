@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Check, FileUp, Copy, FileCheck2, FileSpreadsheet, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'

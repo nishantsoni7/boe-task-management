@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useMemo } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'

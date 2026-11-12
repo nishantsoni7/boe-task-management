@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Megaphone, ChevronRight } from 'lucide-react'
 import { bannerContent, type MyAnnouncement } from '@/lib/announcements'
 

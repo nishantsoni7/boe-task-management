@@ -10,7 +10,7 @@
 // administrator / finance.view_all holder), and accept / dispute re-check that
 // the caller IS the recipient.
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { HandoverCard } from '@/components/finance/HandoverCard'
 import { useHandover } from '@/hooks/queries/useHandovers'

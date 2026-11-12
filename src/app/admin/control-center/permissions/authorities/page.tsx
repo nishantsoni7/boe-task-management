@@ -20,7 +20,7 @@
 // decision of 2026-10-29.
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'

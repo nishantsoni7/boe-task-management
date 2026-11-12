@@ -66,7 +66,7 @@ describe('Control Center navigation', () => {
   })
 
   test('every entry is a real link, with tab links replacing history on the main page', () => {
-    assert.ok(shell.includes("import Link from 'next/link'"))
+    assert.ok(shell.includes("import { AppLink as Link } from '@/components/ui/AppLink'"))
     assert.equal(shell.includes('router.push(path)'), false, 'no button-driven navigation remains')
     assert.ok(shell.includes('replace={onMain'))
   })

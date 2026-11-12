@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, SlidersHorizontal, X,

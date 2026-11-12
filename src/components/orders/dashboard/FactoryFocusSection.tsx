@@ -20,8 +20,7 @@
 
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useId, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
@@ -68,7 +67,6 @@ export function FactoryFocusSection({ focus, supabase, readOnlyReason, addOpen, 
   onChanged: () => void
 }) {
   const headingId = useId()
-  const router = useRouter()
   const canManage = focus.canManage && !readOnlyReason
   const [add, setAdd] = useState<AddState>({ kind: 'entering', error: null, busy: false })
   const [number, setNumber] = useState('')
@@ -184,8 +182,6 @@ export function FactoryFocusSection({ focus, supabase, readOnlyReason, addOpen, 
                     className="boe-btn boe-btn-primary"
                     aria-label={`Open order ${card.displayNumber}`}
                     prefetch={false}
-                    onMouseEnter={() => router.prefetch(`/orders/${card.orderId}`)}
-                    onFocus={() => router.prefetch(`/orders/${card.orderId}`)}
                   >
                     Open order
                   </Link>

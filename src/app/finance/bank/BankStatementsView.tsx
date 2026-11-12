@@ -31,7 +31,7 @@
 // and paged on screen, 50 at a time.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Upload } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'

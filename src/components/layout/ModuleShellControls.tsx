@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Home, RefreshCw } from 'lucide-react'
-import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
 
 // The three controls OrdersLayout and FinanceLayout draw identically — the
 // sidebar destination, the BOE OS Home door and the header Refresh. They were
@@ -12,34 +10,14 @@ import { INTENT_DWELL_MS } from '@/hooks/useIntentWarm'
 // is the right element:
 //
 //   * a DESTINATION is an <a> (Next <Link>). It opens in a new tab, shows its
-//     address on hover, announces itself with aria-current, and Next prefetches
-//     its code once the person shows INTENT (the pointer RESTING on it, focus,
-//     touch), so the click lands on a route that is already in hand. Not while
-//     the item is merely on screen: that prefetched every page of the menu on
-//     every load and preloaded stylesheets of pages never opened (measured
-//     2026-11-11: /finance/founders on every Finance page);
+//     address on hover and announces itself with aria-current. Its page loads
+//     when it is clicked, never in advance (AppLink, owner 2026-11-12): loading
+//     the menu's pages ahead preloaded stylesheets of pages never opened
+//     (measured 2026-11-11: /finance/founders on every Finance page);
 //   * an ACTION (Refresh) stays a <button>, and says what it is to a screen
 //     reader rather than relying on a tooltip.
 //
 // Colours, sizes and hover values are the ones the two layouts already used.
-
-// Next's own hover-prefetch pattern: off until the person shows intent, then back
-// to the default. The pointer must REST (INTENT_DWELL_MS), so crossing the menu
-// on the way elsewhere warms nothing; focus and touch are deliberate. Local state
-// rather than useIntentWarm: ordersFinanceUsability.test.tsx renders these links
-// outside the app router, where useRouter would throw.
-function useWarmOnRest() {
-  const [warm, setWarm] = useState(false)
-  const rest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(rest.current), [])
-  return {
-    prefetch: warm ? null : false,
-    onPointerEnter: () => { clearTimeout(rest.current); rest.current = setTimeout(() => setWarm(true), INTENT_DWELL_MS) },
-    onPointerLeave: () => clearTimeout(rest.current),
-    onFocus: () => setWarm(true),
-    onTouchStart: () => setWarm(true),
-  }
-}
 
 export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }: {
   href: string
@@ -51,12 +29,9 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
   /** A badge, drawn after the label. */
   trailing?: React.ReactNode
 }) {
-  const warmProps = useWarmOnRest()
-
   return (
     <Link
       href={href}
-      {...warmProps}
       className={`boe-nav-item${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
       onClick={onNavigate}
@@ -73,15 +48,9 @@ export function ShellNavLink({ href, label, icon, active, onNavigate, trailing }
 }
 
 export function ShellHomeLink() {
-  // Hidden while the rail is collapsed and drawn when it opens on hover, so a
-  // viewport prefetch fired the moment the pointer touched the rail and left the
-  // launcher's stylesheet unused (measured 2026-11-11).
-  const warmProps = useWarmOnRest()
-
   return (
     <Link
       href="/modules"
-      {...warmProps}
       title="BOE One Home"
       aria-label="BOE One Home"
       className="boe-shell-home boe-rail-label"

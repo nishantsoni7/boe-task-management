@@ -36,7 +36,7 @@
 // was kept.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,

@@ -3,7 +3,7 @@
 import { useAllUserNames } from '@/hooks/queries/useMyTasks'
 import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskStatus, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'

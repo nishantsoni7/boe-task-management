@@ -13,7 +13,7 @@
 // row locks; the rules in lib/finance/paymentDuplicates.ts decide what is drawn.
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { creditHref, paymentHref } from './bank/bankStatementsModel'
 import {

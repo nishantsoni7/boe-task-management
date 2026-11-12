@@ -33,7 +33,7 @@
 // where each row is printed.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
 import { ClipboardCheck, Eye, Trash2, Upload } from 'lucide-react'
 import { PiFormatButton } from '@/components/orders/PiFormatLink'
@@ -332,20 +332,6 @@ export default function PiDraftsPage() {
   }
 
   /**
-   * HOVER IS THE EARLIEST HONEST SIGNAL that this draft is about to be opened,
-   * so the code for the PI detail route is already in hand when the click
-   * lands. The two Order lists have done this since their own performance
-   * pass; this list was the one that did not.
-   *
-   * It fetches the ROUTE, not the draft: no record, no permission and no file
-   * is read until that page mounts and asks under the reader's own session, so
-   * this can neither leak a row nor show a stale one. Next de-duplicates
-   * repeated prefetches, so moving down a list costs one fetch and then cache
-   * hits.
-   */
-  const prefetchDraft = (entry: PiDraftListEntry) => router.prefetch(entry.href)
-
-  /**
    * Erase one PI, files and all.
    *
    * ONE ROUND TRIP TO ONE ROUTE, which removes the storage objects with the
@@ -448,8 +434,6 @@ export default function PiDraftsPage() {
         aria-label={`${actionLabel} — ${entry.client}`}
         title={actionLabel}
         onClick={e => e.stopPropagation()}
-        onMouseEnter={() => prefetchDraft(entry)}
-        onFocus={() => prefetchDraft(entry)}
       >
         {actionLabel === REVIEW_ACTION_LABEL
           ? <ClipboardCheck size={15} aria-hidden="true" />
@@ -551,7 +535,6 @@ export default function PiDraftsPage() {
             <tr
               key={entry.id}
               onClick={() => router.push(entry.href)}
-              onMouseEnter={() => prefetchDraft(entry)}
             >
               <td title={entry.client}>
                 <span className="fin-primary-text">{entry.client}</span>

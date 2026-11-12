@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { Images } from 'lucide-react'
 import type { InventoryItem } from '@/lib/inventory/constants'
 import { formatPrice, readyShort, readyState, sortedImages } from '@/lib/inventory/format'

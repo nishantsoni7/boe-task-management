@@ -18,7 +18,7 @@
 // Below 768px the row scrolls sideways inside itself and the current tab is
 // scrolled into view, so the page never scrolls sideways.
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useEffect, useRef } from 'react'
 import { BookOpen } from 'lucide-react'
 import {

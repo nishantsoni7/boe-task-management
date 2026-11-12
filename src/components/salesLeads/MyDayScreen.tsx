@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Check, MessageCircle, Pencil, Phone, PhoneMissed } from 'lucide-react'

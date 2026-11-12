@@ -14,7 +14,7 @@
 // the search gets the same comparison and the same doubts as a suggestion.
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { formatMoney, paymentModeLabel } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL, bankLineId } from '@/lib/finance/bankStatement'

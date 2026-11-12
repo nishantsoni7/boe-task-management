@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import {
   ArrowRight, BookOpen, CalendarCheck, CheckCircle2, ClipboardCheck, Coins, Lock,
   MessageSquareHeart, Send, ShieldCheck, Undo2, Wallet, XCircle,

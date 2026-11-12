@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
 import { PackageOpen, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
 import { InventoryLayout } from '@/components/layout/InventoryLayout'

@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { noteListReturn } from '@/hooks/useListScrollRestore'

@@ -126,12 +126,6 @@ export function QuickActionList({
   // only one can ever be tapped.
   const [openForm, setOpenForm] = useState<QuickAction['opens'] | null>(null)
 
-  // Fetch a destination's code when the person shows intent (pointer over, focus
-  // or touch start), not as soon as the button is on screen. Warming another
-  // module's page on load makes the browser preload that page's stylesheet, which
-  // this page never applies — the "preloaded but not used" console warning.
-  const warm = (href?: string) => { if (href) router.prefetch(href) }
-
   if (actions.length === 0) return null
 
   const isSidebar = variant === 'sidebar'
@@ -152,9 +146,6 @@ export function QuickActionList({
             key={action.key}
             type="button"
             className={action.featured ? 'boe-btn boe-quick-action boe-quick-action-featured' : 'boe-btn boe-quick-action'}
-            onPointerEnter={() => warm(action.href)}
-            onFocus={() => warm(action.href)}
-            onTouchStart={() => warm(action.href)}
             onClick={() => (action.opens ? setOpenForm(action.opens) : router.push(action.href!))}
             title={isSidebar ? action.label : undefined}
           >

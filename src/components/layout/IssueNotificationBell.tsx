@@ -19,7 +19,7 @@
 // number cannot differ between pages, and TanStack dedupes it to one request.
 // This file is presentation only.
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import styles from './attendancePayrollShell.module.css'

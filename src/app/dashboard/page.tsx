@@ -391,14 +391,6 @@ export default function DashboardPage() {
     void refetchDashboardTasks()
   }, [manualRefreshKey, refetchDashboardTasks])
 
-  // Warm the two routes this page leads to most often. These ran at the end of
-  // the old load effect; with the load now frequently instant there is nothing
-  // left to run "after", so they run on mount. Same two routes, unchanged.
-  useEffect(() => {
-    router.prefetch('/tasks/my')
-    router.prefetch('/notifications')
-  }, [router])
-
   // ── Escalations: fetched only when the drawer is actually opened ────────────
   //
   // This is the heaviest query on the page — every non-completed task in the

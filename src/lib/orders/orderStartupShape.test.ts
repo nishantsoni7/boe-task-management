@@ -588,53 +588,24 @@ describe('what did NOT change', () => {
 
 // ══ 5. Two smaller changes in the same pass ══════════════════════════════════
 
-describe('the Order lists prefetch what a hover says is coming', () => {
-  // The dashboard's order links live in its own components since the redesign
-  // (20270221000000): every row of an action list, and PANIC MODE's "Open order".
-  const LISTS: { path: string; source: RegExp }[] = [
-    { path: ALL, source: /router\.prefetch\(`\/orders\/\$\{o\.id\}`\)/ },
-    { path: 'src/components/orders/dashboard/AttentionSections.tsx', source: /router\.prefetch\(`\/orders\/\$\{r\.orderId\}`\)/ },
-    { path: 'src/components/orders/dashboard/FactoryFocusSection.tsx', source: /router\.prefetch\(`\/orders\/\$\{card.orderId\}`\)/ },
+describe('the Order lists and PI Drafts load a page on click, not on hover', () => {
+  // OWNER DECISION 2026-11-12 ("Yes, load on click"): the hover prefetch these
+  // lists had is gone, like every other one in the app. Each prefetched page
+  // brought a stylesheet the list never applied, and Chrome kept reporting it.
+  // The app-wide rule is pinned in src/lib/navigation/noBackgroundPrefetch.test.ts;
+  // this names the lists that used to do it.
+  const LISTS = [
+    ALL,
+    DRAFTS,
+    'src/components/orders/dashboard/AttentionSections.tsx',
+    'src/components/orders/dashboard/FactoryFocusSection.tsx',
+    'src/components/orders/dashboard/OverviewSection.tsx',
   ]
-  for (const { path, source: pattern } of LISTS) {
-    test(`${path} prefetches the Order detail route on hover`, () => {
-      const source = stripComments(read(path))
-      assert.match(source, pattern, path)
-    })
-
-    test(`${path} prefetches the ROUTE and reads no record`, () => {
-      // A prefetch that fetched DATA would be a cache of a private row, and the
-      // brief forbids exactly that. This fetches the screen's code; every read
-      // still happens when the page mounts, under the reader's own session.
-      const source = stripComments(read(path))
-      const at = source.indexOf('router.prefetch(')
-      const around = source.slice(at, at + 200)
-      assert.ok(!/\.from\(|\.rpc\(/.test(around), `${path}: a prefetch must not read a record`)
+  for (const path of LISTS) {
+    test(`${path} does not prefetch`, () => {
+      assert.equal(stripComments(read(path)).includes('router.prefetch('), false, path)
     })
   }
-})
-
-describe('PI Drafts prefetches too — it was the one list that did not', () => {
-  // The two Order lists gained this in their own pass and the draft list was
-  // left behind, so a screen an approver opens constantly was the slowest to
-  // arrive. Same rule as theirs: the ROUTE, never the record. A prefetch that
-  // fetched DATA would be a cache of a private row.
-  const source = stripComments(read(DRAFTS))
-
-  test('a hover on a draft row prefetches the PI detail route', () => {
-    assert.ok(source.includes('router.prefetch(entry.href)'),
-      'the list must prefetch what a hover says is coming')
-    assert.ok(source.includes('onMouseEnter={() => prefetchDraft(entry)}'),
-      'and it must be wired to the control that opens the draft')
-  })
-
-  test('it prefetches the ROUTE and reads no record', () => {
-    const at = source.indexOf('router.prefetch(')
-    const around = source.slice(at, at + 200)
-    for (const read of ['.from(', '.rpc(']) {
-      assert.ok(!around.includes(read), 'a prefetch must not read a record')
-    }
-  })
 })
 
 describe('product photographs were deliberately LEFT ALONE', () => {

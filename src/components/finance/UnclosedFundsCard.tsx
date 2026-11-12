@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { ChevronDown, Landmark } from 'lucide-react'

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter } from 'next/navigation'
 import { BarChart3, CalendarDays, Home, ListChecks, Plus, Users } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'

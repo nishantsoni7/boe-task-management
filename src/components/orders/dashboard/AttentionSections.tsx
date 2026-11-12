@@ -15,8 +15,7 @@
 // assessed is said under the heading it affects, never folded into "0".
 
 import { useId, useState, type ReactNode } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
   ADVANCE_BLOCKS_NOTE,
@@ -55,7 +54,6 @@ type Row = DashboardOrderRef & {
 
 function RowList({ rows, visible = VISIBLE_ROWS }: { rows: Row[]; visible?: number }) {
   const listId = useId()
-  const router = useRouter()
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? rows : rows.slice(0, visible)
   return (
@@ -64,15 +62,10 @@ function RowList({ rows, visible = VISIBLE_ROWS }: { rows: Row[]; visible?: numb
         {shown.map(r => (
           <li key={r.key ?? r.orderId} className="od-row">
             <div className="od-row-id">
-              {/* Hover or focus is the earliest honest sign this order is about to be opened, so
-                  its ROUTE (never the record) is fetched now: no record, no permission and no
-                  file is read until the page mounts under the reader's own session. */}
               <Link
                 href={withReturnTo(`/orders/${r.orderId}`, '/orders')}
                 className="od-order-link"
                 prefetch={false}
-                onMouseEnter={() => router.prefetch(`/orders/${r.orderId}`)}
-                onFocus={() => router.prefetch(`/orders/${r.orderId}`)}
               >
                 {r.displayNumber}
               </Link>

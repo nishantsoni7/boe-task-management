@@ -25,7 +25,7 @@
 // src/lib/moduleAccess.ts.
 
 import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'

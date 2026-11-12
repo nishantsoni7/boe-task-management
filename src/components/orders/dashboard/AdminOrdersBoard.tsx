@@ -9,7 +9,7 @@
 // rest of the dashboard uses. Nothing is computed here but the pipeline bar (lib/orders/adminDashboard.ts).
 
 import { useId, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { CalendarClock, ChevronRight, CircleCheck, Clock, Factory, IndianRupee, Layers, type LucideIcon } from 'lucide-react'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { displayOrderNumber } from '@/lib/orderNumbering'

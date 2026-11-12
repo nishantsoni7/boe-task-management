@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { istToday } from '@/lib/istDate'
 import { monthClicks, needsYou, pageNotes, percentChange, thousands, weekNumbers, type SideNumber } from '@/lib/seo/pages'
 import {

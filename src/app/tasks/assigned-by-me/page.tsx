@@ -11,7 +11,6 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
-import { useIntentWarm } from '@/hooks/useIntentWarm'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useActiveUsers, useAllUserNames } from '@/hooks/queries/useMyTasks'
@@ -119,7 +118,6 @@ const LIST_PARAMS = {
 // ─── Task row ─────────────────────────────────────────────────────────────────
 function TaskCard({
   task, userMap, assigneeInactive, onClick, onView, onEdit, onDelete, onApprove, onCancel, isMobile,
-  onWarm, onWarmCancel,
 }: {
   task: Task
   userMap: Record<string, string>
@@ -133,10 +131,6 @@ function TaskCard({
   /** Present only when this reader may cancel this task. */
   onCancel?: () => void
   isMobile?: boolean
-  /** Pointer entered the row: the page warms its detail route once it RESTS. */
-  onWarm?: () => void
-  /** Pointer left the row: cancels that wait. */
-  onWarmCancel?: () => void
 }) {
   const overdue      = isOverdue(task)
   const dueToday     = task.due_date === TODAY_STR && accruesAssigneeOverdue(task.status)
@@ -164,8 +158,6 @@ function TaskCard({
     return (
       <div
         onClick={onClick}
-        onPointerEnter={onWarm}
-        onPointerLeave={onWarmCancel}
         style={{
           background: task.is_urgent ? 'rgba(183,137,42,0.10)' : colors.base,
           border: `1px solid ${task.is_urgent ? 'rgba(183,137,42,0.45)' : colors.border}`,
@@ -230,8 +222,6 @@ function TaskCard({
   return (
     <div
       onClick={onClick}
-      onPointerEnter={onWarm}
-      onPointerLeave={onWarmCancel}
       className={[
         styles.row,
         isForApproval ? styles.approval : task.is_urgent ? styles.important : '',
@@ -1030,12 +1020,7 @@ function AssignedByMeContent() {
     if (authReady && !loggedInId) router.push('/login')
   }, [authReady, loggedInId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Warm a task's detail route on INTENT — the pointer RESTING on its row — AT
-  // THE URL THAT WILL ACTUALLY BE OPENED (`/tasks/<id>?returnTo=…`), the rule
-  // /tasks/my follows; see the note there for why the old fifteen-row batch on
-  // every arrival went. The drawer's View Task Page link also prefetches as soon
-  // as the drawer opens.
-  const { warmOnRest, cancel: cancelWarm } = useIntentWarm()
+  // NO PREFETCH OF TASK PAGES: see the note on /tasks/my.
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -1189,8 +1174,6 @@ function AssignedByMeContent() {
       userMap={userMap}
       assigneeInactive={inactiveIds.has(task.assigned_to ?? '')}
       onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-      onWarm={() => warmOnRest(taskDetailHref(task.id, returnTo))}
-      onWarmCancel={cancelWarm}
       onView={() => router.push(taskDetailHref(task.id, returnTo))}
       onEdit={() => setEditingTask(task)}
       onDelete={() => handleDelete(task)}

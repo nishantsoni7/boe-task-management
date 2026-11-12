@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'

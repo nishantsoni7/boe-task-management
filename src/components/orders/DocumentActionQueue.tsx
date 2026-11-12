@@ -15,7 +15,7 @@
 
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   ORDER_DOCUMENT_SUBMISSION_SELECT,

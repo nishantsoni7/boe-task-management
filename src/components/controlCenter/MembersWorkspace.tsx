@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'

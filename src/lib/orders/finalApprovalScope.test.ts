@@ -234,7 +234,8 @@ const READY_CARD_START = '{/* Ready state, and the one action this phase perform
  */
 function withoutUsabilityPass(src: string): string {
   const undo: [string, string][] = [
-    ["import Link from 'next/link'\n", ''],
+    // The link import became AppLink (2026-11-12, pages load on click); still one line.
+    ["import { AppLink as Link } from '@/components/ui/AppLink'\n", ''],
     ["import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'", "import { LoadingScreen } from '@/components/ui/atoms'"],
     ['<Suspense fallback={<OrdersRouteFallback />}>', '<Suspense fallback={<LoadingScreen />}>'],
     ["if (access === 'checking') return <OrdersRouteFallback />", "if (access === 'checking') return <LoadingScreen />"],

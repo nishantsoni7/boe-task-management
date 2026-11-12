@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { MapPin } from 'lucide-react'

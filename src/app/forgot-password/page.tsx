@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { AlertBanner } from '@/components/ui/atoms'

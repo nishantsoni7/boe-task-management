@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronDown } from 'lucide-react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import type { CSSProperties } from 'react'
 import type { SeoFinding, SeoMover, SeoTag, SeoTone, SixMonthReview } from '@/lib/seo/sixMonth'
 import { SeoScreen } from './SeoScreen'

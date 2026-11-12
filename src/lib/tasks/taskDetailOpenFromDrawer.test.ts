@@ -56,7 +56,7 @@ describe('the task route can be prefetched', () => {
 
 describe('the drawer opens the task page on the first click', () => {
   test('View Task Page is a Next link to the task', () => {
-    assert.ok(PANEL_CODE.includes("import Link from 'next/link'"))
+    assert.ok(PANEL_CODE.includes("import { AppLink as Link } from '@/components/ui/AppLink'"))
     assert.ok(PANEL_CODE.includes('href={fullPageHref}'))
   })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
 import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
