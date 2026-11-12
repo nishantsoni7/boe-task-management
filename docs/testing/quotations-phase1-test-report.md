@@ -52,7 +52,7 @@ Branch `feat/quotations-module`, 2026-11-12 (night). Migration `20270614000000_q
 ## Not tested, and why
 
 - **Signed in, in a browser.** No session can sign in from here (passwords are never typed by the assistant), and Vercel previews need their own sign-in. The owner's first look after the migration is the signed-in test.
-- **On the real database.** Production reads were refused by the safety check on 11 Nov; see the apply steps below for what was or was not run tonight.
+- **On the real database.** Production reads were refused by the safety check overnight. On 12 Nov the owner applied the migration alone (about 06:00 IST, after a verified backup); `to_regclass('public.quotations')` returned the table and `migration list` shows 20270614000000 remote. No quotation has been made on the real database yet.
 - **Picture upload end to end.** The storage policy is proven in PGlite; the browser upload path is the same code Inventory uses (`toJpeg`), but it has not run against the real bucket.
 - **Phones.** The screens use the BOE shell and stack at 767 px; not seen on a real phone.
 
@@ -65,7 +65,9 @@ Branch `feat/quotations-module`, 2026-11-12 (night). Migration `20270614000000_q
 5. **Create client link**, open it in a private window: the quotation shows without login. Press **Open WhatsApp with the message** (do not send).
 6. Mark it **Archive** when done.
 
-## Applying the migration (only if not done tonight)
+## Applying the migration (done 2026-11-12; kept as the recipe)
+
+Lesson from 12 Nov: run step 3 from a folder whose `supabase/migrations` has the file (the main checkout was on an older branch and `migration repair` failed with "file does not exist"; it worked from the worktree).
 
 `20270610000000` is pending on purpose, so do NOT run a plain `supabase db push` (it would apply that one too). Apply this file alone, as on 11 Nov:
 
