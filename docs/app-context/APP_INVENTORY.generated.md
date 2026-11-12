@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `f2081805` — Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
-- Commits on this branch: 1247
-- Pages (`page.tsx`): 187   API routes (`route.ts`): 191
+- Commit: `39890049` — Docs: migration 20270610000000 (escalation removal) applied (#686)
+- Commits on this branch: 1248
+- Pages (`page.tsx`): 188   API routes (`route.ts`): 191
 - Migrations: 432 (first `20260530_create_positions.sql`, latest `20270616000000_order_line_flags.sql`)
 - Tables ever created: 232 (dropped at some point: 7)   SQL functions: 980   Enums: 0
-- Test files: 800   Next.js 16.2.6, React 19.2.4
+- Test files: 801   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `39890049` 2026-11-12 Docs: migration 20270610000000 (escalation removal) applied (#686)
 - `f2081805` 2026-11-12 Docs: Quotations phase 4 (Image studio) merged as 1841dc82 (#684)
 - `89a913b0` 2026-11-12 Docs: Operations line flags merged (#683, 1278cc6a) and 20270616000000 applied (#685)
 - `1278cc6a` 2026-11-12 Orders: Operations flags PI lines before an Order is aligned (migration 20270616000000, applied) (#683)
@@ -38,13 +39,12 @@
 - `4208b935` 2026-11-11 Dashboard: Quotation Requests card shows how long pending, priority and sales person (no SQL) (#663)
 - `c9f1ce32` 2026-11-11 SEO: draw the discussion brief as a case for a decision about the role (#661)
 - `ea794293` 2026-11-11 Docs: record the merge of #657 (PI flagged by Operations) (#660)
-- `1c5f1930` 2026-11-11 Orders: a PI Operations flagged is an action for who must answer it (#657)
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (12): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/test-data-cleanup`, `/admin/members`
+- **admin** (13): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -163,7 +163,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/quotations` — 9 source, 4 test
-- `src/lib/salesLeads` — 14 source, 13 test
+- `src/lib/salesLeads` — 15 source, 14 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
@@ -206,10 +206,12 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `MINOP_WEBHOOK_SECRET` (2 reads)
 - `MINOP_WEBHOOK_URL` (1 reads)
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
+- `NEXT_PUBLIC_META_APP_ID` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (13 reads)
 - `NEXT_PUBLIC_SUPABASE_URL` (155 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
+- `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (1 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `QUOTATION_IMPORT_MODEL` (1 reads)

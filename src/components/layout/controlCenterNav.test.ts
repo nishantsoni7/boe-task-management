@@ -32,7 +32,7 @@ describe('Control Center navigation', () => {
     // (one module across everyone) and Authorities (every per-person decision).
     for (const label of ['Employees', 'Departments', 'Designations', 'People', 'Modules', 'Authorities', 'Numbering',
       'Notifications', 'Operations Handoff', 'Order Visibility', 'Announcements', 'Task Records',
-      'Test Data Cleanup', 'Data Management']) {
+      'Test Data Cleanup', 'Data Management', 'WhatsApp Connection']) {
       assert.ok(model.includes(`label: '${label}'`), `${label} must be reachable`)
     }
   })
