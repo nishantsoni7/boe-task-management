@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Check, Copy, FileCheck2, FileSpreadsheet, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, FileUp, Copy, FileCheck2, FileSpreadsheet, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
@@ -22,6 +22,7 @@ import {
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { DEFAULT_CLIENT_NOTE } from '@/lib/quotations/terms'
+import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
@@ -51,6 +52,7 @@ export default function BuilderScreen() {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [piStage, setPiStage] = useState<PiStage | null>(null)
+  const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
   useEffect(() => { dirtyRef.current = dirty }, [dirty])
@@ -225,6 +227,7 @@ export default function BuilderScreen() {
             <div className={s.cardHead}>
               <h2 id="q-products">Products</h2><span className={s.chip}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span><span className={s.spacer} />
               {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Room type ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k)]); touch() }}><Plus size={14} aria-hidden /> Room type</button>}
+              {editable && profile && <button className={`${s.btn} ${s.btnSm}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
             </div>
             {groups.map((g, gi) => (g.area || g.lines.length > 0 || areas.length === 0) && (
               <div key={g.area?.key ?? `none${gi}`}>
@@ -308,6 +311,10 @@ export default function BuilderScreen() {
             </div>
           </section>
 
+          {importing && profile && (
+            <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
+              onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added]); touch(); setImporting(false); setMsg({ tone: 'ok', text: `Added ${added.length} products. Check them, add prices, then Save.` }) }} />
+          )}
           <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
 
           {base.may_edit && (

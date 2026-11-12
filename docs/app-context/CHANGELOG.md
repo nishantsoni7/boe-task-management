@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Quotations, phase 3: Import a client file (PR #677, branch `feat/quotation-import`) · no migration
+- **Owner ask / approval.** Client requirements arrive as Excel, PDF and photos; import them into the quotation (plan phase 3, approved 2026-11-12). The owner allowed BOQ PDFs and photos to go to the AI reader.
+- **Built.** "Import client file" on the builder: Excel, CSV and pasted rows read in the browser (headings by name, room-title rows, per-room quantities, .xlsx pictures); PDF and photos read by `POST /api/quotations/import` (Claude, fixed schema, not stored, no names, phones or prices copied). A review table to edit, untick and check shaded cells, then Add: room types and products without prices, saved with the quotation's own Save.
+- **Proof.** `importBoq.test.ts` (7), `tsc`, eslint, full `npm test`, `next build`. The PDF/photo reader was not run on a real file (the key is only on Vercel): its first live use is the test.
+
 ## 2026-11-12 — Quotations, phase 2: Confirm → PI draft, and Download in PI format (PR #674, squash-merged 2026-11-12 09:19 IST as `370f512f`, deployed 09:21 IST) · `20270615000000` → APPLIED 2026-11-12 (about 09:18 IST, BEFORE the merge, alone, after a verified backup; 20270610000000 stays pending on purpose)
 - **Owner ask.** "On confirmation it should take to PI Drafts" (plan phase 2, approved 2026-11-12). Leads stay manual (owner, same day): Lead Board rule 8 stands.
 - **Built.** On a Sent or Negotiating quotation, "Confirm → make PI draft" writes the saved quotation as a PI workbook (`src/lib/quotations/piWorkbook.ts`) and sends it through the existing Upload PI path as the person (`create_order_submission` → `order-files` → `process-draft`), then `quotation_link_pi` links it and marks the quotation Confirmed, and the PI draft opens. What blocks it (no name, quantity, price or picture) is listed product by product first. "Download in PI format (.xlsx)" uses the same workbook. History shows "Confirmed into PI draft PID-…". The plain status button is now "Confirmed, no PI".
