@@ -63,7 +63,8 @@ describe('levels are offered only where they change behaviour', () => {
       sales: ['viewer', 'contributor'],                // your own leads, then add and correct a lead (assign and view_all are authorities)
       marketing: ['viewer', 'contributor'],            // Meta Ads: read, then set the spending cap and the target
       pricing: ['viewer'],
-      seo: ['viewer', 'contributor', 'manager'],       // edit a board item, then answer a strategy change
+      seo: ['viewer', 'contributor', 'manager'],
+      quotations: ['viewer', 'contributor'],            // own quotations, then start and change them (view_all is an authority)       // edit a board item, then answer a strategy change
     }
     for (const [moduleKey, levels] of Object.entries(expected)) {
       assert.deepEqual(offeredLevels(moduleKey, keysOf(moduleKey)), levels, moduleKey)
@@ -167,6 +168,7 @@ describe('hidden actions: stored, read by nothing, offered to nobody', () => {
       marketing: [],
       pricing: [],
       seo: [],
+      quotations: [],
     }
     for (const [moduleKey, hidden] of Object.entries(expected)) {
       assert.deepEqual(hiddenActions(moduleKey, keysOf(moduleKey)), hidden, moduleKey)

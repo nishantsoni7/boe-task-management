@@ -180,6 +180,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View is enforced in the screen and in the database. Edit (update a Vision board item) and Approve (answer a strategy change) are enforced in the database functions.',
   },
 
+  // The quotation tables are closed to every client role; every read and write is a SECURITY DEFINER function
+  // (quotation_list / _get / _create / _save / _set_status / _share) that checks module entry, then the action.
+  // The client link is quotation_public(token), the only function open to anon. Entry: src/app/quotations/layout.tsx.
+  quotations: {
+    state: 'enforced',
+    detail: 'View, Create, Edit and View all are enforced in the database functions; the tables cannot be read or written directly.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //
