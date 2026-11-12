@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations: versions and compare; the client link shows the latest sent version (PR #714, branch `feat/quotation-versions`) · `20270623000000` → NOT YET APPLIED
+## 2026-11-12 — Quotations: versions and compare; the client link shows the latest sent version (PR #714, squash-merged 2026-11-12 23:38 IST as `3c4c8605`, deployed 23:41 IST) · `20270623000000` → APPLIED 2026-11-12 (after a verified backup, before the merge; first numbered 20270622000000, which Day Close #713 also used, so renumbered and recorded as 20270623000000)
 - **Owner ask / approval (~21:15 IST).** Versions and compare, from the 7/10 review; the client link shows the latest SENT version, not the latest save.
 - **Built.** v1 when the link is first turned on; "Send as new version (vN)" with a note; a Versions card with compare (terms, changed products field by field, added, removed, totals and the change in ₹ and %), including unsent changes since the last version; the client link and its validity follow the latest version, shown as "· vN".
 - **Database.** Table `quotation_versions` (closed, append-only); `quotation_client_doc`, `quotation_version_create`, `quotation_versions`, `quotation_version_get`; `quotation_share` and `quotation_public` re-created; event kind `version`.
