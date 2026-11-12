@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Check, Copy, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Copy, FileCheck2, FileSpreadsheet, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
+import { draftDetailHref } from '@/lib/orders/draftsView'
+import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
+import { PI_STAGE_LABEL, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
@@ -47,6 +50,8 @@ export default function BuilderScreen() {
   const [lostNote, setLostNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [piStage, setPiStage] = useState<PiStage | null>(null)
+  const router = useRouter()
   const dirtyRef = useRef(false)
   useEffect(() => { dirtyRef.current = dirty }, [dirty])
 
@@ -100,6 +105,32 @@ export default function BuilderScreen() {
     finally { setBusy(false) }
   }
   const moveTo = (status: QuotationStatus, note?: string) => act(() => setStatusRpc(supabase, id, status, note), `Marked ${STATUS_LABEL[status]}.`)
+
+  // Confirm → PI draft, from the SAVED quotation (the button waits for Save).
+  const confirmToPi = async () => {
+    if (!base || busy) return
+    setBusy(true); setMsg(null)
+    try {
+      const r = await makePiDraft(supabase, base, setPiStage)
+      if (!r.linkError) { router.push(draftDetailHref(r.submissionId)); return }
+      setMsg({ tone: 'warn', text: `The PI draft was made (Orders → PI Drafts), but this quotation could not be linked to it: ${r.linkError}` })
+      await quoteQ.refetch()
+    } catch (e) {
+      setMsg({ tone: 'bad', text: errorText(e) })
+    } finally { setBusy(false); setPiStage(null) }
+  }
+  const downloadPi = async () => {
+    if (!base || busy) return
+    setBusy(true)
+    try {
+      const bytes = await piWorkbookFor(supabase, base)
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = `${base.quote_no} PI.xlsx`; a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+    } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
+    finally { setBusy(false) }
+  }
 
   if (loading) return <LoadingScreen />
   const layout = (title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
@@ -277,6 +308,8 @@ export default function BuilderScreen() {
             </div>
           </section>
 
+          <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
+
           {base.may_edit && (
             <section className={s.card}>
               <div className={s.cardHead}><h2>Status</h2><span className={s.spacer} /><StatusPill status={base.status} /></div>
@@ -284,7 +317,7 @@ export default function BuilderScreen() {
                 <div className={s.row}>
                   {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('sent')}>Mark sent</button>}
                   {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Negotiating</button>}
-                  {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')}>Confirmed</button>}
+                  {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
                   {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setLostNote('')}>Lost…</button>}
                   {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('archived')}>Archive</button>}
                   {LOCKED.includes(base.status) && (base.status !== 'confirmed' || access.admin) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
@@ -324,8 +357,54 @@ function describe(e: { kind: string; detail: Record<string, unknown> }): string 
     case 'shared': return 'Client link created'
     case 'unshared': return 'Client link turned off'
     case 'opened': return 'Opened by the client'
+    case 'converted': return `Confirmed into PI draft ${e.detail.draft_reference ?? ''}`.trim()
     default: return e.kind
   }
+}
+
+const PROBLEM_TEXT: Record<ConversionProblem['code'], string> = {
+  NO_LINES: 'Add at least one product that is not optional.',
+  NAME_MISSING: 'Name these products',
+  QTY_MISSING: 'Give a quantity above 0 to',
+  PRICE_MISSING: 'Give a price above ₹0 to',
+  PICTURE_MISSING: 'Add a picture to (Orders needs one for every product)',
+}
+
+/** The PI this quotation became, or Confirm → PI draft; and the PI-format download. Works on the SAVED quotation. */
+function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
+  base: Quotation; dirty: boolean; busy: boolean; stage: PiStage | null; onConfirm: () => void; onDownload: () => void
+}) {
+  const problems = conversionProblems(base.areas, base.lines)
+  const canConfirm = base.may_edit && !base.pi && (base.status === 'sent' || base.status === 'negotiating')
+  if (!base.pi && !canConfirm && base.lines.length === 0) return null
+  return (
+    <section className={s.card}>
+      <div className={s.cardHead}><h2>PI draft</h2></div>
+      <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
+        {base.pi && (
+          <>
+            <div className={s.small}>Confirmed into PI draft <b>{base.pi.draft_reference ?? ''}</b> ({base.pi.status.replace(/_/g, ' ')}).</div>
+            <Link className={`${s.btn} ${s.btnPrimary}`} href={draftDetailHref(base.pi.id)}><FileCheck2 size={15} aria-hidden /> Open the PI draft</Link>
+          </>
+        )}
+        {canConfirm && (
+          <>
+            {problems.length > 0
+              ? <div className={`${s.notice} ${s.noticeWarn}`}><b>Before it can become a PI:</b>{problems.map(p => <div key={p.code}>{PROBLEM_TEXT[p.code]}{p.lines.length ? `: ${p.lines.slice(0, 6).join(', ')}${p.lines.length > 6 ? ` and ${p.lines.length - 6} more` : ''}` : ''}</div>)}</div>
+              : <div className={s.small}>Makes a PI draft in Orders from the saved quotation, through the same checks as an uploaded PI, then opens it. Optional products are left out.</div>}
+            <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || dirty || problems.length > 0} onClick={onConfirm}>
+              <FileCheck2 size={15} aria-hidden /> {stage ? PI_STAGE_LABEL[stage] : 'Confirm → make PI draft'}
+            </button>
+            {dirty && <div className={`${s.small} ${s.dirty}`}>Save first, then confirm.</div>}
+          </>
+        )}
+        {!base.pi && !canConfirm && base.may_edit && base.status === 'draft' && <div className={`${s.small} ${s.muted}`}>Send it (or mark it Negotiating) before confirming it into a PI.</div>}
+        {base.lines.length > 0 && (
+          <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={onDownload}><FileSpreadsheet size={15} aria-hidden /> Download in PI format (.xlsx)</button>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onRemove, onMove, onDuplicate }: {

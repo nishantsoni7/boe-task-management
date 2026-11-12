@@ -42,6 +42,8 @@ export type Quotation = {
   id: string; quote_no: string; status: QuotationStatus; share_token: string | null; sent_at: string | null
   created_at: string; updated_at: string; owner_name: string | null; may_edit: boolean
   header: Header; areas: QuoteArea[]; lines: QuoteLine[]; events: QuotationEvent[]
+  /** The PI draft this quotation was confirmed into (20270615000000), or null. */
+  pi: { id: string; draft_reference: string | null; status: string } | null
 }
 
 export type PublicQuotation = {
@@ -117,14 +119,14 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       material: l.material ?? '', finish: l.finish ?? '', category: l.category ?? '',
       qty_mode: (fixed ? 'fixed' : 'per_unit') as QtyMode, qty: Number(fixed ? l.qty_fixed : l.qty_per_unit) || null,
       unit_price: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
-      tax_rate: Number(l.tax_rate) || 18, image_path: l.image_path, is_optional: !!l.is_optional,
+      tax_rate: Number.isFinite(Number(l.tax_rate)) ? Number(l.tax_rate) : 18, image_path: l.image_path, is_optional: !!l.is_optional,
       client_note: l.client_note ?? '', internal_note: l.internal_note ?? '',
     }
   })
 }
 
 export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation> {
-  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[] }>(
+  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi'] }>(
     () => s.rpc('quotation_get', { p_id: id }))
   const q = r.quotation as Record<string, string | number | null>
   const str = (k: string) => (q[k] as string | null) ?? ''
@@ -139,7 +141,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       fabric_amount: Number(q.fabric_amount) || 0, packing_amount: Number(q.packing_amount) || 0, transport_note: str('transport_note'),
       valid_days: Number(q.valid_days) || 7, notes: str('notes'), internal_notes: str('internal_notes'),
     },
-    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events,
+    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null,
   }
 }
 

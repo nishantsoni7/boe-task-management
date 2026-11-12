@@ -1,4 +1,4 @@
-# 29. Quotations (phase 1: build, price, print, share)
+# 29. Quotations (phase 1: build, price, print, share · phase 2: Confirm → PI draft)
 
 Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `20270614000000_quotations_module.sql`. Planned with the owner the same night: the full plan and 15 page mockups are the private artifact https://claude.ai/artifact/5QhasugGXW2ZaJsCnmLBjG (local copy `~/BOE-Development/temporary/quotation-module/`). The owner delegated every open decision ("consider everything pre approved"); the defaults taken are in section 6.
 
@@ -11,14 +11,16 @@ Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `2
 ## 2. Status
 
 - Built 2026-11-12 (phase 1). Checked by: the in-memory Postgres suite `supabase/tests/quotations_pglite.mjs` (20 checks), `src/lib/quotations/math.test.ts` (11, including the real Resort Shamshabad quote to the rupee), `quotations.test.tsx` (12), `tsc`, eslint, the full `npm test`, `next build`. **Not seen signed in**: no browser session can sign in from here.
-- LIVE 2026-11-12: PR #672 squash-merged 05:35 IST as `7f491957` (deployed 05:37 IST); 20270614000000 applied alone about 06:00 IST and recorded (`migration list` shows it remote; 20270610000000 still pending on purpose). The tile shows for Admin only until the module is granted in Control Center.
+- LIVE 2026-11-12: PR #672 squash-merged 05:35 IST as `7f491957` (deployed 05:37 IST); 20270614000000 applied alone about 06:00 IST and recorded (`migration list` shows it remote; 20270610000000 still pending on purpose). The tile shows for Admin only until the module is granted in Control Center. The owner did the signed-in check on 12 Nov: fine.
+- **Phase 2, Confirm → PI draft** (owner approved 2026-11-12; branch `feat/quotation-confirm-pi-draft`; migration `20270615000000_quotation_pi_link.sql`, NOT YET APPLIED). Checked by: `piWorkbook.test.ts` (the generated workbook read back by the REAL PI parser: the real Resort Shamshabad quote, 16 products, quantities × rooms, totals to the rupee, no blocking issue, no warning), the PGlite suite (now 25 checks, phase 1's 20 run on the phase 2 schema), `quotations.test.tsx`, `tsc`, eslint, full `npm test`, `next build`. Not yet run end to end against the real Orders server path (needs a signed-in person with Order Management → Create).
 
 ## 3. The model
 
 - **Quotation** (`quotations`): number `QT-<initials>-<5 digits>` from 01001 (Base44 numbers reached QT-NS-00005, QT-AK-00019, QT-SS-00047, so they never repeat); client, project, contact (name, phone, role), client type, delivery state, GST mode, discount %, fabric and packing amounts (₹), transport note, validity days (7), client notes, internal notes; owner; status.
 - **Room types** (`quotation_areas`): name, style, multiplier (rooms), unit label.
 - **Lines** (`quotation_lines`): name, size as the client writes it (feet and inches or inches; shown in inches too), specification, material, finish, quantity **per room** (× the room type's multiplier) **or fixed**, unit price (₹, before GST), GST rate (0/5/12/18/28), picture, optional (shown, not counted), note for the client, internal note.
-- **History** (`quotation_events`): created, saved (lines, value), status (from, to, note), shared, unshared, opened by the client. Append-only by trigger.
+- **History** (`quotation_events`): created, saved (lines, value), status (from, to, note), shared, unshared, opened by the client, converted (into a PI draft: from, pi_submission_id, draft_reference). Append-only by trigger.
+- **PI link** (20270615000000): `quotations.pi_submission_id` (→ `order_submissions`, `on delete set null`, one quotation per draft) and `pi_linked_at`.
 - **Totals are never stored.** `src/lib/quotations/math.ts` computes them for every screen; the list's "before GST" value is `quotation_value_before_gst` in SQL with the same rounding (line = round(qty × price); discount = round(subtotal × % / 100)). GST by rate group; fabric and packing are taxed at 18%; IGST or CGST + SGST (half each, rounded).
 - **Statuses**: Draft → Sent → Negotiating → Confirmed / Lost / Archived. Creating the client link turns a Draft into Sent. Confirmed, Lost and Archived are locked; Reopen sets Negotiating; reopening a Confirmed one is Admin only. Lost needs a reason.
 
@@ -27,7 +29,7 @@ Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `2
 | Route | Screen | Who |
 |---|---|---|
 | `/quotations` | `ListScreen`: my / everyone's (view_all), status filter (Open = draft, sent, negotiating), search, New quotation dialog (`?new=1`) | view |
-| `/quotations/[id]` | `BuilderScreen`: client and project, room types × rooms, products (picture, size → inches, material, finish, specification, quantity per room or in total, price, GST rate, optional, notes, move, duplicate, remove with Undo), adjustments and notes; summary, client link + WhatsApp, status, history. Save is explicit (button or Ctrl+S) and refuses a stale copy | view (edit per section 5) |
+| `/quotations/[id]` | `BuilderScreen`: client and project, room types × rooms, products (picture, size → inches, material, finish, specification, quantity per room or in total, price, GST rate, optional, notes, move, duplicate, remove with Undo), adjustments and notes; summary, client link + WhatsApp, **PI draft card** (Confirm → make PI draft on a Sent or Negotiating quotation, what blocks it line by line, the linked PI with Open; Download in PI format .xlsx), status ("Confirmed, no PI" for a confirmation without a PI), history. Save is explicit (button or Ctrl+S) and refuses a stale copy | view (edit per section 5) |
 | `/quotations/[id]/print` | `PrintScreen`: the quotation as the client gets it, Print or save as PDF | view |
 | `/q/[token]` | `PublicScreen`: the client link. No login, `noindex` | anyone with the link |
 
@@ -41,6 +43,8 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
   - `quotation_my_access()`, `quotation_list(scope)` ('mine' or 'all'; all needs view_all or Admin; at most 500), `quotation_get(id)` (with owner name, `may_edit`, last 30 events), `quotation_create(data)`, `quotation_save(id, doc)` (whole document; replaces room types and lines; refuses `QUOTATION_STALE` when `expected_updated_at` differs), `quotation_set_status(id, status, note)`, `quotation_share(id, on)`.
   - `quotation_public(token)`: the only function open to **anon**. A 32-hex token; returns client-safe fields only (no internal notes, owner id, phone, token); null for an unknown, turned-off or archived link; records "opened" at most once per 30 minutes.
 - Who may change a quotation: Admin; or its owner/creator with create or edit; or anybody with edit **and** view_all (the pricing desk). Who may see it: Admin, view_all, owner, creator.
+- **Phase 2** (`20270615000000_quotation_pi_link.sql`): `quotation_get` also returns `pi` {id, draft_reference, status}; `quotation_link_pi(id, submission_id)` (authenticated only) accepts only a draft the CALLER made (`order_submissions.created_by`, status `draft`), a Sent or Negotiating quotation the caller may edit, not already linked, and a draft no other quotation holds; sets Confirmed and writes `converted`. Calling it again with the same draft returns the same. It writes nothing to Orders.
+- **The conversion runs in the browser** (`src/lib/quotations/toPiDraft.ts`), as the upload page does: pictures fetched from the public bucket → `buildPiWorkbook` → `create_order_submission` → workbook to `order-files` (`workbookObjectPath`) → `POST /api/orders/import/process-draft` → `quotation_link_pi` → open `draftDetailHref`. A failure before the server saves discards the empty draft (`discardUnsavedDraft`, as the upload page); no answer from the server keeps it (it may still save).
 - Pictures: public bucket `quotation-images` (JPEG, 3 MB), paths `{uploader}/{uuid}.jpg`; insert only through `quotation_can_upload(name)` (own folder, create or edit); delete only an own upload no line uses. The browser shrinks every picture to 1600 px JPEG first (`toJpeg` from Inventory).
 
 ## 6. Business rules (defaults taken on the owner's behalf, 2026-11-12)
@@ -52,6 +56,10 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 5. Validity counts from the day the quotation is sent (or made, before that); default 7 days, as the terms say.
 6. A client link always shows the latest **saved** version. Sending is WhatsApp with the text filled in (wa.me); the person presses send. Opening the link is recorded and the page says so.
 7. Archive, never delete.
+8. (Owner approved, 2026-11-12) Confirm → PI draft goes through the Upload PI path, never a new write into Orders. The PI gets the quotation flattened: one row per non-optional product, named "Room type · Product", quantity = per room × rooms (or the fixed quantity), material in Material, finish + specification + client note in Customization, the discount as an amount, fabric, packing and transport in the footer, one GST figure ("GST @ 18%" when every line and the extras share one rate; otherwise each rate on its own lines, labelled "GST").
+9. Every product needs a name, a quantity, a price above ₹0 and a **picture** before Confirm: the PI reader refuses a product without a picture (`PRODUCT_IMAGE_REQUIRED` is blocking in process-draft), and a placeholder would put a wrong photograph on a client document.
+10. The person who presses Confirm owns the PI draft (Orders shows a draft only to its maker), and needs Order Management → Create.
+11. **Leads are not touched** (owner, 2026-11-12): Lead Board rule 8 of 2026-11-03 ("Converted is a record only, no link to Orders") stands.
 
 ## 7. Traps
 
@@ -60,6 +68,9 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 - `quotation_save` deletes and re-inserts room types and lines, so their ids change on every save: nothing may hold a line id across saves (a later PI conversion must read lines at the moment it converts).
 - Fabric and packing go into the 18% GST group even when no furniture line is 18%.
 - `Pic` (`src/components/quotations/Pic.tsx`) is the one place `<img>` is allowed for this module's pictures.
+- The PI workbook must keep the PI template's labels (`TEMPLATE_HEADERS` from the parser, the header labels, the footer labels in G with amounts in I, I115 = discount). `piWorkbook.test.ts` reads it back with the real parser: change the generator or the parser, run it.
+- PI money is paise (`numeric(12,2)`), quotation money whole rupees: a fractional quantity can make the PI differ from the quotation by under a rupee.
+- `toLines` used `Number(tax_rate) || 18`, which read a 0% line back as 18%; fixed in phase 2 (`quotations.test.tsx` pins it).
 
 ## 8. Recheck before changing
 
@@ -69,8 +80,8 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 
 ## 9. Tests
 
-`supabase/tests/quotations_pglite.mjs` (run: `node supabase/tests/quotations_pglite.mjs ~/BOE-Development/temporary/pglite-env`), `src/lib/quotations/math.test.ts`, `src/components/quotations/quotations.test.tsx` (the printed quotation from the real quote, registration, privacy), the testing report `docs/testing/quotations-phase1-test-report.md`, the registration tests (`accessCatalog.test.ts`, `imageEditor.test.ts`, `moduleParentGate.test.ts`) and the two migration ledgers in `participantAndOrderTotalSecurity.test.ts`.
+`supabase/tests/quotations_pglite.mjs` (run: `node supabase/tests/quotations_pglite.mjs ~/BOE-Development/temporary/pglite-env`), `src/lib/quotations/math.test.ts`, `src/components/quotations/quotations.test.tsx` (the printed quotation from the real quote, registration, privacy), `src/lib/quotations/piWorkbook.test.ts` (phase 2: the PI workbook through the real PI parser), the testing reports `docs/testing/quotations-phase1-test-report.md` and `quotations-phase2-test-report.md`, the registration tests (`accessCatalog.test.ts`, `imageEditor.test.ts`, `moduleParentGate.test.ts`) and the two migration ledgers in `participantAndOrderTotalSecurity.test.ts`.
 
 ## 10. Open items (next phases, from the plan)
 
-Import of client files (Excel first, then PDF, Word, photos), Image studio on the existing Customize image pipeline, pricing desk and assist, versions and compare, confirm → PI draft, reports, terms library, link to the lead, and the Pricing module. None is built.
+Import of client files (Excel first, then PDF, Word, photos), Image studio on the existing Customize image pipeline, pricing desk and assist, versions and compare, reports, terms library, link to the lead (owner said no automatic lead move on 2026-11-12), closing a quotation-request task from its quotation, a "From quotation QT-…" mark on the PI page (the PI page's startup query count is pinned at 30), and the Pricing module. Confirm → PI draft is phase 2 (above).
