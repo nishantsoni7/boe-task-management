@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations, phase 3: Import a client file (PR pending, branch `feat/quotation-import`) · no migration
+## 2026-11-12 — Quotations, phase 3: Import a client file (PR #677, branch `feat/quotation-import`) · no migration
 - **Owner ask / approval.** Client requirements arrive as Excel, PDF and photos; import them into the quotation (plan phase 3, approved 2026-11-12). The owner allowed BOQ PDFs and photos to go to the AI reader.
 - **Built.** "Import client file" on the builder: Excel, CSV and pasted rows read in the browser (headings by name, room-title rows, per-room quantities, .xlsx pictures); PDF and photos read by `POST /api/quotations/import` (Claude, fixed schema, not stored, no names, phones or prices copied). A review table to edit, untick and check shaded cells, then Add: room types and products without prices, saved with the quotation's own Save.
 - **Proof.** `importBoq.test.ts` (7), `tsc`, eslint, full `npm test`, `next build`. The PDF/photo reader was not run on a real file (the key is only on Vercel): its first live use is the test.
