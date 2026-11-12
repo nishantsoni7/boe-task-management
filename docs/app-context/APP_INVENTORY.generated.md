@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8f8c9ba1` — Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
-- Commits on this branch: 1255
+- Commit: `159fdace` — Orders: the approver can send a PI back to the salesperson with a comment
+- Commits on this branch: 1257
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 435 (first `20260530_create_positions.sql`, latest `20270619000000_order_handoff_send_to_sales.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 994   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `159fdace` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment
+- `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
 - `8f8c9ba1` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
 - `46adaca3` 2026-11-12 Console guard: catch every way a page could be loaded in advance again (#693)
 - `b7b7f320` 2026-11-12 Docs: record the merge of #691 (SEO brief rankings) (#692)
@@ -37,8 +39,6 @@
 - `7f491957` 2026-11-12 Quotations, phase 1: build by room type, price, print, share a client link (migration 20270614000000, not yet applied) (#672)
 - `ac1da7ea` 2026-11-11 Docs: record the merge of #668 (a WhatsApp chat is judged before it becomes a lead) (#671)
 - `20395a5f` 2026-11-11 Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, applied first) (#668)
-- `670dfbcc` 2026-11-11 Docs: record the merge of #669 (SEO brief proof links), the send and the signed-in read (#670)
-- `b2dd6175` 2026-11-11 SEO brief: every figure carries its proof, his plan point by point, freelance points (#669)
 
 ## Pages by top-level area
 
