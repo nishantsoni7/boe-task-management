@@ -673,11 +673,28 @@ export function latestSentToSales(
   return best
 }
 
-/** The strip's sentence about the send-back, or null when there is none. */
-export function sentBackLine(sent: HandoffSentBack | null, formatWhen: (iso: string | null) => string): string | null {
+/** The strip's own "sent" line: who it went to and when, and the comment beneath it. */
+export type SentBackLine = { head: string; comment: string }
+
+/**
+ * What the strip says once the PI has been sent back — its OWN line under Operations' reason, so a
+ * sender can see at a glance that it went (owner, 2026-11-12: four presses looked like nothing).
+ * `salespersonName` is the Order's salesperson; "the salesperson" when it is not on the page.
+ */
+export function sentBackLine(
+  sent: HandoffSentBack | null,
+  formatWhen: (iso: string | null) => string,
+  salespersonName: string | null,
+): SentBackLine | null {
   if (!sent) return null
-  return `${sent.by ?? 'The approver'} sent it back to the salesperson on ${formatWhen(sent.atIso)}: “${sent.text}”`
+  return {
+    head: `Sent back to ${salespersonName ?? 'the salesperson'} · ${formatWhen(sent.atIso)}${sent.by ? ` · by ${sent.by}` : ''}`,
+    comment: sent.text,
+  }
 }
+
+/** The button once a comment has gone: it says so, and offers another. */
+export const SEND_BACK_AGAIN_LABEL = 'Send another comment'
 
 export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: string): DecisionCheck {
   const reason = raw.trim() === '' ? null : raw.trim()
