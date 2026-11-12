@@ -103,3 +103,5 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 ## 10. Open items (next phases, from the plan)
 
 Word (.docx) import, pictures cut out of a PDF, a catalogue picker (needs a catalogue), pricing desk and assist, versions and compare, reports, terms library, link to the lead (owner said no automatic lead move on 2026-11-12), closing a quotation-request task from its quotation, a "From quotation QT-…" mark on the PI page (the PI page's startup query count is pinned at 30), and the Pricing module. Confirm → PI draft is phase 2 (above).
+
+- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `useQuotations` (every Quotations screen) reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

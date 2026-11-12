@@ -28,10 +28,11 @@ import {
   Scale, Sigma, UploadCloud, Wallet,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { colors } from '@/lib/tokens'
 import {
   RULE_CARDS,
@@ -79,6 +80,7 @@ export default function HowPayrollWorksPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
@@ -87,11 +89,7 @@ export default function HowPayrollWorksPage() {
 
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       setProfile(prof ?? null)
       setLoading(false)

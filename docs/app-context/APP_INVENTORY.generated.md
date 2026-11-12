@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `e2517d83` — Docs: PR number for pricing model v2 (#709)
+- Commit: `8ea2511c` — Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
 - Commits on this branch: 1271
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 437 (first `20260530_create_positions.sql`, latest `20270621000000_pricing_model_v2.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 998   Enums: 0
-- Test files: 809   Next.js 16.2.6, React 19.2.4
+- Test files: 810   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `e2517d83` 2026-11-12 Docs: PR number for pricing model v2 (#709)
-- `bf1516af` 2026-11-12 Pricing model v2: prices from parameters, with reasons
+- `8ea2511c` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
+- `cccdf395` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
 - `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
 - `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
 - `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
@@ -168,7 +168,7 @@
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
-- `src/lib/showroom` — 11 source, 11 test
+- `src/lib/showroom` — 12 source, 12 test
 - `src/lib/supabase` — 3 source, 1 test
 - `src/lib/tasks` — 25 source, 40 test
 - `src/lib/testing` — 5 source, 2 test

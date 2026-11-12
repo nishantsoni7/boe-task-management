@@ -152,8 +152,8 @@ describe('the guide page carries no employee data', () => {
     assert.equal(PAGE.includes('monthly_salary'), false)
     assert.equal(PAGE.includes('employee_id'), false)
     // The only users row it touches is the caller's own profile, for the layout
-    // header — scoped by the session's own id.
-    assert.match(PAGE, /\.eq\('id', session\.user\.id\)/)
+    // header — scoped by the session's own id (the shared cached copy since 2026-11-12).
+    assert.match(PAGE, /profileQueryOptions\(queryClient, session\.user\.id\)/)
   })
 
   test('calls no payroll API that returns figures', () => {

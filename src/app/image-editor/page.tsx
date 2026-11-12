@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ImageIcon, Upload, Wand2, Download, Loader2, Lock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { ImageEditorLayout } from '@/components/layout/ImageEditorLayout'
@@ -80,6 +81,7 @@ export default function ImageEditorPage() {
   )
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -125,11 +127,7 @@ export default function ImageEditorPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       if (!active) return
       if (!data) { router.push('/login'); return }

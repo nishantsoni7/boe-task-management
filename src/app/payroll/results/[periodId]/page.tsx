@@ -5,10 +5,11 @@ import { formatRupees } from '@/lib/payroll/money'
 import { useRouter, useParams } from 'next/navigation'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
@@ -89,6 +90,7 @@ export default function PayrollResultsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const loadData = async (accessToken: string) => {
     const res  = await fetch(`/api/payroll/results?period_id=${periodId}`, {
@@ -113,11 +115,7 @@ export default function PayrollResultsPage() {
 
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       // Module access is decided once, by the route guard in
       // src/app/{attendance,payroll}/layout.tsx, through

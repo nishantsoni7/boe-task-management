@@ -4,6 +4,23 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Other modules read your own row once (PR open, branch `perf/modules-profile-once`) · no SQL
+- **Owner ask.** "check other modules for duplicate requests too", then "Yes, build both". This is PR 1 of 2; PR 2 covers the permission lookups in Meetings, Review Workflow, Sample Tracking and Assets.
+- **Measured live, full page loads.** The baseline is 3 own-row reads and 1 `_for_user`.
+  - Already clean: Sales My day, Marketing, Pricing, SEO, Control Center.
+  - Not a duplicate: the Sales board's five `sales_board_page` calls are one per stage.
+  - 4 own-row reads: Quotations, Vendors, Inventory, Exhibition Leads, Image Editor, Performance, My Attendance, Showroom QR. Showroom QR also read `app_modules` twice.
+  - 5 own-row reads: Payroll.
+- **Changed.**
+  - 28 own-row reads now take the shared cached copy, `ensureQueryData(profileQueryOptions(qc, session.user.id))`. They span the four module hooks, Image Editor, Performance, My Attendance, My Credits ×2, My Payroll ×2, the Payroll layout and 9 Payroll pages, and the seven Showroom QR pages.
+  - Showroom QR's `showroom_qr` visibility row is read once through `showroomModuleQuery`, which the frame and the page share.
+  - The Payroll layout keeps its own `app_modules` read, because `resolveManagementAccess` needs it.
+  - Who may see what is unchanged.
+- **Tests.**
+  - New `showroomModuleRow.test.ts` (2).
+  - Restated: `inquiryOwnership` (no users query on the inquiry page: the caller's profile is the cached copy), `payroll/how-it-works/guide` and `payrollGuideAccess` (the only own-row read is keyed by the session's id).
+  - 116 test files touching these screens and modules pass: 2,721 tests. `tsc` and eslint are clean.
+
 ## 2026-11-12 — Pricing model v2: prices from parameters, with reasons (PR #709, squash-merged 2026-11-12 20:54 IST as `cccdf395`, deployed 20:56 IST) · `20270621000000` → APPLIED 2026-11-12 (before the merge, alone; read-only, so no backup under the owner's 12 Nov rule)
 - **Owner ask (evening).** "Build pricing model v2" after the 7/10 review (pricing scored 5: it matched names only). Approved; salespeople see the reasons.
 - **Built.** The model reads each line's parameters (type, size, material, finish, quantity band, client type), learns per product type how each moves the price from approved PIs, won quotations, desk approvals and open quotes, and prices a line for its own parameters with a range, a confidence and up to three reasons; it refits every time and falls back to the history suggestion with too little data. Pricing gains "How prices are made".

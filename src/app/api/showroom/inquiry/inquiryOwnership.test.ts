@@ -104,11 +104,14 @@ describe('the inquiry detail page', () => {
       false,
       'page must not resolve any name from the client',
     )
+    // Since 2026-11-12 the caller's own profile comes from the shared cached copy
+    // (profileQueryOptions), so the page issues no users query of its own at all.
     assert.equal(
       (DETAIL_PAGE.match(/\.from\('users'\)/g) ?? []).length,
-      1,
-      'exactly one users query should remain: the caller’s own profile',
+      0,
+      'no users query on the page: the caller’s own profile is the shared cached copy',
     )
+    assert.ok(DETAIL_PAGE.includes('profileQueryOptions(queryClient, session.user.id)'))
     assert.equal(DETAIL_PAGE.includes('setSalespersonName'), false)
   })
 

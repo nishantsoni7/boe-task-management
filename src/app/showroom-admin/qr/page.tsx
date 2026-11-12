@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { showroomModuleQuery } from '@/lib/showroom/showroomModuleRow'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
@@ -35,6 +38,7 @@ export default function MyQRPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile } = useViewAs()
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
   const exportCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -45,16 +49,8 @@ export default function MyQRPage() {
       if (!session) { router.push('/login'); return }
 
       const [{ data: p }, { data: mod }] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-          .eq('id', session.user.id)
-          .single(),
-        supabase
-          .from('app_modules')
-          .select('visibility_type, allowed_department, allowed_user_ids')
-          .eq('module_key', 'showroom_qr')
-          .single(),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
+        queryClient.ensureQueryData(showroomModuleQuery(supabase)).then(data => ({ data })),
       ])
 
       if (!p) { router.push('/login'); return }

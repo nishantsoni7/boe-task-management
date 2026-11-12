@@ -16,11 +16,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { Avatar, LoadingScreen } from '@/components/ui/atoms'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { periodLabel } from '@/lib/payroll/months'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import phone from '@/app/payroll/results/payrollResultsPhone.module.css'
@@ -381,6 +382,7 @@ export default function PayrollMonthlyReviewDetailPage() {
   const searchParams = useSearchParams()
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   const userId = params.userId as string
   const year   = parseInt(searchParams.get('year')  ?? '0', 10)
@@ -403,11 +405,7 @@ export default function PayrollMonthlyReviewDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       // Module access is decided once, by the route guard in
       // src/app/{attendance,payroll}/layout.tsx, through

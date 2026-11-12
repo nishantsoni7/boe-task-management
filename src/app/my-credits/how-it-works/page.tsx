@@ -23,11 +23,12 @@ import {
   MessageSquareHeart, Send, ShieldCheck, Undo2, Wallet, XCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatRupees } from '@/lib/payroll/money'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import { DEFAULT_BOE_CREDIT_SETTINGS, formatCreditValue } from '@/lib/boeCredits/settings'
@@ -78,16 +79,13 @@ export default function HowCreditsWorkPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       setProfile((prof as UserProfile | null) ?? null)
       setLoading(false)
 

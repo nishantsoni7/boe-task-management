@@ -112,3 +112,5 @@ Module registration is inside 20270305 (`app_modules`, `permission_modules`, `mo
 - Read the LATEST definition of each function (`grep -ln "function public.<name>" supabase/migrations/*` then take the last), `src/app/api/exhibition-leads/scan/route.ts`, `src/lib/exhibitionLeads/scan.ts`, `outbox.ts`, `constants.ts`, `src/lib/permissions/modules.ts` (exhibition_leads block).
 - Query: `supabase migration list --linked`; `select slug,is_active,closed_at from exhibitions`; permission grants for `view`/`view_all`.
 - Run: all `src/lib/exhibitionLeads/*.test.ts`, the four SQL assertion files, `permissions:check`, ledger pin tests.
+
+- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `useExhibitionLeads` (every Exhibition Leads screen) reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

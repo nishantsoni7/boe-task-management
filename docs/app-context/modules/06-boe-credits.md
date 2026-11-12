@@ -159,3 +159,5 @@ Bounds: `MAX_REVIEW_REWARD_CREDITS = 100_000`; `credit_value > 0`; amounts have 
 4. `docs/Module Docs/BOE_CREDITS.md`, `CUSTOMER_REVIEW_OUTREACH.md` section 15.
 5. Read-only live queries: settings rows (newest), ledger/redemption counts, `boe_credit_balances`, migration list. Probe columns, not just ledger rows.
 6. Tests of section 10 plus the ledger-pinning migration tests.
+
+- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `/my-credits` and `/my-credits/how-it-works` read the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

@@ -4,6 +4,9 @@ import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { showroomModuleQuery } from '@/lib/showroom/showroomModuleRow'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile, ShowroomProduct, ShowroomCategory } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
@@ -191,6 +194,7 @@ function EditProductContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile } = useViewAs()
   const refreshNavCounts = useRefreshShowroomProductCounts()
 
@@ -314,16 +318,8 @@ function EditProductContent() {
       // it saves is a whole round trip on the critical path, which is the cost
       // paid on every single step through Previous/Next.
       const [{ data: p }, { data: mod }, res] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-          .eq('id', session.user.id)
-          .single(),
-        supabase
-          .from('app_modules')
-          .select('visibility_type, allowed_department, allowed_user_ids')
-          .eq('module_key', 'showroom_qr')
-          .single(),
+        queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data })),
+        queryClient.ensureQueryData(showroomModuleQuery(supabase)).then(data => ({ data })),
         fetch(`/api/showroom/admin/products/${encodeURIComponent(productCode)}`, {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }),

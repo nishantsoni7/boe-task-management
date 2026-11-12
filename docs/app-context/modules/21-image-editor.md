@@ -103,3 +103,5 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 - Read: `docs/Module Docs/IMAGE_EDITOR_PROTOTYPE.md` (Authorization, Recent results, Configuration), `src/app/api/image-editor/studio/route.ts`, `cleanup/route.ts`, `20261022000000_image_editor_result_history.sql`, `vercel.json`, `next.config.ts` tracing block, `src/lib/imageEditor/falRequest.ts`.
 - Query: `select count(*) filter (where kept), count(*) filter (where expires_at < now() and not kept) from image_editor_results` (should be ~0 overdue-unkept after the nightly run); bucket objects vs rows reconciliation.
 - Run: imageEditor tests, the history SQL suite on a disposable DB; Vercel Cron manual invoke with the secret only on a preview.
+
+- **One read of your own row (2026-11-12, branch `perf/modules-profile-once`, no SQL).** `/image-editor` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

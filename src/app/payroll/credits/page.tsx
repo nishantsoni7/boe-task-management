@@ -20,13 +20,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Badge, Notice, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './credits.module.css'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
 import { DEFAULT_BOE_CREDIT_SETTINGS, formatCreditValue } from '@/lib/boeCredits/settings'
 import { CREDITS_GUIDE_PATH } from '@/lib/boeCredits/paths'
@@ -126,6 +127,7 @@ export default function BoeCreditsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const options  = useMemo(() => monthOptions(), [])
 
   const authHeaders = useCallback((t: string) => ({ authorization: `Bearer ${t}` }), [])
@@ -167,11 +169,7 @@ export default function BoeCreditsPage() {
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
       // The shell renders as soon as the profile is known; each section fills

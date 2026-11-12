@@ -4,10 +4,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { formatRupees } from '@/lib/payroll/money'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import { CreditsSummaryCard } from '@/components/boeCredits/CreditsSummaryCard'
@@ -88,6 +89,7 @@ export default function MyPayrollPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
@@ -95,11 +97,7 @@ export default function MyPayrollPage() {
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)).then(data => ({ data }))
 
       if (!prof) { router.push('/login'); return }
       setProfile(prof)

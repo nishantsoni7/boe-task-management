@@ -139,6 +139,11 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
   - `NotificationsNavItem` no longer fetches the Task count when a module passes its own `count`.
   - Kept apart on purpose: UserMenu's `position, designation_level` read (the shared profile must not carry it), and the
     launcher's `payroll_active, is_deleted` read.
+  - Extended to other modules (2026-11-12, branch `perf/modules-profile-once`): 28 own-row reads now go through
+    `ensureQueryData(profileQueryOptions(qc, session.user.id))`. They cover the Quotations, Vendors, Inventory and
+    Exhibition Leads hooks, Image Editor, Performance, My Attendance, the Payroll family, My Credits, My Payroll and the
+    seven Showroom QR pages. The baseline per page is 3 own-row reads (profile, role, designation) and 1 `_for_user`
+    call.
 - `Providers.tsx` (`AuthIdentityBoundary`): one auth listener. `SIGNED_OUT` -> `queryClient.clear()` +
   `clearPersistedUnreadCounts()`. `SIGNED_IN` for the SAME user (session recovery) is ignored. A different user in the same
   tab -> `queryClient.clear()`. `USER_UPDATED` same user -> invalidate `['permission-context']` and `['signed-in-user-id']`
