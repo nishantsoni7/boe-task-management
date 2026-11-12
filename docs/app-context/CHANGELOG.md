@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Quotations, phase 4: Improve picture (Image studio) (PR pending, branch `feat/quotation-image-studio`) · no migration
+## 2026-11-12 — Quotations, phase 4: Improve picture (Image studio) (PR #681, branch `feat/quotation-image-studio`) · no migration
 - **Owner ask / approval.** Regenerate unclear client pictures (original request); plan phase 4 approved 2026-11-12.
 - **Built.** "Improve picture" under each product picture: Clean up (sharp white-background catalogue picture of the same design) and Change it (typed change, optional reference) via `POST /api/quotations/picture` (the Edit PI image model, one paid request per press, never retried, JPEG stored as the caller); Crop & rotate on the device. Result beside the original; Use / Try again / Keep original; saved with Save.
 - **Proof.** `pictureStudio.test.ts` (4), `tsc`, eslint, full `npm test`, `next build`. Not run against the real image provider from here (FAL_KEY is only on Vercel).
