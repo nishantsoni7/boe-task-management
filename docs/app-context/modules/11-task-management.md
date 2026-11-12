@@ -181,7 +181,10 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 - Delegated work is completed by its CREATOR, not the assignee (assignee word is not enough; credit for Performance awarded on approval).
 - Three-migration rollout with deploy in the middle (833 RPC -> frontend -> 834 enforcement) so both old and new frontends work in the overlap.
 - No new notification enum values for review events: they reuse `task_acknowledged`; presentation is in the title/activity link.
-- Inactive names come through `/api/tasks/people`, not a wider `users` policy: that policy was tightened on purpose (20260812000000) and code selecting from `users` relies on it to keep leavers out of dropdowns. The direct read stays as the fallback.
+- Inactive names come through `/api/tasks/people`, not a wider `users` policy: that policy was tightened on purpose (20260812000000) and code selecting from `users` relies on it to keep leavers out of dropdowns. The direct read stays as the fallback. `fetchTaskPeople` shares a request that is already on its way, and keeps nothing after it answers. Team response asks for it first, beside its own reads. Before this, Assigned By Me fetched the list twice (2026-11-12).
+- One read per page (2026-11-12):
+  - Task Details takes "Add to Meeting" (`meetings.view`) from `usePermissionContext().permissionsByModule`, which the module shell already resolved, instead of a separate `resolve_permission` call. It still denies until that is known.
+  - The Cancelled archives, All Tasks and New quotation request reuse the cached profile row through `profileQueryOptions` instead of reading it again.
 - Approval is silent; submit still notifies the creator, return/reopen still notifies the assignee; a new task is silent (acknowledgement section already shows it); quotation
   requests are silent except that completion (and an admin's cancellation) tells their creator (Sept 2026 owner rules, amended Oct 2026; `taskNotificationPolicy.ts`).
 - Task Management holds task work only; Performance, Settings, Super Admin moved out of its sidebar.

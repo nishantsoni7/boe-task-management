@@ -22,7 +22,6 @@ import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { TaskAttachmentGallery } from '@/components/tasks/TaskAttachmentGallery'
 import { AddToMeetingButton, AddToMeetingModal } from '@/components/tasks/AddToMeetingModal'
 import { canOfferAddToMeeting } from '@/lib/tasks/addToMeetingAccess'
-import { hasPermission } from '@/lib/permissions/resolver'
 import { flashToast, useToast, Toast } from '@/components/ui/toast'
 import { ApproveTaskDialog } from '@/components/tasks/ApproveTaskDialog'
 import { CancelTaskModal } from '@/components/tasks/CancelTaskModal'
@@ -39,7 +38,7 @@ import {
 } from '@/lib/tasks/taskDetailAccess'
 import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
-import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { usePermissionContext, useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
@@ -264,7 +263,6 @@ export default function TaskDetailPage() {
   // can edit, the issue lands in the Meeting Inbox for somebody who can. The
   // database re-derives all of this; this only decides what is drawn.
   const [addToMeetingOpen, setAddToMeetingOpen] = useState(false)
-  const [canAddToMeeting,  setCanAddToMeeting]  = useState(false)
 
   // The "View new task" chip is a convenience, not a banner — auto-clear it after a short while.
   useEffect(() => {
@@ -331,19 +329,14 @@ export default function TaskDetailPage() {
   const queryClient = useQueryClient()
   const taskId      = params.id as string
 
-  // Resolved asynchronously even for an admin, so nothing sets state
-  // synchronously inside the effect and no cascading render is triggered.
-  useEffect(() => {
-    if (!signedInUserId) return           // stays false — the initial, denying value
-    let active = true
-    const resolved = profile?.role === 'admin'
-      ? Promise.resolve(true)
-      : hasPermission(supabase, signedInUserId, 'meetings', 'view')
-    resolved
-      .then(allowed => { if (active) setCanAddToMeeting(allowed) })
-      .catch(() => { if (active) setCanAddToMeeting(false) })
-    return () => { active = false }
-  }, [supabase, signedInUserId, profile?.role])
+  // Meetings `view`, read from the permissions the module shell already resolved
+  // (the same server check, all modules at once) instead of asking again.
+  // Denies until they are known.
+  const { permissionsByModule } = usePermissionContext()
+  const canAddToMeeting = !!signedInUserId && (
+    profile?.role === 'admin'
+    || (permissionsByModule.get('meetings') ?? []).some(p => p.actionKey === 'view' && p.allowed)
+  )
 
   // ── Background attachment uploads ───────────────────────────────────────────
   // One queue per task for the page's lifetime. Created here rather than per

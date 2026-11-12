@@ -10,7 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { Paperclip, X, Info } from 'lucide-react'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { profileQueryOptions } from '@/hooks/queries/useProfile'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
@@ -62,8 +62,9 @@ export default function NewQuotationRequestPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.push('/login'); return }
 
-        const [{ data: profileData }, { data: ownerData }] = await Promise.all([
-          supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        const [profileData, { data: ownerData }] = await Promise.all([
+          // The shell has usually read this row already; this reuses it instead of asking again.
+          queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)),
           supabase.from('users').select('id').eq('email', DEFAULT_QUOTATION_OWNER).single(),
         ])
 

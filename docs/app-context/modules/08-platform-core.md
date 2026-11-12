@@ -128,6 +128,17 @@ Permission-context caching (`src/hooks/queries/usePermissionContext.ts`):
 - Fail closed, independently: profile read fails -> role null -> everyone (even admins) denied; permission RPC fails ->
   empty map -> non-admins denied, admin passes on role alone. Background refetch rejects rather than overwriting a good
   answer with a fail-closed one. `ready` is not `allowed`: render nothing until `ready`.
+- ONE READ OF THE SIGNED-IN ROW PER PAGE (2026-11-12, owner: "remove the duplicate requests"). Before this, a page load
+  read the person's own `users` row 4-6 times. What changed:
+  - `useProfile` / `loadProfile` join a `['permission-context', uid]` read that is already on its way instead of asking
+    again. On a hard load both start in the same render. The key literal is duplicated in `useProfile.ts` because
+    `usePermissionContext` imports that file.
+  - Screens that load in an effect use `queryClient.ensureQueryData(profileQueryOptions(qc, uid))`.
+  - `LoginAsMemberWidget` reads `role` once per signed-in person, kept in a ref; a failed read is not kept. It used to
+    read again on every auth event, because supabase-js replays INITIAL_SESSION to each new listener.
+  - `NotificationsNavItem` no longer fetches the Task count when a module passes its own `count`.
+  - Kept apart on purpose: UserMenu's `position, designation_level` read (the shared profile must not carry it), and the
+    launcher's `payroll_active, is_deleted` read.
 - `Providers.tsx` (`AuthIdentityBoundary`): one auth listener. `SIGNED_OUT` -> `queryClient.clear()` +
   `clearPersistedUnreadCounts()`. `SIGNED_IN` for the SAME user (session recovery) is ignored. A different user in the same
   tab -> `queryClient.clear()`. `USER_UPDATED` same user -> invalidate `['permission-context']` and `['signed-in-user-id']`

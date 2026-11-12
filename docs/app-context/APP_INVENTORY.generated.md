@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `49770c22` — Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
-- Commits on this branch: 1257
+- Commit: `6019f0ea` — Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
+- Commits on this branch: 1258
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 435 (first `20260530_create_positions.sql`, latest `20270619000000_order_handoff_send_to_sales.sql`)
 - Tables ever created: 234 (dropped at some point: 7)   SQL functions: 994   Enums: 0
-- Test files: 804   Next.js 16.2.6, React 19.2.4
+- Test files: 805   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
 - `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
 - `126dc1fd` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
 - `8f8c9ba1` 2026-11-12 Quotations, phase 6: Reports (migration 20270618000000, apply before merge) (#694)
@@ -38,7 +39,6 @@
 - `8de7aded` 2026-11-12 Docs: Quotations phase 1 merged (7f491957) and 20270614000000 applied (#673)
 - `7f491957` 2026-11-12 Quotations, phase 1: build by room type, price, print, share a client link (migration 20270614000000, not yet applied) (#672)
 - `ac1da7ea` 2026-11-11 Docs: record the merge of #668 (a WhatsApp chat is judged before it becomes a lead) (#671)
-- `20395a5f` 2026-11-11 Sales: a WhatsApp chat is judged before it becomes a lead (migration 20270613000000, applied first) (#668)
 
 ## Pages by top-level area
 
