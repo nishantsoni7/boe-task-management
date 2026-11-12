@@ -44,7 +44,27 @@ export type Quotation = {
   header: Header; areas: QuoteArea[]; lines: QuoteLine[]; events: QuotationEvent[]
   /** The PI draft this quotation was confirmed into (20270615000000), or null. */
   pi: { id: string; draft_reference: string | null; status: string } | null
+  /** Price approval (20270617000000); absent before that migration. */
+  price: PriceState | null
 }
+
+export type PriceReason =
+  | { kind: 'discount'; pct: number; limit: number }
+  | { kind: 'below'; line: string; price: number; last: number; pct: number; limit: number }
+export type PriceState = {
+  needed: boolean; reasons: PriceReason[]; state: 'not_needed' | 'to_ask' | 'requested' | 'approved' | 'returned'
+  blocked: boolean; note: string | null; by: string | null; at: string | null; may_decide: boolean
+}
+export type PriceHint = {
+  name: string
+  ordered: { last: number; last_at: string; min: number; max: number; count: number } | null
+  quoted: { last: number; last_at: string } | null
+}
+export type QueueRow = {
+  id: string; quote_no: string; client_name: string; project_name: string | null; owner_name: string | null
+  value_before_gst: number; requested_at: string; reasons: PriceReason[]
+}
+export type PriceSettings = { max_discount_pct: number | null; min_price_pct: number | null; updated_at: string; may_change: boolean }
 
 export type PublicQuotation = {
   quote_no: string; status: QuotationStatus; client_name: string; project_name: string | null; contact_name: string | null
@@ -126,7 +146,7 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
 }
 
 export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation> {
-  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi'] }>(
+  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState }>(
     () => s.rpc('quotation_get', { p_id: id }))
   const q = r.quotation as Record<string, string | number | null>
   const str = (k: string) => (q[k] as string | null) ?? ''
@@ -141,7 +161,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       fabric_amount: Number(q.fabric_amount) || 0, packing_amount: Number(q.packing_amount) || 0, transport_note: str('transport_note'),
       valid_days: Number(q.valid_days) || 7, notes: str('notes'), internal_notes: str('internal_notes'),
     },
-    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null,
+    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null,
   }
 }
 
@@ -193,3 +213,14 @@ export async function uploadPicture(s: Supabase, userId: string, file: Blob): Pr
 
 /** An absolute, public address: the client link shows pictures without a session. */
 export const pictureUrl = (s: Supabase, path: string) => s.storage.from(QUOTATION_BUCKET).getPublicUrl(path).data.publicUrl
+
+// ── pricing desk (20270617000000) ──────────────────────────────────────────
+export const fetchHints = (s: Supabase, names: string[], exclude: string | null) =>
+  call<PriceHint[]>(() => s.rpc('quotation_price_hints', { p_names: names, p_exclude: exclude }))
+export const requestPriceApproval = (s: Supabase, id: string) => call<PriceState>(() => s.rpc('quotation_price_request', { p_id: id }))
+export const decidePrice = (s: Supabase, id: string, approve: boolean, note: string | null) =>
+  call<PriceState>(() => s.rpc('quotation_price_decide', { p_id: id, p_approve: approve, p_note: note }))
+export const fetchPriceQueue = (s: Supabase) => call<QueueRow[]>(() => s.rpc('quotation_price_queue'))
+export const fetchPriceSettings = (s: Supabase) => call<PriceSettings>(() => s.rpc('quotation_price_settings_get'))
+export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
+  call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))

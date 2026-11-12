@@ -1249,6 +1249,7 @@ describe('the applied migrations are frozen', () => {
       '20270614000000_quotations_module.sql',
       '20270615000000_quotation_pi_link.sql',
       '20270616000000_order_line_flags.sql',
+      '20270617000000_quotation_pricing_desk.sql',
     ])
   })
 
@@ -1742,6 +1743,7 @@ describe('the applied migrations are frozen', () => {
       '20270614000000_quotations_module.sql',
       '20270615000000_quotation_pi_link.sql',
       '20270616000000_order_line_flags.sql',
+      '20270617000000_quotation_pricing_desk.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
