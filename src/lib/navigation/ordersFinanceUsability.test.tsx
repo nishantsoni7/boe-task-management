@@ -158,7 +158,10 @@ describe('the module switch asks exactly what each target\'s guard asks', () => 
   test('Orders: the signed-in user, admin by role or orders.view — OrdersGuard\'s own question', () => {
     assert.ok(src.includes("actor.role === 'admin'"))
     assert.ok(src.includes("(actor.permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"))
-    assert.ok(code('src/app/orders/layout.tsx').includes("profile.role === 'admin' || viewAllowed"))
+    // Since 2026-11-12 the guard asks the very same question of the very same context.
+    const guard = code('src/app/orders/layout.tsx')
+    assert.ok(guard.includes("role === 'admin'"))
+    assert.ok(guard.includes("(permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"))
   })
 
   test('it fails closed until the answer is in, and is a link', () => {

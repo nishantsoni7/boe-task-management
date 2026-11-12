@@ -4,6 +4,22 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Fewer repeated requests: the Orders page (PR open, branch `perf/orders-dedupe-requests`) · no SQL
+- **Owner ask.** "remove the duplicate requests to make it faster", with the owner's Network screenshot of /orders: 36 requests. This is PR 2 of 2; PR 1 (#697) covers the page frame and Task Management.
+- **Changed.**
+  - `OrdersGuard` resolves the signed-in person's `usePermissionContext()`. The rule is unchanged: admin by role, otherwise Orders `view`, and a missing profile or failed read denies.
+  - `/orders` reads `profile`, `role` and the Orders permissions from that cache. `OrdersLayout`'s own resolution is now a cache hit instead of a third resolution after the page drew.
+  - Gone: `users.role`, `resolve_permission`, the `USER_PROFILE_COLUMNS` read and `resolve_effective_permissions(orders)`.
+  - Approvers: `DecisionQueue` and `DocumentActionQueue` share one read of `order_pi_versions` and one of `order_document_submissions`.
+- **Tests.** Restated, each with the rule it protects kept:
+  - `orderStartupShape`: the guard asks nothing itself and keeps the rule and the loading block; the dashboard waits only for its own data; query counts GUARD 2→0, DASHBOARD 7→5.
+  - `importAccess`: module entry; capabilities from the resolved permissions; deny in place.
+  - `ordersFinanceUsability`: the guard and the module switch ask the same question.
+  - `enforcement`, `moduleParentGate`: Orders `view` still resolved.
+  - `uiEnforcement`: `deriveOrdersCapabilities(null, [])` equals `NO_ORDERS_CAPABILITIES`.
+  - `adminDashboard`: the shared reads, with no service role.
+  - New `openQueueReads.test.ts` (2).
+
 ## 2026-11-12 — Fewer repeated requests: the page frame and Task Management (PR open, branch `perf/dedupe-shell-task-requests`) · no SQL
 - **Owner ask.** "remove the duplicate requests to make it faster", then "and do it for the complete task management module". Counted live on the owner's account:
   - the signed-in person's own `users` row was read 4-6 times on every Task Management page;

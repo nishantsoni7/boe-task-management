@@ -394,8 +394,14 @@ describe('the page', () => {
   test('the decision list reads under the reader\'s own rights and takes the chip from the database', () => {
     const src = read('src/components/orders/dashboard/DecisionQueue.tsx')
     assert.ok(src.includes("from('order_submissions')"))
-    assert.ok(src.includes("from('order_pi_versions')"))
-    assert.ok(src.includes("from('order_document_submissions')"))
+    // The revisions and documents reads are shared with the documents list (2026-11-12): same
+    // client, the reader's own session, so still under the reader's own rights.
+    assert.ok(src.includes('readOpenPiRevisions(supabase)'))
+    assert.ok(src.includes('readOpenDocumentSubmissions(supabase)'))
+    const shared = read('src/components/orders/DocumentActionQueue.tsx')
+    assert.ok(shared.includes(".from('order_pi_versions')"))
+    assert.ok(shared.includes(".from('order_document_submissions')"))
+    assert.equal(/service|createClient/.test(shared), false, 'no service role in the shared reads')
     assert.ok(src.includes('loadPiPaymentSummary'))
     assert.equal(/service|createClient|attached_percent/.test(src), false, 'no service role, and no percentage worked out for the chip')
     assert.ok(src.includes('viewingAs'), 'nothing is read under View As')

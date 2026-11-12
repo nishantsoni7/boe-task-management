@@ -33,6 +33,45 @@ import { splitRevisionQueue, type RevisionQueueRow } from '@/lib/orders/orderPiV
 
 export const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_admin', 'rejected_operations']
 
+// ── TWO LISTS, ONE READ OF EACH TABLE (2026-11-12) ──
+// On the approver's dashboard "Needs your decision" (DecisionQueue) and this list load at the same
+// moment from the same two tables. Each read below is shared while it is on its way, so each table
+// is asked once; nothing is kept after it answers. The column lists are the union of both lists.
+type QueueRead = { data: unknown[] | null; error: { message: string } | null }
+const readsOnTheirWay = new WeakMap<SupabaseClient, Map<string, Promise<QueueRead>>>()
+
+function sharedRead(supabase: SupabaseClient, key: string, run: () => PromiseLike<QueueRead>): Promise<QueueRead> {
+  let reads = readsOnTheirWay.get(supabase)
+  if (!reads) readsOnTheirWay.set(supabase, reads = new Map())
+  const running = reads.get(key)
+  if (running) return running
+  const read = Promise.resolve(run()).finally(() => reads.delete(key))
+  reads.set(key, read)
+  return read
+}
+
+/** Open Design Files / Client PO submissions sent with an amendment, newest first. */
+export function readOpenDocumentSubmissions(supabase: SupabaseClient): Promise<QueueRead> {
+  return sharedRead(supabase, 'documents', () => supabase
+    .from('order_document_submissions')
+    .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number, client_name)`)
+    .in('status', OPEN_STATUSES)
+    // Documents sent with a PI ride with the PI review and the handoff.
+    .eq('stage', 'amendment')
+    .order('submitted_at', { ascending: false })
+    .limit(200) as unknown as PromiseLike<QueueRead>)
+}
+
+/** Revised PIs on an Order (20270113000000): pending the admin, or approved and awaiting the operations reviewer. Longest waiting first. */
+export function readOpenPiRevisions(supabase: SupabaseClient): Promise<QueueRead> {
+  return sharedRead(supabase, 'revisions', () => supabase
+    .from('order_pi_versions')
+    .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, revision_reason, order:orders!order_id(display_number, client_name)')
+    .in('status', ['pending', 'admin_approved'])
+    .order('uploaded_at', { ascending: true })
+    .limit(100) as unknown as PromiseLike<QueueRead>)
+}
+
 type Loaded = {
   rows: { submission: PersistedDocumentSubmission; orderNumber: string }[]
   // Revised PIs open on an Order (20270113000000): pending the admin, or
@@ -64,14 +103,11 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
     if (!viewerId || viewingAs) return
     let live = true
     void (async () => {
-      const { data, error } = await supabase
-        .from('order_document_submissions')
-        .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number)`)
-        .in('status', OPEN_STATUSES)
-        // Documents sent with a PI ride with the PI review and the handoff.
-        .eq('stage', 'amendment')
-        .order('submitted_at', { ascending: false })
-        .limit(200)
+      // Both at once, and shared with "Needs your decision" on the approver's dashboard.
+      const [{ data, error }, { data: revData, error: revErr }] = await Promise.all([
+        readOpenDocumentSubmissions(supabase),
+        readOpenPiRevisions(supabase),
+      ])
       // An absent table (migration not applied) or a refused read draws nothing.
       if (error || !live) return
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,15 +115,9 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
         submission: r as PersistedDocumentSubmission,
         orderNumber: displayOrderNumber(r.order?.display_number as string | undefined) || '—',
       }))
-      const { data: revData, error: revErr } = await supabase
-        .from('order_pi_versions')
-        .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, order:orders!order_id(display_number)')
-        .in('status', ['pending', 'admin_approved'])
-        .order('uploaded_at', { ascending: false })
-        .limit(100)
-      if (!live) return
+      // The shared read is longest waiting first; this list shows the newest first, as before.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const revisions: RevisionQueueRow[] = revErr ? [] : ((revData ?? []) as any[]).map(r => ({
+      const revisions: RevisionQueueRow[] = revErr ? [] : ((revData ?? []) as any[]).slice().reverse().map(r => ({
         id: r.id, orderId: r.order_id, orderNumber: displayOrderNumber(r.order?.display_number as string | undefined) || '—',
         versionNumber: r.version_number, status: r.status, uploadedBy: r.uploaded_by ?? null,
         uploadedAt: r.uploaded_at, operationsReviewer: r.operations_reviewer ?? null,
