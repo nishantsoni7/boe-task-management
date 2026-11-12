@@ -17,7 +17,7 @@
 import { PaymentCashLine } from '@/components/finance/PaymentCashLine'
 import { isTrackedPaymentMode } from '@/lib/finance/cashJourney'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, CircleMinus, MapPin, Pencil, Phone } from 'lucide-react'
+import { AlertTriangle, ChevronDown, CircleCheck, CircleMinus, MapPin, Pencil, Phone } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
@@ -107,6 +107,15 @@ export function OrderAttentionBar({ items, actions, id }: {
           <div className="order-notice-text">
             <strong className="order-notice-title">{item.title ?? item.label}</strong>
             {item.detail && <span className="order-notice-detail">{item.detail}</span>}
+            {item.sent && (
+              <span className="order-notice-sent" data-sent-back="true">
+                <strong className="order-notice-sent-head">
+                  <CircleCheck size={14} strokeWidth={2.4} aria-hidden="true" />
+                  {item.sent.head}
+                </strong>
+                <span className="order-notice-sent-comment">“{item.sent.comment}”</span>
+              </span>
+            )}
           </div>
           {actions && item.key === actionHost && <div className="order-notice-actions">{actions}</div>}
         </div>

@@ -21,11 +21,15 @@ import {
   FLAGGED_LOAD_FAILED,
   FLAGGED_OPEN,
   FLAGGED_STRIP_HINT,
+  commentLine,
   flaggedHref,
   flaggedTitle,
   loadFlaggedPis,
+  loadSentBackComments,
   reasonLine,
+  sentBackBy,
   type FlaggedPi,
+  type SentBack,
 } from '@/lib/orders/flaggedPis'
 import { waitingText } from '@/lib/orders/salespersonDashboard'
 import { isReturnedPiUrgent } from '@/lib/orders/returnedPis'
@@ -33,7 +37,8 @@ import { isReturnedPiUrgent } from '@/lib/orders/returnedPis'
 export type FlaggedStripState =
   | { kind: 'loading' }
   | { kind: 'failed' }
-  | { kind: 'ready'; rows: FlaggedPi[] }
+  /** `sent`: the approver's latest "sent back to you" comment per flagged handoff, when there is one. */
+  | { kind: 'ready'; rows: FlaggedPi[]; sent?: Record<string, SentBack> }
 
 export function FlaggedPiStrip({ supabase, viewingAs, reloadKey }: {
   supabase: SupabaseClient
@@ -46,8 +51,18 @@ export function FlaggedPiStrip({ supabase, viewingAs, reloadKey }: {
   useEffect(() => {
     if (viewingAs) return
     let live = true
-    void loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }).then(rows => {
-      if (live) setState(rows ? { kind: 'ready', rows } : { kind: 'failed' })
+    void loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }).then(async rows => {
+      if (!live) return
+      setState(rows ? { kind: 'ready', rows } : { kind: 'failed' })
+      if (!rows || rows.length === 0) return
+      // The comment arrives a moment later; the list never waits for it and never changes because of it.
+      const sent = await loadSentBackComments(ids => supabase
+        .from('order_activity_log')
+        .select('order_id, payload, created_at, actor:users!actor_id(full_name)')
+        .eq('event_type', 'operations_handoff_sent_to_sales')
+        .in('order_id', ids)
+        .order('created_at', { ascending: false }), rows)
+      if (live && Object.keys(sent).length > 0) setState({ kind: 'ready', rows, sent })
     })
     return () => { live = false }
   }, [supabase, viewingAs, reloadKey])
@@ -79,6 +94,11 @@ export function FlaggedPiStripView({ state }: { state: FlaggedStripState }) {
                 <span className="spd-meta">{r.byName ? `Flagged by ${r.byName}` : 'Flagged'} · PI V{r.versionNumber}</span>
                 <span className="spd-pill" data-tone={isReturnedPiUrgent(r.waitingSeconds) ? 'alert' : 'warn'}>{waitingText(r.waitingSeconds)}</span>
                 <span className="spd-meta">“{reasonLine(r.reason)}”</span>
+                {state.sent?.[r.handoffId] && (
+                  <span className="spd-sent" data-sent-back="true">
+                    {sentBackBy(state.sent[r.handoffId])}: “{commentLine(state.sent[r.handoffId].text)}”
+                  </span>
+                )}
               </span>
               <span className="spd-open" aria-hidden="true">{FLAGGED_OPEN}</span>
             </Link>
