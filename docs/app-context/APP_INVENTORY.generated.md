@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1d6b9184` — Payroll and the My pages read your own row once (#720)
-- Commits on this branch: 1281
+- Commit: `dde7f4c3` — Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
+- Commits on this branch: 1282
 - Pages (`page.tsx`): 190   API routes (`route.ts`): 197
 - Migrations: 440 (first `20260530_create_positions.sql`, latest `20270624000000_day_close_in_tasks.sql`)
 - Tables ever created: 242 (dropped at some point: 8)   SQL functions: 1007   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
 - `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
 - `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
 - `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
@@ -38,7 +39,6 @@
 - `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
 - `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
 - `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
-- `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
 
 ## Pages by top-level area
 
