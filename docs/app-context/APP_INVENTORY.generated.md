@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `580cacdb` — Pricing price book: renumber its migration to 20270620000000
+- Commit: `3fae90f5` — Docs: record the merges of #693 and #699 (with #697), and the live recount
 - Commits on this branch: 1262
 - Pages (`page.tsx`): 189   API routes (`route.ts`): 191
 - Migrations: 436 (first `20260530_create_positions.sql`, latest `20270620000000_pricing_price_book.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `580cacdb` 2026-11-12 Pricing price book: renumber its migration to 20270620000000
-- `32190425` 2026-11-12 Docs: PR number for the price book (#698)
-- `8d082a1f` 2026-11-12 Pricing: the price book and the suggested price (Quotations plan phase 7A)
+- `3fae90f5` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount
+- `f88f2ad5` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
+- `f88d7033` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
 - `202cbaf8` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
 - `6019f0ea` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
 - `49770c22` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
